@@ -222,6 +222,71 @@ export default function AdminScreen() {
         </Text>
       </View>
 
+      {/* Prominent External Calendar Management Section */}
+      <View style={[styles.externalCalendarSection, { backgroundColor: cardBgColor }]}>
+        <View style={styles.externalCalendarHeader}>
+          <View style={styles.externalCalendarHeaderLeft}>
+            <IconSymbol ios_icon_name="calendar.badge.plus" android_material_icon_name="event" size={24} color={colors.secondary} />
+            <View>
+              <Text style={[styles.externalCalendarTitle, { color: textColor }]}>Eksterne kalendere</Text>
+              <Text style={[styles.externalCalendarSubtitle, { color: textSecondaryColor }]}>
+                {externalCalendars.length === 0 ? 'Ingen kalendere tilføjet' : `${externalCalendars.length} kalender${externalCalendars.length !== 1 ? 'e' : ''}`}
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity 
+            style={[styles.addCalendarButton, { backgroundColor: colors.primary }]}
+            onPress={() => setIsCalendarModalVisible(true)}
+          >
+            <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={20} color="#fff" />
+            <Text style={styles.addCalendarButtonText}>Tilføj kalender</Text>
+          </TouchableOpacity>
+        </View>
+
+        {externalCalendars.length > 0 && (
+          <TouchableOpacity 
+            style={styles.manageCalendarsButton}
+            onPress={() => setIsCalendarDropdownVisible(!isCalendarDropdownVisible)}
+          >
+            <Text style={[styles.manageCalendarsText, { color: colors.secondary }]}>
+              Administrer kalendere ({externalCalendars.filter(c => c.enabled).length} aktive)
+            </Text>
+            <IconSymbol 
+              ios_icon_name={isCalendarDropdownVisible ? "chevron.up" : "chevron.down"} 
+              android_material_icon_name={isCalendarDropdownVisible ? "expand_less" : "expand_more"} 
+              size={20} 
+              color={colors.secondary} 
+            />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {isCalendarDropdownVisible && externalCalendars.length > 0 && (
+        <View style={[styles.calendarDropdown, { backgroundColor: cardBgColor }]}>
+          {externalCalendars.map((calendar, index) => (
+            <View key={index} style={styles.calendarDropdownItem}>
+              <TouchableOpacity 
+                style={styles.calendarToggleArea}
+                onPress={() => toggleCalendar(calendar.id)}
+              >
+                <View style={[styles.toggle, calendar.enabled && styles.toggleActive]}>
+                  <View style={[styles.toggleThumb, calendar.enabled && styles.toggleThumbActive]} />
+                </View>
+                <View style={styles.calendarDropdownInfo}>
+                  <Text style={[styles.calendarDropdownName, { color: textColor }]}>{calendar.name}</Text>
+                  <Text style={[styles.calendarDropdownMeta, { color: textSecondaryColor }]}>
+                    {calendar.eventCount || 0} begivenheder • {calendar.enabled ? 'Aktiv' : 'Inaktiv'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleDeleteCalendar(calendar.id)}>
+                <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={20} color={colors.error} />
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+      )}
+
       <View style={styles.searchContainer}>
         <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={20} color={textSecondaryColor} />
         <TextInput
@@ -370,60 +435,7 @@ export default function AdminScreen() {
             <Text style={[styles.actionButtonText, { color: colors.secondary }]}>Marker alle eksterne</Text>
           </TouchableOpacity>
         )}
-        
-        <TouchableOpacity 
-          onPress={() => setIsCalendarDropdownVisible(!isCalendarDropdownVisible)} 
-          style={styles.actionButton}
-        >
-          <IconSymbol ios_icon_name="calendar" android_material_icon_name="event" size={20} color={colors.secondary} />
-          <Text style={[styles.actionButtonText, { color: colors.secondary }]}>Eksterne kalendere</Text>
-          <IconSymbol 
-            ios_icon_name={isCalendarDropdownVisible ? "chevron.up" : "chevron.down"} 
-            android_material_icon_name={isCalendarDropdownVisible ? "expand_less" : "expand_more"} 
-            size={16} 
-            color={colors.secondary} 
-          />
-        </TouchableOpacity>
       </View>
-
-      {isCalendarDropdownVisible && (
-        <View style={[styles.calendarDropdown, { backgroundColor: cardBgColor }]}>
-          <View style={styles.calendarDropdownHeader}>
-            <Text style={[styles.calendarDropdownTitle, { color: textColor }]}>Eksterne kalendere</Text>
-            <TouchableOpacity onPress={() => setIsCalendarModalVisible(true)}>
-              <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add_circle" size={24} color={colors.primary} />
-            </TouchableOpacity>
-          </View>
-          
-          {externalCalendars.length === 0 ? (
-            <Text style={[styles.emptyCalendarText, { color: textSecondaryColor }]}>
-              Ingen eksterne kalendere tilføjet
-            </Text>
-          ) : (
-            externalCalendars.map((calendar, index) => (
-              <View key={index} style={styles.calendarDropdownItem}>
-                <TouchableOpacity 
-                  style={styles.calendarToggleArea}
-                  onPress={() => toggleCalendar(calendar.id)}
-                >
-                  <View style={[styles.toggle, calendar.enabled && styles.toggleActive]}>
-                    <View style={[styles.toggleThumb, calendar.enabled && styles.toggleThumbActive]} />
-                  </View>
-                  <View style={styles.calendarDropdownInfo}>
-                    <Text style={[styles.calendarDropdownName, { color: textColor }]}>{calendar.name}</Text>
-                    <Text style={[styles.calendarDropdownMeta, { color: textSecondaryColor }]}>
-                      {calendar.eventCount || 0} begivenheder
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleDeleteCalendar(calendar.id)}>
-                  <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={20} color={colors.error} />
-                </TouchableOpacity>
-              </View>
-            ))
-          )}
-        </View>
-      )}
 
       <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
         <View style={styles.section}>
@@ -435,6 +447,11 @@ export default function AdminScreen() {
             <View style={[styles.emptyCard, { backgroundColor: cardBgColor }]}>
               <IconSymbol ios_icon_name="calendar.badge.exclamationmark" android_material_icon_name="event_busy" size={48} color={textSecondaryColor} />
               <Text style={[styles.emptyText, { color: textSecondaryColor }]}>Ingen aktiviteter fundet</Text>
+              {externalCalendars.length === 0 && (
+                <Text style={[styles.emptyHint, { color: textSecondaryColor }]}>
+                  Tilføj en ekstern kalender for at se aktiviteter
+                </Text>
+              )}
             </View>
           ) : (
             filteredActivities.map((activity, index) => (
@@ -541,7 +558,8 @@ export default function AdminScreen() {
               <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
                 <IconSymbol ios_icon_name="info.circle" android_material_icon_name="info" size={20} color={colors.secondary} />
                 <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
-                  Indsæt en iCal URL (webcal:// eller https://) fra din eksterne kalender
+                  Indsæt en iCal URL (webcal:// eller https://) fra din eksterne kalender. Eksempel:{'\n\n'}
+                  webcal://ical.dbu.dk/TeamActivities.ashx?userkey=...
                 </Text>
               </View>
             </ScrollView>
@@ -641,6 +659,109 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     fontSize: 16,
+  },
+  externalCalendarSection: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 2,
+    borderColor: colors.secondary,
+  },
+  externalCalendarHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  externalCalendarHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  externalCalendarTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  externalCalendarSubtitle: {
+    fontSize: 14,
+    marginTop: 2,
+  },
+  addCalendarButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  addCalendarButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  manageCalendarsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    marginTop: 4,
+  },
+  manageCalendarsText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  calendarDropdown: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 12,
+    padding: 16,
+  },
+  calendarDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.highlight,
+  },
+  calendarToggleArea: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  calendarDropdownInfo: {
+    flex: 1,
+  },
+  calendarDropdownName: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  calendarDropdownMeta: {
+    fontSize: 12,
+  },
+  toggle: {
+    width: 50,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.highlight,
+    padding: 2,
+  },
+  toggleActive: {
+    backgroundColor: colors.primary,
+  },
+  toggleThumb: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+  },
+  toggleThumbActive: {
+    transform: [{ translateX: 22 }],
   },
   searchContainer: {
     flexDirection: 'row',
@@ -763,71 +884,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  calendarDropdown: {
-    marginHorizontal: 16,
-    marginBottom: 12,
-    borderRadius: 12,
-    padding: 16,
-  },
-  calendarDropdownHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  calendarDropdownTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  calendarDropdownItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.highlight,
-  },
-  calendarToggleArea: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-  },
-  calendarDropdownInfo: {
-    flex: 1,
-  },
-  calendarDropdownName: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  calendarDropdownMeta: {
-    fontSize: 12,
-  },
-  emptyCalendarText: {
-    fontSize: 14,
-    textAlign: 'center',
-    paddingVertical: 12,
-  },
-  toggle: {
-    width: 50,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.highlight,
-    padding: 2,
-  },
-  toggleActive: {
-    backgroundColor: colors.primary,
-  },
-  toggleThumb: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#fff',
-  },
-  toggleThumbActive: {
-    transform: [{ translateX: 22 }],
-  },
   content: {
     flex: 1,
   },
@@ -850,6 +906,11 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
+  },
+  emptyHint: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 4,
   },
   activityCard: {
     borderRadius: 12,
