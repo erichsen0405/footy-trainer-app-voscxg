@@ -172,9 +172,13 @@ export function useFootballData() {
         externalEventId: event.uid,
       }));
 
+      console.log(`Parsed ${newActivities.length} activities from ${calendar.name}`);
+
       setExternalActivities(prev => {
         const filtered = prev.filter(a => a.externalCalendarId !== calendar.id);
-        return [...filtered, ...newActivities];
+        const updated = [...filtered, ...newActivities];
+        console.log(`Total external activities after update: ${updated.length}`);
+        return updated;
       });
 
       setExternalCalendars(prev => prev.map(cal => 
@@ -183,11 +187,30 @@ export function useFootballData() {
           : cal
       ));
 
-      console.log(`Fetched ${events.length} events from ${calendar.name}`);
+      console.log(`Successfully fetched ${events.length} events from ${calendar.name}`);
     } catch (error) {
       console.error('Error fetching external calendar:', error);
     }
   }, [categories]);
+
+  // Auto-fetch enabled calendars on mount and when calendars change
+  useEffect(() => {
+    const enabledCalendars = externalCalendars.filter(cal => cal.enabled);
+    console.log(`Found ${enabledCalendars.length} enabled calendars to fetch`);
+    
+    enabledCalendars.forEach(calendar => {
+      // Only fetch if not recently fetched (within last 5 minutes)
+      const shouldFetch = !calendar.lastFetched || 
+        (new Date().getTime() - new Date(calendar.lastFetched).getTime()) > 5 * 60 * 1000;
+      
+      if (shouldFetch) {
+        console.log(`Fetching calendar: ${calendar.name}`);
+        fetchExternalCalendarEvents(calendar);
+      } else {
+        console.log(`Skipping fetch for ${calendar.name} - recently fetched`);
+      }
+    });
+  }, [externalCalendars, fetchExternalCalendarEvents]);
 
   const getCurrentWeekStats = useMemo(() => {
     const now = new Date();
@@ -329,20 +352,15 @@ export function useFootballData() {
       ...calendar,
       id: `calendar-${Date.now()}`,
     };
+    console.log('Adding external calendar:', newCalendar.name);
     setExternalCalendars([...externalCalendars, newCalendar]);
-    
-    if (newCalendar.enabled) {
-      fetchExternalCalendarEvents(newCalendar);
-    }
   };
 
   const toggleCalendar = (id: string) => {
     setExternalCalendars(externalCalendars.map(calendar => {
       if (calendar.id === id) {
         const updated = { ...calendar, enabled: !calendar.enabled };
-        if (updated.enabled) {
-          fetchExternalCalendarEvents(updated);
-        }
+        console.log(`Toggling calendar ${calendar.name} to ${updated.enabled ? 'enabled' : 'disabled'}`);
         return updated;
       }
       return calendar;
@@ -350,6 +368,7 @@ export function useFootballData() {
   };
 
   const deleteExternalCalendar = (id: string) => {
+    console.log('Deleting external calendar:', id);
     setExternalCalendars(externalCalendars.filter(cal => cal.id !== id));
     setExternalActivities(prev => prev.filter(a => a.externalCalendarId !== id));
   };
@@ -357,7 +376,7 @@ export function useFootballData() {
   const importExternalActivity = (externalActivityId: string, categoryId: string) => {
     const externalActivity = externalActivities.find(a => a.id === externalActivityId);
     if (!externalActivity) {
-      console.log('External activity not found');
+      console.log('External activity not found:', externalActivityId);
       return;
     }
 
@@ -387,6 +406,7 @@ export function useFootballData() {
   };
 
   const importMultipleActivities = (activityIds: string[], categoryId: string) => {
+    console.log(`Importing ${activityIds.length} activities`);
     activityIds.forEach(id => importExternalActivity(id, categoryId));
   };
 
