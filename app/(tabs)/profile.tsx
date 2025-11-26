@@ -68,7 +68,12 @@ export default function ProfileScreen() {
 
         if (error) {
           console.error('Sign up error:', error);
-          throw error;
+          // Show the actual error message from Supabase
+          Alert.alert(
+            'Kunne ikke oprette konto',
+            error.message || 'Der opstod en fejl. Prøv venligst igen.'
+          );
+          return;
         }
 
         // Check if email confirmation is required
@@ -108,7 +113,7 @@ export default function ProfileScreen() {
               'Du skal bekræfte din email før du kan logge ind. Tjek din indbakke for bekræftelsesmailen.\n\nTjek også din spam-mappe.'
             );
           } else {
-            throw error;
+            Alert.alert('Login fejlede', error.message || 'Der opstod en fejl. Prøv venligst igen.');
           }
           return;
         }
