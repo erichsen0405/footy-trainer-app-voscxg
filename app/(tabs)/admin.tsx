@@ -5,6 +5,7 @@ import { useFootball } from '@/contexts/FootballContext';
 import { colors } from '@/styles/commonStyles';
 import { Activity } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
+import { supabase } from '@/app/integrations/supabase/client';
 
 export default function AdminScreen() {
   const { 
@@ -35,9 +36,26 @@ export default function AdminScreen() {
   const [newCalendarName, setNewCalendarName] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [syncingCalendarId, setSyncingCalendarId] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+
+  // Check authentication status
+  React.useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setIsAuthenticated(!!user);
+    };
+    checkAuth();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthenticated(!!session?.user);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const enabledExternalCalendarIds = useMemo(() => {
     const ids = externalCalendars.filter(cal => cal.enabled).map(cal => cal.id);
@@ -135,20 +153,62 @@ export default function AdminScreen() {
     setSelectedActivities([]);
   };
 
-  const handleAddCalendar = () => {
-    if (newCalendarUrl && newCalendarName) {
-      addExternalCalendar({
+  const handleAddCalendar = async () => {
+    if (!isAuthenticated) {
+      Alert.alert(
+        'Login påkrævet',
+        'Du skal være logget ind for at tilføje eksterne kalendere. Denne funktion kræver en Supabase-konto for at gemme dine data.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    if (!newCalendarUrl || !newCalendarName) {
+      Alert.alert('Fejl', 'Udfyld venligst både navn og URL');
+      return;
+    }
+
+    // Validate URL format
+    if (!newCalendarUrl.startsWith('webcal://') && !newCalendarUrl.startsWith('https://') && !newCalendarUrl.startsWith('http://')) {
+      Alert.alert(
+        'Ugyldig URL',
+        'URL skal starte med webcal://, https:// eller http://'
+      );
+      return;
+    }
+
+    try {
+      console.log('Adding calendar:', newCalendarName, newCalendarUrl);
+      await addExternalCalendar({
         name: newCalendarName,
         icsUrl: newCalendarUrl,
         enabled: true,
       });
+      
       setNewCalendarUrl('');
       setNewCalendarName('');
       setIsCalendarModalVisible(false);
+      
+      Alert.alert(
+        'Kalender tilføjet',
+        'Din eksterne kalender er blevet tilføjet og synkroniseres nu.',
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      console.error('Error adding calendar:', error);
+      Alert.alert(
+        'Fejl',
+        'Der opstod en fejl ved tilføjelse af kalenderen. Tjek venligst URL\'en og prøv igen.'
+      );
     }
   };
 
   const handleDeleteCalendar = (calendarId: string) => {
+    if (!isAuthenticated) {
+      Alert.alert('Login påkrævet', 'Du skal være logget ind for at slette kalendere.');
+      return;
+    }
+
     Alert.alert(
       'Slet kalender',
       'Er du sikker på at du vil slette denne kalender?',
@@ -164,6 +224,11 @@ export default function AdminScreen() {
   };
 
   const handleSyncCalendar = async (calendarId: string) => {
+    if (!isAuthenticated) {
+      Alert.alert('Login påkrævet', 'Du skal være logget ind for at synkronisere kalendere.');
+      return;
+    }
+
     const calendar = externalCalendars.find(c => c.id === calendarId);
     if (!calendar) return;
 
@@ -180,6 +245,11 @@ export default function AdminScreen() {
   };
 
   const handleImportActivity = (activityId: string) => {
+    if (!isAuthenticated) {
+      Alert.alert('Login påkrævet', 'Du skal være logget ind for at importere aktiviteter.');
+      return;
+    }
+
     setActivityToImport(activityId);
     setSelectedImportCategory(categories[0]?.id || '');
     setIsImportModalVisible(true);
@@ -194,6 +264,11 @@ export default function AdminScreen() {
   };
 
   const handleImportSelected = () => {
+    if (!isAuthenticated) {
+      Alert.alert('Login påkrævet', 'Du skal være logget ind for at importere aktiviteter.');
+      return;
+    }
+
     const externalIds = selectedActivities.filter(id => 
       externalFilteredActivities.some(a => a.id === id)
     );
@@ -270,6 +345,19 @@ export default function AdminScreen() {
           <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
             {activities.length} aktiviteter • {externalCalendars.length} eksterne kalendere
           </Text>
+          {!isAuthenticated && (
+            <View style={[styles.warningBanner, { backgroundColor: isDark ? '#4a3a2a' : '#fff3cd' }]}>
+              <IconSymbol 
+                ios_icon_name="exclamationmark.triangle.fill" 
+                android_material_icon_name="warning" 
+                size={24} 
+                color={isDark ? '#ffc107' : '#856404'} 
+              />
+              <Text style={[styles.warningText, { color: isDark ? '#ffc107' : '#856404' }]}>
+                Du er ikke logget ind. Log ind for at gemme eksterne kalendere og synkronisere data.
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* External Calendar Management Section - Mobile Optimized */}
@@ -294,7 +382,10 @@ export default function AdminScreen() {
           </View>
           
           <TouchableOpacity 
-            style={[styles.addCalendarButton, { backgroundColor: colors.primary }]}
+            style={[
+              styles.addCalendarButton, 
+              { backgroundColor: isAuthenticated ? colors.primary : colors.highlight }
+            ]}
             onPress={() => setIsCalendarModalVisible(true)}
             activeOpacity={0.7}
           >
@@ -673,6 +764,20 @@ export default function AdminScreen() {
             </View>
 
             <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              {!isAuthenticated && (
+                <View style={[styles.authWarningBox, { backgroundColor: isDark ? '#4a3a2a' : '#fff3cd' }]}>
+                  <IconSymbol 
+                    ios_icon_name="exclamationmark.triangle.fill" 
+                    android_material_icon_name="warning" 
+                    size={28} 
+                    color={isDark ? '#ffc107' : '#856404'} 
+                  />
+                  <Text style={[styles.authWarningText, { color: isDark ? '#ffc107' : '#856404' }]}>
+                    Du skal være logget ind for at gemme eksterne kalendere. Log ind først for at fortsætte.
+                  </Text>
+                </View>
+              )}
+
               <Text style={[styles.label, { color: textColor }]}>Kalender navn</Text>
               <TextInput
                 style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
@@ -680,6 +785,7 @@ export default function AdminScreen() {
                 onChangeText={setNewCalendarName}
                 placeholder="F.eks. Klubkalender"
                 placeholderTextColor={textSecondaryColor}
+                editable={isAuthenticated}
               />
 
               <Text style={[styles.label, { color: textColor }]}>ICS URL (webcal:// eller https://)</Text>
@@ -692,6 +798,7 @@ export default function AdminScreen() {
                 autoCapitalize="none"
                 multiline
                 numberOfLines={3}
+                editable={isAuthenticated}
               />
 
               <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
@@ -713,9 +820,14 @@ export default function AdminScreen() {
                 <Text style={[styles.modalButtonText, { color: textColor }]}>Annuller</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modalButton, styles.saveButton, { backgroundColor: colors.primary }]}
+                style={[
+                  styles.modalButton, 
+                  styles.saveButton, 
+                  { backgroundColor: isAuthenticated ? colors.primary : colors.highlight }
+                ]}
                 onPress={handleAddCalendar}
                 activeOpacity={0.7}
+                disabled={!isAuthenticated}
               >
                 <Text style={[styles.modalButtonText, { color: '#fff' }]}>Tilføj</Text>
               </TouchableOpacity>
@@ -811,6 +923,19 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     fontSize: 16,
+  },
+  warningBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 16,
+  },
+  warningText: {
+    flex: 1,
+    fontSize: 15,
+    lineHeight: 20,
   },
   externalCalendarSection: {
     marginHorizontal: 20,
@@ -1175,6 +1300,19 @@ const styles = StyleSheet.create({
   },
   modalBody: {
     padding: 24,
+  },
+  authWarningBox: {
+    flexDirection: 'row',
+    gap: 14,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  authWarningText: {
+    flex: 1,
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: '600',
   },
   label: {
     fontSize: 17,

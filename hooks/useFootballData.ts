@@ -299,12 +299,19 @@ export function useFootballData() {
   const fetchExternalCalendarEvents = useCallback(async (calendar: ExternalCalendar) => {
     if (!userId) {
       console.log('No user ID, skipping fetch');
-      return;
+      throw new Error('User not authenticated');
     }
 
     try {
       console.log('Fetching calendar:', calendar.name);
+      console.log('Calendar URL:', calendar.icsUrl);
       
+      // Get the current session to ensure we have a valid token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('No active session');
+      }
+
       // Call the Edge Function to sync the calendar
       const { data, error } = await supabase.functions.invoke('sync-external-calendar', {
         body: { calendarId: calendar.id }
@@ -312,7 +319,7 @@ export function useFootballData() {
 
       if (error) {
         console.error('Error syncing calendar:', error);
-        return;
+        throw error;
       }
 
       console.log('Sync response:', data);
@@ -386,6 +393,7 @@ export function useFootballData() {
       console.log(`Successfully synced calendar: ${calendar.name}`);
     } catch (error) {
       console.error('Error fetching external calendar:', error);
+      throw error;
     }
   }, [userId, categories]);
 
@@ -403,7 +411,9 @@ export function useFootballData() {
       
       if (shouldFetch) {
         console.log(`Fetching calendar: ${calendar.name}`);
-        fetchExternalCalendarEvents(calendar);
+        fetchExternalCalendarEvents(calendar).catch(err => {
+          console.error(`Failed to fetch calendar ${calendar.name}:`, err);
+        });
       } else {
         console.log(`Skipping fetch for ${calendar.name} - recently fetched`);
       }
@@ -548,45 +558,67 @@ export function useFootballData() {
   const addExternalCalendar = async (calendar: Omit<ExternalCalendar, 'id'>) => {
     if (!userId) {
       console.error('No user ID, cannot add calendar');
-      return;
+      throw new Error('User not authenticated');
     }
 
     console.log('Adding external calendar to Supabase:', calendar.name);
+    console.log('User ID:', userId);
+    console.log('Calendar URL:', calendar.icsUrl);
 
-    const { data, error } = await supabase
-      .from('external_calendars')
-      .insert({
-        user_id: userId,
-        name: calendar.name,
-        ics_url: calendar.icsUrl,
-        enabled: calendar.enabled !== undefined ? calendar.enabled : true,
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Error adding external calendar:', error);
-      return;
-    }
-
-    if (data) {
-      const newCalendar: ExternalCalendar = {
-        id: data.id,
-        name: data.name,
-        icsUrl: data.ics_url,
-        enabled: data.enabled,
-        lastFetched: data.last_fetched ? new Date(data.last_fetched) : undefined,
-        eventCount: data.event_count || 0,
-      };
-      
-      console.log('Calendar added successfully:', newCalendar.id);
-      setExternalCalendars([...externalCalendars, newCalendar]);
-
-      // Immediately fetch events for the new calendar
-      if (newCalendar.enabled) {
-        console.log('Triggering initial sync for new calendar');
-        fetchExternalCalendarEvents(newCalendar);
+    try {
+      // First, verify the user session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        console.error('Session error:', sessionError);
+        throw new Error('No active session. Please log in again.');
       }
+
+      console.log('Session verified, inserting calendar...');
+
+      const { data, error } = await supabase
+        .from('external_calendars')
+        .insert({
+          user_id: userId,
+          name: calendar.name,
+          ics_url: calendar.icsUrl,
+          enabled: calendar.enabled !== undefined ? calendar.enabled : true,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error adding external calendar:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
+        throw error;
+      }
+
+      if (data) {
+        const newCalendar: ExternalCalendar = {
+          id: data.id,
+          name: data.name,
+          icsUrl: data.ics_url,
+          enabled: data.enabled,
+          lastFetched: data.last_fetched ? new Date(data.last_fetched) : undefined,
+          eventCount: data.event_count || 0,
+        };
+        
+        console.log('Calendar added successfully:', newCalendar.id);
+        setExternalCalendars([...externalCalendars, newCalendar]);
+
+        // Immediately fetch events for the new calendar
+        if (newCalendar.enabled) {
+          console.log('Triggering initial sync for new calendar');
+          try {
+            await fetchExternalCalendarEvents(newCalendar);
+          } catch (syncError) {
+            console.error('Error during initial sync:', syncError);
+            // Don't throw here - the calendar was added successfully
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to add external calendar:', error);
+      throw error;
     }
   };
 
@@ -614,7 +646,9 @@ export function useFootballData() {
         // If enabling, fetch events
         if (newEnabled) {
           console.log('Calendar enabled, fetching events');
-          fetchExternalCalendarEvents(updated);
+          fetchExternalCalendarEvents(updated).catch(err => {
+            console.error('Failed to fetch calendar events:', err);
+          });
         } else {
           // If disabling, remove external activities from this calendar
           console.log('Calendar disabled, removing activities');
