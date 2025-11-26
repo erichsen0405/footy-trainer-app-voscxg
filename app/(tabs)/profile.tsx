@@ -11,6 +11,7 @@ export default function ProfileScreen() {
   const [password, setPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -82,6 +83,19 @@ export default function ProfileScreen() {
           return;
         }
 
+        // Show success message in the app
+        setShowSuccessMessage(true);
+        
+        // Clear form fields
+        setEmail('');
+        setPassword('');
+
+        // Wait 3 seconds to show the success message, then switch to login
+        setTimeout(() => {
+          setShowSuccessMessage(false);
+          setIsSignUp(false);
+        }, 3000);
+
         // Check if email confirmation is required
         if (data.user && !data.session) {
           Alert.alert(
@@ -92,9 +106,6 @@ export default function ProfileScreen() {
         } else if (data.session) {
           Alert.alert('Succes! 🎉', 'Din konto er oprettet og du er nu logget ind!');
         }
-        
-        setEmail('');
-        setPassword('');
       } else {
         console.log('Attempting to sign in with:', email);
         const { data, error } = await supabase.auth.signInWithPassword({
@@ -232,110 +243,131 @@ export default function ProfileScreen() {
         ) : (
           // Login/Sign up view
           <View style={[styles.card, { backgroundColor: cardBgColor }]}>
-            <View style={styles.authToggle}>
-              <TouchableOpacity
-                style={[
-                  styles.authToggleButton,
-                  !isSignUp && [styles.authToggleButtonActive, { backgroundColor: colors.primary }]
-                ]}
-                onPress={() => setIsSignUp(false)}
-                activeOpacity={0.7}
-              >
-                <Text style={[
-                  styles.authToggleText,
-                  !isSignUp && styles.authToggleTextActive
-                ]}>
-                  Log ind
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.authToggleButton,
-                  isSignUp && [styles.authToggleButtonActive, { backgroundColor: colors.primary }]
-                ]}
-                onPress={() => setIsSignUp(true)}
-                activeOpacity={0.7}
-              >
-                <Text style={[
-                  styles.authToggleText,
-                  isSignUp && styles.authToggleTextActive
-                ]}>
-                  Opret konto
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.form}>
-              <Text style={[styles.label, { color: textColor }]}>Email</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
-                value={email}
-                onChangeText={setEmail}
-                placeholder="din@email.dk"
-                placeholderTextColor={textSecondaryColor}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                editable={!loading}
-                autoCorrect={false}
-              />
-
-              <Text style={[styles.label, { color: textColor }]}>Adgangskode</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
-                value={password}
-                onChangeText={setPassword}
-                placeholder="Mindst 6 tegn"
-                placeholderTextColor={textSecondaryColor}
-                secureTextEntry
-                editable={!loading}
-                autoCorrect={false}
-                autoCapitalize="none"
-              />
-
-              <TouchableOpacity
-                style={[
-                  styles.authButton,
-                  { backgroundColor: colors.primary },
-                  loading && { opacity: 0.6 }
-                ]}
-                onPress={handleAuth}
-                disabled={loading}
-                activeOpacity={0.7}
-              >
-                {loading ? (
-                  <View style={styles.loadingContainer}>
-                    <ActivityIndicator color="#fff" size="small" />
-                    <Text style={[styles.authButtonText, { marginLeft: 12 }]}>
-                      {isSignUp ? 'Opretter konto...' : 'Logger ind...'}
-                    </Text>
-                  </View>
-                ) : (
-                  <Text style={styles.authButtonText}>
-                    {isSignUp ? 'Opret konto' : 'Log ind'}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </View>
-
-            <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd', marginTop: 24 }]}>
-              <IconSymbol 
-                ios_icon_name="info.circle" 
-                android_material_icon_name="info" 
-                size={28} 
-                color={colors.secondary} 
-              />
-              <View style={styles.infoTextContainer}>
-                <Text style={[styles.infoTitle, { color: textColor }]}>
-                  {isSignUp ? 'Opret din konto' : 'Hvorfor skal jeg logge ind?'}
-                </Text>
-                <Text style={[styles.infoText, { color: textSecondaryColor }]}>
-                  {isSignUp 
-                    ? 'Efter du opretter din konto, vil du modtage en bekræftelsesmail. Du skal klikke på linket i emailen før du kan logge ind.\n\nTjek også din spam-mappe hvis du ikke modtager emailen.'
-                    : 'For at gemme eksterne kalendere og synkronisere dine data på tværs af enheder, skal du oprette en gratis konto.\n\nDine data gemmes sikkert i Supabase og er kun tilgængelige for dig.'
-                  }
+            {/* Success Message */}
+            {showSuccessMessage && (
+              <View style={[styles.successMessage, { backgroundColor: colors.primary }]}>
+                <IconSymbol 
+                  ios_icon_name="checkmark.circle.fill" 
+                  android_material_icon_name="check_circle" 
+                  size={48} 
+                  color="#fff" 
+                />
+                <Text style={styles.successTitle}>Konto oprettet! 🎉</Text>
+                <Text style={styles.successText}>
+                  Din konto er blevet oprettet succesfuldt.{'\n'}
+                  Du bliver nu sendt til login siden...
                 </Text>
               </View>
-            </View>
+            )}
+
+            {!showSuccessMessage && (
+              <>
+                <View style={styles.authToggle}>
+                  <TouchableOpacity
+                    style={[
+                      styles.authToggleButton,
+                      !isSignUp && [styles.authToggleButtonActive, { backgroundColor: colors.primary }]
+                    ]}
+                    onPress={() => setIsSignUp(false)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[
+                      styles.authToggleText,
+                      !isSignUp && styles.authToggleTextActive
+                    ]}>
+                      Log ind
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.authToggleButton,
+                      isSignUp && [styles.authToggleButtonActive, { backgroundColor: colors.primary }]
+                    ]}
+                    onPress={() => setIsSignUp(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[
+                      styles.authToggleText,
+                      isSignUp && styles.authToggleTextActive
+                    ]}>
+                      Opret konto
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.form}>
+                  <Text style={[styles.label, { color: textColor }]}>Email</Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+                    value={email}
+                    onChangeText={setEmail}
+                    placeholder="din@email.dk"
+                    placeholderTextColor={textSecondaryColor}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                    editable={!loading}
+                    autoCorrect={false}
+                  />
+
+                  <Text style={[styles.label, { color: textColor }]}>Adgangskode</Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="Mindst 6 tegn"
+                    placeholderTextColor={textSecondaryColor}
+                    secureTextEntry
+                    editable={!loading}
+                    autoCorrect={false}
+                    autoCapitalize="none"
+                  />
+
+                  <TouchableOpacity
+                    style={[
+                      styles.authButton,
+                      { backgroundColor: colors.primary },
+                      loading && { opacity: 0.6 }
+                    ]}
+                    onPress={handleAuth}
+                    disabled={loading}
+                    activeOpacity={0.7}
+                  >
+                    {loading ? (
+                      <View style={styles.loadingContainer}>
+                        <ActivityIndicator color="#fff" size="small" />
+                        <Text style={[styles.authButtonText, { marginLeft: 12 }]}>
+                          {isSignUp ? 'Opretter konto...' : 'Logger ind...'}
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.authButtonText}>
+                        {isSignUp ? 'Opret konto' : 'Log ind'}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+
+                <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd', marginTop: 24 }]}>
+                  <IconSymbol 
+                    ios_icon_name="info.circle" 
+                    android_material_icon_name="info" 
+                    size={28} 
+                    color={colors.secondary} 
+                  />
+                  <View style={styles.infoTextContainer}>
+                    <Text style={[styles.infoTitle, { color: textColor }]}>
+                      {isSignUp ? 'Opret din konto' : 'Hvorfor skal jeg logge ind?'}
+                    </Text>
+                    <Text style={[styles.infoText, { color: textSecondaryColor }]}>
+                      {isSignUp 
+                        ? 'Efter du opretter din konto, vil du modtage en bekræftelsesmail. Du skal klikke på linket i emailen før du kan logge ind.\n\nTjek også din spam-mappe hvis du ikke modtager emailen.'
+                        : 'For at gemme eksterne kalendere og synkronisere dine data på tværs af enheder, skal du oprette en gratis konto.\n\nDine data gemmes sikkert i Supabase og er kun tilgængelige for dig.'
+                      }
+                    </Text>
+                  </View>
+                </View>
+              </>
+            )}
           </View>
         )}
 
@@ -373,6 +405,25 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     borderRadius: 20,
     padding: 24,
+  },
+  successMessage: {
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+  },
+  successTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#fff',
+    textAlign: 'center',
+  },
+  successText: {
+    fontSize: 17,
+    color: '#fff',
+    textAlign: 'center',
+    lineHeight: 24,
   },
   userInfo: {
     flexDirection: 'row',
