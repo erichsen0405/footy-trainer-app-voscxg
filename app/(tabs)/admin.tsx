@@ -1,33 +1,90 @@
 
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, useColorScheme } from 'react-native';
+import React, { useState, useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, useColorScheme, Alert } from 'react-native';
 import { useFootball } from '@/contexts/FootballContext';
 import { colors } from '@/styles/commonStyles';
 import { Activity } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
 
 export default function AdminScreen() {
-  const { activities, categories, deleteActivity, duplicateActivity, updateActivity, externalCalendars, addExternalCalendar, toggleCalendar } = useFootball();
+  const { 
+    activities, 
+    categories, 
+    deleteActivity, 
+    duplicateActivity, 
+    externalCalendars, 
+    externalActivities,
+    addExternalCalendar, 
+    toggleCalendar,
+    deleteExternalCalendar,
+    importExternalActivity,
+    importMultipleActivities,
+  } = useFootball();
+  
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedExternalCalendars, setSelectedExternalCalendars] = useState<string[]>([]);
   const [selectedActivities, setSelectedActivities] = useState<string[]>([]);
   const [isCalendarModalVisible, setIsCalendarModalVisible] = useState(false);
+  const [isCalendarDropdownVisible, setIsCalendarDropdownVisible] = useState(false);
+  const [isImportModalVisible, setIsImportModalVisible] = useState(false);
+  const [activityToImport, setActivityToImport] = useState<string | null>(null);
+  const [selectedImportCategory, setSelectedImportCategory] = useState<string>(categories[0]?.id || '');
   const [newCalendarUrl, setNewCalendarUrl] = useState('');
   const [newCalendarName, setNewCalendarName] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
-  const filteredActivities = activities.filter(activity => {
-    const matchesSearch = activity.title.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategories.length === 0 || selectedCategories.includes(activity.category.id);
-    return matchesSearch && matchesCategory;
-  });
+  const enabledExternalCalendarIds = useMemo(() => 
+    externalCalendars.filter(cal => cal.enabled).map(cal => cal.id),
+    [externalCalendars]
+  );
+
+  const visibleExternalActivities = useMemo(() => 
+    externalActivities.filter(activity => 
+      activity.externalCalendarId && 
+      enabledExternalCalendarIds.includes(activity.externalCalendarId) &&
+      (selectedExternalCalendars.length === 0 || selectedExternalCalendars.includes(activity.externalCalendarId))
+    ),
+    [externalActivities, enabledExternalCalendarIds, selectedExternalCalendars]
+  );
+
+  const allActivities = useMemo(() => 
+    [...activities, ...visibleExternalActivities].sort((a, b) => 
+      new Date(a.date).getTime() - new Date(b.date).getTime()
+    ),
+    [activities, visibleExternalActivities]
+  );
+
+  const filteredActivities = useMemo(() => 
+    allActivities.filter(activity => {
+      const matchesSearch = activity.title.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesCategory = selectedCategories.length === 0 || selectedCategories.includes(activity.category.id);
+      return matchesSearch && matchesCategory;
+    }),
+    [allActivities, searchQuery, selectedCategories]
+  );
+
+  const externalFilteredActivities = useMemo(() =>
+    filteredActivities.filter(a => a.isExternal),
+    [filteredActivities]
+  );
 
   const toggleCategoryFilter = (categoryId: string) => {
     setSelectedCategories(prev =>
       prev.includes(categoryId)
         ? prev.filter(id => id !== categoryId)
         : [...prev, categoryId]
+    );
+  };
+
+  const toggleExternalCalendarFilter = (calendarId: string) => {
+    setSelectedExternalCalendars(prev =>
+      prev.includes(calendarId)
+        ? prev.filter(id => id !== calendarId)
+        : [...prev, calendarId]
     );
   };
 
@@ -47,8 +104,22 @@ export default function AdminScreen() {
     }
   };
 
+  const selectAllExternalActivities = () => {
+    const externalIds = externalFilteredActivities.map(a => a.id);
+    if (externalIds.every(id => selectedActivities.includes(id))) {
+      setSelectedActivities(prev => prev.filter(id => !externalIds.includes(id)));
+    } else {
+      setSelectedActivities(prev => [...new Set([...prev, ...externalIds])]);
+    }
+  };
+
   const deleteSelectedActivities = () => {
-    selectedActivities.forEach(id => deleteActivity(id));
+    selectedActivities.forEach(id => {
+      const activity = allActivities.find(a => a.id === id);
+      if (activity && !activity.isExternal) {
+        deleteActivity(id);
+      }
+    });
     setSelectedActivities([]);
   };
 
@@ -63,6 +134,66 @@ export default function AdminScreen() {
       setNewCalendarName('');
       setIsCalendarModalVisible(false);
     }
+  };
+
+  const handleDeleteCalendar = (calendarId: string) => {
+    Alert.alert(
+      'Slet kalender',
+      'Er du sikker på at du vil slette denne kalender?',
+      [
+        { text: 'Annuller', style: 'cancel' },
+        { 
+          text: 'Slet', 
+          style: 'destructive',
+          onPress: () => deleteExternalCalendar(calendarId)
+        }
+      ]
+    );
+  };
+
+  const handleImportActivity = (activityId: string) => {
+    setActivityToImport(activityId);
+    setSelectedImportCategory(categories[0]?.id || '');
+    setIsImportModalVisible(true);
+  };
+
+  const confirmImport = () => {
+    if (activityToImport) {
+      importExternalActivity(activityToImport, selectedImportCategory);
+      setIsImportModalVisible(false);
+      setActivityToImport(null);
+    }
+  };
+
+  const handleImportSelected = () => {
+    const externalIds = selectedActivities.filter(id => 
+      externalFilteredActivities.some(a => a.id === id)
+    );
+    
+    if (externalIds.length === 0) {
+      Alert.alert('Ingen eksterne aktiviteter valgt', 'Vælg venligst eksterne aktiviteter at importere.');
+      return;
+    }
+
+    setActivityToImport('multiple');
+    setSelectedImportCategory(categories[0]?.id || '');
+    setIsImportModalVisible(true);
+  };
+
+  const confirmMultipleImport = () => {
+    const externalIds = selectedActivities.filter(id => 
+      externalFilteredActivities.some(a => a.id === id)
+    );
+    importMultipleActivities(externalIds, selectedImportCategory);
+    setIsImportModalVisible(false);
+    setActivityToImport(null);
+    setSelectedActivities([]);
+  };
+
+  const clearAllFilters = () => {
+    setSelectedCategories([]);
+    setSelectedExternalCalendars([]);
+    setSearchQuery('');
   };
 
   const formatDate = (date: Date) => {
@@ -80,22 +211,16 @@ export default function AdminScreen() {
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
 
+  const hasActiveFilters = selectedCategories.length > 0 || selectedExternalCalendars.length > 0 || searchQuery.length > 0;
+
   return (
     <View style={[styles.container, { backgroundColor: bgColor }]}>
       <View style={styles.header}>
         <Text style={[styles.headerTitle, { color: textColor }]}>Admin</Text>
         <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
-          {activities.length} aktiviteter
+          {activities.length} aktiviteter • {externalCalendars.length} eksterne kalendere
         </Text>
       </View>
-
-      <TouchableOpacity
-        style={[styles.createButton, { backgroundColor: colors.primary }]}
-        onPress={() => console.log('Create activity')}
-      >
-        <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={20} color="#fff" />
-        <Text style={styles.createButtonText}>Opret aktivitet</Text>
-      </TouchableOpacity>
 
       <View style={styles.searchContainer}>
         <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={20} color={textSecondaryColor} />
@@ -106,33 +231,115 @@ export default function AdminScreen() {
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <IconSymbol ios_icon_name="xmark.circle.fill" android_material_icon_name="close" size={20} color={textSecondaryColor} />
+          </TouchableOpacity>
+        )}
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesScroll}>
-        {categories.map((category, index) => (
-          <TouchableOpacity
-            key={index}
-            style={[
-              styles.categoryFilter,
-              { backgroundColor: selectedCategories.includes(category.id) ? category.color : cardBgColor }
-            ]}
-            onPress={() => toggleCategoryFilter(category.id)}
-          >
-            <Text style={styles.categoryFilterEmoji}>{category.emoji}</Text>
-            <Text style={[
-              styles.categoryFilterText,
-              { color: selectedCategories.includes(category.id) ? '#fff' : textColor }
-            ]}>
-              {category.name}
-            </Text>
+      <View style={styles.filterHeader}>
+        <TouchableOpacity 
+          style={[styles.filterToggle, showFilters && styles.filterToggleActive]}
+          onPress={() => setShowFilters(!showFilters)}
+        >
+          <IconSymbol 
+            ios_icon_name="line.3.horizontal.decrease.circle" 
+            android_material_icon_name="filter_list" 
+            size={20} 
+            color={showFilters ? colors.primary : textColor} 
+          />
+          <Text style={[styles.filterToggleText, { color: showFilters ? colors.primary : textColor }]}>
+            Filtre {hasActiveFilters && `(${selectedCategories.length + selectedExternalCalendars.length})`}
+          </Text>
+        </TouchableOpacity>
+        
+        {hasActiveFilters && (
+          <TouchableOpacity onPress={clearAllFilters} style={styles.clearFiltersButton}>
+            <Text style={[styles.clearFiltersText, { color: colors.error }]}>Ryd alle</Text>
           </TouchableOpacity>
-        ))}
-      </ScrollView>
+        )}
+      </View>
+
+      {showFilters && (
+        <View style={[styles.filtersContainer, { backgroundColor: cardBgColor }]}>
+          <View style={styles.filterSection}>
+            <Text style={[styles.filterSectionTitle, { color: textColor }]}>Kategorier</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+              {categories.map((category, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={[
+                    styles.filterChip,
+                    { 
+                      backgroundColor: selectedCategories.includes(category.id) 
+                        ? category.color 
+                        : isDark ? '#3a3a3a' : '#f0f0f0'
+                    }
+                  ]}
+                  onPress={() => toggleCategoryFilter(category.id)}
+                >
+                  <Text style={styles.filterChipEmoji}>{category.emoji}</Text>
+                  <Text style={[
+                    styles.filterChipText,
+                    { color: selectedCategories.includes(category.id) ? '#fff' : textColor }
+                  ]}>
+                    {category.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+
+          {externalCalendars.length > 0 && (
+            <View style={styles.filterSection}>
+              <Text style={[styles.filterSectionTitle, { color: textColor }]}>Eksterne kalendere</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+                {externalCalendars.map((calendar, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.filterChip,
+                      { 
+                        backgroundColor: selectedExternalCalendars.includes(calendar.id) 
+                          ? colors.secondary 
+                          : isDark ? '#3a3a3a' : '#f0f0f0',
+                        opacity: calendar.enabled ? 1 : 0.5
+                      }
+                    ]}
+                    onPress={() => toggleExternalCalendarFilter(calendar.id)}
+                    disabled={!calendar.enabled}
+                  >
+                    <IconSymbol 
+                      ios_icon_name="calendar" 
+                      android_material_icon_name="event" 
+                      size={16} 
+                      color={selectedExternalCalendars.includes(calendar.id) ? '#fff' : textColor} 
+                    />
+                    <Text style={[
+                      styles.filterChipText,
+                      { color: selectedExternalCalendars.includes(calendar.id) ? '#fff' : textColor }
+                    ]}>
+                      {calendar.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+        </View>
+      )}
 
       {selectedActivities.length > 0 && (
         <View style={[styles.selectionBar, { backgroundColor: colors.primary }]}>
           <Text style={styles.selectionText}>{selectedActivities.length} valgt</Text>
           <View style={styles.selectionActions}>
+            {externalFilteredActivities.some(a => selectedActivities.includes(a.id)) && (
+              <TouchableOpacity onPress={handleImportSelected} style={styles.selectionButton}>
+                <IconSymbol ios_icon_name="square.and.arrow.down" android_material_icon_name="download" size={20} color="#fff" />
+                <Text style={styles.selectionButtonText}>Importer</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity onPress={deleteSelectedActivities} style={styles.selectionButton}>
               <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={20} color="#fff" />
               <Text style={styles.selectionButtonText}>Slet</Text>
@@ -151,38 +358,74 @@ export default function AdminScreen() {
           />
           <Text style={[styles.actionButtonText, { color: colors.primary }]}>Vælg alle</Text>
         </TouchableOpacity>
+
+        {externalFilteredActivities.length > 0 && (
+          <TouchableOpacity onPress={selectAllExternalActivities} style={styles.actionButton}>
+            <IconSymbol
+              ios_icon_name="checkmark.square"
+              android_material_icon_name="check_box"
+              size={20}
+              color={colors.secondary}
+            />
+            <Text style={[styles.actionButtonText, { color: colors.secondary }]}>Marker alle eksterne</Text>
+          </TouchableOpacity>
+        )}
         
-        <TouchableOpacity onPress={() => setIsCalendarModalVisible(true)} style={styles.actionButton}>
-          <IconSymbol ios_icon_name="calendar.badge.plus" android_material_icon_name="event" size={20} color={colors.secondary} />
-          <Text style={[styles.actionButtonText, { color: colors.secondary }]}>Ekstern kalender</Text>
+        <TouchableOpacity 
+          onPress={() => setIsCalendarDropdownVisible(!isCalendarDropdownVisible)} 
+          style={styles.actionButton}
+        >
+          <IconSymbol ios_icon_name="calendar" android_material_icon_name="event" size={20} color={colors.secondary} />
+          <Text style={[styles.actionButtonText, { color: colors.secondary }]}>Eksterne kalendere</Text>
+          <IconSymbol 
+            ios_icon_name={isCalendarDropdownVisible ? "chevron.up" : "chevron.down"} 
+            android_material_icon_name={isCalendarDropdownVisible ? "expand_less" : "expand_more"} 
+            size={16} 
+            color={colors.secondary} 
+          />
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
-        {externalCalendars.length > 0 && (
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: textColor }]}>Eksterne kalendere</Text>
-            {externalCalendars.map((calendar, index) => (
-              <View key={index} style={[styles.calendarCard, { backgroundColor: cardBgColor }]}>
-                <View style={styles.calendarHeader}>
-                  <IconSymbol ios_icon_name="calendar" android_material_icon_name="event" size={24} color={colors.secondary} />
-                  <View style={styles.calendarInfo}>
-                    <Text style={[styles.calendarName, { color: textColor }]}>{calendar.name}</Text>
-                    <Text style={[styles.calendarUrl, { color: textSecondaryColor }]} numberOfLines={1}>
-                      {calendar.icsUrl}
+      {isCalendarDropdownVisible && (
+        <View style={[styles.calendarDropdown, { backgroundColor: cardBgColor }]}>
+          <View style={styles.calendarDropdownHeader}>
+            <Text style={[styles.calendarDropdownTitle, { color: textColor }]}>Eksterne kalendere</Text>
+            <TouchableOpacity onPress={() => setIsCalendarModalVisible(true)}>
+              <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add_circle" size={24} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
+          
+          {externalCalendars.length === 0 ? (
+            <Text style={[styles.emptyCalendarText, { color: textSecondaryColor }]}>
+              Ingen eksterne kalendere tilføjet
+            </Text>
+          ) : (
+            externalCalendars.map((calendar, index) => (
+              <View key={index} style={styles.calendarDropdownItem}>
+                <TouchableOpacity 
+                  style={styles.calendarToggleArea}
+                  onPress={() => toggleCalendar(calendar.id)}
+                >
+                  <View style={[styles.toggle, calendar.enabled && styles.toggleActive]}>
+                    <View style={[styles.toggleThumb, calendar.enabled && styles.toggleThumbActive]} />
+                  </View>
+                  <View style={styles.calendarDropdownInfo}>
+                    <Text style={[styles.calendarDropdownName, { color: textColor }]}>{calendar.name}</Text>
+                    <Text style={[styles.calendarDropdownMeta, { color: textSecondaryColor }]}>
+                      {calendar.eventCount || 0} begivenheder
                     </Text>
                   </View>
-                  <TouchableOpacity onPress={() => toggleCalendar(calendar.id)}>
-                    <View style={[styles.toggle, calendar.enabled && styles.toggleActive]}>
-                      <View style={[styles.toggleThumb, calendar.enabled && styles.toggleThumbActive]} />
-                    </View>
-                  </TouchableOpacity>
-                </View>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleDeleteCalendar(calendar.id)}>
+                  <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={20} color={colors.error} />
+                </TouchableOpacity>
               </View>
-            ))}
-          </View>
-        )}
+            ))
+          )}
+        </View>
+      )}
 
+      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: textColor }]}>
             Alle aktiviteter ({filteredActivities.length})
@@ -190,13 +433,18 @@ export default function AdminScreen() {
           
           {filteredActivities.length === 0 ? (
             <View style={[styles.emptyCard, { backgroundColor: cardBgColor }]}>
+              <IconSymbol ios_icon_name="calendar.badge.exclamationmark" android_material_icon_name="event_busy" size={48} color={textSecondaryColor} />
               <Text style={[styles.emptyText, { color: textSecondaryColor }]}>Ingen aktiviteter fundet</Text>
             </View>
           ) : (
             filteredActivities.map((activity, index) => (
               <TouchableOpacity
                 key={index}
-                style={[styles.activityCard, { backgroundColor: cardBgColor }]}
+                style={[
+                  styles.activityCard, 
+                  { backgroundColor: cardBgColor },
+                  activity.isExternal && styles.externalActivityCard
+                ]}
                 onPress={() => toggleActivitySelection(activity.id)}
               >
                 <View style={styles.activityHeader}>
@@ -214,6 +462,11 @@ export default function AdminScreen() {
                       <View style={styles.activityTitleRow}>
                         <Text style={styles.activityEmoji}>{activity.category.emoji}</Text>
                         <Text style={[styles.activityTitle, { color: textColor }]}>{activity.title}</Text>
+                        {activity.isExternal && (
+                          <View style={[styles.externalBadge, { backgroundColor: colors.secondary }]}>
+                            <Text style={styles.externalBadgeText}>Ekstern</Text>
+                          </View>
+                        )}
                       </View>
                       <Text style={[styles.activityDate, { color: textSecondaryColor }]}>
                         {formatDate(activity.date)}
@@ -227,12 +480,23 @@ export default function AdminScreen() {
                     </View>
                   </View>
                   <View style={styles.activityActions}>
-                    <TouchableOpacity onPress={() => duplicateActivity(activity.id)} style={styles.activityActionButton}>
-                      <IconSymbol ios_icon_name="doc.on.doc" android_material_icon_name="content_copy" size={20} color={colors.secondary} />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => deleteActivity(activity.id)} style={styles.activityActionButton}>
-                      <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={20} color={colors.error} />
-                    </TouchableOpacity>
+                    {activity.isExternal ? (
+                      <TouchableOpacity 
+                        onPress={() => handleImportActivity(activity.id)} 
+                        style={styles.activityActionButton}
+                      >
+                        <IconSymbol ios_icon_name="square.and.arrow.down" android_material_icon_name="download" size={20} color={colors.secondary} />
+                      </TouchableOpacity>
+                    ) : (
+                      <React.Fragment>
+                        <TouchableOpacity onPress={() => duplicateActivity(activity.id)} style={styles.activityActionButton}>
+                          <IconSymbol ios_icon_name="doc.on.doc" android_material_icon_name="content_copy" size={20} color={colors.secondary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => deleteActivity(activity.id)} style={styles.activityActionButton}>
+                          <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={20} color={colors.error} />
+                        </TouchableOpacity>
+                      </React.Fragment>
+                    )}
                   </View>
                 </View>
               </TouchableOpacity>
@@ -253,7 +517,7 @@ export default function AdminScreen() {
               </TouchableOpacity>
             </View>
 
-            <View style={styles.modalBody}>
+            <ScrollView style={styles.modalBody}>
               <Text style={[styles.label, { color: textColor }]}>Kalender navn</Text>
               <TextInput
                 style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
@@ -263,16 +527,24 @@ export default function AdminScreen() {
                 placeholderTextColor={textSecondaryColor}
               />
 
-              <Text style={[styles.label, { color: textColor }]}>ICS URL</Text>
+              <Text style={[styles.label, { color: textColor }]}>ICS URL (webcal:// eller https://)</Text>
               <TextInput
                 style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
                 value={newCalendarUrl}
                 onChangeText={setNewCalendarUrl}
-                placeholder="https://..."
+                placeholder="webcal://..."
                 placeholderTextColor={textSecondaryColor}
                 autoCapitalize="none"
+                multiline
               />
-            </View>
+
+              <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
+                <IconSymbol ios_icon_name="info.circle" android_material_icon_name="info" size={20} color={colors.secondary} />
+                <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
+                  Indsæt en iCal URL (webcal:// eller https://) fra din eksterne kalender
+                </Text>
+              </View>
+            </ScrollView>
 
             <View style={styles.modalFooter}>
               <TouchableOpacity
@@ -286,6 +558,64 @@ export default function AdminScreen() {
                 onPress={handleAddCalendar}
               >
                 <Text style={[styles.modalButtonText, { color: '#fff' }]}>Tilføj</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={isImportModalVisible} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: cardBgColor }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: textColor }]}>
+                {activityToImport === 'multiple' ? 'Importer valgte aktiviteter' : 'Importer aktivitet'}
+              </Text>
+              <TouchableOpacity onPress={() => setIsImportModalVisible(false)}>
+                <IconSymbol ios_icon_name="xmark.circle.fill" android_material_icon_name="close" size={28} color={textSecondaryColor} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalBody}>
+              <Text style={[styles.label, { color: textColor }]}>Vælg kategori</Text>
+              <View style={styles.categoryGrid}>
+                {categories.map((category, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.categoryOption,
+                      { 
+                        backgroundColor: selectedImportCategory === category.id 
+                          ? category.color 
+                          : isDark ? '#3a3a3a' : '#f0f0f0'
+                      }
+                    ]}
+                    onPress={() => setSelectedImportCategory(category.id)}
+                  >
+                    <Text style={styles.categoryOptionEmoji}>{category.emoji}</Text>
+                    <Text style={[
+                      styles.categoryOptionText,
+                      { color: selectedImportCategory === category.id ? '#fff' : textColor }
+                    ]}>
+                      {category.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton, { backgroundColor: bgColor }]}
+                onPress={() => setIsImportModalVisible(false)}
+              >
+                <Text style={[styles.modalButtonText, { color: textColor }]}>Annuller</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.saveButton, { backgroundColor: colors.primary }]}
+                onPress={activityToImport === 'multiple' ? confirmMultipleImport : confirmImport}
+              >
+                <Text style={[styles.modalButtonText, { color: '#fff' }]}>Importer</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -312,21 +642,6 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 16,
   },
-  createButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginHorizontal: 16,
-    marginBottom: 16,
-    paddingVertical: 14,
-    borderRadius: 12,
-  },
-  createButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-  },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -342,11 +657,52 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 16,
   },
-  categoriesScroll: {
+  filterHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  filterToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+  },
+  filterToggleActive: {
+    opacity: 1,
+  },
+  filterToggleText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  clearFiltersButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  clearFiltersText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  filtersContainer: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 12,
+    padding: 12,
+  },
+  filterSection: {
     marginBottom: 12,
   },
-  categoryFilter: {
+  filterSectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  filterScroll: {
+    flexDirection: 'row',
+  },
+  filterChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -355,10 +711,10 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     marginRight: 8,
   },
-  categoryFilterEmoji: {
+  filterChipEmoji: {
     fontSize: 16,
   },
-  categoryFilterText: {
+  filterChipText: {
     fontSize: 14,
     fontWeight: '600',
   },
@@ -393,7 +749,8 @@ const styles = StyleSheet.create({
   },
   actionsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 12,
     paddingHorizontal: 16,
     marginBottom: 12,
   },
@@ -406,40 +763,51 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  content: {
-    flex: 1,
-  },
-  contentContainer: {
-    paddingHorizontal: 16,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+  calendarDropdown: {
+    marginHorizontal: 16,
     marginBottom: 12,
-  },
-  calendarCard: {
     borderRadius: 12,
     padding: 16,
-    marginBottom: 8,
   },
-  calendarHeader: {
+  calendarDropdownHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  calendarDropdownTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  calendarDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.highlight,
+  },
+  calendarToggleArea: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-  },
-  calendarInfo: {
     flex: 1,
   },
-  calendarName: {
+  calendarDropdownInfo: {
+    flex: 1,
+  },
+  calendarDropdownName: {
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 2,
   },
-  calendarUrl: {
+  calendarDropdownMeta: {
     fontSize: 12,
+  },
+  emptyCalendarText: {
+    fontSize: 14,
+    textAlign: 'center',
+    paddingVertical: 12,
   },
   toggle: {
     width: 50,
@@ -460,10 +828,25 @@ const styles = StyleSheet.create({
   toggleThumbActive: {
     transform: [{ translateX: 22 }],
   },
+  content: {
+    flex: 1,
+  },
+  contentContainer: {
+    paddingHorizontal: 16,
+  },
+  section: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
   emptyCard: {
     borderRadius: 12,
     padding: 32,
     alignItems: 'center',
+    gap: 12,
   },
   emptyText: {
     fontSize: 16,
@@ -472,6 +855,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     marginBottom: 8,
+  },
+  externalActivityCard: {
+    borderWidth: 2,
+    borderColor: colors.secondary,
   },
   activityHeader: {
     flexDirection: 'row',
@@ -509,6 +896,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     marginBottom: 4,
+    flexWrap: 'wrap',
   },
   activityEmoji: {
     fontSize: 20,
@@ -516,6 +904,16 @@ const styles = StyleSheet.create({
   activityTitle: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  externalBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  externalBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#fff',
   },
   activityDate: {
     fontSize: 14,
@@ -544,7 +942,7 @@ const styles = StyleSheet.create({
   modalContent: {
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '70%',
+    maxHeight: '80%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -571,6 +969,39 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 16,
     marginBottom: 16,
+  },
+  infoBox: {
+    flexDirection: 'row',
+    gap: 12,
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  categoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  categoryOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    minWidth: '45%',
+  },
+  categoryOptionEmoji: {
+    fontSize: 20,
+  },
+  categoryOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   modalFooter: {
     flexDirection: 'row',

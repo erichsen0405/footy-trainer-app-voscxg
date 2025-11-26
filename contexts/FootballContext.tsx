@@ -9,6 +9,7 @@ interface FootballContextType {
   activities: Activity[];
   trophies: Trophy[];
   externalCalendars: ExternalCalendar[];
+  externalActivities: Activity[];
   currentWeekStats: {
     percentage: number;
     completedTasks: number;
@@ -27,6 +28,10 @@ interface FootballContextType {
   toggleTaskCompletion: (activityId: string, taskId: string) => void;
   addExternalCalendar: (calendar: Omit<ExternalCalendar, 'id'>) => void;
   toggleCalendar: (id: string) => void;
+  deleteExternalCalendar: (id: string) => void;
+  importExternalActivity: (externalActivityId: string, categoryId: string) => void;
+  importMultipleActivities: (activityIds: string[], categoryId: string) => void;
+  fetchExternalCalendarEvents: (calendar: ExternalCalendar) => Promise<void>;
 }
 
 const FootballContext = createContext<FootballContextType | undefined>(undefined);

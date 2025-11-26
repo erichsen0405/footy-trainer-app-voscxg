@@ -1,6 +1,7 @@
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Activity, ActivityCategory, Task, Trophy, ExternalCalendar } from '@/types';
+import { fetchAndParseICalendar, formatTimeFromDate } from '@/utils/icalParser';
 
 const defaultCategories: ActivityCategory[] = [
   { id: '1', name: 'Træning', color: '#4CAF50', emoji: '⚽' },
@@ -73,19 +74,23 @@ const defaultTasks: Task[] = [
   },
 ];
 
+function getWeekNumber(date: Date): number {
+  const d = new Date(date.getTime());
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7);
+  const week1 = new Date(d.getFullYear(), 0, 4);
+  return 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+}
+
 export function useFootballData() {
   const [categories, setCategories] = useState<ActivityCategory[]>(defaultCategories);
   const [tasks, setTasks] = useState<Task[]>(defaultTasks);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [trophies, setTrophies] = useState<Trophy[]>([]);
   const [externalCalendars, setExternalCalendars] = useState<ExternalCalendar[]>([]);
+  const [externalActivities, setExternalActivities] = useState<Activity[]>([]);
 
-  useEffect(() => {
-    generateSampleActivities();
-    generateSampleTrophies();
-  }, []);
-
-  const generateSampleActivities = () => {
+  const generateSampleActivities = useCallback(() => {
     const now = new Date();
     const sampleActivities: Activity[] = [];
 
@@ -117,7 +122,12 @@ export function useFootballData() {
     }
 
     setActivities(sampleActivities);
-  };
+  }, [categories, tasks]);
+
+  useEffect(() => {
+    generateSampleActivities();
+    generateSampleTrophies();
+  }, [generateSampleActivities]);
 
   const generateSampleTrophies = () => {
     const sampleTrophies: Trophy[] = [];
@@ -132,7 +142,7 @@ export function useFootballData() {
       else type = 'bronze';
 
       sampleTrophies.push({
-        week: now.getWeek() - i,
+        week: getWeekNumber(now) - i,
         year: now.getFullYear(),
         type,
         percentage,
@@ -143,6 +153,41 @@ export function useFootballData() {
 
     setTrophies(sampleTrophies);
   };
+
+  const fetchExternalCalendarEvents = useCallback(async (calendar: ExternalCalendar) => {
+    try {
+      console.log('Fetching calendar:', calendar.name);
+      const events = await fetchAndParseICalendar(calendar.icsUrl);
+      
+      const newActivities: Activity[] = events.map(event => ({
+        id: `external-${calendar.id}-${event.uid}`,
+        title: event.summary,
+        date: event.startDate,
+        time: formatTimeFromDate(event.startDate),
+        location: event.location || 'Ingen lokation',
+        category: categories[0],
+        tasks: [],
+        isExternal: true,
+        externalCalendarId: calendar.id,
+        externalEventId: event.uid,
+      }));
+
+      setExternalActivities(prev => {
+        const filtered = prev.filter(a => a.externalCalendarId !== calendar.id);
+        return [...filtered, ...newActivities];
+      });
+
+      setExternalCalendars(prev => prev.map(cal => 
+        cal.id === calendar.id 
+          ? { ...cal, lastFetched: new Date(), eventCount: events.length }
+          : cal
+      ));
+
+      console.log(`Fetched ${events.length} events from ${calendar.name}`);
+    } catch (error) {
+      console.error('Error fetching external calendar:', error);
+    }
+  }, [categories]);
 
   const getCurrentWeekStats = useMemo(() => {
     const now = new Date();
@@ -285,12 +330,64 @@ export function useFootballData() {
       id: `calendar-${Date.now()}`,
     };
     setExternalCalendars([...externalCalendars, newCalendar]);
+    
+    if (newCalendar.enabled) {
+      fetchExternalCalendarEvents(newCalendar);
+    }
   };
 
   const toggleCalendar = (id: string) => {
-    setExternalCalendars(externalCalendars.map(calendar =>
-      calendar.id === id ? { ...calendar, enabled: !calendar.enabled } : calendar
-    ));
+    setExternalCalendars(externalCalendars.map(calendar => {
+      if (calendar.id === id) {
+        const updated = { ...calendar, enabled: !calendar.enabled };
+        if (updated.enabled) {
+          fetchExternalCalendarEvents(updated);
+        }
+        return updated;
+      }
+      return calendar;
+    }));
+  };
+
+  const deleteExternalCalendar = (id: string) => {
+    setExternalCalendars(externalCalendars.filter(cal => cal.id !== id));
+    setExternalActivities(prev => prev.filter(a => a.externalCalendarId !== id));
+  };
+
+  const importExternalActivity = (externalActivityId: string, categoryId: string) => {
+    const externalActivity = externalActivities.find(a => a.id === externalActivityId);
+    if (!externalActivity) {
+      console.log('External activity not found');
+      return;
+    }
+
+    const category = categories.find(c => c.id === categoryId) || categories[0];
+    
+    const activityTasks = tasks
+      .filter(task => task.isTemplate && task.categoryIds.includes(category.id))
+      .map(task => ({
+        ...task,
+        id: `${task.id}-imported-${Date.now()}`,
+        isTemplate: false,
+        completed: false,
+      }));
+
+    const importedActivity: Activity = {
+      ...externalActivity,
+      id: `imported-${Date.now()}`,
+      category,
+      tasks: activityTasks,
+      isExternal: false,
+      externalCalendarId: undefined,
+      externalEventId: undefined,
+    };
+
+    setActivities([...activities, importedActivity]);
+    console.log('Activity imported:', importedActivity.title);
+  };
+
+  const importMultipleActivities = (activityIds: string[], categoryId: string) => {
+    activityIds.forEach(id => importExternalActivity(id, categoryId));
   };
 
   return {
@@ -299,6 +396,7 @@ export function useFootballData() {
     activities,
     trophies,
     externalCalendars,
+    externalActivities,
     currentWeekStats: getCurrentWeekStats,
     todayActivities: getTodayActivities,
     addActivity,
@@ -312,19 +410,9 @@ export function useFootballData() {
     toggleTaskCompletion,
     addExternalCalendar,
     toggleCalendar,
+    deleteExternalCalendar,
+    importExternalActivity,
+    importMultipleActivities,
+    fetchExternalCalendarEvents,
   };
 }
-
-declare global {
-  interface Date {
-    getWeek(): number;
-  }
-}
-
-Date.prototype.getWeek = function() {
-  const date = new Date(this.getTime());
-  date.setHours(0, 0, 0, 0);
-  date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
-  const week1 = new Date(date.getFullYear(), 0, 4);
-  return 1 + Math.round(((date.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
-};

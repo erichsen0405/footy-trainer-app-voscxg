@@ -7,6 +7,9 @@ export interface Activity {
   location: string;
   category: ActivityCategory;
   tasks: Task[];
+  isExternal?: boolean;
+  externalCalendarId?: string;
+  externalEventId?: string;
 }
 
 export interface ActivityCategory {
@@ -47,4 +50,16 @@ export interface ExternalCalendar {
   name: string;
   icsUrl: string;
   enabled: boolean;
+  lastFetched?: Date;
+  eventCount?: number;
+}
+
+export interface ExternalEvent {
+  uid: string;
+  summary: string;
+  description?: string;
+  location?: string;
+  startDate: Date;
+  endDate: Date;
+  calendarId: string;
 }
