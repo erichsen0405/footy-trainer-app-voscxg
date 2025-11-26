@@ -122,7 +122,7 @@ export default function TasksScreen() {
             >
               <View style={styles.taskHeader}>
                 <View style={styles.taskHeaderLeft}>
-                  <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron_right" size={20} color={textColor} />
+                  <IconSymbol ios_icon_name="doc.text" android_material_icon_name="description" size={20} color={colors.secondary} />
                   <View style={styles.checkbox} />
                   <Text style={[styles.taskTitle, { color: textColor }]}>{task.title}</Text>
                 </View>
@@ -147,7 +147,7 @@ export default function TasksScreen() {
               )}
 
               <View style={styles.categoriesRow}>
-                <IconSymbol ios_icon_name="pin.fill" android_material_icon_name="push_pin" size={14} color={textSecondaryColor} />
+                <IconSymbol ios_icon_name="tag.fill" android_material_icon_name="label" size={14} color={textSecondaryColor} />
                 <Text style={[styles.categoriesText, { color: textSecondaryColor }]}>
                   Vises automatisk på alle {task.categoryIds.map(id => {
                     const category = categories.find(c => c.id === id);
