@@ -22,6 +22,10 @@ export default function TabLayout() {
         <Icon sf={{ default: 'gearshape', selected: 'gearshape.fill' }} />
         <Label>Admin</Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger key="profile" name="profile">
+        <Icon sf={{ default: 'person', selected: 'person.fill' }} />
+        <Label>Profil</Label>
+      </NativeTabs.Trigger>
     </NativeTabs>
   );
 }
