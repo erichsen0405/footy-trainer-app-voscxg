@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Activity, ActivityCategory, Task, Trophy, ExternalCalendar } from '@/types';
 import { fetchAndParseICalendar, formatTimeFromDate } from '@/utils/icalParser';
+import { supabase } from '@/app/integrations/supabase/client';
 
 const defaultCategories: ActivityCategory[] = [
   { id: '1', name: 'Træning', color: '#4CAF50', emoji: '⚽' },
@@ -89,6 +90,145 @@ export function useFootballData() {
   const [trophies, setTrophies] = useState<Trophy[]>([]);
   const [externalCalendars, setExternalCalendars] = useState<ExternalCalendar[]>([]);
   const [externalActivities, setExternalActivities] = useState<Activity[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Get current user
+  useEffect(() => {
+    const getCurrentUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      console.log('Current user:', user?.id);
+      setUserId(user?.id || null);
+    };
+    getCurrentUser();
+  }, []);
+
+  // Load categories from Supabase
+  useEffect(() => {
+    if (!userId) return;
+
+    const loadCategories = async () => {
+      console.log('Loading categories for user:', userId);
+      const { data, error } = await supabase
+        .from('activity_categories')
+        .select('*')
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('Error loading categories:', error);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        const loadedCategories = data.map(cat => ({
+          id: cat.id,
+          name: cat.name,
+          color: cat.color,
+          emoji: cat.emoji,
+        }));
+        console.log('Loaded categories:', loadedCategories.length);
+        setCategories(loadedCategories);
+      } else {
+        console.log('No categories found, using defaults');
+      }
+    };
+
+    loadCategories();
+  }, [userId]);
+
+  // Load external calendars from Supabase
+  useEffect(() => {
+    if (!userId) return;
+
+    const loadExternalCalendars = async () => {
+      console.log('Loading external calendars for user:', userId);
+      const { data, error } = await supabase
+        .from('external_calendars')
+        .select('*')
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('Error loading external calendars:', error);
+        return;
+      }
+
+      if (data) {
+        const loadedCalendars: ExternalCalendar[] = data.map(cal => ({
+          id: cal.id,
+          name: cal.name,
+          icsUrl: cal.ics_url,
+          enabled: cal.enabled,
+          lastFetched: cal.last_fetched ? new Date(cal.last_fetched) : undefined,
+          eventCount: cal.event_count || 0,
+        }));
+        console.log('Loaded external calendars:', loadedCalendars.length);
+        setExternalCalendars(loadedCalendars);
+      }
+    };
+
+    loadExternalCalendars();
+  }, [userId]);
+
+  // Load activities from Supabase (including external ones)
+  useEffect(() => {
+    if (!userId) return;
+
+    const loadActivities = async () => {
+      console.log('Loading activities for user:', userId);
+      const { data, error } = await supabase
+        .from('activities')
+        .select(`
+          *,
+          category:activity_categories(*)
+        `)
+        .eq('user_id', userId)
+        .order('activity_date', { ascending: true });
+
+      if (error) {
+        console.error('Error loading activities:', error);
+        setIsLoading(false);
+        return;
+      }
+
+      if (data) {
+        const loadedActivities: Activity[] = data.map(act => {
+          const category = act.category ? {
+            id: act.category.id,
+            name: act.category.name,
+            color: act.category.color,
+            emoji: act.category.emoji,
+          } : categories[0];
+
+          const activityDate = new Date(act.activity_date);
+          
+          return {
+            id: act.id,
+            title: act.title,
+            date: activityDate,
+            time: act.activity_time,
+            location: act.location || 'Ingen lokation',
+            category,
+            tasks: [],
+            isExternal: act.is_external,
+            externalCalendarId: act.external_calendar_id || undefined,
+            externalEventId: act.external_event_id || undefined,
+          };
+        });
+
+        console.log('Loaded activities:', loadedActivities.length);
+        
+        // Separate internal and external activities
+        const internal = loadedActivities.filter(a => !a.isExternal);
+        const external = loadedActivities.filter(a => a.isExternal);
+        
+        setActivities(internal);
+        setExternalActivities(external);
+      }
+      setIsLoading(false);
+    };
+
+    loadActivities();
+  }, [userId, categories]);
 
   const generateSampleActivities = useCallback(() => {
     const now = new Date();
@@ -125,9 +265,11 @@ export function useFootballData() {
   }, [categories, tasks]);
 
   useEffect(() => {
-    generateSampleActivities();
+    if (!userId && activities.length === 0) {
+      generateSampleActivities();
+    }
     generateSampleTrophies();
-  }, [generateSampleActivities]);
+  }, [generateSampleActivities, userId, activities.length]);
 
   const generateSampleTrophies = () => {
     const sampleTrophies: Trophy[] = [];
@@ -155,46 +297,102 @@ export function useFootballData() {
   };
 
   const fetchExternalCalendarEvents = useCallback(async (calendar: ExternalCalendar) => {
+    if (!userId) {
+      console.log('No user ID, skipping fetch');
+      return;
+    }
+
     try {
       console.log('Fetching calendar:', calendar.name);
-      const events = await fetchAndParseICalendar(calendar.icsUrl);
       
-      const newActivities: Activity[] = events.map(event => ({
-        id: `external-${calendar.id}-${event.uid}`,
-        title: event.summary,
-        date: event.startDate,
-        time: formatTimeFromDate(event.startDate),
-        location: event.location || 'Ingen lokation',
-        category: categories[0],
-        tasks: [],
-        isExternal: true,
-        externalCalendarId: calendar.id,
-        externalEventId: event.uid,
-      }));
-
-      console.log(`Parsed ${newActivities.length} activities from ${calendar.name}`);
-
-      setExternalActivities(prev => {
-        const filtered = prev.filter(a => a.externalCalendarId !== calendar.id);
-        const updated = [...filtered, ...newActivities];
-        console.log(`Total external activities after update: ${updated.length}`);
-        return updated;
+      // Call the Edge Function to sync the calendar
+      const { data, error } = await supabase.functions.invoke('sync-external-calendar', {
+        body: { calendarId: calendar.id }
       });
 
-      setExternalCalendars(prev => prev.map(cal => 
-        cal.id === calendar.id 
-          ? { ...cal, lastFetched: new Date(), eventCount: events.length }
-          : cal
-      ));
+      if (error) {
+        console.error('Error syncing calendar:', error);
+        return;
+      }
 
-      console.log(`Successfully fetched ${events.length} events from ${calendar.name}`);
+      console.log('Sync response:', data);
+
+      // Update the calendar's last fetched time
+      const { error: updateError } = await supabase
+        .from('external_calendars')
+        .update({ 
+          last_fetched: new Date().toISOString(),
+          event_count: data?.eventCount || 0
+        })
+        .eq('id', calendar.id);
+
+      if (updateError) {
+        console.error('Error updating calendar:', updateError);
+      }
+
+      // Reload activities to get the newly synced ones
+      const { data: activitiesData, error: activitiesError } = await supabase
+        .from('activities')
+        .select(`
+          *,
+          category:activity_categories(*)
+        `)
+        .eq('user_id', userId)
+        .eq('is_external', true)
+        .eq('external_calendar_id', calendar.id);
+
+      if (activitiesError) {
+        console.error('Error loading synced activities:', activitiesError);
+        return;
+      }
+
+      if (activitiesData) {
+        const syncedActivities: Activity[] = activitiesData.map(act => {
+          const category = act.category ? {
+            id: act.category.id,
+            name: act.category.name,
+            color: act.category.color,
+            emoji: act.category.emoji,
+          } : categories[0];
+
+          return {
+            id: act.id,
+            title: act.title,
+            date: new Date(act.activity_date),
+            time: act.activity_time,
+            location: act.location || 'Ingen lokation',
+            category,
+            tasks: [],
+            isExternal: true,
+            externalCalendarId: act.external_calendar_id || undefined,
+            externalEventId: act.external_event_id || undefined,
+          };
+        });
+
+        console.log(`Loaded ${syncedActivities.length} synced activities`);
+
+        setExternalActivities(prev => {
+          const filtered = prev.filter(a => a.externalCalendarId !== calendar.id);
+          return [...filtered, ...syncedActivities];
+        });
+
+        setExternalCalendars(prev => prev.map(cal => 
+          cal.id === calendar.id 
+            ? { ...cal, lastFetched: new Date(), eventCount: syncedActivities.length }
+            : cal
+        ));
+      }
+
+      console.log(`Successfully synced calendar: ${calendar.name}`);
     } catch (error) {
       console.error('Error fetching external calendar:', error);
     }
-  }, [categories]);
+  }, [userId, categories]);
 
   // Auto-fetch enabled calendars on mount and when calendars change
   useEffect(() => {
+    if (!userId) return;
+
     const enabledCalendars = externalCalendars.filter(cal => cal.enabled);
     console.log(`Found ${enabledCalendars.length} enabled calendars to fetch`);
     
@@ -210,7 +408,7 @@ export function useFootballData() {
         console.log(`Skipping fetch for ${calendar.name} - recently fetched`);
       }
     });
-  }, [externalCalendars, fetchExternalCalendarEvents]);
+  }, [externalCalendars, fetchExternalCalendarEvents, userId]);
 
   const getCurrentWeekStats = useMemo(() => {
     const now = new Date();
@@ -347,33 +545,111 @@ export function useFootballData() {
     }));
   };
 
-  const addExternalCalendar = (calendar: Omit<ExternalCalendar, 'id'>) => {
-    const newCalendar: ExternalCalendar = {
-      ...calendar,
-      id: `calendar-${Date.now()}`,
-    };
-    console.log('Adding external calendar:', newCalendar.name);
-    setExternalCalendars([...externalCalendars, newCalendar]);
+  const addExternalCalendar = async (calendar: Omit<ExternalCalendar, 'id'>) => {
+    if (!userId) {
+      console.error('No user ID, cannot add calendar');
+      return;
+    }
+
+    console.log('Adding external calendar to Supabase:', calendar.name);
+
+    const { data, error } = await supabase
+      .from('external_calendars')
+      .insert({
+        user_id: userId,
+        name: calendar.name,
+        ics_url: calendar.icsUrl,
+        enabled: calendar.enabled !== undefined ? calendar.enabled : true,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error adding external calendar:', error);
+      return;
+    }
+
+    if (data) {
+      const newCalendar: ExternalCalendar = {
+        id: data.id,
+        name: data.name,
+        icsUrl: data.ics_url,
+        enabled: data.enabled,
+        lastFetched: data.last_fetched ? new Date(data.last_fetched) : undefined,
+        eventCount: data.event_count || 0,
+      };
+      
+      console.log('Calendar added successfully:', newCalendar.id);
+      setExternalCalendars([...externalCalendars, newCalendar]);
+
+      // Immediately fetch events for the new calendar
+      if (newCalendar.enabled) {
+        console.log('Triggering initial sync for new calendar');
+        fetchExternalCalendarEvents(newCalendar);
+      }
+    }
   };
 
-  const toggleCalendar = (id: string) => {
-    setExternalCalendars(externalCalendars.map(calendar => {
-      if (calendar.id === id) {
-        const updated = { ...calendar, enabled: !calendar.enabled };
-        console.log(`Toggling calendar ${calendar.name} to ${updated.enabled ? 'enabled' : 'disabled'}`);
+  const toggleCalendar = async (id: string) => {
+    const calendar = externalCalendars.find(cal => cal.id === id);
+    if (!calendar) return;
+
+    const newEnabled = !calendar.enabled;
+    console.log(`Toggling calendar ${calendar.name} to ${newEnabled ? 'enabled' : 'disabled'}`);
+
+    const { error } = await supabase
+      .from('external_calendars')
+      .update({ enabled: newEnabled })
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error toggling calendar:', error);
+      return;
+    }
+
+    setExternalCalendars(externalCalendars.map(cal => {
+      if (cal.id === id) {
+        const updated = { ...cal, enabled: newEnabled };
+        
+        // If enabling, fetch events
+        if (newEnabled) {
+          console.log('Calendar enabled, fetching events');
+          fetchExternalCalendarEvents(updated);
+        } else {
+          // If disabling, remove external activities from this calendar
+          console.log('Calendar disabled, removing activities');
+          setExternalActivities(prev => prev.filter(a => a.externalCalendarId !== id));
+        }
+        
         return updated;
       }
-      return calendar;
+      return cal;
     }));
   };
 
-  const deleteExternalCalendar = (id: string) => {
+  const deleteExternalCalendar = async (id: string) => {
     console.log('Deleting external calendar:', id);
+
+    const { error } = await supabase
+      .from('external_calendars')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error deleting calendar:', error);
+      return;
+    }
+
     setExternalCalendars(externalCalendars.filter(cal => cal.id !== id));
     setExternalActivities(prev => prev.filter(a => a.externalCalendarId !== id));
   };
 
-  const importExternalActivity = (externalActivityId: string, categoryId: string) => {
+  const importExternalActivity = async (externalActivityId: string, categoryId: string) => {
+    if (!userId) {
+      console.error('No user ID, cannot import activity');
+      return;
+    }
+
     const externalActivity = externalActivities.find(a => a.id === externalActivityId);
     if (!externalActivity) {
       console.log('External activity not found:', externalActivityId);
@@ -382,27 +658,55 @@ export function useFootballData() {
 
     const category = categories.find(c => c.id === categoryId) || categories[0];
     
-    const activityTasks = tasks
-      .filter(task => task.isTemplate && task.categoryIds.includes(category.id))
-      .map(task => ({
-        ...task,
-        id: `${task.id}-imported-${Date.now()}`,
-        isTemplate: false,
-        completed: false,
-      }));
+    console.log('Importing activity to Supabase:', externalActivity.title);
 
-    const importedActivity: Activity = {
-      ...externalActivity,
-      id: `imported-${Date.now()}`,
-      category,
-      tasks: activityTasks,
-      isExternal: false,
-      externalCalendarId: undefined,
-      externalEventId: undefined,
-    };
+    // Format date and time for Supabase
+    const activityDate = new Date(externalActivity.date);
+    const dateStr = activityDate.toISOString().split('T')[0];
 
-    setActivities([...activities, importedActivity]);
-    console.log('Activity imported:', importedActivity.title);
+    const { data, error } = await supabase
+      .from('activities')
+      .insert({
+        user_id: userId,
+        title: externalActivity.title,
+        activity_date: dateStr,
+        activity_time: externalActivity.time,
+        location: externalActivity.location,
+        category_id: category.id,
+        is_external: false,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error importing activity:', error);
+      return;
+    }
+
+    if (data) {
+      const activityTasks = tasks
+        .filter(task => task.isTemplate && task.categoryIds.includes(category.id))
+        .map(task => ({
+          ...task,
+          id: `${task.id}-imported-${Date.now()}`,
+          isTemplate: false,
+          completed: false,
+        }));
+
+      const importedActivity: Activity = {
+        id: data.id,
+        title: data.title,
+        date: new Date(data.activity_date),
+        time: data.activity_time,
+        location: data.location || 'Ingen lokation',
+        category,
+        tasks: activityTasks,
+        isExternal: false,
+      };
+
+      setActivities([...activities, importedActivity]);
+      console.log('Activity imported successfully:', importedActivity.title);
+    }
   };
 
   const importMultipleActivities = (activityIds: string[], categoryId: string) => {
@@ -419,6 +723,7 @@ export function useFootballData() {
     externalActivities,
     currentWeekStats: getCurrentWeekStats,
     todayActivities: getTodayActivities,
+    isLoading,
     addActivity,
     updateActivity,
     deleteActivity,

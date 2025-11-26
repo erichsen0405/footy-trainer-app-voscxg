@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, useColorScheme, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, useColorScheme, Alert, Platform, ActivityIndicator } from 'react-native';
 import { useFootball } from '@/contexts/FootballContext';
 import { colors } from '@/styles/commonStyles';
 import { Activity } from '@/types';
@@ -19,6 +19,7 @@ export default function AdminScreen() {
     deleteExternalCalendar,
     importExternalActivity,
     importMultipleActivities,
+    fetchExternalCalendarEvents,
   } = useFootball();
   
   const [searchQuery, setSearchQuery] = useState('');
@@ -33,6 +34,7 @@ export default function AdminScreen() {
   const [newCalendarUrl, setNewCalendarUrl] = useState('');
   const [newCalendarName, setNewCalendarName] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [syncingCalendarId, setSyncingCalendarId] = useState<string | null>(null);
   
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -161,6 +163,22 @@ export default function AdminScreen() {
     );
   };
 
+  const handleSyncCalendar = async (calendarId: string) => {
+    const calendar = externalCalendars.find(c => c.id === calendarId);
+    if (!calendar) return;
+
+    setSyncingCalendarId(calendarId);
+    try {
+      await fetchExternalCalendarEvents(calendar);
+      Alert.alert('Synkronisering fuldført', `Kalenderen "${calendar.name}" er blevet synkroniseret.`);
+    } catch (error) {
+      console.error('Sync error:', error);
+      Alert.alert('Synkroniseringsfejl', 'Der opstod en fejl under synkronisering af kalenderen.');
+    } finally {
+      setSyncingCalendarId(null);
+    }
+  };
+
   const handleImportActivity = (activityId: string) => {
     setActivityToImport(activityId);
     setSelectedImportCategory(categories[0]?.id || '');
@@ -216,6 +234,23 @@ export default function AdminScreen() {
     });
   };
 
+  const formatLastFetched = (date?: Date) => {
+    if (!date) return 'Aldrig synkroniseret';
+    
+    const now = new Date();
+    const diff = now.getTime() - new Date(date).getTime();
+    const minutes = Math.floor(diff / 60000);
+    
+    if (minutes < 1) return 'Lige nu';
+    if (minutes < 60) return `${minutes} min siden`;
+    
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours} time${hours !== 1 ? 'r' : ''} siden`;
+    
+    const days = Math.floor(hours / 24);
+    return `${days} dag${days !== 1 ? 'e' : ''} siden`;
+  };
+
   const bgColor = isDark ? '#1a1a1a' : colors.background;
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
   const textColor = isDark ? '#e3e3e3' : colors.text;
@@ -252,7 +287,7 @@ export default function AdminScreen() {
                 <Text style={[styles.externalCalendarSubtitle, { color: textSecondaryColor }]}>
                   {externalCalendars.length === 0 
                     ? 'Ingen kalendere tilføjet' 
-                    : `${externalCalendars.length} kalender${externalCalendars.length !== 1 ? 'e' : ''}`}
+                    : `${externalCalendars.length} kalender${externalCalendars.length !== 1 ? 'e' : ''} • ${externalActivities.length} begivenheder`}
                 </Text>
               </View>
             </View>
@@ -312,15 +347,32 @@ export default function AdminScreen() {
                     <Text style={[styles.calendarDropdownMeta, { color: textSecondaryColor }]}>
                       {calendar.eventCount || 0} begivenheder • {calendar.enabled ? 'Aktiv' : 'Inaktiv'}
                     </Text>
+                    <Text style={[styles.calendarDropdownSync, { color: textSecondaryColor }]}>
+                      {formatLastFetched(calendar.lastFetched)}
+                    </Text>
                   </View>
                 </TouchableOpacity>
-                <TouchableOpacity 
-                  onPress={() => handleDeleteCalendar(calendar.id)}
-                  style={styles.deleteButton}
-                  activeOpacity={0.7}
-                >
-                  <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={22} color={colors.error} />
-                </TouchableOpacity>
+                <View style={styles.calendarActions}>
+                  <TouchableOpacity 
+                    onPress={() => handleSyncCalendar(calendar.id)}
+                    style={styles.syncButton}
+                    activeOpacity={0.7}
+                    disabled={syncingCalendarId === calendar.id}
+                  >
+                    {syncingCalendarId === calendar.id ? (
+                      <ActivityIndicator size="small" color={colors.secondary} />
+                    ) : (
+                      <IconSymbol ios_icon_name="arrow.clockwise" android_material_icon_name="sync" size={22} color={colors.secondary} />
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    onPress={() => handleDeleteCalendar(calendar.id)}
+                    style={styles.deleteButton}
+                    activeOpacity={0.7}
+                  >
+                    <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={22} color={colors.error} />
+                  </TouchableOpacity>
+                </View>
               </View>
             ))}
           </View>
@@ -646,7 +698,8 @@ export default function AdminScreen() {
                 <IconSymbol ios_icon_name="info.circle" android_material_icon_name="info" size={24} color={colors.secondary} />
                 <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
                   Indsæt en iCal URL (webcal:// eller https://) fra din eksterne kalender. Eksempel:{'\n\n'}
-                  webcal://ical.dbu.dk/TeamActivities.ashx?userkey=...
+                  webcal://ical.dbu.dk/TeamActivities.ashx?userkey=...{'\n\n'}
+                  Kalenderen vil automatisk blive synkroniseret når du tilføjer den.
                 </Text>
               </View>
             </ScrollView>
@@ -839,6 +892,11 @@ const styles = StyleSheet.create({
   },
   calendarDropdownMeta: {
     fontSize: 14,
+    marginBottom: 2,
+  },
+  calendarDropdownSync: {
+    fontSize: 13,
+    fontStyle: 'italic',
   },
   toggle: {
     width: 56,
@@ -855,6 +913,13 @@ const styles = StyleSheet.create({
   },
   toggleThumbActive: {
     transform: [{ translateX: 24 }],
+  },
+  calendarActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  syncButton: {
+    padding: 8,
   },
   deleteButton: {
     padding: 8,
