@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, useColorScheme, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, useColorScheme, Alert, Platform, ActivityIndicator } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
@@ -53,6 +53,8 @@ export default function ProfileScreen() {
     }
 
     setLoading(true);
+    console.log(`Starting ${isSignUp ? 'signup' : 'login'} process for:`, email);
+    
     try {
       if (isSignUp) {
         console.log('Attempting to sign up with:', email);
@@ -64,7 +66,11 @@ export default function ProfileScreen() {
           }
         });
 
-        console.log('Sign up response:', { data, error });
+        console.log('Sign up response:', { 
+          user: data.user?.id, 
+          session: data.session ? 'exists' : 'null',
+          error: error?.message 
+        });
 
         if (error) {
           console.error('Sign up error:', error);
@@ -79,12 +85,12 @@ export default function ProfileScreen() {
         // Check if email confirmation is required
         if (data.user && !data.session) {
           Alert.alert(
-            'Bekræft din email',
-            'Vi har sendt en bekræftelsesmail til dig. Tjek venligst din indbakke og klik på linket for at aktivere din konto.\n\nBemærk: Tjek også din spam-mappe hvis du ikke kan finde emailen.',
+            'Bekræft din email ✉️',
+            'Vi har sendt en bekræftelsesmail til dig. Tjek venligst din indbakke og klik på linket for at aktivere din konto.\n\n⚠️ Bemærk: Tjek også din spam-mappe hvis du ikke kan finde emailen.\n\n✅ Din konto er oprettet, men du skal bekræfte din email før du kan logge ind.',
             [{ text: 'OK' }]
           );
         } else if (data.session) {
-          Alert.alert('Succes', 'Din konto er oprettet og du er nu logget ind!');
+          Alert.alert('Succes! 🎉', 'Din konto er oprettet og du er nu logget ind!');
         }
         
         setEmail('');
@@ -96,7 +102,11 @@ export default function ProfileScreen() {
           password,
         });
 
-        console.log('Sign in response:', { data, error });
+        console.log('Sign in response:', { 
+          user: data.user?.id, 
+          session: data.session ? 'exists' : 'null',
+          error: error?.message 
+        });
 
         if (error) {
           console.error('Sign in error:', error);
@@ -119,14 +129,15 @@ export default function ProfileScreen() {
         }
 
         if (data.session) {
-          Alert.alert('Succes', 'Du er nu logget ind!');
+          Alert.alert('Succes! 🎉', 'Du er nu logget ind!');
         }
       }
     } catch (error: any) {
       console.error('Auth error:', error);
-      Alert.alert('Fejl', error.message || 'Der opstod en fejl. Prøv venligst igen.');
+      Alert.alert('Fejl', error.message || 'Der opstod en uventet fejl. Prøv venligst igen.');
     } finally {
       setLoading(false);
+      console.log(`${isSignUp ? 'Signup' : 'Login'} process completed`);
     }
   };
 
@@ -291,9 +302,18 @@ export default function ProfileScreen() {
                 disabled={loading}
                 activeOpacity={0.7}
               >
-                <Text style={styles.authButtonText}>
-                  {loading ? 'Vent venligst...' : (isSignUp ? 'Opret konto' : 'Log ind')}
-                </Text>
+                {loading ? (
+                  <View style={styles.loadingContainer}>
+                    <ActivityIndicator color="#fff" size="small" />
+                    <Text style={[styles.authButtonText, { marginLeft: 12 }]}>
+                      {isSignUp ? 'Opretter konto...' : 'Logger ind...'}
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={styles.authButtonText}>
+                    {isSignUp ? 'Opret konto' : 'Log ind'}
+                  </Text>
+                )}
               </TouchableOpacity>
             </View>
 
@@ -463,5 +483,10 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#fff',
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
