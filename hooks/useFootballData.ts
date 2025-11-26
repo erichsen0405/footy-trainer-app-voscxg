@@ -312,6 +312,8 @@ export function useFootballData() {
         throw new Error('No active session');
       }
 
+      console.log('Calling Edge Function to sync calendar...');
+
       // Call the Edge Function to sync the calendar
       const { data, error } = await supabase.functions.invoke('sync-external-calendar', {
         body: { calendarId: calendar.id }
@@ -573,8 +575,10 @@ export function useFootballData() {
         throw new Error('No active session. Please log in again.');
       }
 
-      console.log('Session verified, inserting calendar...');
+      console.log('Session verified, user:', session.user.id);
+      console.log('Inserting calendar into database...');
 
+      // Insert the calendar
       const { data, error } = await supabase
         .from('external_calendars')
         .insert({
@@ -588,11 +592,16 @@ export function useFootballData() {
 
       if (error) {
         console.error('Error adding external calendar:', error);
-        console.error('Error details:', JSON.stringify(error, null, 2));
+        console.error('Error code:', error.code);
+        console.error('Error message:', error.message);
+        console.error('Error details:', error.details);
+        console.error('Error hint:', error.hint);
         throw error;
       }
 
       if (data) {
+        console.log('Calendar inserted successfully:', data.id);
+        
         const newCalendar: ExternalCalendar = {
           id: data.id,
           name: data.name,
@@ -602,19 +611,23 @@ export function useFootballData() {
           eventCount: data.event_count || 0,
         };
         
-        console.log('Calendar added successfully:', newCalendar.id);
-        setExternalCalendars([...externalCalendars, newCalendar]);
+        console.log('Adding calendar to state:', newCalendar);
+        setExternalCalendars(prev => [...prev, newCalendar]);
 
         // Immediately fetch events for the new calendar
         if (newCalendar.enabled) {
           console.log('Triggering initial sync for new calendar');
           try {
             await fetchExternalCalendarEvents(newCalendar);
+            console.log('Initial sync completed successfully');
           } catch (syncError) {
             console.error('Error during initial sync:', syncError);
             // Don't throw here - the calendar was added successfully
+            // The user can manually sync later
           }
         }
+        
+        return newCalendar;
       }
     } catch (error) {
       console.error('Failed to add external calendar:', error);

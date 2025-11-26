@@ -37,6 +37,7 @@ export default function AdminScreen() {
   const [showFilters, setShowFilters] = useState(false);
   const [syncingCalendarId, setSyncingCalendarId] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAddingCalendar, setIsAddingCalendar] = useState(false);
   
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -46,12 +47,14 @@ export default function AdminScreen() {
     const checkAuth = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setIsAuthenticated(!!user);
+      console.log('Auth status:', !!user);
     };
     checkAuth();
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsAuthenticated(!!session?.user);
+      console.log('Auth changed:', !!session?.user);
     });
 
     return () => subscription.unsubscribe();
@@ -154,7 +157,13 @@ export default function AdminScreen() {
   };
 
   const handleAddCalendar = async () => {
+    console.log('handleAddCalendar called');
+    console.log('isAuthenticated:', isAuthenticated);
+    console.log('newCalendarName:', newCalendarName);
+    console.log('newCalendarUrl:', newCalendarUrl);
+
     if (!isAuthenticated) {
+      console.log('User not authenticated, showing alert');
       Alert.alert(
         'Login påkrævet',
         'Du skal være logget ind for at tilføje eksterne kalendere. Denne funktion kræver en Supabase-konto for at gemme dine data.',
@@ -164,12 +173,14 @@ export default function AdminScreen() {
     }
 
     if (!newCalendarUrl || !newCalendarName) {
+      console.log('Missing name or URL');
       Alert.alert('Fejl', 'Udfyld venligst både navn og URL');
       return;
     }
 
     // Validate URL format
     if (!newCalendarUrl.startsWith('webcal://') && !newCalendarUrl.startsWith('https://') && !newCalendarUrl.startsWith('http://')) {
+      console.log('Invalid URL format');
       Alert.alert(
         'Ugyldig URL',
         'URL skal starte med webcal://, https:// eller http://'
@@ -177,13 +188,19 @@ export default function AdminScreen() {
       return;
     }
 
+    setIsAddingCalendar(true);
+    console.log('Starting to add calendar...');
+
     try {
-      console.log('Adding calendar:', newCalendarName, newCalendarUrl);
-      await addExternalCalendar({
+      console.log('Calling addExternalCalendar with:', { name: newCalendarName, icsUrl: newCalendarUrl });
+      
+      const result = await addExternalCalendar({
         name: newCalendarName,
         icsUrl: newCalendarUrl,
         enabled: true,
       });
+      
+      console.log('addExternalCalendar result:', result);
       
       setNewCalendarUrl('');
       setNewCalendarName('');
@@ -194,12 +211,18 @@ export default function AdminScreen() {
         'Din eksterne kalender er blevet tilføjet og synkroniseres nu.',
         [{ text: 'OK' }]
       );
-    } catch (error) {
-      console.error('Error adding calendar:', error);
+    } catch (error: any) {
+      console.error('Error in handleAddCalendar:', error);
+      console.error('Error message:', error?.message);
+      console.error('Error stack:', error?.stack);
+      
       Alert.alert(
         'Fejl',
-        'Der opstod en fejl ved tilføjelse af kalenderen. Tjek venligst URL\'en og prøv igen.'
+        `Der opstod en fejl ved tilføjelse af kalenderen: ${error?.message || 'Ukendt fejl'}. Tjek venligst URL'en og prøv igen.`
       );
+    } finally {
+      setIsAddingCalendar(false);
+      console.log('Finished adding calendar');
     }
   };
 
@@ -386,7 +409,10 @@ export default function AdminScreen() {
               styles.addCalendarButton, 
               { backgroundColor: isAuthenticated ? colors.primary : colors.highlight }
             ]}
-            onPress={() => setIsCalendarModalVisible(true)}
+            onPress={() => {
+              console.log('Add calendar button pressed');
+              setIsCalendarModalVisible(true);
+            }}
             activeOpacity={0.7}
           >
             <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={22} color="#fff" />
@@ -785,7 +811,7 @@ export default function AdminScreen() {
                 onChangeText={setNewCalendarName}
                 placeholder="F.eks. Klubkalender"
                 placeholderTextColor={textSecondaryColor}
-                editable={isAuthenticated}
+                editable={isAuthenticated && !isAddingCalendar}
               />
 
               <Text style={[styles.label, { color: textColor }]}>ICS URL (webcal:// eller https://)</Text>
@@ -798,7 +824,7 @@ export default function AdminScreen() {
                 autoCapitalize="none"
                 multiline
                 numberOfLines={3}
-                editable={isAuthenticated}
+                editable={isAuthenticated && !isAddingCalendar}
               />
 
               <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
@@ -816,6 +842,7 @@ export default function AdminScreen() {
                 style={[styles.modalButton, styles.cancelButton, { backgroundColor: bgColor, borderColor: colors.highlight }]}
                 onPress={() => setIsCalendarModalVisible(false)}
                 activeOpacity={0.7}
+                disabled={isAddingCalendar}
               >
                 <Text style={[styles.modalButtonText, { color: textColor }]}>Annuller</Text>
               </TouchableOpacity>
@@ -823,13 +850,17 @@ export default function AdminScreen() {
                 style={[
                   styles.modalButton, 
                   styles.saveButton, 
-                  { backgroundColor: isAuthenticated ? colors.primary : colors.highlight }
+                  { backgroundColor: isAuthenticated && !isAddingCalendar ? colors.primary : colors.highlight }
                 ]}
                 onPress={handleAddCalendar}
                 activeOpacity={0.7}
-                disabled={!isAuthenticated}
+                disabled={!isAuthenticated || isAddingCalendar}
               >
-                <Text style={[styles.modalButtonText, { color: '#fff' }]}>Tilføj</Text>
+                {isAddingCalendar ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={[styles.modalButtonText, { color: '#fff' }]}>Tilføj</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
