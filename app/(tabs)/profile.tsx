@@ -19,12 +19,14 @@ export default function ProfileScreen() {
     // Check current user
     const checkUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
+      console.log('Current user:', user);
       setUser(user);
     };
     checkUser();
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      console.log('Auth state changed:', _event, session?.user);
       setUser(session?.user || null);
     });
 
@@ -37,9 +39,23 @@ export default function ProfileScreen() {
       return;
     }
 
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      Alert.alert('Fejl', 'Indtast venligst en gyldig email-adresse');
+      return;
+    }
+
+    // Password length validation
+    if (password.length < 6) {
+      Alert.alert('Fejl', 'Adgangskoden skal være mindst 6 tegn lang');
+      return;
+    }
+
     setLoading(true);
     try {
       if (isSignUp) {
+        console.log('Attempting to sign up with:', email);
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
@@ -48,28 +64,62 @@ export default function ProfileScreen() {
           }
         });
 
-        if (error) throw error;
+        console.log('Sign up response:', { data, error });
 
-        Alert.alert(
-          'Bekræft din email',
-          'Vi har sendt en bekræftelsesmail til dig. Tjek venligst din indbakke og klik på linket for at aktivere din konto.',
-          [{ text: 'OK' }]
-        );
+        if (error) {
+          console.error('Sign up error:', error);
+          throw error;
+        }
+
+        // Check if email confirmation is required
+        if (data.user && !data.session) {
+          Alert.alert(
+            'Bekræft din email',
+            'Vi har sendt en bekræftelsesmail til dig. Tjek venligst din indbakke og klik på linket for at aktivere din konto.\n\nBemærk: Tjek også din spam-mappe hvis du ikke kan finde emailen.',
+            [{ text: 'OK' }]
+          );
+        } else if (data.session) {
+          Alert.alert('Succes', 'Din konto er oprettet og du er nu logget ind!');
+        }
+        
         setEmail('');
         setPassword('');
       } else {
+        console.log('Attempting to sign in with:', email);
         const { data, error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
 
-        if (error) throw error;
+        console.log('Sign in response:', { data, error });
 
-        Alert.alert('Succes', 'Du er nu logget ind!');
+        if (error) {
+          console.error('Sign in error:', error);
+          
+          // Provide more helpful error messages
+          if (error.message.includes('Invalid login credentials')) {
+            Alert.alert(
+              'Login fejlede', 
+              'Email eller adgangskode er forkert.\n\nHusk:\n• Har du bekræftet din email?\n• Er du sikker på at du har oprettet en konto?\n• Prøv at nulstille din adgangskode hvis du har glemt den.'
+            );
+          } else if (error.message.includes('Email not confirmed')) {
+            Alert.alert(
+              'Email ikke bekræftet',
+              'Du skal bekræfte din email før du kan logge ind. Tjek din indbakke for bekræftelsesmailen.\n\nTjek også din spam-mappe.'
+            );
+          } else {
+            throw error;
+          }
+          return;
+        }
+
+        if (data.session) {
+          Alert.alert('Succes', 'Du er nu logget ind!');
+        }
       }
     } catch (error: any) {
       console.error('Auth error:', error);
-      Alert.alert('Fejl', error.message || 'Der opstod en fejl');
+      Alert.alert('Fejl', error.message || 'Der opstod en fejl. Prøv venligst igen.');
     } finally {
       setLoading(false);
     }
@@ -210,6 +260,7 @@ export default function ProfileScreen() {
                 autoCapitalize="none"
                 keyboardType="email-address"
                 editable={!loading}
+                autoCorrect={false}
               />
 
               <Text style={[styles.label, { color: textColor }]}>Adgangskode</Text>
@@ -217,10 +268,12 @@ export default function ProfileScreen() {
                 style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
                 value={password}
                 onChangeText={setPassword}
-                placeholder="••••••••"
+                placeholder="Mindst 6 tegn"
                 placeholderTextColor={textSecondaryColor}
                 secureTextEntry
                 editable={!loading}
+                autoCorrect={false}
+                autoCapitalize="none"
               />
 
               <TouchableOpacity
@@ -248,12 +301,13 @@ export default function ProfileScreen() {
               />
               <View style={styles.infoTextContainer}>
                 <Text style={[styles.infoTitle, { color: textColor }]}>
-                  Hvorfor skal jeg logge ind?
+                  {isSignUp ? 'Opret din konto' : 'Hvorfor skal jeg logge ind?'}
                 </Text>
                 <Text style={[styles.infoText, { color: textSecondaryColor }]}>
-                  For at gemme eksterne kalendere og synkronisere dine data på tværs af enheder, skal du oprette en gratis konto.
-                  {'\n\n'}
-                  Dine data gemmes sikkert i Supabase og er kun tilgængelige for dig.
+                  {isSignUp 
+                    ? 'Efter du opretter din konto, vil du modtage en bekræftelsesmail. Du skal klikke på linket i emailen før du kan logge ind.\n\nTjek også din spam-mappe hvis du ikke modtager emailen.'
+                    : 'For at gemme eksterne kalendere og synkronisere dine data på tværs af enheder, skal du oprette en gratis konto.\n\nDine data gemmes sikkert i Supabase og er kun tilgængelige for dig.'
+                  }
                 </Text>
               </View>
             </View>

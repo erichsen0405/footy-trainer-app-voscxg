@@ -1,12 +1,140 @@
-import React from "react";
-import { View, Text, StyleSheet, ScrollView } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { IconSymbol } from "@/components/IconSymbol";
-import { GlassView } from "expo-glass-effect";
-import { useTheme } from "@react-navigation/native";
+
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { IconSymbol } from '@/components/IconSymbol';
+import { GlassView } from 'expo-glass-effect';
+import { useTheme } from '@react-navigation/native';
+import { supabase } from '@/app/integrations/supabase/client';
 
 export default function ProfileScreen() {
   const theme = useTheme();
+  const [user, setUser] = useState<any>(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    // Check current user
+    const checkUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      console.log('Current user:', user);
+      setUser(user);
+    };
+    checkUser();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      console.log('Auth state changed:', _event, session?.user);
+      setUser(session?.user || null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleAuth = async () => {
+    if (!email || !password) {
+      Alert.alert('Fejl', 'Udfyld venligst både email og adgangskode');
+      return;
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      Alert.alert('Fejl', 'Indtast venligst en gyldig email-adresse');
+      return;
+    }
+
+    // Password length validation
+    if (password.length < 6) {
+      Alert.alert('Fejl', 'Adgangskoden skal være mindst 6 tegn lang');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      if (isSignUp) {
+        console.log('Attempting to sign up with:', email);
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: 'https://natively.dev/email-confirmed'
+          }
+        });
+
+        console.log('Sign up response:', { data, error });
+
+        if (error) {
+          console.error('Sign up error:', error);
+          throw error;
+        }
+
+        // Check if email confirmation is required
+        if (data.user && !data.session) {
+          Alert.alert(
+            'Bekræft din email',
+            'Vi har sendt en bekræftelsesmail til dig. Tjek venligst din indbakke og klik på linket for at aktivere din konto.\n\nBemærk: Tjek også din spam-mappe hvis du ikke kan finde emailen.',
+            [{ text: 'OK' }]
+          );
+        } else if (data.session) {
+          Alert.alert('Succes', 'Din konto er oprettet og du er nu logget ind!');
+        }
+        
+        setEmail('');
+        setPassword('');
+      } else {
+        console.log('Attempting to sign in with:', email);
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        console.log('Sign in response:', { data, error });
+
+        if (error) {
+          console.error('Sign in error:', error);
+          
+          // Provide more helpful error messages
+          if (error.message.includes('Invalid login credentials')) {
+            Alert.alert(
+              'Login fejlede', 
+              'Email eller adgangskode er forkert.\n\nHusk:\n• Har du bekræftet din email?\n• Er du sikker på at du har oprettet en konto?\n• Prøv at nulstille din adgangskode hvis du har glemt den.'
+            );
+          } else if (error.message.includes('Email not confirmed')) {
+            Alert.alert(
+              'Email ikke bekræftet',
+              'Du skal bekræfte din email før du kan logge ind. Tjek din indbakke for bekræftelsesmailen.\n\nTjek også din spam-mappe.'
+            );
+          } else {
+            throw error;
+          }
+          return;
+        }
+
+        if (data.session) {
+          Alert.alert('Succes', 'Du er nu logget ind!');
+        }
+      }
+    } catch (error: any) {
+      console.error('Auth error:', error);
+      Alert.alert('Fejl', error.message || 'Der opstod en fejl. Prøv venligst igen.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      Alert.alert('Logget ud', 'Du er nu logget ud');
+    } catch (error: any) {
+      console.error('Sign out error:', error);
+      Alert.alert('Fejl', error.message || 'Der opstod en fejl');
+    }
+  };
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]} edges={['top']}>
@@ -14,22 +142,130 @@ export default function ProfileScreen() {
         style={styles.container}
         contentContainerStyle={styles.contentContainer}
       >
-        <GlassView style={styles.profileHeader} glassEffectStyle="regular">
-          <IconSymbol ios_icon_name="person.circle.fill" android_material_icon_name="person" size={24} color={theme.colors.primary} />
-          <Text style={[styles.name, { color: theme.colors.text }]}>John Doe</Text>
-          <Text style={[styles.email, { color: theme.dark ? '#98989D' : '#666' }]}>john.doe@example.com</Text>
-        </GlassView>
+        {user ? (
+          // Logged in view
+          <>
+            <GlassView style={styles.profileHeader} glassEffectStyle="regular">
+              <IconSymbol ios_icon_name="person.circle.fill" android_material_icon_name="person" size={80} color={theme.colors.primary} />
+              <Text style={[styles.name, { color: theme.colors.text }]}>{user.email?.split('@')[0] || 'Bruger'}</Text>
+              <Text style={[styles.email, { color: theme.dark ? '#98989D' : '#666' }]}>{user.email}</Text>
+            </GlassView>
 
-        <GlassView style={styles.section} glassEffectStyle="regular">
-          <View style={styles.infoRow}>
-            <IconSymbol ios_icon_name="phone.fill" android_material_icon_name="phone" size={24} color={theme.dark ? '#98989D' : '#666'} />
-            <Text style={[styles.infoText, { color: theme.colors.text }]}>+1 (555) 123-4567</Text>
-          </View>
-          <View style={styles.infoRow}>
-            <IconSymbol ios_icon_name="location.fill" android_material_icon_name="location-on" size={24} color={theme.dark ? '#98989D' : '#666'} />
-            <Text style={[styles.infoText, { color: theme.colors.text }]}>San Francisco, CA</Text>
-          </View>
-        </GlassView>
+            <TouchableOpacity
+              style={[styles.signOutButton, { backgroundColor: '#ff3b30' }]}
+              onPress={handleSignOut}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.signOutButtonText}>Log ud</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          // Login/Sign up view
+          <GlassView style={styles.authCard} glassEffectStyle="regular">
+            <Text style={[styles.title, { color: theme.colors.text }]}>
+              {isSignUp ? 'Opret konto' : 'Log ind'}
+            </Text>
+
+            <View style={styles.authToggle}>
+              <TouchableOpacity
+                style={[
+                  styles.authToggleButton,
+                  !isSignUp && styles.authToggleButtonActive
+                ]}
+                onPress={() => setIsSignUp(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={[
+                  styles.authToggleText,
+                  { color: theme.colors.text },
+                  !isSignUp && styles.authToggleTextActive
+                ]}>
+                  Log ind
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.authToggleButton,
+                  isSignUp && styles.authToggleButtonActive
+                ]}
+                onPress={() => setIsSignUp(true)}
+                activeOpacity={0.7}
+              >
+                <Text style={[
+                  styles.authToggleText,
+                  { color: theme.colors.text },
+                  isSignUp && styles.authToggleTextActive
+                ]}>
+                  Opret konto
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.form}>
+              <Text style={[styles.label, { color: theme.colors.text }]}>Email</Text>
+              <TextInput
+                style={[styles.input, { 
+                  backgroundColor: theme.dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+                  color: theme.colors.text 
+                }]}
+                value={email}
+                onChangeText={setEmail}
+                placeholder="din@email.dk"
+                placeholderTextColor={theme.dark ? '#98989D' : '#666'}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                editable={!loading}
+                autoCorrect={false}
+              />
+
+              <Text style={[styles.label, { color: theme.colors.text }]}>Adgangskode</Text>
+              <TextInput
+                style={[styles.input, { 
+                  backgroundColor: theme.dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+                  color: theme.colors.text 
+                }]}
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Mindst 6 tegn"
+                placeholderTextColor={theme.dark ? '#98989D' : '#666'}
+                secureTextEntry
+                editable={!loading}
+                autoCorrect={false}
+                autoCapitalize="none"
+              />
+
+              <TouchableOpacity
+                style={[
+                  styles.authButton,
+                  { backgroundColor: theme.colors.primary },
+                  loading && { opacity: 0.6 }
+                ]}
+                onPress={handleAuth}
+                disabled={loading}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.authButtonText}>
+                  {loading ? 'Vent venligst...' : (isSignUp ? 'Opret konto' : 'Log ind')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.infoBox}>
+              <IconSymbol 
+                ios_icon_name="info.circle" 
+                android_material_icon_name="info" 
+                size={24} 
+                color={theme.colors.primary} 
+              />
+              <Text style={[styles.infoText, { color: theme.dark ? '#98989D' : '#666' }]}>
+                {isSignUp 
+                  ? 'Efter du opretter din konto, vil du modtage en bekræftelsesmail. Du skal klikke på linket i emailen før du kan logge ind.'
+                  : 'Log ind for at gemme dine data sikkert i skyen.'
+                }
+              </Text>
+            </View>
+          </GlassView>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -59,17 +295,86 @@ const styles = StyleSheet.create({
   email: {
     fontSize: 16,
   },
-  section: {
+  signOutButton: {
     borderRadius: 12,
-    padding: 20,
-    gap: 12,
-  },
-  infoRow: {
-    flexDirection: 'row',
+    padding: 16,
     alignItems: 'center',
+    marginTop: 16,
+  },
+  signOutButtonText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  authCard: {
+    borderRadius: 12,
+    padding: 24,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  authToggle: {
+    flexDirection: 'row',
     gap: 12,
+    marginBottom: 24,
+  },
+  authToggleButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    backgroundColor: 'rgba(128,128,128,0.2)',
+  },
+  authToggleButtonActive: {
+    backgroundColor: 'rgba(0,122,255,0.3)',
+  },
+  authToggleText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  authToggleTextActive: {
+    fontWeight: 'bold',
+  },
+  form: {
+    gap: 8,
+  },
+  label: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+    marginTop: 8,
+  },
+  input: {
+    borderRadius: 8,
+    padding: 14,
+    fontSize: 16,
+    marginBottom: 12,
+  },
+  authButton: {
+    paddingVertical: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  authButtonText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  infoBox: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 24,
+    padding: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(128,128,128,0.1)',
   },
   infoText: {
-    fontSize: 16,
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
   },
 });
