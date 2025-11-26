@@ -1,23 +1,217 @@
-import React from "react";
-import { FlatList, StyleSheet, View } from "react-native";
-import { useTheme } from "@react-navigation/native";
-import { modalDemos } from "@/components/homeData";
-import { DemoCard } from "@/components/DemoCard";
+
+import React from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useColorScheme } from 'react-native';
+import { useFootball } from '@/contexts/FootballContext';
+import { colors } from '@/styles/commonStyles';
+import { Activity } from '@/types';
+import { IconSymbol } from '@/components/IconSymbol';
 
 export default function HomeScreen() {
-  const theme = useTheme();
+  const { currentWeekStats, todayActivities, activities, toggleTaskCompletion } = useFootball();
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+
+  const getMotivationalMessage = (percentage: number) => {
+    if (percentage >= 80) {
+      return 'Du er godt på vej! Fortsæt det gode arbejde! 🚀';
+    } else if (percentage >= 60) {
+      return 'Godt gået! Du er på rette spor! 💪';
+    } else if (percentage >= 40) {
+      return 'Kom igen! Du kan gøre det bedre! 🔥';
+    } else {
+      return 'Husk at holde fokus! Hver lille indsats tæller! ⚽';
+    }
+  };
+
+  const getProgressColor = (percentage: number) => {
+    if (percentage >= 80) return colors.success;
+    if (percentage >= 60) return '#FFC107';
+    if (percentage >= 40) return '#FF9800';
+    return '#F44336';
+  };
+
+  const getTrophyEmoji = (percentage: number) => {
+    if (percentage >= 80) return '🥇';
+    if (percentage >= 60) return '🥈';
+    return '🥉';
+  };
+
+  const formatDate = (date: Date) => {
+    const days = ['søndag', 'mandag', 'tirsdag', 'onsdag', 'torsdag', 'fredag', 'lørdag'];
+    const months = ['januar', 'februar', 'marts', 'april', 'maj', 'juni', 'juli', 'august', 'september', 'oktober', 'november', 'december'];
+    
+    return `${days[date.getDay()]} ${date.getDate()}. ${months[date.getMonth()]} kl. ${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+  };
+
+  const getUpcomingActivitiesByWeek = () => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    
+    const upcoming = activities.filter(activity => {
+      const activityDate = new Date(activity.date);
+      activityDate.setHours(0, 0, 0, 0);
+      return activityDate >= now;
+    });
+    
+    const grouped: { [key: string]: { activities: Activity[], dateRange: string } } = {};
+    
+    upcoming.forEach(activity => {
+      const activityDate = new Date(activity.date);
+      const weekNumber = activityDate.getWeek();
+      const year = activityDate.getFullYear();
+      const key = `Uge ${weekNumber}`;
+      
+      if (!grouped[key]) {
+        grouped[key] = { activities: [], dateRange: '' };
+      }
+      grouped[key].activities.push(activity);
+    });
+
+    Object.keys(grouped).forEach(key => {
+      const weekActivities = grouped[key].activities;
+      if (weekActivities.length > 0) {
+        const firstDate = new Date(weekActivities[0].date);
+        const lastDate = new Date(weekActivities[weekActivities.length - 1].date);
+        grouped[key].dateRange = `${firstDate.getDate()}/${firstDate.getMonth() + 1} - ${lastDate.getDate()}/${lastDate.getMonth() + 1}`;
+      }
+    });
+
+    return grouped;
+  };
+
+  const upcomingByWeek = getUpcomingActivitiesByWeek();
+
+  const bgColor = isDark ? '#1a1a1a' : colors.background;
+  const cardBgColor = isDark ? '#2a2a2a' : colors.card;
+  const textColor = isDark ? '#e3e3e3' : colors.text;
+  const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
+
+  const currentWeek = new Date().getWeek();
+  const currentYear = new Date().getFullYear();
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <FlatList
-        data={modalDemos}
-        renderItem={({ item }) => <DemoCard item={item} />}
-        keyExtractor={(item) => item.route}
-        contentContainerStyle={styles.listContainer}
-        contentInsetAdjustmentBehavior="automatic"
-        showsVerticalScrollIndicator={false}
-      />
-    </View>
+    <ScrollView style={[styles.container, { backgroundColor: bgColor }]} contentContainerStyle={styles.contentContainer}>
+      <View style={styles.header}>
+        <View style={[styles.headerCard, { backgroundColor: colors.primary }]}>
+          <Text style={styles.headerTitle}>Min fodboldapp ⚽</Text>
+          <Text style={styles.headerSubtitle}>Hold styr på alt!</Text>
+        </View>
+      </View>
+
+      <View style={[styles.statsCard, { backgroundColor: getProgressColor(currentWeekStats.percentage) }]}>
+        <View style={styles.statsHeader}>
+          <Text style={styles.statsTitle}>🏆 Denne uge</Text>
+          <Text style={styles.trophyEmoji}>{getTrophyEmoji(currentWeekStats.percentage)}</Text>
+        </View>
+        
+        <Text style={styles.percentage}>{currentWeekStats.percentage}%</Text>
+        <Text style={styles.taskCount}>
+          {currentWeekStats.completedTasks} / {currentWeekStats.totalTasks} opgaver
+        </Text>
+        
+        <View style={styles.progressBarContainer}>
+          <View style={[styles.progressBar, { width: `${currentWeekStats.percentage}%` }]} />
+        </View>
+        
+        <Text style={styles.motivationText}>{getMotivationalMessage(currentWeekStats.percentage)}</Text>
+        
+        <TouchableOpacity style={styles.historyButton}>
+          <Text style={styles.historyButtonText}>Se din historik</Text>
+          <IconSymbol ios_icon_name="chart.line.uptrend.xyaxis" android_material_icon_name="trending_up" size={20} color="#fff" />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: textColor }]}>I dag</Text>
+        
+        {todayActivities.length === 0 ? (
+          <View style={[styles.emptyCard, { backgroundColor: cardBgColor }]}>
+            <Text style={[styles.emptyText, { color: textSecondaryColor }]}>Ingen aktiviteter i dag</Text>
+          </View>
+        ) : (
+          todayActivities.map((activity, index) => (
+            <View key={index} style={[styles.activityCard, { backgroundColor: activity.category.color }]}>
+              <View style={styles.activityHeader}>
+                <Text style={styles.activityEmoji}>{activity.category.emoji}</Text>
+                <View style={styles.activityInfo}>
+                  <Text style={styles.activityTitle}>{activity.title}</Text>
+                  <Text style={styles.activityTime}>
+                    {formatDate(new Date(activity.date))}
+                  </Text>
+                  <View style={styles.locationRow}>
+                    <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={16} color="#fff" />
+                    <Text style={styles.activityLocation}>{activity.location}</Text>
+                  </View>
+                </View>
+              </View>
+
+              {activity.tasks.length > 0 && (
+                <View style={styles.tasksSection}>
+                  <Text style={styles.tasksTitle}>Opgaver:</Text>
+                  {activity.tasks.map((task, taskIndex) => (
+                    <TouchableOpacity
+                      key={taskIndex}
+                      style={styles.taskItem}
+                      onPress={() => toggleTaskCompletion(activity.id, task.id)}
+                    >
+                      <View style={[styles.checkbox, task.completed && styles.checkboxChecked]}>
+                        {task.completed && (
+                          <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
+                        )}
+                      </View>
+                      <Text style={[styles.taskText, task.completed && styles.taskTextCompleted]}>
+                        {task.title}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+          ))
+        )}
+      </View>
+
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: textColor }]}>Kommende aktiviteter</Text>
+        
+        {Object.keys(upcomingByWeek).length === 0 ? (
+          <View style={[styles.emptyCard, { backgroundColor: cardBgColor }]}>
+            <Text style={[styles.emptyText, { color: textSecondaryColor }]}>Ingen kommende aktiviteter</Text>
+          </View>
+        ) : (
+          Object.entries(upcomingByWeek).map(([week, data], weekIndex) => (
+            <View key={weekIndex} style={styles.weekSection}>
+              <Text style={[styles.weekTitle, { color: textColor }]}>
+                {week}
+              </Text>
+              <Text style={[styles.weekDates, { color: textSecondaryColor }]}>
+                {data.dateRange}
+              </Text>
+              
+              {data.activities.map((activity, activityIndex) => (
+                <View key={activityIndex} style={[styles.upcomingActivityCard, { backgroundColor: activity.category.color }]}>
+                  <View style={styles.upcomingActivityHeader}>
+                    <Text style={styles.upcomingActivityEmoji}>{activity.category.emoji}</Text>
+                    <View style={styles.upcomingActivityInfo}>
+                      <Text style={styles.upcomingActivityTitle}>{activity.title}</Text>
+                      <Text style={styles.upcomingActivityTime}>
+                        {new Date(activity.date).toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' })} kl. {activity.time}
+                      </Text>
+                      <View style={styles.locationRow}>
+                        <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={14} color="#fff" />
+                        <Text style={styles.upcomingActivityLocation}>{activity.location}</Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </View>
+          ))
+        )}
+      </View>
+
+      <View style={{ height: 100 }} />
+    </ScrollView>
   );
 }
 
@@ -25,9 +219,229 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  listContainer: {
-    paddingTop: 48,
+  contentContainer: {
+    paddingTop: 60,
     paddingHorizontal: 16,
-    paddingBottom: 100, // Extra padding for floating tab bar
+  },
+  header: {
+    marginBottom: 20,
+  },
+  headerCard: {
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  headerSubtitle: {
+    fontSize: 16,
+    color: '#fff',
+    opacity: 0.9,
+  },
+  statsCard: {
+    borderRadius: 20,
+    padding: 24,
+    marginBottom: 24,
+  },
+  statsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  statsTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  trophyEmoji: {
+    fontSize: 32,
+  },
+  percentage: {
+    fontSize: 48,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  taskCount: {
+    fontSize: 16,
+    color: '#fff',
+    opacity: 0.9,
+    marginBottom: 16,
+  },
+  progressBarContainer: {
+    height: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 16,
+  },
+  progressBar: {
+    height: '100%',
+    backgroundColor: '#fff',
+    borderRadius: 4,
+  },
+  motivationText: {
+    fontSize: 16,
+    color: '#fff',
+    fontWeight: '600',
+    marginBottom: 16,
+  },
+  historyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 8,
+  },
+  historyButtonText: {
+    fontSize: 16,
+    color: '#fff',
+    fontWeight: '600',
+  },
+  section: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  emptyCard: {
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 16,
+  },
+  activityCard: {
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 12,
+  },
+  activityHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  activityEmoji: {
+    fontSize: 40,
+    marginRight: 16,
+  },
+  activityInfo: {
+    flex: 1,
+  },
+  activityTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  activityTime: {
+    fontSize: 14,
+    color: '#fff',
+    opacity: 0.9,
+    marginBottom: 4,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  activityLocation: {
+    fontSize: 14,
+    color: '#fff',
+    opacity: 0.9,
+  },
+  tasksSection: {
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.3)',
+    paddingTop: 16,
+  },
+  tasksTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 12,
+  },
+  taskItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 8,
+    padding: 12,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#fff',
+    marginRight: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: '#fff',
+  },
+  taskText: {
+    fontSize: 15,
+    color: '#fff',
+    flex: 1,
+  },
+  taskTextCompleted: {
+    textDecorationLine: 'line-through',
+    opacity: 0.7,
+  },
+  weekSection: {
+    marginBottom: 20,
+  },
+  weekTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  weekDates: {
+    fontSize: 14,
+    marginBottom: 12,
+  },
+  upcomingActivityCard: {
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 8,
+  },
+  upcomingActivityHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  upcomingActivityEmoji: {
+    fontSize: 32,
+    marginRight: 12,
+  },
+  upcomingActivityInfo: {
+    flex: 1,
+  },
+  upcomingActivityTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 2,
+  },
+  upcomingActivityTime: {
+    fontSize: 13,
+    color: '#fff',
+    opacity: 0.9,
+    marginBottom: 2,
+  },
+  upcomingActivityLocation: {
+    fontSize: 13,
+    color: '#fff',
+    opacity: 0.9,
   },
 });

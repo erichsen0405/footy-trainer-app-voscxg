@@ -1,16 +1,26 @@
+
 import React from 'react';
 import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
+import { colors } from '@/styles/commonStyles';
 
 export default function TabLayout() {
   return (
-    <NativeTabs>
+    <NativeTabs tintColor={colors.primary}>
       <NativeTabs.Trigger key="home" name="(home)">
-        <Icon sf="house.fill" />
-        <Label>Home</Label>
+        <Icon sf={{ default: 'house', selected: 'house.fill' }} />
+        <Label>Hjem</Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger key="profile" name="profile">
-        <Icon sf="person.fill" />
-        <Label>Profile</Label>
+      <NativeTabs.Trigger key="tasks" name="tasks">
+        <Icon sf={{ default: 'checklist', selected: 'checklist' }} />
+        <Label>Opgaver</Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger key="performance" name="performance">
+        <Icon sf={{ default: 'trophy', selected: 'trophy.fill' }} />
+        <Label>Performance</Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger key="admin" name="admin">
+        <Icon sf={{ default: 'gearshape', selected: 'gearshape.fill' }} />
+        <Label>Admin</Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );
