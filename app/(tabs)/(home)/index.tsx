@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useColorScheme } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useFootball } from '@/contexts/FootballContext';
 import { colors } from '@/styles/commonStyles';
 import { Activity } from '@/types';
@@ -9,6 +10,7 @@ import { getWeek } from 'date-fns';
 
 export default function HomeScreen() {
   const { currentWeekStats, todayActivities, activities, toggleTaskCompletion } = useFootball();
+  const router = useRouter();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
@@ -80,6 +82,11 @@ export default function HomeScreen() {
     return grouped;
   };
 
+  const handleActivityPress = (activityId: string) => {
+    console.log('Opening activity details for:', activityId);
+    router.push(`/activity-details?id=${activityId}`);
+  };
+
   const upcomingByWeek = getUpcomingActivitiesByWeek();
 
   const bgColor = isDark ? '#1a1a1a' : colors.background;
@@ -131,11 +138,28 @@ export default function HomeScreen() {
           </View>
         ) : (
           todayActivities.map((activity, index) => (
-            <View key={index} style={[styles.activityCard, { backgroundColor: activity.category.color }]}>
+            <TouchableOpacity
+              key={index}
+              style={[styles.activityCard, { backgroundColor: activity.category.color }]}
+              onPress={() => handleActivityPress(activity.id)}
+              activeOpacity={0.8}
+            >
               <View style={styles.activityHeader}>
                 <Text style={styles.activityEmoji}>{activity.category.emoji}</Text>
                 <View style={styles.activityInfo}>
-                  <Text style={styles.activityTitle}>{activity.title}</Text>
+                  <View style={styles.activityTitleRow}>
+                    <Text style={styles.activityTitle}>{activity.title}</Text>
+                    {activity.isExternal && (
+                      <View style={styles.externalBadge}>
+                        <IconSymbol 
+                          ios_icon_name="calendar.badge.clock" 
+                          android_material_icon_name="event" 
+                          size={14} 
+                          color="#fff" 
+                        />
+                      </View>
+                    )}
+                  </View>
                   <Text style={styles.activityTime}>
                     {formatDate(new Date(activity.date))}
                   </Text>
@@ -144,6 +168,12 @@ export default function HomeScreen() {
                     <Text style={styles.activityLocation}>{activity.location}</Text>
                   </View>
                 </View>
+                <IconSymbol 
+                  ios_icon_name="chevron.right" 
+                  android_material_icon_name="chevron_right" 
+                  size={24} 
+                  color="rgba(255,255,255,0.7)" 
+                />
               </View>
 
               {activity.tasks.length > 0 && (
@@ -153,7 +183,10 @@ export default function HomeScreen() {
                     <TouchableOpacity
                       key={taskIndex}
                       style={styles.taskItem}
-                      onPress={() => toggleTaskCompletion(activity.id, task.id)}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        toggleTaskCompletion(activity.id, task.id);
+                      }}
                     >
                       <View style={[styles.checkbox, task.completed && styles.checkboxChecked]}>
                         {task.completed && (
@@ -167,7 +200,7 @@ export default function HomeScreen() {
                   ))}
                 </View>
               )}
-            </View>
+            </TouchableOpacity>
           ))
         )}
       </View>
@@ -190,11 +223,28 @@ export default function HomeScreen() {
               </Text>
               
               {data.activities.map((activity, activityIndex) => (
-                <View key={activityIndex} style={[styles.upcomingActivityCard, { backgroundColor: activity.category.color }]}>
+                <TouchableOpacity
+                  key={activityIndex}
+                  style={[styles.upcomingActivityCard, { backgroundColor: activity.category.color }]}
+                  onPress={() => handleActivityPress(activity.id)}
+                  activeOpacity={0.8}
+                >
                   <View style={styles.upcomingActivityHeader}>
                     <Text style={styles.upcomingActivityEmoji}>{activity.category.emoji}</Text>
                     <View style={styles.upcomingActivityInfo}>
-                      <Text style={styles.upcomingActivityTitle}>{activity.title}</Text>
+                      <View style={styles.activityTitleRow}>
+                        <Text style={styles.upcomingActivityTitle}>{activity.title}</Text>
+                        {activity.isExternal && (
+                          <View style={styles.externalBadgeSmall}>
+                            <IconSymbol 
+                              ios_icon_name="calendar.badge.clock" 
+                              android_material_icon_name="event" 
+                              size={12} 
+                              color="#fff" 
+                            />
+                          </View>
+                        )}
+                      </View>
                       <Text style={styles.upcomingActivityTime}>
                         {new Date(activity.date).toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' })} kl. {activity.time}
                       </Text>
@@ -203,8 +253,14 @@ export default function HomeScreen() {
                         <Text style={styles.upcomingActivityLocation}>{activity.location}</Text>
                       </View>
                     </View>
+                    <IconSymbol 
+                      ios_icon_name="chevron.right" 
+                      android_material_icon_name="chevron_right" 
+                      size={20} 
+                      color="rgba(255,255,255,0.7)" 
+                    />
                   </View>
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
           ))
@@ -337,11 +393,27 @@ const styles = StyleSheet.create({
   activityInfo: {
     flex: 1,
   },
+  activityTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
   activityTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#fff',
-    marginBottom: 4,
+    flex: 1,
+  },
+  externalBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    borderRadius: 12,
+    padding: 4,
+  },
+  externalBadgeSmall: {
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    borderRadius: 10,
+    padding: 3,
   },
   activityTime: {
     fontSize: 14,
@@ -432,7 +504,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#fff',
-    marginBottom: 2,
+    flex: 1,
   },
   upcomingActivityTime: {
     fontSize: 13,

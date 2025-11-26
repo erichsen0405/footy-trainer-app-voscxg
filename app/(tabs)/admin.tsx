@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, useColorScheme, Alert, Platform, ActivityIndicator } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useFootball } from '@/contexts/FootballContext';
 import { colors } from '@/styles/commonStyles';
 import { Activity } from '@/types';
@@ -8,6 +9,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 
 export default function AdminScreen() {
+  const router = useRouter();
   const { 
     activities, 
     categories, 
@@ -104,6 +106,11 @@ export default function AdminScreen() {
     filteredActivities.filter(a => a.isExternal),
     [filteredActivities]
   );
+
+  const handleActivityPress = (activityId: string) => {
+    console.log('Opening activity details for:', activityId);
+    router.push(`/activity-details?id=${activityId}`);
+  };
 
   const toggleCategoryFilter = (categoryId: string) => {
     setSelectedCategories(prev =>
@@ -675,27 +682,36 @@ export default function AdminScreen() {
             </View>
           ) : (
             filteredActivities.map((activity, index) => (
-              <TouchableOpacity
+              <View
                 key={index}
                 style={[
                   styles.activityCard, 
                   { backgroundColor: cardBgColor },
                   activity.isExternal && [styles.externalActivityCard, { borderColor: colors.secondary }]
                 ]}
-                onPress={() => toggleActivitySelection(activity.id)}
-                activeOpacity={0.7}
               >
-                <View style={styles.activityContent}>
+                <TouchableOpacity
+                  style={styles.activityContent}
+                  onPress={() => handleActivityPress(activity.id)}
+                  activeOpacity={0.7}
+                >
                   <View style={styles.activityLeft}>
-                    <View style={[
-                      styles.activityCheckbox,
-                      { borderColor: colors.primary },
-                      selectedActivities.includes(activity.id) && { backgroundColor: colors.primary }
-                    ]}>
+                    <TouchableOpacity
+                      style={[
+                        styles.activityCheckbox,
+                        { borderColor: colors.primary },
+                        selectedActivities.includes(activity.id) && { backgroundColor: colors.primary }
+                      ]}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        toggleActivitySelection(activity.id);
+                      }}
+                      activeOpacity={0.7}
+                    >
                       {selectedActivities.includes(activity.id) && (
                         <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={18} color="#fff" />
                       )}
-                    </View>
+                    </TouchableOpacity>
                     <View style={[styles.activityColorBar, { backgroundColor: activity.category.color }]} />
                     <View style={styles.activityInfo}>
                       <View style={styles.activityTitleRow}>
@@ -724,52 +740,67 @@ export default function AdminScreen() {
                         </Text>
                       </View>
                     </View>
+                    <IconSymbol 
+                      ios_icon_name="chevron.right" 
+                      android_material_icon_name="chevron_right" 
+                      size={24} 
+                      color={textSecondaryColor} 
+                    />
                   </View>
-                  <View style={styles.activityActions}>
-                    {activity.isExternal ? (
+                </TouchableOpacity>
+                <View style={styles.activityActions}>
+                  {activity.isExternal ? (
+                    <TouchableOpacity 
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleImportActivity(activity.id);
+                      }} 
+                      style={styles.activityActionButton}
+                      activeOpacity={0.7}
+                    >
+                      <IconSymbol 
+                        ios_icon_name="square.and.arrow.down" 
+                        android_material_icon_name="download" 
+                        size={26} 
+                        color={colors.secondary} 
+                      />
+                    </TouchableOpacity>
+                  ) : (
+                    <React.Fragment>
                       <TouchableOpacity 
-                        onPress={() => handleImportActivity(activity.id)} 
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          duplicateActivity(activity.id);
+                        }} 
                         style={styles.activityActionButton}
                         activeOpacity={0.7}
                       >
                         <IconSymbol 
-                          ios_icon_name="square.and.arrow.down" 
-                          android_material_icon_name="download" 
-                          size={26} 
+                          ios_icon_name="doc.on.doc" 
+                          android_material_icon_name="content_copy" 
+                          size={24} 
                           color={colors.secondary} 
                         />
                       </TouchableOpacity>
-                    ) : (
-                      <React.Fragment>
-                        <TouchableOpacity 
-                          onPress={() => duplicateActivity(activity.id)} 
-                          style={styles.activityActionButton}
-                          activeOpacity={0.7}
-                        >
-                          <IconSymbol 
-                            ios_icon_name="doc.on.doc" 
-                            android_material_icon_name="content_copy" 
-                            size={24} 
-                            color={colors.secondary} 
-                          />
-                        </TouchableOpacity>
-                        <TouchableOpacity 
-                          onPress={() => deleteActivity(activity.id)} 
-                          style={styles.activityActionButton}
-                          activeOpacity={0.7}
-                        >
-                          <IconSymbol 
-                            ios_icon_name="trash" 
-                            android_material_icon_name="delete" 
-                            size={24} 
-                            color={colors.error} 
-                          />
-                        </TouchableOpacity>
-                      </React.Fragment>
-                    )}
-                  </View>
+                      <TouchableOpacity 
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          deleteActivity(activity.id);
+                        }} 
+                        style={styles.activityActionButton}
+                        activeOpacity={0.7}
+                      >
+                        <IconSymbol 
+                          ios_icon_name="trash" 
+                          android_material_icon_name="delete" 
+                          size={24} 
+                          color={colors.error} 
+                        />
+                      </TouchableOpacity>
+                    </React.Fragment>
+                  )}
                 </View>
-              </TouchableOpacity>
+              </View>
             ))
           )}
         </View>
@@ -1229,14 +1260,15 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   externalActivityCard: {
     borderWidth: 2,
   },
   activityContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flex: 1,
   },
   activityLeft: {
     flexDirection: 'row',
