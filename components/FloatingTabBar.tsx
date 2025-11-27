@@ -9,6 +9,7 @@ export interface TabBarItem {
   name: string;
   route: string;
   icon: string;
+  materialIcon: string;
   label: string;
 }
 
@@ -37,7 +38,7 @@ export default function FloatingTabBar({ tabs }: FloatingTabBarProps) {
             >
               <IconSymbol
                 ios_icon_name={tab.icon as any}
-                android_material_icon_name={tab.icon as any}
+                android_material_icon_name={tab.materialIcon as any}
                 size={24}
                 color={active ? colors.primary : colors.textSecondary}
               />
