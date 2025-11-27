@@ -64,6 +64,13 @@ export default function TasksScreen() {
     }
   };
 
+  const getCategoryNames = (categoryIds: string[]) => {
+    return categoryIds
+      .map(id => categories.find(c => c.id === id)?.name.toLowerCase())
+      .filter(Boolean)
+      .join(', ');
+  };
+
   const bgColor = isDark ? '#1a1a1a' : colors.background;
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
   const textColor = isDark ? '#e3e3e3' : colors.text;
@@ -149,10 +156,7 @@ export default function TasksScreen() {
               <View style={styles.categoriesRow}>
                 <IconSymbol ios_icon_name="tag.fill" android_material_icon_name="label" size={14} color={textSecondaryColor} />
                 <Text style={[styles.categoriesText, { color: textSecondaryColor }]}>
-                  Vises automatisk på alle {task.categoryIds.map((id, catIndex) => {
-                    const category = categories.find(c => c.id === id);
-                    return <React.Fragment key={`cat-${id}-${catIndex}`}>{category?.name.toLowerCase()}</React.Fragment>;
-                  })} aktiviteter
+                  Vises automatisk på alle {getCategoryNames(task.categoryIds)} aktiviteter
                 </Text>
               </View>
             </TouchableOpacity>
