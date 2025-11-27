@@ -432,6 +432,12 @@ export default function AdminScreen() {
               onPress={() => setIsCalendarDropdownVisible(!isCalendarDropdownVisible)}
               activeOpacity={0.7}
             >
+              <IconSymbol 
+                ios_icon_name="slider.horizontal.3" 
+                android_material_icon_name="tune" 
+                size={22} 
+                color={colors.secondary} 
+              />
               <Text style={[styles.manageCalendarsText, { color: colors.secondary }]}>
                 Administrer kalendere ({externalCalendars.filter(c => c.enabled).length} aktive)
               </Text>

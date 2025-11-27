@@ -210,8 +210,8 @@ export default function ProfileScreen() {
             <View style={styles.infoSection}>
               <View style={[styles.infoBox, { backgroundColor: isDark ? '#1a3a2a' : '#e8f5e9' }]}>
                 <IconSymbol 
-                  ios_icon_name="checkmark.circle.fill" 
-                  android_material_icon_name="check_circle" 
+                  ios_icon_name="shield.checkmark.fill" 
+                  android_material_icon_name="verified_user" 
                   size={28} 
                   color={colors.primary} 
                 />
