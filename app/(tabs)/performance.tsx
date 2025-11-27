@@ -3,6 +3,7 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView, useColorScheme } from 'react-native';
 import { useFootball } from '@/contexts/FootballContext';
 import { colors } from '@/styles/commonStyles';
+import { getWeek } from 'date-fns';
 
 export default function PerformanceScreen() {
   const { trophies, currentWeekStats } = useFootball();
@@ -40,7 +41,7 @@ export default function PerformanceScreen() {
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
 
-  const currentWeek = new Date().getWeek();
+  const currentWeek = getWeek(new Date());
   const currentYear = new Date().getFullYear();
 
   return (
@@ -102,7 +103,7 @@ export default function PerformanceScreen() {
           </View>
         ) : (
           trophies.map((trophy, index) => (
-            <View key={index} style={[styles.historyCard, { backgroundColor: cardBgColor }]}>
+            <View key={`trophy-${trophy.week}-${trophy.year}-${index}`} style={[styles.historyCard, { backgroundColor: cardBgColor }]}>
               <View style={styles.historyHeader}>
                 <View style={styles.historyLeft}>
                   <Text style={styles.historyEmoji}>{getTrophyEmoji(trophy.type)}</Text>

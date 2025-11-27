@@ -116,7 +116,7 @@ export default function TasksScreen() {
 
           {filteredTemplateTasks.map((task, index) => (
             <TouchableOpacity
-              key={index}
+              key={`template-${task.id}-${index}`}
               style={[styles.taskCard, { backgroundColor: cardBgColor }]}
               onPress={() => openTaskModal(task)}
             >
@@ -149,10 +149,10 @@ export default function TasksScreen() {
               <View style={styles.categoriesRow}>
                 <IconSymbol ios_icon_name="tag.fill" android_material_icon_name="label" size={14} color={textSecondaryColor} />
                 <Text style={[styles.categoriesText, { color: textSecondaryColor }]}>
-                  Vises automatisk på alle {task.categoryIds.map(id => {
+                  Vises automatisk på alle {task.categoryIds.map((id, catIndex) => {
                     const category = categories.find(c => c.id === id);
-                    return category?.name.toLowerCase();
-                  }).join(', ')} aktiviteter
+                    return <React.Fragment key={`cat-${id}-${catIndex}`}>{category?.name.toLowerCase()}</React.Fragment>;
+                  })} aktiviteter
                 </Text>
               </View>
             </TouchableOpacity>
@@ -175,7 +175,7 @@ export default function TasksScreen() {
             </View>
           ) : (
             activityTasks.map((task, index) => (
-              <View key={index} style={[styles.taskCard, { backgroundColor: cardBgColor }]}>
+              <View key={`activity-${task.id}-${index}`} style={[styles.taskCard, { backgroundColor: cardBgColor }]}>
                 <View style={styles.taskHeader}>
                   <View style={styles.taskHeaderLeft}>
                     <View style={[styles.checkbox, task.completed && styles.checkboxChecked]}>
@@ -258,7 +258,7 @@ export default function TasksScreen() {
               <View style={styles.categoriesGrid}>
                 {categories.map((category, index) => (
                   <TouchableOpacity
-                    key={index}
+                    key={`modal-cat-${category.id}-${index}`}
                     style={[
                       styles.categoryChip,
                       { backgroundColor: selectedTask?.categoryIds.includes(category.id) ? category.color : bgColor },
