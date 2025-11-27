@@ -5,6 +5,7 @@ import { useFootball } from '@/contexts/FootballContext';
 import { colors } from '@/styles/commonStyles';
 import { Activity } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
+import { getWeek } from 'date-fns';
 
 export default function HomeScreen() {
   const { currentWeekStats, todayActivities, activities, toggleTaskCompletion } = useFootball();
@@ -57,7 +58,7 @@ export default function HomeScreen() {
     
     upcoming.forEach(activity => {
       const activityDate = new Date(activity.date);
-      const weekNumber = activityDate.getWeek();
+      const weekNumber = getWeek(activityDate);
       const year = activityDate.getFullYear();
       const key = `Uge ${weekNumber}`;
       
@@ -86,7 +87,7 @@ export default function HomeScreen() {
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
 
-  const currentWeek = new Date().getWeek();
+  const currentWeek = getWeek(new Date());
   const currentYear = new Date().getFullYear();
 
   return (
