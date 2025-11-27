@@ -4,77 +4,6 @@ import { Activity, ActivityCategory, Task, Trophy, ExternalCalendar } from '@/ty
 import { fetchAndParseICalendar, formatTimeFromDate } from '@/utils/icalParser';
 import { supabase } from '@/app/integrations/supabase/client';
 
-const defaultCategories: ActivityCategory[] = [
-  { id: '1', name: 'Træning', color: '#4CAF50', emoji: '⚽' },
-  { id: '2', name: 'Styrketræning', color: '#2196F3', emoji: '💪' },
-  { id: '3', name: 'VR træning', color: '#9C27B0', emoji: '🥽' },
-  { id: '4', name: 'Kamp', color: '#FF9800', emoji: '🏆' },
-  { id: '5', name: 'Turnering', color: '#F44336', emoji: '🎯' },
-];
-
-const defaultTasks: Task[] = [
-  {
-    id: 't1',
-    title: 'VR træning',
-    description: 'Gennemfør VR træning',
-    completed: false,
-    isTemplate: true,
-    categoryIds: ['3'],
-    reminder: 15,
-    subtasks: [],
-  },
-  {
-    id: 't2',
-    title: 'Fokuspunkter til træning',
-    description: 'Gennemgå fokuspunkter',
-    completed: false,
-    isTemplate: true,
-    categoryIds: ['1'],
-    reminder: 45,
-    subtasks: [],
-  },
-  {
-    id: 't3',
-    title: 'Åndedrætsøvelser',
-    description: 'Udfør åndedrætsøvelser',
-    completed: false,
-    isTemplate: true,
-    categoryIds: ['1', '4', '5'],
-    reminder: 15,
-    subtasks: [],
-  },
-  {
-    id: 't4',
-    title: 'Styrketræning',
-    description: 'Gennemfør styrketræning',
-    completed: false,
-    isTemplate: true,
-    categoryIds: ['2'],
-    reminder: 15,
-    subtasks: [],
-  },
-  {
-    id: 't5',
-    title: 'Pak fodboldtaske',
-    description: 'Pak alt nødvendigt udstyr',
-    completed: false,
-    isTemplate: true,
-    categoryIds: ['1', '4', '5'],
-    reminder: 90,
-    subtasks: [],
-  },
-  {
-    id: 't6',
-    title: 'Fokuspunkter til kamp',
-    description: 'Gennemgå fokuspunkter',
-    completed: false,
-    isTemplate: true,
-    categoryIds: ['4'],
-    reminder: 60,
-    subtasks: [],
-  },
-];
-
 function getWeekNumber(date: Date): number {
   const d = new Date(date.getTime());
   d.setHours(0, 0, 0, 0);
@@ -84,8 +13,8 @@ function getWeekNumber(date: Date): number {
 }
 
 export function useFootballData() {
-  const [categories, setCategories] = useState<ActivityCategory[]>(defaultCategories);
-  const [tasks, setTasks] = useState<Task[]>(defaultTasks);
+  const [categories, setCategories] = useState<ActivityCategory[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [trophies, setTrophies] = useState<Trophy[]>([]);
   const [externalCalendars, setExternalCalendars] = useState<ExternalCalendar[]>([]);
@@ -105,7 +34,10 @@ export function useFootballData() {
 
   // Load categories from Supabase
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) {
+      setIsLoading(false);
+      return;
+    }
 
     const loadCategories = async () => {
       console.log('Loading categories for user:', userId);
@@ -116,6 +48,7 @@ export function useFootballData() {
 
       if (error) {
         console.error('Error loading categories:', error);
+        setIsLoading(false);
         return;
       }
 
@@ -129,11 +62,47 @@ export function useFootballData() {
         console.log('Loaded categories:', loadedCategories.length);
         setCategories(loadedCategories);
       } else {
-        console.log('No categories found, using defaults');
+        console.log('No categories found in database');
+        setCategories([]);
       }
     };
 
     loadCategories();
+  }, [userId]);
+
+  // Load tasks from Supabase
+  useEffect(() => {
+    if (!userId) return;
+
+    const loadTasks = async () => {
+      console.log('Loading tasks for user:', userId);
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('Error loading tasks:', error);
+        return;
+      }
+
+      if (data) {
+        const loadedTasks: Task[] = data.map(task => ({
+          id: task.id,
+          title: task.title,
+          description: task.description || '',
+          completed: task.completed || false,
+          isTemplate: task.is_template || false,
+          categoryIds: task.category_ids || [],
+          reminder: task.reminder_minutes || undefined,
+          subtasks: task.subtasks || [],
+        }));
+        console.log('Loaded tasks:', loadedTasks.length);
+        setTasks(loadedTasks);
+      }
+    };
+
+    loadTasks();
   }, [userId]);
 
   // Load external calendars from Supabase
@@ -171,7 +140,10 @@ export function useFootballData() {
 
   // Load activities from Supabase (including external ones)
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) {
+      setIsLoading(false);
+      return;
+    }
 
     const loadActivities = async () => {
       console.log('Loading activities for user:', userId);
@@ -230,71 +202,40 @@ export function useFootballData() {
     loadActivities();
   }, [userId, categories]);
 
-  const generateSampleActivities = useCallback(() => {
-    const now = new Date();
-    const sampleActivities: Activity[] = [];
-
-    for (let i = 0; i < 20; i++) {
-      const date = new Date(now);
-      date.setDate(date.getDate() + i - 5);
-      
-      const categoryIndex = i % categories.length;
-      const category = categories[categoryIndex];
-      
-      const activityTasks = tasks
-        .filter(task => task.isTemplate && task.categoryIds.includes(category.id))
-        .map(task => ({
-          ...task,
-          id: `${task.id}-${i}`,
-          isTemplate: false,
-          completed: Math.random() > 0.3,
-        }));
-
-      sampleActivities.push({
-        id: `activity-${i}`,
-        title: category.name,
-        date,
-        time: i % 2 === 0 ? '16:00' : '19:20',
-        location: i % 3 === 0 ? 'Omklædningsrum på 1.sal' : 'Hjemme',
-        category,
-        tasks: activityTasks,
-      });
-    }
-
-    setActivities(sampleActivities);
-  }, [categories, tasks]);
-
+  // Load trophies from database
   useEffect(() => {
-    if (!userId && activities.length === 0) {
-      generateSampleActivities();
-    }
-    generateSampleTrophies();
-  }, [generateSampleActivities, userId, activities.length]);
+    if (!userId) return;
 
-  const generateSampleTrophies = () => {
-    const sampleTrophies: Trophy[] = [];
-    const now = new Date();
-    
-    for (let i = 0; i < 10; i++) {
-      const percentage = Math.floor(Math.random() * 100);
-      let type: 'gold' | 'silver' | 'bronze';
-      
-      if (percentage >= 80) type = 'gold';
-      else if (percentage >= 60) type = 'silver';
-      else type = 'bronze';
+    const loadTrophies = async () => {
+      console.log('Loading trophies for user:', userId);
+      const { data, error } = await supabase
+        .from('trophies')
+        .select('*')
+        .eq('user_id', userId)
+        .order('year', { ascending: false })
+        .order('week', { ascending: false });
 
-      sampleTrophies.push({
-        week: getWeekNumber(now) - i,
-        year: now.getFullYear(),
-        type,
-        percentage,
-        completedTasks: Math.floor(percentage * 0.09),
-        totalTasks: 9,
-      });
-    }
+      if (error) {
+        console.error('Error loading trophies:', error);
+        return;
+      }
 
-    setTrophies(sampleTrophies);
-  };
+      if (data) {
+        const loadedTrophies: Trophy[] = data.map(trophy => ({
+          week: trophy.week,
+          year: trophy.year,
+          type: trophy.type as 'gold' | 'silver' | 'bronze',
+          percentage: trophy.percentage,
+          completedTasks: trophy.completed_tasks,
+          totalTasks: trophy.total_tasks,
+        }));
+        console.log('Loaded trophies:', loadedTrophies.length);
+        setTrophies(loadedTrophies);
+      }
+    };
+
+    loadTrophies();
+  }, [userId]);
 
   const fetchExternalCalendarEvents = useCallback(async (calendar: ExternalCalendar) => {
     if (!userId) {
