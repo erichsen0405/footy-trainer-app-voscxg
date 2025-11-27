@@ -4,6 +4,9 @@
  * 
  * This file provides a reference for mapping iOS SF Symbol names to Material Icon names.
  * Use this when implementing IconSymbol components throughout the app.
+ * 
+ * IMPORTANT: All Material Icon names must exist in @expo/vector-icons/MaterialIcons
+ * Verify icon names at: https://icons.expo.fyi/Index/MaterialIcons
  */
 
 export const iconMappings = {
@@ -24,6 +27,10 @@ export const iconMappings = {
   'checkmark': 'check',
   'checkmark.circle': 'check_circle_outline',
   'checkmark.circle.fill': 'check_circle',
+  'arrow.left': 'arrow_back',
+  'arrow.right': 'arrow_forward',
+  'arrow.up': 'arrow_upward',
+  'arrow.down': 'arrow_downward',
   
   // Actions
   'pencil': 'edit',
@@ -31,11 +38,15 @@ export const iconMappings = {
   'doc.on.doc': 'content_copy',
   'square.and.arrow.down': 'download',
   'square.and.arrow.up': 'upload',
+  'square.and.arrow.up.fill': 'share',
   'arrow.clockwise': 'sync',
   'arrow.counterclockwise': 'undo',
+  'arrow.right.square': 'exit_to_app',
   
-  // Content
+  // Content & Text
   'text.alignleft': 'format_align_left',
+  'text.aligncenter': 'format_align_center',
+  'text.alignright': 'format_align_right',
   'doc.text': 'description',
   'doc.text.fill': 'description',
   'square.grid.3x3': 'apps',
@@ -88,6 +99,7 @@ export const iconMappings = {
   'exclamationmark.triangle.fill': 'warning',
   'exclamationmark.circle': 'error',
   'exclamationmark.circle.fill': 'error',
+  'shield.checkmark.fill': 'verified_user',
   
   // Search & Navigation
   'magnifyingglass': 'search',
@@ -113,8 +125,12 @@ export const iconMappings = {
 /**
  * Get the Material Icon name for a given SF Symbol name
  * @param sfSymbolName - The SF Symbol name (iOS)
- * @returns The corresponding Material Icon name, or 'help' if not found
+ * @returns The corresponding Material Icon name, or 'help_outline' if not found
  */
 export function getMaterialIconName(sfSymbolName: string): string {
-  return iconMappings[sfSymbolName as keyof typeof iconMappings] || 'help';
+  const mapped = iconMappings[sfSymbolName as keyof typeof iconMappings];
+  if (!mapped) {
+    console.warn(`⚠️ No Material Icon mapping found for SF Symbol: "${sfSymbolName}". Using fallback icon.`);
+  }
+  return mapped || 'help_outline';
 }

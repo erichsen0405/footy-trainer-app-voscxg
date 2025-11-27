@@ -269,7 +269,7 @@ export default function ActivityDetailsScreen() {
             <View style={styles.detailRow}>
               <IconSymbol
                 ios_icon_name="text.alignleft"
-                android_material_icon_name="title"
+                android_material_icon_name="subject"
                 size={24}
                 color={activity.category.color}
               />
@@ -341,7 +341,7 @@ export default function ActivityDetailsScreen() {
             <View style={styles.detailRow}>
               <IconSymbol
                 ios_icon_name="calendar.badge.clock"
-                android_material_icon_name="schedule"
+                android_material_icon_name="event"
                 size={24}
                 color={activity.category.color}
               />
