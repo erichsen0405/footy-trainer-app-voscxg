@@ -1,7 +1,8 @@
 
-import { StyleSheet } from 'react-native';
+import { StyleSheet, useColorScheme } from 'react-native';
 
-export const colors = {
+// Light mode colors
+const lightColors = {
   primary: '#4CAF50',
   secondary: '#2196F3',
   accent: '#FF9800',
@@ -19,14 +20,41 @@ export const colors = {
   bronze: '#CD7F32',
 };
 
+// Dark mode colors
+const darkColors = {
+  primary: '#4CAF50',
+  secondary: '#2196F3',
+  accent: '#FF9800',
+  background: '#000000',
+  backgroundAlt: '#1C1C1E',
+  text: '#FFFFFF',
+  textSecondary: '#8E8E93',
+  card: '#1C1C1E',
+  highlight: '#2C2C2E',
+  success: '#4CAF50',
+  warning: '#FFC107',
+  error: '#F44336',
+  gold: '#FFD700',
+  silver: '#C0C0C0',
+  bronze: '#CD7F32',
+};
+
+// Export a function to get colors based on color scheme
+export const getColors = (colorScheme: 'light' | 'dark' | null | undefined) => {
+  return colorScheme === 'dark' ? darkColors : lightColors;
+};
+
+// Default export for backward compatibility
+export const colors = lightColors;
+
 export const buttonStyles = StyleSheet.create({
   instructionsButton: {
-    backgroundColor: colors.primary,
+    backgroundColor: lightColors.primary,
     alignSelf: 'center',
     width: '100%',
   },
   backButton: {
-    backgroundColor: colors.backgroundAlt,
+    backgroundColor: lightColors.backgroundAlt,
     alignSelf: 'center',
     width: '100%',
   },
@@ -34,13 +62,13 @@ export const buttonStyles = StyleSheet.create({
 
 export const commonStyles = StyleSheet.create({
   wrapper: {
-    backgroundColor: colors.background,
+    backgroundColor: lightColors.background,
     width: '100%',
     height: '100%',
   },
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: lightColors.background,
     width: '100%',
     height: '100%',
   },
@@ -55,13 +83,13 @@ export const commonStyles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '800',
     textAlign: 'center',
-    color: colors.text,
+    color: lightColors.text,
     marginBottom: 10
   },
   text: {
     fontSize: 16,
     fontWeight: '500',
-    color: colors.text,
+    color: lightColors.text,
     marginBottom: 8,
     lineHeight: 24,
     textAlign: 'center',
@@ -77,7 +105,7 @@ export const commonStyles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   card: {
-    backgroundColor: colors.backgroundAlt,
+    backgroundColor: lightColors.backgroundAlt,
     borderRadius: 16,
     padding: 16,
     marginVertical: 8,

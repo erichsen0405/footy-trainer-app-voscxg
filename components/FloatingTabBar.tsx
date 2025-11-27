@@ -1,9 +1,10 @@
 
 import React from 'react';
-import { View, TouchableOpacity, Text, StyleSheet, Platform } from 'react-native';
+import { View, TouchableOpacity, Text, StyleSheet, Platform, useColorScheme } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { IconSymbol } from './IconSymbol';
-import { colors } from '@/styles/commonStyles';
+import { getColors } from '@/styles/commonStyles';
+import { BlurView } from 'expo-blur';
 
 export interface TabBarItem {
   name: string;
@@ -20,6 +21,8 @@ interface FloatingTabBarProps {
 export default function FloatingTabBar({ tabs }: FloatingTabBarProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const colorScheme = useColorScheme();
+  const colors = getColors(colorScheme);
 
   const isActive = (route: string) => {
     return pathname.startsWith(route);
@@ -27,13 +30,33 @@ export default function FloatingTabBar({ tabs }: FloatingTabBarProps) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.tabBar}>
+      <BlurView 
+        intensity={80} 
+        tint={colorScheme === 'dark' ? 'dark' : 'light'}
+        style={[styles.tabBar, { 
+          backgroundColor: colorScheme === 'dark' 
+            ? 'rgba(28, 28, 30, 0.95)' 
+            : 'rgba(255, 255, 255, 0.95)',
+          borderWidth: 1,
+          borderColor: colorScheme === 'dark' 
+            ? 'rgba(255, 255, 255, 0.1)' 
+            : 'rgba(0, 0, 0, 0.1)',
+        }]}
+      >
         {tabs.map((tab, index) => {
           const active = isActive(tab.route);
           return (
             <TouchableOpacity
               key={index}
-              style={styles.tab}
+              style={[
+                styles.tab,
+                active && {
+                  backgroundColor: colorScheme === 'dark' 
+                    ? 'rgba(76, 175, 80, 0.15)' 
+                    : 'rgba(76, 175, 80, 0.1)',
+                  borderRadius: 16,
+                }
+              ]}
               onPress={() => router.push(tab.route as any)}
             >
               <IconSymbol
@@ -42,13 +65,16 @@ export default function FloatingTabBar({ tabs }: FloatingTabBarProps) {
                 size={24}
                 color={active ? colors.primary : colors.textSecondary}
               />
-              <Text style={[styles.label, { color: active ? colors.primary : colors.textSecondary }]}>
+              <Text style={[
+                styles.label, 
+                { color: active ? colors.primary : colors.textSecondary }
+              ]}>
                 {tab.label}
               </Text>
             </TouchableOpacity>
           );
         })}
-      </View>
+      </BlurView>
     </View>
   );
 }
@@ -67,18 +93,19 @@ const styles = StyleSheet.create({
   },
   tabBar: {
     flexDirection: 'row',
-    backgroundColor: colors.card,
-    borderRadius: 25,
-    paddingVertical: 8,
+    borderRadius: 28,
+    paddingVertical: 10,
     paddingHorizontal: 8,
-    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.15)',
-    elevation: 8,
+    boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.25)',
+    elevation: 12,
+    overflow: 'hidden',
   },
   tab: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
   },
   label: {
     fontSize: 11,
