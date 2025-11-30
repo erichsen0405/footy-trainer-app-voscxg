@@ -6,15 +6,38 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { GlassView } from 'expo-glass-effect';
 import { useTheme } from '@react-navigation/native';
 import { supabase } from '@/app/integrations/supabase/client';
+import CreatePlayerModal from '@/components/CreatePlayerModal';
+import PlayersList from '@/components/PlayersList';
+
+interface UserProfile {
+  full_name: string;
+  phone_number: string;
+}
+
+interface AdminInfo {
+  full_name: string;
+  phone_number: string;
+  email: string;
+}
 
 export default function ProfileScreen() {
   const theme = useTheme();
   const [user, setUser] = useState<any>(null);
+  const [userRole, setUserRole] = useState<'admin' | 'player' | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [adminInfo, setAdminInfo] = useState<AdminInfo | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [showCreatePlayerModal, setShowCreatePlayerModal] = useState(false);
+  const [playersRefreshTrigger, setPlayersRefreshTrigger] = useState(0);
+  
+  // Profile editing
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
 
   useEffect(() => {
     // Check current user
@@ -22,17 +45,164 @@ export default function ProfileScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       console.log('Current user:', user);
       setUser(user);
+      
+      if (user) {
+        await fetchUserRole(user.id);
+        await fetchUserProfile(user.id);
+      }
     };
     checkUser();
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       console.log('Auth state changed:', _event, session?.user);
       setUser(session?.user || null);
+      
+      if (session?.user) {
+        await fetchUserRole(session.user.id);
+        await fetchUserProfile(session.user.id);
+      } else {
+        setUserRole(null);
+        setProfile(null);
+        setAdminInfo(null);
+      }
     });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  const fetchUserRole = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .single();
+
+      if (error) {
+        console.error('Error fetching user role:', error);
+        // Default to admin if no role is set
+        setUserRole('admin');
+        return;
+      }
+
+      setUserRole(data?.role as 'admin' | 'player');
+      
+      // If player, fetch admin info
+      if (data?.role === 'player') {
+        await fetchAdminInfo(userId);
+      }
+    } catch (error) {
+      console.error('Error in fetchUserRole:', error);
+      setUserRole('admin');
+    }
+  };
+
+  const fetchUserProfile = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('full_name, phone_number')
+        .eq('user_id', userId)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching profile:', error);
+        return;
+      }
+
+      if (data) {
+        setProfile(data);
+        setEditName(data.full_name || '');
+        setEditPhone(data.phone_number || '');
+      }
+    } catch (error) {
+      console.error('Error in fetchUserProfile:', error);
+    }
+  };
+
+  const fetchAdminInfo = async (playerId: string) => {
+    try {
+      // Get admin relationship
+      const { data: relationship, error: relError } = await supabase
+        .from('admin_player_relationships')
+        .select('admin_id')
+        .eq('player_id', playerId)
+        .single();
+
+      if (relError || !relationship) {
+        console.error('Error fetching admin relationship:', relError);
+        return;
+      }
+
+      // Get admin profile
+      const { data: adminProfile, error: profileError } = await supabase
+        .from('profiles')
+        .select('full_name, phone_number')
+        .eq('user_id', relationship.admin_id)
+        .single();
+
+      if (profileError) {
+        console.error('Error fetching admin profile:', profileError);
+      }
+
+      // We can't directly get the email from auth.users, so we'll show what we have
+      setAdminInfo({
+        full_name: adminProfile?.full_name || 'Din træner',
+        phone_number: adminProfile?.phone_number || '',
+        email: '', // Email not available through RLS
+      });
+    } catch (error) {
+      console.error('Error in fetchAdminInfo:', error);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    if (!user) return;
+
+    try {
+      setLoading(true);
+
+      const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (existingProfile) {
+        // Update existing profile
+        const { error } = await supabase
+          .from('profiles')
+          .update({
+            full_name: editName,
+            phone_number: editPhone,
+          })
+          .eq('user_id', user.id);
+
+        if (error) throw error;
+      } else {
+        // Create new profile
+        const { error } = await supabase
+          .from('profiles')
+          .insert({
+            user_id: user.id,
+            full_name: editName,
+            phone_number: editPhone,
+          });
+
+        if (error) throw error;
+      }
+
+      await fetchUserProfile(user.id);
+      setIsEditingProfile(false);
+      Alert.alert('Succes', 'Din profil er opdateret');
+    } catch (error: any) {
+      console.error('Error saving profile:', error);
+      Alert.alert('Fejl', 'Kunne ikke gemme profil');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleAuth = async () => {
     if (!email || !password) {
@@ -40,14 +210,12 @@ export default function ProfileScreen() {
       return;
     }
 
-    // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       Alert.alert('Fejl', 'Indtast venligst en gyldig email-adresse');
       return;
     }
 
-    // Password length validation
     if (password.length < 6) {
       Alert.alert('Fejl', 'Adgangskoden skal være mindst 6 tegn lang');
       return;
@@ -75,7 +243,6 @@ export default function ProfileScreen() {
 
         if (error) {
           console.error('Sign up error:', error);
-          // Show the actual error message from Supabase
           Alert.alert(
             'Kunne ikke oprette konto',
             error.message || 'Der opstod en fejl. Prøv venligst igen.'
@@ -83,20 +250,23 @@ export default function ProfileScreen() {
           return;
         }
 
-        // Show success message in the app
+        // Set default role as admin for self-signup
+        if (data.user) {
+          await supabase.from('user_roles').insert({
+            user_id: data.user.id,
+            role: 'admin',
+          });
+        }
+
         setShowSuccessMessage(true);
-        
-        // Clear form fields
         setEmail('');
         setPassword('');
 
-        // Wait 3 seconds to show the success message, then switch to login
         setTimeout(() => {
           setShowSuccessMessage(false);
           setIsSignUp(false);
         }, 3000);
 
-        // Check if email confirmation is required
         if (data.user && !data.session) {
           Alert.alert(
             'Bekræft din email ✉️',
@@ -122,7 +292,6 @@ export default function ProfileScreen() {
         if (error) {
           console.error('Sign in error:', error);
           
-          // Provide more helpful error messages
           if (error.message.includes('Invalid login credentials')) {
             Alert.alert(
               'Login fejlede', 
@@ -173,10 +342,179 @@ export default function ProfileScreen() {
           // Logged in view
           <>
             <GlassView style={styles.profileHeader} glassEffectStyle="regular">
-              <IconSymbol ios_icon_name="person.circle.fill" android_material_icon_name="person" size={80} color={theme.colors.primary} />
-              <Text style={[styles.name, { color: theme.colors.text }]}>{user.email?.split('@')[0] || 'Bruger'}</Text>
-              <Text style={[styles.email, { color: theme.dark ? '#98989D' : '#666' }]}>{user.email}</Text>
+              <IconSymbol 
+                ios_icon_name="person.circle.fill" 
+                android_material_icon_name="person" 
+                size={80} 
+                color={theme.colors.primary} 
+              />
+              <Text style={[styles.name, { color: theme.colors.text }]}>
+                {profile?.full_name || user.email?.split('@')[0] || 'Bruger'}
+              </Text>
+              <Text style={[styles.email, { color: theme.dark ? '#98989D' : '#666' }]}>
+                {user.email}
+              </Text>
+              {userRole && (
+                <View style={[styles.roleBadge, { 
+                  backgroundColor: userRole === 'admin' ? theme.colors.primary : '#FF9500' 
+                }]}>
+                  <Text style={styles.roleText}>
+                    {userRole === 'admin' ? 'Admin/Træner' : 'Spiller'}
+                  </Text>
+                </View>
+              )}
             </GlassView>
+
+            {/* Profile Info Section */}
+            <GlassView style={styles.section} glassEffectStyle="regular">
+              <View style={styles.sectionHeader}>
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+                  Profil Information
+                </Text>
+                {!isEditingProfile && (
+                  <TouchableOpacity onPress={() => setIsEditingProfile(true)}>
+                    <IconSymbol
+                      ios_icon_name="pencil"
+                      android_material_icon_name="edit"
+                      size={20}
+                      color={theme.colors.primary}
+                    />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {isEditingProfile ? (
+                <View style={styles.editForm}>
+                  <Text style={[styles.label, { color: theme.colors.text }]}>Navn</Text>
+                  <TextInput
+                    style={[styles.input, { 
+                      backgroundColor: theme.dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+                      color: theme.colors.text 
+                    }]}
+                    value={editName}
+                    onChangeText={setEditName}
+                    placeholder="Dit navn"
+                    placeholderTextColor={theme.dark ? '#98989D' : '#666'}
+                  />
+
+                  <Text style={[styles.label, { color: theme.colors.text }]}>Telefon</Text>
+                  <TextInput
+                    style={[styles.input, { 
+                      backgroundColor: theme.dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+                      color: theme.colors.text 
+                    }]}
+                    value={editPhone}
+                    onChangeText={setEditPhone}
+                    placeholder="+45 12 34 56 78"
+                    placeholderTextColor={theme.dark ? '#98989D' : '#666'}
+                    keyboardType="phone-pad"
+                  />
+
+                  <View style={styles.editButtons}>
+                    <TouchableOpacity
+                      style={[styles.button, { backgroundColor: theme.dark ? '#3a3a3c' : '#e5e5e5' }]}
+                      onPress={() => {
+                        setIsEditingProfile(false);
+                        setEditName(profile?.full_name || '');
+                        setEditPhone(profile?.phone_number || '');
+                      }}
+                    >
+                      <Text style={[styles.buttonText, { color: theme.colors.text }]}>Annuller</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.button, { backgroundColor: theme.colors.primary }]}
+                      onPress={handleSaveProfile}
+                      disabled={loading}
+                    >
+                      {loading ? (
+                        <ActivityIndicator color="#fff" size="small" />
+                      ) : (
+                        <Text style={[styles.buttonText, { color: '#fff' }]}>Gem</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.profileInfo}>
+                  {profile?.full_name && (
+                    <View style={styles.infoRow}>
+                      <IconSymbol
+                        ios_icon_name="person.fill"
+                        android_material_icon_name="person"
+                        size={20}
+                        color={theme.colors.primary}
+                      />
+                      <Text style={[styles.infoText, { color: theme.colors.text }]}>
+                        {profile.full_name}
+                      </Text>
+                    </View>
+                  )}
+                  {profile?.phone_number && (
+                    <View style={styles.infoRow}>
+                      <IconSymbol
+                        ios_icon_name="phone.fill"
+                        android_material_icon_name="phone"
+                        size={20}
+                        color={theme.colors.primary}
+                      />
+                      <Text style={[styles.infoText, { color: theme.colors.text }]}>
+                        {profile.phone_number}
+                      </Text>
+                    </View>
+                  )}
+                  {!profile?.full_name && !profile?.phone_number && (
+                    <Text style={[styles.emptyText, { color: theme.dark ? '#98989D' : '#666' }]}>
+                      Ingen profilinformation tilgængelig. Tryk på rediger for at tilføje.
+                    </Text>
+                  )}
+                </View>
+              )}
+            </GlassView>
+
+            {/* Admin Info for Players */}
+            {userRole === 'player' && adminInfo && (
+              <GlassView style={styles.section} glassEffectStyle="regular">
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+                  Din Træner
+                </Text>
+                <View style={styles.profileInfo}>
+                  <View style={styles.infoRow}>
+                    <IconSymbol
+                      ios_icon_name="person.fill"
+                      android_material_icon_name="person"
+                      size={20}
+                      color={theme.colors.primary}
+                    />
+                    <Text style={[styles.infoText, { color: theme.colors.text }]}>
+                      {adminInfo.full_name}
+                    </Text>
+                  </View>
+                  {adminInfo.phone_number && (
+                    <View style={styles.infoRow}>
+                      <IconSymbol
+                        ios_icon_name="phone.fill"
+                        android_material_icon_name="phone"
+                        size={20}
+                        color={theme.colors.primary}
+                      />
+                      <Text style={[styles.infoText, { color: theme.colors.text }]}>
+                        {adminInfo.phone_number}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </GlassView>
+            )}
+
+            {/* Players List for Admins */}
+            {userRole === 'admin' && (
+              <GlassView style={styles.section} glassEffectStyle="regular">
+                <PlayersList 
+                  onCreatePlayer={() => setShowCreatePlayerModal(true)}
+                  refreshTrigger={playersRefreshTrigger}
+                />
+              </GlassView>
+            )}
 
             <TouchableOpacity
               style={[styles.signOutButton, { backgroundColor: '#ff3b30' }]}
@@ -187,9 +525,8 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </>
         ) : (
-          // Login/Sign up view
+          // Login/Sign up view (same as before)
           <GlassView style={styles.authCard} glassEffectStyle="regular">
-            {/* Success Message */}
             {showSuccessMessage && (
               <View style={[styles.successMessage, { backgroundColor: theme.colors.primary }]}>
                 <IconSymbol 
@@ -312,7 +649,7 @@ export default function ProfileScreen() {
                     size={24} 
                     color={theme.colors.primary} 
                   />
-                  <Text style={[styles.infoText, { color: theme.dark ? '#98989D' : '#666' }]}>
+                  <Text style={[styles.infoBoxText, { color: theme.dark ? '#98989D' : '#666' }]}>
                     {isSignUp 
                       ? 'Efter du opretter din konto, vil du modtage en bekræftelsesmail. Du skal klikke på linket i emailen før du kan logge ind.'
                       : 'Log ind for at gemme dine data sikkert i skyen.'
@@ -324,6 +661,14 @@ export default function ProfileScreen() {
           </GlassView>
         )}
       </ScrollView>
+
+      <CreatePlayerModal
+        visible={showCreatePlayerModal}
+        onClose={() => setShowCreatePlayerModal(false)}
+        onPlayerCreated={() => {
+          setPlayersRefreshTrigger(prev => prev + 1);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -337,6 +682,7 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 20,
+    paddingBottom: 100,
   },
   profileHeader: {
     alignItems: 'center',
@@ -351,6 +697,77 @@ const styles = StyleSheet.create({
   },
   email: {
     fontSize: 16,
+  },
+  roleBadge: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginTop: 8,
+  },
+  roleText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  section: {
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 16,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  profileInfo: {
+    gap: 12,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  infoText: {
+    fontSize: 16,
+  },
+  emptyText: {
+    fontSize: 14,
+    fontStyle: 'italic',
+  },
+  editForm: {
+    gap: 8,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+    marginTop: 8,
+  },
+  input: {
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    marginBottom: 8,
+  },
+  editButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+  },
+  button: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  buttonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   signOutButton: {
     borderRadius: 12,
@@ -417,18 +834,6 @@ const styles = StyleSheet.create({
   form: {
     gap: 8,
   },
-  label: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
-    marginTop: 8,
-  },
-  input: {
-    borderRadius: 8,
-    padding: 14,
-    fontSize: 16,
-    marginBottom: 12,
-  },
   authButton: {
     paddingVertical: 16,
     borderRadius: 8,
@@ -453,7 +858,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: 'rgba(128,128,128,0.1)',
   },
-  infoText: {
+  infoBoxText: {
     flex: 1,
     fontSize: 14,
     lineHeight: 20,

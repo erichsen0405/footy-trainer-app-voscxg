@@ -4,35 +4,196 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, useCol
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
+import CreatePlayerModal from '@/components/CreatePlayerModal';
+import PlayersList from '@/components/PlayersList';
+
+interface UserProfile {
+  full_name: string;
+  phone_number: string;
+}
+
+interface AdminInfo {
+  full_name: string;
+  phone_number: string;
+  email: string;
+}
 
 export default function ProfileScreen() {
   const [user, setUser] = useState<any>(null);
+  const [userRole, setUserRole] = useState<'admin' | 'player' | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [adminInfo, setAdminInfo] = useState<AdminInfo | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [showCreatePlayerModal, setShowCreatePlayerModal] = useState(false);
+  const [playersRefreshTrigger, setPlayersRefreshTrigger] = useState(0);
+  
+  // Profile editing
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
   
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
   useEffect(() => {
-    // Check current user
     const checkUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       console.log('Current user:', user);
       setUser(user);
+      
+      if (user) {
+        await fetchUserRole(user.id);
+        await fetchUserProfile(user.id);
+      }
     };
     checkUser();
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       console.log('Auth state changed:', _event, session?.user);
       setUser(session?.user || null);
+      
+      if (session?.user) {
+        await fetchUserRole(session.user.id);
+        await fetchUserProfile(session.user.id);
+      } else {
+        setUserRole(null);
+        setProfile(null);
+        setAdminInfo(null);
+      }
     });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  const fetchUserRole = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .single();
+
+      if (error) {
+        console.error('Error fetching user role:', error);
+        setUserRole('admin');
+        return;
+      }
+
+      setUserRole(data?.role as 'admin' | 'player');
+      
+      if (data?.role === 'player') {
+        await fetchAdminInfo(userId);
+      }
+    } catch (error) {
+      console.error('Error in fetchUserRole:', error);
+      setUserRole('admin');
+    }
+  };
+
+  const fetchUserProfile = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('full_name, phone_number')
+        .eq('user_id', userId)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching profile:', error);
+        return;
+      }
+
+      if (data) {
+        setProfile(data);
+        setEditName(data.full_name || '');
+        setEditPhone(data.phone_number || '');
+      }
+    } catch (error) {
+      console.error('Error in fetchUserProfile:', error);
+    }
+  };
+
+  const fetchAdminInfo = async (playerId: string) => {
+    try {
+      const { data: relationship, error: relError } = await supabase
+        .from('admin_player_relationships')
+        .select('admin_id')
+        .eq('player_id', playerId)
+        .single();
+
+      if (relError || !relationship) {
+        console.error('Error fetching admin relationship:', relError);
+        return;
+      }
+
+      const { data: adminProfile, error: profileError } = await supabase
+        .from('profiles')
+        .select('full_name, phone_number')
+        .eq('user_id', relationship.admin_id)
+        .single();
+
+      if (profileError) {
+        console.error('Error fetching admin profile:', profileError);
+      }
+
+      setAdminInfo({
+        full_name: adminProfile?.full_name || 'Din træner',
+        phone_number: adminProfile?.phone_number || '',
+        email: '',
+      });
+    } catch (error) {
+      console.error('Error in fetchAdminInfo:', error);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    if (!user) return;
+
+    try {
+      setLoading(true);
+
+      const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (existingProfile) {
+        const { error } = await supabase
+          .from('profiles')
+          .update({
+            full_name: editName,
+            phone_number: editPhone,
+          })
+          .eq('user_id', user.id);
+
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('profiles')
+          .insert({
+            user_id: user.id,
+            full_name: editName,
+            phone_number: editPhone,
+          });
+
+        if (error) throw error;
+      }
+
+      await fetchUserProfile(user.id);
+      setIsEditingProfile(false);
+      Alert.alert('Succes', 'Din profil er opdateret');
+    } catch (error: any) {
+      console.error('Error saving profile:', error);
+      Alert.alert('Fejl', 'Kunne ikke gemme profil');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleAuth = async () => {
     if (!email || !password) {
@@ -40,14 +201,12 @@ export default function ProfileScreen() {
       return;
     }
 
-    // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       Alert.alert('Fejl', 'Indtast venligst en gyldig email-adresse');
       return;
     }
 
-    // Password length validation
     if (password.length < 6) {
       Alert.alert('Fejl', 'Adgangskoden skal være mindst 6 tegn lang');
       return;
@@ -75,7 +234,6 @@ export default function ProfileScreen() {
 
         if (error) {
           console.error('Sign up error:', error);
-          // Show the actual error message from Supabase
           Alert.alert(
             'Kunne ikke oprette konto',
             error.message || 'Der opstod en fejl. Prøv venligst igen.'
@@ -83,20 +241,22 @@ export default function ProfileScreen() {
           return;
         }
 
-        // Show success message in the app
+        if (data.user) {
+          await supabase.from('user_roles').insert({
+            user_id: data.user.id,
+            role: 'admin',
+          });
+        }
+
         setShowSuccessMessage(true);
-        
-        // Clear form fields
         setEmail('');
         setPassword('');
 
-        // Wait 3 seconds to show the success message, then switch to login
         setTimeout(() => {
           setShowSuccessMessage(false);
           setIsSignUp(false);
         }, 3000);
 
-        // Check if email confirmation is required
         if (data.user && !data.session) {
           Alert.alert(
             'Bekræft din email ✉️',
@@ -122,7 +282,6 @@ export default function ProfileScreen() {
         if (error) {
           console.error('Sign in error:', error);
           
-          // Provide more helpful error messages
           if (error.message.includes('Invalid login credentials')) {
             Alert.alert(
               'Login fejlede', 
@@ -183,48 +342,181 @@ export default function ProfileScreen() {
         </View>
 
         {user ? (
-          // Logged in view
-          <View style={[styles.card, { backgroundColor: cardBgColor }]}>
-            <View style={styles.userInfo}>
-              <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
-                <IconSymbol 
-                  ios_icon_name="person.fill" 
-                  android_material_icon_name="person" 
-                  size={48} 
-                  color="#fff" 
-                />
-              </View>
-              <View style={styles.userDetails}>
-                <Text style={[styles.userName, { color: textColor }]}>
-                  {user.email?.split('@')[0] || 'Bruger'}
-                </Text>
-                <Text style={[styles.userEmail, { color: textSecondaryColor }]}>
-                  {user.email}
-                </Text>
-                <Text style={[styles.userId, { color: textSecondaryColor }]}>
-                  ID: {user.id.substring(0, 8)}...
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.infoSection}>
-              <View style={[styles.infoBox, { backgroundColor: isDark ? '#1a3a2a' : '#e8f5e9' }]}>
-                <IconSymbol 
-                  ios_icon_name="shield.checkmark.fill" 
-                  android_material_icon_name="verified_user" 
-                  size={28} 
-                  color={colors.primary} 
-                />
-                <View style={styles.infoTextContainer}>
-                  <Text style={[styles.infoTitle, { color: textColor }]}>
-                    Dine data gemmes sikkert
+          <>
+            <View style={[styles.card, { backgroundColor: cardBgColor }]}>
+              <View style={styles.userInfo}>
+                <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
+                  <IconSymbol 
+                    ios_icon_name="person.fill" 
+                    android_material_icon_name="person" 
+                    size={48} 
+                    color="#fff" 
+                  />
+                </View>
+                <View style={styles.userDetails}>
+                  <Text style={[styles.userName, { color: textColor }]}>
+                    {profile?.full_name || user.email?.split('@')[0] || 'Bruger'}
                   </Text>
-                  <Text style={[styles.infoText, { color: textSecondaryColor }]}>
-                    Alle dine aktiviteter, opgaver og kalendere synkroniseres automatisk til skyen.
+                  <Text style={[styles.userEmail, { color: textSecondaryColor }]}>
+                    {user.email}
                   </Text>
+                  {userRole && (
+                    <View style={[styles.roleBadge, { 
+                      backgroundColor: userRole === 'admin' ? colors.primary : '#FF9500' 
+                    }]}>
+                      <Text style={styles.roleText}>
+                        {userRole === 'admin' ? 'Admin/Træner' : 'Spiller'}
+                      </Text>
+                    </View>
+                  )}
                 </View>
               </View>
             </View>
+
+            {/* Profile Info Section */}
+            <View style={[styles.card, { backgroundColor: cardBgColor }]}>
+              <View style={styles.sectionHeader}>
+                <Text style={[styles.sectionTitle, { color: textColor }]}>
+                  Profil Information
+                </Text>
+                {!isEditingProfile && (
+                  <TouchableOpacity onPress={() => setIsEditingProfile(true)}>
+                    <IconSymbol
+                      ios_icon_name="pencil"
+                      android_material_icon_name="edit"
+                      size={20}
+                      color={colors.primary}
+                    />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {isEditingProfile ? (
+                <View style={styles.editForm}>
+                  <Text style={[styles.label, { color: textColor }]}>Navn</Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+                    value={editName}
+                    onChangeText={setEditName}
+                    placeholder="Dit navn"
+                    placeholderTextColor={textSecondaryColor}
+                  />
+
+                  <Text style={[styles.label, { color: textColor }]}>Telefon</Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+                    value={editPhone}
+                    onChangeText={setEditPhone}
+                    placeholder="+45 12 34 56 78"
+                    placeholderTextColor={textSecondaryColor}
+                    keyboardType="phone-pad"
+                  />
+
+                  <View style={styles.editButtons}>
+                    <TouchableOpacity
+                      style={[styles.button, { backgroundColor: colors.highlight }]}
+                      onPress={() => {
+                        setIsEditingProfile(false);
+                        setEditName(profile?.full_name || '');
+                        setEditPhone(profile?.phone_number || '');
+                      }}
+                    >
+                      <Text style={[styles.buttonText, { color: textColor }]}>Annuller</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.button, { backgroundColor: colors.primary }]}
+                      onPress={handleSaveProfile}
+                      disabled={loading}
+                    >
+                      {loading ? (
+                        <ActivityIndicator color="#fff" size="small" />
+                      ) : (
+                        <Text style={[styles.buttonText, { color: '#fff' }]}>Gem</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.profileInfo}>
+                  {profile?.full_name && (
+                    <View style={styles.infoRow}>
+                      <IconSymbol
+                        ios_icon_name="person.fill"
+                        android_material_icon_name="person"
+                        size={20}
+                        color={colors.primary}
+                      />
+                      <Text style={[styles.infoText, { color: textColor }]}>
+                        {profile.full_name}
+                      </Text>
+                    </View>
+                  )}
+                  {profile?.phone_number && (
+                    <View style={styles.infoRow}>
+                      <IconSymbol
+                        ios_icon_name="phone.fill"
+                        android_material_icon_name="phone"
+                        size={20}
+                        color={colors.primary}
+                      />
+                      <Text style={[styles.infoText, { color: textColor }]}>
+                        {profile.phone_number}
+                      </Text>
+                    </View>
+                  )}
+                  {!profile?.full_name && !profile?.phone_number && (
+                    <Text style={[styles.emptyText, { color: textSecondaryColor }]}>
+                      Ingen profilinformation tilgængelig. Tryk på rediger for at tilføje.
+                    </Text>
+                  )}
+                </View>
+              )}
+            </View>
+
+            {/* Admin Info for Players */}
+            {userRole === 'player' && adminInfo && (
+              <View style={[styles.card, { backgroundColor: cardBgColor }]}>
+                <Text style={[styles.sectionTitle, { color: textColor }]}>
+                  Din Træner
+                </Text>
+                <View style={styles.profileInfo}>
+                  <View style={styles.infoRow}>
+                    <IconSymbol
+                      ios_icon_name="person.fill"
+                      android_material_icon_name="person"
+                      size={20}
+                      color={colors.primary}
+                    />
+                    <Text style={[styles.infoText, { color: textColor }]}>
+                      {adminInfo.full_name}
+                    </Text>
+                  </View>
+                  {adminInfo.phone_number && (
+                    <View style={styles.infoRow}>
+                      <IconSymbol
+                        ios_icon_name="phone.fill"
+                        android_material_icon_name="phone"
+                        size={20}
+                        color={colors.primary}
+                      />
+                      <Text style={[styles.infoText, { color: textColor }]}>
+                        {adminInfo.phone_number}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            )}
+
+            {/* Players List for Admins */}
+            {userRole === 'admin' && (
+              <View style={[styles.card, { backgroundColor: cardBgColor }]}>
+                <PlayersList 
+                  onCreatePlayer={() => setShowCreatePlayerModal(true)}
+                  refreshTrigger={playersRefreshTrigger}
+                />
+              </View>
+            )}
 
             <TouchableOpacity
               style={[styles.signOutButton, { backgroundColor: colors.error }]}
@@ -239,11 +531,10 @@ export default function ProfileScreen() {
               />
               <Text style={styles.signOutButtonText}>Log ud</Text>
             </TouchableOpacity>
-          </View>
+          </>
         ) : (
-          // Login/Sign up view
+          // Login/Sign up view (same as before - keeping existing code)
           <View style={[styles.card, { backgroundColor: cardBgColor }]}>
-            {/* Success Message */}
             {showSuccessMessage && (
               <View style={[styles.successMessage, { backgroundColor: colors.primary }]}>
                 <IconSymbol 
@@ -358,7 +649,7 @@ export default function ProfileScreen() {
                     <Text style={[styles.infoTitle, { color: textColor }]}>
                       {isSignUp ? 'Opret din konto' : 'Hvorfor skal jeg logge ind?'}
                     </Text>
-                    <Text style={[styles.infoText, { color: textSecondaryColor }]}>
+                    <Text style={[styles.infoBoxText, { color: textSecondaryColor }]}>
                       {isSignUp 
                         ? 'Efter du opretter din konto, vil du modtage en bekræftelsesmail. Du skal klikke på linket i emailen før du kan logge ind.\n\nTjek også din spam-mappe hvis du ikke modtager emailen.'
                         : 'For at gemme eksterne kalendere og synkronisere dine data på tværs af enheder, skal du oprette en gratis konto.\n\nDine data gemmes sikkert i Supabase og er kun tilgængelige for dig.'
@@ -371,9 +662,16 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        {/* Bottom Padding for Tab Bar */}
         <View style={{ height: 120 }} />
       </ScrollView>
+
+      <CreatePlayerModal
+        visible={showCreatePlayerModal}
+        onClose={() => setShowCreatePlayerModal(false)}
+        onPlayerCreated={() => {
+          setPlayersRefreshTrigger(prev => prev + 1);
+        }}
+      />
     </View>
   );
 }
@@ -405,6 +703,112 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     borderRadius: 20,
     padding: 24,
+    marginBottom: 16,
+  },
+  userInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 20,
+  },
+  avatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  userDetails: {
+    flex: 1,
+  },
+  userName: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  userEmail: {
+    fontSize: 16,
+    marginBottom: 8,
+  },
+  roleBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  roleText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  profileInfo: {
+    gap: 12,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  infoText: {
+    fontSize: 16,
+  },
+  emptyText: {
+    fontSize: 14,
+    fontStyle: 'italic',
+  },
+  editForm: {
+    gap: 8,
+  },
+  label: {
+    fontSize: 17,
+    fontWeight: '600',
+    marginBottom: 8,
+    marginTop: 8,
+  },
+  input: {
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 17,
+    marginBottom: 12,
+  },
+  editButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+  },
+  button: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  buttonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  signOutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 18,
+    borderRadius: 14,
+    marginHorizontal: 20,
+    marginTop: 8,
+  },
+  signOutButtonText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
   },
   successMessage: {
     borderRadius: 16,
@@ -424,69 +828,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     textAlign: 'center',
     lineHeight: 24,
-  },
-  userInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 20,
-    marginBottom: 24,
-  },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  userDetails: {
-    flex: 1,
-  },
-  userName: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  userEmail: {
-    fontSize: 16,
-    marginBottom: 4,
-  },
-  userId: {
-    fontSize: 14,
-    fontFamily: 'monospace',
-  },
-  infoSection: {
-    marginBottom: 24,
-  },
-  infoBox: {
-    flexDirection: 'row',
-    gap: 16,
-    padding: 20,
-    borderRadius: 16,
-  },
-  infoTextContainer: {
-    flex: 1,
-  },
-  infoTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  infoText: {
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  signOutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    paddingVertical: 18,
-    borderRadius: 14,
-  },
-  signOutButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#fff',
   },
   authToggle: {
     flexDirection: 'row',
@@ -512,18 +853,6 @@ const styles = StyleSheet.create({
   form: {
     gap: 8,
   },
-  label: {
-    fontSize: 17,
-    fontWeight: '600',
-    marginBottom: 8,
-    marginTop: 8,
-  },
-  input: {
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 17,
-    marginBottom: 12,
-  },
   authButton: {
     paddingVertical: 18,
     borderRadius: 14,
@@ -539,5 +868,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  infoBox: {
+    flexDirection: 'row',
+    gap: 16,
+    padding: 20,
+    borderRadius: 16,
+  },
+  infoTextContainer: {
+    flex: 1,
+  },
+  infoTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  infoBoxText: {
+    fontSize: 15,
+    lineHeight: 22,
   },
 });
