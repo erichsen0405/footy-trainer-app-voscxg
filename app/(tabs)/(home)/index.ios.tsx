@@ -1,10 +1,10 @@
 
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useColorScheme } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useColorScheme, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFootball } from '@/contexts/FootballContext';
 import { colors } from '@/styles/commonStyles';
-import { Activity } from '@/types';
+import { Activity, Task } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
 import { getWeek } from 'date-fns';
 
@@ -14,15 +14,21 @@ export default function HomeScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
-  const getMotivationalMessage = (percentage: number) => {
+  const [selectedTask, setSelectedTask] = useState<{ task: Task; activityId: string; activityTitle: string } | null>(null);
+  const [isTaskModalVisible, setIsTaskModalVisible] = useState(false);
+
+  const getMotivationalMessage = (percentage: number, completedTasks: number, totalTasks: number, totalTasksForWeek: number) => {
+    const remaining = totalTasks - completedTasks;
+    const remainingForWeek = totalTasksForWeek - completedTasks;
+    
     if (percentage >= 80) {
-      return 'Du er godt på vej! Fortsæt det gode arbejde! 🚀';
+      return `Perfekt! Du har klaret alle opgaver indtil nu! 🚀\n${remainingForWeek} opgaver tilbage for ugen.`;
     } else if (percentage >= 60) {
-      return 'Godt gået! Du er på rette spor! 💪';
+      return `Godt gået! ${remaining} opgaver tilbage indtil i dag.\n${remainingForWeek} opgaver tilbage for ugen. 💪`;
     } else if (percentage >= 40) {
-      return 'Kom igen! Du kan gøre det bedre! 🔥';
+      return `Kom igen! ${remaining} opgaver tilbage indtil i dag.\n${remainingForWeek} opgaver tilbage for ugen. 🔥`;
     } else {
-      return 'Husk at holde fokus! Hver lille indsats tæller! ⚽';
+      return `Husk at holde fokus! ${remaining} opgaver tilbage indtil i dag.\n${remainingForWeek} opgaver tilbage for ugen. ⚽`;
     }
   };
 
@@ -58,6 +64,24 @@ export default function HomeScreen() {
   const handleActivityPress = (activityId: string) => {
     console.log('Opening activity details for:', activityId);
     router.push(`/activity-details?id=${activityId}`);
+  };
+
+  const handleTaskPress = (task: Task, activityId: string, activityTitle: string) => {
+    console.log('Opening task modal for:', task.title);
+    setSelectedTask({ task, activityId, activityTitle });
+    setIsTaskModalVisible(true);
+  };
+
+  const handleToggleTaskCompletion = async () => {
+    if (!selectedTask) return;
+    
+    try {
+      await toggleTaskCompletion(selectedTask.activityId, selectedTask.task.id);
+      setIsTaskModalVisible(false);
+      setSelectedTask(null);
+    } catch (error) {
+      console.error('Error toggling task completion:', error);
+    }
   };
 
   const getUpcomingActivitiesByWeek = () => {
@@ -107,148 +131,237 @@ export default function HomeScreen() {
   const currentYear = new Date().getFullYear();
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: bgColor }]} contentContainerStyle={styles.contentContainer}>
-      <View style={styles.header}>
-        <View style={[styles.headerCard, { backgroundColor: colors.primary }]}>
-          <Text style={styles.headerTitle}>Min fodboldapp ⚽</Text>
-          <Text style={styles.headerSubtitle}>Hold styr på alt!</Text>
-        </View>
-      </View>
-
-      <View style={[styles.statsCard, { backgroundColor: getProgressColor(currentWeekStats.percentage) }]}>
-        <View style={styles.statsHeader}>
-          <Text style={styles.statsTitle}>🏆 Denne uge</Text>
-          <Text style={styles.trophyEmoji}>{getTrophyEmoji(currentWeekStats.percentage)}</Text>
-        </View>
-        
-        <Text style={styles.percentage}>{currentWeekStats.percentage}%</Text>
-        <Text style={styles.taskCount}>
-          {currentWeekStats.completedTasks} / {currentWeekStats.totalTasks} opgaver
-        </Text>
-        
-        <View style={styles.progressBarContainer}>
-          <View style={[styles.progressBar, { width: `${currentWeekStats.percentage}%` }]} />
-        </View>
-        
-        <Text style={styles.motivationText}>{getMotivationalMessage(currentWeekStats.percentage)}</Text>
-        
-        <TouchableOpacity style={styles.historyButton}>
-          <Text style={styles.historyButtonText}>Se din historik</Text>
-          <IconSymbol ios_icon_name="chart.line.uptrend.xyaxis" android_material_icon_name="trending_up" size={20} color="#fff" />
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: textColor }]}>I dag</Text>
-        
-        {todayActivities.length === 0 ? (
-          <View style={[styles.emptyCard, { backgroundColor: cardBgColor }]}>
-            <Text style={[styles.emptyText, { color: textSecondaryColor }]}>Ingen aktiviteter i dag</Text>
+    <React.Fragment>
+      <ScrollView style={[styles.container, { backgroundColor: bgColor }]} contentContainerStyle={styles.contentContainer}>
+        <View style={styles.header}>
+          <View style={[styles.headerCard, { backgroundColor: colors.primary }]}>
+            <Text style={styles.headerTitle}>Min fodboldapp ⚽</Text>
+            <Text style={styles.headerSubtitle}>Hold styr på alt!</Text>
           </View>
-        ) : (
-          <React.Fragment>
-            {todayActivities.map((activity, index) => (
-              <TouchableOpacity
-                key={`today-${index}-${activity.id || index}`}
-                style={[styles.activityCard, { backgroundColor: activity.category.color }]}
-                onPress={() => handleActivityPress(activity.id)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.activityHeader}>
-                  <Text style={styles.activityEmoji}>{activity.category.emoji}</Text>
-                  <View style={styles.activityInfo}>
-                    <Text style={styles.activityTitle}>{activity.title}</Text>
-                    <Text style={styles.activityTime}>
-                      {formatDateTime(new Date(activity.date), activity.time)}
-                    </Text>
-                    <View style={styles.locationRow}>
-                      <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={16} color="#fff" />
-                      <Text style={styles.activityLocation}>{activity.location}</Text>
+        </View>
+
+        <View style={[styles.statsCard, { backgroundColor: getProgressColor(currentWeekStats.percentage) }]}>
+          <View style={styles.statsHeader}>
+            <Text style={styles.statsTitle}>🏆 Denne uge</Text>
+            <Text style={styles.trophyEmoji}>{getTrophyEmoji(currentWeekStats.percentage)}</Text>
+          </View>
+          
+          <Text style={styles.percentage}>{currentWeekStats.percentage}%</Text>
+          <Text style={styles.taskCount}>
+            Opgaver indtil i dag: {currentWeekStats.completedTasks} / {currentWeekStats.totalTasks}
+          </Text>
+          
+          <View style={styles.progressBarContainer}>
+            <View style={[styles.progressBar, { width: `${currentWeekStats.percentage}%` }]} />
+          </View>
+          
+          <Text style={styles.weekStats}>
+            Hele ugen: {currentWeekStats.completedTasksForWeek} / {currentWeekStats.totalTasksForWeek} opgaver
+          </Text>
+          
+          <View style={styles.progressBarContainer}>
+            <View style={[
+              styles.progressBar, 
+              { 
+                width: `${currentWeekStats.totalTasksForWeek > 0 
+                  ? Math.round((currentWeekStats.completedTasksForWeek / currentWeekStats.totalTasksForWeek) * 100) 
+                  : 0}%`,
+                opacity: 0.6
+              }
+            ]} />
+          </View>
+          
+          <Text style={styles.motivationText}>
+            {getMotivationalMessage(
+              currentWeekStats.percentage, 
+              currentWeekStats.completedTasks, 
+              currentWeekStats.totalTasks,
+              currentWeekStats.totalTasksForWeek
+            )}
+          </Text>
+          
+          <TouchableOpacity style={styles.historyButton}>
+            <Text style={styles.historyButtonText}>Se din historik</Text>
+            <IconSymbol ios_icon_name="chart.line.uptrend.xyaxis" android_material_icon_name="trending_up" size={20} color="#fff" />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: textColor }]}>I dag</Text>
+          
+          {todayActivities.length === 0 ? (
+            <View style={[styles.emptyCard, { backgroundColor: cardBgColor }]}>
+              <Text style={[styles.emptyText, { color: textSecondaryColor }]}>Ingen aktiviteter i dag</Text>
+            </View>
+          ) : (
+            <React.Fragment>
+              {todayActivities.map((activity, index) => (
+                <TouchableOpacity
+                  key={`today-${index}-${activity.id || index}`}
+                  style={[styles.activityCard, { backgroundColor: activity.category.color }]}
+                  onPress={() => handleActivityPress(activity.id)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.activityHeader}>
+                    <Text style={styles.activityEmoji}>{activity.category.emoji}</Text>
+                    <View style={styles.activityInfo}>
+                      <Text style={styles.activityTitle}>{activity.title}</Text>
+                      <Text style={styles.activityTime}>
+                        {formatDateTime(new Date(activity.date), activity.time)}
+                      </Text>
+                      <View style={styles.locationRow}>
+                        <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={16} color="#fff" />
+                        <Text style={styles.activityLocation}>{activity.location}</Text>
+                      </View>
                     </View>
                   </View>
-                </View>
 
-                {activity.tasks.length > 0 && (
-                  <View style={styles.tasksSection}>
-                    <Text style={styles.tasksTitle}>Opgaver:</Text>
-                    {activity.tasks.map((task, taskIndex) => (
+                  {activity.tasks.length > 0 && (
+                    <View style={styles.tasksSection}>
+                      <Text style={styles.tasksTitle}>Opgaver:</Text>
+                      {activity.tasks.map((task, taskIndex) => (
+                        <TouchableOpacity
+                          key={`task-${index}-${taskIndex}-${task.id || taskIndex}`}
+                          style={styles.taskItem}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            handleTaskPress(task, activity.id, activity.title);
+                          }}
+                        >
+                          <View style={[styles.checkbox, task.completed && styles.checkboxChecked]}>
+                            {task.completed && (
+                              <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
+                            )}
+                          </View>
+                          <Text style={[styles.taskText, task.completed && styles.taskTextCompleted]}>
+                            {task.title}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </React.Fragment>
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: textColor }]}>Kommende aktiviteter</Text>
+          
+          {Object.keys(upcomingByWeek).length === 0 ? (
+            <View style={[styles.emptyCard, { backgroundColor: cardBgColor }]}>
+              <Text style={[styles.emptyText, { color: textSecondaryColor }]}>Ingen kommende aktiviteter</Text>
+            </View>
+          ) : (
+            <React.Fragment>
+              {Object.entries(upcomingByWeek).map(([weekKey, data], weekIndex) => {
+                const weekNumber = weekKey.split('-W')[1];
+                return (
+                  <View key={weekKey} style={styles.weekSection}>
+                    <Text style={[styles.weekTitle, { color: textColor }]}>
+                      Uge {weekNumber}
+                    </Text>
+                    <Text style={[styles.weekDates, { color: textSecondaryColor }]}>
+                      {data.dateRange}
+                    </Text>
+                    
+                    {data.activities.map((activity, activityIndex) => (
                       <TouchableOpacity
-                        key={`task-${index}-${taskIndex}-${task.id || taskIndex}`}
-                        style={styles.taskItem}
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          toggleTaskCompletion(activity.id, task.id);
-                        }}
+                        key={`${weekKey}-activity-${activity.id || activityIndex}`}
+                        style={[styles.upcomingActivityCard, { backgroundColor: activity.category.color }]}
+                        onPress={() => handleActivityPress(activity.id)}
+                        activeOpacity={0.7}
                       >
-                        <View style={[styles.checkbox, task.completed && styles.checkboxChecked]}>
-                          {task.completed && (
-                            <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
-                          )}
+                        <View style={styles.upcomingActivityHeader}>
+                          <Text style={styles.upcomingActivityEmoji}>{activity.category.emoji}</Text>
+                          <View style={styles.upcomingActivityInfo}>
+                            <Text style={styles.upcomingActivityTitle}>{activity.title}</Text>
+                            <Text style={styles.upcomingActivityTime}>
+                              {new Date(activity.date).toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' })} kl. {formatTime(activity.time)}
+                            </Text>
+                            <View style={styles.locationRow}>
+                              <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={14} color="#fff" />
+                              <Text style={styles.upcomingActivityLocation}>{activity.location}</Text>
+                            </View>
+                          </View>
                         </View>
-                        <Text style={[styles.taskText, task.completed && styles.taskTextCompleted]}>
-                          {task.title}
-                        </Text>
+                        
+                        {activity.tasks.length > 0 && (
+                          <View style={styles.upcomingTasksPreview}>
+                            <Text style={styles.upcomingTasksText}>
+                              {activity.tasks.filter(t => t.completed).length} / {activity.tasks.length} opgaver udført
+                            </Text>
+                          </View>
+                        )}
                       </TouchableOpacity>
                     ))}
                   </View>
-                )}
+                );
+              })}
+            </React.Fragment>
+          )}
+        </View>
+
+        <View style={{ height: 100 }} />
+      </ScrollView>
+
+      {/* Task Modal */}
+      <Modal
+        visible={isTaskModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsTaskModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: cardBgColor }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: textColor }]}>Opgave</Text>
+              <TouchableOpacity onPress={() => setIsTaskModalVisible(false)} activeOpacity={0.7}>
+                <IconSymbol ios_icon_name="xmark.circle.fill" android_material_icon_name="close" size={32} color={textSecondaryColor} />
               </TouchableOpacity>
-            ))}
-          </React.Fragment>
-        )}
-      </View>
+            </View>
 
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: textColor }]}>Kommende aktiviteter</Text>
-        
-        {Object.keys(upcomingByWeek).length === 0 ? (
-          <View style={[styles.emptyCard, { backgroundColor: cardBgColor }]}>
-            <Text style={[styles.emptyText, { color: textSecondaryColor }]}>Ingen kommende aktiviteter</Text>
+            {selectedTask && (
+              <View style={styles.modalBody}>
+                <Text style={[styles.taskModalActivity, { color: textSecondaryColor }]}>
+                  {selectedTask.activityTitle}
+                </Text>
+                
+                <Text style={[styles.taskModalTitle, { color: textColor }]}>
+                  {selectedTask.task.title}
+                </Text>
+                
+                {selectedTask.task.description && (
+                  <Text style={[styles.taskModalDescription, { color: textSecondaryColor }]}>
+                    {selectedTask.task.description}
+                  </Text>
+                )}
+
+                <TouchableOpacity
+                  style={[
+                    styles.completeButton,
+                    { backgroundColor: selectedTask.task.completed ? colors.highlight : colors.success }
+                  ]}
+                  onPress={handleToggleTaskCompletion}
+                  activeOpacity={0.7}
+                >
+                  <IconSymbol
+                    ios_icon_name={selectedTask.task.completed ? "arrow.uturn.backward" : "checkmark.circle.fill"}
+                    android_material_icon_name={selectedTask.task.completed ? "undo" : "check_circle"}
+                    size={24}
+                    color="#fff"
+                  />
+                  <Text style={styles.completeButtonText}>
+                    {selectedTask.task.completed ? 'Marker som ikke udført' : 'Marker som udført'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
-        ) : (
-          <React.Fragment>
-            {Object.entries(upcomingByWeek).map(([weekKey, data], weekIndex) => {
-              const weekNumber = weekKey.split('-W')[1];
-              return (
-                <View key={weekKey} style={styles.weekSection}>
-                  <Text style={[styles.weekTitle, { color: textColor }]}>
-                    Uge {weekNumber}
-                  </Text>
-                  <Text style={[styles.weekDates, { color: textSecondaryColor }]}>
-                    {data.dateRange}
-                  </Text>
-                  
-                  {data.activities.map((activity, activityIndex) => (
-                    <TouchableOpacity
-                      key={`${weekKey}-activity-${activity.id || activityIndex}`}
-                      style={[styles.upcomingActivityCard, { backgroundColor: activity.category.color }]}
-                      onPress={() => handleActivityPress(activity.id)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.upcomingActivityHeader}>
-                        <Text style={styles.upcomingActivityEmoji}>{activity.category.emoji}</Text>
-                        <View style={styles.upcomingActivityInfo}>
-                          <Text style={styles.upcomingActivityTitle}>{activity.title}</Text>
-                          <Text style={styles.upcomingActivityTime}>
-                            {new Date(activity.date).toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' })} kl. {formatTime(activity.time)}
-                          </Text>
-                          <View style={styles.locationRow}>
-                            <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={14} color="#fff" />
-                            <Text style={styles.upcomingActivityLocation}>{activity.location}</Text>
-                          </View>
-                        </View>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              );
-            })}
-          </React.Fragment>
-        )}
-      </View>
-
-      <View style={{ height: 100 }} />
-    </ScrollView>
+        </View>
+      </Modal>
+    </React.Fragment>
   );
 }
 
@@ -315,18 +428,25 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.3)',
     borderRadius: 4,
     overflow: 'hidden',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   progressBar: {
     height: '100%',
     backgroundColor: '#fff',
     borderRadius: 4,
   },
+  weekStats: {
+    fontSize: 14,
+    color: '#fff',
+    opacity: 0.9,
+    marginBottom: 8,
+  },
   motivationText: {
     fontSize: 16,
     color: '#fff',
     fontWeight: '600',
     marginBottom: 16,
+    lineHeight: 22,
   },
   historyButton: {
     flexDirection: 'row',
@@ -480,5 +600,68 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#fff',
     opacity: 0.9,
+  },
+  upcomingTasksPreview: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  upcomingTasksText: {
+    fontSize: 14,
+    color: '#fff',
+    opacity: 0.9,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '70%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.highlight,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+  },
+  modalBody: {
+    padding: 24,
+  },
+  taskModalActivity: {
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  taskModalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 16,
+  },
+  taskModalDescription: {
+    fontSize: 16,
+    lineHeight: 24,
+    marginBottom: 24,
+  },
+  completeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 16,
+    borderRadius: 14,
+  },
+  completeButtonText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
   },
 });

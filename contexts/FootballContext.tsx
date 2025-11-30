@@ -14,6 +14,8 @@ interface FootballContextType {
     percentage: number;
     completedTasks: number;
     totalTasks: number;
+    completedTasksForWeek: number;
+    totalTasksForWeek: number;
     weekActivities: Activity[];
   };
   todayActivities: Activity[];

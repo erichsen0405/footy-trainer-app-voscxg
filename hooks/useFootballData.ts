@@ -139,7 +139,7 @@ export function useFootballData() {
     loadExternalCalendars();
   }, [userId, refreshTrigger]);
 
-  // Load activities from Supabase (including external ones)
+  // Load activities from Supabase (including external ones) WITH TASKS
   useEffect(() => {
     if (!userId) {
       setIsLoading(false);
@@ -152,7 +152,15 @@ export function useFootballData() {
         .from('activities')
         .select(`
           *,
-          category:activity_categories(*)
+          category:activity_categories(*),
+          activity_tasks(
+            id,
+            title,
+            description,
+            completed,
+            reminder_minutes,
+            task_template_id
+          )
         `)
         .eq('user_id', userId)
         .order('activity_date', { ascending: true });
@@ -174,6 +182,18 @@ export function useFootballData() {
 
           const activityDate = new Date(act.activity_date);
           
+          // Map activity_tasks to Task format
+          const activityTasks: Task[] = (act.activity_tasks || []).map((at: any) => ({
+            id: at.id,
+            title: at.title,
+            description: at.description || '',
+            completed: at.completed || false,
+            isTemplate: false,
+            categoryIds: [],
+            reminder: at.reminder_minutes || undefined,
+            subtasks: [],
+          }));
+
           return {
             id: act.id,
             title: act.title,
@@ -181,7 +201,7 @@ export function useFootballData() {
             time: act.activity_time,
             location: act.location || 'Ingen lokation',
             category,
-            tasks: [],
+            tasks: activityTasks,
             isExternal: act.is_external,
             externalCalendarId: act.external_calendar_id || undefined,
             externalEventId: act.external_event_id || undefined,
@@ -334,23 +354,44 @@ export function useFootballData() {
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 7);
 
+    // Get today's date for comparison
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+
     const weekActivities = activities.filter(activity => {
       const activityDate = new Date(activity.date);
       return activityDate >= startOfWeek && activityDate < endOfWeek;
     });
 
-    const totalTasks = weekActivities.reduce((sum, activity) => sum + activity.tasks.length, 0);
-    const completedTasks = weekActivities.reduce(
+    // Calculate tasks up to today
+    const activitiesUpToToday = weekActivities.filter(activity => {
+      const activityDate = new Date(activity.date);
+      return activityDate <= today;
+    });
+
+    const totalTasksUpToToday = activitiesUpToToday.reduce((sum, activity) => sum + activity.tasks.length, 0);
+    const completedTasksUpToToday = activitiesUpToToday.reduce(
       (sum, activity) => sum + activity.tasks.filter(task => task.completed).length,
       0
     );
 
-    const percentage = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+    // Calculate total tasks for the week
+    const totalTasksForWeek = weekActivities.reduce((sum, activity) => sum + activity.tasks.length, 0);
+    const completedTasksForWeek = weekActivities.reduce(
+      (sum, activity) => sum + activity.tasks.filter(task => task.completed).length,
+      0
+    );
+
+    const percentageUpToToday = totalTasksUpToToday > 0 
+      ? Math.round((completedTasksUpToToday / totalTasksUpToToday) * 100) 
+      : 0;
 
     return {
-      percentage,
-      completedTasks,
-      totalTasks,
+      percentage: percentageUpToToday,
+      completedTasks: completedTasksUpToToday,
+      totalTasks: totalTasksUpToToday,
+      completedTasksForWeek,
+      totalTasksForWeek,
       weekActivities,
     };
   }, [activities]);
@@ -479,18 +520,58 @@ export function useFootballData() {
     }
   };
 
-  const toggleTaskCompletion = (activityId: string, taskId: string) => {
-    setActivities(activities.map(activity => {
-      if (activity.id === activityId) {
-        return {
-          ...activity,
-          tasks: activity.tasks.map(task =>
-            task.id === taskId ? { ...task, completed: !task.completed } : task
-          ),
-        };
+  const toggleTaskCompletion = async (activityId: string, taskId: string) => {
+    console.log('Toggling task completion:', { activityId, taskId });
+    
+    // Find the activity and task
+    const activity = activities.find(a => a.id === activityId);
+    if (!activity) {
+      console.error('Activity not found:', activityId);
+      return;
+    }
+
+    const task = activity.tasks.find(t => t.id === taskId);
+    if (!task) {
+      console.error('Task not found:', taskId);
+      return;
+    }
+
+    const newCompleted = !task.completed;
+    console.log('Setting task completed to:', newCompleted);
+
+    try {
+      // Update in database
+      const { error } = await supabase
+        .from('activity_tasks')
+        .update({ completed: newCompleted })
+        .eq('id', taskId);
+
+      if (error) {
+        console.error('Error updating task completion:', error);
+        throw error;
       }
-      return activity;
-    }));
+
+      console.log('Task completion updated in database');
+
+      // Update local state
+      setActivities(activities.map(act => {
+        if (act.id === activityId) {
+          return {
+            ...act,
+            tasks: act.tasks.map(t =>
+              t.id === taskId ? { ...t, completed: newCompleted } : t
+            ),
+          };
+        }
+        return act;
+      }));
+
+      // Trigger a refresh to ensure consistency
+      setRefreshTrigger(prev => prev + 1);
+    } catch (error) {
+      console.error('Failed to toggle task completion:', error);
+      throw error;
+    }
   };
 
   const addExternalCalendar = async (calendar: Omit<ExternalCalendar, 'id'>) => {

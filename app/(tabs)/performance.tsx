@@ -32,6 +32,18 @@ export default function PerformanceScreen() {
     }
   };
 
+  const getCoachingMessage = (percentage: number) => {
+    if (percentage >= 80) {
+      return 'Fantastisk! Du er helt på toppen indtil nu! Fortsæt det gode arbejde! 🌟';
+    } else if (percentage >= 60) {
+      return 'Rigtig godt! Du klarer dig godt indtil nu. Bliv ved! 💪';
+    } else if (percentage >= 40) {
+      return 'Du er på vej! Der er stadig tid til at forbedre dig. 🔥';
+    } else {
+      return 'Kom igen! Fokuser på dine opgaver for at komme tilbage på sporet. ⚽';
+    }
+  };
+
   const goldTrophies = trophies.filter(t => t.type === 'gold').length;
   const silverTrophies = trophies.filter(t => t.type === 'silver').length;
   const bronzeTrophies = trophies.filter(t => t.type === 'bronze').length;
@@ -43,6 +55,10 @@ export default function PerformanceScreen() {
 
   const currentWeek = getWeek(new Date());
   const currentYear = new Date().getFullYear();
+
+  const weekPercentage = currentWeekStats.totalTasksForWeek > 0 
+    ? Math.round((currentWeekStats.completedTasksForWeek / currentWeekStats.totalTasksForWeek) * 100) 
+    : 0;
 
   return (
     <ScrollView style={[styles.container, { backgroundColor: bgColor }]} contentContainerStyle={styles.contentContainer}>
@@ -56,17 +72,37 @@ export default function PerformanceScreen() {
       <View style={[styles.currentWeekCard, { backgroundColor: colors.accent }]}>
         <View style={styles.currentWeekHeader}>
           <Text style={styles.currentWeekTitle}>Denne uge</Text>
-          <Text style={styles.trophyBadge}>{currentWeekStats.percentage >= 80 ? '🥇' : currentWeekStats.percentage >= 60 ? '🥈' : '🥉'}</Text>
+          <Text style={styles.trophyBadge}>{getTrophyEmoji(currentWeekStats.percentage >= 80 ? 'gold' : currentWeekStats.percentage >= 60 ? 'silver' : 'bronze')}</Text>
         </View>
         <Text style={styles.currentWeekSubtitle}>Uge {currentWeek}, {currentYear}</Text>
         
-        <Text style={styles.currentWeekPercentage}>{currentWeekStats.percentage}%</Text>
-        <Text style={styles.currentWeekTasks}>
-          {currentWeekStats.completedTasks} / {currentWeekStats.totalTasks} opgaver
-        </Text>
+        <View style={styles.statsRow}>
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>Indtil i dag</Text>
+            <Text style={styles.statPercentage}>{currentWeekStats.percentage}%</Text>
+            <Text style={styles.statTasks}>
+              {currentWeekStats.completedTasks} / {currentWeekStats.totalTasks}
+            </Text>
+            <View style={styles.progressBarContainer}>
+              <View style={[styles.progressBar, { width: `${currentWeekStats.percentage}%` }]} />
+            </View>
+          </View>
+          
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>Hele ugen</Text>
+            <Text style={styles.statPercentage}>{weekPercentage}%</Text>
+            <Text style={styles.statTasks}>
+              {currentWeekStats.completedTasksForWeek} / {currentWeekStats.totalTasksForWeek}
+            </Text>
+            <View style={styles.progressBarContainer}>
+              <View style={[styles.progressBar, { width: `${weekPercentage}%` }]} />
+            </View>
+          </View>
+        </View>
         
-        <View style={styles.progressBarContainer}>
-          <View style={[styles.progressBar, { width: `${currentWeekStats.percentage}%` }]} />
+        <View style={styles.coachingBox}>
+          <Text style={styles.coachingTitle}>💬 Coaching</Text>
+          <Text style={styles.coachingText}>{getCoachingMessage(currentWeekStats.percentage)}</Text>
         </View>
       </View>
 
@@ -181,30 +217,64 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#fff',
     opacity: 0.9,
-    marginBottom: 16,
+    marginBottom: 20,
   },
-  currentWeekPercentage: {
-    fontSize: 56,
+  statsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
+  },
+  statBox: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 12,
+    padding: 16,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#fff',
+    opacity: 0.9,
+    marginBottom: 8,
+    fontWeight: '600',
+  },
+  statPercentage: {
+    fontSize: 32,
     fontWeight: 'bold',
     color: '#fff',
     marginBottom: 4,
   },
-  currentWeekTasks: {
-    fontSize: 16,
+  statTasks: {
+    fontSize: 14,
     color: '#fff',
     opacity: 0.9,
-    marginBottom: 16,
+    marginBottom: 8,
   },
   progressBarContainer: {
-    height: 8,
+    height: 6,
     backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    borderRadius: 4,
+    borderRadius: 3,
     overflow: 'hidden',
   },
   progressBar: {
     height: '100%',
     backgroundColor: '#fff',
-    borderRadius: 4,
+    borderRadius: 3,
+  },
+  coachingBox: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 12,
+    padding: 16,
+  },
+  coachingTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 8,
+  },
+  coachingText: {
+    fontSize: 15,
+    color: '#fff',
+    lineHeight: 22,
   },
   trophiesCard: {
     borderRadius: 16,

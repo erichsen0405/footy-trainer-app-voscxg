@@ -23,7 +23,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 export default function ActivityDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { activities, externalActivities, categories, updateActivity } = useFootball();
+  const { activities, externalActivities, categories, updateActivity, toggleTaskCompletion } = useFootball();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
@@ -157,6 +157,25 @@ export default function ActivityDetailsScreen() {
       const hours = selectedTime.getHours().toString().padStart(2, '0');
       const minutes = selectedTime.getMinutes().toString().padStart(2, '0');
       setEditTime(`${hours}:${minutes}`);
+    }
+  };
+
+  const handleToggleTask = async (taskId: string) => {
+    if (!activity) return;
+    
+    try {
+      await toggleTaskCompletion(activity.id, taskId);
+      
+      // Update local activity state
+      setActivity({
+        ...activity,
+        tasks: activity.tasks.map(task =>
+          task.id === taskId ? { ...task, completed: !task.completed } : task
+        ),
+      });
+    } catch (error) {
+      console.error('Error toggling task:', error);
+      Alert.alert('Fejl', 'Kunne ikke opdatere opgaven');
     }
   };
 
@@ -448,7 +467,12 @@ export default function ActivityDetailsScreen() {
           <View style={[styles.section, { backgroundColor: cardBgColor }]}>
             <Text style={[styles.sectionTitle, { color: textColor }]}>Opgaver</Text>
             {activity.tasks.map((task, index) => (
-              <View key={index} style={styles.taskRow}>
+              <TouchableOpacity
+                key={index}
+                style={styles.taskRow}
+                onPress={() => handleToggleTask(task.id)}
+                activeOpacity={0.7}
+              >
                 <View
                   style={[
                     styles.taskCheckbox,
@@ -480,7 +504,7 @@ export default function ActivityDetailsScreen() {
                     </Text>
                   )}
                 </View>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         )}
@@ -690,6 +714,9 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 12,
     marginBottom: 16,
+    padding: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    borderRadius: 12,
   },
   taskCheckbox: {
     width: 24,
