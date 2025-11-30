@@ -12,6 +12,7 @@ export function useUserRole() {
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         
         if (userError || !user) {
+          console.log('No user found or error:', userError);
           setUserRole(null);
           setLoading(false);
           return;
@@ -21,14 +22,29 @@ export function useUserRole() {
           .from('user_roles')
           .select('role')
           .eq('user_id', user.id)
-          .single();
+          .maybeSingle();
 
         if (error) {
           console.error('Error fetching user role:', error);
-          // Default to admin if no role is set
+          // If there's an error, default to admin for existing users
+          // This ensures the app remains functional
           setUserRole('admin');
+        } else if (data) {
+          setUserRole(data.role as 'admin' | 'player');
         } else {
-          setUserRole(data?.role as 'admin' | 'player');
+          // No role found - this is a new user, default to admin
+          console.log('No role found for user, defaulting to admin');
+          
+          // Try to create a default admin role for this user
+          const { error: insertError } = await supabase
+            .from('user_roles')
+            .insert({ user_id: user.id, role: 'admin' });
+          
+          if (insertError) {
+            console.error('Error creating default role:', insertError);
+          }
+          
+          setUserRole('admin');
         }
       } catch (error) {
         console.error('Error in fetchUserRole:', error);
