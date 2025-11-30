@@ -31,6 +31,15 @@ export default function TabLayout() {
         backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
         borderTopWidth: 0.5,
         borderTopColor: isDark ? '#38383A' : '#E5E5E5',
+        opacity: 1,
+      }}
+      screenOptions={{
+        tabBarStyle: {
+          backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+          borderTopWidth: 0.5,
+          borderTopColor: isDark ? '#38383A' : '#E5E5E5',
+          opacity: 1,
+        },
       }}
     >
       <NativeTabs.Trigger key="home" name="(home)">
@@ -71,16 +80,31 @@ export default function TabLayout() {
           style={{ 
             fontSize: 10,
             fontWeight: '500',
-          }}
-        >
-          Performance
-        </Label>
-      </NativeTabs.Trigger>
-      
-      {!isPlayer && (
-        <NativeTabs.Trigger key="admin" name="admin">
+            }}
+          >
+            Performance
+          </Label>
+        </NativeTabs.Trigger>
+        
+        {!isPlayer && (
+          <NativeTabs.Trigger key="admin" name="admin">
+            <Icon 
+              sf={{ default: 'gearshape', selected: 'gearshape.fill' }}
+            />
+            <Label 
+              style={{ 
+                fontSize: 10,
+                fontWeight: '500',
+              }}
+            >
+              Admin
+            </Label>
+          </NativeTabs.Trigger>
+        )}
+        
+        <NativeTabs.Trigger key="profile" name="profile">
           <Icon 
-            sf={{ default: 'gearshape', selected: 'gearshape.fill' }}
+            sf={{ default: 'person', selected: 'person.fill' }}
           />
           <Label 
             style={{ 
@@ -88,24 +112,9 @@ export default function TabLayout() {
               fontWeight: '500',
             }}
           >
-            Admin
+            Profil
           </Label>
         </NativeTabs.Trigger>
-      )}
-      
-      <NativeTabs.Trigger key="profile" name="profile">
-        <Icon 
-          sf={{ default: 'person', selected: 'person.fill' }}
-        />
-        <Label 
-          style={{ 
-            fontSize: 10,
-            fontWeight: '500',
-          }}
-        >
-          Profil
-        </Label>
-      </NativeTabs.Trigger>
-    </NativeTabs>
-  );
-}
+      </NativeTabs>
+    );
+  }
