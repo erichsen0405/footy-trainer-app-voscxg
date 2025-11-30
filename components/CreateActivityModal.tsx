@@ -143,14 +143,18 @@ export default function CreateActivityModal({
   };
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(Platform.OS === 'ios');
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
     if (selectedDate) {
       setDate(selectedDate);
     }
   };
 
   const handleTimeChange = (event: any, selectedTime?: Date) => {
-    setShowTimePicker(Platform.OS === 'ios');
+    if (Platform.OS === 'android') {
+      setShowTimePicker(false);
+    }
     if (selectedTime) {
       const hours = selectedTime.getHours().toString().padStart(2, '0');
       const minutes = selectedTime.getMinutes().toString().padStart(2, '0');
@@ -159,7 +163,9 @@ export default function CreateActivityModal({
   };
 
   const handleEndDateChange = (event: any, selectedDate?: Date) => {
-    setShowEndDatePicker(Platform.OS === 'ios');
+    if (Platform.OS === 'android') {
+      setShowEndDatePicker(false);
+    }
     if (selectedDate) {
       setEndDate(selectedDate);
     }
@@ -267,6 +273,26 @@ export default function CreateActivityModal({
                   color={colors.primary}
                 />
               </TouchableOpacity>
+              {Platform.OS === 'ios' && showDatePicker && (
+                <View style={[styles.pickerContainer, { backgroundColor: bgColor }]}>
+                  <DateTimePicker
+                    value={date}
+                    mode="date"
+                    display="spinner"
+                    onChange={handleDateChange}
+                    minimumDate={new Date()}
+                    textColor={textColor}
+                    style={styles.iosPicker}
+                  />
+                  <TouchableOpacity
+                    style={[styles.pickerDoneButton, { backgroundColor: colors.primary }]}
+                    onPress={() => setShowDatePicker(false)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.pickerDoneText}>Færdig</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
 
             {/* Time */}
@@ -285,6 +311,25 @@ export default function CreateActivityModal({
                   color={colors.primary}
                 />
               </TouchableOpacity>
+              {Platform.OS === 'ios' && showTimePicker && (
+                <View style={[styles.pickerContainer, { backgroundColor: bgColor }]}>
+                  <DateTimePicker
+                    value={new Date(`2000-01-01T${time}`)}
+                    mode="time"
+                    display="spinner"
+                    onChange={handleTimeChange}
+                    textColor={textColor}
+                    style={styles.iosPicker}
+                  />
+                  <TouchableOpacity
+                    style={[styles.pickerDoneButton, { backgroundColor: colors.primary }]}
+                    onPress={() => setShowTimePicker(false)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.pickerDoneText}>Færdig</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
 
             {/* Recurring Toggle */}
@@ -461,13 +506,33 @@ export default function CreateActivityModal({
                         color={colors.primary}
                       />
                     </TouchableOpacity>
+                    {Platform.OS === 'ios' && showEndDatePicker && (
+                      <View style={[styles.pickerContainer, { backgroundColor: bgColor }]}>
+                        <DateTimePicker
+                          value={endDate}
+                          mode="date"
+                          display="spinner"
+                          onChange={handleEndDateChange}
+                          minimumDate={date}
+                          textColor={textColor}
+                          style={styles.iosPicker}
+                        />
+                        <TouchableOpacity
+                          style={[styles.pickerDoneButton, { backgroundColor: colors.primary }]}
+                          onPress={() => setShowEndDatePicker(false)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.pickerDoneText}>Færdig</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
                   </View>
                 )}
               </React.Fragment>
             )}
 
-            {/* Date/Time Pickers */}
-            {showDatePicker && (
+            {/* Android Date/Time Pickers */}
+            {Platform.OS === 'android' && showDatePicker && (
               <DateTimePicker
                 value={date}
                 mode="date"
@@ -477,7 +542,7 @@ export default function CreateActivityModal({
               />
             )}
 
-            {showTimePicker && (
+            {Platform.OS === 'android' && showTimePicker && (
               <DateTimePicker
                 value={new Date(`2000-01-01T${time}`)}
                 mode="time"
@@ -486,7 +551,7 @@ export default function CreateActivityModal({
               />
             )}
 
-            {showEndDatePicker && (
+            {Platform.OS === 'android' && showEndDatePicker && (
               <DateTimePicker
                 value={endDate}
                 mode="date"
@@ -600,6 +665,26 @@ const styles = StyleSheet.create({
   },
   dateTimeText: {
     fontSize: 17,
+  },
+  pickerContainer: {
+    marginTop: 12,
+    borderRadius: 12,
+    padding: 16,
+    overflow: 'hidden',
+  },
+  iosPicker: {
+    height: 200,
+  },
+  pickerDoneButton: {
+    marginTop: 12,
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  pickerDoneText: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '600',
   },
   recurringToggle: {
     flexDirection: 'row',

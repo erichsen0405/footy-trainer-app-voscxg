@@ -162,14 +162,18 @@ export default function ActivityDetailsScreen() {
   };
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(Platform.OS === 'ios');
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
     if (selectedDate) {
       setEditDate(selectedDate);
     }
   };
 
   const handleTimeChange = (event: any, selectedTime?: Date) => {
-    setShowTimePicker(Platform.OS === 'ios');
+    if (Platform.OS === 'android') {
+      setShowTimePicker(false);
+    }
     if (selectedTime) {
       const hours = selectedTime.getHours().toString().padStart(2, '0');
       const minutes = selectedTime.getMinutes().toString().padStart(2, '0');
@@ -349,6 +353,25 @@ export default function ActivityDetailsScreen() {
                     color={colors.primary}
                   />
                 </TouchableOpacity>
+                {Platform.OS === 'ios' && showDatePicker && (
+                  <View style={[styles.pickerContainer, { backgroundColor: bgColor }]}>
+                    <DateTimePicker
+                      value={editDate}
+                      mode="date"
+                      display="spinner"
+                      onChange={handleDateChange}
+                      textColor={textColor}
+                      style={styles.iosPicker}
+                    />
+                    <TouchableOpacity
+                      style={[styles.pickerDoneButton, { backgroundColor: colors.primary }]}
+                      onPress={() => setShowDatePicker(false)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.pickerDoneText}>Færdig</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
 
               <View style={styles.fieldContainer}>
@@ -366,9 +389,29 @@ export default function ActivityDetailsScreen() {
                     color={colors.primary}
                   />
                 </TouchableOpacity>
+                {Platform.OS === 'ios' && showTimePicker && (
+                  <View style={[styles.pickerContainer, { backgroundColor: bgColor }]}>
+                    <DateTimePicker
+                      value={new Date(`2000-01-01T${editTime}`)}
+                      mode="time"
+                      display="spinner"
+                      onChange={handleTimeChange}
+                      textColor={textColor}
+                      style={styles.iosPicker}
+                    />
+                    <TouchableOpacity
+                      style={[styles.pickerDoneButton, { backgroundColor: colors.primary }]}
+                      onPress={() => setShowTimePicker(false)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.pickerDoneText}>Færdig</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
 
-              {showDatePicker && (
+              {/* Android Date/Time Pickers */}
+              {Platform.OS === 'android' && showDatePicker && (
                 <DateTimePicker
                   value={editDate}
                   mode="date"
@@ -377,7 +420,7 @@ export default function ActivityDetailsScreen() {
                 />
               )}
 
-              {showTimePicker && (
+              {Platform.OS === 'android' && showTimePicker && (
                 <DateTimePicker
                   value={new Date(`2000-01-01T${editTime}`)}
                   mode="time"
@@ -402,7 +445,26 @@ export default function ActivityDetailsScreen() {
                   color={colors.primary}
                 />
               </TouchableOpacity>
-              {showTimePicker && (
+              {Platform.OS === 'ios' && showTimePicker && (
+                <View style={[styles.pickerContainer, { backgroundColor: bgColor }]}>
+                  <DateTimePicker
+                    value={new Date(`2000-01-01T${editTime}`)}
+                    mode="time"
+                    display="spinner"
+                    onChange={handleTimeChange}
+                    textColor={textColor}
+                    style={styles.iosPicker}
+                  />
+                  <TouchableOpacity
+                    style={[styles.pickerDoneButton, { backgroundColor: colors.primary }]}
+                    onPress={() => setShowTimePicker(false)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.pickerDoneText}>Færdig</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+              {Platform.OS === 'android' && showTimePicker && (
                 <DateTimePicker
                   value={new Date(`2000-01-01T${editTime}`)}
                   mode="time"
@@ -777,6 +839,26 @@ const styles = StyleSheet.create({
   },
   dateTimeText: {
     fontSize: 17,
+  },
+  pickerContainer: {
+    marginTop: 12,
+    borderRadius: 12,
+    padding: 16,
+    overflow: 'hidden',
+  },
+  iosPicker: {
+    height: 200,
+  },
+  pickerDoneButton: {
+    marginTop: 12,
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  pickerDoneText: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '600',
   },
   infoNote: {
     fontSize: 14,
