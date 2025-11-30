@@ -170,7 +170,9 @@ export default function ActivityDetailsScreen() {
   };
 
   const formatDateTime = (date: Date, time: string) => {
-    return `${formatDate(date)} kl. ${time}`;
+    // Extract just the HH:MM from the time string (removing seconds if present)
+    const timeDisplay = time.substring(0, 5);
+    return `${formatDate(date)} kl. ${timeDisplay}`;
   };
 
   if (!activity) {
@@ -309,7 +311,7 @@ export default function ActivityDetailsScreen() {
                   onPress={() => setShowTimePicker(true)}
                   activeOpacity={0.7}
                 >
-                  <Text style={[styles.dateTimeText, { color: textColor }]}>{editTime}</Text>
+                  <Text style={[styles.dateTimeText, { color: textColor }]}>{editTime.substring(0, 5)}</Text>
                   <IconSymbol
                     ios_icon_name="clock"
                     android_material_icon_name="access_time"

@@ -363,13 +363,22 @@ export default function AdminScreen() {
   };
 
   const formatDate = (date: Date) => {
-    return new Date(date).toLocaleDateString('da-DK', {
+    const activityDate = new Date(date);
+    const dateStr = activityDate.toLocaleDateString('da-DK', {
       weekday: 'short',
       day: 'numeric',
       month: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
     });
+    return dateStr;
+  };
+
+  const formatTime = (time: string) => {
+    // Extract just HH:MM from the time string (removing seconds if present)
+    return time.substring(0, 5);
+  };
+
+  const formatDateTime = (date: Date, time: string) => {
+    return `${formatDate(date)}, ${formatTime(time)}`;
   };
 
   const formatLastFetched = (date?: Date) => {
@@ -772,7 +781,7 @@ export default function AdminScreen() {
                         </View>
                       )}
                       <Text style={[styles.activityDate, { color: textSecondaryColor }]}>
-                        {formatDate(activity.date)}
+                        {formatDateTime(activity.date, activity.time)}
                       </Text>
                       <View style={styles.activityLocationRow}>
                         <IconSymbol 

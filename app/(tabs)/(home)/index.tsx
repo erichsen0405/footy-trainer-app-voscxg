@@ -43,7 +43,16 @@ export default function HomeScreen() {
     const days = ['søndag', 'mandag', 'tirsdag', 'onsdag', 'torsdag', 'fredag', 'lørdag'];
     const months = ['januar', 'februar', 'marts', 'april', 'maj', 'juni', 'juli', 'august', 'september', 'oktober', 'november', 'december'];
     
-    return `${days[date.getDay()]} ${date.getDate()}. ${months[date.getMonth()]} kl. ${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+    return `${days[date.getDay()]} ${date.getDate()}. ${months[date.getMonth()]}`;
+  };
+
+  const formatTime = (time: string) => {
+    // Extract just HH:MM from the time string (removing seconds if present)
+    return time.substring(0, 5);
+  };
+
+  const formatDateTime = (date: Date, time: string) => {
+    return `${formatDate(date)} kl. ${formatTime(time)}`;
   };
 
   const getUpcomingActivitiesByWeek = () => {
@@ -161,7 +170,7 @@ export default function HomeScreen() {
                     )}
                   </View>
                   <Text style={styles.activityTime}>
-                    {formatDate(new Date(activity.date))}
+                    {formatDateTime(new Date(activity.date), activity.time)}
                   </Text>
                   <View style={styles.locationRow}>
                     <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={16} color="#fff" />
@@ -246,7 +255,7 @@ export default function HomeScreen() {
                         )}
                       </View>
                       <Text style={styles.upcomingActivityTime}>
-                        {new Date(activity.date).toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' })} kl. {activity.time}
+                        {new Date(activity.date).toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' })} kl. {formatTime(activity.time)}
                       </Text>
                       <View style={styles.locationRow}>
                         <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={14} color="#fff" />
