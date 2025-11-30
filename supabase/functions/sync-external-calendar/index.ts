@@ -28,14 +28,11 @@ function formatTimeFromICALTime(icalTime: any): { date: string; time: string; is
     // Check if this is an all-day event
     const isAllDay = icalTime.isDate || false;
     
-    // Convert to JS Date
-    const jsDate = icalTime.toJSDate();
-    
     console.log('Parsing ICAL time:', {
       original: icalTime.toString(),
-      jsDate: jsDate.toISOString(),
-      timezone: icalTime.zone?.tzid || 'UTC',
+      timezone: icalTime.zone?.tzid || 'none',
       isAllDay: isAllDay,
+      isDate: icalTime.isDate,
     });
     
     // For all-day events, use the date components directly without timezone conversion
@@ -44,6 +41,8 @@ function formatTimeFromICALTime(icalTime: any): { date: string; time: string; is
       const month = String(icalTime.month).padStart(2, '0');
       const day = String(icalTime.day).padStart(2, '0');
       
+      console.log('All-day event:', { year, month, day });
+      
       return {
         date: `${year}-${month}-${day}`,
         time: '00:00:00',
@@ -51,8 +50,49 @@ function formatTimeFromICALTime(icalTime: any): { date: string; time: string; is
       };
     }
     
-    // For timed events, convert to Copenhagen timezone using Intl.DateTimeFormat
-    // This properly handles the timezone conversion
+    // For timed events, we need to handle timezone properly
+    // ICAL.js already converts to the correct timezone when calling toJSDate()
+    // The issue is that if the event is in UTC, toJSDate() gives us UTC time
+    // We need to convert that to Copenhagen time
+    
+    const jsDate = icalTime.toJSDate();
+    const originalTimezone = icalTime.zone?.tzid;
+    
+    console.log('Timed event - original:', {
+      jsDateISO: jsDate.toISOString(),
+      jsDateLocal: jsDate.toString(),
+      timezone: originalTimezone,
+      year: icalTime.year,
+      month: icalTime.month,
+      day: icalTime.day,
+      hour: icalTime.hour,
+      minute: icalTime.minute,
+    });
+    
+    // If the event has no timezone or is in UTC, we need to convert to Copenhagen
+    // If it already has a timezone, ICAL.js has already handled it
+    let copenhagenDate: Date;
+    
+    if (!originalTimezone || originalTimezone === 'UTC' || originalTimezone === 'Z') {
+      // Event is in UTC, convert to Copenhagen
+      // Use the ICAL time components directly and interpret them as UTC
+      const utcDate = new Date(Date.UTC(
+        icalTime.year,
+        icalTime.month - 1, // JavaScript months are 0-indexed
+        icalTime.day,
+        icalTime.hour,
+        icalTime.minute,
+        icalTime.second || 0
+      ));
+      
+      console.log('UTC date created:', utcDate.toISOString());
+      copenhagenDate = utcDate;
+    } else {
+      // Event already has a timezone, use the JS Date as-is
+      copenhagenDate = jsDate;
+    }
+    
+    // Now format this date in Copenhagen timezone
     const copenhagenFormatter = new Intl.DateTimeFormat('en-US', {
       timeZone: 'Europe/Copenhagen',
       year: 'numeric',
@@ -64,7 +104,7 @@ function formatTimeFromICALTime(icalTime: any): { date: string; time: string; is
       hour12: false
     });
     
-    const parts = copenhagenFormatter.formatToParts(jsDate);
+    const parts = copenhagenFormatter.formatToParts(copenhagenDate);
     const partsMap: { [key: string]: string } = {};
     parts.forEach(part => {
       if (part.type !== 'literal') {
@@ -80,7 +120,7 @@ function formatTimeFromICALTime(icalTime: any): { date: string; time: string; is
     const second = partsMap.second || '00';
     
     console.log('Converted to Copenhagen time:', {
-      originalUTC: jsDate.toISOString(),
+      originalUTC: copenhagenDate.toISOString(),
       copenhagenLocal: `${year}-${month}-${day} ${hour}:${minute}:${second}`,
       parts: partsMap,
     });
