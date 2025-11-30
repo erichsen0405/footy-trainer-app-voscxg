@@ -23,38 +23,6 @@ interface ParsedEvent {
   isAllDay: boolean;
 }
 
-function convertToCopenhagenTime(date: Date): Date {
-  // Convert any date to Copenhagen timezone (Europe/Copenhagen)
-  // Copenhagen is UTC+1 (standard) or UTC+2 (daylight saving)
-  
-  // Create a date string in Copenhagen timezone
-  const copenhagenString = date.toLocaleString('en-US', {
-    timeZone: 'Europe/Copenhagen',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false
-  });
-  
-  // Parse the Copenhagen time string back to a Date object
-  // Format: "MM/DD/YYYY, HH:mm:ss"
-  const [datePart, timePart] = copenhagenString.split(', ');
-  const [month, day, year] = datePart.split('/');
-  const [hour, minute, second] = timePart.split(':');
-  
-  return new Date(
-    parseInt(year),
-    parseInt(month) - 1,
-    parseInt(day),
-    parseInt(hour),
-    parseInt(minute),
-    parseInt(second)
-  );
-}
-
 function formatTimeFromICALTime(icalTime: any): { date: string; time: string; isAllDay: boolean } {
   try {
     // Check if this is an all-day event
@@ -83,35 +51,67 @@ function formatTimeFromICALTime(icalTime: any): { date: string; time: string; is
       };
     }
     
-    // For timed events, convert to Copenhagen timezone
-    const copenhagenDate = convertToCopenhagenTime(jsDate);
+    // For timed events, convert to Copenhagen timezone using Intl.DateTimeFormat
+    // This properly handles the timezone conversion
+    const copenhagenFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Europe/Copenhagen',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
     
-    const year = copenhagenDate.getFullYear();
-    const month = String(copenhagenDate.getMonth() + 1).padStart(2, '0');
-    const day = String(copenhagenDate.getDate()).padStart(2, '0');
-    const hour = String(copenhagenDate.getHours()).padStart(2, '0');
-    const minute = String(copenhagenDate.getMinutes()).padStart(2, '0');
+    const parts = copenhagenFormatter.formatToParts(jsDate);
+    const partsMap: { [key: string]: string } = {};
+    parts.forEach(part => {
+      if (part.type !== 'literal') {
+        partsMap[part.type] = part.value;
+      }
+    });
+    
+    const year = partsMap.year;
+    const month = partsMap.month;
+    const day = partsMap.day;
+    const hour = partsMap.hour;
+    const minute = partsMap.minute;
+    const second = partsMap.second || '00';
     
     console.log('Converted to Copenhagen time:', {
       originalUTC: jsDate.toISOString(),
-      copenhagenLocal: `${year}-${month}-${day} ${hour}:${minute}`,
+      copenhagenLocal: `${year}-${month}-${day} ${hour}:${minute}:${second}`,
+      parts: partsMap,
     });
     
     return {
       date: `${year}-${month}-${day}`,
-      time: `${hour}:${minute}:00`,
+      time: `${hour}:${minute}:${second}`,
       isAllDay: false,
     };
   } catch (error) {
     console.error('Error formatting ICAL time:', error);
     // Fallback to current date/time in Copenhagen
-    const now = convertToCopenhagenTime(new Date());
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
+    const now = new Date();
+    const copenhagenFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Europe/Copenhagen',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour12: false
+    });
+    
+    const parts = copenhagenFormatter.formatToParts(now);
+    const partsMap: { [key: string]: string } = {};
+    parts.forEach(part => {
+      if (part.type !== 'literal') {
+        partsMap[part.type] = part.value;
+      }
+    });
     
     return {
-      date: `${year}-${month}-${day}`,
+      date: `${partsMap.year}-${partsMap.month}-${partsMap.day}`,
       time: '12:00:00',
       isAllDay: false,
     };
