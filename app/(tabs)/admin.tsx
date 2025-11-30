@@ -7,6 +7,10 @@ import { colors } from '@/styles/commonStyles';
 import { Activity } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
+import CreatePlayerModal from '@/components/CreatePlayerModal';
+import PlayersList from '@/components/PlayersList';
+import * as Notifications from 'expo-notifications';
+import { requestNotificationPermissions } from '@/utils/notificationService';
 
 export default function AdminScreen() {
   const router = useRouter();
@@ -42,6 +46,9 @@ export default function AdminScreen() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAddingCalendar, setIsAddingCalendar] = useState(false);
   const [isDeletingActivities, setIsDeletingActivities] = useState(false);
+  const [isCreatePlayerModalVisible, setIsCreatePlayerModalVisible] = useState(false);
+  const [refreshPlayersList, setRefreshPlayersList] = useState(0);
+  const [isSendingTestNotification, setIsSendingTestNotification] = useState(false);
   
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -424,6 +431,58 @@ export default function AdminScreen() {
     setSearchQuery('');
   };
 
+  const handleSendTestNotification = async () => {
+    setIsSendingTestNotification(true);
+    
+    try {
+      // Request permissions first
+      const hasPermission = await requestNotificationPermissions();
+      
+      if (!hasPermission) {
+        Alert.alert(
+          'Tilladelse nødvendig',
+          'Du skal give tilladelse til notifikationer for at teste denne funktion. Gå til indstillinger og aktiver notifikationer for denne app.',
+          [{ text: 'OK' }]
+        );
+        setIsSendingTestNotification(false);
+        return;
+      }
+
+      // Schedule an immediate notification
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '⚽ Test Notifikation',
+          body: 'Dette er en test notifikation fra din fodboldtrænings app! Notifikationer virker korrekt. 🎉',
+          sound: 'default',
+          data: {
+            type: 'test-notification',
+          },
+          priority: Notifications.AndroidNotificationPriority.HIGH,
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+          seconds: 1,
+          channelId: Platform.OS === 'android' ? 'task-reminders' : undefined,
+        },
+      });
+
+      Alert.alert(
+        'Test Notifikation Sendt! ✅',
+        'En test notifikation vil blive vist om et øjeblik. Hvis du ikke ser den, tjek venligst dine notifikationsindstillinger.',
+        [{ text: 'OK' }]
+      );
+    } catch (error: any) {
+      console.error('Error sending test notification:', error);
+      Alert.alert(
+        'Fejl',
+        `Kunne ikke sende test notifikation: ${error?.message || 'Ukendt fejl'}`,
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsSendingTestNotification(false);
+    }
+  };
+
   const formatDate = (date: Date) => {
     const activityDate = new Date(date);
     const dateStr = activityDate.toLocaleDateString('da-DK', {
@@ -492,6 +551,79 @@ export default function AdminScreen() {
               </Text>
             </View>
           )}
+        </View>
+
+        {/* Player Management Section */}
+        <View style={[styles.playerManagementSection, { backgroundColor: cardBgColor }]}>
+          <View style={styles.playerManagementHeader}>
+            <View style={styles.playerManagementHeaderLeft}>
+              <IconSymbol 
+                ios_icon_name="person.2.fill" 
+                android_material_icon_name="group" 
+                size={28} 
+                color={colors.primary} 
+              />
+              <View style={styles.playerManagementTitleContainer}>
+                <Text style={[styles.playerManagementTitle, { color: textColor }]}>Spillerstyring</Text>
+                <Text style={[styles.playerManagementSubtitle, { color: textSecondaryColor }]}>
+                  Administrer dine spillerprofiler
+                </Text>
+              </View>
+            </View>
+          </View>
+          
+          <TouchableOpacity 
+            style={[
+              styles.createPlayerButton, 
+              { backgroundColor: isAuthenticated ? colors.primary : colors.highlight }
+            ]}
+            onPress={() => setIsCreatePlayerModalVisible(true)}
+            activeOpacity={0.7}
+            disabled={!isAuthenticated}
+          >
+            <IconSymbol ios_icon_name="person.badge.plus" android_material_icon_name="person_add" size={22} color="#fff" />
+            <Text style={styles.createPlayerButtonText}>Opret Spillerprofil</Text>
+          </TouchableOpacity>
+
+          {/* Players List */}
+          <PlayersList key={refreshPlayersList} />
+        </View>
+
+        {/* Test Notification Section */}
+        <View style={[styles.testNotificationSection, { backgroundColor: cardBgColor }]}>
+          <View style={styles.testNotificationHeader}>
+            <IconSymbol 
+              ios_icon_name="bell.badge.fill" 
+              android_material_icon_name="notifications_active" 
+              size={28} 
+              color={colors.secondary} 
+            />
+            <View style={styles.testNotificationTitleContainer}>
+              <Text style={[styles.testNotificationTitle, { color: textColor }]}>Test Notifikationer</Text>
+              <Text style={[styles.testNotificationSubtitle, { color: textSecondaryColor }]}>
+                Send en test notifikation for at verificere at notifikationer virker
+              </Text>
+            </View>
+          </View>
+          
+          <TouchableOpacity 
+            style={[
+              styles.testNotificationButton, 
+              { backgroundColor: colors.secondary }
+            ]}
+            onPress={handleSendTestNotification}
+            activeOpacity={0.7}
+            disabled={isSendingTestNotification}
+          >
+            {isSendingTestNotification ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <React.Fragment>
+                <IconSymbol ios_icon_name="paperplane.fill" android_material_icon_name="send" size={22} color="#fff" />
+                <Text style={styles.testNotificationButtonText}>Send Test Notifikation</Text>
+              </React.Fragment>
+            )}
+          </TouchableOpacity>
         </View>
 
         {/* External Calendar Management Section - Mobile Optimized */}
@@ -943,6 +1075,15 @@ export default function AdminScreen() {
         <View style={{ height: 120 }} />
       </ScrollView>
 
+      {/* Create Player Modal */}
+      <CreatePlayerModal
+        visible={isCreatePlayerModalVisible}
+        onClose={() => setIsCreatePlayerModalVisible(false)}
+        onPlayerCreated={() => {
+          setRefreshPlayersList(prev => prev + 1);
+        }}
+      />
+
       {/* Add Calendar Modal - Mobile Optimized */}
       <Modal visible={isCalendarModalVisible} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
@@ -1132,6 +1273,85 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     lineHeight: 20,
+  },
+  playerManagementSection: {
+    marginHorizontal: 20,
+    marginBottom: 20,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 2,
+    borderColor: colors.primary,
+  },
+  playerManagementHeader: {
+    marginBottom: 16,
+  },
+  playerManagementHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  playerManagementTitleContainer: {
+    flex: 1,
+  },
+  playerManagementTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  playerManagementSubtitle: {
+    fontSize: 15,
+  },
+  createPlayerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+    borderRadius: 14,
+    marginBottom: 16,
+  },
+  createPlayerButtonText: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  testNotificationSection: {
+    marginHorizontal: 20,
+    marginBottom: 20,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 2,
+    borderColor: colors.secondary,
+  },
+  testNotificationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginBottom: 16,
+  },
+  testNotificationTitleContainer: {
+    flex: 1,
+  },
+  testNotificationTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  testNotificationSubtitle: {
+    fontSize: 15,
+  },
+  testNotificationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+    borderRadius: 14,
+  },
+  testNotificationButtonText: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#fff',
   },
   externalCalendarSection: {
     marginHorizontal: 20,
