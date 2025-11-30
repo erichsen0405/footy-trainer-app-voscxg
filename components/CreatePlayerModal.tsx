@@ -31,14 +31,12 @@ export default function CreatePlayerModal({
   const [playerName, setPlayerName] = useState('');
   const [playerEmail, setPlayerEmail] = useState('');
   const [playerPhone, setPlayerPhone] = useState('');
-  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   const resetForm = () => {
     setPlayerName('');
     setPlayerEmail('');
     setPlayerPhone('');
-    setPassword('');
   };
 
   const handleCreatePlayer = async () => {
@@ -59,11 +57,6 @@ export default function CreatePlayerModal({
       return;
     }
 
-    if (!password || password.length < 6) {
-      Alert.alert('Fejl', 'Adgangskoden skal være mindst 6 tegn lang');
-      return;
-    }
-
     setLoading(true);
 
     try {
@@ -74,13 +67,16 @@ export default function CreatePlayerModal({
         throw new Error('Kunne ikke hente admin bruger');
       }
 
-      console.log('Creating player account for:', playerEmail);
+      console.log('Creating player invitation for:', playerEmail);
 
-      // Create the player account using admin API
-      // Note: This requires the admin to be authenticated
+      // Generate a temporary password (player will never see this)
+      // They will set their own password through the magic link
+      const tempPassword = `temp_${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
+
+      // Create the player account
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: playerEmail,
-        password: password,
+        password: tempPassword,
         options: {
           data: {
             full_name: playerName,
@@ -142,9 +138,23 @@ export default function CreatePlayerModal({
         throw new Error('Kunne ikke oprette admin-spiller relation');
       }
 
+      // Now send a password reset email so the player can set their own password
+      console.log('Sending password reset email to player');
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+        playerEmail,
+        {
+          redirectTo: 'https://natively.dev/email-confirmed',
+        }
+      );
+
+      if (resetError) {
+        console.error('Password reset email error:', resetError);
+        // Don't throw - the account is created, they can request reset later
+      }
+
       Alert.alert(
         'Succes! 🎉',
-        `Spillerprofil for ${playerName} er oprettet.\n\nEmail: ${playerEmail}\n\nSpilleren skal bekræfte sin email før login.`,
+        `Spillerprofil for ${playerName} er oprettet.\n\nEmail: ${playerEmail}\n\n✉️ Spilleren har modtaget en email med et link til at oprette sin adgangskode.\n\n⚠️ Spilleren skal klikke på linket i emailen og oprette en adgangskode før login er muligt.`,
         [
           {
             text: 'OK',
@@ -208,7 +218,7 @@ export default function CreatePlayerModal({
           </View>
 
           <Text style={styles.description}>
-            Opret en ny spillerprofil. Spilleren vil kun have adgang til Hjem, Performance og Profil.
+            Opret en ny spillerprofil. Spilleren vil modtage en email med et link til at oprette sin egen adgangskode.
           </Text>
 
           <View style={styles.form}>
@@ -248,19 +258,6 @@ export default function CreatePlayerModal({
               autoCorrect={false}
             />
 
-            <Text style={styles.label}>Adgangskode *</Text>
-            <TextInput
-              style={styles.input}
-              value={password}
-              onChangeText={setPassword}
-              placeholder="Mindst 6 tegn"
-              placeholderTextColor={colors.textSecondary}
-              secureTextEntry
-              editable={!loading}
-              autoCorrect={false}
-              autoCapitalize="none"
-            />
-
             <View style={styles.infoBox}>
               <IconSymbol
                 ios_icon_name="info.circle"
@@ -268,8 +265,26 @@ export default function CreatePlayerModal({
                 size={20}
                 color={colors.secondary}
               />
+              <View style={styles.infoTextContainer}>
+                <Text style={styles.infoTitle}>Sådan fungerer det:</Text>
+                <Text style={styles.infoText}>
+                  1. Du opretter spillerprofilen med navn og email{'\n'}
+                  2. Spilleren modtager en email med et link{'\n'}
+                  3. Spilleren klikker på linket og opretter sin egen adgangskode{'\n'}
+                  4. Spilleren kan nu logge ind i appen
+                </Text>
+              </View>
+            </View>
+
+            <View style={[styles.infoBox, { backgroundColor: colors.highlight, marginTop: 16 }]}>
+              <IconSymbol
+                ios_icon_name="lock.shield"
+                android_material_icon_name="security"
+                size={20}
+                color={colors.primary}
+              />
               <Text style={styles.infoText}>
-                Spilleren vil modtage en bekræftelsesmail og skal klikke på linket før login.
+                Spilleren vil kun have adgang til Hjem, Performance og Profil menuer.
               </Text>
             </View>
           </View>
@@ -296,7 +311,7 @@ export default function CreatePlayerModal({
             {loading ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
-              <Text style={styles.createButtonText}>Opret Spiller</Text>
+              <Text style={styles.createButtonText}>Send Invitation</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -381,7 +396,16 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     backgroundColor: colors.highlight,
-    marginTop: 16,
+    marginTop: 8,
+  },
+  infoTextContainer: {
+    flex: 1,
+  },
+  infoTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 8,
   },
   infoText: {
     flex: 1,
