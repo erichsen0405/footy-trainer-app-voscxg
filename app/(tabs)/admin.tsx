@@ -154,14 +154,38 @@ export default function AdminScreen() {
     }
   };
 
-  const deleteSelectedActivities = () => {
-    selectedActivities.forEach(id => {
+  const deleteSelectedActivities = async () => {
+    console.log('Deleting selected activities:', selectedActivities.length);
+    
+    // Filter out external activities - they cannot be deleted
+    const internalActivityIds = selectedActivities.filter(id => {
       const activity = allActivities.find(a => a.id === id);
-      if (activity && !activity.isExternal) {
-        deleteActivity(id);
-      }
+      return activity && !activity.isExternal;
     });
-    setSelectedActivities([]);
+
+    if (internalActivityIds.length === 0) {
+      Alert.alert('Ingen aktiviteter at slette', 'Du kan kun slette interne aktiviteter, ikke eksterne.');
+      return;
+    }
+
+    Alert.alert(
+      'Slet aktiviteter',
+      `Er du sikker på at du vil slette ${internalActivityIds.length} aktivitet${internalActivityIds.length !== 1 ? 'er' : ''}?`,
+      [
+        { text: 'Annuller', style: 'cancel' },
+        {
+          text: 'Slet',
+          style: 'destructive',
+          onPress: async () => {
+            for (const id of internalActivityIds) {
+              await deleteActivity(id);
+            }
+            setSelectedActivities([]);
+            Alert.alert('Slettet', `${internalActivityIds.length} aktivitet${internalActivityIds.length !== 1 ? 'er' : ''} blev slettet.`);
+          }
+        }
+      ]
+    );
   };
 
   const handleAddCalendar = async () => {
@@ -274,13 +298,20 @@ export default function AdminScreen() {
 
     Alert.alert(
       'Slet kalender',
-      'Er du sikker på at du vil slette denne kalender?',
+      'Er du sikker på at du vil slette denne kalender? Alle tilknyttede aktiviteter vil også blive slettet.',
       [
         { text: 'Annuller', style: 'cancel' },
         { 
           text: 'Slet', 
           style: 'destructive',
-          onPress: () => deleteExternalCalendar(calendarId)
+          onPress: async () => {
+            try {
+              await deleteExternalCalendar(calendarId);
+              Alert.alert('Slettet', 'Kalenderen og dens aktiviteter er blevet slettet.');
+            } catch (error: any) {
+              Alert.alert('Fejl', `Kunne ikke slette kalenderen: ${error?.message || 'Ukendt fejl'}`);
+            }
+          }
         }
       ]
     );

@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, useColorScheme } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, useColorScheme, KeyboardAvoidingView, Platform } from 'react-native';
 import { useFootball } from '@/contexts/FootballContext';
 import { colors } from '@/styles/commonStyles';
 import { Task } from '@/types';
@@ -216,7 +216,10 @@ export default function TasksScreen() {
       </ScrollView>
 
       <Modal visible={isModalVisible} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={[styles.modalContent, { backgroundColor: cardBgColor }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: textColor }]}>
@@ -227,7 +230,7 @@ export default function TasksScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalBody}>
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
               <Text style={[styles.label, { color: textColor }]}>Titel</Text>
               <TextInput
                 style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
@@ -265,7 +268,11 @@ export default function TasksScreen() {
                     key={`modal-cat-${category.id}-${index}`}
                     style={[
                       styles.categoryChip,
-                      { backgroundColor: selectedTask?.categoryIds.includes(category.id) ? category.color : bgColor },
+                      {
+                        backgroundColor: selectedTask?.categoryIds.includes(category.id) ? category.color : bgColor,
+                        borderColor: category.color,
+                        borderWidth: 2,
+                      },
                     ]}
                     onPress={() => toggleCategory(category.id)}
                   >
@@ -296,7 +303,7 @@ export default function TasksScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -307,7 +314,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    paddingTop: 60,
+    paddingTop: Platform.OS === 'android' ? 60 : 70,
     paddingHorizontal: 16,
     paddingBottom: 16,
   },
@@ -465,6 +472,7 @@ const styles = StyleSheet.create({
   },
   modalBody: {
     padding: 20,
+    maxHeight: '60%',
   },
   label: {
     fontSize: 16,
@@ -493,8 +501,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 20,
-    borderWidth: 1,
-    borderColor: colors.highlight,
   },
   categoryEmoji: {
     fontSize: 16,

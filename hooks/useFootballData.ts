@@ -432,7 +432,31 @@ export function useFootballData() {
     ));
   };
 
-  const deleteActivity = (id: string) => {
+  const deleteActivity = async (id: string) => {
+    console.log('Deleting activity:', id);
+    
+    // Check if it's an external activity
+    const isExternal = externalActivities.some(a => a.id === id);
+    
+    if (isExternal) {
+      console.log('Cannot delete external activity from app');
+      return;
+    }
+
+    // Delete from Supabase
+    const { error } = await supabase
+      .from('activities')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error deleting activity from database:', error);
+      return;
+    }
+
+    console.log('Activity deleted from database successfully');
+
+    // Update local state
     setActivities(activities.filter(activity => activity.id !== id));
   };
 
@@ -646,18 +670,38 @@ export function useFootballData() {
   const deleteExternalCalendar = async (id: string) => {
     console.log('Deleting external calendar:', id);
 
-    const { error } = await supabase
-      .from('external_calendars')
-      .delete()
-      .eq('id', id);
+    try {
+      // First delete all activities associated with this calendar
+      const { error: activitiesError } = await supabase
+        .from('activities')
+        .delete()
+        .eq('external_calendar_id', id);
 
-    if (error) {
-      console.error('Error deleting calendar:', error);
-      return;
+      if (activitiesError) {
+        console.error('Error deleting calendar activities:', activitiesError);
+        throw activitiesError;
+      }
+
+      // Then delete the calendar itself
+      const { error } = await supabase
+        .from('external_calendars')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error deleting calendar:', error);
+        throw error;
+      }
+
+      console.log('Calendar deleted successfully');
+
+      // Update local state
+      setExternalCalendars(externalCalendars.filter(cal => cal.id !== id));
+      setExternalActivities(prev => prev.filter(a => a.externalCalendarId !== id));
+    } catch (error) {
+      console.error('Failed to delete calendar:', error);
+      throw error;
     }
-
-    setExternalCalendars(externalCalendars.filter(cal => cal.id !== id));
-    setExternalActivities(prev => prev.filter(a => a.externalCalendarId !== id));
   };
 
   const importExternalActivity = async (externalActivityId: string, categoryId: string) => {

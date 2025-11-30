@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useColorScheme } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useFootball } from '@/contexts/FootballContext';
 import { colors } from '@/styles/commonStyles';
 import { Activity } from '@/types';
@@ -8,6 +9,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { getWeek } from 'date-fns';
 
 export default function HomeScreen() {
+  const router = useRouter();
   const { currentWeekStats, todayActivities, activities, toggleTaskCompletion } = useFootball();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -51,6 +53,11 @@ export default function HomeScreen() {
 
   const formatDateTime = (date: Date, time: string) => {
     return `${formatDate(date)} kl. ${formatTime(time)}`;
+  };
+
+  const handleActivityPress = (activityId: string) => {
+    console.log('Opening activity details for:', activityId);
+    router.push(`/activity-details?id=${activityId}`);
   };
 
   const getUpcomingActivitiesByWeek = () => {
@@ -141,7 +148,12 @@ export default function HomeScreen() {
         ) : (
           <React.Fragment>
             {todayActivities.map((activity, index) => (
-              <View key={`today-${index}-${activity.id || index}`} style={[styles.activityCard, { backgroundColor: activity.category.color }]}>
+              <TouchableOpacity
+                key={`today-${index}-${activity.id || index}`}
+                style={[styles.activityCard, { backgroundColor: activity.category.color }]}
+                onPress={() => handleActivityPress(activity.id)}
+                activeOpacity={0.7}
+              >
                 <View style={styles.activityHeader}>
                   <Text style={styles.activityEmoji}>{activity.category.emoji}</Text>
                   <View style={styles.activityInfo}>
@@ -163,7 +175,10 @@ export default function HomeScreen() {
                       <TouchableOpacity
                         key={`task-${index}-${taskIndex}-${task.id || taskIndex}`}
                         style={styles.taskItem}
-                        onPress={() => toggleTaskCompletion(activity.id, task.id)}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          toggleTaskCompletion(activity.id, task.id);
+                        }}
                       >
                         <View style={[styles.checkbox, task.completed && styles.checkboxChecked]}>
                           {task.completed && (
@@ -177,7 +192,7 @@ export default function HomeScreen() {
                     ))}
                   </View>
                 )}
-              </View>
+              </TouchableOpacity>
             ))}
           </React.Fragment>
         )}
@@ -204,7 +219,12 @@ export default function HomeScreen() {
                   </Text>
                   
                   {data.activities.map((activity, activityIndex) => (
-                    <View key={`${weekKey}-activity-${activity.id || activityIndex}`} style={[styles.upcomingActivityCard, { backgroundColor: activity.category.color }]}>
+                    <TouchableOpacity
+                      key={`${weekKey}-activity-${activity.id || activityIndex}`}
+                      style={[styles.upcomingActivityCard, { backgroundColor: activity.category.color }]}
+                      onPress={() => handleActivityPress(activity.id)}
+                      activeOpacity={0.7}
+                    >
                       <View style={styles.upcomingActivityHeader}>
                         <Text style={styles.upcomingActivityEmoji}>{activity.category.emoji}</Text>
                         <View style={styles.upcomingActivityInfo}>
@@ -218,7 +238,7 @@ export default function HomeScreen() {
                           </View>
                         </View>
                       </View>
-                    </View>
+                    </TouchableOpacity>
                   ))}
                 </View>
               );
