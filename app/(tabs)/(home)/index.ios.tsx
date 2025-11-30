@@ -197,7 +197,7 @@ export default function HomeScreen() {
             <React.Fragment>
               {todayActivities.map((activity, index) => (
                 <TouchableOpacity
-                  key={`today-${index}-${activity.id || index}`}
+                  key={`today-${activity.id}-${index}`}
                   style={[styles.activityCard, { backgroundColor: activity.category.color }]}
                   onPress={() => handleActivityPress(activity.id)}
                   activeOpacity={0.7}
@@ -221,7 +221,7 @@ export default function HomeScreen() {
                       <Text style={styles.tasksTitle}>Opgaver:</Text>
                       {activity.tasks.map((task, taskIndex) => (
                         <TouchableOpacity
-                          key={`task-${index}-${taskIndex}-${task.id || taskIndex}`}
+                          key={`task-${activity.id}-${task.id}-${taskIndex}`}
                           style={styles.taskItem}
                           onPress={(e) => {
                             e.stopPropagation();
@@ -258,7 +258,7 @@ export default function HomeScreen() {
               {Object.entries(upcomingByWeek).map(([weekKey, data], weekIndex) => {
                 const weekNumber = weekKey.split('-W')[1];
                 return (
-                  <View key={weekKey} style={styles.weekSection}>
+                  <View key={`week-${weekKey}`} style={styles.weekSection}>
                     <Text style={[styles.weekTitle, { color: textColor }]}>
                       Uge {weekNumber}
                     </Text>
@@ -268,7 +268,7 @@ export default function HomeScreen() {
                     
                     {data.activities.map((activity, activityIndex) => (
                       <TouchableOpacity
-                        key={`${weekKey}-activity-${activity.id || activityIndex}`}
+                        key={`upcoming-${activity.id}-${activityIndex}`}
                         style={[styles.upcomingActivityCard, { backgroundColor: activity.category.color }]}
                         onPress={() => handleActivityPress(activity.id)}
                         activeOpacity={0.7}

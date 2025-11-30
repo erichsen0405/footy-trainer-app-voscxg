@@ -12,28 +12,91 @@ export default function TabLayout() {
     <NativeTabs 
       tintColor={colors.primary}
       barTintColor={isDark ? '#1C1C1E' : '#FFFFFF'}
-      unselectedItemTintColor={isDark ? '#8E8E93' : '#666666'}
-      translucent={false}
+      unselectedItemTintColor={isDark ? '#8E8E93' : '#999999'}
+      translucent={true}
+      style={{
+        backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+      }}
     >
       <NativeTabs.Trigger key="home" name="(home)">
-        <Icon sf={{ default: 'house', selected: 'house.fill' }} />
-        <Label>Hjem</Label>
+        <Icon 
+          sf={{ default: 'house', selected: 'house.fill' }}
+          style={{ 
+            tintColor: colors.primary,
+          }}
+        />
+        <Label 
+          style={{ 
+            fontSize: 11,
+            fontWeight: '600',
+          }}
+        >
+          Hjem
+        </Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger key="tasks" name="tasks">
-        <Icon sf={{ default: 'checklist', selected: 'checklist' }} />
-        <Label>Opgaver</Label>
+        <Icon 
+          sf={{ default: 'checklist', selected: 'checklist' }}
+          style={{ 
+            tintColor: colors.primary,
+          }}
+        />
+        <Label 
+          style={{ 
+            fontSize: 11,
+            fontWeight: '600',
+          }}
+        >
+          Opgaver
+        </Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger key="performance" name="performance">
-        <Icon sf={{ default: 'trophy', selected: 'trophy.fill' }} />
-        <Label>Performance</Label>
+        <Icon 
+          sf={{ default: 'trophy', selected: 'trophy.fill' }}
+          style={{ 
+            tintColor: colors.primary,
+          }}
+        />
+        <Label 
+          style={{ 
+            fontSize: 11,
+            fontWeight: '600',
+          }}
+        >
+          Performance
+        </Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger key="admin" name="admin">
-        <Icon sf={{ default: 'gearshape', selected: 'gearshape.fill' }} />
-        <Label>Admin</Label>
+        <Icon 
+          sf={{ default: 'gearshape', selected: 'gearshape.fill' }}
+          style={{ 
+            tintColor: colors.primary,
+          }}
+        />
+        <Label 
+          style={{ 
+            fontSize: 11,
+            fontWeight: '600',
+          }}
+        >
+          Admin
+        </Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger key="profile" name="profile">
-        <Icon sf={{ default: 'person', selected: 'person.fill' }} />
-        <Label>Profil</Label>
+        <Icon 
+          sf={{ default: 'person', selected: 'person.fill' }}
+          style={{ 
+            tintColor: colors.primary,
+          }}
+        />
+        <Label 
+          style={{ 
+            fontSize: 11,
+            fontWeight: '600',
+          }}
+        >
+          Profil
+        </Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );
