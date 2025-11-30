@@ -130,45 +130,47 @@ export default function HomeScreen() {
             <Text style={[styles.emptyText, { color: textSecondaryColor }]}>Ingen aktiviteter i dag</Text>
           </View>
         ) : (
-          todayActivities.map((activity, index) => (
-            <View key={`today-activity-${activity.id}-${index}`} style={[styles.activityCard, { backgroundColor: activity.category.color }]}>
-              <View style={styles.activityHeader}>
-                <Text style={styles.activityEmoji}>{activity.category.emoji}</Text>
-                <View style={styles.activityInfo}>
-                  <Text style={styles.activityTitle}>{activity.title}</Text>
-                  <Text style={styles.activityTime}>
-                    {formatDate(new Date(activity.date))}
-                  </Text>
-                  <View style={styles.locationRow}>
-                    <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={16} color="#fff" />
-                    <Text style={styles.activityLocation}>{activity.location}</Text>
+          <React.Fragment>
+            {todayActivities.map((activity, index) => (
+              <View key={`today-${index}-${activity.id || index}`} style={[styles.activityCard, { backgroundColor: activity.category.color }]}>
+                <View style={styles.activityHeader}>
+                  <Text style={styles.activityEmoji}>{activity.category.emoji}</Text>
+                  <View style={styles.activityInfo}>
+                    <Text style={styles.activityTitle}>{activity.title}</Text>
+                    <Text style={styles.activityTime}>
+                      {formatDate(new Date(activity.date))}
+                    </Text>
+                    <View style={styles.locationRow}>
+                      <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={16} color="#fff" />
+                      <Text style={styles.activityLocation}>{activity.location}</Text>
+                    </View>
                   </View>
                 </View>
-              </View>
 
-              {activity.tasks.length > 0 && (
-                <View style={styles.tasksSection}>
-                  <Text style={styles.tasksTitle}>Opgaver:</Text>
-                  {activity.tasks.map((task, taskIndex) => (
-                    <TouchableOpacity
-                      key={`task-${task.id}-${taskIndex}`}
-                      style={styles.taskItem}
-                      onPress={() => toggleTaskCompletion(activity.id, task.id)}
-                    >
-                      <View style={[styles.checkbox, task.completed && styles.checkboxChecked]}>
-                        {task.completed && (
-                          <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
-                        )}
-                      </View>
-                      <Text style={[styles.taskText, task.completed && styles.taskTextCompleted]}>
-                        {task.title}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-            </View>
-          ))
+                {activity.tasks.length > 0 && (
+                  <View style={styles.tasksSection}>
+                    <Text style={styles.tasksTitle}>Opgaver:</Text>
+                    {activity.tasks.map((task, taskIndex) => (
+                      <TouchableOpacity
+                        key={`task-${index}-${taskIndex}-${task.id || taskIndex}`}
+                        style={styles.taskItem}
+                        onPress={() => toggleTaskCompletion(activity.id, task.id)}
+                      >
+                        <View style={[styles.checkbox, task.completed && styles.checkboxChecked]}>
+                          {task.completed && (
+                            <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
+                          )}
+                        </View>
+                        <Text style={[styles.taskText, task.completed && styles.taskTextCompleted]}>
+                          {task.title}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+            ))}
+          </React.Fragment>
         )}
       </View>
 
@@ -180,9 +182,9 @@ export default function HomeScreen() {
             <Text style={[styles.emptyText, { color: textSecondaryColor }]}>Ingen kommende aktiviteter</Text>
           </View>
         ) : (
-          Object.entries(upcomingByWeek).map(([week, data], weekIndex) => (
-            <React.Fragment key={`week-${week}-${weekIndex}`}>
-              <View style={styles.weekSection}>
+          <React.Fragment>
+            {Object.entries(upcomingByWeek).map(([week, data], weekIndex) => (
+              <View key={`week-${weekIndex}-${week}`} style={styles.weekSection}>
                 <Text style={[styles.weekTitle, { color: textColor }]}>
                   {week}
                 </Text>
@@ -191,7 +193,7 @@ export default function HomeScreen() {
                 </Text>
                 
                 {data.activities.map((activity, activityIndex) => (
-                  <View key={`upcoming-activity-${activity.id}-${activityIndex}`} style={[styles.upcomingActivityCard, { backgroundColor: activity.category.color }]}>
+                  <View key={`upcoming-${weekIndex}-${activityIndex}-${activity.id || activityIndex}`} style={[styles.upcomingActivityCard, { backgroundColor: activity.category.color }]}>
                     <View style={styles.upcomingActivityHeader}>
                       <Text style={styles.upcomingActivityEmoji}>{activity.category.emoji}</Text>
                       <View style={styles.upcomingActivityInfo}>
@@ -208,8 +210,8 @@ export default function HomeScreen() {
                   </View>
                 ))}
               </View>
-            </React.Fragment>
-          ))
+            ))}
+          </React.Fragment>
         )}
       </View>
 
