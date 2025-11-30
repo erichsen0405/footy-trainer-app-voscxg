@@ -60,7 +60,7 @@ export default function HomeScreen() {
       const activityDate = new Date(activity.date);
       const weekNumber = getWeek(activityDate);
       const year = activityDate.getFullYear();
-      const key = `Uge ${weekNumber}`;
+      const key = `${year}-W${weekNumber}`;
       
       if (!grouped[key]) {
         grouped[key] = { activities: [], dateRange: '' };
@@ -183,34 +183,37 @@ export default function HomeScreen() {
           </View>
         ) : (
           <React.Fragment>
-            {Object.entries(upcomingByWeek).map(([week, data]) => (
-              <View key={`week-${week}`} style={styles.weekSection}>
-                <Text style={[styles.weekTitle, { color: textColor }]}>
-                  {week}
-                </Text>
-                <Text style={[styles.weekDates, { color: textSecondaryColor }]}>
-                  {data.dateRange}
-                </Text>
-                
-                {data.activities.map((activity, activityIndex) => (
-                  <View key={`${week}-activity-${activity.id || activityIndex}`} style={[styles.upcomingActivityCard, { backgroundColor: activity.category.color }]}>
-                    <View style={styles.upcomingActivityHeader}>
-                      <Text style={styles.upcomingActivityEmoji}>{activity.category.emoji}</Text>
-                      <View style={styles.upcomingActivityInfo}>
-                        <Text style={styles.upcomingActivityTitle}>{activity.title}</Text>
-                        <Text style={styles.upcomingActivityTime}>
-                          {new Date(activity.date).toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' })} kl. {activity.time}
-                        </Text>
-                        <View style={styles.locationRow}>
-                          <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={14} color="#fff" />
-                          <Text style={styles.upcomingActivityLocation}>{activity.location}</Text>
+            {Object.entries(upcomingByWeek).map(([weekKey, data], weekIndex) => {
+              const weekNumber = weekKey.split('-W')[1];
+              return (
+                <View key={weekKey} style={styles.weekSection}>
+                  <Text style={[styles.weekTitle, { color: textColor }]}>
+                    Uge {weekNumber}
+                  </Text>
+                  <Text style={[styles.weekDates, { color: textSecondaryColor }]}>
+                    {data.dateRange}
+                  </Text>
+                  
+                  {data.activities.map((activity, activityIndex) => (
+                    <View key={`${weekKey}-activity-${activity.id || activityIndex}`} style={[styles.upcomingActivityCard, { backgroundColor: activity.category.color }]}>
+                      <View style={styles.upcomingActivityHeader}>
+                        <Text style={styles.upcomingActivityEmoji}>{activity.category.emoji}</Text>
+                        <View style={styles.upcomingActivityInfo}>
+                          <Text style={styles.upcomingActivityTitle}>{activity.title}</Text>
+                          <Text style={styles.upcomingActivityTime}>
+                            {new Date(activity.date).toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' })} kl. {activity.time}
+                          </Text>
+                          <View style={styles.locationRow}>
+                            <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={14} color="#fff" />
+                            <Text style={styles.upcomingActivityLocation}>{activity.location}</Text>
+                          </View>
                         </View>
                       </View>
                     </View>
-                  </View>
-                ))}
-              </View>
-            ))}
+                  ))}
+                </View>
+              );
+            })}
           </React.Fragment>
         )}
       </View>
