@@ -128,40 +128,47 @@ export function useFootballData() {
     loadCategories();
   }, [userId]);
 
-  // Load tasks from Supabase
+  // Load task templates from Supabase
   useEffect(() => {
     if (!userId) return;
 
     const loadTasks = async () => {
-      console.log('Loading tasks for user:', userId);
+      console.log('Loading task templates for user:', userId);
+      
+      // Load task templates with their categories
       const { data, error } = await supabase
-        .from('tasks')
-        .select('*')
+        .from('task_templates')
+        .select(`
+          *,
+          task_template_categories(
+            category_id
+          )
+        `)
         .eq('user_id', userId);
 
       if (error) {
-        console.error('Error loading tasks:', error);
+        console.error('Error loading task templates:', error);
         return;
       }
 
       if (data) {
-        const loadedTasks: Task[] = data.map(task => ({
-          id: task.id,
-          title: task.title,
-          description: task.description || '',
-          completed: task.completed || false,
-          isTemplate: task.is_template || false,
-          categoryIds: task.category_ids || [],
-          reminder: task.reminder_minutes || undefined,
-          subtasks: task.subtasks || [],
+        const loadedTasks: Task[] = data.map(template => ({
+          id: template.id,
+          title: template.title,
+          description: template.description || '',
+          completed: false,
+          isTemplate: true,
+          categoryIds: template.task_template_categories?.map((ttc: any) => ttc.category_id) || [],
+          reminder: template.reminder_minutes || undefined,
+          subtasks: [],
         }));
-        console.log('Loaded tasks:', loadedTasks.length);
+        console.log('Loaded task templates:', loadedTasks.length);
         setTasks(loadedTasks);
       }
     };
 
     loadTasks();
-  }, [userId]);
+  }, [userId, refreshTrigger]);
 
   // Load external calendars from Supabase
   useEffect(() => {
@@ -787,51 +794,172 @@ export function useFootballData() {
     }
   };
 
-  const addTask = (task: Omit<Task, 'id'>) => {
-    const newTask: Task = {
-      ...task,
-      id: `task-${Date.now()}`,
-    };
-    setTasks([...tasks, newTask]);
-  };
-
-  const updateTask = (id: string, updates: Partial<Task>) => {
-    setTasks(tasks.map(task => 
-      task.id === id ? { ...task, ...updates } : task
-    ));
-    
-    setActivities(activities.map(activity => ({
-      ...activity,
-      tasks: activity.tasks.map(task =>
-        task.id === id ? { ...task, ...updates } : task
-      ),
-    })));
-  };
-
-  const deleteTask = (id: string) => {
-    // Cancel notification if exists
-    const notificationId = notificationIdentifiers.get(id);
-    if (notificationId) {
-      cancelNotification(notificationId);
+  const addTask = async (task: Omit<Task, 'id'>) => {
+    if (!userId) {
+      throw new Error('User not authenticated');
     }
 
-    setTasks(tasks.filter(task => task.id !== id));
-    
-    setActivities(activities.map(activity => ({
-      ...activity,
-      tasks: activity.tasks.filter(task => task.id !== id),
-    })));
+    console.log('Creating task template:', task);
+
+    try {
+      // Insert the task template
+      const { data: templateData, error: templateError } = await supabase
+        .from('task_templates')
+        .insert({
+          user_id: userId,
+          title: task.title,
+          description: task.description,
+          reminder_minutes: task.reminder,
+        })
+        .select()
+        .single();
+
+      if (templateError) {
+        console.error('Error creating task template:', templateError);
+        throw templateError;
+      }
+
+      console.log('Task template created:', templateData.id);
+
+      // Insert category associations
+      if (task.categoryIds && task.categoryIds.length > 0) {
+        const categoryInserts = task.categoryIds.map(categoryId => ({
+          task_template_id: templateData.id,
+          category_id: categoryId,
+        }));
+
+        const { error: categoryError } = await supabase
+          .from('task_template_categories')
+          .insert(categoryInserts);
+
+        if (categoryError) {
+          console.error('Error creating task template categories:', categoryError);
+          throw categoryError;
+        }
+
+        console.log('Task template categories created');
+      }
+
+      // Trigger refresh to reload tasks
+      setRefreshTrigger(prev => prev + 1);
+    } catch (error) {
+      console.error('Failed to create task template:', error);
+      throw error;
+    }
   };
 
-  const duplicateTask = (id: string) => {
+  const updateTask = async (id: string, updates: Partial<Task>) => {
+    if (!userId) {
+      throw new Error('User not authenticated');
+    }
+
+    console.log('Updating task template:', id);
+
+    try {
+      // Update the task template
+      const updateData: any = {};
+      if (updates.title !== undefined) updateData.title = updates.title;
+      if (updates.description !== undefined) updateData.description = updates.description;
+      if (updates.reminder !== undefined) updateData.reminder_minutes = updates.reminder;
+      updateData.updated_at = new Date().toISOString();
+
+      const { error: templateError } = await supabase
+        .from('task_templates')
+        .update(updateData)
+        .eq('id', id)
+        .eq('user_id', userId);
+
+      if (templateError) {
+        console.error('Error updating task template:', templateError);
+        throw templateError;
+      }
+
+      console.log('Task template updated');
+
+      // Update category associations if provided
+      if (updates.categoryIds !== undefined) {
+        // Delete existing associations
+        const { error: deleteError } = await supabase
+          .from('task_template_categories')
+          .delete()
+          .eq('task_template_id', id);
+
+        if (deleteError) {
+          console.error('Error deleting task template categories:', deleteError);
+          throw deleteError;
+        }
+
+        // Insert new associations
+        if (updates.categoryIds.length > 0) {
+          const categoryInserts = updates.categoryIds.map(categoryId => ({
+            task_template_id: id,
+            category_id: categoryId,
+          }));
+
+          const { error: categoryError } = await supabase
+            .from('task_template_categories')
+            .insert(categoryInserts);
+
+          if (categoryError) {
+            console.error('Error creating task template categories:', categoryError);
+            throw categoryError;
+          }
+
+          console.log('Task template categories updated');
+        }
+      }
+
+      // Trigger refresh to reload tasks
+      setRefreshTrigger(prev => prev + 1);
+    } catch (error) {
+      console.error('Failed to update task template:', error);
+      throw error;
+    }
+  };
+
+  const deleteTask = async (id: string) => {
+    if (!userId) {
+      throw new Error('User not authenticated');
+    }
+
+    console.log('Deleting task template:', id);
+
+    try {
+      // Delete the task template (cascade will delete categories and activity tasks)
+      const { error } = await supabase
+        .from('task_templates')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('Error deleting task template:', error);
+        throw error;
+      }
+
+      console.log('Task template deleted');
+
+      // Cancel notification if exists
+      const notificationId = notificationIdentifiers.get(id);
+      if (notificationId) {
+        cancelNotification(notificationId);
+      }
+
+      // Trigger refresh to reload tasks
+      setRefreshTrigger(prev => prev + 1);
+    } catch (error) {
+      console.error('Failed to delete task template:', error);
+      throw error;
+    }
+  };
+
+  const duplicateTask = async (id: string) => {
     const task = tasks.find(t => t.id === id);
     if (task) {
-      const newTask: Task = {
+      await addTask({
         ...task,
-        id: `task-${Date.now()}`,
         title: `${task.title} (kopi)`,
-      };
-      setTasks([...tasks, newTask]);
+      });
     }
   };
 
@@ -1138,28 +1266,10 @@ export function useFootballData() {
     }
 
     if (data) {
-      const activityTasks = tasks
-        .filter(task => task.isTemplate && task.categoryIds.includes(category.id))
-        .map(task => ({
-          ...task,
-          id: `${task.id}-imported-${Date.now()}`,
-          isTemplate: false,
-          completed: false,
-        }));
-
-      const importedActivity: Activity = {
-        id: data.id,
-        title: data.title,
-        date: new Date(data.activity_date),
-        time: data.activity_time,
-        location: data.location || 'Ingen lokation',
-        category,
-        tasks: activityTasks,
-        isExternal: false,
-      };
-
-      setActivities([...activities, importedActivity]);
-      console.log('Activity imported successfully:', importedActivity.title);
+      console.log('Activity imported successfully:', data.id);
+      
+      // Trigger a refresh to reload activities (tasks will be created by trigger)
+      setRefreshTrigger(prev => prev + 1);
     }
   };
 
