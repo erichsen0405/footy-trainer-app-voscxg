@@ -4,7 +4,6 @@ import { View, TouchableOpacity, Text, StyleSheet, Platform, useColorScheme } fr
 import { useRouter, usePathname } from 'expo-router';
 import { IconSymbol } from './IconSymbol';
 import { getColors } from '@/styles/commonStyles';
-import { BlurView } from 'expo-blur';
 
 export interface TabBarItem {
   name: string;
@@ -30,13 +29,11 @@ export default function FloatingTabBar({ tabs }: FloatingTabBarProps) {
 
   return (
     <View style={styles.container}>
-      <BlurView 
-        intensity={80} 
-        tint={colorScheme === 'dark' ? 'dark' : 'light'}
+      <View 
         style={[styles.tabBar, { 
           backgroundColor: colorScheme === 'dark' 
-            ? 'rgba(28, 28, 30, 0.95)' 
-            : 'rgba(255, 255, 255, 0.95)',
+            ? '#1C1C1E' 
+            : '#FFFFFF',
           borderWidth: 1,
           borderColor: colorScheme === 'dark' 
             ? 'rgba(255, 255, 255, 0.1)' 
@@ -74,7 +71,7 @@ export default function FloatingTabBar({ tabs }: FloatingTabBarProps) {
             </TouchableOpacity>
           );
         })}
-      </BlurView>
+      </View>
     </View>
   );
 }
