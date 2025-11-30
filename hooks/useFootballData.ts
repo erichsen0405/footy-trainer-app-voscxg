@@ -229,6 +229,8 @@ export function useFootballData() {
       }
 
       if (data) {
+        console.log(`Loaded ${data.length} activities from database`);
+        
         const loadedActivities: Activity[] = data.map(act => {
           const category = act.category ? {
             id: act.category.id,
@@ -239,17 +241,28 @@ export function useFootballData() {
 
           const activityDate = new Date(act.activity_date);
           
-          // Map activity_tasks to Task format
-          const activityTasks: Task[] = (act.activity_tasks || []).map((at: any) => ({
-            id: at.id,
-            title: at.title,
-            description: at.description || '',
-            completed: at.completed || false,
-            isTemplate: false,
-            categoryIds: [],
-            reminder: at.reminder_minutes || undefined,
-            subtasks: [],
-          }));
+          // Map activity_tasks to Task format - ONLY include tasks that exist
+          const activityTasks: Task[] = (act.activity_tasks || [])
+            .filter((at: any) => {
+              // Filter out any tasks that might be orphaned or invalid
+              if (!at || !at.id || !at.title) {
+                console.log('Filtering out invalid task:', at);
+                return false;
+              }
+              return true;
+            })
+            .map((at: any) => ({
+              id: at.id,
+              title: at.title,
+              description: at.description || '',
+              completed: at.completed || false,
+              isTemplate: false,
+              categoryIds: [],
+              reminder: at.reminder_minutes || undefined,
+              subtasks: [],
+            }));
+
+          console.log(`Activity "${act.title}" has ${activityTasks.length} tasks`);
 
           return {
             id: act.id,
@@ -272,6 +285,8 @@ export function useFootballData() {
         // Separate internal and external activities
         const internal = loadedActivities.filter(a => !a.isExternal);
         const external = loadedActivities.filter(a => a.isExternal);
+        
+        console.log(`Internal activities: ${internal.length}, External activities: ${external.length}`);
         
         setActivities(internal);
         setExternalActivities(external);
