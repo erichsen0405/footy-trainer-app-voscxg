@@ -19,17 +19,19 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { Activity, ActivityCategory } from '@/types';
 import { supabase } from '@/app/integrations/supabase/client';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import EditSeriesDialog from '@/components/EditSeriesDialog';
 
 export default function ActivityDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { activities, externalActivities, categories, updateActivity, toggleTaskCompletion } = useFootball();
+  const { activities, externalActivities, categories, updateActivity, updateActivitySingle, updateActivitySeries, toggleTaskCompletion } = useFootball();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
   const [activity, setActivity] = useState<Activity | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [showSeriesDialog, setShowSeriesDialog] = useState(false);
   
   // Edit state
   const [editTitle, setEditTitle] = useState('');
@@ -54,15 +56,30 @@ export default function ActivityDetailsScreen() {
     }
   }, [id, activities, externalActivities]);
 
+  const handleEditClick = () => {
+    if (activity?.seriesId) {
+      // Show dialog to choose between editing single or all
+      setShowSeriesDialog(true);
+    } else {
+      // No series, just edit normally
+      setIsEditing(true);
+    }
+  };
+
+  const handleEditSingle = () => {
+    setIsEditing(true);
+  };
+
+  const handleEditAll = () => {
+    setIsEditing(true);
+  };
+
   const handleSave = async () => {
     if (!activity) return;
 
     setIsSaving(true);
 
     try {
-      // Format date and time for database
-      const dateStr = editDate.toISOString().split('T')[0];
-      
       if (activity.isExternal) {
         // For external activities, only allow category change
         const { error } = await supabase
@@ -80,25 +97,25 @@ export default function ActivityDetailsScreen() {
         }
 
         Alert.alert('Gemt', 'Kategorien er blevet opdateret');
-      } else {
-        // For internal activities, allow full edit
-        const { error } = await supabase
-          .from('activities')
-          .update({
-            title: editTitle,
-            activity_date: dateStr,
-            activity_time: editTime,
-            location: editLocation,
-            category_id: editCategory?.id,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', activity.id);
+      } else if (activity.seriesId && showSeriesDialog) {
+        // User chose to edit the entire series
+        await updateActivitySeries(activity.seriesId, {
+          title: editTitle,
+          location: editLocation,
+          categoryId: editCategory?.id,
+          time: editTime,
+        });
 
-        if (error) {
-          console.error('Error updating activity:', error);
-          Alert.alert('Fejl', 'Kunne ikke opdatere aktiviteten');
-          return;
-        }
+        Alert.alert('Gemt', 'Hele serien er blevet opdateret');
+      } else {
+        // Edit single activity (or activity not in a series)
+        await updateActivitySingle(activity.id, {
+          title: editTitle,
+          location: editLocation,
+          categoryId: editCategory?.id,
+          date: editDate,
+          time: editTime,
+        });
 
         // Update local state
         updateActivity(activity.id, {
@@ -234,12 +251,23 @@ export default function ActivityDetailsScreen() {
           <Text style={styles.headerTitle} numberOfLines={2}>
             {activity.title}
           </Text>
+          {activity.seriesId && (
+            <View style={styles.seriesBadge}>
+              <IconSymbol
+                ios_icon_name="repeat"
+                android_material_icon_name="repeat"
+                size={16}
+                color="#fff"
+              />
+              <Text style={styles.seriesBadgeText}>Serie</Text>
+            </View>
+          )}
         </View>
 
         {!activity.isExternal && !isEditing && (
           <TouchableOpacity
             style={styles.editButton}
-            onPress={() => setIsEditing(true)}
+            onPress={handleEditClick}
             activeOpacity={0.7}
           >
             <IconSymbol
@@ -302,7 +330,7 @@ export default function ActivityDetailsScreen() {
           )}
 
           {/* Date & Time */}
-          {isEditing && !activity.isExternal ? (
+          {isEditing && !activity.isExternal && !activity.seriesId ? (
             <React.Fragment>
               <View style={styles.fieldContainer}>
                 <Text style={[styles.fieldLabel, { color: textColor }]}>Dato</Text>
@@ -358,6 +386,34 @@ export default function ActivityDetailsScreen() {
                 />
               )}
             </React.Fragment>
+          ) : isEditing && activity.seriesId ? (
+            <View style={styles.fieldContainer}>
+              <Text style={[styles.fieldLabel, { color: textColor }]}>Tidspunkt</Text>
+              <TouchableOpacity
+                style={[styles.dateTimeButton, { backgroundColor: bgColor }]}
+                onPress={() => setShowTimePicker(true)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.dateTimeText, { color: textColor }]}>{editTime.substring(0, 5)}</Text>
+                <IconSymbol
+                  ios_icon_name="clock"
+                  android_material_icon_name="access_time"
+                  size={20}
+                  color={colors.primary}
+                />
+              </TouchableOpacity>
+              {showTimePicker && (
+                <DateTimePicker
+                  value={new Date(`2000-01-01T${editTime}`)}
+                  mode="time"
+                  display="default"
+                  onChange={handleTimeChange}
+                />
+              )}
+              <Text style={[styles.infoNote, { color: textSecondaryColor }]}>
+                Dato kan ikke ændres for aktiviteter i en serie
+              </Text>
+            </View>
           ) : (
             <View style={styles.detailRow}>
               <IconSymbol
@@ -556,9 +612,32 @@ export default function ActivityDetailsScreen() {
           </View>
         )}
 
+        {/* Info Box for Series Activities */}
+        {activity.seriesId && !isEditing && (
+          <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
+            <IconSymbol
+              ios_icon_name="info.circle"
+              android_material_icon_name="info"
+              size={24}
+              color={colors.primary}
+            />
+            <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
+              Denne aktivitet er en del af en gentagende serie. Når du redigerer, kan du vælge at opdatere kun denne aktivitet eller hele serien.
+            </Text>
+          </View>
+        )}
+
         {/* Bottom Padding */}
         <View style={{ height: 100 }} />
       </ScrollView>
+
+      {/* Edit Series Dialog */}
+      <EditSeriesDialog
+        visible={showSeriesDialog}
+        onClose={() => setShowSeriesDialog(false)}
+        onEditSingle={handleEditSingle}
+        onEditAll={handleEditAll}
+      />
     </View>
   );
 }
@@ -602,6 +681,20 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#fff',
     textAlign: 'center',
+  },
+  seriesBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    borderRadius: 12,
+  },
+  seriesBadgeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
   },
   editButton: {
     position: 'absolute',
@@ -684,6 +777,11 @@ const styles = StyleSheet.create({
   },
   dateTimeText: {
     fontSize: 17,
+  },
+  infoNote: {
+    fontSize: 14,
+    marginTop: 8,
+    fontStyle: 'italic',
   },
   categoryScroll: {
     marginTop: 8,

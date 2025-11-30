@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useColorScheme, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFootball } from '@/contexts/FootballContext';
@@ -7,15 +7,38 @@ import { colors } from '@/styles/commonStyles';
 import { Activity, Task } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
 import { getWeek } from 'date-fns';
+import CreateActivityModal, { ActivityCreationData } from '@/components/CreateActivityModal';
+import { supabase } from '@/app/integrations/supabase/client';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { currentWeekStats, todayActivities, activities, toggleTaskCompletion } = useFootball();
+  const { currentWeekStats, todayActivities, activities, categories, toggleTaskCompletion, createActivity } = useFootball();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
   const [selectedTask, setSelectedTask] = useState<{ task: Task; activityId: string; activityTitle: string } | null>(null);
   const [isTaskModalVisible, setIsTaskModalVisible] = useState(false);
+  const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // Check if user is admin
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data, error } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', user.id)
+          .single();
+
+        if (!error && data) {
+          setIsAdmin(data.role === 'admin');
+        }
+      }
+    };
+    checkAdminStatus();
+  }, []);
 
   const getMotivationalMessage = (percentage: number, completedTasks: number, totalTasks: number, totalTasksForWeek: number) => {
     const remaining = totalTasks - completedTasks;
@@ -84,6 +107,15 @@ export default function HomeScreen() {
     }
   };
 
+  const handleCreateActivity = async (activityData: ActivityCreationData) => {
+    try {
+      await createActivity(activityData);
+    } catch (error) {
+      console.error('Error creating activity:', error);
+      throw error;
+    }
+  };
+
   const getUpcomingActivitiesByWeek = () => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
@@ -139,6 +171,18 @@ export default function HomeScreen() {
             <Text style={styles.headerSubtitle}>Hold styr på alt!</Text>
           </View>
         </View>
+
+        {/* Create Activity Button for Admins */}
+        {isAdmin && (
+          <TouchableOpacity
+            style={[styles.createButton, { backgroundColor: colors.secondary }]}
+            onPress={() => setIsCreateModalVisible(true)}
+            activeOpacity={0.7}
+          >
+            <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add_circle" size={24} color="#fff" />
+            <Text style={styles.createButtonText}>Opret aktivitet</Text>
+          </TouchableOpacity>
+        )}
 
         <View style={[styles.statsCard, { backgroundColor: getProgressColor(currentWeekStats.percentage) }]}>
           <View style={styles.statsHeader}>
@@ -361,6 +405,14 @@ export default function HomeScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Create Activity Modal */}
+      <CreateActivityModal
+        visible={isCreateModalVisible}
+        onClose={() => setIsCreateModalVisible(false)}
+        onCreateActivity={handleCreateActivity}
+        categories={categories}
+      />
     </React.Fragment>
   );
 }
@@ -391,6 +443,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#fff',
     opacity: 0.9,
+  },
+  createButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 16,
+    borderRadius: 16,
+    marginBottom: 20,
+  },
+  createButtonText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
   },
   statsCard: {
     borderRadius: 20,

@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Activity, ActivityCategory, Task, Trophy, ExternalCalendar } from '@/types';
+import { Activity, ActivityCategory, Task, Trophy, ExternalCalendar, ActivitySeries } from '@/types';
 import { fetchAndParseICalendar, formatTimeFromDate } from '@/utils/icalParser';
 import { supabase } from '@/app/integrations/supabase/client';
 import { scheduleTaskReminder, cancelNotification, getAllScheduledNotifications } from '@/utils/notificationService';
@@ -11,6 +11,61 @@ function getWeekNumber(date: Date): number {
   d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7);
   const week1 = new Date(d.getFullYear(), 0, 4);
   return 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+}
+
+// Helper function to generate dates for recurring activities
+function generateRecurringDates(
+  startDate: Date,
+  endDate: Date | undefined,
+  recurrenceType: 'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly',
+  recurrenceDays?: number[]
+): Date[] {
+  const dates: Date[] = [];
+  const current = new Date(startDate);
+  const end = endDate || new Date(startDate.getTime() + 365 * 24 * 60 * 60 * 1000); // Default 1 year
+  
+  // Limit to prevent infinite loops
+  const maxIterations = 1000;
+  let iterations = 0;
+
+  while (current <= end && iterations < maxIterations) {
+    iterations++;
+
+    if (recurrenceType === 'daily') {
+      dates.push(new Date(current));
+      current.setDate(current.getDate() + 1);
+    } else if (recurrenceType === 'weekly' || recurrenceType === 'biweekly' || recurrenceType === 'triweekly') {
+      const weekMultiplier = recurrenceType === 'weekly' ? 1 : recurrenceType === 'biweekly' ? 2 : 3;
+      
+      if (recurrenceDays && recurrenceDays.length > 0) {
+        // For the first week, add dates from start date onwards
+        const startDay = current.getDay();
+        const sortedDays = [...recurrenceDays].sort((a, b) => a - b);
+        
+        for (const day of sortedDays) {
+          const daysToAdd = (day - startDay + 7) % 7;
+          const targetDate = new Date(current);
+          targetDate.setDate(current.getDate() + daysToAdd);
+          
+          if (targetDate >= startDate && targetDate <= end) {
+            dates.push(new Date(targetDate));
+          }
+        }
+        
+        // Move to next week(s)
+        current.setDate(current.getDate() + 7 * weekMultiplier);
+      } else {
+        // If no specific days, use the start date's day of week
+        dates.push(new Date(current));
+        current.setDate(current.getDate() + 7 * weekMultiplier);
+      }
+    } else if (recurrenceType === 'monthly') {
+      dates.push(new Date(current));
+      current.setMonth(current.getMonth() + 1);
+    }
+  }
+
+  return dates;
 }
 
 export function useFootballData() {
@@ -207,6 +262,8 @@ export function useFootballData() {
             isExternal: act.is_external,
             externalCalendarId: act.external_calendar_id || undefined,
             externalEventId: act.external_event_id || undefined,
+            seriesId: act.series_id || undefined,
+            seriesInstanceDate: act.series_instance_date ? new Date(act.series_instance_date) : undefined,
           };
         });
 
@@ -452,10 +509,202 @@ export function useFootballData() {
     setActivities([...activities, newActivity]);
   };
 
+  const createActivity = async (activityData: {
+    title: string;
+    location: string;
+    categoryId: string;
+    date: Date;
+    time: string;
+    isRecurring: boolean;
+    recurrenceType?: 'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly';
+    recurrenceDays?: number[];
+    endDate?: Date;
+  }) => {
+    if (!userId) {
+      throw new Error('User not authenticated');
+    }
+
+    console.log('Creating activity:', activityData);
+
+    try {
+      if (activityData.isRecurring) {
+        // Create activity series
+        const { data: seriesData, error: seriesError } = await supabase
+          .from('activity_series')
+          .insert({
+            user_id: userId,
+            title: activityData.title,
+            location: activityData.location,
+            category_id: activityData.categoryId,
+            recurrence_type: activityData.recurrenceType!,
+            recurrence_days: activityData.recurrenceDays || [],
+            start_date: activityData.date.toISOString().split('T')[0],
+            end_date: activityData.endDate ? activityData.endDate.toISOString().split('T')[0] : null,
+            activity_time: activityData.time,
+          })
+          .select()
+          .single();
+
+        if (seriesError) {
+          console.error('Error creating series:', seriesError);
+          throw seriesError;
+        }
+
+        console.log('Series created:', seriesData.id);
+
+        // Generate dates for the series
+        const dates = generateRecurringDates(
+          activityData.date,
+          activityData.endDate,
+          activityData.recurrenceType!,
+          activityData.recurrenceDays
+        );
+
+        console.log(`Generated ${dates.length} dates for series`);
+
+        // Create activities for each date
+        const activitiesToInsert = dates.map(date => ({
+          user_id: userId,
+          title: activityData.title,
+          activity_date: date.toISOString().split('T')[0],
+          activity_time: activityData.time,
+          location: activityData.location,
+          category_id: activityData.categoryId,
+          series_id: seriesData.id,
+          series_instance_date: date.toISOString().split('T')[0],
+          is_external: false,
+        }));
+
+        const { error: activitiesError } = await supabase
+          .from('activities')
+          .insert(activitiesToInsert);
+
+        if (activitiesError) {
+          console.error('Error creating activities:', activitiesError);
+          throw activitiesError;
+        }
+
+        console.log('Activities created successfully');
+      } else {
+        // Create single activity
+        const { error } = await supabase
+          .from('activities')
+          .insert({
+            user_id: userId,
+            title: activityData.title,
+            activity_date: activityData.date.toISOString().split('T')[0],
+            activity_time: activityData.time,
+            location: activityData.location,
+            category_id: activityData.categoryId,
+            is_external: false,
+          });
+
+        if (error) {
+          console.error('Error creating activity:', error);
+          throw error;
+        }
+
+        console.log('Activity created successfully');
+      }
+
+      // Trigger refresh
+      setRefreshTrigger(prev => prev + 1);
+    } catch (error) {
+      console.error('Failed to create activity:', error);
+      throw error;
+    }
+  };
+
   const updateActivity = (id: string, updates: Partial<Activity>) => {
     setActivities(activities.map(activity => 
       activity.id === id ? { ...activity, ...updates } : activity
     ));
+  };
+
+  const updateActivitySingle = async (activityId: string, updates: {
+    title?: string;
+    location?: string;
+    categoryId?: string;
+    date?: Date;
+    time?: string;
+  }) => {
+    if (!userId) {
+      throw new Error('User not authenticated');
+    }
+
+    console.log('Updating single activity:', activityId);
+
+    try {
+      const updateData: any = {};
+      
+      if (updates.title) updateData.title = updates.title;
+      if (updates.location) updateData.location = updates.location;
+      if (updates.categoryId) updateData.category_id = updates.categoryId;
+      if (updates.date) updateData.activity_date = updates.date.toISOString().split('T')[0];
+      if (updates.time) updateData.activity_time = updates.time;
+      
+      // Remove from series when updating single activity
+      updateData.series_id = null;
+      updateData.series_instance_date = null;
+      updateData.updated_at = new Date().toISOString();
+
+      const { error } = await supabase
+        .from('activities')
+        .update(updateData)
+        .eq('id', activityId)
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('Error updating activity:', error);
+        throw error;
+      }
+
+      console.log('Activity updated successfully');
+      setRefreshTrigger(prev => prev + 1);
+    } catch (error) {
+      console.error('Failed to update activity:', error);
+      throw error;
+    }
+  };
+
+  const updateActivitySeries = async (seriesId: string, updates: {
+    title?: string;
+    location?: string;
+    categoryId?: string;
+    time?: string;
+  }) => {
+    if (!userId) {
+      throw new Error('User not authenticated');
+    }
+
+    console.log('Updating activity series:', seriesId);
+
+    try {
+      const updateData: any = {};
+      
+      if (updates.title) updateData.title = updates.title;
+      if (updates.location) updateData.location = updates.location;
+      if (updates.categoryId) updateData.category_id = updates.categoryId;
+      if (updates.time) updateData.activity_time = updates.time;
+      updateData.updated_at = new Date().toISOString();
+
+      const { error } = await supabase
+        .from('activity_series')
+        .update(updateData)
+        .eq('id', seriesId)
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('Error updating series:', error);
+        throw error;
+      }
+
+      console.log('Series updated successfully (trigger will update all activities)');
+      setRefreshTrigger(prev => prev + 1);
+    } catch (error) {
+      console.error('Failed to update series:', error);
+      throw error;
+    }
   };
 
   const deleteActivity = async (id: string) => {
@@ -941,7 +1190,10 @@ export function useFootballData() {
     todayActivities: getTodayActivities,
     isLoading,
     addActivity,
+    createActivity,
     updateActivity,
+    updateActivitySingle,
+    updateActivitySeries,
     deleteActivity,
     duplicateActivity,
     addTask,

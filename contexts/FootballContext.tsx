@@ -20,7 +20,31 @@ interface FootballContextType {
   };
   todayActivities: Activity[];
   addActivity: (activity: Omit<Activity, 'id'>) => void;
+  createActivity: (activityData: {
+    title: string;
+    location: string;
+    categoryId: string;
+    date: Date;
+    time: string;
+    isRecurring: boolean;
+    recurrenceType?: 'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly';
+    recurrenceDays?: number[];
+    endDate?: Date;
+  }) => Promise<void>;
   updateActivity: (id: string, updates: Partial<Activity>) => void;
+  updateActivitySingle: (activityId: string, updates: {
+    title?: string;
+    location?: string;
+    categoryId?: string;
+    date?: Date;
+    time?: string;
+  }) => Promise<void>;
+  updateActivitySeries: (seriesId: string, updates: {
+    title?: string;
+    location?: string;
+    categoryId?: string;
+    time?: string;
+  }) => Promise<void>;
   deleteActivity: (id: string) => void;
   duplicateActivity: (id: string) => void;
   addTask: (task: Omit<Task, 'id'>) => void;

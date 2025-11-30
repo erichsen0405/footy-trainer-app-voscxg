@@ -10,6 +10,8 @@ export interface Activity {
   isExternal?: boolean;
   externalCalendarId?: string;
   externalEventId?: string;
+  seriesId?: string;
+  seriesInstanceDate?: Date;
 }
 
 export interface ActivityCategory {
@@ -17,6 +19,21 @@ export interface ActivityCategory {
   name: string;
   color: string;
   emoji: string;
+}
+
+export interface ActivitySeries {
+  id: string;
+  userId: string;
+  title: string;
+  location: string;
+  categoryId: string;
+  recurrenceType: 'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly';
+  recurrenceDays: number[]; // Days of week (0=Sunday, 1=Monday, etc.)
+  startDate: Date;
+  endDate?: Date;
+  activityTime: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface Task {
