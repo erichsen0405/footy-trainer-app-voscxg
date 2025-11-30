@@ -183,8 +183,8 @@ export default function HomeScreen() {
           </View>
         ) : (
           <React.Fragment>
-            {Object.entries(upcomingByWeek).map(([week, data], weekIndex) => (
-              <View key={`week-${weekIndex}-${week}`} style={styles.weekSection}>
+            {Object.entries(upcomingByWeek).map(([week, data], index) => (
+              <View key={`week-${index}`} style={styles.weekSection}>
                 <Text style={[styles.weekTitle, { color: textColor }]}>
                   {week}
                 </Text>
@@ -193,7 +193,7 @@ export default function HomeScreen() {
                 </Text>
                 
                 {data.activities.map((activity, activityIndex) => (
-                  <View key={`upcoming-${weekIndex}-${activityIndex}-${activity.id || activityIndex}`} style={[styles.upcomingActivityCard, { backgroundColor: activity.category.color }]}>
+                  <View key={`upcoming-${index}-${activityIndex}-${activity.id || activityIndex}`} style={[styles.upcomingActivityCard, { backgroundColor: activity.category.color }]}>
                     <View style={styles.upcomingActivityHeader}>
                       <Text style={styles.upcomingActivityEmoji}>{activity.category.emoji}</Text>
                       <View style={styles.upcomingActivityInfo}>
