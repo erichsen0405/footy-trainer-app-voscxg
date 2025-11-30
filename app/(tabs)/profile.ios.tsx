@@ -525,20 +525,6 @@ export default function ProfileScreen() {
                     </Text>
                   </View>
                 </View>
-                
-                <TouchableOpacity 
-                  style={[styles.createPlayerButton, { backgroundColor: theme.colors.primary }]}
-                  onPress={() => setShowCreatePlayerModal(true)}
-                  activeOpacity={0.7}
-                >
-                  <IconSymbol 
-                    ios_icon_name="person.badge.plus" 
-                    android_material_icon_name="person_add" 
-                    size={22} 
-                    color="#fff" 
-                  />
-                  <Text style={styles.createPlayerButtonText}>Opret Spillerprofil</Text>
-                </TouchableOpacity>
 
                 {/* Players List */}
                 <PlayersList 
@@ -822,20 +808,6 @@ const styles = StyleSheet.create({
   },
   playerManagementSubtitle: {
     fontSize: 15,
-  },
-  createPlayerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 16,
-    borderRadius: 12,
-    marginBottom: 16,
-  },
-  createPlayerButtonText: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#fff',
   },
   signOutButton: {
     borderRadius: 12,
