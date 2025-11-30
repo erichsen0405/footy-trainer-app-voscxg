@@ -131,7 +131,7 @@ export default function HomeScreen() {
           </View>
         ) : (
           todayActivities.map((activity, index) => (
-            <View key={index} style={[styles.activityCard, { backgroundColor: activity.category.color }]}>
+            <View key={`today-activity-${activity.id}-${index}`} style={[styles.activityCard, { backgroundColor: activity.category.color }]}>
               <View style={styles.activityHeader}>
                 <Text style={styles.activityEmoji}>{activity.category.emoji}</Text>
                 <View style={styles.activityInfo}>
@@ -151,7 +151,7 @@ export default function HomeScreen() {
                   <Text style={styles.tasksTitle}>Opgaver:</Text>
                   {activity.tasks.map((task, taskIndex) => (
                     <TouchableOpacity
-                      key={taskIndex}
+                      key={`task-${task.id}-${taskIndex}`}
                       style={styles.taskItem}
                       onPress={() => toggleTaskCompletion(activity.id, task.id)}
                     >
@@ -181,7 +181,7 @@ export default function HomeScreen() {
           </View>
         ) : (
           Object.entries(upcomingByWeek).map(([week, data], weekIndex) => (
-            <View key={weekIndex} style={styles.weekSection}>
+            <View key={`week-${week}-${weekIndex}`} style={styles.weekSection}>
               <Text style={[styles.weekTitle, { color: textColor }]}>
                 {week}
               </Text>
@@ -190,7 +190,7 @@ export default function HomeScreen() {
               </Text>
               
               {data.activities.map((activity, activityIndex) => (
-                <View key={activityIndex} style={[styles.upcomingActivityCard, { backgroundColor: activity.category.color }]}>
+                <View key={`upcoming-activity-${activity.id}-${activityIndex}`} style={[styles.upcomingActivityCard, { backgroundColor: activity.category.color }]}>
                   <View style={styles.upcomingActivityHeader}>
                     <Text style={styles.upcomingActivityEmoji}>{activity.category.emoji}</Text>
                     <View style={styles.upcomingActivityInfo}>
