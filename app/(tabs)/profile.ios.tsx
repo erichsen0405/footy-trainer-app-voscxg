@@ -506,9 +506,41 @@ export default function ProfileScreen() {
               </GlassView>
             )}
 
-            {/* Players List for Admins */}
+            {/* Player Management Section for Admins */}
             {userRole === 'admin' && (
-              <GlassView style={styles.section} glassEffectStyle="regular">
+              <GlassView style={styles.playerManagementSection} glassEffectStyle="regular">
+                <View style={styles.playerManagementHeader}>
+                  <IconSymbol 
+                    ios_icon_name="person.2.fill" 
+                    android_material_icon_name="group" 
+                    size={28} 
+                    color={theme.colors.primary} 
+                  />
+                  <View style={styles.playerManagementTitleContainer}>
+                    <Text style={[styles.playerManagementTitle, { color: theme.colors.text }]}>
+                      Spillerstyring
+                    </Text>
+                    <Text style={[styles.playerManagementSubtitle, { color: theme.dark ? '#98989D' : '#666' }]}>
+                      Administrer dine spillerprofiler
+                    </Text>
+                  </View>
+                </View>
+                
+                <TouchableOpacity 
+                  style={[styles.createPlayerButton, { backgroundColor: theme.colors.primary }]}
+                  onPress={() => setShowCreatePlayerModal(true)}
+                  activeOpacity={0.7}
+                >
+                  <IconSymbol 
+                    ios_icon_name="person.badge.plus" 
+                    android_material_icon_name="person_add" 
+                    size={22} 
+                    color="#fff" 
+                  />
+                  <Text style={styles.createPlayerButtonText}>Opret Spillerprofil</Text>
+                </TouchableOpacity>
+
+                {/* Players List */}
                 <PlayersList 
                   onCreatePlayer={() => setShowCreatePlayerModal(true)}
                   refreshTrigger={playersRefreshTrigger}
@@ -525,7 +557,7 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </>
         ) : (
-          // Login/Sign up view (same as before)
+          // Login/Sign up view
           <GlassView style={styles.authCard} glassEffectStyle="regular">
             {showSuccessMessage && (
               <View style={[styles.successMessage, { backgroundColor: theme.colors.primary }]}>
@@ -768,6 +800,42 @@ const styles = StyleSheet.create({
   buttonText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  playerManagementSection: {
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 16,
+  },
+  playerManagementHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginBottom: 16,
+  },
+  playerManagementTitleContainer: {
+    flex: 1,
+  },
+  playerManagementTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  playerManagementSubtitle: {
+    fontSize: 15,
+  },
+  createPlayerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  createPlayerButtonText: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#fff',
   },
   signOutButton: {
     borderRadius: 12,

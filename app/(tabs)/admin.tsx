@@ -7,8 +7,6 @@ import { colors } from '@/styles/commonStyles';
 import { Activity } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
-import CreatePlayerModal from '@/components/CreatePlayerModal';
-import PlayersList from '@/components/PlayersList';
 
 export default function AdminScreen() {
   const router = useRouter();
@@ -44,8 +42,6 @@ export default function AdminScreen() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAddingCalendar, setIsAddingCalendar] = useState(false);
   const [isDeletingActivities, setIsDeletingActivities] = useState(false);
-  const [isCreatePlayerModalVisible, setIsCreatePlayerModalVisible] = useState(false);
-  const [refreshPlayersList, setRefreshPlayersList] = useState(0);
   
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -498,42 +494,6 @@ export default function AdminScreen() {
           )}
         </View>
 
-        {/* Player Management Section */}
-        <View style={[styles.playerManagementSection, { backgroundColor: cardBgColor }]}>
-          <View style={styles.playerManagementHeader}>
-            <View style={styles.playerManagementHeaderLeft}>
-              <IconSymbol 
-                ios_icon_name="person.2.fill" 
-                android_material_icon_name="group" 
-                size={28} 
-                color={colors.primary} 
-              />
-              <View style={styles.playerManagementTitleContainer}>
-                <Text style={[styles.playerManagementTitle, { color: textColor }]}>Spillerstyring</Text>
-                <Text style={[styles.playerManagementSubtitle, { color: textSecondaryColor }]}>
-                  Administrer dine spillerprofiler
-                </Text>
-              </View>
-            </View>
-          </View>
-          
-          <TouchableOpacity 
-            style={[
-              styles.createPlayerButton, 
-              { backgroundColor: isAuthenticated ? colors.primary : colors.highlight }
-            ]}
-            onPress={() => setIsCreatePlayerModalVisible(true)}
-            activeOpacity={0.7}
-            disabled={!isAuthenticated}
-          >
-            <IconSymbol ios_icon_name="person.badge.plus" android_material_icon_name="person_add" size={22} color="#fff" />
-            <Text style={styles.createPlayerButtonText}>Opret Spillerprofil</Text>
-          </TouchableOpacity>
-
-          {/* Players List */}
-          <PlayersList key={refreshPlayersList} />
-        </View>
-
         {/* External Calendar Management Section - Mobile Optimized */}
         <View style={[styles.externalCalendarSection, { backgroundColor: cardBgColor }]}>
           <View style={styles.externalCalendarHeader}>
@@ -983,15 +943,6 @@ export default function AdminScreen() {
         <View style={{ height: 120 }} />
       </ScrollView>
 
-      {/* Create Player Modal */}
-      <CreatePlayerModal
-        visible={isCreatePlayerModalVisible}
-        onClose={() => setIsCreatePlayerModalVisible(false)}
-        onPlayerCreated={() => {
-          setRefreshPlayersList(prev => prev + 1);
-        }}
-      />
-
       {/* Add Calendar Modal - Mobile Optimized */}
       <Modal visible={isCalendarModalVisible} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
@@ -1181,47 +1132,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     lineHeight: 20,
-  },
-  playerManagementSection: {
-    marginHorizontal: 20,
-    marginBottom: 20,
-    borderRadius: 20,
-    padding: 20,
-    borderWidth: 2,
-    borderColor: colors.primary,
-  },
-  playerManagementHeader: {
-    marginBottom: 16,
-  },
-  playerManagementHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  playerManagementTitleContainer: {
-    flex: 1,
-  },
-  playerManagementTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  playerManagementSubtitle: {
-    fontSize: 15,
-  },
-  createPlayerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 16,
-    borderRadius: 14,
-    marginBottom: 16,
-  },
-  createPlayerButtonText: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#fff',
   },
   externalCalendarSection: {
     marginHorizontal: 20,

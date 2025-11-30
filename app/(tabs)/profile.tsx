@@ -508,9 +508,36 @@ export default function ProfileScreen() {
               </View>
             )}
 
-            {/* Players List for Admins */}
+            {/* Player Management Section for Admins */}
             {userRole === 'admin' && (
-              <View style={[styles.card, { backgroundColor: cardBgColor }]}>
+              <View style={[styles.playerManagementSection, { backgroundColor: cardBgColor }]}>
+                <View style={styles.playerManagementHeader}>
+                  <View style={styles.playerManagementHeaderLeft}>
+                    <IconSymbol 
+                      ios_icon_name="person.2.fill" 
+                      android_material_icon_name="group" 
+                      size={28} 
+                      color={colors.primary} 
+                    />
+                    <View style={styles.playerManagementTitleContainer}>
+                      <Text style={[styles.playerManagementTitle, { color: textColor }]}>Spillerstyring</Text>
+                      <Text style={[styles.playerManagementSubtitle, { color: textSecondaryColor }]}>
+                        Administrer dine spillerprofiler
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+                
+                <TouchableOpacity 
+                  style={[styles.createPlayerButton, { backgroundColor: colors.primary }]}
+                  onPress={() => setShowCreatePlayerModal(true)}
+                  activeOpacity={0.7}
+                >
+                  <IconSymbol ios_icon_name="person.badge.plus" android_material_icon_name="person_add" size={22} color="#fff" />
+                  <Text style={styles.createPlayerButtonText}>Opret Spillerprofil</Text>
+                </TouchableOpacity>
+
+                {/* Players List */}
                 <PlayersList 
                   onCreatePlayer={() => setShowCreatePlayerModal(true)}
                   refreshTrigger={playersRefreshTrigger}
@@ -533,7 +560,7 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </>
         ) : (
-          // Login/Sign up view (same as before - keeping existing code)
+          // Login/Sign up view
           <View style={[styles.card, { backgroundColor: cardBgColor }]}>
             {showSuccessMessage && (
               <View style={[styles.successMessage, { backgroundColor: colors.primary }]}>
@@ -794,6 +821,47 @@ const styles = StyleSheet.create({
   buttonText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  playerManagementSection: {
+    marginHorizontal: 20,
+    marginBottom: 16,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 2,
+    borderColor: colors.primary,
+  },
+  playerManagementHeader: {
+    marginBottom: 16,
+  },
+  playerManagementHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  playerManagementTitleContainer: {
+    flex: 1,
+  },
+  playerManagementTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  playerManagementSubtitle: {
+    fontSize: 15,
+  },
+  createPlayerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+    borderRadius: 14,
+    marginBottom: 16,
+  },
+  createPlayerButtonText: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#fff',
   },
   signOutButton: {
     flexDirection: 'row',
