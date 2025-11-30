@@ -38,6 +38,7 @@ export default function AdminScreen() {
   const [newCalendarName, setNewCalendarName] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [syncingCalendarId, setSyncingCalendarId] = useState<string | null>(null);
+  const [togglingCalendarId, setTogglingCalendarId] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAddingCalendar, setIsAddingCalendar] = useState(false);
   
@@ -230,6 +231,38 @@ export default function AdminScreen() {
     } finally {
       setIsAddingCalendar(false);
       console.log('Finished adding calendar');
+    }
+  };
+
+  const handleToggleCalendar = async (calendarId: string) => {
+    if (!isAuthenticated) {
+      Alert.alert('Login påkrævet', 'Du skal være logget ind for at aktivere/deaktivere kalendere.');
+      return;
+    }
+
+    const calendar = externalCalendars.find(c => c.id === calendarId);
+    if (!calendar) {
+      console.error('Calendar not found:', calendarId);
+      return;
+    }
+
+    setTogglingCalendarId(calendarId);
+    console.log(`Toggling calendar: ${calendar.name} (${calendar.enabled ? 'enabled' : 'disabled'} -> ${!calendar.enabled ? 'enabled' : 'disabled'})`);
+
+    try {
+      await toggleCalendar(calendarId);
+      console.log('Calendar toggled successfully');
+    } catch (error: any) {
+      console.error('Error toggling calendar:', error);
+      console.error('Error message:', error?.message);
+      console.error('Error details:', JSON.stringify(error, null, 2));
+      
+      Alert.alert(
+        'Fejl',
+        `Der opstod en fejl ved aktivering/deaktivering af kalenderen: ${error?.message || 'Netværksfejl'}. Tjek din internetforbindelse og prøv igen.`
+      );
+    } finally {
+      setTogglingCalendarId(null);
     }
   };
 
@@ -460,18 +493,25 @@ export default function AdminScreen() {
               ]}>
                 <TouchableOpacity 
                   style={styles.calendarToggleArea}
-                  onPress={() => toggleCalendar(calendar.id)}
+                  onPress={() => handleToggleCalendar(calendar.id)}
                   activeOpacity={0.7}
+                  disabled={togglingCalendarId === calendar.id}
                 >
-                  <View style={[
-                    styles.toggle, 
-                    calendar.enabled && { backgroundColor: colors.primary }
-                  ]}>
+                  {togglingCalendarId === calendar.id ? (
+                    <View style={styles.toggleLoadingContainer}>
+                      <ActivityIndicator size="small" color={colors.primary} />
+                    </View>
+                  ) : (
                     <View style={[
-                      styles.toggleThumb, 
-                      calendar.enabled && styles.toggleThumbActive
-                    ]} />
-                  </View>
+                      styles.toggle, 
+                      calendar.enabled && { backgroundColor: colors.primary }
+                    ]}>
+                      <View style={[
+                        styles.toggleThumb, 
+                        calendar.enabled && styles.toggleThumbActive
+                      ]} />
+                    </View>
+                  )}
                   <View style={styles.calendarDropdownInfo}>
                     <Text style={[styles.calendarDropdownName, { color: textColor }]}>{calendar.name}</Text>
                     <Text style={[styles.calendarDropdownMeta, { color: textSecondaryColor }]}>
@@ -1106,6 +1146,12 @@ const styles = StyleSheet.create({
   },
   toggleThumbActive: {
     transform: [{ translateX: 24 }],
+  },
+  toggleLoadingContainer: {
+    width: 56,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   calendarActions: {
     flexDirection: 'row',

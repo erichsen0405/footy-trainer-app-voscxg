@@ -248,12 +248,19 @@ export function useFootballData() {
       console.log('Calendar URL:', calendar.icsUrl);
       
       // Get the current session to ensure we have a valid token
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) {
+        console.error('Session error:', sessionError);
+        throw new Error('Session error: ' + sessionError.message);
+      }
+      
       if (!session) {
+        console.error('No active session');
         throw new Error('No active session');
       }
 
-      console.log('Calling Edge Function to sync calendar...');
+      console.log('Session valid, calling Edge Function...');
+      console.log('Supabase URL:', supabase.supabaseUrl);
 
       // Call the Edge Function to sync the calendar
       const { data, error } = await supabase.functions.invoke('sync-external-calendar', {
@@ -262,6 +269,7 @@ export function useFootballData() {
 
       if (error) {
         console.error('Error syncing calendar:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
         throw error;
       }
 
@@ -334,8 +342,11 @@ export function useFootballData() {
       }
 
       console.log(`Successfully synced calendar: ${calendar.name}`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching external calendar:', error);
+      console.error('Error name:', error?.name);
+      console.error('Error message:', error?.message);
+      console.error('Error stack:', error?.stack);
       throw error;
     }
   }, [userId, categories]);
@@ -578,41 +589,58 @@ export function useFootballData() {
 
   const toggleCalendar = async (id: string) => {
     const calendar = externalCalendars.find(cal => cal.id === id);
-    if (!calendar) return;
+    if (!calendar) {
+      console.error('Calendar not found:', id);
+      return;
+    }
 
     const newEnabled = !calendar.enabled;
     console.log(`Toggling calendar ${calendar.name} to ${newEnabled ? 'enabled' : 'disabled'}`);
 
-    const { error } = await supabase
-      .from('external_calendars')
-      .update({ enabled: newEnabled })
-      .eq('id', id);
+    try {
+      // Update the database first
+      const { error } = await supabase
+        .from('external_calendars')
+        .update({ enabled: newEnabled })
+        .eq('id', id);
 
-    if (error) {
-      console.error('Error toggling calendar:', error);
-      return;
-    }
-
-    setExternalCalendars(externalCalendars.map(cal => {
-      if (cal.id === id) {
-        const updated = { ...cal, enabled: newEnabled };
-        
-        // If enabling, fetch events
-        if (newEnabled) {
-          console.log('Calendar enabled, fetching events');
-          fetchExternalCalendarEvents(updated).catch(err => {
-            console.error('Failed to fetch calendar events:', err);
-          });
-        } else {
-          // If disabling, remove external activities from this calendar
-          console.log('Calendar disabled, removing activities');
-          setExternalActivities(prev => prev.filter(a => a.externalCalendarId !== id));
-        }
-        
-        return updated;
+      if (error) {
+        console.error('Error toggling calendar:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
+        throw error;
       }
-      return cal;
-    }));
+
+      console.log('Calendar toggle successful in database');
+
+      // Update local state
+      setExternalCalendars(externalCalendars.map(cal => {
+        if (cal.id === id) {
+          const updated = { ...cal, enabled: newEnabled };
+          
+          // If enabling, fetch events
+          if (newEnabled) {
+            console.log('Calendar enabled, fetching events');
+            fetchExternalCalendarEvents(updated).catch(err => {
+              console.error('Failed to fetch calendar events:', err);
+              console.error('Error name:', err?.name);
+              console.error('Error message:', err?.message);
+            });
+          } else {
+            // If disabling, remove external activities from this calendar
+            console.log('Calendar disabled, removing activities');
+            setExternalActivities(prev => prev.filter(a => a.externalCalendarId !== id));
+          }
+          
+          return updated;
+        }
+        return cal;
+      }));
+    } catch (error: any) {
+      console.error('Error in toggleCalendar:', error);
+      console.error('Error type:', typeof error);
+      console.error('Error keys:', Object.keys(error || {}));
+      throw error;
+    }
   };
 
   const deleteExternalCalendar = async (id: string) => {
