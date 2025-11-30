@@ -12,23 +12,22 @@ export default function TabLayout() {
     <NativeTabs 
       tintColor={colors.primary}
       barTintColor={isDark ? '#1C1C1E' : '#FFFFFF'}
-      unselectedItemTintColor={isDark ? '#8E8E93' : '#999999'}
-      translucent={true}
+      unselectedItemTintColor={isDark ? '#8E8E93' : '#666666'}
+      translucent={false}
       style={{
         backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+        borderTopWidth: 0.5,
+        borderTopColor: isDark ? '#38383A' : '#E5E5E5',
       }}
     >
       <NativeTabs.Trigger key="home" name="(home)">
         <Icon 
           sf={{ default: 'house', selected: 'house.fill' }}
-          style={{ 
-            tintColor: colors.primary,
-          }}
         />
         <Label 
           style={{ 
-            fontSize: 11,
-            fontWeight: '600',
+            fontSize: 10,
+            fontWeight: '500',
           }}
         >
           Hjem
@@ -37,14 +36,11 @@ export default function TabLayout() {
       <NativeTabs.Trigger key="tasks" name="tasks">
         <Icon 
           sf={{ default: 'checklist', selected: 'checklist' }}
-          style={{ 
-            tintColor: colors.primary,
-          }}
         />
         <Label 
           style={{ 
-            fontSize: 11,
-            fontWeight: '600',
+            fontSize: 10,
+            fontWeight: '500',
           }}
         >
           Opgaver
@@ -53,14 +49,11 @@ export default function TabLayout() {
       <NativeTabs.Trigger key="performance" name="performance">
         <Icon 
           sf={{ default: 'trophy', selected: 'trophy.fill' }}
-          style={{ 
-            tintColor: colors.primary,
-          }}
         />
         <Label 
           style={{ 
-            fontSize: 11,
-            fontWeight: '600',
+            fontSize: 10,
+            fontWeight: '500',
           }}
         >
           Performance
@@ -69,14 +62,11 @@ export default function TabLayout() {
       <NativeTabs.Trigger key="admin" name="admin">
         <Icon 
           sf={{ default: 'gearshape', selected: 'gearshape.fill' }}
-          style={{ 
-            tintColor: colors.primary,
-          }}
         />
         <Label 
           style={{ 
-            fontSize: 11,
-            fontWeight: '600',
+            fontSize: 10,
+            fontWeight: '500',
           }}
         >
           Admin
@@ -85,14 +75,11 @@ export default function TabLayout() {
       <NativeTabs.Trigger key="profile" name="profile">
         <Icon 
           sf={{ default: 'person', selected: 'person.fill' }}
-          style={{ 
-            tintColor: colors.primary,
-          }}
         />
         <Label 
           style={{ 
-            fontSize: 11,
-            fontWeight: '600',
+            fontSize: 10,
+            fontWeight: '500',
           }}
         >
           Profil
