@@ -23,30 +23,54 @@ interface ParsedEvent {
   isAllDay: boolean;
 }
 
+function convertToCopenhagenTime(date: Date): Date {
+  // Convert any date to Copenhagen timezone (Europe/Copenhagen)
+  // Copenhagen is UTC+1 (standard) or UTC+2 (daylight saving)
+  
+  // Create a date string in Copenhagen timezone
+  const copenhagenString = date.toLocaleString('en-US', {
+    timeZone: 'Europe/Copenhagen',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+  
+  // Parse the Copenhagen time string back to a Date object
+  // Format: "MM/DD/YYYY, HH:mm:ss"
+  const [datePart, timePart] = copenhagenString.split(', ');
+  const [month, day, year] = datePart.split('/');
+  const [hour, minute, second] = timePart.split(':');
+  
+  return new Date(
+    parseInt(year),
+    parseInt(month) - 1,
+    parseInt(day),
+    parseInt(hour),
+    parseInt(minute),
+    parseInt(second)
+  );
+}
+
 function formatTimeFromICALTime(icalTime: any): { date: string; time: string; isAllDay: boolean } {
   try {
     // Check if this is an all-day event
     const isAllDay = icalTime.isDate || false;
     
-    // Convert to JS Date - this preserves the timezone information
+    // Convert to JS Date
     const jsDate = icalTime.toJSDate();
-    
-    // Get the timezone from the ICAL time object
-    const timezone = icalTime.zone?.tzid || 'UTC';
     
     console.log('Parsing ICAL time:', {
       original: icalTime.toString(),
       jsDate: jsDate.toISOString(),
-      timezone: timezone,
+      timezone: icalTime.zone?.tzid || 'UTC',
       isAllDay: isAllDay,
-      year: icalTime.year,
-      month: icalTime.month,
-      day: icalTime.day,
-      hour: icalTime.hour,
-      minute: icalTime.minute,
     });
     
-    // For all-day events, use the date components directly
+    // For all-day events, use the date components directly without timezone conversion
     if (isAllDay) {
       const year = icalTime.year;
       const month = String(icalTime.month).padStart(2, '0');
@@ -59,13 +83,19 @@ function formatTimeFromICALTime(icalTime: any): { date: string; time: string; is
       };
     }
     
-    // For timed events, use the time components directly from ICAL
-    // This avoids timezone conversion issues
-    const year = icalTime.year;
-    const month = String(icalTime.month).padStart(2, '0');
-    const day = String(icalTime.day).padStart(2, '0');
-    const hour = String(icalTime.hour).padStart(2, '0');
-    const minute = String(icalTime.minute).padStart(2, '0');
+    // For timed events, convert to Copenhagen timezone
+    const copenhagenDate = convertToCopenhagenTime(jsDate);
+    
+    const year = copenhagenDate.getFullYear();
+    const month = String(copenhagenDate.getMonth() + 1).padStart(2, '0');
+    const day = String(copenhagenDate.getDate()).padStart(2, '0');
+    const hour = String(copenhagenDate.getHours()).padStart(2, '0');
+    const minute = String(copenhagenDate.getMinutes()).padStart(2, '0');
+    
+    console.log('Converted to Copenhagen time:', {
+      originalUTC: jsDate.toISOString(),
+      copenhagenLocal: `${year}-${month}-${day} ${hour}:${minute}`,
+    });
     
     return {
       date: `${year}-${month}-${day}`,
@@ -74,10 +104,14 @@ function formatTimeFromICALTime(icalTime: any): { date: string; time: string; is
     };
   } catch (error) {
     console.error('Error formatting ICAL time:', error);
-    // Fallback to current date/time
-    const now = new Date();
+    // Fallback to current date/time in Copenhagen
+    const now = convertToCopenhagenTime(new Date());
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    
     return {
-      date: now.toISOString().split('T')[0],
+      date: `${year}-${month}-${day}`,
       time: '12:00:00',
       isAllDay: false,
     };
@@ -113,7 +147,7 @@ function parseICalendarData(icalData: string): ParsedEvent[] {
     const events: ParsedEvent[] = vevents.map((vevent) => {
       const event = new ICAL.Event(vevent);
       
-      // Parse start date/time with proper timezone handling
+      // Parse start date/time with Copenhagen timezone conversion
       const startInfo = formatTimeFromICALTime(event.startDate);
       const endInfo = formatTimeFromICALTime(event.endDate);
       
@@ -242,14 +276,14 @@ serve(async (req) => {
       console.error('Error deleting old activities:', deleteError);
     }
 
-    // Insert new activities with proper date/time handling
+    // Insert new activities with Copenhagen timezone
     const activitiesToInsert = events.map((event) => {
-      console.log('Inserting activity:', {
+      console.log('Inserting activity with Copenhagen time:', {
         title: event.summary,
         date: event.startDateString,
         time: event.startTimeString,
         isAllDay: event.isAllDay,
-        timezone: event.timezone,
+        originalTimezone: event.timezone,
       });
       
       return {
@@ -275,7 +309,7 @@ serve(async (req) => {
         throw insertError;
       }
 
-      console.log(`Inserted ${activitiesToInsert.length} activities`);
+      console.log(`Inserted ${activitiesToInsert.length} activities with Copenhagen timezone`);
     }
 
     // Update the calendar's last_fetched and event_count
@@ -295,7 +329,7 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         eventCount: events.length,
-        message: `Successfully synced ${events.length} events`,
+        message: `Successfully synced ${events.length} events to Copenhagen timezone`,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
