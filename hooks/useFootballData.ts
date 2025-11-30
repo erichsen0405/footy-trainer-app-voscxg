@@ -745,9 +745,35 @@ export function useFootballData() {
     }
   };
 
-  const importMultipleActivities = (activityIds: string[], categoryId: string) => {
+  const importMultipleActivities = async (
+    activityIds: string[], 
+    categoryId: string,
+    onProgress?: (current: number, total: number) => void
+  ) => {
     console.log(`Importing ${activityIds.length} activities`);
-    activityIds.forEach(id => importExternalActivity(id, categoryId));
+    
+    const total = activityIds.length;
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < activityIds.length; i++) {
+      try {
+        await importExternalActivity(activityIds[i], categoryId);
+        successCount++;
+        console.log(`Imported ${i + 1}/${total} activities`);
+      } catch (error) {
+        console.error(`Failed to import activity ${activityIds[i]}:`, error);
+        failCount++;
+      }
+      
+      // Call progress callback if provided
+      if (onProgress) {
+        onProgress(i + 1, total);
+      }
+    }
+
+    console.log(`Import complete: ${successCount} succeeded, ${failCount} failed`);
+    return { successCount, failCount };
   };
 
   return {

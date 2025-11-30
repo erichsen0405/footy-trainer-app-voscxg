@@ -30,7 +30,11 @@ interface FootballContextType {
   toggleCalendar: (id: string) => void;
   deleteExternalCalendar: (id: string) => void;
   importExternalActivity: (externalActivityId: string, categoryId: string) => void;
-  importMultipleActivities: (activityIds: string[], categoryId: string) => void;
+  importMultipleActivities: (
+    activityIds: string[], 
+    categoryId: string,
+    onProgress?: (current: number, total: number) => void
+  ) => Promise<{ successCount: number; failCount: number }>;
   fetchExternalCalendarEvents: (calendar: ExternalCalendar) => Promise<void>;
 }
 
