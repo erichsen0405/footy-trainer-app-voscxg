@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Activity, ActivityCategory, Task, Trophy, ExternalCalendar } from '@/types';
 import { fetchAndParseICalendar, formatTimeFromDate } from '@/utils/icalParser';
 import { supabase } from '@/app/integrations/supabase/client';
+import { scheduleTaskReminder, cancelNotification, getAllScheduledNotifications } from '@/utils/notificationService';
 
 function getWeekNumber(date: Date): number {
   const d = new Date(date.getTime());
@@ -22,6 +23,7 @@ export function useFootballData() {
   const [userId, setUserId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [notificationIdentifiers, setNotificationIdentifiers] = useState<Map<string, string>>(new Map());
 
   // Get current user
   useEffect(() => {
@@ -216,12 +218,44 @@ export function useFootballData() {
         
         setActivities(internal);
         setExternalActivities(external);
+
+        // Schedule notifications for tasks with reminders
+        scheduleNotificationsForActivities(internal);
       }
       setIsLoading(false);
     };
 
     loadActivities();
   }, [userId, categories, refreshTrigger]);
+
+  // Schedule notifications for all activities with tasks that have reminders
+  const scheduleNotificationsForActivities = async (activitiesToSchedule: Activity[]) => {
+    console.log('Scheduling notifications for activities');
+    const newIdentifiers = new Map<string, string>();
+
+    for (const activity of activitiesToSchedule) {
+      for (const task of activity.tasks) {
+        if (task.reminder && !task.completed) {
+          const identifier = await scheduleTaskReminder(
+            task.title,
+            activity.title,
+            activity.date,
+            activity.time,
+            task.reminder,
+            task.id,
+            activity.id
+          );
+
+          if (identifier) {
+            newIdentifiers.set(task.id, identifier);
+            console.log(`Scheduled notification for task ${task.title}`);
+          }
+        }
+      }
+    }
+
+    setNotificationIdentifiers(newIdentifiers);
+  };
 
   // Load trophies from database
   useEffect(() => {
@@ -450,6 +484,17 @@ export function useFootballData() {
 
       console.log('Activity deleted from database successfully');
 
+      // Cancel notifications for this activity's tasks
+      const activity = activities.find(a => a.id === id);
+      if (activity) {
+        for (const task of activity.tasks) {
+          const notificationId = notificationIdentifiers.get(task.id);
+          if (notificationId) {
+            await cancelNotification(notificationId);
+          }
+        }
+      }
+
       // Update local state immediately
       setActivities(prevActivities => prevActivities.filter(activity => activity.id !== id));
       
@@ -500,6 +545,12 @@ export function useFootballData() {
   };
 
   const deleteTask = (id: string) => {
+    // Cancel notification if exists
+    const notificationId = notificationIdentifiers.get(id);
+    if (notificationId) {
+      cancelNotification(notificationId);
+    }
+
     setTasks(tasks.filter(task => task.id !== id));
     
     setActivities(activities.map(activity => ({
@@ -552,6 +603,28 @@ export function useFootballData() {
       }
 
       console.log('Task completion updated in database');
+
+      // If task is completed, cancel its notification
+      if (newCompleted) {
+        const notificationId = notificationIdentifiers.get(taskId);
+        if (notificationId) {
+          await cancelNotification(notificationId);
+        }
+      } else if (task.reminder) {
+        // If task is uncompleted and has a reminder, reschedule notification
+        const identifier = await scheduleTaskReminder(
+          task.title,
+          activity.title,
+          activity.date,
+          activity.time,
+          task.reminder,
+          taskId,
+          activityId
+        );
+        if (identifier) {
+          setNotificationIdentifiers(prev => new Map(prev).set(taskId, identifier));
+        }
+      }
 
       // Update local state
       setActivities(activities.map(act => {

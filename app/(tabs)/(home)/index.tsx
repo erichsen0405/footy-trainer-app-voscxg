@@ -1,18 +1,28 @@
 
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useColorScheme } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFootball } from '@/contexts/FootballContext';
 import { colors } from '@/styles/commonStyles';
 import { Activity } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
 import { getWeek } from 'date-fns';
+import { requestNotificationPermissions } from '@/utils/notificationService';
 
 export default function HomeScreen() {
   const { currentWeekStats, todayActivities, activities, toggleTaskCompletion } = useFootball();
   const router = useRouter();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+
+  // Request notification permissions on mount
+  useEffect(() => {
+    requestNotificationPermissions().then(granted => {
+      if (granted) {
+        console.log('Notification permissions granted');
+      } else {
+        console.log('Notification permissions denied');
+      }
+    });
+  }, []);
 
   const getMotivationalMessage = (percentage: number) => {
     if (percentage >= 80) {
@@ -47,7 +57,6 @@ export default function HomeScreen() {
   };
 
   const formatTime = (time: string) => {
-    // Extract just HH:MM from the time string (removing seconds if present)
     return time.substring(0, 5);
   };
 
@@ -98,16 +107,8 @@ export default function HomeScreen() {
 
   const upcomingByWeek = getUpcomingActivitiesByWeek();
 
-  const bgColor = isDark ? '#1a1a1a' : colors.background;
-  const cardBgColor = isDark ? '#2a2a2a' : colors.card;
-  const textColor = isDark ? '#e3e3e3' : colors.text;
-  const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
-
-  const currentWeek = getWeek(new Date());
-  const currentYear = new Date().getFullYear();
-
   return (
-    <ScrollView style={[styles.container, { backgroundColor: bgColor }]} contentContainerStyle={styles.contentContainer}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       <View style={styles.header}>
         <View style={[styles.headerCard, { backgroundColor: colors.primary }]}>
           <Text style={styles.headerTitle}>Min fodboldapp ⚽</Text>
@@ -139,11 +140,11 @@ export default function HomeScreen() {
       </View>
 
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: textColor }]}>I dag</Text>
+        <Text style={styles.sectionTitle}>I dag</Text>
         
         {todayActivities.length === 0 ? (
-          <View style={[styles.emptyCard, { backgroundColor: cardBgColor }]}>
-            <Text style={[styles.emptyText, { color: textSecondaryColor }]}>Ingen aktiviteter i dag</Text>
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyText}>Ingen aktiviteter i dag</Text>
           </View>
         ) : (
           todayActivities.map((activity, index) => (
@@ -202,9 +203,17 @@ export default function HomeScreen() {
                           <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
                         )}
                       </View>
-                      <Text style={[styles.taskText, task.completed && styles.taskTextCompleted]}>
-                        {task.title}
-                      </Text>
+                      <View style={styles.taskContent}>
+                        <Text style={[styles.taskText, task.completed && styles.taskTextCompleted]}>
+                          {task.title}
+                        </Text>
+                        {task.reminder && (
+                          <View style={styles.reminderBadgeSmall}>
+                            <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={12} color="#fff" />
+                            <Text style={styles.reminderTextSmall}>{task.reminder} min</Text>
+                          </View>
+                        )}
+                      </View>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -215,19 +224,19 @@ export default function HomeScreen() {
       </View>
 
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: textColor }]}>Kommende aktiviteter</Text>
+        <Text style={styles.sectionTitle}>Kommende aktiviteter</Text>
         
         {Object.keys(upcomingByWeek).length === 0 ? (
-          <View style={[styles.emptyCard, { backgroundColor: cardBgColor }]}>
-            <Text style={[styles.emptyText, { color: textSecondaryColor }]}>Ingen kommende aktiviteter</Text>
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyText}>Ingen kommende aktiviteter</Text>
           </View>
         ) : (
           Object.entries(upcomingByWeek).map(([week, data], weekIndex) => (
             <View key={weekIndex} style={styles.weekSection}>
-              <Text style={[styles.weekTitle, { color: textColor }]}>
+              <Text style={styles.weekTitle}>
                 {week}
               </Text>
-              <Text style={[styles.weekDates, { color: textSecondaryColor }]}>
+              <Text style={styles.weekDates}>
                 {data.dateRange}
               </Text>
               
@@ -284,6 +293,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: colors.background,
   },
   contentContainer: {
     paddingTop: 60,
@@ -376,14 +386,17 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: 'bold',
     marginBottom: 12,
+    color: colors.text,
   },
   emptyCard: {
     borderRadius: 16,
     padding: 32,
     alignItems: 'center',
+    backgroundColor: colors.card,
   },
   emptyText: {
     fontSize: 16,
+    color: colors.textSecondary,
   },
   activityCard: {
     borderRadius: 16,
@@ -472,6 +485,12 @@ const styles = StyleSheet.create({
   checkboxChecked: {
     backgroundColor: '#fff',
   },
+  taskContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   taskText: {
     fontSize: 15,
     color: '#fff',
@@ -481,6 +500,20 @@ const styles = StyleSheet.create({
     textDecorationLine: 'line-through',
     opacity: 0.7,
   },
+  reminderBadgeSmall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  reminderTextSmall: {
+    fontSize: 11,
+    color: '#fff',
+    fontWeight: '600',
+  },
   weekSection: {
     marginBottom: 20,
   },
@@ -488,10 +521,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 4,
+    color: colors.text,
   },
   weekDates: {
     fontSize: 14,
     marginBottom: 12,
+    color: colors.textSecondary,
   },
   upcomingActivityCard: {
     borderRadius: 12,

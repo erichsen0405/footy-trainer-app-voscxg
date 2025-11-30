@@ -1,13 +1,13 @@
 
 import { StyleSheet, useColorScheme } from 'react-native';
 
-// Light mode colors
+// Light mode colors (default)
 const lightColors = {
   primary: '#4CAF50',
   secondary: '#2196F3',
   accent: '#FF9800',
   background: '#FFFFFF',
-  backgroundAlt: '#FFFFFF',
+  backgroundAlt: '#F5F5F5',
   text: '#333333',
   textSecondary: '#666666',
   card: '#F5F5F5',
@@ -44,7 +44,7 @@ export const getColors = (colorScheme: 'light' | 'dark' | null | undefined) => {
   return colorScheme === 'dark' ? darkColors : lightColors;
 };
 
-// Default export for backward compatibility
+// Default export - always use light colors
 export const colors = lightColors;
 
 export const buttonStyles = StyleSheet.create({
