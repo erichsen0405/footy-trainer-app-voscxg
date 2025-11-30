@@ -21,6 +21,7 @@ export function useFootballData() {
   const [externalActivities, setExternalActivities] = useState<Activity[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   // Get current user
   useEffect(() => {
@@ -136,7 +137,7 @@ export function useFootballData() {
     };
 
     loadExternalCalendars();
-  }, [userId]);
+  }, [userId, refreshTrigger]);
 
   // Load activities from Supabase (including external ones)
   useEffect(() => {
@@ -200,7 +201,7 @@ export function useFootballData() {
     };
 
     loadActivities();
-  }, [userId, categories]);
+  }, [userId, categories, refreshTrigger]);
 
   // Load trophies from database
   useEffect(() => {
@@ -288,58 +289,8 @@ export function useFootballData() {
         console.error('Error updating calendar:', updateError);
       }
 
-      // Reload activities to get the newly synced ones
-      const { data: activitiesData, error: activitiesError } = await supabase
-        .from('activities')
-        .select(`
-          *,
-          category:activity_categories(*)
-        `)
-        .eq('user_id', userId)
-        .eq('is_external', true)
-        .eq('external_calendar_id', calendar.id);
-
-      if (activitiesError) {
-        console.error('Error loading synced activities:', activitiesError);
-        return;
-      }
-
-      if (activitiesData) {
-        const syncedActivities: Activity[] = activitiesData.map(act => {
-          const category = act.category ? {
-            id: act.category.id,
-            name: act.category.name,
-            color: act.category.color,
-            emoji: act.category.emoji,
-          } : categories[0];
-
-          return {
-            id: act.id,
-            title: act.title,
-            date: new Date(act.activity_date),
-            time: act.activity_time,
-            location: act.location || 'Ingen lokation',
-            category,
-            tasks: [],
-            isExternal: true,
-            externalCalendarId: act.external_calendar_id || undefined,
-            externalEventId: act.external_event_id || undefined,
-          };
-        });
-
-        console.log(`Loaded ${syncedActivities.length} synced activities`);
-
-        setExternalActivities(prev => {
-          const filtered = prev.filter(a => a.externalCalendarId !== calendar.id);
-          return [...filtered, ...syncedActivities];
-        });
-
-        setExternalCalendars(prev => prev.map(cal => 
-          cal.id === calendar.id 
-            ? { ...cal, lastFetched: new Date(), eventCount: syncedActivities.length }
-            : cal
-        ));
-      }
+      // Trigger a refresh to reload activities
+      setRefreshTrigger(prev => prev + 1);
 
       console.log(`Successfully synced calendar: ${calendar.name}`);
     } catch (error: any) {
@@ -349,7 +300,7 @@ export function useFootballData() {
       console.error('Error stack:', error?.stack);
       throw error;
     }
-  }, [userId, categories]);
+  }, [userId]);
 
   // Auto-fetch enabled calendars on mount and when calendars change
   useEffect(() => {
@@ -440,24 +391,33 @@ export function useFootballData() {
     
     if (isExternal) {
       console.log('Cannot delete external activity from app');
-      return;
+      throw new Error('Cannot delete external activities');
     }
 
-    // Delete from Supabase
-    const { error } = await supabase
-      .from('activities')
-      .delete()
-      .eq('id', id);
+    try {
+      // Delete from Supabase
+      const { error } = await supabase
+        .from('activities')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', userId);
 
-    if (error) {
-      console.error('Error deleting activity from database:', error);
-      return;
+      if (error) {
+        console.error('Error deleting activity from database:', error);
+        throw error;
+      }
+
+      console.log('Activity deleted from database successfully');
+
+      // Update local state immediately
+      setActivities(prevActivities => prevActivities.filter(activity => activity.id !== id));
+      
+      // Trigger a refresh to ensure consistency
+      setRefreshTrigger(prev => prev + 1);
+    } catch (error) {
+      console.error('Failed to delete activity:', error);
+      throw error;
     }
-
-    console.log('Activity deleted from database successfully');
-
-    // Update local state
-    setActivities(activities.filter(activity => activity.id !== id));
   };
 
   const duplicateActivity = (id: string) => {
@@ -626,7 +586,8 @@ export function useFootballData() {
       const { error } = await supabase
         .from('external_calendars')
         .update({ enabled: newEnabled })
-        .eq('id', id);
+        .eq('id', id)
+        .eq('user_id', userId);
 
       if (error) {
         console.error('Error toggling calendar:', error);
@@ -670,34 +631,49 @@ export function useFootballData() {
   const deleteExternalCalendar = async (id: string) => {
     console.log('Deleting external calendar:', id);
 
+    if (!userId) {
+      console.error('No user ID, cannot delete calendar');
+      throw new Error('User not authenticated');
+    }
+
     try {
       // First delete all activities associated with this calendar
+      console.log('Deleting activities for calendar:', id);
       const { error: activitiesError } = await supabase
         .from('activities')
         .delete()
-        .eq('external_calendar_id', id);
+        .eq('external_calendar_id', id)
+        .eq('user_id', userId);
 
       if (activitiesError) {
         console.error('Error deleting calendar activities:', activitiesError);
         throw activitiesError;
       }
 
+      console.log('Activities deleted, now deleting calendar');
+
       // Then delete the calendar itself
       const { error } = await supabase
         .from('external_calendars')
         .delete()
-        .eq('id', id);
+        .eq('id', id)
+        .eq('user_id', userId);
 
       if (error) {
         console.error('Error deleting calendar:', error);
         throw error;
       }
 
-      console.log('Calendar deleted successfully');
+      console.log('Calendar deleted successfully from database');
 
-      // Update local state
-      setExternalCalendars(externalCalendars.filter(cal => cal.id !== id));
-      setExternalActivities(prev => prev.filter(a => a.externalCalendarId !== id));
+      // Update local state immediately
+      setExternalCalendars(prevCalendars => prevCalendars.filter(cal => cal.id !== id));
+      setExternalActivities(prevActivities => prevActivities.filter(a => a.externalCalendarId !== id));
+      
+      // Trigger a refresh to ensure consistency
+      setRefreshTrigger(prev => prev + 1);
+      
+      console.log('Local state updated');
     } catch (error) {
       console.error('Failed to delete calendar:', error);
       throw error;

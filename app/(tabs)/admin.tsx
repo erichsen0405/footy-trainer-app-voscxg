@@ -41,6 +41,7 @@ export default function AdminScreen() {
   const [togglingCalendarId, setTogglingCalendarId] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAddingCalendar, setIsAddingCalendar] = useState(false);
+  const [isDeletingActivities, setIsDeletingActivities] = useState(false);
   
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -177,11 +178,32 @@ export default function AdminScreen() {
           text: 'Slet',
           style: 'destructive',
           onPress: async () => {
+            setIsDeletingActivities(true);
+            let successCount = 0;
+            let failCount = 0;
+
             for (const id of internalActivityIds) {
-              await deleteActivity(id);
+              try {
+                await deleteActivity(id);
+                successCount++;
+                console.log(`Successfully deleted activity ${id}`);
+              } catch (error) {
+                failCount++;
+                console.error(`Failed to delete activity ${id}:`, error);
+              }
             }
+
+            setIsDeletingActivities(false);
             setSelectedActivities([]);
-            Alert.alert('Slettet', `${internalActivityIds.length} aktivitet${internalActivityIds.length !== 1 ? 'er' : ''} blev slettet.`);
+
+            if (failCount === 0) {
+              Alert.alert('Slettet', `${successCount} aktivitet${successCount !== 1 ? 'er' : ''} blev slettet.`);
+            } else {
+              Alert.alert(
+                'Delvist slettet', 
+                `${successCount} aktivitet${successCount !== 1 ? 'er' : ''} blev slettet.\n${failCount} aktivitet${failCount !== 1 ? 'er' : ''} kunne ikke slettes.`
+              );
+            }
           }
         }
       ]
@@ -296,9 +318,15 @@ export default function AdminScreen() {
       return;
     }
 
+    const calendar = externalCalendars.find(c => c.id === calendarId);
+    if (!calendar) {
+      console.error('Calendar not found:', calendarId);
+      return;
+    }
+
     Alert.alert(
       'Slet kalender',
-      'Er du sikker på at du vil slette denne kalender? Alle tilknyttede aktiviteter vil også blive slettet.',
+      `Er du sikker på at du vil slette kalenderen "${calendar.name}"? Alle tilknyttede aktiviteter vil også blive slettet.`,
       [
         { text: 'Annuller', style: 'cancel' },
         { 
@@ -306,9 +334,12 @@ export default function AdminScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
+              console.log('Deleting calendar:', calendarId);
               await deleteExternalCalendar(calendarId);
+              console.log('Calendar deleted successfully');
               Alert.alert('Slettet', 'Kalenderen og dens aktiviteter er blevet slettet.');
             } catch (error: any) {
+              console.error('Error deleting calendar:', error);
               Alert.alert('Fejl', `Kunne ikke slette kalenderen: ${error?.message || 'Ukendt fejl'}`);
             }
           }
@@ -712,9 +743,20 @@ export default function AdminScreen() {
                   <Text style={styles.selectionButtonText}>Importer</Text>
                 </TouchableOpacity>
               )}
-              <TouchableOpacity onPress={deleteSelectedActivities} style={styles.selectionButton} activeOpacity={0.7}>
-                <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={22} color="#fff" />
-                <Text style={styles.selectionButtonText}>Slet</Text>
+              <TouchableOpacity 
+                onPress={deleteSelectedActivities} 
+                style={styles.selectionButton} 
+                activeOpacity={0.7}
+                disabled={isDeletingActivities}
+              >
+                {isDeletingActivities ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <React.Fragment>
+                    <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={22} color="#fff" />
+                    <Text style={styles.selectionButtonText}>Slet</Text>
+                  </React.Fragment>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -869,9 +911,15 @@ export default function AdminScreen() {
                         />
                       </TouchableOpacity>
                       <TouchableOpacity 
-                        onPress={(e) => {
+                        onPress={async (e) => {
                           e.stopPropagation();
-                          deleteActivity(activity.id);
+                          try {
+                            await deleteActivity(activity.id);
+                            console.log('Activity deleted successfully');
+                          } catch (error: any) {
+                            console.error('Error deleting activity:', error);
+                            Alert.alert('Fejl', `Kunne ikke slette aktiviteten: ${error?.message || 'Ukendt fejl'}`);
+                          }
                         }} 
                         style={styles.activityActionButton}
                         activeOpacity={0.7}
