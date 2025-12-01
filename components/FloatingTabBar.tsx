@@ -40,11 +40,11 @@ export default function FloatingTabBar({ tabs }: FloatingTabBarProps) {
             : 'rgba(0, 0, 0, 0.1)',
         }]}
       >
-        {tabs.map((tab) => {
+        {tabs.map((tab, index) => {
           const active = isActive(tab.route);
           return (
             <TouchableOpacity
-              key={tab.name}
+              key={`${tab.name}-${tab.route}-${index}`}
               style={[
                 styles.tab,
                 active && {
