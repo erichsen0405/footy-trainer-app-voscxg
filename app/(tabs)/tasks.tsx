@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, useColorScheme, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, useColorScheme, KeyboardAvoidingView, Platform, RefreshControl } from 'react-native';
 import { useFootball } from '@/contexts/FootballContext';
 import { colors } from '@/styles/commonStyles';
 import { Task } from '@/types';
@@ -12,6 +12,7 @@ export default function TasksScreen() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
@@ -21,6 +22,14 @@ export default function TasksScreen() {
   const filteredTemplateTasks = templateTasks.filter(task =>
     task.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const onRefresh = React.useCallback(() => {
+    setRefreshing(true);
+    // Simulate refresh - in a real app, you would fetch data here
+    setTimeout(() => {
+      setRefreshing(false);
+    }, 1000);
+  }, []);
 
   const openTaskModal = (task: Task | null, creating: boolean = false) => {
     setSelectedTask(task);
@@ -96,7 +105,13 @@ export default function TasksScreen() {
         />
       </View>
 
-      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
+      <ScrollView 
+        style={styles.content} 
+        contentContainerStyle={styles.contentContainer}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={[styles.sectionTitle, { color: textColor }]}>Skabeloner</Text>
@@ -123,7 +138,7 @@ export default function TasksScreen() {
 
           {filteredTemplateTasks.map((task, index) => (
             <TouchableOpacity
-              key={`template-${task.id}-${index}`}
+              key={`template-task-${task.id || 'new'}-${index}`}
               style={[styles.taskCard, { backgroundColor: cardBgColor }]}
               onPress={() => openTaskModal(task)}
             >
@@ -179,7 +194,7 @@ export default function TasksScreen() {
             </View>
           ) : (
             activityTasks.map((task, index) => (
-              <View key={`activity-${task.id}-${index}`} style={[styles.taskCard, { backgroundColor: cardBgColor }]}>
+              <View key={`activity-task-${task.id || 'new'}-${index}`} style={[styles.taskCard, { backgroundColor: cardBgColor }]}>
                 <View style={styles.taskHeader}>
                   <View style={styles.taskHeaderLeft}>
                     <View style={[styles.checkbox, task.completed && styles.checkboxChecked]}>
@@ -265,7 +280,7 @@ export default function TasksScreen() {
               <View style={styles.categoriesGrid}>
                 {categories.map((category, index) => (
                   <TouchableOpacity
-                    key={`modal-cat-${category.id}-${index}`}
+                    key={`modal-category-${category.id}-${index}`}
                     style={[
                       styles.categoryChip,
                       {
