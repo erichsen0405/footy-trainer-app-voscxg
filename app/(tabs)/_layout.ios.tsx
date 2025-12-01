@@ -24,18 +24,19 @@ export default function TabLayout() {
   return (
     <NativeTabs 
       tintColor={colors.primary}
-      barTintColor={isDark ? '#1C1C1E' : '#FFFFFF'}
+      barTintColor={isDark ? '#000000' : '#FFFFFF'}
       unselectedItemTintColor={isDark ? '#8E8E93' : '#666666'}
       translucent={false}
+      blurEffect={undefined}
       style={{
-        backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+        backgroundColor: isDark ? '#000000' : '#FFFFFF',
         borderTopWidth: 0.5,
         borderTopColor: isDark ? '#38383A' : '#E5E5E5',
         opacity: 1,
       }}
       screenOptions={{
         tabBarStyle: {
-          backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+          backgroundColor: isDark ? '#000000' : '#FFFFFF',
           borderTopWidth: 0.5,
           borderTopColor: isDark ? '#38383A' : '#E5E5E5',
           opacity: 1,

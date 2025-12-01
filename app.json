@@ -5,11 +5,11 @@
     "slug": "football-coach",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/a8830e6c-64b6-4710-9a46-55ebcf34c56c.png",
+    "icon": "./assets/images/58c4d2ff-1987-46af-803d-c0231fc33c42.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/a8830e6c-64b6-4710-9a46-55ebcf34c56c.png",
+      "image": "./assets/images/58c4d2ff-1987-46af-803d-c0231fc33c42.png",
       "resizeMode": "contain",
       "backgroundColor": "#FF6347"
     },
@@ -22,7 +22,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/a8830e6c-64b6-4710-9a46-55ebcf34c56c.png",
+        "foregroundImage": "./assets/images/58c4d2ff-1987-46af-803d-c0231fc33c42.png",
         "backgroundColor": "#FF6347"
       },
       "edgeToEdgeEnabled": true,
@@ -34,7 +34,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/images/a8830e6c-64b6-4710-9a46-55ebcf34c56c.png",
+      "favicon": "./assets/images/58c4d2ff-1987-46af-803d-c0231fc33c42.png",
       "bundler": "metro"
     },
     "plugins": [
@@ -44,7 +44,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/images/a8830e6c-64b6-4710-9a46-55ebcf34c56c.png",
+          "icon": "./assets/images/58c4d2ff-1987-46af-803d-c0231fc33c42.png",
           "color": "#FF6347",
           "defaultChannel": "task-reminders",
           "sounds": []

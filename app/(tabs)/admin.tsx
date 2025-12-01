@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, useColorScheme, Alert, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, useColorScheme, Alert, Platform, ActivityIndicator, StatusBar } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFootball } from '@/contexts/FootballContext';
 import { colors } from '@/styles/commonStyles';
@@ -460,16 +460,20 @@ export default function AdminScreen() {
     return `${days} dag${days !== 1 ? 'e' : ''} siden`;
   };
 
-  const bgColor = isDark ? '#1a1a1a' : colors.background;
-  const cardBgColor = isDark ? '#2a2a2a' : colors.card;
-  const textColor = isDark ? '#e3e3e3' : colors.text;
-  const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
-  const iconColor = isDark ? '#e3e3e3' : colors.text;
+  const bgColor = isDark ? '#000000' : colors.background;
+  const cardBgColor = isDark ? '#1C1C1E' : colors.card;
+  const textColor = isDark ? '#FFFFFF' : colors.text;
+  const textSecondaryColor = isDark ? '#8E8E93' : colors.textSecondary;
+  const iconColor = isDark ? '#FFFFFF' : colors.text;
 
   const hasActiveFilters = selectedCategories.length > 0 || selectedExternalCalendars.length > 0 || searchQuery.length > 0;
 
   return (
     <View style={[styles.container, { backgroundColor: bgColor }]}>
+      <StatusBar 
+        barStyle={isDark ? 'light-content' : 'dark-content'} 
+        backgroundColor={bgColor}
+      />
       <ScrollView 
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
