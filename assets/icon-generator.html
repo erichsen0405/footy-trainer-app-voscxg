@@ -1,0 +1,266 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Football App Icon Generator</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 40px;
+            background: #f0f0f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        .container {
+            text-align: center;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .instructions {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            max-width: 600px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .instructions h2 {
+            margin-top: 0;
+            color: #4CAF50;
+        }
+        .instructions ol {
+            text-align: left;
+            line-height: 1.8;
+        }
+        .icon-preview {
+            display: inline-block;
+            background: white;
+            padding: 20px;
+            border-radius: 20px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+        }
+        svg {
+            display: block;
+        }
+        .sizes {
+            margin-top: 30px;
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .size-box {
+            background: white;
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .size-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>⚽ Football Coach App Icon</h1>
+        
+        <div class="instructions">
+            <h2>How to use this icon:</h2>
+            <ol>
+                <li>Open this HTML file in your browser</li>
+                <li>Take a screenshot of the 1024x1024 icon below</li>
+                <li>Use an online tool like <a href="https://www.appicon.co/" target="_blank">appicon.co</a> or <a href="https://icon.kitchen/" target="_blank">icon.kitchen</a> to generate all required sizes</li>
+                <li>Replace the icon in your app.json and assets folder</li>
+            </ol>
+            <p><strong>Or use the direct SVG code below to create your icon programmatically!</strong></p>
+        </div>
+
+        <div class="icon-preview">
+            <svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+                <!-- Background gradient -->
+                <defs>
+                    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#4CAF50;stop-opacity:1" />
+                        <stop offset="100%" style="stop-color:#2E7D32;stop-opacity:1" />
+                    </linearGradient>
+                    
+                    <linearGradient id="ballGradient" x1="30%" y1="30%" x2="70%" y2="70%">
+                        <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:1" />
+                        <stop offset="100%" style="stop-color:#E0E0E0;stop-opacity:1" />
+                    </linearGradient>
+                    
+                    <radialGradient id="ballShine" cx="40%" cy="40%">
+                        <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:0.8" />
+                        <stop offset="50%" style="stop-color:#FFFFFF;stop-opacity:0.3" />
+                        <stop offset="100%" style="stop-color:#FFFFFF;stop-opacity:0" />
+                    </radialGradient>
+                    
+                    <!-- Shadow filter -->
+                    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+                        <feGaussianBlur in="SourceAlpha" stdDeviation="8"/>
+                        <feOffset dx="0" dy="8" result="offsetblur"/>
+                        <feComponentTransfer>
+                            <feFuncA type="linear" slope="0.3"/>
+                        </feComponentTransfer>
+                        <feMerge>
+                            <feMergeNode/>
+                            <feMergeNode in="SourceGraphic"/>
+                        </feMerge>
+                    </filter>
+                </defs>
+                
+                <!-- Background with rounded corners -->
+                <rect width="1024" height="1024" rx="180" fill="url(#bgGradient)"/>
+                
+                <!-- Football/Soccer ball -->
+                <g filter="url(#shadow)">
+                    <!-- Main ball circle -->
+                    <circle cx="512" cy="512" r="320" fill="url(#ballGradient)"/>
+                    
+                    <!-- Pentagon pattern (stylized) -->
+                    <!-- Center pentagon -->
+                    <path d="M 512 280 L 590 330 L 560 420 L 464 420 L 434 330 Z" 
+                          fill="#1A1A1A" stroke="#333" stroke-width="4"/>
+                    
+                    <!-- Top pentagons -->
+                    <path d="M 512 280 L 434 330 L 380 260 L 450 210 L 520 240 Z" 
+                          fill="#1A1A1A" stroke="#333" stroke-width="4"/>
+                    <path d="M 512 280 L 590 330 L 644 260 L 574 210 L 504 240 Z" 
+                          fill="#1A1A1A" stroke="#333" stroke-width="4"/>
+                    
+                    <!-- Side pentagons -->
+                    <path d="M 434 330 L 464 420 L 380 480 L 310 420 L 340 340 Z" 
+                          fill="#1A1A1A" stroke="#333" stroke-width="4"/>
+                    <path d="M 590 330 L 560 420 L 644 480 L 714 420 L 684 340 Z" 
+                          fill="#1A1A1A" stroke="#333" stroke-width="4"/>
+                    
+                    <!-- Bottom pentagons -->
+                    <path d="M 464 420 L 380 480 L 410 570 L 490 590 L 540 540 Z" 
+                          fill="#1A1A1A" stroke="#333" stroke-width="4"/>
+                    <path d="M 560 420 L 644 480 L 614 570 L 534 590 L 484 540 Z" 
+                          fill="#1A1A1A" stroke="#333" stroke-width="4"/>
+                    
+                    <!-- Shine effect -->
+                    <circle cx="512" cy="512" r="320" fill="url(#ballShine)" opacity="0.6"/>
+                    
+                    <!-- Highlight -->
+                    <ellipse cx="420" cy="400" rx="80" ry="60" fill="white" opacity="0.3"/>
+                </g>
+                
+                <!-- Whistle icon (coach element) -->
+                <g transform="translate(720, 720)" filter="url(#shadow)">
+                    <ellipse cx="0" cy="0" rx="85" ry="85" fill="#FFD700" opacity="0.95"/>
+                    <path d="M -30 -10 L 30 -10 L 35 0 L 30 10 L -30 10 L -35 0 Z" 
+                          fill="#333" stroke="#1A1A1A" stroke-width="3"/>
+                    <circle cx="-15" cy="0" r="8" fill="#FFD700"/>
+                    <circle cx="15" cy="0" r="8" fill="#FFD700"/>
+                    <path d="M 35 0 L 55 -5 L 55 5 Z" fill="#333"/>
+                    <circle cx="0" cy="0" r="4" fill="#1A1A1A"/>
+                </g>
+            </svg>
+        </div>
+
+        <div class="sizes">
+            <div class="size-box">
+                <svg width="180" height="180" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <linearGradient id="bgGradient2" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#4CAF50;stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:#2E7D32;stop-opacity:1" />
+                        </linearGradient>
+                        <linearGradient id="ballGradient2" x1="30%" y1="30%" x2="70%" y2="70%">
+                            <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:#E0E0E0;stop-opacity:1" />
+                        </linearGradient>
+                        <radialGradient id="ballShine2" cx="40%" cy="40%">
+                            <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:0.8" />
+                            <stop offset="50%" style="stop-color:#FFFFFF;stop-opacity:0.3" />
+                            <stop offset="100%" style="stop-color:#FFFFFF;stop-opacity:0" />
+                        </radialGradient>
+                    </defs>
+                    <rect width="1024" height="1024" rx="180" fill="url(#bgGradient2)"/>
+                    <circle cx="512" cy="512" r="320" fill="url(#ballGradient2)"/>
+                    <path d="M 512 280 L 590 330 L 560 420 L 464 420 L 434 330 Z" fill="#1A1A1A" stroke="#333" stroke-width="4"/>
+                    <path d="M 512 280 L 434 330 L 380 260 L 450 210 L 520 240 Z" fill="#1A1A1A" stroke="#333" stroke-width="4"/>
+                    <path d="M 512 280 L 590 330 L 644 260 L 574 210 L 504 240 Z" fill="#1A1A1A" stroke="#333" stroke-width="4"/>
+                    <path d="M 434 330 L 464 420 L 380 480 L 310 420 L 340 340 Z" fill="#1A1A1A" stroke="#333" stroke-width="4"/>
+                    <path d="M 590 330 L 560 420 L 644 480 L 714 420 L 684 340 Z" fill="#1A1A1A" stroke="#333" stroke-width="4"/>
+                    <path d="M 464 420 L 380 480 L 410 570 L 490 590 L 540 540 Z" fill="#1A1A1A" stroke="#333" stroke-width="4"/>
+                    <path d="M 560 420 L 644 480 L 614 570 L 534 590 L 484 540 Z" fill="#1A1A1A" stroke="#333" stroke-width="4"/>
+                    <circle cx="512" cy="512" r="320" fill="url(#ballShine2)" opacity="0.6"/>
+                    <ellipse cx="420" cy="400" rx="80" ry="60" fill="white" opacity="0.3"/>
+                    <g transform="translate(720, 720)">
+                        <ellipse cx="0" cy="0" rx="85" ry="85" fill="#FFD700" opacity="0.95"/>
+                        <path d="M -30 -10 L 30 -10 L 35 0 L 30 10 L -30 10 L -35 0 Z" fill="#333" stroke="#1A1A1A" stroke-width="3"/>
+                        <circle cx="-15" cy="0" r="8" fill="#FFD700"/>
+                        <circle cx="15" cy="0" r="8" fill="#FFD700"/>
+                        <path d="M 35 0 L 55 -5 L 55 5 Z" fill="#333"/>
+                        <circle cx="0" cy="0" r="4" fill="#1A1A1A"/>
+                    </g>
+                </svg>
+                <div class="size-label">180x180 (Preview)</div>
+            </div>
+            
+            <div class="size-box">
+                <svg width="120" height="120" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <linearGradient id="bgGradient3" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#4CAF50;stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:#2E7D32;stop-opacity:1" />
+                        </linearGradient>
+                        <linearGradient id="ballGradient3" x1="30%" y1="30%" x2="70%" y2="70%">
+                            <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:#E0E0E0;stop-opacity:1" />
+                        </linearGradient>
+                        <radialGradient id="ballShine3" cx="40%" cy="40%">
+                            <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:0.8" />
+                            <stop offset="50%" style="stop-color:#FFFFFF;stop-opacity:0.3" />
+                            <stop offset="100%" style="stop-color:#FFFFFF;stop-opacity:0" />
+                        </radialGradient>
+                    </defs>
+                    <rect width="1024" height="1024" rx="180" fill="url(#bgGradient3)"/>
+                    <circle cx="512" cy="512" r="320" fill="url(#ballGradient3)"/>
+                    <path d="M 512 280 L 590 330 L 560 420 L 464 420 L 434 330 Z" fill="#1A1A1A" stroke="#333" stroke-width="4"/>
+                    <path d="M 512 280 L 434 330 L 380 260 L 450 210 L 520 240 Z" fill="#1A1A1A" stroke="#333" stroke-width="4"/>
+                    <path d="M 512 280 L 590 330 L 644 260 L 574 210 L 504 240 Z" fill="#1A1A1A" stroke="#333" stroke-width="4"/>
+                    <path d="M 434 330 L 464 420 L 380 480 L 310 420 L 340 340 Z" fill="#1A1A1A" stroke="#333" stroke-width="4"/>
+                    <path d="M 590 330 L 560 420 L 644 480 L 714 420 L 684 340 Z" fill="#1A1A1A" stroke="#333" stroke-width="4"/>
+                    <path d="M 464 420 L 380 480 L 410 570 L 490 590 L 540 540 Z" fill="#1A1A1A" stroke="#333" stroke-width="4"/>
+                    <path d="M 560 420 L 644 480 L 614 570 L 534 590 L 484 540 Z" fill="#1A1A1A" stroke="#333" stroke-width="4"/>
+                    <circle cx="512" cy="512" r="320" fill="url(#ballShine3)" opacity="0.6"/>
+                    <ellipse cx="420" cy="400" rx="80" ry="60" fill="white" opacity="0.3"/>
+                    <g transform="translate(720, 720)">
+                        <ellipse cx="0" cy="0" rx="85" ry="85" fill="#FFD700" opacity="0.95"/>
+                        <path d="M -30 -10 L 30 -10 L 35 0 L 30 10 L -30 10 L -35 0 Z" fill="#333" stroke="#1A1A1A" stroke-width="3"/>
+                        <circle cx="-15" cy="0" r="8" fill="#FFD700"/>
+                        <circle cx="15" cy="0" r="8" fill="#FFD700"/>
+                        <path d="M 35 0 L 55 -5 L 55 5 Z" fill="#333"/>
+                        <circle cx="0" cy="0" r="4" fill="#1A1A1A"/>
+                    </g>
+                </svg>
+                <div class="size-label">120x120 (Small)</div>
+            </div>
+        </div>
+
+        <div style="margin-top: 40px; padding: 20px; background: white; border-radius: 12px; max-width: 600px;">
+            <h3>Icon Features:</h3>
+            <ul style="text-align: left; line-height: 1.8;">
+                <li>✅ Modern gradient background (green - football field colors)</li>
+                <li>✅ Stylized football/soccer ball with realistic pentagon pattern</li>
+                <li>✅ Coach's whistle badge (gold) for the "coach" theme</li>
+                <li>✅ 3D effect with shadows and highlights</li>
+                <li>✅ Clean, minimalist design that works at all sizes</li>
+                <li>✅ Rounded corners for iOS style</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

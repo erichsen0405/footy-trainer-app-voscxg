@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useColorScheme, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useColorScheme, Modal, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFootball } from '@/contexts/FootballContext';
 import { colors } from '@/styles/commonStyles';
@@ -12,7 +12,7 @@ import { supabase } from '@/app/integrations/supabase/client';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { currentWeekStats, todayActivities, activities, categories, toggleTaskCompletion, createActivity } = useFootball();
+  const { currentWeekStats, todayActivities, activities, categories, toggleTaskCompletion, createActivity, externalCalendars, fetchExternalCalendarEvents } = useFootball();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
@@ -20,6 +20,7 @@ export default function HomeScreen() {
   const [isTaskModalVisible, setIsTaskModalVisible] = useState(false);
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Check if user is admin
   useEffect(() => {
@@ -39,6 +40,32 @@ export default function HomeScreen() {
     };
     checkAdminStatus();
   }, []);
+
+  const onRefresh = async () => {
+    console.log('Pull to refresh triggered on iOS home screen');
+    setRefreshing(true);
+    
+    try {
+      // Sync all enabled external calendars
+      const enabledCalendars = externalCalendars.filter(cal => cal.enabled);
+      console.log(`Syncing ${enabledCalendars.length} enabled calendars`);
+      
+      for (const calendar of enabledCalendars) {
+        try {
+          await fetchExternalCalendarEvents(calendar);
+          console.log(`Successfully synced calendar: ${calendar.name}`);
+        } catch (error) {
+          console.error(`Failed to sync calendar ${calendar.name}:`, error);
+        }
+      }
+      
+      console.log('Refresh completed');
+    } catch (error) {
+      console.error('Error during refresh:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const getMotivationalMessage = (percentage: number, completedTasks: number, totalTasks: number, totalTasksForWeek: number) => {
     const remaining = totalTasks - completedTasks;
@@ -164,7 +191,18 @@ export default function HomeScreen() {
 
   return (
     <React.Fragment>
-      <ScrollView style={[styles.container, { backgroundColor: bgColor }]} contentContainerStyle={styles.contentContainer}>
+      <ScrollView 
+        style={[styles.container, { backgroundColor: bgColor }]} 
+        contentContainerStyle={styles.contentContainer}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
+      >
         <View style={styles.header}>
           <View style={[styles.headerCard, { backgroundColor: colors.primary }]}>
             <Text style={styles.headerTitle}>Min fodboldapp ⚽</Text>
