@@ -31,7 +31,7 @@ export default function TabLayout() {
         name: 'performance',
         route: '/(tabs)/performance',
         icon: 'trophy.fill',
-        materialIcon: 'emoji_events',
+        materialIcon: 'stars',
         label: 'Performance',
       },
       {

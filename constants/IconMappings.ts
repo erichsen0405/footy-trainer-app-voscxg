@@ -7,6 +7,10 @@
  * 
  * IMPORTANT: All Material Icon names must exist in @expo/vector-icons/MaterialIcons
  * Verify icon names at: https://icons.expo.fyi/Index/MaterialIcons
+ * 
+ * Note: Material Icons use underscores in their names (e.g., 'star_border')
+ * Some icons like 'emoji_events' may not be available in all versions.
+ * Use universally available alternatives like 'stars', 'grade', or 'military_tech' for awards/trophies.
  */
 
 export const iconMappings = {
@@ -105,8 +109,10 @@ export const iconMappings = {
   'magnifyingglass': 'search',
   
   // Sports & Performance
-  'trophy': 'emoji_events',
-  'trophy.fill': 'emoji_events',
+  // Note: Using 'stars' instead of 'emoji_events' for better compatibility
+  // 'emoji_events' may not be available in all Material Icons versions
+  'trophy': 'stars',
+  'trophy.fill': 'stars',
   
   // Selection
   'square': 'check_box_outline_blank',
@@ -118,19 +124,19 @@ export const iconMappings = {
   'tag.fill': 'label',
   
   // Charts & Analytics
-  'chart.bar': 'bar_chart',
-  'chart.bar.fill': 'bar_chart',
+  'chart.bar': 'insert_chart',
+  'chart.bar.fill': 'assessment',
 };
 
 /**
  * Get the Material Icon name for a given SF Symbol name
  * @param sfSymbolName - The SF Symbol name (iOS)
- * @returns The corresponding Material Icon name, or 'help_outline' if not found
+ * @returns The corresponding Material Icon name, or 'star' if not found
  */
 export function getMaterialIconName(sfSymbolName: string): string {
   const mapped = iconMappings[sfSymbolName as keyof typeof iconMappings];
   if (!mapped) {
     console.warn(`⚠️ No Material Icon mapping found for SF Symbol: "${sfSymbolName}". Using fallback icon.`);
   }
-  return mapped || 'help_outline';
+  return mapped || 'star';
 }

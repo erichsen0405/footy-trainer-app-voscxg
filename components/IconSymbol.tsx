@@ -96,8 +96,12 @@ const VALID_MATERIAL_ICONS: Record<string, boolean> = {
   // Search
   'search': true,
   
-  // Sports
-  'emoji_events': true,
+  // Sports & Awards - using stars as fallback for trophy
+  'stars': true,
+  'star': true,
+  'grade': true,
+  'military_tech': true,
+  'workspace_premium': true,
   
   // Selection
   'check_box_outline_blank': true,
@@ -108,7 +112,9 @@ const VALID_MATERIAL_ICONS: Record<string, boolean> = {
   'label': true,
   
   // Charts
+  'insert_chart': true,
   'bar_chart': true,
+  'assessment': true,
   
   // Fallback
   'help_outline': true,
@@ -133,7 +139,7 @@ export function IconSymbol({
   style?: StyleProp<ViewStyle>;
   weight?: SymbolWeight;
 }) {
-  // Validate and fallback to help_outline if icon doesn't exist
+  // Validate and fallback to a safe icon if the requested one doesn't exist
   let iconName: MaterialIconName;
   
   if (android_material_icon_name in MaterialIcons.glyphMap) {
@@ -142,9 +148,10 @@ export function IconSymbol({
     // Log warning for debugging
     console.warn(
       `⚠️ Material Icon "${android_material_icon_name}" not found in glyphMap. ` +
-      `iOS icon: "${ios_icon_name}". Using fallback icon "help_outline".`
+      `iOS icon: "${ios_icon_name}". Using fallback icon "star".`
     );
-    iconName = 'help_outline' as MaterialIconName;
+    // Use 'star' as fallback instead of 'help_outline' for better visual consistency
+    iconName = 'star' as MaterialIconName;
   }
 
   return (
