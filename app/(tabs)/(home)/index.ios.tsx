@@ -239,9 +239,9 @@ export default function HomeScreen() {
             </View>
           ) : (
             <React.Fragment>
-              {todayActivities.map((activity, index) => (
+              {todayActivities.map((activity) => (
                 <TouchableOpacity
-                  key={`today-${activity.id}-${index}`}
+                  key={`today-${activity.id}`}
                   style={[styles.activityCard, { backgroundColor: activity.category.color }]}
                   onPress={() => handleActivityPress(activity.id)}
                   activeOpacity={0.7}
@@ -263,9 +263,9 @@ export default function HomeScreen() {
                   {activity.tasks.length > 0 && (
                     <View style={styles.tasksSection}>
                       <Text style={styles.tasksTitle}>Opgaver:</Text>
-                      {activity.tasks.map((task, taskIndex) => (
+                      {activity.tasks.map((task) => (
                         <TouchableOpacity
-                          key={`task-${activity.id}-${task.id}-${taskIndex}`}
+                          key={`task-${activity.id}-${task.id}`}
                           style={styles.taskItem}
                           onPress={(e) => {
                             e.stopPropagation();
@@ -299,10 +299,10 @@ export default function HomeScreen() {
             </View>
           ) : (
             <React.Fragment>
-              {Object.entries(upcomingByWeek).map(([weekKey, data], weekIndex) => {
+              {Object.entries(upcomingByWeek).map(([weekKey, data]) => {
                 const weekNumber = weekKey.split('-W')[1];
                 return (
-                  <View key={`week-${weekKey}`} style={styles.weekSection}>
+                  <View key={weekKey} style={styles.weekSection}>
                     <Text style={[styles.weekTitle, { color: textColor }]}>
                       Uge {weekNumber}
                     </Text>
@@ -310,9 +310,9 @@ export default function HomeScreen() {
                       {data.dateRange}
                     </Text>
                     
-                    {data.activities.map((activity, activityIndex) => (
+                    {data.activities.map((activity) => (
                       <TouchableOpacity
-                        key={`upcoming-${activity.id}-${activityIndex}`}
+                        key={`upcoming-${activity.id}`}
                         style={[styles.upcomingActivityCard, { backgroundColor: activity.category.color }]}
                         onPress={() => handleActivityPress(activity.id)}
                         activeOpacity={0.7}
