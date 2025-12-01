@@ -43,32 +43,33 @@ export default function FloatingTabBar({ tabs }: FloatingTabBarProps) {
         {tabs.map((tab, index) => {
           const active = isActive(tab.route);
           return (
-            <TouchableOpacity
-              key={`${tab.name}-${tab.route}-${index}`}
-              style={[
-                styles.tab,
-                active && {
-                  backgroundColor: colorScheme === 'dark' 
-                    ? 'rgba(76, 175, 80, 0.15)' 
-                    : 'rgba(76, 175, 80, 0.1)',
-                  borderRadius: 16,
-                }
-              ]}
-              onPress={() => router.push(tab.route as any)}
-            >
-              <IconSymbol
-                ios_icon_name={tab.icon as any}
-                android_material_icon_name={tab.materialIcon as any}
-                size={24}
-                color={active ? colors.primary : colors.textSecondary}
-              />
-              <Text style={[
-                styles.label, 
-                { color: active ? colors.primary : colors.textSecondary }
-              ]}>
-                {tab.label}
-              </Text>
-            </TouchableOpacity>
+            <React.Fragment key={`tab-${tab.route}-${index}`}>
+              <TouchableOpacity
+                style={[
+                  styles.tab,
+                  active && {
+                    backgroundColor: colorScheme === 'dark' 
+                      ? 'rgba(76, 175, 80, 0.15)' 
+                      : 'rgba(76, 175, 80, 0.1)',
+                    borderRadius: 16,
+                  }
+                ]}
+                onPress={() => router.push(tab.route as any)}
+              >
+                <IconSymbol
+                  ios_icon_name={tab.icon as any}
+                  android_material_icon_name={tab.materialIcon as any}
+                  size={24}
+                  color={active ? colors.primary : colors.textSecondary}
+                />
+                <Text style={[
+                  styles.label, 
+                  { color: active ? colors.primary : colors.textSecondary }
+                ]}>
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            </React.Fragment>
           );
         })}
       </View>
