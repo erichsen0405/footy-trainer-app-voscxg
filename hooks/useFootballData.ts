@@ -3,7 +3,12 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Activity, ActivityCategory, Task, Trophy, ExternalCalendar, ActivitySeries } from '@/types';
 import { fetchAndParseICalendar, formatTimeFromDate } from '@/utils/icalParser';
 import { supabase } from '@/app/integrations/supabase/client';
-import { scheduleTaskReminder, cancelNotification, getAllScheduledNotifications } from '@/utils/notificationService';
+import { 
+  scheduleTaskReminder, 
+  cancelNotification, 
+  getAllScheduledNotifications,
+  requestNotificationPermissions 
+} from '@/utils/notificationService';
 
 function getWeekNumber(date: Date): number {
   const d = new Date(date.getTime());
@@ -79,6 +84,7 @@ export function useFootballData() {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [notificationIdentifiers, setNotificationIdentifiers] = useState<Map<string, string>>(new Map());
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
 
   // Get current user
   useEffect(() => {
@@ -88,6 +94,23 @@ export function useFootballData() {
       setUserId(user?.id || null);
     };
     getCurrentUser();
+  }, []);
+
+  // CRITICAL: Check notification permissions on mount
+  useEffect(() => {
+    const checkNotificationPermissions = async () => {
+      console.log('🔔 Checking notification permissions...');
+      const granted = await requestNotificationPermissions();
+      setNotificationsEnabled(granted);
+      
+      if (granted) {
+        console.log('✅ Notifications are enabled');
+      } else {
+        console.log('❌ Notifications are disabled');
+      }
+    };
+    
+    checkNotificationPermissions();
   }, []);
 
   // Load categories from Supabase
@@ -298,23 +321,32 @@ export function useFootballData() {
         setActivities(internal);
         setExternalActivities(external);
 
-        // Schedule notifications for tasks with reminders
-        scheduleNotificationsForActivities(internal);
+        // CRITICAL: Schedule notifications for tasks with reminders (only if permissions granted)
+        if (notificationsEnabled) {
+          console.log('🔔 Scheduling notifications for activities...');
+          scheduleNotificationsForActivities(internal);
+        } else {
+          console.log('⚠️ Notifications disabled, skipping scheduling');
+        }
       }
       setIsLoading(false);
     };
 
     loadActivities();
-  }, [userId, categories, refreshTrigger]);
+  }, [userId, categories, refreshTrigger, notificationsEnabled]);
 
   // Schedule notifications for all activities with tasks that have reminders
   const scheduleNotificationsForActivities = async (activitiesToSchedule: Activity[]) => {
-    console.log('Scheduling notifications for activities');
+    console.log('📅 Scheduling notifications for', activitiesToSchedule.length, 'activities');
     const newIdentifiers = new Map<string, string>();
+    let scheduledCount = 0;
+    let skippedCount = 0;
 
     for (const activity of activitiesToSchedule) {
       for (const task of activity.tasks) {
         if (task.reminder && !task.completed) {
+          console.log(`  📝 Task "${task.title}" has reminder: ${task.reminder} minutes`);
+          
           const identifier = await scheduleTaskReminder(
             task.title,
             activity.title,
@@ -327,13 +359,21 @@ export function useFootballData() {
 
           if (identifier) {
             newIdentifiers.set(task.id, identifier);
-            console.log(`Scheduled notification for task ${task.title}`);
+            scheduledCount++;
+            console.log(`  ✅ Scheduled notification for task "${task.title}"`);
+          } else {
+            skippedCount++;
+            console.log(`  ⚠️ Skipped notification for task "${task.title}" (probably in the past)`);
           }
         }
       }
     }
 
+    console.log(`📊 Notification scheduling complete: ${scheduledCount} scheduled, ${skippedCount} skipped`);
     setNotificationIdentifiers(newIdentifiers);
+    
+    // Log all scheduled notifications for debugging
+    await getAllScheduledNotifications();
   };
 
   // Load trophies from database
@@ -1023,7 +1063,7 @@ export function useFootballData() {
         if (notificationId) {
           await cancelNotification(notificationId);
         }
-      } else if (task.reminder) {
+      } else if (task.reminder && notificationsEnabled) {
         // If task is uncompleted and has a reminder, reschedule notification
         const identifier = await scheduleTaskReminder(
           task.title,
