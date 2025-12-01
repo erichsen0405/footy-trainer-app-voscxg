@@ -136,9 +136,9 @@ export default function TasksScreen() {
             Rediger skabeloner her for at opdatere alle relaterede opgaver
           </Text>
 
-          {filteredTemplateTasks.map((task) => (
+          {filteredTemplateTasks.map((task, index) => (
             <TouchableOpacity
-              key={task.id}
+              key={`template-${task.id}-${index}`}
               style={[styles.taskCard, { backgroundColor: cardBgColor }]}
               onPress={() => openTaskModal(task)}
             >
@@ -193,8 +193,8 @@ export default function TasksScreen() {
               <Text style={[styles.emptyText, { color: textSecondaryColor }]}>Ingen aktivitetsopgaver</Text>
             </View>
           ) : (
-            activityTasks.map((task) => (
-              <View key={task.id} style={[styles.taskCard, { backgroundColor: cardBgColor }]}>
+            activityTasks.map((task, index) => (
+              <View key={`activity-${task.id}-${index}`} style={[styles.taskCard, { backgroundColor: cardBgColor }]}>
                 <View style={styles.taskHeader}>
                   <View style={styles.taskHeaderLeft}>
                     <View style={[styles.checkbox, task.completed && styles.checkboxChecked]}>
@@ -278,9 +278,9 @@ export default function TasksScreen() {
 
               <Text style={[styles.label, { color: textColor }]}>Aktivitetskategorier</Text>
               <View style={styles.categoriesGrid}>
-                {categories.map((category) => (
+                {categories.map((category, index) => (
                   <TouchableOpacity
-                    key={category.id}
+                    key={`category-${category.id}-${index}`}
                     style={[
                       styles.categoryChip,
                       {
