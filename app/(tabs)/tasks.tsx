@@ -136,46 +136,49 @@ export default function TasksScreen() {
             Rediger skabeloner her for at opdatere alle relaterede opgaver
           </Text>
 
-          {filteredTemplateTasks.map((task, index) => (
-            <TouchableOpacity
-              key={`template-task-${task.id || index}-${index}`}
-              style={[styles.taskCard, { backgroundColor: cardBgColor }]}
-              onPress={() => openTaskModal(task)}
-            >
-              <View style={styles.taskHeader}>
-                <View style={styles.taskHeaderLeft}>
-                  <IconSymbol ios_icon_name="doc.text" android_material_icon_name="description" size={20} color={colors.secondary} />
-                  <View style={styles.checkbox} />
-                  <Text style={[styles.taskTitle, { color: textColor }]}>{task.title}</Text>
+          {filteredTemplateTasks.map((task, index) => {
+            const uniqueKey = task.id ? `template-${task.id}` : `template-idx-${index}`;
+            return (
+              <TouchableOpacity
+                key={uniqueKey}
+                style={[styles.taskCard, { backgroundColor: cardBgColor }]}
+                onPress={() => openTaskModal(task)}
+              >
+                <View style={styles.taskHeader}>
+                  <View style={styles.taskHeaderLeft}>
+                    <IconSymbol ios_icon_name="doc.text" android_material_icon_name="description" size={20} color={colors.secondary} />
+                    <View style={styles.checkbox} />
+                    <Text style={[styles.taskTitle, { color: textColor }]}>{task.title}</Text>
+                  </View>
+                  <View style={styles.taskActions}>
+                    <TouchableOpacity onPress={() => handleDuplicateTask(task.id)} style={styles.actionButton}>
+                      <IconSymbol ios_icon_name="doc.on.doc" android_material_icon_name="content_copy" size={20} color={colors.secondary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => openTaskModal(task)} style={styles.actionButton}>
+                      <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={20} color={colors.accent} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleDeleteTask(task.id)} style={styles.actionButton}>
+                      <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={20} color={colors.error} />
+                    </TouchableOpacity>
+                  </View>
                 </View>
-                <View style={styles.taskActions}>
-                  <TouchableOpacity onPress={() => handleDuplicateTask(task.id)} style={styles.actionButton}>
-                    <IconSymbol ios_icon_name="doc.on.doc" android_material_icon_name="content_copy" size={20} color={colors.secondary} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => openTaskModal(task)} style={styles.actionButton}>
-                    <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={20} color={colors.accent} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleDeleteTask(task.id)} style={styles.actionButton}>
-                    <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={20} color={colors.error} />
-                  </TouchableOpacity>
-                </View>
-              </View>
 
-              {task.reminder && (
-                <View style={styles.reminderBadge}>
-                  <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={14} color={colors.accent} />
-                  <Text style={[styles.reminderText, { color: colors.accent }]}>{task.reminder} min før</Text>
-                </View>
-              )}
+                {task.reminder && (
+                  <View style={styles.reminderBadge}>
+                    <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={14} color={colors.accent} />
+                    <Text style={[styles.reminderText, { color: colors.accent }]}>{task.reminder} min før</Text>
+                  </View>
+                )}
 
-              <View style={styles.categoriesRow}>
-                <IconSymbol ios_icon_name="tag.fill" android_material_icon_name="label" size={14} color={textSecondaryColor} />
-                <Text style={[styles.categoriesText, { color: textSecondaryColor }]}>
-                  Vises automatisk på alle {getCategoryNames(task.categoryIds)} aktiviteter
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ))}
+                <View style={styles.categoriesRow}>
+                  <IconSymbol ios_icon_name="tag.fill" android_material_icon_name="label" size={14} color={textSecondaryColor} />
+                  <Text style={[styles.categoriesText, { color: textSecondaryColor }]}>
+                    Vises automatisk på alle {getCategoryNames(task.categoryIds)} aktiviteter
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         <View style={styles.section}>
@@ -193,37 +196,40 @@ export default function TasksScreen() {
               <Text style={[styles.emptyText, { color: textSecondaryColor }]}>Ingen aktivitetsopgaver</Text>
             </View>
           ) : (
-            activityTasks.map((task, index) => (
-              <View key={`activity-task-${task.id || index}-${index}`} style={[styles.taskCard, { backgroundColor: cardBgColor }]}>
-                <View style={styles.taskHeader}>
-                  <View style={styles.taskHeaderLeft}>
-                    <View style={[styles.checkbox, task.completed && styles.checkboxChecked]}>
-                      {task.completed && (
-                        <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
-                      )}
+            activityTasks.map((task, index) => {
+              const uniqueKey = task.id ? `activity-${task.id}` : `activity-idx-${index}`;
+              return (
+                <View key={uniqueKey} style={[styles.taskCard, { backgroundColor: cardBgColor }]}>
+                  <View style={styles.taskHeader}>
+                    <View style={styles.taskHeaderLeft}>
+                      <View style={[styles.checkbox, task.completed && styles.checkboxChecked]}>
+                        {task.completed && (
+                          <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
+                        )}
+                      </View>
+                      <Text style={[styles.taskTitle, { color: textColor }, task.completed && styles.taskTitleCompleted]}>
+                        {task.title}
+                      </Text>
                     </View>
-                    <Text style={[styles.taskTitle, { color: textColor }, task.completed && styles.taskTitleCompleted]}>
-                      {task.title}
-                    </Text>
+                    <View style={styles.taskActions}>
+                      <TouchableOpacity onPress={() => openTaskModal(task)} style={styles.actionButton}>
+                        <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={20} color={colors.accent} />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => handleDeleteTask(task.id)} style={styles.actionButton}>
+                        <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={20} color={colors.error} />
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                  <View style={styles.taskActions}>
-                    <TouchableOpacity onPress={() => openTaskModal(task)} style={styles.actionButton}>
-                      <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={20} color={colors.accent} />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => handleDeleteTask(task.id)} style={styles.actionButton}>
-                      <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={20} color={colors.error} />
-                    </TouchableOpacity>
-                  </View>
-                </View>
 
-                {task.reminder && (
-                  <View style={styles.reminderBadge}>
-                    <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={14} color={colors.accent} />
-                    <Text style={[styles.reminderText, { color: colors.accent }]}>{task.reminder} min før</Text>
-                  </View>
-                )}
-              </View>
-            ))
+                  {task.reminder && (
+                    <View style={styles.reminderBadge}>
+                      <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={14} color={colors.accent} />
+                      <Text style={[styles.reminderText, { color: colors.accent }]}>{task.reminder} min før</Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })
           )}
         </View>
 
@@ -278,28 +284,31 @@ export default function TasksScreen() {
 
               <Text style={[styles.label, { color: textColor }]}>Aktivitetskategorier</Text>
               <View style={styles.categoriesGrid}>
-                {categories.map((category, index) => (
-                  <TouchableOpacity
-                    key={`category-${category.id || index}-${index}`}
-                    style={[
-                      styles.categoryChip,
-                      {
-                        backgroundColor: selectedTask?.categoryIds.includes(category.id) ? category.color : bgColor,
-                        borderColor: category.color,
-                        borderWidth: 2,
-                      },
-                    ]}
-                    onPress={() => toggleCategory(category.id)}
-                  >
-                    <Text style={styles.categoryEmoji}>{category.emoji}</Text>
-                    <Text style={[
-                      styles.categoryName,
-                      { color: selectedTask?.categoryIds.includes(category.id) ? '#fff' : textColor }
-                    ]}>
-                      {category.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                {categories.map((category, index) => {
+                  const uniqueKey = category.id ? `cat-${category.id}` : `cat-idx-${index}`;
+                  return (
+                    <TouchableOpacity
+                      key={uniqueKey}
+                      style={[
+                        styles.categoryChip,
+                        {
+                          backgroundColor: selectedTask?.categoryIds.includes(category.id) ? category.color : bgColor,
+                          borderColor: category.color,
+                          borderWidth: 2,
+                        },
+                      ]}
+                      onPress={() => toggleCategory(category.id)}
+                    >
+                      <Text style={styles.categoryEmoji}>{category.emoji}</Text>
+                      <Text style={[
+                        styles.categoryName,
+                        { color: selectedTask?.categoryIds.includes(category.id) ? '#fff' : textColor }
+                      ]}>
+                        {category.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </ScrollView>
 
