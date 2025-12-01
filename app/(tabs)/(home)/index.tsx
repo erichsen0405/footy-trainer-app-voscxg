@@ -173,7 +173,7 @@ export default function HomeScreen() {
         
         <TouchableOpacity style={styles.historyButton}>
           <Text style={styles.historyButtonText}>Se din historik</Text>
-          <IconSymbol ios_icon_name="chart.bar.fill" android_material_icon_name="bar_chart" size={20} color="#fff" />
+          <IconSymbol ios_icon_name="chart.bar.fill" android_material_icon_name="assessment" size={20} color="#fff" />
         </TouchableOpacity>
       </View>
 

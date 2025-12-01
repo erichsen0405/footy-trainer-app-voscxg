@@ -45,6 +45,7 @@ export const iconMappings = {
   'square.and.arrow.up.fill': 'share',
   'arrow.clockwise': 'sync',
   'arrow.counterclockwise': 'undo',
+  'arrow.uturn.backward': 'undo',
   'arrow.right.square': 'exit_to_app',
   
   // Content & Text
@@ -124,8 +125,12 @@ export const iconMappings = {
   'tag.fill': 'label',
   
   // Charts & Analytics
+  // Using 'assessment' and 'insert_chart' for chart icons
+  // 'bar_chart' may not be available in all Material Icons versions
   'chart.bar': 'insert_chart',
   'chart.bar.fill': 'assessment',
+  'chart.line.uptrend.xyaxis': 'assessment',
+  'chart.xyaxis.line': 'insert_chart',
 };
 
 /**
