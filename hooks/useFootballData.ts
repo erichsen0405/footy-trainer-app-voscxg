@@ -837,10 +837,10 @@ export function useFootballData() {
           throw categoryError;
         }
 
-        console.log('Task template categories created');
+        console.log('Task template categories created - trigger will create tasks for activities');
       }
 
-      // Trigger refresh to reload tasks
+      // Trigger refresh to reload tasks AND activities (to show new tasks)
       setRefreshTrigger(prev => prev + 1);
     } catch (error) {
       console.error('Failed to create task template:', error);
@@ -905,11 +905,32 @@ export function useFootballData() {
             throw categoryError;
           }
 
-          console.log('Task template categories updated');
+          console.log('Task template categories updated - trigger will update tasks for activities');
         }
       }
 
-      // Trigger refresh to reload tasks
+      // Update all activity tasks linked to this template
+      if (updateData.title || updateData.description || updateData.reminder_minutes !== undefined) {
+        const activityUpdateData: any = {};
+        if (updateData.title) activityUpdateData.title = updateData.title;
+        if (updateData.description) activityUpdateData.description = updateData.description;
+        if (updateData.reminder_minutes !== undefined) activityUpdateData.reminder_minutes = updateData.reminder_minutes;
+        
+        if (Object.keys(activityUpdateData).length > 0) {
+          const { error: activityTaskError } = await supabase
+            .from('activity_tasks')
+            .update(activityUpdateData)
+            .eq('task_template_id', id);
+
+          if (activityTaskError) {
+            console.error('Error updating activity tasks:', activityTaskError);
+          } else {
+            console.log('Activity tasks updated to match template');
+          }
+        }
+      }
+
+      // Trigger refresh to reload tasks AND activities
       setRefreshTrigger(prev => prev + 1);
     } catch (error) {
       console.error('Failed to update task template:', error);
@@ -945,7 +966,7 @@ export function useFootballData() {
         cancelNotification(notificationId);
       }
 
-      // Trigger refresh to reload tasks
+      // Trigger refresh to reload tasks AND activities
       setRefreshTrigger(prev => prev + 1);
     } catch (error) {
       console.error('Failed to delete task template:', error);

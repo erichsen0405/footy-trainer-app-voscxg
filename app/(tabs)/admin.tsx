@@ -464,6 +464,7 @@ export default function AdminScreen() {
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
+  const iconColor = isDark ? '#e3e3e3' : colors.text;
 
   const hasActiveFilters = selectedCategories.length > 0 || selectedExternalCalendars.length > 0 || searchQuery.length > 0;
 
@@ -495,7 +496,7 @@ export default function AdminScreen() {
         </View>
 
         {/* External Calendar Management Section - Mobile Optimized */}
-        <View style={[styles.externalCalendarSection, { backgroundColor: cardBgColor }]}>
+        <View style={[styles.externalCalendarSection, { backgroundColor: cardBgColor, borderColor: colors.secondary }]}>
           <View style={styles.externalCalendarHeader}>
             <View style={styles.externalCalendarHeaderLeft}>
               <IconSymbol 
@@ -621,7 +622,7 @@ export default function AdminScreen() {
 
         {/* Search Bar - Mobile Optimized */}
         <View style={[styles.searchContainer, { backgroundColor: cardBgColor }]}>
-          <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={22} color={textSecondaryColor} />
+          <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={22} color={iconColor} />
           <TextInput
             style={[styles.searchInput, { color: textColor }]}
             placeholder="Søg efter aktiviteter..."
@@ -631,7 +632,7 @@ export default function AdminScreen() {
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearSearchButton}>
-              <IconSymbol ios_icon_name="xmark.circle.fill" android_material_icon_name="close" size={22} color={textSecondaryColor} />
+              <IconSymbol ios_icon_name="xmark.circle.fill" android_material_icon_name="close" size={22} color={iconColor} />
             </TouchableOpacity>
           )}
         </View>
@@ -647,7 +648,7 @@ export default function AdminScreen() {
               ios_icon_name="line.3.horizontal.decrease.circle" 
               android_material_icon_name="filter_list" 
               size={24} 
-              color={showFilters ? colors.primary : textColor} 
+              color={showFilters ? colors.primary : iconColor} 
             />
             <Text style={[styles.filterToggleText, { color: showFilters ? colors.primary : textColor }]}>
               Filtre {hasActiveFilters && `(${selectedCategories.length + selectedExternalCalendars.length})`}
@@ -1139,7 +1140,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 20,
     borderWidth: 2,
-    borderColor: colors.secondary,
   },
   externalCalendarHeader: {
     marginBottom: 16,
