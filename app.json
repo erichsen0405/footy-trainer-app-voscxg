@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Footy Trainer",
-    "slug": "Footy Trainer",
+    "name": "Football coach",
+    "slug": "Football coach",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/natively-dark.png",
@@ -58,5 +58,5 @@
       "router": {}
     }
   },
-  "scheme": "Footy Trainer"
+  "scheme": "Football coach"
 }

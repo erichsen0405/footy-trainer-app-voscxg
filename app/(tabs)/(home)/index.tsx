@@ -1,6 +1,6 @@
 
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFootball } from '@/contexts/FootballContext';
 import { colors } from '@/styles/commonStyles';
@@ -10,8 +10,9 @@ import { getWeek } from 'date-fns';
 import { requestNotificationPermissions } from '@/utils/notificationService';
 
 export default function HomeScreen() {
-  const { currentWeekStats, todayActivities, activities, toggleTaskCompletion } = useFootball();
+  const { currentWeekStats, todayActivities, activities, toggleTaskCompletion, externalCalendars, fetchExternalCalendarEvents } = useFootball();
   const router = useRouter();
+  const [refreshing, setRefreshing] = useState(false);
 
   // Request notification permissions on mount
   useEffect(() => {
@@ -23,6 +24,32 @@ export default function HomeScreen() {
       }
     });
   }, []);
+
+  const onRefresh = async () => {
+    console.log('Pull to refresh triggered on home screen');
+    setRefreshing(true);
+    
+    try {
+      // Sync all enabled external calendars
+      const enabledCalendars = externalCalendars.filter(cal => cal.enabled);
+      console.log(`Syncing ${enabledCalendars.length} enabled calendars`);
+      
+      for (const calendar of enabledCalendars) {
+        try {
+          await fetchExternalCalendarEvents(calendar);
+          console.log(`Successfully synced calendar: ${calendar.name}`);
+        } catch (error) {
+          console.error(`Failed to sync calendar ${calendar.name}:`, error);
+        }
+      }
+      
+      console.log('Refresh completed');
+    } catch (error) {
+      console.error('Error during refresh:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const getMotivationalMessage = (percentage: number) => {
     if (percentage >= 80) {
@@ -108,7 +135,18 @@ export default function HomeScreen() {
   const upcomingByWeek = getUpcomingActivitiesByWeek();
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+    <ScrollView 
+      style={styles.container} 
+      contentContainerStyle={styles.contentContainer}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={colors.primary}
+          colors={[colors.primary]}
+        />
+      }
+    >
       <View style={styles.header}>
         <View style={[styles.headerCard, { backgroundColor: colors.primary }]}>
           <Text style={styles.headerTitle}>Min fodboldapp ⚽</Text>

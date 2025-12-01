@@ -1,14 +1,41 @@
 
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, useColorScheme } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, useColorScheme, RefreshControl } from 'react-native';
 import { useFootball } from '@/contexts/FootballContext';
 import { colors } from '@/styles/commonStyles';
 import { getWeek } from 'date-fns';
 
 export default function PerformanceScreen() {
-  const { trophies, currentWeekStats } = useFootball();
+  const { trophies, currentWeekStats, externalCalendars, fetchExternalCalendarEvents } = useFootball();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = async () => {
+    console.log('Pull to refresh triggered on performance screen');
+    setRefreshing(true);
+    
+    try {
+      // Sync all enabled external calendars
+      const enabledCalendars = externalCalendars.filter(cal => cal.enabled);
+      console.log(`Syncing ${enabledCalendars.length} enabled calendars`);
+      
+      for (const calendar of enabledCalendars) {
+        try {
+          await fetchExternalCalendarEvents(calendar);
+          console.log(`Successfully synced calendar: ${calendar.name}`);
+        } catch (error) {
+          console.error(`Failed to sync calendar ${calendar.name}:`, error);
+        }
+      }
+      
+      console.log('Refresh completed');
+    } catch (error) {
+      console.error('Error during refresh:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const getTrophyColor = (type: 'gold' | 'silver' | 'bronze') => {
     switch (type) {
@@ -61,7 +88,18 @@ export default function PerformanceScreen() {
     : 0;
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: bgColor }]} contentContainerStyle={styles.contentContainer}>
+    <ScrollView 
+      style={[styles.container, { backgroundColor: bgColor }]} 
+      contentContainerStyle={styles.contentContainer}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={colors.primary}
+          colors={[colors.primary]}
+        />
+      }
+    >
       <View style={styles.header}>
         <Text style={[styles.headerTitle, { color: textColor }]}>🏆 Din Performance</Text>
         <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
