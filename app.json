@@ -5,13 +5,13 @@
     "slug": "football-coach",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/football-coach-icon.png",
+    "icon": "./assets/images/a8830e6c-64b6-4710-9a46-55ebcf34c56c.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/football-coach-icon.png",
+      "image": "./assets/images/a8830e6c-64b6-4710-9a46-55ebcf34c56c.png",
       "resizeMode": "contain",
-      "backgroundColor": "#4CAF50"
+      "backgroundColor": "#FF6347"
     },
     "ios": {
       "supportsTablet": true,
@@ -22,8 +22,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/football-coach-icon.png",
-        "backgroundColor": "#4CAF50"
+        "foregroundImage": "./assets/images/a8830e6c-64b6-4710-9a46-55ebcf34c56c.png",
+        "backgroundColor": "#FF6347"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.anonymous.FootballCoach",
@@ -34,7 +34,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/images/football-coach-icon.png",
+      "favicon": "./assets/images/a8830e6c-64b6-4710-9a46-55ebcf34c56c.png",
       "bundler": "metro"
     },
     "plugins": [
@@ -44,8 +44,8 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/images/football-coach-icon.png",
-          "color": "#4CAF50",
+          "icon": "./assets/images/a8830e6c-64b6-4710-9a46-55ebcf34c56c.png",
+          "color": "#FF6347",
           "defaultChannel": "task-reminders",
           "sounds": []
         }
