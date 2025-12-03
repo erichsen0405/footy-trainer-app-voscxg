@@ -7,7 +7,7 @@ import {
   scheduleTaskReminder, 
   cancelNotification, 
   getAllScheduledNotifications,
-  requestNotificationPermissions 
+  checkNotificationPermissions 
 } from '@/utils/notificationService';
 import { startOfWeek, endOfWeek } from 'date-fns';
 
@@ -98,11 +98,11 @@ export function useFootballData() {
     getCurrentUser();
   }, []);
 
-  // CRITICAL: Check notification permissions on mount
+  // CRITICAL: Check notification permissions on mount using the new check function
   useEffect(() => {
-    const checkNotificationPermissions = async () => {
-      console.log('🔔 Checking notification permissions...');
-      const granted = await requestNotificationPermissions();
+    const checkNotificationPermissionsStatus = async () => {
+      console.log('🔔 Checking notification permissions status...');
+      const granted = await checkNotificationPermissions();
       setNotificationsEnabled(granted);
       
       if (granted) {
@@ -112,7 +112,7 @@ export function useFootballData() {
       }
     };
     
-    checkNotificationPermissions();
+    checkNotificationPermissionsStatus();
   }, []);
 
   // Load categories from Supabase

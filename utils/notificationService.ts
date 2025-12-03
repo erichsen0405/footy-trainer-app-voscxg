@@ -2,6 +2,7 @@
 import * as Notifications from 'expo-notifications';
 import { Platform, Alert } from 'react-native';
 import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // CRITICAL: Set the notification handler to show notifications in ALL states
 Notifications.setNotificationHandler({
@@ -19,10 +20,16 @@ export interface ScheduledNotification {
   activityId: string;
 }
 
-// Request notification permissions with detailed logging
+const NOTIFICATION_PERMISSION_KEY = '@notification_permission_status';
+
+// Request notification permissions with detailed logging and persistence
 export async function requestNotificationPermissions(): Promise<boolean> {
   try {
     console.log('🔔 Requesting notification permissions...');
+    
+    // First check if we have a stored permission status
+    const storedStatus = await AsyncStorage.getItem(NOTIFICATION_PERMISSION_KEY);
+    console.log('🔔 Stored permission status:', storedStatus);
     
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     console.log('🔔 Existing permission status:', existingStatus);
@@ -38,6 +45,9 @@ export async function requestNotificationPermissions(): Promise<boolean> {
 
     if (finalStatus !== 'granted') {
       console.log('❌ Notification permissions NOT granted');
+      // Store the denied status
+      await AsyncStorage.setItem(NOTIFICATION_PERMISSION_KEY, 'denied');
+      
       Alert.alert(
         'Påmindelser deaktiveret',
         'For at modtage påmindelser om dine opgaver, skal du give tilladelse til notifikationer i indstillingerne.',
@@ -45,6 +55,10 @@ export async function requestNotificationPermissions(): Promise<boolean> {
       );
       return false;
     }
+
+    // Store the granted status
+    await AsyncStorage.setItem(NOTIFICATION_PERMISSION_KEY, 'granted');
+    console.log('✅ Notification permission status saved to AsyncStorage');
 
     // Set up notification channel for Android
     if (Platform.OS === 'android') {
@@ -66,6 +80,36 @@ export async function requestNotificationPermissions(): Promise<boolean> {
     return true;
   } catch (error) {
     console.error('❌ Error requesting notification permissions:', error);
+    return false;
+  }
+}
+
+// Check if notification permissions are granted (from storage or system)
+export async function checkNotificationPermissions(): Promise<boolean> {
+  try {
+    console.log('🔍 Checking notification permissions...');
+    
+    // Check system permissions
+    const { status } = await Notifications.getPermissionsAsync();
+    console.log('🔍 System permission status:', status);
+    
+    if (status === 'granted') {
+      // Update stored status if it's different
+      const storedStatus = await AsyncStorage.getItem(NOTIFICATION_PERMISSION_KEY);
+      if (storedStatus !== 'granted') {
+        await AsyncStorage.setItem(NOTIFICATION_PERMISSION_KEY, 'granted');
+        console.log('✅ Updated stored permission status to granted');
+      }
+      return true;
+    }
+    
+    // Check stored status as fallback
+    const storedStatus = await AsyncStorage.getItem(NOTIFICATION_PERMISSION_KEY);
+    console.log('🔍 Stored permission status:', storedStatus);
+    
+    return storedStatus === 'granted';
+  } catch (error) {
+    console.error('❌ Error checking notification permissions:', error);
     return false;
   }
 }

@@ -91,19 +91,23 @@ export default function HomeScreen() {
     return `${formatDate(date)} kl. ${formatTime(time)}`;
   };
 
-  const getUpcomingActivitiesByWeek = () => {
+  const getActivitiesByWeek = () => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
     
-    const upcoming = activities.filter(activity => {
+    // Get current week start (Monday)
+    const currentWeekStart = startOfWeek(now, { weekStartsOn: 1 });
+    
+    // Filter activities from current week onwards
+    const relevantActivities = activities.filter(activity => {
       const activityDate = new Date(activity.date);
       activityDate.setHours(0, 0, 0, 0);
-      return activityDate >= now;
+      return activityDate >= currentWeekStart;
     });
     
     const grouped: { [key: string]: { activities: Activity[], dateRange: string } } = {};
     
-    upcoming.forEach(activity => {
+    relevantActivities.forEach(activity => {
       const activityDate = new Date(activity.date);
       const weekNumber = getWeek(activityDate, { weekStartsOn: 1 }); // Start week on Monday
       const year = activityDate.getFullYear();
@@ -115,9 +119,13 @@ export default function HomeScreen() {
       grouped[key].activities.push(activity);
     });
 
+    // Calculate date ranges for each week and sort activities
     Object.keys(grouped).forEach(key => {
       const weekActivities = grouped[key].activities;
       if (weekActivities.length > 0) {
+        // Sort activities by date
+        weekActivities.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        
         const firstDate = new Date(weekActivities[0].date);
         const lastDate = new Date(weekActivities[weekActivities.length - 1].date);
         grouped[key].dateRange = `${firstDate.getDate()}/${firstDate.getMonth() + 1} - ${lastDate.getDate()}/${lastDate.getMonth() + 1}`;
@@ -137,7 +145,7 @@ export default function HomeScreen() {
     router.push('/(tabs)/performance');
   };
 
-  const upcomingByWeek = getUpcomingActivitiesByWeek();
+  const activitiesByWeek = getActivitiesByWeek();
 
   return (
     <ScrollView 
@@ -273,12 +281,12 @@ export default function HomeScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Kommende aktiviteter</Text>
         
-        {Object.keys(upcomingByWeek).length === 0 ? (
+        {Object.keys(activitiesByWeek).length === 0 ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyText}>Ingen kommende aktiviteter</Text>
           </View>
         ) : (
-          Object.entries(upcomingByWeek).map(([week, data], weekIndex) => (
+          Object.entries(activitiesByWeek).map(([week, data], weekIndex) => (
             <View key={weekIndex} style={styles.weekSection}>
               <Text style={styles.weekTitle}>
                 {week}
