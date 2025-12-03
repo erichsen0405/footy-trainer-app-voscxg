@@ -39,7 +39,6 @@ export default function TabLayout() {
         borderTopWidth: 0.5,
         borderTopColor: isDark ? '#38383A' : '#E5E5E5',
         opacity: 1,
-        // CRITICAL: Force opaque rendering
         shadowOpacity: 0,
         elevation: 0,
       }}
@@ -49,26 +48,33 @@ export default function TabLayout() {
           borderTopWidth: 0.5,
           borderTopColor: isDark ? '#38383A' : '#E5E5E5',
           opacity: 1,
-          // CRITICAL: Ensure no transparency
           shadowOpacity: 0,
           elevation: 0,
         },
-        // CRITICAL: Ensure icons get proper tint colors
         tabBarActiveTintColor: selectedColor,
         tabBarInactiveTintColor: unselectedColor,
+        tabBarBackground: () => (
+          <View style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: tabBarBackgroundColor,
+            opacity: 1,
+          }} />
+        ),
       }}
     >
       <NativeTabs.Trigger key="home" name="(home)">
         <Icon 
           sf={{ default: 'house', selected: 'house.fill' }}
-          // CRITICAL: Explicitly set colors for icons
           color={selectedColor}
         />
         <Label 
           style={{ 
             fontSize: 10,
             fontWeight: '500',
-            // CRITICAL: Ensure label color matches icon color
             color: selectedColor,
           }}
         >
