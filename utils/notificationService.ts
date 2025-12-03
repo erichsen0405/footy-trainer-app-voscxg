@@ -1,6 +1,6 @@
 
 import * as Notifications from 'expo-notifications';
-import { Platform, Alert } from 'react-native';
+import { Platform, Alert, Linking } from 'react-native';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -291,5 +291,25 @@ export async function testNotification(): Promise<void> {
     console.log('✅ Test notification scheduled for 2 seconds from now');
   } catch (error) {
     console.error('❌ Error sending test notification:', error);
+  }
+}
+
+// Open device notification settings
+export async function openNotificationSettings(): Promise<void> {
+  try {
+    console.log('📱 Opening notification settings...');
+    
+    if (Platform.OS === 'ios') {
+      // On iOS, open the app-specific settings
+      await Linking.openURL('app-settings:');
+    } else {
+      // On Android, open the general settings
+      await Linking.openSettings();
+    }
+    
+    console.log('✅ Settings opened');
+  } catch (error) {
+    console.error('❌ Error opening settings:', error);
+    Alert.alert('Fejl', 'Kunne ikke åbne indstillinger');
   }
 }

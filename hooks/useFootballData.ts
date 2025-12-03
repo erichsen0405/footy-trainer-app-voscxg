@@ -1099,6 +1099,53 @@ export function useFootballData() {
     }
   };
 
+  const deleteActivityTask = async (activityId: string, taskId: string) => {
+    if (!userId) {
+      throw new Error('User not authenticated');
+    }
+
+    console.log('Deleting activity task:', { activityId, taskId });
+
+    try {
+      // Delete the activity task (NOT the template)
+      const { error } = await supabase
+        .from('activity_tasks')
+        .delete()
+        .eq('id', taskId)
+        .eq('activity_id', activityId);
+
+      if (error) {
+        console.error('Error deleting activity task:', error);
+        throw error;
+      }
+
+      console.log('Activity task deleted successfully');
+
+      // Cancel notification if exists
+      const notificationId = notificationIdentifiers.get(taskId);
+      if (notificationId) {
+        await cancelNotification(notificationId);
+      }
+
+      // Update local state
+      setActivities(activities.map(act => {
+        if (act.id === activityId) {
+          return {
+            ...act,
+            tasks: act.tasks.filter(t => t.id !== taskId),
+          };
+        }
+        return act;
+      }));
+
+      // Trigger a refresh to ensure consistency
+      setRefreshTrigger(prev => prev + 1);
+    } catch (error) {
+      console.error('Failed to delete activity task:', error);
+      throw error;
+    }
+  };
+
   const deleteOrphanedActivityTasks = async () => {
     if (!userId) {
       throw new Error('User not authenticated');
@@ -1458,7 +1505,7 @@ export function useFootballData() {
     deleteTask,
     duplicateTask,
     toggleTaskCompletion,
-    deleteOrphanedActivityTasks,
+    deleteActivityTask,
     addExternalCalendar,
     toggleCalendar,
     deleteExternalCalendar,

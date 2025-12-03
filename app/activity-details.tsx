@@ -20,11 +20,13 @@ import { Activity, ActivityCategory } from '@/types';
 import { supabase } from '@/app/integrations/supabase/client';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import EditSeriesDialog from '@/components/EditSeriesDialog';
+import { useUserRole } from '@/hooks/useUserRole';
 
 export default function ActivityDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { activities, externalActivities, categories, updateActivity, updateActivitySingle, updateActivitySeries, toggleTaskCompletion } = useFootball();
+  const { activities, externalActivities, categories, updateActivity, updateActivitySingle, updateActivitySeries, toggleTaskCompletion, deleteActivityTask } = useFootball();
+  const { isAdmin } = useUserRole();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
@@ -32,6 +34,7 @@ export default function ActivityDetailsScreen() {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showSeriesDialog, setShowSeriesDialog] = useState(false);
+  const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
   
   // Edit state
   const [editTitle, setEditTitle] = useState('');
@@ -198,6 +201,41 @@ export default function ActivityDetailsScreen() {
       console.error('Error toggling task:', error);
       Alert.alert('Fejl', 'Kunne ikke opdatere opgaven');
     }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    if (!activity || !isAdmin) return;
+
+    Alert.alert(
+      'Slet opgave',
+      'Er du sikker på at du vil slette denne opgave? Dette sletter kun opgaven fra denne aktivitet, ikke opgaveskabelonen.',
+      [
+        { text: 'Annuller', style: 'cancel' },
+        {
+          text: 'Slet',
+          style: 'destructive',
+          onPress: async () => {
+            setDeletingTaskId(taskId);
+            try {
+              await deleteActivityTask(activity.id, taskId);
+              
+              // Update local activity state
+              setActivity({
+                ...activity,
+                tasks: activity.tasks.filter(task => task.id !== taskId),
+              });
+              
+              Alert.alert('Slettet', 'Opgaven er blevet slettet fra denne aktivitet');
+            } catch (error: any) {
+              console.error('Error deleting task:', error);
+              Alert.alert('Fejl', `Kunne ikke slette opgaven: ${error?.message || 'Ukendt fejl'}`);
+            } finally {
+              setDeletingTaskId(null);
+            }
+          }
+        }
+      ]
+    );
   };
 
   const formatDate = (date: Date) => {
@@ -585,44 +623,66 @@ export default function ActivityDetailsScreen() {
           <View style={[styles.section, { backgroundColor: cardBgColor }]}>
             <Text style={[styles.sectionTitle, { color: textColor }]}>Opgaver</Text>
             {activity.tasks.map((task, index) => (
-              <TouchableOpacity
-                key={index}
-                style={styles.taskRow}
-                onPress={() => handleToggleTask(task.id)}
-                activeOpacity={0.7}
-              >
-                <View
-                  style={[
-                    styles.taskCheckbox,
-                    task.completed && { backgroundColor: colors.success },
-                  ]}
+              <View key={index} style={styles.taskRow}>
+                <TouchableOpacity
+                  style={styles.taskCheckboxArea}
+                  onPress={() => handleToggleTask(task.id)}
+                  activeOpacity={0.7}
                 >
-                  {task.completed && (
-                    <IconSymbol
-                      ios_icon_name="checkmark"
-                      android_material_icon_name="check"
-                      size={16}
-                      color="#fff"
-                    />
-                  )}
-                </View>
-                <View style={styles.taskContent}>
-                  <Text
+                  <View
                     style={[
-                      styles.taskTitle,
-                      { color: textColor },
-                      task.completed && styles.taskCompleted,
+                      styles.taskCheckbox,
+                      task.completed && { backgroundColor: colors.success },
                     ]}
                   >
-                    {task.title}
-                  </Text>
-                  {task.description && (
-                    <Text style={[styles.taskDescription, { color: textSecondaryColor }]}>
-                      {task.description}
+                    {task.completed && (
+                      <IconSymbol
+                        ios_icon_name="checkmark"
+                        android_material_icon_name="check"
+                        size={16}
+                        color="#fff"
+                      />
+                    )}
+                  </View>
+                  <View style={styles.taskContent}>
+                    <Text
+                      style={[
+                        styles.taskTitle,
+                        { color: textColor },
+                        task.completed && styles.taskCompleted,
+                      ]}
+                    >
+                      {task.title}
                     </Text>
-                  )}
-                </View>
-              </TouchableOpacity>
+                    {task.description && (
+                      <Text style={[styles.taskDescription, { color: textSecondaryColor }]}>
+                        {task.description}
+                      </Text>
+                    )}
+                  </View>
+                </TouchableOpacity>
+                
+                {/* Admin delete button */}
+                {isAdmin && (
+                  <TouchableOpacity
+                    style={styles.taskDeleteButton}
+                    onPress={() => handleDeleteTask(task.id)}
+                    activeOpacity={0.7}
+                    disabled={deletingTaskId === task.id}
+                  >
+                    {deletingTaskId === task.id ? (
+                      <ActivityIndicator size="small" color={colors.error} />
+                    ) : (
+                      <IconSymbol
+                        ios_icon_name="trash"
+                        android_material_icon_name="delete"
+                        size={20}
+                        color={colors.error}
+                      />
+                    )}
+                  </TouchableOpacity>
+                )}
+              </View>
             ))}
           </View>
         )}
@@ -685,6 +745,21 @@ export default function ActivityDetailsScreen() {
             />
             <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
               Denne aktivitet er en del af en gentagende serie. Når du redigerer, kan du vælge at opdatere kun denne aktivitet eller hele serien.
+            </Text>
+          </View>
+        )}
+
+        {/* Admin Info Box */}
+        {isAdmin && activity.tasks && activity.tasks.length > 0 && (
+          <View style={[styles.infoBox, { backgroundColor: isDark ? '#3a2a2a' : '#fff3cd' }]}>
+            <IconSymbol
+              ios_icon_name="shield.checkered"
+              android_material_icon_name="admin_panel_settings"
+              size={24}
+              color={colors.accent}
+            />
+            <Text style={[styles.infoText, { color: isDark ? '#ffc107' : '#856404' }]}>
+              Som admin kan du slette opgaver direkte fra denne aktivitet. Dette sletter kun opgaven fra denne aktivitet, ikke opgaveskabelonen.
             </Text>
           </View>
         )}
@@ -891,12 +966,18 @@ const styles = StyleSheet.create({
   },
   taskRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: 12,
     marginBottom: 16,
     padding: 12,
     backgroundColor: 'rgba(0, 0, 0, 0.05)',
     borderRadius: 12,
+  },
+  taskCheckboxArea: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    flex: 1,
   },
   taskCheckbox: {
     width: 24,
@@ -921,6 +1002,10 @@ const styles = StyleSheet.create({
   },
   taskDescription: {
     fontSize: 14,
+  },
+  taskDeleteButton: {
+    padding: 8,
+    marginLeft: 8,
   },
   actionButtons: {
     flexDirection: 'row',

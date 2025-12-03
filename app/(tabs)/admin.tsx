@@ -1,12 +1,14 @@
 
 import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, useColorScheme, Alert, Platform, ActivityIndicator, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, useColorScheme, Alert, Platform, ActivityIndicator, StatusBar, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFootball } from '@/contexts/FootballContext';
 import { colors } from '@/styles/commonStyles';
 import { Activity } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
+import { requestNotificationPermissions, checkNotificationPermissions } from '@/utils/notificationService';
+import * as Notifications from 'expo-notifications';
 
 export default function AdminScreen() {
   const router = useRouter();
@@ -23,7 +25,6 @@ export default function AdminScreen() {
     importExternalActivity,
     importMultipleActivities,
     fetchExternalCalendarEvents,
-    deleteOrphanedActivityTasks,
   } = useFootball();
   
   const [searchQuery, setSearchQuery] = useState('');
@@ -43,7 +44,7 @@ export default function AdminScreen() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAddingCalendar, setIsAddingCalendar] = useState(false);
   const [isDeletingActivities, setIsDeletingActivities] = useState(false);
-  const [isCleaningOrphanedTasks, setIsCleaningOrphanedTasks] = useState(false);
+  const [isEnablingNotifications, setIsEnablingNotifications] = useState(false);
   
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -212,33 +213,65 @@ export default function AdminScreen() {
     );
   };
 
-  const handleCleanOrphanedTasks = async () => {
-    Alert.alert(
-      'Ryd forældreløse opgaver',
-      'Dette vil slette alle opgaver på aktiviteter, som ikke længere har en tilknyttet opgaveskabelon. Er du sikker?',
-      [
-        { text: 'Annuller', style: 'cancel' },
-        {
-          text: 'Ryd op',
-          style: 'destructive',
-          onPress: async () => {
-            setIsCleaningOrphanedTasks(true);
-            try {
-              const result = await deleteOrphanedActivityTasks();
-              Alert.alert(
-                'Oprydning fuldført',
-                `${result.deletedCount} forældreløse opgave${result.deletedCount !== 1 ? 'r' : ''} blev slettet.`
-              );
-            } catch (error: any) {
-              console.error('Error cleaning orphaned tasks:', error);
-              Alert.alert('Fejl', `Kunne ikke rydde forældreløse opgaver: ${error?.message || 'Ukendt fejl'}`);
-            } finally {
-              setIsCleaningOrphanedTasks(false);
+  const handleEnableNotifications = async () => {
+    setIsEnablingNotifications(true);
+    
+    try {
+      console.log('🔔 Checking current notification permissions...');
+      
+      // First check current status
+      const currentStatus = await checkNotificationPermissions();
+      console.log('Current notification status:', currentStatus);
+      
+      if (currentStatus) {
+        Alert.alert(
+          'Notifikationer er allerede aktiveret',
+          'Notifikationer er allerede slået til for denne app.',
+          [{ text: 'OK' }]
+        );
+        setIsEnablingNotifications(false);
+        return;
+      }
+      
+      // Try to request permissions
+      console.log('🔔 Requesting notification permissions...');
+      const granted = await requestNotificationPermissions();
+      
+      if (granted) {
+        Alert.alert(
+          'Notifikationer aktiveret',
+          'Notifikationer er nu slået til! Du vil modtage påmindelser om dine opgaver.',
+          [{ text: 'Perfekt!' }]
+        );
+      } else {
+        // Permissions denied - guide user to settings
+        Alert.alert(
+          'Notifikationer deaktiveret',
+          'For at modtage påmindelser skal du give tilladelse til notifikationer i indstillingerne.\n\nGå til: Indstillinger > Notifikationer > Din App',
+          [
+            { text: 'Annuller', style: 'cancel' },
+            {
+              text: 'Åbn Indstillinger',
+              onPress: () => {
+                if (Platform.OS === 'ios') {
+                  Linking.openURL('app-settings:');
+                } else {
+                  Linking.openSettings();
+                }
+              }
             }
-          }
-        }
-      ]
-    );
+          ]
+        );
+      }
+    } catch (error: any) {
+      console.error('Error enabling notifications:', error);
+      Alert.alert(
+        'Fejl',
+        `Der opstod en fejl ved aktivering af notifikationer: ${error?.message || 'Ukendt fejl'}`
+      );
+    } finally {
+      setIsEnablingNotifications(false);
+    }
   };
 
   const handleAddCalendar = async () => {
@@ -544,22 +577,22 @@ export default function AdminScreen() {
           
           <TouchableOpacity 
             style={[styles.adminToolButton, { backgroundColor: colors.accent }]}
-            onPress={handleCleanOrphanedTasks}
+            onPress={handleEnableNotifications}
             activeOpacity={0.7}
-            disabled={isCleaningOrphanedTasks}
+            disabled={isEnablingNotifications}
           >
-            {isCleaningOrphanedTasks ? (
+            {isEnablingNotifications ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
               <React.Fragment>
-                <IconSymbol ios_icon_name="trash.circle" android_material_icon_name="delete_sweep" size={22} color="#fff" />
-                <Text style={styles.adminToolButtonText}>Ryd forældreløse opgaver</Text>
+                <IconSymbol ios_icon_name="bell.badge" android_material_icon_name="notifications_active" size={22} color="#fff" />
+                <Text style={styles.adminToolButtonText}>Slå notifikationer til</Text>
               </React.Fragment>
             )}
           </TouchableOpacity>
           
           <Text style={[styles.adminToolDescription, { color: textSecondaryColor }]}>
-            Slet opgaver på aktiviteter, som ikke længere har en tilknyttet opgaveskabelon
+            Sikrer at notifikationer er slået til både i appen og i iPhone indstillinger
           </Text>
         </View>
 
