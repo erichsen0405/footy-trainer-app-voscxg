@@ -23,6 +23,7 @@ export default function AdminScreen() {
     importExternalActivity,
     importMultipleActivities,
     fetchExternalCalendarEvents,
+    deleteOrphanedActivityTasks,
   } = useFootball();
   
   const [searchQuery, setSearchQuery] = useState('');
@@ -42,6 +43,7 @@ export default function AdminScreen() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAddingCalendar, setIsAddingCalendar] = useState(false);
   const [isDeletingActivities, setIsDeletingActivities] = useState(false);
+  const [isCleaningOrphanedTasks, setIsCleaningOrphanedTasks] = useState(false);
   
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -203,6 +205,35 @@ export default function AdminScreen() {
                 'Delvist slettet', 
                 `${successCount} aktivitet${successCount !== 1 ? 'er' : ''} blev slettet.\n${failCount} aktivitet${failCount !== 1 ? 'er' : ''} kunne ikke slettes.`
               );
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleCleanOrphanedTasks = async () => {
+    Alert.alert(
+      'Ryd forældreløse opgaver',
+      'Dette vil slette alle opgaver på aktiviteter, som ikke længere har en tilknyttet opgaveskabelon. Er du sikker?',
+      [
+        { text: 'Annuller', style: 'cancel' },
+        {
+          text: 'Ryd op',
+          style: 'destructive',
+          onPress: async () => {
+            setIsCleaningOrphanedTasks(true);
+            try {
+              const result = await deleteOrphanedActivityTasks();
+              Alert.alert(
+                'Oprydning fuldført',
+                `${result.deletedCount} forældreløse opgave${result.deletedCount !== 1 ? 'r' : ''} blev slettet.`
+              );
+            } catch (error: any) {
+              console.error('Error cleaning orphaned tasks:', error);
+              Alert.alert('Fejl', `Kunne ikke rydde forældreløse opgaver: ${error?.message || 'Ukendt fejl'}`);
+            } finally {
+              setIsCleaningOrphanedTasks(false);
             }
           }
         }
@@ -497,6 +528,39 @@ export default function AdminScreen() {
               </Text>
             </View>
           )}
+        </View>
+
+        {/* Admin Tools Section */}
+        <View style={[styles.adminToolsSection, { backgroundColor: cardBgColor, borderColor: colors.accent }]}>
+          <View style={styles.adminToolsHeader}>
+            <IconSymbol 
+              ios_icon_name="wrench.and.screwdriver" 
+              android_material_icon_name="build" 
+              size={28} 
+              color={colors.accent} 
+            />
+            <Text style={[styles.adminToolsTitle, { color: textColor }]}>Admin værktøjer</Text>
+          </View>
+          
+          <TouchableOpacity 
+            style={[styles.adminToolButton, { backgroundColor: colors.accent }]}
+            onPress={handleCleanOrphanedTasks}
+            activeOpacity={0.7}
+            disabled={isCleaningOrphanedTasks}
+          >
+            {isCleaningOrphanedTasks ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <React.Fragment>
+                <IconSymbol ios_icon_name="trash.circle" android_material_icon_name="delete_sweep" size={22} color="#fff" />
+                <Text style={styles.adminToolButtonText}>Ryd forældreløse opgaver</Text>
+              </React.Fragment>
+            )}
+          </TouchableOpacity>
+          
+          <Text style={[styles.adminToolDescription, { color: textSecondaryColor }]}>
+            Slet opgaver på aktiviteter, som ikke længere har en tilknyttet opgaveskabelon
+          </Text>
         </View>
 
         {/* External Calendar Management Section - Mobile Optimized */}
@@ -1136,6 +1200,41 @@ const styles = StyleSheet.create({
   warningText: {
     flex: 1,
     fontSize: 15,
+    lineHeight: 20,
+  },
+  adminToolsSection: {
+    marginHorizontal: 20,
+    marginBottom: 20,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 2,
+  },
+  adminToolsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginBottom: 16,
+  },
+  adminToolsTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  adminToolButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+    borderRadius: 14,
+    marginBottom: 8,
+  },
+  adminToolButtonText: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  adminToolDescription: {
+    fontSize: 14,
     lineHeight: 20,
   },
   externalCalendarSection: {

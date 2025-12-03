@@ -6,7 +6,7 @@ import { useFootball } from '@/contexts/FootballContext';
 import { colors } from '@/styles/commonStyles';
 import { Activity } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
-import { getWeek } from 'date-fns';
+import { getWeek, startOfWeek, endOfWeek } from 'date-fns';
 import { requestNotificationPermissions } from '@/utils/notificationService';
 
 export default function HomeScreen() {
@@ -105,7 +105,7 @@ export default function HomeScreen() {
     
     upcoming.forEach(activity => {
       const activityDate = new Date(activity.date);
-      const weekNumber = getWeek(activityDate);
+      const weekNumber = getWeek(activityDate, { weekStartsOn: 1 }); // Start week on Monday
       const year = activityDate.getFullYear();
       const key = `Uge ${weekNumber}`;
       
@@ -130,6 +130,11 @@ export default function HomeScreen() {
   const handleActivityPress = (activityId: string) => {
     console.log('Opening activity details for:', activityId);
     router.push(`/activity-details?id=${activityId}`);
+  };
+
+  const handleHistoryPress = () => {
+    console.log('Navigating to performance page');
+    router.push('/(tabs)/performance');
   };
 
   const upcomingByWeek = getUpcomingActivitiesByWeek();
@@ -171,7 +176,11 @@ export default function HomeScreen() {
         
         <Text style={styles.motivationText}>{getMotivationalMessage(currentWeekStats.percentage)}</Text>
         
-        <TouchableOpacity style={styles.historyButton}>
+        <TouchableOpacity 
+          style={styles.historyButton}
+          onPress={handleHistoryPress}
+          activeOpacity={0.7}
+        >
           <Text style={styles.historyButtonText}>Se din historik</Text>
           <IconSymbol ios_icon_name="chart.bar.fill" android_material_icon_name="assessment" size={20} color="#fff" />
         </TouchableOpacity>

@@ -9,10 +9,12 @@ import {
   getAllScheduledNotifications,
   requestNotificationPermissions 
 } from '@/utils/notificationService';
+import { startOfWeek, endOfWeek } from 'date-fns';
 
 function getWeekNumber(date: Date): number {
   const d = new Date(date.getTime());
   d.setHours(0, 0, 0, 0);
+  // Adjust to start week on Monday (ISO week)
   d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7);
   const week1 = new Date(d.getFullYear(), 0, 4);
   return 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
@@ -500,12 +502,9 @@ export function useFootballData() {
 
   const getCurrentWeekStats = useMemo(() => {
     const now = new Date();
-    const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - now.getDay());
-    startOfWeek.setHours(0, 0, 0, 0);
-    
-    const endOfWeek = new Date(startOfWeek);
-    endOfWeek.setDate(startOfWeek.getDate() + 7);
+    // Start week on Monday (weekStartsOn: 1)
+    const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+    const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
 
     // Get today's date for comparison
     const today = new Date();
@@ -513,7 +512,7 @@ export function useFootballData() {
 
     const weekActivities = activities.filter(activity => {
       const activityDate = new Date(activity.date);
-      return activityDate >= startOfWeek && activityDate < endOfWeek;
+      return activityDate >= weekStart && activityDate <= weekEnd;
     });
 
     // Calculate tasks up to today
@@ -1100,6 +1099,78 @@ export function useFootballData() {
     }
   };
 
+  const deleteOrphanedActivityTasks = async () => {
+    if (!userId) {
+      throw new Error('User not authenticated');
+    }
+
+    console.log('Deleting orphaned activity tasks...');
+
+    try {
+      // Find all activity tasks that reference deleted task templates
+      const { data: orphanedTasks, error: findError } = await supabase
+        .from('activity_tasks')
+        .select('id, task_template_id, activity_id')
+        .not('task_template_id', 'is', null);
+
+      if (findError) {
+        console.error('Error finding orphaned tasks:', findError);
+        throw findError;
+      }
+
+      if (!orphanedTasks || orphanedTasks.length === 0) {
+        console.log('No orphaned tasks found');
+        return { deletedCount: 0 };
+      }
+
+      // Get all valid task template IDs
+      const { data: validTemplates, error: templatesError } = await supabase
+        .from('task_templates')
+        .select('id')
+        .eq('user_id', userId);
+
+      if (templatesError) {
+        console.error('Error fetching task templates:', templatesError);
+        throw templatesError;
+      }
+
+      const validTemplateIds = new Set(validTemplates?.map(t => t.id) || []);
+
+      // Filter orphaned tasks (those with template_id that doesn't exist)
+      const tasksToDelete = orphanedTasks.filter(
+        task => task.task_template_id && !validTemplateIds.has(task.task_template_id)
+      );
+
+      if (tasksToDelete.length === 0) {
+        console.log('No orphaned tasks to delete');
+        return { deletedCount: 0 };
+      }
+
+      console.log(`Found ${tasksToDelete.length} orphaned tasks to delete`);
+
+      // Delete orphaned tasks
+      const { error: deleteError } = await supabase
+        .from('activity_tasks')
+        .delete()
+        .in('id', tasksToDelete.map(t => t.id));
+
+      if (deleteError) {
+        console.error('Error deleting orphaned tasks:', deleteError);
+        throw deleteError;
+      }
+
+      console.log(`Successfully deleted ${tasksToDelete.length} orphaned tasks`);
+
+      // Trigger refresh to reload activities
+      setRefreshTrigger(prev => prev + 1);
+
+      return { deletedCount: tasksToDelete.length };
+    } catch (error) {
+      console.error('Failed to delete orphaned tasks:', error);
+      throw error;
+    }
+  };
+
   const addExternalCalendar = async (calendar: Omit<ExternalCalendar, 'id'>) => {
     if (!userId) {
       console.error('No user ID, cannot add calendar');
@@ -1387,6 +1458,7 @@ export function useFootballData() {
     deleteTask,
     duplicateTask,
     toggleTaskCompletion,
+    deleteOrphanedActivityTasks,
     addExternalCalendar,
     toggleCalendar,
     deleteExternalCalendar,
