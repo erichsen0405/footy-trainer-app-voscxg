@@ -69,5 +69,8 @@ export function useUserRole() {
     return () => subscription.unsubscribe();
   }, []);
 
-  return { userRole, loading };
+  // CRITICAL FIX: Export isAdmin as a computed property
+  const isAdmin = userRole === 'admin';
+
+  return { userRole, loading, isAdmin };
 }
