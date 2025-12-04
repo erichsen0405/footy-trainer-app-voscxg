@@ -138,7 +138,7 @@ export default function TasksScreen() {
 
           {filteredTemplateTasks.map((task, index) => (
             <TouchableOpacity
-              key={`template-${task.id}-${index}`}
+              key={index}
               style={[styles.taskCard, { backgroundColor: cardBgColor }]}
               onPress={() => openTaskModal(task)}
             >
@@ -194,7 +194,7 @@ export default function TasksScreen() {
             </View>
           ) : (
             activityTasks.map((task, index) => (
-              <View key={`activity-${task.id}-${index}`} style={[styles.taskCard, { backgroundColor: cardBgColor }]}>
+              <View key={index} style={[styles.taskCard, { backgroundColor: cardBgColor }]}>
                 <View style={styles.taskHeader}>
                   <View style={styles.taskHeaderLeft}>
                     <View style={[styles.checkbox, task.completed && styles.checkboxChecked]}>
@@ -280,7 +280,7 @@ export default function TasksScreen() {
               <View style={styles.categoriesGrid}>
                 {categories.map((category, index) => (
                   <TouchableOpacity
-                    key={`category-${category.id}-${index}`}
+                    key={index}
                     style={[
                       styles.categoryChip,
                       {
