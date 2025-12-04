@@ -217,8 +217,10 @@ export default function ActivityDetailsScreen() {
           onPress: async () => {
             setDeletingTaskId(taskId);
             try {
+              console.log('🗑️ Attempting to delete task:', taskId, 'from activity:', activity.id);
               await deleteActivityTask(activity.id, taskId);
               
+              console.log('✅ Task deleted successfully, updating local state');
               // Update local activity state
               setActivity({
                 ...activity,
@@ -227,7 +229,7 @@ export default function ActivityDetailsScreen() {
               
               Alert.alert('Slettet', 'Opgaven er blevet slettet fra denne aktivitet');
             } catch (error: any) {
-              console.error('Error deleting task:', error);
+              console.error('❌ Error deleting task:', error);
               Alert.alert('Fejl', `Kunne ikke slette opgaven: ${error?.message || 'Ukendt fejl'}`);
             } finally {
               setDeletingTaskId(null);
@@ -573,7 +575,7 @@ export default function ActivityDetailsScreen() {
               >
                 {categories.map((cat, index) => (
                   <TouchableOpacity
-                    key={index}
+                    key={`category-${cat.id}-${index}`}
                     style={[
                       styles.categoryChip,
                       {
@@ -623,7 +625,7 @@ export default function ActivityDetailsScreen() {
           <View style={[styles.section, { backgroundColor: cardBgColor }]}>
             <Text style={[styles.sectionTitle, { color: textColor }]}>Opgaver</Text>
             {activity.tasks.map((task, index) => (
-              <View key={index} style={[styles.taskRow, { backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5' }]}>
+              <View key={`task-${task.id}-${index}`} style={[styles.taskRow, { backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5' }]}>
                 <TouchableOpacity
                   style={styles.taskCheckboxArea}
                   onPress={() => handleToggleTask(task.id)}

@@ -1104,18 +1104,41 @@ export function useFootballData() {
       throw new Error('User not authenticated');
     }
 
-    console.log('🗑️ Deleting activity task:', { activityId, taskId });
+    console.log('🗑️ Deleting activity task:', { activityId, taskId, userId });
 
     try {
-      // CRITICAL FIX: Delete the activity task from the database
-      const { error } = await supabase
+      // CRITICAL FIX: First verify the activity belongs to the user
+      const { data: activityData, error: activityError } = await supabase
+        .from('activities')
+        .select('id, user_id')
+        .eq('id', activityId)
+        .eq('user_id', userId)
+        .single();
+
+      if (activityError || !activityData) {
+        console.error('❌ Activity not found or access denied:', activityError);
+        throw new Error('Activity not found or you do not have permission to delete this task');
+      }
+
+      console.log('✅ Activity ownership verified');
+
+      // CRITICAL FIX: Delete the activity task with proper RLS verification
+      // The RLS policy checks if the user owns the parent activity
+      const { error: deleteError } = await supabase
         .from('activity_tasks')
         .delete()
-        .eq('id', taskId);
+        .eq('id', taskId)
+        .eq('activity_id', activityId);
 
-      if (error) {
-        console.error('❌ Error deleting activity task from database:', error);
-        throw error;
+      if (deleteError) {
+        console.error('❌ Error deleting activity task from database:', deleteError);
+        console.error('Delete error details:', {
+          code: deleteError.code,
+          message: deleteError.message,
+          details: deleteError.details,
+          hint: deleteError.hint
+        });
+        throw deleteError;
       }
 
       console.log('✅ Activity task deleted from database successfully');
@@ -1147,8 +1170,14 @@ export function useFootballData() {
       // Trigger a refresh to ensure consistency with database
       console.log('🔄 Triggering refresh to sync with database');
       setRefreshTrigger(prev => prev + 1);
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Failed to delete activity task:', error);
+      console.error('Error details:', {
+        name: error?.name,
+        message: error?.message,
+        code: error?.code,
+        details: error?.details
+      });
       throw error;
     }
   };
