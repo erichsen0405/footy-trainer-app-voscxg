@@ -15,6 +15,7 @@ import {
   KeyboardAvoidingView,
   Keyboard,
   TouchableWithoutFeedback,
+  Dimensions,
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -28,6 +29,8 @@ interface CreateActivityTaskModalProps {
   activityTitle: string;
   onTaskCreated?: () => void;
 }
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function CreateActivityTaskModal({
   visible,
@@ -146,11 +149,11 @@ export default function CreateActivityTaskModal({
                       size={28}
                       color={colors.primary}
                     />
-                    <View>
+                    <View style={styles.headerTextContainer}>
                       <Text style={[styles.modalTitle, { color: textColor }]}>
                         Opret opgave
                       </Text>
-                      <Text style={[styles.modalSubtitle, { color: textSecondaryColor }]}>
+                      <Text style={[styles.modalSubtitle, { color: textSecondaryColor }]} numberOfLines={1}>
                         {activityTitle}
                       </Text>
                     </View>
@@ -172,9 +175,9 @@ export default function CreateActivityTaskModal({
                 <ScrollView
                   style={styles.scrollView}
                   contentContainerStyle={styles.scrollContent}
-                  showsVerticalScrollIndicator={false}
+                  showsVerticalScrollIndicator={true}
                   keyboardShouldPersistTaps="handled"
-                  bounces={false}
+                  bounces={true}
                 >
                   {/* Info Box */}
                   <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
@@ -274,8 +277,8 @@ export default function CreateActivityTaskModal({
                     </TouchableOpacity>
                   </View>
 
-                  {/* Extra padding at bottom for keyboard */}
-                  <View style={{ height: Platform.OS === 'ios' ? 40 : 20 }} />
+                  {/* Extra padding at bottom for safe area */}
+                  <View style={{ height: 60 }} />
                 </ScrollView>
               </View>
             </TouchableWithoutFeedback>
@@ -295,25 +298,32 @@ const styles = StyleSheet.create({
   modalContent: {
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    paddingTop: 24,
-    paddingBottom: Platform.OS === 'ios' ? 20 : 12,
-    maxHeight: Platform.OS === 'ios' ? '85%' : '90%',
+    paddingTop: 20,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+    height: Platform.OS === 'ios' ? SCREEN_HEIGHT * 0.75 : SCREEN_HEIGHT * 0.80,
+    maxHeight: Platform.OS === 'ios' ? SCREEN_HEIGHT * 0.75 : SCREEN_HEIGHT * 0.80,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     paddingHorizontal: 24,
-    marginBottom: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
   },
   modalHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     flex: 1,
+    paddingRight: 12,
+  },
+  headerTextContainer: {
+    flex: 1,
   },
   modalTitle: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
   },
   modalSubtitle: {
@@ -328,7 +338,8 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 24,
-    paddingBottom: 12,
+    paddingTop: 20,
+    paddingBottom: 20,
   },
   infoBox: {
     flexDirection: 'row',
