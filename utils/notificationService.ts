@@ -27,10 +27,6 @@ export async function requestNotificationPermissions(): Promise<boolean> {
   try {
     console.log('🔔 Requesting notification permissions...');
     
-    // First check if we have a stored permission status
-    const storedStatus = await AsyncStorage.getItem(NOTIFICATION_PERMISSION_KEY);
-    console.log('🔔 Stored permission status:', storedStatus);
-    
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     console.log('🔔 Existing permission status:', existingStatus);
     
@@ -48,11 +44,6 @@ export async function requestNotificationPermissions(): Promise<boolean> {
       // Store the denied status
       await AsyncStorage.setItem(NOTIFICATION_PERMISSION_KEY, 'denied');
       
-      Alert.alert(
-        'Påmindelser deaktiveret',
-        'For at modtage påmindelser om dine opgaver, skal du give tilladelse til notifikationer i indstillingerne.',
-        [{ text: 'OK' }]
-      );
       return false;
     }
 
@@ -84,30 +75,22 @@ export async function requestNotificationPermissions(): Promise<boolean> {
   }
 }
 
-// Check if notification permissions are granted (from storage or system)
+// CRITICAL FIX: Check if notification permissions are granted (system check ONLY)
 export async function checkNotificationPermissions(): Promise<boolean> {
   try {
     console.log('🔍 Checking notification permissions...');
     
-    // Check system permissions
+    // ONLY check system permissions - this is the source of truth
     const { status } = await Notifications.getPermissionsAsync();
     console.log('🔍 System permission status:', status);
     
-    if (status === 'granted') {
-      // Update stored status if it's different
-      const storedStatus = await AsyncStorage.getItem(NOTIFICATION_PERMISSION_KEY);
-      if (storedStatus !== 'granted') {
-        await AsyncStorage.setItem(NOTIFICATION_PERMISSION_KEY, 'granted');
-        console.log('✅ Updated stored permission status to granted');
-      }
-      return true;
-    }
+    const isGranted = status === 'granted';
     
-    // Check stored status as fallback
-    const storedStatus = await AsyncStorage.getItem(NOTIFICATION_PERMISSION_KEY);
-    console.log('🔍 Stored permission status:', storedStatus);
+    // Update stored status to match system status
+    await AsyncStorage.setItem(NOTIFICATION_PERMISSION_KEY, isGranted ? 'granted' : 'denied');
+    console.log('✅ Updated stored permission status to:', isGranted ? 'granted' : 'denied');
     
-    return storedStatus === 'granted';
+    return isGranted;
   } catch (error) {
     console.error('❌ Error checking notification permissions:', error);
     return false;

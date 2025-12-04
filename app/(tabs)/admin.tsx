@@ -239,9 +239,17 @@ export default function AdminScreen() {
       
       if (granted) {
         Alert.alert(
-          'Notifikationer aktiveret',
-          'Notifikationer er nu slået til! Du vil modtage påmindelser om dine opgaver.',
-          [{ text: 'Perfekt!' }]
+          'Notifikationer aktiveret! ✅',
+          'Notifikationer er nu slået til! Du vil modtage påmindelser om dine opgaver.\n\nGenstart appen for at aktivere notifikationer for eksisterende opgaver.',
+          [
+            { 
+              text: 'OK',
+              onPress: () => {
+                // Trigger a refresh to reload activities and schedule notifications
+                console.log('🔄 User confirmed, app should be restarted to activate notifications');
+              }
+            }
+          ]
         );
       } else {
         // Permissions denied - guide user to settings

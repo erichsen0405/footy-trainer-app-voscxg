@@ -1104,44 +1104,51 @@ export function useFootballData() {
       throw new Error('User not authenticated');
     }
 
-    console.log('Deleting activity task:', { activityId, taskId });
+    console.log('🗑️ Deleting activity task:', { activityId, taskId });
 
     try {
-      // Delete the activity task (NOT the template)
+      // CRITICAL FIX: Delete the activity task from the database
       const { error } = await supabase
         .from('activity_tasks')
         .delete()
-        .eq('id', taskId)
-        .eq('activity_id', activityId);
+        .eq('id', taskId);
 
       if (error) {
-        console.error('Error deleting activity task:', error);
+        console.error('❌ Error deleting activity task from database:', error);
         throw error;
       }
 
-      console.log('Activity task deleted successfully');
+      console.log('✅ Activity task deleted from database successfully');
 
       // Cancel notification if exists
       const notificationId = notificationIdentifiers.get(taskId);
       if (notificationId) {
+        console.log('🔕 Cancelling notification for deleted task');
         await cancelNotification(notificationId);
       }
 
-      // Update local state
-      setActivities(activities.map(act => {
-        if (act.id === activityId) {
-          return {
-            ...act,
-            tasks: act.tasks.filter(t => t.id !== taskId),
-          };
-        }
-        return act;
-      }));
+      // CRITICAL FIX: Update local state immediately to reflect the deletion
+      console.log('🔄 Updating local state to remove task');
+      setActivities(prevActivities => 
+        prevActivities.map(act => {
+          if (act.id === activityId) {
+            console.log(`  Removing task ${taskId} from activity ${activityId}`);
+            return {
+              ...act,
+              tasks: act.tasks.filter(t => t.id !== taskId),
+            };
+          }
+          return act;
+        })
+      );
 
-      // Trigger a refresh to ensure consistency
+      console.log('✅ Local state updated successfully');
+
+      // Trigger a refresh to ensure consistency with database
+      console.log('🔄 Triggering refresh to sync with database');
       setRefreshTrigger(prev => prev + 1);
     } catch (error) {
-      console.error('Failed to delete activity task:', error);
+      console.error('❌ Failed to delete activity task:', error);
       throw error;
     }
   };
