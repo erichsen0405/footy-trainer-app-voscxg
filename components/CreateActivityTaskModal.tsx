@@ -12,6 +12,9 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  KeyboardAvoidingView,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -125,142 +128,160 @@ export default function CreateActivityTaskModal({
       transparent={true}
       onRequestClose={handleCancel}
     >
-      <View style={styles.modalOverlay}>
-        <View style={[styles.modalContent, { backgroundColor: bgColor }]}>
-          {/* Header */}
-          <View style={styles.modalHeader}>
-            <View style={styles.modalHeaderLeft}>
-              <IconSymbol
-                ios_icon_name="plus.circle.fill"
-                android_material_icon_name="add_circle"
-                size={28}
-                color={colors.primary}
-              />
-              <View>
-                <Text style={[styles.modalTitle, { color: textColor }]}>
-                  Opret opgave
-                </Text>
-                <Text style={[styles.modalSubtitle, { color: textSecondaryColor }]}>
-                  {activityTitle}
-                </Text>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.modalOverlay}
+        keyboardVerticalOffset={0}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={[styles.modalContent, { backgroundColor: bgColor }]}>
+                {/* Header */}
+                <View style={styles.modalHeader}>
+                  <View style={styles.modalHeaderLeft}>
+                    <IconSymbol
+                      ios_icon_name="plus.circle.fill"
+                      android_material_icon_name="add_circle"
+                      size={28}
+                      color={colors.primary}
+                    />
+                    <View>
+                      <Text style={[styles.modalTitle, { color: textColor }]}>
+                        Opret opgave
+                      </Text>
+                      <Text style={[styles.modalSubtitle, { color: textSecondaryColor }]}>
+                        {activityTitle}
+                      </Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.closeButton}
+                    onPress={handleCancel}
+                    activeOpacity={0.7}
+                  >
+                    <IconSymbol
+                      ios_icon_name="xmark"
+                      android_material_icon_name="close"
+                      size={24}
+                      color={textSecondaryColor}
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView
+                  style={styles.scrollView}
+                  contentContainerStyle={styles.scrollContent}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  bounces={false}
+                >
+                  {/* Info Box */}
+                  <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
+                    <IconSymbol
+                      ios_icon_name="info.circle"
+                      android_material_icon_name="info"
+                      size={20}
+                      color={colors.secondary}
+                    />
+                    <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
+                      Denne opgave oprettes kun for denne aktivitet og er ikke en del af en skabelon.
+                    </Text>
+                  </View>
+
+                  {/* Title Input */}
+                  <View style={styles.fieldContainer}>
+                    <Text style={[styles.fieldLabel, { color: textColor }]}>
+                      Titel <Text style={{ color: colors.error }}>*</Text>
+                    </Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: inputBgColor, color: textColor }]}
+                      value={title}
+                      onChangeText={setTitle}
+                      placeholder="Hvad skal gøres?"
+                      placeholderTextColor={textSecondaryColor}
+                      maxLength={100}
+                      returnKeyType="next"
+                    />
+                  </View>
+
+                  {/* Description Input */}
+                  <View style={styles.fieldContainer}>
+                    <Text style={[styles.fieldLabel, { color: textColor }]}>Beskrivelse</Text>
+                    <TextInput
+                      style={[
+                        styles.input,
+                        styles.textArea,
+                        { backgroundColor: inputBgColor, color: textColor },
+                      ]}
+                      value={description}
+                      onChangeText={setDescription}
+                      placeholder="Tilføj detaljer om opgaven..."
+                      placeholderTextColor={textSecondaryColor}
+                      multiline
+                      numberOfLines={4}
+                      maxLength={500}
+                      returnKeyType="next"
+                    />
+                  </View>
+
+                  {/* Reminder Input */}
+                  <View style={styles.fieldContainer}>
+                    <Text style={[styles.fieldLabel, { color: textColor }]}>
+                      Påmindelse (minutter før aktivitet)
+                    </Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: inputBgColor, color: textColor }]}
+                      value={reminderMinutes}
+                      onChangeText={setReminderMinutes}
+                      placeholder="f.eks. 30"
+                      placeholderTextColor={textSecondaryColor}
+                      keyboardType="number-pad"
+                      maxLength={4}
+                      returnKeyType="done"
+                    />
+                    <Text style={[styles.fieldHint, { color: textSecondaryColor }]}>
+                      Lad feltet være tomt hvis du ikke ønsker en påmindelse
+                    </Text>
+                  </View>
+
+                  {/* Action Buttons - Inside ScrollView */}
+                  <View style={styles.actionButtons}>
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.cancelButton, { borderColor: colors.error }]}
+                      onPress={handleCancel}
+                      activeOpacity={0.7}
+                      disabled={isCreating}
+                    >
+                      <Text style={[styles.actionButtonText, { color: colors.error }]}>Annuller</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.actionButton,
+                        styles.createButton,
+                        { backgroundColor: colors.primary },
+                      ]}
+                      onPress={handleCreate}
+                      activeOpacity={0.7}
+                      disabled={isCreating || !title.trim()}
+                    >
+                      {isCreating ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text style={[styles.actionButtonText, { color: '#fff' }]}>Opret</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Extra padding at bottom for keyboard */}
+                  <View style={{ height: Platform.OS === 'ios' ? 40 : 20 }} />
+                </ScrollView>
               </View>
-            </View>
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={handleCancel}
-              activeOpacity={0.7}
-            >
-              <IconSymbol
-                ios_icon_name="xmark"
-                android_material_icon_name="close"
-                size={24}
-                color={textSecondaryColor}
-              />
-            </TouchableOpacity>
+            </TouchableWithoutFeedback>
           </View>
-
-          <ScrollView
-            style={styles.scrollView}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-          >
-            {/* Info Box */}
-            <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
-              <IconSymbol
-                ios_icon_name="info.circle"
-                android_material_icon_name="info"
-                size={20}
-                color={colors.secondary}
-              />
-              <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
-                Denne opgave oprettes kun for denne aktivitet og er ikke en del af en skabelon.
-              </Text>
-            </View>
-
-            {/* Title Input */}
-            <View style={styles.fieldContainer}>
-              <Text style={[styles.fieldLabel, { color: textColor }]}>
-                Titel <Text style={{ color: colors.error }}>*</Text>
-              </Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: inputBgColor, color: textColor }]}
-                value={title}
-                onChangeText={setTitle}
-                placeholder="Hvad skal gøres?"
-                placeholderTextColor={textSecondaryColor}
-                maxLength={100}
-              />
-            </View>
-
-            {/* Description Input */}
-            <View style={styles.fieldContainer}>
-              <Text style={[styles.fieldLabel, { color: textColor }]}>Beskrivelse</Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  styles.textArea,
-                  { backgroundColor: inputBgColor, color: textColor },
-                ]}
-                value={description}
-                onChangeText={setDescription}
-                placeholder="Tilføj detaljer om opgaven..."
-                placeholderTextColor={textSecondaryColor}
-                multiline
-                numberOfLines={4}
-                maxLength={500}
-              />
-            </View>
-
-            {/* Reminder Input */}
-            <View style={styles.fieldContainer}>
-              <Text style={[styles.fieldLabel, { color: textColor }]}>
-                Påmindelse (minutter før aktivitet)
-              </Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: inputBgColor, color: textColor }]}
-                value={reminderMinutes}
-                onChangeText={setReminderMinutes}
-                placeholder="f.eks. 30"
-                placeholderTextColor={textSecondaryColor}
-                keyboardType="number-pad"
-                maxLength={4}
-              />
-              <Text style={[styles.fieldHint, { color: textSecondaryColor }]}>
-                Lad feltet være tomt hvis du ikke ønsker en påmindelse
-              </Text>
-            </View>
-          </ScrollView>
-
-          {/* Action Buttons */}
-          <View style={styles.actionButtons}>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.cancelButton, { borderColor: colors.error }]}
-              onPress={handleCancel}
-              activeOpacity={0.7}
-              disabled={isCreating}
-            >
-              <Text style={[styles.actionButtonText, { color: colors.error }]}>Annuller</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.actionButton,
-                styles.createButton,
-                { backgroundColor: colors.primary },
-              ]}
-              onPress={handleCreate}
-              activeOpacity={0.7}
-              disabled={isCreating || !title.trim()}
-            >
-              {isCreating ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={[styles.actionButtonText, { color: '#fff' }]}>Opret</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -275,15 +296,15 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingTop: 24,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
-    maxHeight: '90%',
+    paddingBottom: Platform.OS === 'ios' ? 20 : 12,
+    maxHeight: Platform.OS === 'ios' ? '85%' : '90%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     paddingHorizontal: 24,
-    marginBottom: 20,
+    marginBottom: 16,
   },
   modalHeaderLeft: {
     flexDirection: 'row',
@@ -307,14 +328,14 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 24,
-    paddingBottom: 20,
+    paddingBottom: 12,
   },
   infoBox: {
     flexDirection: 'row',
     gap: 12,
     padding: 14,
     borderRadius: 12,
-    marginBottom: 24,
+    marginBottom: 20,
   },
   infoText: {
     flex: 1,
@@ -322,7 +343,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   fieldContainer: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   fieldLabel: {
     fontSize: 16,
@@ -346,8 +367,8 @@ const styles = StyleSheet.create({
   actionButtons: {
     flexDirection: 'row',
     gap: 16,
-    paddingHorizontal: 24,
-    paddingTop: 20,
+    marginTop: 12,
+    marginBottom: 8,
   },
   actionButton: {
     flex: 1,
