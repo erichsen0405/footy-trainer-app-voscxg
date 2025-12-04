@@ -623,7 +623,7 @@ export default function ActivityDetailsScreen() {
           <View style={[styles.section, { backgroundColor: cardBgColor }]}>
             <Text style={[styles.sectionTitle, { color: textColor }]}>Opgaver</Text>
             {activity.tasks.map((task, index) => (
-              <View key={index} style={styles.taskRow}>
+              <View key={index} style={[styles.taskRow, { backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5' }]}>
                 <TouchableOpacity
                   style={styles.taskCheckboxArea}
                   onPress={() => handleToggleTask(task.id)}
@@ -632,7 +632,7 @@ export default function ActivityDetailsScreen() {
                   <View
                     style={[
                       styles.taskCheckbox,
-                      task.completed && { backgroundColor: colors.success },
+                      task.completed && { backgroundColor: colors.success, borderColor: colors.success },
                     ]}
                   >
                     {task.completed && (
@@ -662,10 +662,13 @@ export default function ActivityDetailsScreen() {
                   </View>
                 </TouchableOpacity>
                 
-                {/* Admin delete button */}
+                {/* Admin delete button - IMPROVED VISIBILITY */}
                 {isAdmin && (
                   <TouchableOpacity
-                    style={styles.taskDeleteButton}
+                    style={[
+                      styles.taskDeleteButton,
+                      { backgroundColor: isDark ? '#3a1a1a' : '#ffe5e5' }
+                    ]}
                     onPress={() => handleDeleteTask(task.id)}
                     activeOpacity={0.7}
                     disabled={deletingTaskId === task.id}
@@ -676,7 +679,7 @@ export default function ActivityDetailsScreen() {
                       <IconSymbol
                         ios_icon_name="trash"
                         android_material_icon_name="delete"
-                        size={20}
+                        size={22}
                         color={colors.error}
                       />
                     )}
@@ -759,7 +762,7 @@ export default function ActivityDetailsScreen() {
               color={colors.accent}
             />
             <Text style={[styles.infoText, { color: isDark ? '#ffc107' : '#856404' }]}>
-              Som admin kan du slette opgaver direkte fra denne aktivitet. Dette sletter kun opgaven fra denne aktivitet, ikke opgaveskabelonen.
+              Som admin kan du slette opgaver direkte fra denne aktivitet ved at trykke på den røde slet-knap ved siden af hver opgave. Dette sletter kun opgaven fra denne aktivitet, ikke opgaveskabelonen.
             </Text>
           </View>
         )}
@@ -970,7 +973,6 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 16,
     padding: 12,
-    backgroundColor: 'rgba(0, 0, 0, 0.05)',
     borderRadius: 12,
   },
   taskCheckboxArea: {
@@ -1004,8 +1006,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   taskDeleteButton: {
-    padding: 8,
+    padding: 10,
+    borderRadius: 8,
     marginLeft: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minWidth: 44,
+    minHeight: 44,
   },
   actionButtons: {
     flexDirection: 'row',
