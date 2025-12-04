@@ -53,6 +53,7 @@ interface FootballContextType {
   duplicateTask: (id: string) => void;
   toggleTaskCompletion: (activityId: string, taskId: string) => void;
   deleteActivityTask: (activityId: string, taskId: string) => Promise<void>;
+  refreshData: () => void;
   addExternalCalendar: (calendar: Omit<ExternalCalendar, 'id'>) => void;
   toggleCalendar: (id: string) => void;
   deleteExternalCalendar: (id: string) => void;

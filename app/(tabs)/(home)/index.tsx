@@ -8,11 +8,16 @@ import { Activity } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
 import { getWeek, startOfWeek, endOfWeek } from 'date-fns';
 import { requestNotificationPermissions } from '@/utils/notificationService';
+import { useUserRole } from '@/hooks/useUserRole';
+import CreateActivityTaskModal from '@/components/CreateActivityTaskModal';
 
 export default function HomeScreen() {
   const { currentWeekStats, todayActivities, activities, toggleTaskCompletion, externalCalendars, fetchExternalCalendarEvents } = useFootball();
+  const { isAdmin } = useUserRole();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
+  const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
+  const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
 
   // Request notification permissions on mount
   useEffect(() => {
@@ -145,6 +150,18 @@ export default function HomeScreen() {
     router.push('/(tabs)/performance');
   };
 
+  const handleAddTaskToActivity = (activity: Activity) => {
+    console.log('Adding task to activity:', activity.id);
+    setSelectedActivity(activity);
+    setShowCreateTaskModal(true);
+  };
+
+  const handleTaskCreated = () => {
+    console.log('Task created, refreshing data');
+    // The modal will close automatically
+    // The data will refresh automatically via the context
+  };
+
   const activitiesByWeek = getActivitiesByWeek();
 
   return (
@@ -203,77 +220,95 @@ export default function HomeScreen() {
           </View>
         ) : (
           todayActivities.map((activity, index) => (
-            <TouchableOpacity
-              key={index}
-              style={[styles.activityCard, { backgroundColor: activity.category.color }]}
-              onPress={() => handleActivityPress(activity.id)}
-              activeOpacity={0.8}
-            >
-              <View style={styles.activityHeader}>
-                <Text style={styles.activityEmoji}>{activity.category.emoji}</Text>
-                <View style={styles.activityInfo}>
-                  <View style={styles.activityTitleRow}>
-                    <Text style={styles.activityTitle}>{activity.title}</Text>
-                    {activity.isExternal && (
-                      <View style={styles.externalBadge}>
-                        <IconSymbol 
-                          ios_icon_name="calendar.badge.clock" 
-                          android_material_icon_name="event" 
-                          size={14} 
-                          color="#fff" 
-                        />
-                      </View>
-                    )}
+            <View key={index} style={styles.activityCardWrapper}>
+              <TouchableOpacity
+                style={[styles.activityCard, { backgroundColor: activity.category.color }]}
+                onPress={() => handleActivityPress(activity.id)}
+                activeOpacity={0.8}
+              >
+                <View style={styles.activityHeader}>
+                  <Text style={styles.activityEmoji}>{activity.category.emoji}</Text>
+                  <View style={styles.activityInfo}>
+                    <View style={styles.activityTitleRow}>
+                      <Text style={styles.activityTitle}>{activity.title}</Text>
+                      {activity.isExternal && (
+                        <View style={styles.externalBadge}>
+                          <IconSymbol 
+                            ios_icon_name="calendar.badge.clock" 
+                            android_material_icon_name="event" 
+                            size={14} 
+                            color="#fff" 
+                          />
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.activityTime}>
+                      {formatDateTime(new Date(activity.date), activity.time)}
+                    </Text>
+                    <View style={styles.locationRow}>
+                      <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={16} color="#fff" />
+                      <Text style={styles.activityLocation}>{activity.location}</Text>
+                    </View>
                   </View>
-                  <Text style={styles.activityTime}>
-                    {formatDateTime(new Date(activity.date), activity.time)}
-                  </Text>
-                  <View style={styles.locationRow}>
-                    <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={16} color="#fff" />
-                    <Text style={styles.activityLocation}>{activity.location}</Text>
-                  </View>
+                  <IconSymbol 
+                    ios_icon_name="chevron.right" 
+                    android_material_icon_name="chevron_right" 
+                    size={24} 
+                    color="rgba(255,255,255,0.7)" 
+                  />
                 </View>
-                <IconSymbol 
-                  ios_icon_name="chevron.right" 
-                  android_material_icon_name="chevron_right" 
-                  size={24} 
-                  color="rgba(255,255,255,0.7)" 
-                />
-              </View>
 
-              {activity.tasks.length > 0 && (
-                <View style={styles.tasksSection}>
-                  <Text style={styles.tasksTitle}>Opgaver:</Text>
-                  {activity.tasks.map((task, taskIndex) => (
-                    <TouchableOpacity
-                      key={taskIndex}
-                      style={styles.taskItem}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        toggleTaskCompletion(activity.id, task.id);
-                      }}
-                    >
-                      <View style={[styles.checkbox, task.completed && styles.checkboxChecked]}>
-                        {task.completed && (
-                          <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
-                        )}
-                      </View>
-                      <View style={styles.taskContent}>
-                        <Text style={[styles.taskText, task.completed && styles.taskTextCompleted]}>
-                          {task.title}
-                        </Text>
-                        {task.reminder && (
-                          <View style={styles.reminderBadgeSmall}>
-                            <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={12} color="#fff" />
-                            <Text style={styles.reminderTextSmall}>{task.reminder} min</Text>
-                          </View>
-                        )}
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                {activity.tasks.length > 0 && (
+                  <View style={styles.tasksSection}>
+                    <Text style={styles.tasksTitle}>Opgaver:</Text>
+                    {activity.tasks.map((task, taskIndex) => (
+                      <TouchableOpacity
+                        key={taskIndex}
+                        style={styles.taskItem}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          toggleTaskCompletion(activity.id, task.id);
+                        }}
+                      >
+                        <View style={[styles.checkbox, task.completed && styles.checkboxChecked]}>
+                          {task.completed && (
+                            <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
+                          )}
+                        </View>
+                        <View style={styles.taskContent}>
+                          <Text style={[styles.taskText, task.completed && styles.taskTextCompleted]}>
+                            {task.title}
+                          </Text>
+                          {task.reminder && (
+                            <View style={styles.reminderBadgeSmall}>
+                              <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={12} color="#fff" />
+                              <Text style={styles.reminderTextSmall}>{task.reminder} min</Text>
+                            </View>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </TouchableOpacity>
+
+              {/* Admin Add Task Button */}
+              {isAdmin && !activity.isExternal && (
+                <TouchableOpacity
+                  style={[styles.addTaskButton, { backgroundColor: activity.category.color }]}
+                  onPress={() => handleAddTaskToActivity(activity)}
+                  activeOpacity={0.7}
+                >
+                  <IconSymbol
+                    ios_icon_name="plus.circle.fill"
+                    android_material_icon_name="add_circle"
+                    size={24}
+                    color="#fff"
+                  />
+                  <Text style={styles.addTaskButtonText}>Tilføj opgave</Text>
+                </TouchableOpacity>
               )}
-            </TouchableOpacity>
+            </View>
           ))
         )}
       </View>
@@ -341,6 +376,20 @@ export default function HomeScreen() {
       </View>
 
       <View style={{ height: 100 }} />
+
+      {/* Create Task Modal */}
+      {selectedActivity && (
+        <CreateActivityTaskModal
+          visible={showCreateTaskModal}
+          onClose={() => {
+            setShowCreateTaskModal(false);
+            setSelectedActivity(null);
+          }}
+          activityId={selectedActivity.id}
+          activityTitle={selectedActivity.title}
+          onTaskCreated={handleTaskCreated}
+        />
+      )}
     </ScrollView>
   );
 }
@@ -453,10 +502,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
   },
+  activityCardWrapper: {
+    marginBottom: 12,
+  },
   activityCard: {
     borderRadius: 16,
     padding: 20,
-    marginBottom: 12,
   },
   activityHeader: {
     flexDirection: 'row',
@@ -568,6 +619,22 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#fff',
     fontWeight: '600',
+  },
+  addTaskButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginTop: 8,
+    opacity: 0.9,
+  },
+  addTaskButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
   },
   weekSection: {
     marginBottom: 20,

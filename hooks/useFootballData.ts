@@ -1519,6 +1519,11 @@ export function useFootballData() {
     return { successCount, failCount };
   };
 
+  const refreshData = useCallback(() => {
+    console.log('🔄 Manual data refresh triggered');
+    setRefreshTrigger(prev => prev + 1);
+  }, []);
+
   return {
     categories,
     tasks,
@@ -1542,6 +1547,7 @@ export function useFootballData() {
     duplicateTask,
     toggleTaskCompletion,
     deleteActivityTask,
+    refreshData,
     addExternalCalendar,
     toggleCalendar,
     deleteExternalCalendar,
