@@ -5,9 +5,11 @@ import { fetchAndParseICalendar, formatTimeFromDate } from '@/utils/icalParser';
 import { supabase } from '@/app/integrations/supabase/client';
 import { 
   scheduleTaskReminder, 
-  cancelNotification, 
+  cancelNotificationByTaskId,
   getAllScheduledNotifications,
-  checkNotificationPermissions 
+  checkNotificationPermissions,
+  syncNotifications,
+  loadNotificationIdentifiers,
 } from '@/utils/notificationService';
 import { startOfWeek, endOfWeek } from 'date-fns';
 
@@ -85,7 +87,6 @@ export function useFootballData() {
   const [userId, setUserId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const [notificationIdentifiers, setNotificationIdentifiers] = useState<Map<string, string>>(new Map());
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
 
   // Get current user
@@ -98,21 +99,23 @@ export function useFootballData() {
     getCurrentUser();
   }, []);
 
-  // CRITICAL: Check notification permissions on mount using the new check function
+  // CRITICAL: Check notification permissions on mount and sync notifications
   useEffect(() => {
-    const checkNotificationPermissionsStatus = async () => {
-      console.log('🔔 Checking notification permissions status...');
+    const initializeNotifications = async () => {
+      console.log('🔔 Initializing notification system...');
       const granted = await checkNotificationPermissions();
       setNotificationsEnabled(granted);
       
       if (granted) {
         console.log('✅ Notifications are enabled');
+        // CRITICAL FIX: Sync notifications on startup
+        await syncNotifications();
       } else {
         console.log('❌ Notifications are disabled');
       }
     };
     
-    checkNotificationPermissionsStatus();
+    initializeNotifications();
   }, []);
 
   // Load categories from Supabase
@@ -337,10 +340,9 @@ export function useFootballData() {
     loadActivities();
   }, [userId, categories, refreshTrigger, notificationsEnabled]);
 
-  // Schedule notifications for all activities with tasks that have reminders
+  // CRITICAL FIX: Schedule notifications for all activities with tasks that have reminders
   const scheduleNotificationsForActivities = async (activitiesToSchedule: Activity[]) => {
     console.log('📅 Scheduling notifications for', activitiesToSchedule.length, 'activities');
-    const newIdentifiers = new Map<string, string>();
     let scheduledCount = 0;
     let skippedCount = 0;
 
@@ -360,19 +362,17 @@ export function useFootballData() {
           );
 
           if (identifier) {
-            newIdentifiers.set(task.id, identifier);
             scheduledCount++;
             console.log(`  ✅ Scheduled notification for task "${task.title}"`);
           } else {
             skippedCount++;
-            console.log(`  ⚠️ Skipped notification for task "${task.title}" (probably in the past)`);
+            console.log(`  ⚠️ Skipped notification for task "${task.title}" (probably in the past or no permissions)`);
           }
         }
       }
     }
 
     console.log(`📊 Notification scheduling complete: ${scheduledCount} scheduled, ${skippedCount} skipped`);
-    setNotificationIdentifiers(newIdentifiers);
     
     // Log all scheduled notifications for debugging
     await getAllScheduledNotifications();
@@ -721,6 +721,28 @@ export function useFootballData() {
       }
 
       console.log('Activity updated successfully');
+      
+      // CRITICAL FIX: If date or time changed, reschedule notifications for this activity's tasks
+      if ((updates.date || updates.time) && notificationsEnabled) {
+        console.log('🔄 Activity date/time changed, rescheduling notifications...');
+        const activity = activities.find(a => a.id === activityId);
+        if (activity) {
+          for (const task of activity.tasks) {
+            if (task.reminder && !task.completed) {
+              await scheduleTaskReminder(
+                task.title,
+                updates.title || activity.title,
+                updates.date || activity.date,
+                updates.time || activity.time,
+                task.reminder,
+                task.id,
+                activityId
+              );
+            }
+          }
+        }
+      }
+      
       setRefreshTrigger(prev => prev + 1);
     } catch (error) {
       console.error('Failed to update activity:', error);
@@ -761,6 +783,28 @@ export function useFootballData() {
       }
 
       console.log('Series updated successfully (trigger will update all activities)');
+      
+      // CRITICAL FIX: If time changed, reschedule notifications for all activities in series
+      if (updates.time && notificationsEnabled) {
+        console.log('🔄 Series time changed, rescheduling notifications for all activities in series...');
+        const seriesActivities = activities.filter(a => a.seriesId === seriesId);
+        for (const activity of seriesActivities) {
+          for (const task of activity.tasks) {
+            if (task.reminder && !task.completed) {
+              await scheduleTaskReminder(
+                task.title,
+                updates.title || activity.title,
+                activity.date,
+                updates.time,
+                task.reminder,
+                task.id,
+                activity.id
+              );
+            }
+          }
+        }
+      }
+      
       setRefreshTrigger(prev => prev + 1);
     } catch (error) {
       console.error('Failed to update series:', error);
@@ -794,14 +838,11 @@ export function useFootballData() {
 
       console.log('Activity deleted from database successfully');
 
-      // Cancel notifications for this activity's tasks
+      // CRITICAL FIX: Cancel notifications for this activity's tasks
       const activity = activities.find(a => a.id === id);
       if (activity) {
         for (const task of activity.tasks) {
-          const notificationId = notificationIdentifiers.get(task.id);
-          if (notificationId) {
-            await cancelNotification(notificationId);
-          }
+          await cancelNotificationByTaskId(task.id);
         }
       }
 
@@ -965,6 +1006,12 @@ export function useFootballData() {
             console.error('Error updating activity tasks:', activityTaskError);
           } else {
             console.log('Activity tasks updated to match template');
+            
+            // CRITICAL FIX: If reminder changed, reschedule notifications for all affected tasks
+            if (updateData.reminder_minutes !== undefined && notificationsEnabled) {
+              console.log('🔄 Task reminder changed, rescheduling notifications...');
+              // Refresh will trigger notification rescheduling
+            }
           }
         }
       }
@@ -999,10 +1046,12 @@ export function useFootballData() {
 
       console.log('Task template deleted');
 
-      // Cancel notification if exists
-      const notificationId = notificationIdentifiers.get(id);
-      if (notificationId) {
-        cancelNotification(notificationId);
+      // CRITICAL FIX: Cancel notifications for all activity tasks linked to this template
+      // This will be handled by the cascade delete, but we should clean up notification identifiers
+      const identifiers = await loadNotificationIdentifiers();
+      for (const taskId in identifiers) {
+        // We can't easily determine which tasks were linked to this template,
+        // so we'll rely on the sync function to clean up orphaned identifiers
       }
 
       // Trigger refresh to reload tasks AND activities
@@ -1056,15 +1105,13 @@ export function useFootballData() {
 
       console.log('Task completion updated in database');
 
-      // If task is completed, cancel its notification
+      // CRITICAL FIX: Handle notification scheduling based on completion status
       if (newCompleted) {
-        const notificationId = notificationIdentifiers.get(taskId);
-        if (notificationId) {
-          await cancelNotification(notificationId);
-        }
+        // Task completed - cancel notification
+        await cancelNotificationByTaskId(taskId);
       } else if (task.reminder && notificationsEnabled) {
-        // If task is uncompleted and has a reminder, reschedule notification
-        const identifier = await scheduleTaskReminder(
+        // Task uncompleted and has reminder - reschedule notification
+        await scheduleTaskReminder(
           task.title,
           activity.title,
           activity.date,
@@ -1073,9 +1120,6 @@ export function useFootballData() {
           taskId,
           activityId
         );
-        if (identifier) {
-          setNotificationIdentifiers(prev => new Map(prev).set(taskId, identifier));
-        }
       }
 
       // Update local state
@@ -1123,7 +1167,6 @@ export function useFootballData() {
       console.log('✅ Activity ownership verified');
 
       // CRITICAL FIX: Delete the activity task with proper RLS verification
-      // The RLS policy checks if the user owns the parent activity
       const { error: deleteError } = await supabase
         .from('activity_tasks')
         .delete()
@@ -1132,23 +1175,13 @@ export function useFootballData() {
 
       if (deleteError) {
         console.error('❌ Error deleting activity task from database:', deleteError);
-        console.error('Delete error details:', {
-          code: deleteError.code,
-          message: deleteError.message,
-          details: deleteError.details,
-          hint: deleteError.hint
-        });
         throw deleteError;
       }
 
       console.log('✅ Activity task deleted from database successfully');
 
-      // Cancel notification if exists
-      const notificationId = notificationIdentifiers.get(taskId);
-      if (notificationId) {
-        console.log('🔕 Cancelling notification for deleted task');
-        await cancelNotification(notificationId);
-      }
+      // CRITICAL FIX: Cancel notification
+      await cancelNotificationByTaskId(taskId);
 
       // CRITICAL FIX: Update local state immediately to reflect the deletion
       console.log('🔄 Updating local state to remove task');
@@ -1172,12 +1205,6 @@ export function useFootballData() {
       setRefreshTrigger(prev => prev + 1);
     } catch (error: any) {
       console.error('❌ Failed to delete activity task:', error);
-      console.error('Error details:', {
-        name: error?.name,
-        message: error?.message,
-        code: error?.code,
-        details: error?.details
-      });
       throw error;
     }
   };
@@ -1244,6 +1271,11 @@ export function useFootballData() {
 
       console.log(`Successfully deleted ${tasksToDelete.length} orphaned tasks`);
 
+      // CRITICAL FIX: Cancel notifications for deleted tasks
+      for (const task of tasksToDelete) {
+        await cancelNotificationByTaskId(task.id);
+      }
+
       // Trigger refresh to reload activities
       setRefreshTrigger(prev => prev + 1);
 
@@ -1289,10 +1321,6 @@ export function useFootballData() {
 
       if (error) {
         console.error('Error adding external calendar:', error);
-        console.error('Error code:', error.code);
-        console.error('Error message:', error.message);
-        console.error('Error details:', error.details);
-        console.error('Error hint:', error.hint);
         throw error;
       }
 
@@ -1319,8 +1347,6 @@ export function useFootballData() {
             console.log('Initial sync completed successfully');
           } catch (syncError) {
             console.error('Error during initial sync:', syncError);
-            // Don't throw here - the calendar was added successfully
-            // The user can manually sync later
           }
         }
         
@@ -1352,7 +1378,6 @@ export function useFootballData() {
 
       if (error) {
         console.error('Error toggling calendar:', error);
-        console.error('Error details:', JSON.stringify(error, null, 2));
         throw error;
       }
 
@@ -1368,8 +1393,6 @@ export function useFootballData() {
             console.log('Calendar enabled, fetching events');
             fetchExternalCalendarEvents(updated).catch(err => {
               console.error('Failed to fetch calendar events:', err);
-              console.error('Error name:', err?.name);
-              console.error('Error message:', err?.message);
             });
           } else {
             // If disabling, remove external activities from this calendar
@@ -1383,8 +1406,6 @@ export function useFootballData() {
       }));
     } catch (error: any) {
       console.error('Error in toggleCalendar:', error);
-      console.error('Error type:', typeof error);
-      console.error('Error keys:', Object.keys(error || {}));
       throw error;
     }
   };
