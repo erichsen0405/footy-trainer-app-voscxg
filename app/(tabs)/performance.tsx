@@ -177,7 +177,7 @@ export default function PerformanceScreen() {
           </View>
         ) : (
           trophies.map((trophy, index) => (
-            <View key={`trophy-${trophy.week}-${trophy.year}-${index}`} style={[styles.historyCard, { backgroundColor: cardBgColor }]}>
+            <View key={index} style={[styles.historyCard, { backgroundColor: cardBgColor }]}>
               <View style={styles.historyHeader}>
                 <View style={styles.historyLeft}>
                   <Text style={styles.historyEmoji}>{getTrophyEmoji(trophy.type)}</Text>

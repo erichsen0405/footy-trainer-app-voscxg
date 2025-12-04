@@ -277,9 +277,9 @@ export default function HomeScreen() {
             </View>
           ) : (
             <React.Fragment>
-              {todayActivities.map((activity) => (
+              {todayActivities.map((activity, index) => (
                 <TouchableOpacity
-                  key={`today-${activity.id}`}
+                  key={index}
                   style={[styles.activityCard, { backgroundColor: activity.category.color }]}
                   onPress={() => handleActivityPress(activity.id)}
                   activeOpacity={0.7}
@@ -301,9 +301,9 @@ export default function HomeScreen() {
                   {activity.tasks.length > 0 && (
                     <View style={styles.tasksSection}>
                       <Text style={styles.tasksTitle}>Opgaver:</Text>
-                      {activity.tasks.map((task) => (
+                      {activity.tasks.map((task, taskIndex) => (
                         <TouchableOpacity
-                          key={`task-${activity.id}-${task.id}`}
+                          key={taskIndex}
                           style={styles.taskItem}
                           onPress={(e) => {
                             e.stopPropagation();
@@ -337,10 +337,10 @@ export default function HomeScreen() {
             </View>
           ) : (
             <React.Fragment>
-              {Object.entries(upcomingByWeek).map(([weekKey, data]) => {
+              {Object.entries(upcomingByWeek).map(([weekKey, data], weekIndex) => {
                 const weekNumber = weekKey.split('-W')[1];
                 return (
-                  <View key={weekKey} style={styles.weekSection}>
+                  <View key={weekIndex} style={styles.weekSection}>
                     <Text style={[styles.weekTitle, { color: textColor }]}>
                       Uge {weekNumber}
                     </Text>
@@ -348,9 +348,9 @@ export default function HomeScreen() {
                       {data.dateRange}
                     </Text>
                     
-                    {data.activities.map((activity) => (
+                    {data.activities.map((activity, activityIndex) => (
                       <TouchableOpacity
-                        key={`upcoming-${activity.id}`}
+                        key={activityIndex}
                         style={[styles.upcomingActivityCard, { backgroundColor: activity.category.color }]}
                         onPress={() => handleActivityPress(activity.id)}
                         activeOpacity={0.7}
