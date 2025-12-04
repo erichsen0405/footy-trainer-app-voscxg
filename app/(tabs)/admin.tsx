@@ -18,6 +18,7 @@ import { useRouter } from 'expo-router';
 import CreatePlayerModal from '@/components/CreatePlayerModal';
 import PlayersList from '@/components/PlayersList';
 import { deleteTestTasksFromTraening } from '@/utils/cleanupTasks';
+import { testNotification, getNotificationStats, syncNotifications } from '@/utils/notificationService';
 
 export default function AdminScreen() {
   const { userRole, loading: roleLoading, isAdmin } = useUserRole();
@@ -26,11 +27,31 @@ export default function AdminScreen() {
   const router = useRouter();
   const [showCreatePlayerModal, setShowCreatePlayerModal] = useState(false);
   const [isCleaningUp, setIsCleaningUp] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [notificationStats, setNotificationStats] = useState<{
+    scheduled: number;
+    stored: number;
+    orphaned: number;
+  } | null>(null);
 
   const bgColor = isDark ? '#1a1a1a' : colors.background;
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
+
+  // Load notification stats on mount
+  useEffect(() => {
+    loadNotificationStats();
+  }, []);
+
+  const loadNotificationStats = async () => {
+    try {
+      const stats = await getNotificationStats();
+      setNotificationStats(stats);
+    } catch (error) {
+      console.error('Error loading notification stats:', error);
+    }
+  };
 
   // Redirect if not admin
   useEffect(() => {
@@ -78,6 +99,28 @@ export default function AdminScreen() {
         }
       ]
     );
+  };
+
+  const handleTestNotification = async () => {
+    try {
+      await testNotification();
+    } catch (error) {
+      console.error('Error testing notification:', error);
+    }
+  };
+
+  const handleSyncNotifications = async () => {
+    setIsSyncing(true);
+    try {
+      await syncNotifications();
+      await loadNotificationStats();
+      Alert.alert('Succes', 'Notifikationer er blevet synkroniseret');
+    } catch (error) {
+      console.error('Error syncing notifications:', error);
+      Alert.alert('Fejl', 'Kunne ikke synkronisere notifikationer');
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   if (roleLoading) {
@@ -136,6 +179,128 @@ export default function AdminScreen() {
           </View>
 
           <PlayersList />
+        </View>
+
+        {/* Notifications Section */}
+        <View style={[styles.section, { backgroundColor: cardBgColor }]}>
+          <Text style={[styles.sectionTitle, { color: textColor }]}>Notifikationer</Text>
+          
+          {/* Notification Stats */}
+          {notificationStats && (
+            <View style={[styles.statsContainer, { backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5' }]}>
+              <View style={styles.statItem}>
+                <Text style={[styles.statValue, { color: colors.primary }]}>
+                  {notificationStats.scheduled}
+                </Text>
+                <Text style={[styles.statLabel, { color: textSecondaryColor }]}>
+                  Planlagt
+                </Text>
+              </View>
+              <View style={styles.statItem}>
+                <Text style={[styles.statValue, { color: colors.secondary }]}>
+                  {notificationStats.stored}
+                </Text>
+                <Text style={[styles.statLabel, { color: textSecondaryColor }]}>
+                  Gemt
+                </Text>
+              </View>
+              <View style={styles.statItem}>
+                <Text style={[styles.statValue, { color: notificationStats.orphaned > 0 ? colors.error : colors.success }]}>
+                  {notificationStats.orphaned}
+                </Text>
+                <Text style={[styles.statLabel, { color: textSecondaryColor }]}>
+                  Forældreløse
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* Test Notification Button */}
+          <View style={styles.maintenanceItem}>
+            <View style={styles.maintenanceInfo}>
+              <View style={[styles.maintenanceIconContainer, { backgroundColor: 'rgba(76, 175, 80, 0.1)' }]}>
+                <IconSymbol
+                  ios_icon_name="bell.badge.fill"
+                  android_material_icon_name="notifications_active"
+                  size={32}
+                  color={colors.success}
+                />
+              </View>
+              <View style={styles.maintenanceTextContainer}>
+                <Text style={[styles.maintenanceTitle, { color: textColor }]}>
+                  Test notifikation
+                </Text>
+                <Text style={[styles.maintenanceDescription, { color: textSecondaryColor }]}>
+                  Send en test notifikation om 2 sekunder
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.maintenanceButton,
+                { backgroundColor: isDark ? '#1a3a1a' : '#e8f5e9' }
+              ]}
+              onPress={handleTestNotification}
+              activeOpacity={0.7}
+            >
+              <IconSymbol
+                ios_icon_name="paperplane.fill"
+                android_material_icon_name="send"
+                size={20}
+                color={colors.success}
+              />
+              <Text style={[styles.maintenanceButtonText, { color: colors.success }]}>
+                Test
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Sync Notifications Button */}
+          <View style={[styles.maintenanceItem, { marginTop: 16 }]}>
+            <View style={styles.maintenanceInfo}>
+              <View style={[styles.maintenanceIconContainer, { backgroundColor: 'rgba(33, 150, 243, 0.1)' }]}>
+                <IconSymbol
+                  ios_icon_name="arrow.triangle.2.circlepath"
+                  android_material_icon_name="sync"
+                  size={32}
+                  color={colors.secondary}
+                />
+              </View>
+              <View style={styles.maintenanceTextContainer}>
+                <Text style={[styles.maintenanceTitle, { color: textColor }]}>
+                  Synkroniser notifikationer
+                </Text>
+                <Text style={[styles.maintenanceDescription, { color: textSecondaryColor }]}>
+                  Ryd op i forældreløse notifikationer
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.maintenanceButton,
+                { backgroundColor: isDark ? '#1a2a3a' : '#e3f2fd' }
+              ]}
+              onPress={handleSyncNotifications}
+              activeOpacity={0.7}
+              disabled={isSyncing}
+            >
+              {isSyncing ? (
+                <ActivityIndicator size="small" color={colors.secondary} />
+              ) : (
+                <React.Fragment>
+                  <IconSymbol
+                    ios_icon_name="arrow.clockwise"
+                    android_material_icon_name="refresh"
+                    size={20}
+                    color={colors.secondary}
+                  />
+                  <Text style={[styles.maintenanceButtonText, { color: colors.secondary }]}>
+                    Synk
+                  </Text>
+                </React.Fragment>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Maintenance Section */}
@@ -270,6 +435,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 22,
     fontWeight: 'bold',
+    marginBottom: 16,
   },
   addButton: {
     flexDirection: 'row',
@@ -283,6 +449,24 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#fff',
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  statItem: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  statValue: {
+    fontSize: 28,
+    fontWeight: 'bold',
+  },
+  statLabel: {
+    fontSize: 13,
   },
   maintenanceItem: {
     flexDirection: 'row',
