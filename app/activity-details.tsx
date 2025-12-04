@@ -21,6 +21,7 @@ import { supabase } from '@/app/integrations/supabase/client';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import EditSeriesDialog from '@/components/EditSeriesDialog';
 import { useUserRole } from '@/hooks/useUserRole';
+import CreateActivityTaskModal from '@/components/CreateActivityTaskModal';
 
 export default function ActivityDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -35,6 +36,7 @@ export default function ActivityDetailsScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [showSeriesDialog, setShowSeriesDialog] = useState(false);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
+  const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
   
   // Edit state
   const [editTitle, setEditTitle] = useState('');
@@ -238,6 +240,17 @@ export default function ActivityDetailsScreen() {
         }
       ]
     );
+  };
+
+  const handleAddTask = () => {
+    console.log('Opening create task modal for activity:', activity?.id);
+    setShowCreateTaskModal(true);
+  };
+
+  const handleTaskCreated = () => {
+    console.log('Task created successfully, refreshing activity data');
+    setShowCreateTaskModal(false);
+    // The data will refresh automatically via the context
   };
 
   const formatDate = (date: Date) => {
@@ -621,76 +634,107 @@ export default function ActivityDetailsScreen() {
         </View>
 
         {/* Tasks Section */}
-        {activity.tasks && activity.tasks.length > 0 && (
-          <View style={[styles.section, { backgroundColor: cardBgColor }]}>
+        <View style={[styles.section, { backgroundColor: cardBgColor }]}>
+          <View style={styles.tasksSectionHeader}>
             <Text style={[styles.sectionTitle, { color: textColor }]}>Opgaver</Text>
-            {activity.tasks.map((task, index) => (
-              <View key={`task-${task.id}-${index}`} style={[styles.taskRow, { backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5' }]}>
-                <TouchableOpacity
-                  style={styles.taskCheckboxArea}
-                  onPress={() => handleToggleTask(task.id)}
-                  activeOpacity={0.7}
-                >
-                  <View
-                    style={[
-                      styles.taskCheckbox,
-                      task.completed && { backgroundColor: colors.success, borderColor: colors.success },
-                    ]}
+            {isAdmin && !activity.isExternal && (
+              <TouchableOpacity
+                style={[styles.addTaskHeaderButton, { backgroundColor: colors.primary }]}
+                onPress={handleAddTask}
+                activeOpacity={0.7}
+              >
+                <IconSymbol
+                  ios_icon_name="plus"
+                  android_material_icon_name="add"
+                  size={20}
+                  color="#fff"
+                />
+                <Text style={styles.addTaskHeaderButtonText}>Tilføj opgave</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {activity.tasks && activity.tasks.length > 0 ? (
+            <React.Fragment>
+              {activity.tasks.map((task, index) => (
+                <View key={`task-${task.id}-${index}`} style={[styles.taskRow, { backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5' }]}>
+                  <TouchableOpacity
+                    style={styles.taskCheckboxArea}
+                    onPress={() => handleToggleTask(task.id)}
+                    activeOpacity={0.7}
                   >
-                    {task.completed && (
-                      <IconSymbol
-                        ios_icon_name="checkmark"
-                        android_material_icon_name="check"
-                        size={16}
-                        color="#fff"
-                      />
-                    )}
-                  </View>
-                  <View style={styles.taskContent}>
-                    <Text
+                    <View
                       style={[
-                        styles.taskTitle,
-                        { color: textColor },
-                        task.completed && styles.taskCompleted,
+                        styles.taskCheckbox,
+                        task.completed && { backgroundColor: colors.success, borderColor: colors.success },
                       ]}
                     >
-                      {task.title}
-                    </Text>
-                    {task.description && (
-                      <Text style={[styles.taskDescription, { color: textSecondaryColor }]}>
-                        {task.description}
+                      {task.completed && (
+                        <IconSymbol
+                          ios_icon_name="checkmark"
+                          android_material_icon_name="check"
+                          size={16}
+                          color="#fff"
+                        />
+                      )}
+                    </View>
+                    <View style={styles.taskContent}>
+                      <Text
+                        style={[
+                          styles.taskTitle,
+                          { color: textColor },
+                          task.completed && styles.taskCompleted,
+                        ]}
+                      >
+                        {task.title}
                       </Text>
-                    )}
-                  </View>
-                </TouchableOpacity>
-                
-                {/* Admin delete button - IMPROVED VISIBILITY */}
-                {isAdmin && (
-                  <TouchableOpacity
-                    style={[
-                      styles.taskDeleteButton,
-                      { backgroundColor: isDark ? '#3a1a1a' : '#ffe5e5' }
-                    ]}
-                    onPress={() => handleDeleteTask(task.id)}
-                    activeOpacity={0.7}
-                    disabled={deletingTaskId === task.id}
-                  >
-                    {deletingTaskId === task.id ? (
-                      <ActivityIndicator size="small" color={colors.error} />
-                    ) : (
-                      <IconSymbol
-                        ios_icon_name="trash"
-                        android_material_icon_name="delete"
-                        size={22}
-                        color={colors.error}
-                      />
-                    )}
+                      {task.description && (
+                        <Text style={[styles.taskDescription, { color: textSecondaryColor }]}>
+                          {task.description}
+                        </Text>
+                      )}
+                    </View>
                   </TouchableOpacity>
-                )}
-              </View>
-            ))}
-          </View>
-        )}
+                  
+                  {/* Admin delete button */}
+                  {isAdmin && (
+                    <TouchableOpacity
+                      style={[
+                        styles.taskDeleteButton,
+                        { backgroundColor: isDark ? '#3a1a1a' : '#ffe5e5' }
+                      ]}
+                      onPress={() => handleDeleteTask(task.id)}
+                      activeOpacity={0.7}
+                      disabled={deletingTaskId === task.id}
+                    >
+                      {deletingTaskId === task.id ? (
+                        <ActivityIndicator size="small" color={colors.error} />
+                      ) : (
+                        <IconSymbol
+                          ios_icon_name="trash"
+                          android_material_icon_name="delete"
+                          size={22}
+                          color={colors.error}
+                        />
+                      )}
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+            </React.Fragment>
+          ) : (
+            <View style={styles.emptyTasksContainer}>
+              <Text style={[styles.emptyTasksText, { color: textSecondaryColor }]}>
+                Ingen opgaver endnu
+              </Text>
+              {isAdmin && !activity.isExternal && (
+                <Text style={[styles.emptyTasksHint, { color: textSecondaryColor }]}>
+                  Tryk på &quot;Tilføj opgave&quot; for at oprette en opgave
+                </Text>
+              )}
+            </View>
+          )}
+        </View>
 
         {/* Action Buttons */}
         {isEditing && (
@@ -779,6 +823,15 @@ export default function ActivityDetailsScreen() {
         onClose={() => setShowSeriesDialog(false)}
         onEditSingle={handleEditSingle}
         onEditAll={handleEditAll}
+      />
+
+      {/* Create Task Modal */}
+      <CreateActivityTaskModal
+        visible={showCreateTaskModal}
+        onClose={() => setShowCreateTaskModal(false)}
+        activityId={activity.id}
+        activityTitle={activity.title}
+        onTaskCreated={handleTaskCreated}
       />
     </View>
   );
@@ -879,6 +932,37 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     marginBottom: 20,
+  },
+  tasksSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  addTaskHeaderButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  addTaskHeaderButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  emptyTasksContainer: {
+    paddingVertical: 32,
+    alignItems: 'center',
+  },
+  emptyTasksText: {
+    fontSize: 16,
+    marginBottom: 8,
+  },
+  emptyTasksHint: {
+    fontSize: 14,
+    fontStyle: 'italic',
   },
   detailRow: {
     flexDirection: 'row',
