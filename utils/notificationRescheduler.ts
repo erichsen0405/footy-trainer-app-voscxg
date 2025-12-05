@@ -1,6 +1,6 @@
 
 import { Activity } from '@/types';
-import { scheduleTaskReminder, checkNotificationPermissions, getAllScheduledNotifications } from './notificationService';
+import { scheduleTaskReminder, checkNotificationPermissions, getAllScheduledNotifications, cancelAllNotifications } from './notificationService';
 
 /**
  * CRITICAL: Reschedule all notifications for activities with tasks that have reminders
@@ -8,30 +8,47 @@ import { scheduleTaskReminder, checkNotificationPermissions, getAllScheduledNoti
  */
 export async function rescheduleAllNotifications(activities: Activity[]): Promise<void> {
   console.log('🔄 ========== RESCHEDULING ALL NOTIFICATIONS ==========');
+  console.log(`  Total activities to process: ${activities.length}`);
   
   // Check if we have permission
   const hasPermission = await checkNotificationPermissions();
   if (!hasPermission) {
     console.log('⚠️ No notification permissions, skipping rescheduling');
+    console.log('========== RESCHEDULING ABORTED (NO PERMISSION) ==========');
     return;
   }
+
+  // CRITICAL FIX: Cancel all existing notifications first to avoid duplicates
+  console.log('🗑️ Cancelling all existing notifications before rescheduling...');
+  await cancelAllNotifications();
+  console.log('✅ All existing notifications cancelled');
 
   let scheduledCount = 0;
   let skippedCount = 0;
   let errorCount = 0;
+  let totalTasksWithReminders = 0;
 
   for (const activity of activities) {
-    console.log(`📋 Processing activity: ${activity.title} (${activity.id})`);
+    console.log(`\n📋 Processing activity: "${activity.title}" (${activity.id})`);
+    console.log(`  Activity Date: ${activity.date}`);
+    console.log(`  Activity Date Type: ${typeof activity.date}`);
+    console.log(`  Activity Time: ${activity.time}`);
+    console.log(`  Tasks count: ${activity.tasks.length}`);
     
     for (const task of activity.tasks) {
       if (task.reminder && !task.completed) {
+        totalTasksWithReminders++;
         console.log(`  📝 Task "${task.title}" has reminder: ${task.reminder} minutes`);
+        console.log(`     Task ID: ${task.id}`);
+        console.log(`     Task completed: ${task.completed}`);
         
         try {
+          // CRITICAL FIX: Pass the date as-is (can be Date object or string)
+          // The scheduleTaskReminder function will handle the parsing
           const identifier = await scheduleTaskReminder(
             task.title,
             activity.title,
-            activity.date,
+            activity.date, // Pass as-is
             activity.time,
             task.reminder,
             task.id,
@@ -43,7 +60,7 @@ export async function rescheduleAllNotifications(activities: Activity[]): Promis
             console.log(`  ✅ Scheduled notification for task "${task.title}"`);
           } else {
             skippedCount++;
-            console.log(`  ⚠️ Skipped notification for task "${task.title}" (probably in the past)`);
+            console.log(`  ⚠️ Skipped notification for task "${task.title}" (probably in the past or invalid)`);
           }
         } catch (error) {
           errorCount++;
@@ -57,11 +74,13 @@ export async function rescheduleAllNotifications(activities: Activity[]): Promis
     }
   }
 
-  console.log('📊 ========== RESCHEDULING SUMMARY ==========');
-  console.log(`  ✅ Scheduled: ${scheduledCount}`);
-  console.log(`  ⚠️ Skipped: ${skippedCount}`);
+  console.log('\n📊 ========== RESCHEDULING SUMMARY ==========');
+  console.log(`  Total activities processed: ${activities.length}`);
+  console.log(`  Total tasks with reminders: ${totalTasksWithReminders}`);
+  console.log(`  ✅ Successfully scheduled: ${scheduledCount}`);
+  console.log(`  ⚠️ Skipped (past/invalid): ${skippedCount}`);
   console.log(`  ❌ Errors: ${errorCount}`);
-  console.log('============================================');
+  console.log('============================================\n');
   
   // Log all scheduled notifications for debugging
   await getAllScheduledNotifications();

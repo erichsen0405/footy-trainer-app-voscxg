@@ -175,44 +175,66 @@ export async function checkNotificationPermissions(): Promise<boolean> {
 
 // CRITICAL FIX: Calculate notification time with proper timezone handling
 function calculateNotificationTime(
-  activityDate: Date,
+  activityDate: Date | string,
   activityTime: string,
   reminderMinutes: number
 ): Date | null {
   try {
-    console.log('📅 Calculating notification time...');
-    console.log('  Activity Date:', activityDate);
-    console.log('  Activity Date ISO:', activityDate.toISOString());
+    console.log('📅 ========== CALCULATING NOTIFICATION TIME ==========');
+    console.log('  Input Activity Date:', activityDate);
+    console.log('  Input Activity Date Type:', typeof activityDate);
     console.log('  Activity Time:', activityTime);
     console.log('  Reminder Minutes:', reminderMinutes);
+    
+    // CRITICAL FIX: Parse the date properly
+    // If activityDate is a string (from database), it's in format YYYY-MM-DD
+    // We need to parse it in local timezone, not UTC
+    let dateObj: Date;
+    if (typeof activityDate === 'string') {
+      // Parse YYYY-MM-DD in local timezone
+      const dateParts = activityDate.split('T')[0].split('-');
+      const year = parseInt(dateParts[0], 10);
+      const month = parseInt(dateParts[1], 10) - 1; // Month is 0-indexed
+      const day = parseInt(dateParts[2], 10);
+      dateObj = new Date(year, month, day);
+      console.log('  Parsed date from string:', dateObj.toString());
+    } else {
+      dateObj = new Date(activityDate);
+      console.log('  Using date object:', dateObj.toString());
+    }
     
     // Parse the activity time (HH:MM:SS or HH:MM)
     const timeParts = activityTime.split(':');
     const hours = parseInt(timeParts[0], 10);
     const minutes = parseInt(timeParts[1], 10);
     
-    // CRITICAL FIX: Create activity datetime properly
-    // The activityDate comes from the database as a date string (YYYY-MM-DD)
-    // We need to create a proper Date object in the local timezone
-    const activityDateTime = new Date(activityDate);
+    console.log('  Parsed time - Hours:', hours, 'Minutes:', minutes);
+    
+    // CRITICAL FIX: Create activity datetime in local timezone
+    const activityDateTime = new Date(dateObj);
     activityDateTime.setHours(hours, minutes, 0, 0);
     
     console.log('  Activity DateTime (local):', activityDateTime.toString());
     console.log('  Activity DateTime (ISO):', activityDateTime.toISOString());
+    console.log('  Activity DateTime (timestamp):', activityDateTime.getTime());
     
     // Calculate the notification time (subtract reminder minutes)
     const notificationTime = new Date(activityDateTime.getTime() - reminderMinutes * 60 * 1000);
     
     console.log('  Notification Time (local):', notificationTime.toString());
     console.log('  Notification Time (ISO):', notificationTime.toISOString());
-    console.log('  Current Time:', new Date().toString());
-    console.log('  Current Time (ISO):', new Date().toISOString());
+    console.log('  Notification Time (timestamp):', notificationTime.getTime());
+    
+    const now = Date.now();
+    console.log('  Current Time:', new Date(now).toString());
+    console.log('  Current Time (ISO):', new Date(now).toISOString());
+    console.log('  Current Time (timestamp):', now);
     
     // Don't schedule if the notification time is in the past
-    const now = Date.now();
     if (notificationTime.getTime() <= now) {
       const minutesAgo = Math.floor((now - notificationTime.getTime()) / 60000);
       console.log(`⚠️ Notification time is ${minutesAgo} minutes in the past, skipping`);
+      console.log('========== CALCULATION FAILED (PAST TIME) ==========');
       return null;
     }
 
@@ -228,10 +250,12 @@ function calculateNotificationTime(
     } else {
       console.log(`  ⏰ Notification will fire in ${minutesUntil} minutes`);
     }
-
+    
+    console.log('========== CALCULATION SUCCESS ==========');
     return notificationTime;
   } catch (error) {
     console.error('❌ Error calculating notification time:', error);
+    console.log('========== CALCULATION ERROR ==========');
     return null;
   }
 }
@@ -240,7 +264,7 @@ function calculateNotificationTime(
 export async function scheduleTaskReminder(
   taskTitle: string,
   activityTitle: string,
-  activityDate: Date,
+  activityDate: Date | string,
   activityTime: string,
   reminderMinutes: number,
   taskId: string,
@@ -252,12 +276,15 @@ export async function scheduleTaskReminder(
     console.log('  Activity:', activityTitle);
     console.log('  Task ID:', taskId);
     console.log('  Activity ID:', activityId);
+    console.log('  Activity Date:', activityDate);
+    console.log('  Activity Time:', activityTime);
     console.log('  Reminder Minutes:', reminderMinutes);
     
     // CRITICAL FIX: Check permissions before scheduling
     const hasPermission = await checkNotificationPermissions();
     if (!hasPermission) {
       console.log('⚠️ No notification permissions, skipping scheduling');
+      console.log('========== SCHEDULING ABORTED (NO PERMISSION) ==========');
       return null;
     }
     
@@ -265,6 +292,7 @@ export async function scheduleTaskReminder(
     const notificationTime = calculateNotificationTime(activityDate, activityTime, reminderMinutes);
     if (!notificationTime) {
       console.log('⚠️ Could not calculate valid notification time');
+      console.log('========== SCHEDULING ABORTED (INVALID TIME) ==========');
       return null;
     }
 
@@ -278,6 +306,9 @@ export async function scheduleTaskReminder(
 
     // Schedule the notification
     console.log('📤 Scheduling notification with Expo Notifications API...');
+    console.log('  Trigger date:', notificationTime.toISOString());
+    console.log('  Trigger timestamp:', notificationTime.getTime());
+    
     const identifier = await Notifications.scheduleNotificationAsync({
       content: {
         title: `⚽ Påmindelse: ${taskTitle}`,
@@ -312,13 +343,15 @@ export async function scheduleTaskReminder(
       await saveNotificationIdentifier(taskId, activityId, identifier, notificationTime);
     } else {
       console.log('⚠️ Warning: Notification not found in schedule queue after scheduling');
+      console.log('========== SCHEDULING FAILED (NOT IN QUEUE) ==========');
       return null;
     }
     
-    console.log('========== NOTIFICATION SCHEDULED ==========');
+    console.log('========== NOTIFICATION SCHEDULED SUCCESSFULLY ==========');
     return identifier;
   } catch (error) {
     console.error('❌ Error scheduling notification:', error);
+    console.log('========== SCHEDULING ERROR ==========');
     return null;
   }
 }
