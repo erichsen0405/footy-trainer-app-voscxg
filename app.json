@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "Football coach",
@@ -16,7 +17,10 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.anonymous.FootballCoach",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
       }
     },
     "android": {
@@ -46,7 +50,8 @@
           "icon": "./assets/images/58c4d2ff-1987-46af-803d-c0231fc33c42.png",
           "color": "#FF6347",
           "defaultChannel": "task-reminders",
-          "sounds": []
+          "sounds": [],
+          "mode": "production"
         }
       ]
     ],

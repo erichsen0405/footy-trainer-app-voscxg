@@ -4,13 +4,17 @@ import { Platform, Alert, Linking } from 'react-native';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// CRITICAL: Set the notification handler to show notifications in ALL states
+// CRITICAL iOS FIX: Set notification handler with explicit iOS configuration
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowBanner: true,
     shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
+    // iOS specific: ensure notifications show even when app is in foreground
+    ...(Platform.OS === 'ios' && {
+      shouldShowAlert: true,
+    }),
   }),
 });
 
@@ -92,10 +96,42 @@ export async function clearAllNotificationIdentifiers(): Promise<void> {
   }
 }
 
+// CRITICAL iOS FIX: Setup notification categories for iOS
+async function setupNotificationCategories() {
+  if (Platform.OS === 'ios') {
+    try {
+      console.log('🍎 Setting up iOS notification categories...');
+      
+      await Notifications.setNotificationCategoryAsync('task-reminder', [
+        {
+          identifier: 'mark-complete',
+          buttonTitle: 'Marker som færdig',
+          options: {
+            opensAppToForeground: false,
+          },
+        },
+        {
+          identifier: 'view-task',
+          buttonTitle: 'Se opgave',
+          options: {
+            opensAppToForeground: true,
+          },
+        },
+      ]);
+      
+      console.log('✅ iOS notification categories configured');
+    } catch (error) {
+      console.error('❌ Error setting up iOS notification categories:', error);
+    }
+  }
+}
+
 // Request notification permissions with detailed logging and persistence
 export async function requestNotificationPermissions(): Promise<boolean> {
   try {
-    console.log('🔔 Requesting notification permissions...');
+    console.log('🔔 ========== REQUESTING NOTIFICATION PERMISSIONS ==========');
+    console.log('  Platform:', Platform.OS);
+    console.log('  iOS Version:', Platform.Version);
     
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     console.log('🔔 Existing permission status:', existingStatus);
@@ -104,7 +140,22 @@ export async function requestNotificationPermissions(): Promise<boolean> {
 
     if (existingStatus !== 'granted') {
       console.log('🔔 Permissions not granted, requesting...');
-      const { status } = await Notifications.requestPermissionsAsync();
+      
+      // iOS CRITICAL FIX: Request with explicit iOS options
+      const requestOptions = Platform.OS === 'ios' ? {
+        ios: {
+          allowAlert: true,
+          allowBadge: true,
+          allowSound: true,
+          allowDisplayInCarPlay: false,
+          allowCriticalAlerts: false,
+          provideAppNotificationSettings: false,
+          allowProvisional: false,
+          allowAnnouncements: false,
+        },
+      } : {};
+      
+      const { status } = await Notifications.requestPermissionsAsync(requestOptions);
       finalStatus = status;
       console.log('🔔 New permission status:', finalStatus);
     }
@@ -123,6 +174,7 @@ export async function requestNotificationPermissions(): Promise<boolean> {
         ]
       );
       
+      console.log('========== PERMISSION REQUEST FAILED ==========');
       return false;
     }
 
@@ -145,10 +197,15 @@ export async function requestNotificationPermissions(): Promise<boolean> {
       console.log('✅ Android notification channel created');
     }
 
+    // iOS CRITICAL FIX: Setup notification categories
+    await setupNotificationCategories();
+
     console.log('✅ Notification permissions granted successfully');
+    console.log('========== PERMISSION REQUEST SUCCESS ==========');
     return true;
   } catch (error) {
     console.error('❌ Error requesting notification permissions:', error);
+    console.log('========== PERMISSION REQUEST ERROR ==========');
     return false;
   }
 }
@@ -185,6 +242,7 @@ function calculateNotificationTime(
     console.log('  Input Activity Date Type:', typeof activityDate);
     console.log('  Activity Time:', activityTime);
     console.log('  Reminder Minutes:', reminderMinutes);
+    console.log('  Platform:', Platform.OS);
     
     // CRITICAL FIX: Parse the date properly
     // If activityDate is a string (from database), it's in format YYYY-MM-DD
@@ -260,7 +318,7 @@ function calculateNotificationTime(
   }
 }
 
-// CRITICAL FIX: Schedule a notification for a task reminder with extensive logging and validation
+// CRITICAL iOS FIX: Schedule a notification with iOS-specific configuration
 export async function scheduleTaskReminder(
   taskTitle: string,
   activityTitle: string,
@@ -279,6 +337,7 @@ export async function scheduleTaskReminder(
     console.log('  Activity Date:', activityDate);
     console.log('  Activity Time:', activityTime);
     console.log('  Reminder Minutes:', reminderMinutes);
+    console.log('  Platform:', Platform.OS);
     
     // CRITICAL FIX: Check permissions before scheduling
     const hasPermission = await checkNotificationPermissions();
@@ -304,30 +363,52 @@ export async function scheduleTaskReminder(
       await removeNotificationIdentifier(taskId);
     }
 
+    // iOS CRITICAL FIX: Build notification content with iOS-specific options
+    const notificationContent: Notifications.NotificationContentInput = {
+      title: `⚽ Påmindelse: ${taskTitle}`,
+      body: `${activityTitle} starter om ${reminderMinutes} minutter`,
+      sound: 'default',
+      data: {
+        taskId,
+        activityId,
+        type: 'task-reminder',
+        scheduledFor: notificationTime.toISOString(),
+      },
+      badge: 1,
+    };
+
+    // iOS specific: Add category for actions
+    if (Platform.OS === 'ios') {
+      notificationContent.categoryIdentifier = 'task-reminder';
+    }
+
+    // Android specific: Add priority
+    if (Platform.OS === 'android') {
+      notificationContent.priority = Notifications.AndroidNotificationPriority.HIGH;
+    }
+
     // Schedule the notification
     console.log('📤 Scheduling notification with Expo Notifications API...');
     console.log('  Trigger date:', notificationTime.toISOString());
     console.log('  Trigger timestamp:', notificationTime.getTime());
+    console.log('  Notification content:', JSON.stringify(notificationContent, null, 2));
     
+    // iOS CRITICAL FIX: Use explicit date trigger
+    const trigger: Notifications.NotificationTriggerInput = {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: notificationTime,
+    };
+
+    // Android specific: Add channel ID
+    if (Platform.OS === 'android') {
+      (trigger as any).channelId = 'task-reminders';
+    }
+
+    console.log('  Trigger config:', JSON.stringify(trigger, null, 2));
+
     const identifier = await Notifications.scheduleNotificationAsync({
-      content: {
-        title: `⚽ Påmindelse: ${taskTitle}`,
-        body: `${activityTitle} starter om ${reminderMinutes} minutter`,
-        sound: 'default',
-        data: {
-          taskId,
-          activityId,
-          type: 'task-reminder',
-          scheduledFor: notificationTime.toISOString(),
-        },
-        priority: Notifications.AndroidNotificationPriority.HIGH,
-        badge: 1,
-      },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: notificationTime,
-        channelId: Platform.OS === 'android' ? 'task-reminders' : undefined,
-      },
+      content: notificationContent,
+      trigger,
     });
 
     console.log('✅ Notification scheduled successfully with ID:', identifier);
@@ -337,7 +418,7 @@ export async function scheduleTaskReminder(
     const ourNotification = scheduledNotifications.find(n => n.identifier === identifier);
     if (ourNotification) {
       console.log('✅ Verified notification is in schedule queue');
-      console.log('   Trigger:', ourNotification.trigger);
+      console.log('   Trigger:', JSON.stringify(ourNotification.trigger, null, 2));
       
       // CRITICAL FIX: Persist the notification identifier
       await saveNotificationIdentifier(taskId, activityId, identifier, notificationTime);
@@ -351,6 +432,7 @@ export async function scheduleTaskReminder(
     return identifier;
   } catch (error) {
     console.error('❌ Error scheduling notification:', error);
+    console.error('   Error details:', JSON.stringify(error, null, 2));
     console.log('========== SCHEDULING ERROR ==========');
     return null;
   }
@@ -402,6 +484,7 @@ export async function getAllScheduledNotifications(): Promise<Notifications.Noti
   try {
     const notifications = await Notifications.getAllScheduledNotificationsAsync();
     console.log(`📋 ========== SCHEDULED NOTIFICATIONS (${notifications.length}) ==========`);
+    console.log(`  Platform: ${Platform.OS}`);
     
     notifications.forEach((notification, index) => {
       console.log(`  ${index + 1}. ID: ${notification.identifier}`);
@@ -463,6 +546,7 @@ export function addNotificationResponseListener(
   console.log('👂 Setting up notification response listener');
   return Notifications.addNotificationResponseReceivedListener((response) => {
     console.log('🔔 Notification tapped:', response.notification.request.content.title);
+    console.log('   Action identifier:', response.actionIdentifier);
     callback(response);
   });
 }
@@ -481,7 +565,8 @@ export function addNotificationReceivedListener(
 // Debug function to test notifications immediately
 export async function testNotification(): Promise<void> {
   try {
-    console.log('🧪 Sending test notification...');
+    console.log('🧪 ========== SENDING TEST NOTIFICATION ==========');
+    console.log('  Platform:', Platform.OS);
     
     const hasPermission = await checkNotificationPermissions();
     if (!hasPermission) {
@@ -496,28 +581,53 @@ export async function testNotification(): Promise<void> {
       return;
     }
     
+    const notificationContent: Notifications.NotificationContentInput = {
+      title: '⚽ Test Påmindelse',
+      body: 'Dette er en test notifikation. Hvis du ser denne, virker notifikationer!',
+      sound: 'default',
+      data: {
+        type: 'test',
+      },
+      badge: 1,
+    };
+
+    // iOS specific: Add category
+    if (Platform.OS === 'ios') {
+      notificationContent.categoryIdentifier = 'task-reminder';
+    }
+
+    // Android specific: Add priority
+    if (Platform.OS === 'android') {
+      notificationContent.priority = Notifications.AndroidNotificationPriority.HIGH;
+    }
+
+    const trigger: Notifications.NotificationTriggerInput = {
+      seconds: 2,
+    };
+
+    // Android specific: Add channel ID
+    if (Platform.OS === 'android') {
+      (trigger as any).channelId = 'task-reminders';
+    }
+
+    console.log('  Scheduling test notification...');
+    console.log('  Content:', JSON.stringify(notificationContent, null, 2));
+    console.log('  Trigger:', JSON.stringify(trigger, null, 2));
+
     await Notifications.scheduleNotificationAsync({
-      content: {
-        title: '⚽ Test Påmindelse',
-        body: 'Dette er en test notifikation. Hvis du ser denne, virker notifikationer!',
-        sound: 'default',
-        data: {
-          type: 'test',
-        },
-        priority: Notifications.AndroidNotificationPriority.HIGH,
-        badge: 1,
-      },
-      trigger: {
-        seconds: 2,
-        channelId: Platform.OS === 'android' ? 'task-reminders' : undefined,
-      },
+      content: notificationContent,
+      trigger,
     });
     
     console.log('✅ Test notification scheduled for 2 seconds from now');
+    console.log('========== TEST NOTIFICATION SCHEDULED ==========');
+    
     Alert.alert('Test notifikation', 'En test notifikation vil vises om 2 sekunder');
   } catch (error) {
     console.error('❌ Error sending test notification:', error);
-    Alert.alert('Fejl', 'Kunne ikke sende test notifikation');
+    console.error('   Error details:', JSON.stringify(error, null, 2));
+    console.log('========== TEST NOTIFICATION ERROR ==========');
+    Alert.alert('Fejl', 'Kunne ikke sende test notifikation: ' + (error as Error).message);
   }
 }
 
@@ -525,6 +635,7 @@ export async function testNotification(): Promise<void> {
 export async function openNotificationSettings(): Promise<void> {
   try {
     console.log('📱 Opening notification settings...');
+    console.log('  Platform:', Platform.OS);
     
     if (Platform.OS === 'ios') {
       await Linking.openURL('app-settings:');
