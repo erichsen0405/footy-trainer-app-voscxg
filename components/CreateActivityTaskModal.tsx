@@ -21,6 +21,7 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 import { useFootball } from '@/contexts/FootballContext';
+import { scheduleTaskReminder } from '@/utils/notificationService';
 
 interface CreateActivityTaskModalProps {
   visible: boolean;
@@ -41,7 +42,7 @@ export default function CreateActivityTaskModal({
 }: CreateActivityTaskModalProps) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const { refreshData } = useFootball();
+  const { refreshData, activities } = useFootball();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -62,7 +63,7 @@ export default function CreateActivityTaskModal({
     setIsCreating(true);
 
     try {
-      console.log('Creating standalone task for activity:', activityId);
+      console.log('🆕 Creating standalone task for activity:', activityId);
 
       // Parse reminder minutes
       const reminderValue = reminderMinutes.trim() ? parseInt(reminderMinutes, 10) : null;
@@ -87,11 +88,33 @@ export default function CreateActivityTaskModal({
         .single();
 
       if (error) {
-        console.error('Error creating activity task:', error);
+        console.error('❌ Error creating activity task:', error);
         throw error;
       }
 
-      console.log('Activity task created successfully:', data.id);
+      console.log('✅ Activity task created successfully:', data.id);
+
+      // CRITICAL FIX: Schedule notification if reminder is set
+      if (reminderValue && reminderValue > 0) {
+        console.log('📅 Task has reminder, scheduling notification...');
+        
+        // Find the activity to get date and time
+        const activity = activities.find(a => a.id === activityId);
+        if (activity) {
+          await scheduleTaskReminder(
+            title.trim(),
+            activityTitle,
+            activity.date,
+            activity.time,
+            reminderValue,
+            data.id,
+            activityId
+          );
+          console.log('✅ Notification scheduled for new task');
+        } else {
+          console.log('⚠️ Could not find activity to schedule notification');
+        }
+      }
 
       Alert.alert('Succes', 'Opgaven er blevet oprettet');
 
@@ -110,7 +133,7 @@ export default function CreateActivityTaskModal({
 
       onClose();
     } catch (error: any) {
-      console.error('Failed to create activity task:', error);
+      console.error('❌ Failed to create activity task:', error);
       Alert.alert('Fejl', `Kunne ikke oprette opgaven: ${error?.message || 'Ukendt fejl'}`);
     } finally {
       setIsCreating(false);

@@ -18,16 +18,20 @@ import { useRouter } from 'expo-router';
 import CreatePlayerModal from '@/components/CreatePlayerModal';
 import PlayersList from '@/components/PlayersList';
 import { deleteTestTasksFromTraening } from '@/utils/cleanupTasks';
-import { testNotification, getNotificationStats, syncNotifications } from '@/utils/notificationService';
+import { testNotification, getNotificationStats, syncNotifications, getAllScheduledNotifications } from '@/utils/notificationService';
+import { rescheduleAllNotifications } from '@/utils/notificationRescheduler';
+import { useFootball } from '@/contexts/FootballContext';
 
 export default function AdminScreen() {
   const { userRole, loading: roleLoading, isAdmin } = useUserRole();
+  const { activities } = useFootball();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const router = useRouter();
   const [showCreatePlayerModal, setShowCreatePlayerModal] = useState(false);
   const [isCleaningUp, setIsCleaningUp] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isRescheduling, setIsRescheduling] = useState(false);
   const [notificationStats, setNotificationStats] = useState<{
     scheduled: number;
     stored: number;
@@ -120,6 +124,22 @@ export default function AdminScreen() {
       Alert.alert('Fejl', 'Kunne ikke synkronisere notifikationer');
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const handleRescheduleNotifications = async () => {
+    setIsRescheduling(true);
+    try {
+      console.log('🔄 Manual notification rescheduling triggered from admin panel');
+      await rescheduleAllNotifications(activities);
+      await loadNotificationStats();
+      await getAllScheduledNotifications();
+      Alert.alert('Succes', 'Alle notifikationer er blevet genplanlagt');
+    } catch (error) {
+      console.error('Error rescheduling notifications:', error);
+      Alert.alert('Fejl', 'Kunne ikke genplanlegge notifikationer');
+    } finally {
+      setIsRescheduling(false);
     }
   };
 
@@ -296,6 +316,53 @@ export default function AdminScreen() {
                   />
                   <Text style={[styles.maintenanceButtonText, { color: colors.secondary }]}>
                     Synk
+                  </Text>
+                </React.Fragment>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* Reschedule All Notifications Button */}
+          <View style={[styles.maintenanceItem, { marginTop: 16 }]}>
+            <View style={styles.maintenanceInfo}>
+              <View style={[styles.maintenanceIconContainer, { backgroundColor: 'rgba(156, 39, 176, 0.1)' }]}>
+                <IconSymbol
+                  ios_icon_name="calendar.badge.clock"
+                  android_material_icon_name="schedule"
+                  size={32}
+                  color={colors.accent}
+                />
+              </View>
+              <View style={styles.maintenanceTextContainer}>
+                <Text style={[styles.maintenanceTitle, { color: textColor }]}>
+                  Genplanlæg alle notifikationer
+                </Text>
+                <Text style={[styles.maintenanceDescription, { color: textSecondaryColor }]}>
+                  Genplanlæg alle notifikationer for opgaver med påmindelser
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.maintenanceButton,
+                { backgroundColor: isDark ? '#2a1a3a' : '#f3e5f5' }
+              ]}
+              onPress={handleRescheduleNotifications}
+              activeOpacity={0.7}
+              disabled={isRescheduling}
+            >
+              {isRescheduling ? (
+                <ActivityIndicator size="small" color={colors.accent} />
+              ) : (
+                <React.Fragment>
+                  <IconSymbol
+                    ios_icon_name="arrow.clockwise.circle"
+                    android_material_icon_name="update"
+                    size={20}
+                    color={colors.accent}
+                  />
+                  <Text style={[styles.maintenanceButtonText, { color: colors.accent }]}>
+                    Genplanlæg
                   </Text>
                 </React.Fragment>
               )}

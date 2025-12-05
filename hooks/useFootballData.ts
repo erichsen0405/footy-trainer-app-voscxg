@@ -11,6 +11,7 @@ import {
   syncNotifications,
   loadNotificationIdentifiers,
 } from '@/utils/notificationService';
+import { rescheduleAllNotifications } from '@/utils/notificationRescheduler';
 import { startOfWeek, endOfWeek } from 'date-fns';
 
 function getWeekNumber(date: Date): number {
@@ -326,10 +327,12 @@ export function useFootballData() {
         setActivities(internal);
         setExternalActivities(external);
 
-        // CRITICAL: Schedule notifications for tasks with reminders (only if permissions granted)
+        // CRITICAL: Reschedule ALL notifications for tasks with reminders (only if permissions granted)
         if (notificationsEnabled) {
-          console.log('🔔 Scheduling notifications for activities...');
-          scheduleNotificationsForActivities(internal);
+          console.log('🔔 Rescheduling all notifications for activities...');
+          rescheduleAllNotifications(internal).catch(err => {
+            console.error('❌ Error rescheduling notifications:', err);
+          });
         } else {
           console.log('⚠️ Notifications disabled, skipping scheduling');
         }
@@ -340,43 +343,7 @@ export function useFootballData() {
     loadActivities();
   }, [userId, categories, refreshTrigger, notificationsEnabled]);
 
-  // CRITICAL FIX: Schedule notifications for all activities with tasks that have reminders
-  const scheduleNotificationsForActivities = async (activitiesToSchedule: Activity[]) => {
-    console.log('📅 Scheduling notifications for', activitiesToSchedule.length, 'activities');
-    let scheduledCount = 0;
-    let skippedCount = 0;
 
-    for (const activity of activitiesToSchedule) {
-      for (const task of activity.tasks) {
-        if (task.reminder && !task.completed) {
-          console.log(`  📝 Task "${task.title}" has reminder: ${task.reminder} minutes`);
-          
-          const identifier = await scheduleTaskReminder(
-            task.title,
-            activity.title,
-            activity.date,
-            activity.time,
-            task.reminder,
-            task.id,
-            activity.id
-          );
-
-          if (identifier) {
-            scheduledCount++;
-            console.log(`  ✅ Scheduled notification for task "${task.title}"`);
-          } else {
-            skippedCount++;
-            console.log(`  ⚠️ Skipped notification for task "${task.title}" (probably in the past or no permissions)`);
-          }
-        }
-      }
-    }
-
-    console.log(`📊 Notification scheduling complete: ${scheduledCount} scheduled, ${skippedCount} skipped`);
-    
-    // Log all scheduled notifications for debugging
-    await getAllScheduledNotifications();
-  };
 
   // Load trophies from database
   useEffect(() => {

@@ -181,7 +181,8 @@ function calculateNotificationTime(
 ): Date | null {
   try {
     console.log('📅 Calculating notification time...');
-    console.log('  Activity Date:', activityDate.toISOString());
+    console.log('  Activity Date:', activityDate);
+    console.log('  Activity Date ISO:', activityDate.toISOString());
     console.log('  Activity Time:', activityTime);
     console.log('  Reminder Minutes:', reminderMinutes);
     
@@ -190,28 +191,32 @@ function calculateNotificationTime(
     const hours = parseInt(timeParts[0], 10);
     const minutes = parseInt(timeParts[1], 10);
     
-    // CRITICAL FIX: Create activity datetime in local timezone
-    // Use the date components directly without timezone conversion
+    // CRITICAL FIX: Create activity datetime properly
+    // The activityDate comes from the database as a date string (YYYY-MM-DD)
+    // We need to create a proper Date object in the local timezone
     const activityDateTime = new Date(activityDate);
     activityDateTime.setHours(hours, minutes, 0, 0);
     
-    console.log('  Activity DateTime (local):', activityDateTime.toISOString());
-    console.log('  Activity DateTime (local string):', activityDateTime.toString());
+    console.log('  Activity DateTime (local):', activityDateTime.toString());
+    console.log('  Activity DateTime (ISO):', activityDateTime.toISOString());
     
     // Calculate the notification time (subtract reminder minutes)
     const notificationTime = new Date(activityDateTime.getTime() - reminderMinutes * 60 * 1000);
     
-    console.log('  Notification Time (local):', notificationTime.toISOString());
-    console.log('  Notification Time (local string):', notificationTime.toString());
-    console.log('  Current Time:', new Date().toISOString());
+    console.log('  Notification Time (local):', notificationTime.toString());
+    console.log('  Notification Time (ISO):', notificationTime.toISOString());
+    console.log('  Current Time:', new Date().toString());
+    console.log('  Current Time (ISO):', new Date().toISOString());
     
     // Don't schedule if the notification time is in the past
-    if (notificationTime.getTime() <= Date.now()) {
-      console.log('⚠️ Notification time is in the past, skipping');
+    const now = Date.now();
+    if (notificationTime.getTime() <= now) {
+      const minutesAgo = Math.floor((now - notificationTime.getTime()) / 60000);
+      console.log(`⚠️ Notification time is ${minutesAgo} minutes in the past, skipping`);
       return null;
     }
 
-    const timeUntilNotification = notificationTime.getTime() - Date.now();
+    const timeUntilNotification = notificationTime.getTime() - now;
     const minutesUntil = Math.floor(timeUntilNotification / 60000);
     const hoursUntil = Math.floor(minutesUntil / 60);
     const daysUntil = Math.floor(hoursUntil / 24);
@@ -242,11 +247,12 @@ export async function scheduleTaskReminder(
   activityId: string
 ): Promise<string | null> {
   try {
-    console.log('📅 Scheduling notification...');
+    console.log('📅 ========== SCHEDULING NOTIFICATION ==========');
     console.log('  Task:', taskTitle);
     console.log('  Activity:', activityTitle);
     console.log('  Task ID:', taskId);
     console.log('  Activity ID:', activityId);
+    console.log('  Reminder Minutes:', reminderMinutes);
     
     // CRITICAL FIX: Check permissions before scheduling
     const hasPermission = await checkNotificationPermissions();
@@ -258,6 +264,7 @@ export async function scheduleTaskReminder(
     // Calculate notification time
     const notificationTime = calculateNotificationTime(activityDate, activityTime, reminderMinutes);
     if (!notificationTime) {
+      console.log('⚠️ Could not calculate valid notification time');
       return null;
     }
 
@@ -270,6 +277,7 @@ export async function scheduleTaskReminder(
     }
 
     // Schedule the notification
+    console.log('📤 Scheduling notification with Expo Notifications API...');
     const identifier = await Notifications.scheduleNotificationAsync({
       content: {
         title: `⚽ Påmindelse: ${taskTitle}`,
@@ -298,6 +306,7 @@ export async function scheduleTaskReminder(
     const ourNotification = scheduledNotifications.find(n => n.identifier === identifier);
     if (ourNotification) {
       console.log('✅ Verified notification is in schedule queue');
+      console.log('   Trigger:', ourNotification.trigger);
       
       // CRITICAL FIX: Persist the notification identifier
       await saveNotificationIdentifier(taskId, activityId, identifier, notificationTime);
@@ -306,6 +315,7 @@ export async function scheduleTaskReminder(
       return null;
     }
     
+    console.log('========== NOTIFICATION SCHEDULED ==========');
     return identifier;
   } catch (error) {
     console.error('❌ Error scheduling notification:', error);
@@ -358,7 +368,7 @@ export async function cancelAllNotifications(): Promise<void> {
 export async function getAllScheduledNotifications(): Promise<Notifications.NotificationRequest[]> {
   try {
     const notifications = await Notifications.getAllScheduledNotificationsAsync();
-    console.log(`📋 Found ${notifications.length} scheduled notifications:`);
+    console.log(`📋 ========== SCHEDULED NOTIFICATIONS (${notifications.length}) ==========`);
     
     notifications.forEach((notification, index) => {
       console.log(`  ${index + 1}. ID: ${notification.identifier}`);
@@ -368,10 +378,17 @@ export async function getAllScheduledNotifications(): Promise<Notifications.Noti
         const triggerDate = new Date(notification.trigger.date);
         const now = new Date();
         const minutesUntil = Math.floor((triggerDate.getTime() - now.getTime()) / 60000);
-        console.log(`     Scheduled for: ${triggerDate.toISOString()} (in ${minutesUntil} minutes)`);
+        console.log(`     Scheduled for: ${triggerDate.toISOString()}`);
+        console.log(`     Local time: ${triggerDate.toString()}`);
+        console.log(`     Fires in: ${minutesUntil} minutes`);
+      }
+      if (notification.content.data) {
+        console.log(`     Task ID: ${notification.content.data.taskId}`);
+        console.log(`     Activity ID: ${notification.content.data.activityId}`);
       }
     });
     
+    console.log('========================================');
     return notifications;
   } catch (error) {
     console.error('❌ Error getting scheduled notifications:', error);
