@@ -22,7 +22,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import EditSeriesDialog from '@/components/EditSeriesDialog';
 import DeleteActivityDialog from '@/components/DeleteActivityDialog';
 import { useUserRole } from '@/hooks/useUserRole';
-import CreateActivityTaskModal from '@/components/CreateActivityTaskModal';
+import { CreateActivityTaskModal } from '@/components/CreateActivityTaskModal';
 
 export default function ActivityDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
