@@ -15,7 +15,7 @@ import {
 import { colors } from '@/styles/commonStyles';
 import { Task } from '@/types';
 import { supabase } from '@/app/integrations/supabase/client';
-import { scheduleTaskReminder, getAllScheduledNotifications } from '@/utils/notificationService';
+import { scheduleTaskReminderImmediate } from '@/utils/notificationScheduler';
 
 interface CreateActivityTaskModalProps {
   visible: boolean;
@@ -182,50 +182,36 @@ export function CreateActivityTaskModal({
 
       console.log('✅ Task created in database:', taskData.id);
 
-      // If reminder is set, schedule notification immediately
+      // If reminder is set, schedule notification using the smart scheduler
       if (hasReminder && taskData) {
         console.log('📅 Scheduling notification for new task...');
         console.log('  Task ID:', taskData.id);
         console.log('  Reminder Minutes:', parseInt(reminderMinutes, 10));
         
-        const notificationId = await scheduleTaskReminder(
-          title.trim(),
-          activityTitle,
-          activityDate,
-          activityTime,
-          parseInt(reminderMinutes, 10),
+        const activityDateStr = activityDate.toISOString().split('T')[0];
+        
+        const success = await scheduleTaskReminderImmediate(
           taskData.id,
-          activityId
+          title.trim(),
+          activityId,
+          activityTitle,
+          activityDateStr,
+          activityTime,
+          parseInt(reminderMinutes, 10)
         );
 
-        if (notificationId) {
-          console.log('✅ Notification scheduled successfully:', notificationId);
-          
-          // Verify the notification was scheduled
-          console.log('🔍 Verifying notification was scheduled...');
-          const allNotifications = await getAllScheduledNotifications();
-          const ourNotification = allNotifications.find(n => n.identifier === notificationId);
-          
-          if (ourNotification) {
-            console.log('✅ Notification verified in queue');
-            Alert.alert(
-              'Opgave oprettet',
-              `Opgaven "${title}" er oprettet med påmindelse ${reminderMinutes} minutter før aktiviteten.`,
-              [{ text: 'OK' }]
-            );
-          } else {
-            console.log('⚠️ Warning: Notification not found in queue');
-            Alert.alert(
-              'Advarsel',
-              `Opgaven er oprettet, men notifikationen kunne ikke verificeres. Tjek notifikationsindstillingerne.`,
-              [{ text: 'OK' }]
-            );
-          }
-        } else {
-          console.log('⚠️ Notification scheduling failed');
+        if (success) {
+          console.log('✅ Notification scheduled successfully');
           Alert.alert(
-            'Advarsel',
-            `Opgaven er oprettet, men notifikationen kunne ikke planlægges. Tjek at aktiviteten er i fremtiden og at notifikationer er aktiveret.`,
+            'Opgave oprettet',
+            `Opgaven "${title}" er oprettet med påmindelse ${reminderMinutes} minutter før aktiviteten.`,
+            [{ text: 'OK' }]
+          );
+        } else {
+          console.log('⚠️ Notification scheduling failed or deferred');
+          Alert.alert(
+            'Opgave oprettet',
+            `Opgaven "${title}" er oprettet. Påmindelsen vil blive planlagt automatisk.`,
             [{ text: 'OK' }]
           );
         }

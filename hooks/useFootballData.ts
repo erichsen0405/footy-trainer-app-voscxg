@@ -4,14 +4,9 @@ import { Activity, ActivityCategory, Task, Trophy, ExternalCalendar, ActivitySer
 import { fetchAndParseICalendar, formatTimeFromDate } from '@/utils/icalParser';
 import { supabase } from '@/app/integrations/supabase/client';
 import { 
-  scheduleTaskReminder, 
-  cancelNotificationByTaskId,
-  getAllScheduledNotifications,
   checkNotificationPermissions,
-  syncNotifications,
-  loadNotificationIdentifiers,
 } from '@/utils/notificationService';
-import { rescheduleAllNotifications } from '@/utils/notificationRescheduler';
+import { refreshNotificationQueue, forceRefreshNotificationQueue } from '@/utils/notificationScheduler';
 import { startOfWeek, endOfWeek } from 'date-fns';
 
 function getWeekNumber(date: Date): number {
@@ -100,17 +95,15 @@ export function useFootballData() {
     getCurrentUser();
   }, []);
 
-  // CRITICAL: Check notification permissions on mount and sync notifications
+  // Check notification permissions on mount
   useEffect(() => {
     const initializeNotifications = async () => {
-      console.log('🔔 Initializing notification system...');
+      console.log('🔔 Checking notification permissions...');
       const granted = await checkNotificationPermissions();
       setNotificationsEnabled(granted);
       
       if (granted) {
         console.log('✅ Notifications are enabled');
-        // CRITICAL FIX: Sync notifications on startup
-        await syncNotifications();
       } else {
         console.log('❌ Notifications are disabled');
       }
@@ -327,14 +320,12 @@ export function useFootballData() {
         setActivities(internal);
         setExternalActivities(external);
 
-        // CRITICAL: Reschedule ALL notifications for tasks with reminders (only if permissions granted)
+        // Refresh notification queue after loading activities
         if (notificationsEnabled) {
-          console.log('🔔 Rescheduling all notifications for activities...');
-          rescheduleAllNotifications(internal).catch(err => {
-            console.error('❌ Error rescheduling notifications:', err);
+          console.log('🔔 Refreshing notification queue after loading activities...');
+          refreshNotificationQueue().catch(err => {
+            console.error('❌ Error refreshing notification queue:', err);
           });
-        } else {
-          console.log('⚠️ Notifications disabled, skipping scheduling');
         }
       }
       setIsLoading(false);
@@ -342,8 +333,6 @@ export function useFootballData() {
 
     loadActivities();
   }, [userId, categories, refreshTrigger, notificationsEnabled]);
-
-
 
   // Load trophies from database
   useEffect(() => {
@@ -637,6 +626,11 @@ export function useFootballData() {
 
       // Trigger refresh
       setRefreshTrigger(prev => prev + 1);
+      
+      // Refresh notification queue after creating activities
+      if (notificationsEnabled) {
+        await refreshNotificationQueue(true);
+      }
     } catch (error) {
       console.error('Failed to create activity:', error);
       throw error;
@@ -689,28 +683,12 @@ export function useFootballData() {
 
       console.log('Activity updated successfully');
       
-      // CRITICAL FIX: If date or time changed, reschedule notifications for this activity's tasks
-      if ((updates.date || updates.time) && notificationsEnabled) {
-        console.log('🔄 Activity date/time changed, rescheduling notifications...');
-        const activity = activities.find(a => a.id === activityId);
-        if (activity) {
-          for (const task of activity.tasks) {
-            if (task.reminder && !task.completed) {
-              await scheduleTaskReminder(
-                task.title,
-                updates.title || activity.title,
-                updates.date || activity.date,
-                updates.time || activity.time,
-                task.reminder,
-                task.id,
-                activityId
-              );
-            }
-          }
-        }
-      }
-      
       setRefreshTrigger(prev => prev + 1);
+      
+      // Refresh notification queue if date/time changed
+      if ((updates.date || updates.time) && notificationsEnabled) {
+        await refreshNotificationQueue(true);
+      }
     } catch (error) {
       console.error('Failed to update activity:', error);
       throw error;
@@ -751,28 +729,12 @@ export function useFootballData() {
 
       console.log('Series updated successfully (trigger will update all activities)');
       
-      // CRITICAL FIX: If time changed, reschedule notifications for all activities in series
-      if (updates.time && notificationsEnabled) {
-        console.log('🔄 Series time changed, rescheduling notifications for all activities in series...');
-        const seriesActivities = activities.filter(a => a.seriesId === seriesId);
-        for (const activity of seriesActivities) {
-          for (const task of activity.tasks) {
-            if (task.reminder && !task.completed) {
-              await scheduleTaskReminder(
-                task.title,
-                updates.title || activity.title,
-                activity.date,
-                updates.time,
-                task.reminder,
-                task.id,
-                activity.id
-              );
-            }
-          }
-        }
-      }
-      
       setRefreshTrigger(prev => prev + 1);
+      
+      // Refresh notification queue if time changed
+      if (updates.time && notificationsEnabled) {
+        await refreshNotificationQueue(true);
+      }
     } catch (error) {
       console.error('Failed to update series:', error);
       throw error;
@@ -805,19 +767,16 @@ export function useFootballData() {
 
       console.log('Activity deleted from database successfully');
 
-      // CRITICAL FIX: Cancel notifications for this activity's tasks
-      const activity = activities.find(a => a.id === id);
-      if (activity) {
-        for (const task of activity.tasks) {
-          await cancelNotificationByTaskId(task.id);
-        }
-      }
-
       // Update local state immediately
       setActivities(prevActivities => prevActivities.filter(activity => activity.id !== id));
       
       // Trigger a refresh to ensure consistency
       setRefreshTrigger(prev => prev + 1);
+      
+      // Refresh notification queue after deleting activity
+      if (notificationsEnabled) {
+        await refreshNotificationQueue(true);
+      }
     } catch (error) {
       console.error('Failed to delete activity:', error);
       throw error;
@@ -832,9 +791,6 @@ export function useFootballData() {
     console.log('Deleting single activity:', activityId);
 
     try {
-      // Get the activity to cancel notifications
-      const activity = activities.find(a => a.id === activityId);
-      
       // Delete from Supabase
       const { error } = await supabase
         .from('activities')
@@ -849,18 +805,16 @@ export function useFootballData() {
 
       console.log('Activity deleted successfully');
 
-      // Cancel notifications for this activity's tasks
-      if (activity) {
-        for (const task of activity.tasks) {
-          await cancelNotificationByTaskId(task.id);
-        }
-      }
-
       // Update local state immediately
       setActivities(prevActivities => prevActivities.filter(a => a.id !== activityId));
       
       // Trigger a refresh to ensure consistency
       setRefreshTrigger(prev => prev + 1);
+      
+      // Refresh notification queue after deleting activity
+      if (notificationsEnabled) {
+        await refreshNotificationQueue(true);
+      }
     } catch (error) {
       console.error('Failed to delete activity:', error);
       throw error;
@@ -875,9 +829,6 @@ export function useFootballData() {
     console.log('Deleting activity series:', seriesId);
 
     try {
-      // Get all activities in the series to cancel notifications
-      const seriesActivities = activities.filter(a => a.seriesId === seriesId);
-      
       // Delete all activities in the series
       const { error: activitiesError } = await supabase
         .from('activities')
@@ -906,18 +857,16 @@ export function useFootballData() {
 
       console.log('Series deleted successfully');
 
-      // Cancel notifications for all activities in the series
-      for (const activity of seriesActivities) {
-        for (const task of activity.tasks) {
-          await cancelNotificationByTaskId(task.id);
-        }
-      }
-
       // Update local state immediately
       setActivities(prevActivities => prevActivities.filter(a => a.seriesId !== seriesId));
       
       // Trigger a refresh to ensure consistency
       setRefreshTrigger(prev => prev + 1);
+      
+      // Refresh notification queue after deleting series
+      if (notificationsEnabled) {
+        await forceRefreshNotificationQueue();
+      }
     } catch (error) {
       console.error('Failed to delete series:', error);
       throw error;
@@ -989,6 +938,11 @@ export function useFootballData() {
 
       // Trigger refresh to reload tasks AND activities (to show new tasks)
       setRefreshTrigger(prev => prev + 1);
+      
+      // Refresh notification queue after adding task template
+      if (notificationsEnabled) {
+        await refreshNotificationQueue(true);
+      }
     } catch (error) {
       console.error('Failed to create task template:', error);
       throw error;
@@ -1073,18 +1027,17 @@ export function useFootballData() {
             console.error('Error updating activity tasks:', activityTaskError);
           } else {
             console.log('Activity tasks updated to match template');
-            
-            // CRITICAL FIX: If reminder changed, reschedule notifications for all affected tasks
-            if (updateData.reminder_minutes !== undefined && notificationsEnabled) {
-              console.log('🔄 Task reminder changed, rescheduling notifications...');
-              // Refresh will trigger notification rescheduling
-            }
           }
         }
       }
 
       // Trigger refresh to reload tasks AND activities
       setRefreshTrigger(prev => prev + 1);
+      
+      // Refresh notification queue if reminder changed
+      if (updateData.reminder_minutes !== undefined && notificationsEnabled) {
+        await refreshNotificationQueue(true);
+      }
     } catch (error) {
       console.error('Failed to update task template:', error);
       throw error;
@@ -1113,16 +1066,13 @@ export function useFootballData() {
 
       console.log('Task template deleted');
 
-      // CRITICAL FIX: Cancel notifications for all activity tasks linked to this template
-      // This will be handled by the cascade delete, but we should clean up notification identifiers
-      const identifiers = await loadNotificationIdentifiers();
-      for (const taskId in identifiers) {
-        // We can't easily determine which tasks were linked to this template,
-        // so we'll rely on the sync function to clean up orphaned identifiers
-      }
-
       // Trigger refresh to reload tasks AND activities
       setRefreshTrigger(prev => prev + 1);
+      
+      // Refresh notification queue after deleting task template
+      if (notificationsEnabled) {
+        await forceRefreshNotificationQueue();
+      }
     } catch (error) {
       console.error('Failed to delete task template:', error);
       throw error;
@@ -1172,23 +1122,6 @@ export function useFootballData() {
 
       console.log('Task completion updated in database');
 
-      // CRITICAL FIX: Handle notification scheduling based on completion status
-      if (newCompleted) {
-        // Task completed - cancel notification
-        await cancelNotificationByTaskId(taskId);
-      } else if (task.reminder && notificationsEnabled) {
-        // Task uncompleted and has reminder - reschedule notification
-        await scheduleTaskReminder(
-          task.title,
-          activity.title,
-          activity.date,
-          activity.time,
-          task.reminder,
-          taskId,
-          activityId
-        );
-      }
-
       // Update local state
       setActivities(activities.map(act => {
         if (act.id === activityId) {
@@ -1204,6 +1137,11 @@ export function useFootballData() {
 
       // Trigger a refresh to ensure consistency
       setRefreshTrigger(prev => prev + 1);
+      
+      // Refresh notification queue after toggling task completion
+      if (notificationsEnabled) {
+        await refreshNotificationQueue(true);
+      }
     } catch (error) {
       console.error('Failed to toggle task completion:', error);
       throw error;
@@ -1247,9 +1185,6 @@ export function useFootballData() {
 
       console.log('✅ Activity task deleted from database successfully');
 
-      // CRITICAL FIX: Cancel notification
-      await cancelNotificationByTaskId(taskId);
-
       // CRITICAL FIX: Update local state immediately to reflect the deletion
       console.log('🔄 Updating local state to remove task');
       setActivities(prevActivities => 
@@ -1270,85 +1205,13 @@ export function useFootballData() {
       // Trigger a refresh to ensure consistency with database
       console.log('🔄 Triggering refresh to sync with database');
       setRefreshTrigger(prev => prev + 1);
+      
+      // Refresh notification queue after deleting task
+      if (notificationsEnabled) {
+        await refreshNotificationQueue(true);
+      }
     } catch (error: any) {
       console.error('❌ Failed to delete activity task:', error);
-      throw error;
-    }
-  };
-
-  const deleteOrphanedActivityTasks = async () => {
-    if (!userId) {
-      throw new Error('User not authenticated');
-    }
-
-    console.log('Deleting orphaned activity tasks...');
-
-    try {
-      // Find all activity tasks that reference deleted task templates
-      const { data: orphanedTasks, error: findError } = await supabase
-        .from('activity_tasks')
-        .select('id, task_template_id, activity_id')
-        .not('task_template_id', 'is', null);
-
-      if (findError) {
-        console.error('Error finding orphaned tasks:', findError);
-        throw findError;
-      }
-
-      if (!orphanedTasks || orphanedTasks.length === 0) {
-        console.log('No orphaned tasks found');
-        return { deletedCount: 0 };
-      }
-
-      // Get all valid task template IDs
-      const { data: validTemplates, error: templatesError } = await supabase
-        .from('task_templates')
-        .select('id')
-        .eq('user_id', userId);
-
-      if (templatesError) {
-        console.error('Error fetching task templates:', templatesError);
-        throw templatesError;
-      }
-
-      const validTemplateIds = new Set(validTemplates?.map(t => t.id) || []);
-
-      // Filter orphaned tasks (those with template_id that doesn't exist)
-      const tasksToDelete = orphanedTasks.filter(
-        task => task.task_template_id && !validTemplateIds.has(task.task_template_id)
-      );
-
-      if (tasksToDelete.length === 0) {
-        console.log('No orphaned tasks to delete');
-        return { deletedCount: 0 };
-      }
-
-      console.log(`Found ${tasksToDelete.length} orphaned tasks to delete`);
-
-      // Delete orphaned tasks
-      const { error: deleteError } = await supabase
-        .from('activity_tasks')
-        .delete()
-        .in('id', tasksToDelete.map(t => t.id));
-
-      if (deleteError) {
-        console.error('Error deleting orphaned tasks:', deleteError);
-        throw deleteError;
-      }
-
-      console.log(`Successfully deleted ${tasksToDelete.length} orphaned tasks`);
-
-      // CRITICAL FIX: Cancel notifications for deleted tasks
-      for (const task of tasksToDelete) {
-        await cancelNotificationByTaskId(task.id);
-      }
-
-      // Trigger refresh to reload activities
-      setRefreshTrigger(prev => prev + 1);
-
-      return { deletedCount: tasksToDelete.length };
-    } catch (error) {
-      console.error('Failed to delete orphaned tasks:', error);
       throw error;
     }
   };
