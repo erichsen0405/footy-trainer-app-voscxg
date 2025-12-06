@@ -513,79 +513,133 @@ serve(async (req) => {
       .select('*')
       .eq('user_id', user.id);
 
-    const { error: deleteError } = await supabaseClient
+    // Fetch existing external activities for this calendar to preserve manually set categories
+    const { data: existingActivities } = await supabaseClient
       .from('activities')
-      .delete()
+      .select('id, external_event_id, category_id, activity_categories(name)')
       .eq('external_calendar_id', calendarId)
       .eq('user_id', user.id);
 
-    if (deleteError) {
-      console.error('Error deleting old activities:', deleteError);
+    console.log(`Found ${existingActivities?.length || 0} existing activities`);
+
+    // Create a map of existing activities by external_event_id
+    const existingActivitiesMap = new Map();
+    if (existingActivities) {
+      existingActivities.forEach((activity: any) => {
+        existingActivitiesMap.set(activity.external_event_id, {
+          id: activity.id,
+          categoryId: activity.category_id,
+          categoryName: activity.activity_categories?.name || 'Unknown',
+        });
+      });
+    }
+
+    // Get the list of external event IDs from the fetched events
+    const fetchedEventIds = new Set(events.map(event => event.uid));
+
+    // Delete activities that no longer exist in the external calendar
+    const activitiesToDelete = existingActivities?.filter(
+      (activity: any) => !fetchedEventIds.has(activity.external_event_id)
+    ) || [];
+
+    if (activitiesToDelete.length > 0) {
+      const idsToDelete = activitiesToDelete.map((a: any) => a.id);
+      const { error: deleteError } = await supabaseClient
+        .from('activities')
+        .delete()
+        .in('id', idsToDelete);
+
+      if (deleteError) {
+        console.error('Error deleting removed activities:', deleteError);
+      } else {
+        console.log(`Deleted ${activitiesToDelete.length} activities that no longer exist in calendar`);
+      }
     }
 
     let categoriesFromExplicitMapping = 0;
     let categoriesFromNameParsing = 0;
     let categoriesAssignedToUnknown = 0;
+    let categoriesPreserved = 0;
+    let activitiesUpdated = 0;
+    let activitiesCreated = 0;
 
-    const activitiesToInsert = await Promise.all(
+    const activitiesToUpsert = await Promise.all(
       events.map(async (event) => {
+        const existingActivity = existingActivitiesMap.get(event.uid);
+        
         let categoryId = unknownCategoryId;
         let externalCategory = null;
         let assignmentMethod = 'unknown';
 
-        if (event.categories && event.categories.length > 0) {
-          externalCategory = event.categories[0];
-          
-          try {
-            const mappedCategoryId = await findOrCreateCategoryMapping(
-              supabaseClient,
-              user.id,
-              externalCategory,
-              refreshedCategories
-            );
+        // Check if activity exists and has a manually set category (not "Ukendt")
+        if (existingActivity && existingActivity.categoryName.toLowerCase() !== 'ukendt') {
+          // Preserve the existing category
+          categoryId = existingActivity.categoryId;
+          assignmentMethod = 'preserved';
+          categoriesPreserved++;
+          console.log(`✓ Preserving manually set category "${existingActivity.categoryName}" for "${event.summary}"`);
+        } else {
+          // New activity or activity with "Ukendt" - assign category
+          if (event.categories && event.categories.length > 0) {
+            externalCategory = event.categories[0];
             
-            if (mappedCategoryId) {
-              categoryId = mappedCategoryId;
-              assignmentMethod = 'explicit_category';
-              categoriesFromExplicitMapping++;
+            try {
+              const mappedCategoryId = await findOrCreateCategoryMapping(
+                supabaseClient,
+                user.id,
+                externalCategory,
+                refreshedCategories
+              );
+              
+              if (mappedCategoryId) {
+                categoryId = mappedCategoryId;
+                assignmentMethod = 'explicit_category';
+                categoriesFromExplicitMapping++;
+              } else {
+                categoriesAssignedToUnknown++;
+                console.log(`No match for external category "${externalCategory}", assigning to "Ukendt"`);
+              }
+            } catch (error) {
+              console.error('Error mapping category:', error);
+              categoriesAssignedToUnknown++;
+            }
+          }
+          
+          if (assignmentMethod === 'unknown') {
+            const parsedCategory = parseActivityNameForCategory(event.summary, refreshedCategories);
+            
+            if (parsedCategory) {
+              categoryId = parsedCategory.categoryId;
+              externalCategory = parsedCategory.categoryName;
+              assignmentMethod = `name_parsing (${parsedCategory.confidence}% confidence)`;
+              categoriesFromNameParsing++;
+              
+              console.log(`✓ Assigned category "${parsedCategory.categoryName}" to "${event.summary}" via name parsing`);
             } else {
               categoriesAssignedToUnknown++;
-              console.log(`No match for external category "${externalCategory}", assigning to "Ukendt"`);
+              console.log(`✓ No category match for "${event.summary}", assigning to "Ukendt"`);
             }
-          } catch (error) {
-            console.error('Error mapping category:', error);
-            categoriesAssignedToUnknown++;
-          }
-        }
-        
-        if (assignmentMethod === 'unknown') {
-          const parsedCategory = parseActivityNameForCategory(event.summary, refreshedCategories);
-          
-          if (parsedCategory) {
-            categoryId = parsedCategory.categoryId;
-            externalCategory = parsedCategory.categoryName;
-            assignmentMethod = `name_parsing (${parsedCategory.confidence}% confidence)`;
-            categoriesFromNameParsing++;
-            
-            console.log(`✓ Assigned category "${parsedCategory.categoryName}" to "${event.summary}" via name parsing`);
-          } else {
-            categoriesAssignedToUnknown++;
-            console.log(`✓ No category match for "${event.summary}", assigning to "Ukendt"`);
           }
         }
 
-        console.log(`Inserting activity with Copenhagen time:`, {
+        console.log(`${existingActivity ? 'Updating' : 'Creating'} activity with Copenhagen time:`, {
           title: event.summary,
           date: event.startDateString,
           time: event.startTimeString,
           isAllDay: event.isAllDay,
           originalTimezone: event.timezone,
-          category: externalCategory || 'Ukendt',
+          category: externalCategory || (existingActivity ? existingActivity.categoryName : 'Ukendt'),
           categoryId: categoryId,
           assignmentMethod: assignmentMethod,
         });
+
+        if (existingActivity) {
+          activitiesUpdated++;
+        } else {
+          activitiesCreated++;
+        }
         
-        return {
+        const activityData = {
           user_id: user.id,
           title: event.summary,
           activity_date: event.startDateString,
@@ -597,9 +651,41 @@ serve(async (req) => {
           external_event_id: event.uid,
           external_category: externalCategory,
         };
+
+        if (existingActivity) {
+          // Update existing activity
+          return {
+            ...activityData,
+            id: existingActivity.id,
+          };
+        } else {
+          // Create new activity
+          return activityData;
+        }
       })
     );
 
+    // Separate updates and inserts
+    const activitiesToUpdate = activitiesToUpsert.filter((a: any) => a.id);
+    const activitiesToInsert = activitiesToUpsert.filter((a: any) => !a.id);
+
+    // Update existing activities
+    if (activitiesToUpdate.length > 0) {
+      for (const activity of activitiesToUpdate) {
+        const { id, ...updateData } = activity;
+        const { error: updateError } = await supabaseClient
+          .from('activities')
+          .update(updateData)
+          .eq('id', id);
+
+        if (updateError) {
+          console.error('Error updating activity:', updateError);
+        }
+      }
+      console.log(`Updated ${activitiesToUpdate.length} existing activities`);
+    }
+
+    // Insert new activities
     if (activitiesToInsert.length > 0) {
       const { error: insertError } = await supabaseClient
         .from('activities')
@@ -610,11 +696,16 @@ serve(async (req) => {
         throw insertError;
       }
 
-      console.log(`Inserted ${activitiesToInsert.length} activities with intelligent category assignment`);
-      console.log(`- ${categoriesFromExplicitMapping} from explicit calendar categories`);
-      console.log(`- ${categoriesFromNameParsing} from name parsing`);
-      console.log(`- ${categoriesAssignedToUnknown} assigned to "Ukendt" (no match found)`);
+      console.log(`Inserted ${activitiesToInsert.length} new activities`);
     }
+
+    console.log(`Sync complete with intelligent category assignment:`);
+    console.log(`- ${categoriesPreserved} categories preserved (manually set)`);
+    console.log(`- ${categoriesFromExplicitMapping} from explicit calendar categories`);
+    console.log(`- ${categoriesFromNameParsing} from name parsing`);
+    console.log(`- ${categoriesAssignedToUnknown} assigned to "Ukendt" (no match found)`);
+    console.log(`- ${activitiesCreated} new activities created`);
+    console.log(`- ${activitiesUpdated} existing activities updated`);
 
     const { error: updateError } = await supabaseClient
       .from('external_calendars')
@@ -632,10 +723,14 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         eventCount: events.length,
+        categoriesPreserved,
         categoriesFromExplicitMapping,
         categoriesFromNameParsing,
         categoriesAssignedToUnknown,
-        message: `Successfully synced ${events.length} events (${categoriesFromNameParsing} via name parsing, ${categoriesFromExplicitMapping} via explicit categories, ${categoriesAssignedToUnknown} assigned to "Ukendt")`,
+        activitiesCreated,
+        activitiesUpdated,
+        activitiesDeleted: activitiesToDelete.length,
+        message: `Successfully synced ${events.length} events (${activitiesCreated} new, ${activitiesUpdated} updated, ${activitiesToDelete.length} deleted). ${categoriesPreserved} manually set categories preserved, ${categoriesFromNameParsing} via name parsing, ${categoriesFromExplicitMapping} via explicit categories, ${categoriesAssignedToUnknown} assigned to "Ukendt")`,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

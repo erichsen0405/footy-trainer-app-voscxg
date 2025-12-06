@@ -184,7 +184,7 @@ export default function ExternalCalendarManager() {
 
       Alert.alert(
         'Succes',
-        'Kalender tilføjet! Klik på "Synkroniser" for at importere aktiviteter. Aktiviteter tildeles automatisk kategorier baseret på deres navne, eller "Ukendt" hvis ingen match findes.'
+        'Kalender tilføjet! Klik på "Synkroniser" for at importere aktiviteter. Aktiviteter tildeles automatisk kategorier baseret på deres navne, eller "Ukendt" hvis ingen match findes. Manuelt tildelte kategorier bevares ved efterfølgende synkroniseringer.'
       );
 
       setNewCalendarName('');
@@ -222,11 +222,32 @@ export default function ExternalCalendarManager() {
 
       console.log('Sync response:', data);
 
-      const message = `${data.eventCount} aktiviteter blev importeret fra "${calendarName}".\n\n` +
-        `📊 Kategori-tildeling:\n` +
-        `• ${data.categoriesFromNameParsing} via navne-parsing\n` +
-        `• ${data.categoriesFromExplicitMapping} via eksplicitte kategorier\n` +
-        `• ${data.categoriesAssignedToUnknown} tildelt "Ukendt" (ingen match)`;
+      let message = `${data.eventCount} aktiviteter blev synkroniseret fra "${calendarName}".\n\n`;
+      
+      if (data.activitiesCreated > 0) {
+        message += `✨ ${data.activitiesCreated} nye aktivitet${data.activitiesCreated === 1 ? '' : 'er'} oprettet\n`;
+      }
+      if (data.activitiesUpdated > 0) {
+        message += `🔄 ${data.activitiesUpdated} aktivitet${data.activitiesUpdated === 1 ? '' : 'er'} opdateret\n`;
+      }
+      if (data.activitiesDeleted > 0) {
+        message += `🗑️ ${data.activitiesDeleted} aktivitet${data.activitiesDeleted === 1 ? '' : 'er'} slettet\n`;
+      }
+      
+      message += `\n📊 Kategori-tildeling:\n`;
+      
+      if (data.categoriesPreserved > 0) {
+        message += `• ${data.categoriesPreserved} manuelt tildelte kategorier bevaret\n`;
+      }
+      if (data.categoriesFromNameParsing > 0) {
+        message += `• ${data.categoriesFromNameParsing} via navne-parsing\n`;
+      }
+      if (data.categoriesFromExplicitMapping > 0) {
+        message += `• ${data.categoriesFromExplicitMapping} via eksplicitte kategorier\n`;
+      }
+      if (data.categoriesAssignedToUnknown > 0) {
+        message += `• ${data.categoriesAssignedToUnknown} tildelt "Ukendt" (ingen match)`;
+      }
 
       Alert.alert('Succes', message);
 
@@ -251,7 +272,7 @@ export default function ExternalCalendarManager() {
       
       Alert.alert(
         'Auto-synkronisering fuldført',
-        `${result.syncedCount} kalender(e) blev synkroniseret${result.failedCount > 0 ? `, ${result.failedCount} fejlede` : ''}`
+        `${result.syncedCount} kalender(e) blev synkroniseret${result.failedCount > 0 ? `, ${result.failedCount} fejlede` : ''}. Manuelt tildelte kategorier er bevaret.`
       );
 
       await fetchCalendars();
@@ -511,7 +532,7 @@ export default function ExternalCalendarManager() {
             Automatiske kategori-tildelinger
           </Text>
           <Text style={[styles.mappingsSubtitle, { color: textSecondaryColor }]}>
-            Disse kategorier tildeles automatisk baseret på aktiviteternes navne og nøgleord. Aktiviteter uden match tildeles &quot;Ukendt&quot;.
+            Disse kategorier tildeles automatisk baseret på aktiviteternes navne og nøgleord. Aktiviteter uden match tildeles &quot;Ukendt&quot;. Manuelt tildelte kategorier bevares ved synkronisering.
           </Text>
           {categoryMappings.map((mapping, index) => (
             <View key={index} style={[styles.mappingItem, { borderBottomColor: isDark ? '#444' : '#e0e0e0' }]}>
@@ -620,7 +641,7 @@ export default function ExternalCalendarManager() {
               color={colors.success}
             />
             <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
-              Kalenderen vil automatisk synkronisere hver time og tildele kategorier baseret på aktiviteternes navne og nøgleord. Aktiviteter uden match tildeles &quot;Ukendt&quot;.
+              Kalenderen vil automatisk synkronisere hver time og tildele kategorier baseret på aktiviteternes navne og nøgleord. Aktiviteter uden match tildeles &quot;Ukendt&quot;. Manuelt tildelte kategorier bevares ved efterfølgende synkroniseringer.
             </Text>
           </View>
         </View>
@@ -636,7 +657,7 @@ export default function ExternalCalendarManager() {
           />
           <Text style={[styles.emptyTitle, { color: textColor }]}>Ingen eksterne kalendere</Text>
           <Text style={[styles.emptyText, { color: textSecondaryColor }]}>
-            Tilføj en ekstern kalender for at importere aktiviteter automatisk med intelligent kategori-tildeling. Aktiviteter uden match tildeles &quot;Ukendt&quot;.
+            Tilføj en ekstern kalender for at importere aktiviteter automatisk med intelligent kategori-tildeling. Aktiviteter uden match tildeles &quot;Ukendt&quot;. Manuelt tildelte kategorier bevares ved synkronisering.
           </Text>
         </View>
       ) : (
