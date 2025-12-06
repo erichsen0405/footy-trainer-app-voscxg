@@ -42,6 +42,7 @@ export function CreateActivityTaskModal({
   const [reminderMinutes, setReminderMinutes] = useState('10');
   const [isLoading, setIsLoading] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [activityExists, setActivityExists] = useState(false);
 
   useEffect(() => {
     const getCurrentUser = async () => {
@@ -51,6 +52,53 @@ export function CreateActivityTaskModal({
     getCurrentUser();
   }, []);
 
+  // Verify activity exists before allowing task creation
+  useEffect(() => {
+    const verifyActivity = async () => {
+      if (!activityId || !visible) {
+        setActivityExists(false);
+        return;
+      }
+
+      console.log('🔍 Verifying activity exists:', activityId);
+      
+      try {
+        const { data, error } = await supabase
+          .from('activities')
+          .select('id')
+          .eq('id', activityId)
+          .single();
+
+        if (error) {
+          console.error('❌ Error verifying activity:', error);
+          setActivityExists(false);
+          return;
+        }
+
+        if (data) {
+          console.log('✅ Activity verified:', data.id);
+          setActivityExists(true);
+        } else {
+          console.log('⚠️ Activity not found');
+          setActivityExists(false);
+        }
+      } catch (error) {
+        console.error('❌ Exception verifying activity:', error);
+        setActivityExists(false);
+      }
+    };
+
+    // Add a small delay on iOS to ensure the activity is fully committed
+    if (Platform.OS === 'ios' && visible) {
+      const timer = setTimeout(() => {
+        verifyActivity();
+      }, 500);
+      return () => clearTimeout(timer);
+    } else {
+      verifyActivity();
+    }
+  }, [activityId, visible]);
+
   const handleSave = async () => {
     if (!title.trim()) {
       Alert.alert('Fejl', 'Opgavetitel er påkrævet');
@@ -59,6 +107,15 @@ export function CreateActivityTaskModal({
 
     if (!userId) {
       Alert.alert('Fejl', 'Bruger ikke autentificeret');
+      return;
+    }
+
+    if (!activityExists) {
+      Alert.alert(
+        'Vent venligst',
+        'Aktiviteten er ved at blive oprettet. Prøv igen om et øjeblik.',
+        [{ text: 'OK' }]
+      );
       return;
     }
 
@@ -74,24 +131,53 @@ export function CreateActivityTaskModal({
       console.log('  Has Reminder:', hasReminder);
       console.log('  Reminder Minutes:', reminderMinutes);
       console.log('  User ID:', userId);
+      console.log('  Platform:', Platform.OS);
       console.log('  Timestamp:', new Date().toISOString());
 
-      // Insert the task into the database
+      // Double-check activity exists right before inserting
+      console.log('🔍 Final activity verification before insert...');
+      const { data: activityCheck, error: activityCheckError } = await supabase
+        .from('activities')
+        .select('id')
+        .eq('id', activityId)
+        .single();
+
+      if (activityCheckError || !activityCheck) {
+        console.error('❌ Activity verification failed:', activityCheckError);
+        throw new Error('Aktiviteten kunne ikke findes. Prøv at lukke og åbne aktiviteten igen.');
+      }
+
+      console.log('✅ Activity verified, proceeding with task creation');
+
+      // Insert the task into the database with explicit error handling
+      const taskPayload = {
+        activity_id: activityId,
+        title: title.trim(),
+        description: description.trim(),
+        completed: false,
+        reminder_minutes: hasReminder ? parseInt(reminderMinutes, 10) : null,
+      };
+
+      console.log('📤 Sending task payload:', JSON.stringify(taskPayload, null, 2));
+
       const { data: taskData, error: taskError } = await supabase
         .from('activity_tasks')
-        .insert({
-          activity_id: activityId,
-          title: title.trim(),
-          description: description.trim(),
-          completed: false,
-          reminder_minutes: hasReminder ? parseInt(reminderMinutes, 10) : null,
-        })
+        .insert(taskPayload)
         .select()
         .single();
 
       if (taskError) {
         console.error('❌ Error creating task:', taskError);
-        throw taskError;
+        console.error('  Error code:', taskError.code);
+        console.error('  Error message:', taskError.message);
+        console.error('  Error details:', taskError.details);
+        console.error('  Error hint:', taskError.hint);
+        throw new Error(`Database fejl: ${taskError.message}`);
+      }
+
+      if (!taskData) {
+        console.error('❌ No task data returned from insert');
+        throw new Error('Ingen data returneret fra databasen');
       }
 
       console.log('✅ Task created in database:', taskData.id);
@@ -169,7 +255,16 @@ export function CreateActivityTaskModal({
       onClose();
     } catch (error: any) {
       console.error('❌ Error in handleSave:', error);
-      Alert.alert('Fejl', 'Kunne ikke oprette opgave: ' + error.message);
+      console.error('  Error type:', typeof error);
+      console.error('  Error name:', error?.name);
+      console.error('  Error message:', error?.message);
+      console.error('  Error stack:', error?.stack);
+      
+      Alert.alert(
+        'Fejl',
+        error?.message || 'Kunne ikke oprette opgave. Prøv venligst igen.',
+        [{ text: 'OK' }]
+      );
     } finally {
       setIsLoading(false);
     }
@@ -192,6 +287,14 @@ export function CreateActivityTaskModal({
             Dato: {activityDate.toLocaleDateString('da-DK')} kl. {activityTime}
           </Text>
 
+          {!activityExists && (
+            <View style={styles.warningBanner}>
+              <Text style={styles.warningText}>
+                ⏳ Venter på at aktiviteten bliver oprettet...
+              </Text>
+            </View>
+          )}
+
           <ScrollView style={styles.scrollView}>
             <Text style={styles.label}>Titel *</Text>
             <TextInput
@@ -200,6 +303,7 @@ export function CreateActivityTaskModal({
               onChangeText={setTitle}
               placeholder="Opgavetitel"
               placeholderTextColor={colors.textSecondary}
+              editable={activityExists}
             />
 
             <Text style={styles.label}>Beskrivelse</Text>
@@ -211,6 +315,7 @@ export function CreateActivityTaskModal({
               placeholderTextColor={colors.textSecondary}
               multiline
               numberOfLines={4}
+              editable={activityExists}
             />
 
             <View style={styles.reminderContainer}>
@@ -221,6 +326,7 @@ export function CreateActivityTaskModal({
                   onValueChange={setHasReminder}
                   trackColor={{ false: colors.border, true: colors.primary }}
                   thumbColor={hasReminder ? colors.primary : colors.textSecondary}
+                  disabled={!activityExists}
                 />
               </View>
 
@@ -234,6 +340,7 @@ export function CreateActivityTaskModal({
                     keyboardType="number-pad"
                     placeholder="10"
                     placeholderTextColor={colors.textSecondary}
+                    editable={activityExists}
                   />
                 </View>
               )}
@@ -250,12 +357,16 @@ export function CreateActivityTaskModal({
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.button, styles.saveButton, isLoading && styles.disabledButton]}
+              style={[
+                styles.button,
+                styles.saveButton,
+                (isLoading || !activityExists) && styles.disabledButton
+              ]}
               onPress={handleSave}
-              disabled={isLoading}
+              disabled={isLoading || !activityExists}
             >
               <Text style={styles.saveButtonText}>
-                {isLoading ? 'Gemmer...' : 'Gem'}
+                {isLoading ? 'Gemmer...' : !activityExists ? 'Vent...' : 'Gem'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -289,6 +400,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     marginBottom: 5,
+  },
+  warningBanner: {
+    backgroundColor: '#fff3cd',
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 10,
+    marginBottom: 10,
+  },
+  warningText: {
+    fontSize: 14,
+    color: '#856404',
+    textAlign: 'center',
   },
   scrollView: {
     marginTop: 20,
