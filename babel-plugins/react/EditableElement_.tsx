@@ -40,10 +40,12 @@ export default function EditableElement_(_props: PropsWithChildren<any>) {
 
   // If we are not running in the web the windows will causes
   // issues hence editable mode is not enabled.
+  // IMPORTANT: Return early BEFORE calling any hooks
   if (Platform.OS !== "web") {
     return cloneElement(children, props);
   }
 
+  // Only call useContext when we're on web platform
   const {
     editModeEnabled,
     selected,
