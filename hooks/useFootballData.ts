@@ -79,7 +79,6 @@ export function useFootballData() {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [trophies, setTrophies] = useState<Trophy[]>([]);
   const [externalCalendars, setExternalCalendars] = useState<ExternalCalendar[]>([]);
-  const [externalActivities, setExternalActivities] = useState<Activity[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -225,7 +224,7 @@ export function useFootballData() {
     loadExternalCalendars();
   }, [userId, refreshTrigger]);
 
-  // Load activities from Supabase (including external ones) WITH TASKS
+  // Load ALL activities from Supabase (both internal and external) WITH TASKS
   useEffect(() => {
     if (!userId) {
       setIsLoading(false);
@@ -291,7 +290,7 @@ export function useFootballData() {
               subtasks: [],
             }));
 
-          console.log(`Activity "${act.title}" has ${activityTasks.length} tasks`);
+          console.log(`Activity "${act.title}" (${act.is_external ? 'external' : 'internal'}) has ${activityTasks.length} tasks`);
 
           return {
             id: act.id,
@@ -309,16 +308,12 @@ export function useFootballData() {
           };
         });
 
-        console.log('Loaded activities:', loadedActivities.length);
+        console.log('Total activities loaded:', loadedActivities.length);
+        console.log('Internal activities:', loadedActivities.filter(a => !a.isExternal).length);
+        console.log('External activities:', loadedActivities.filter(a => a.isExternal).length);
         
-        // Separate internal and external activities
-        const internal = loadedActivities.filter(a => !a.isExternal);
-        const external = loadedActivities.filter(a => a.isExternal);
-        
-        console.log(`Internal activities: ${internal.length}, External activities: ${external.length}`);
-        
-        setActivities(internal);
-        setExternalActivities(external);
+        // CRITICAL FIX: Store ALL activities together (both internal and external)
+        setActivities(loadedActivities);
 
         // Refresh notification queue after loading activities
         if (notificationsEnabled) {
@@ -516,6 +511,11 @@ export function useFootballData() {
       activityDate.setHours(0, 0, 0, 0);
       return activityDate >= today && activityDate < tomorrow;
     });
+  }, [activities]);
+
+  // Computed property for external activities (for backwards compatibility)
+  const externalActivities = useMemo(() => {
+    return activities.filter(a => a.isExternal);
   }, [activities]);
 
   const addActivity = (activity: Omit<Activity, 'id'>) => {
@@ -745,7 +745,8 @@ export function useFootballData() {
     console.log('Deleting activity:', id);
     
     // Check if it's an external activity
-    const isExternal = externalActivities.some(a => a.id === id);
+    const activity = activities.find(a => a.id === id);
+    const isExternal = activity?.isExternal;
     
     if (isExternal) {
       console.log('Cannot delete external activity from app');
@@ -1327,7 +1328,7 @@ export function useFootballData() {
           } else {
             // If disabling, remove external activities from this calendar
             console.log('Calendar disabled, removing activities');
-            setExternalActivities(prev => prev.filter(a => a.externalCalendarId !== id));
+            setActivities(prev => prev.filter(a => a.externalCalendarId !== id));
           }
           
           return updated;
@@ -1380,7 +1381,7 @@ export function useFootballData() {
 
       // Update local state immediately
       setExternalCalendars(prevCalendars => prevCalendars.filter(cal => cal.id !== id));
-      setExternalActivities(prevActivities => prevActivities.filter(a => a.externalCalendarId !== id));
+      setActivities(prevActivities => prevActivities.filter(a => a.externalCalendarId !== id));
       
       // Trigger a refresh to ensure consistency
       setRefreshTrigger(prev => prev + 1);
@@ -1398,7 +1399,7 @@ export function useFootballData() {
       return;
     }
 
-    const externalActivity = externalActivities.find(a => a.id === externalActivityId);
+    const externalActivity = activities.find(a => a.id === externalActivityId && a.isExternal);
     if (!externalActivity) {
       console.log('External activity not found:', externalActivityId);
       return;
