@@ -162,6 +162,13 @@ export default function CreateActivityModal({
     }
   };
 
+  const handleWebTimeChange = (event: any) => {
+    const value = event.target.value;
+    if (value) {
+      setTime(value);
+    }
+  };
+
   const handleEndDateChange = (event: any, selectedDate?: Date) => {
     if (Platform.OS === 'android') {
       setShowEndDatePicker(false);
@@ -298,37 +305,57 @@ export default function CreateActivityModal({
             {/* Time */}
             <View style={styles.fieldContainer}>
               <Text style={[styles.fieldLabel, { color: textColor }]}>Tidspunkt *</Text>
-              <TouchableOpacity
-                style={[styles.dateTimeButton, { backgroundColor: bgColor }]}
-                onPress={() => setShowTimePicker(true)}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.dateTimeText, { color: textColor }]}>{time}</Text>
-                <IconSymbol
-                  ios_icon_name="clock"
-                  android_material_icon_name="access_time"
-                  size={20}
-                  color={colors.primary}
+              {Platform.OS === 'web' ? (
+                <input
+                  type="time"
+                  value={time}
+                  onChange={handleWebTimeChange}
+                  style={{
+                    backgroundColor: bgColor,
+                    color: textColor,
+                    borderRadius: 12,
+                    padding: 16,
+                    fontSize: 17,
+                    border: 'none',
+                    width: '100%',
+                    fontFamily: 'inherit',
+                  }}
                 />
-              </TouchableOpacity>
-              {Platform.OS === 'ios' && showTimePicker && (
-                <View style={[styles.pickerContainer, { backgroundColor: bgColor }]}>
-                  <DateTimePicker
-                    value={new Date(`2000-01-01T${time}`)}
-                    mode="time"
-                    display="spinner"
-                    onChange={handleTimeChange}
-                    textColor={textColor}
-                    style={styles.iosPicker}
-                  />
+              ) : (
+                <React.Fragment>
                   <TouchableOpacity
-                    style={[styles.pickerDoneButton, { backgroundColor: colors.primary }]}
-                    onPress={() => setShowTimePicker(false)}
+                    style={[styles.dateTimeButton, { backgroundColor: bgColor }]}
+                    onPress={() => setShowTimePicker(true)}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.pickerDoneText}>Færdig</Text>
+                    <Text style={[styles.dateTimeText, { color: textColor }]}>{time}</Text>
+                    <IconSymbol
+                      ios_icon_name="clock"
+                      android_material_icon_name="access_time"
+                      size={20}
+                      color={colors.primary}
+                    />
                   </TouchableOpacity>
-                </View>
+                  {Platform.OS === 'ios' && showTimePicker && (
+                    <View style={[styles.pickerContainer, { backgroundColor: bgColor }]}>
+                      <DateTimePicker
+                        value={new Date(`2000-01-01T${time}`)}
+                        mode="time"
+                        display="spinner"
+                        onChange={handleTimeChange}
+                        textColor={textColor}
+                        style={styles.iosPicker}
+                      />
+                      <TouchableOpacity
+                        style={[styles.pickerDoneButton, { backgroundColor: colors.primary }]}
+                        onPress={() => setShowTimePicker(false)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.pickerDoneText}>Færdig</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </React.Fragment>
               )}
             </View>
 

@@ -189,6 +189,13 @@ export default function ActivityDetailsScreen() {
     }
   };
 
+  const handleWebTimeChange = (event: any) => {
+    const value = event.target.value;
+    if (value) {
+      setEditTime(value);
+    }
+  };
+
   const handleToggleTask = async (taskId: string) => {
     if (!activity) return;
     
@@ -488,37 +495,57 @@ export default function ActivityDetailsScreen() {
 
               <View style={styles.fieldContainer}>
                 <Text style={[styles.fieldLabel, { color: textColor }]}>Tidspunkt</Text>
-                <TouchableOpacity
-                  style={[styles.dateTimeButton, { backgroundColor: bgColor }]}
-                  onPress={() => setShowTimePicker(true)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.dateTimeText, { color: textColor }]}>{editTime.substring(0, 5)}</Text>
-                  <IconSymbol
-                    ios_icon_name="clock"
-                    android_material_icon_name="access_time"
-                    size={20}
-                    color={colors.primary}
+                {Platform.OS === 'web' ? (
+                  <input
+                    type="time"
+                    value={editTime.substring(0, 5)}
+                    onChange={handleWebTimeChange}
+                    style={{
+                      backgroundColor: bgColor,
+                      color: textColor,
+                      borderRadius: 12,
+                      padding: 16,
+                      fontSize: 17,
+                      border: 'none',
+                      width: '100%',
+                      fontFamily: 'inherit',
+                    }}
                   />
-                </TouchableOpacity>
-                {Platform.OS === 'ios' && showTimePicker && (
-                  <View style={[styles.pickerContainer, { backgroundColor: bgColor }]}>
-                    <DateTimePicker
-                      value={new Date(`2000-01-01T${editTime}`)}
-                      mode="time"
-                      display="spinner"
-                      onChange={handleTimeChange}
-                      textColor={textColor}
-                      style={styles.iosPicker}
-                    />
+                ) : (
+                  <React.Fragment>
                     <TouchableOpacity
-                      style={[styles.pickerDoneButton, { backgroundColor: colors.primary }]}
-                      onPress={() => setShowTimePicker(false)}
+                      style={[styles.dateTimeButton, { backgroundColor: bgColor }]}
+                      onPress={() => setShowTimePicker(true)}
                       activeOpacity={0.7}
                     >
-                      <Text style={styles.pickerDoneText}>Færdig</Text>
+                      <Text style={[styles.dateTimeText, { color: textColor }]}>{editTime.substring(0, 5)}</Text>
+                      <IconSymbol
+                        ios_icon_name="clock"
+                        android_material_icon_name="access_time"
+                        size={20}
+                        color={colors.primary}
+                      />
                     </TouchableOpacity>
-                  </View>
+                    {Platform.OS === 'ios' && showTimePicker && (
+                      <View style={[styles.pickerContainer, { backgroundColor: bgColor }]}>
+                        <DateTimePicker
+                          value={new Date(`2000-01-01T${editTime}`)}
+                          mode="time"
+                          display="spinner"
+                          onChange={handleTimeChange}
+                          textColor={textColor}
+                          style={styles.iosPicker}
+                        />
+                        <TouchableOpacity
+                          style={[styles.pickerDoneButton, { backgroundColor: colors.primary }]}
+                          onPress={() => setShowTimePicker(false)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.pickerDoneText}>Færdig</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </React.Fragment>
                 )}
               </View>
 
@@ -544,45 +571,65 @@ export default function ActivityDetailsScreen() {
           ) : isEditing && activity.seriesId ? (
             <View style={styles.fieldContainer}>
               <Text style={[styles.fieldLabel, { color: textColor }]}>Tidspunkt</Text>
-              <TouchableOpacity
-                style={[styles.dateTimeButton, { backgroundColor: bgColor }]}
-                onPress={() => setShowTimePicker(true)}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.dateTimeText, { color: textColor }]}>{editTime.substring(0, 5)}</Text>
-                <IconSymbol
-                  ios_icon_name="clock"
-                  android_material_icon_name="access_time"
-                  size={20}
-                  color={colors.primary}
+              {Platform.OS === 'web' ? (
+                <input
+                  type="time"
+                  value={editTime.substring(0, 5)}
+                  onChange={handleWebTimeChange}
+                  style={{
+                    backgroundColor: bgColor,
+                    color: textColor,
+                    borderRadius: 12,
+                    padding: 16,
+                    fontSize: 17,
+                    border: 'none',
+                    width: '100%',
+                    fontFamily: 'inherit',
+                  }}
                 />
-              </TouchableOpacity>
-              {Platform.OS === 'ios' && showTimePicker && (
-                <View style={[styles.pickerContainer, { backgroundColor: bgColor }]}>
-                  <DateTimePicker
-                    value={new Date(`2000-01-01T${editTime}`)}
-                    mode="time"
-                    display="spinner"
-                    onChange={handleTimeChange}
-                    textColor={textColor}
-                    style={styles.iosPicker}
-                  />
+              ) : (
+                <React.Fragment>
                   <TouchableOpacity
-                    style={[styles.pickerDoneButton, { backgroundColor: colors.primary }]}
-                    onPress={() => setShowTimePicker(false)}
+                    style={[styles.dateTimeButton, { backgroundColor: bgColor }]}
+                    onPress={() => setShowTimePicker(true)}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.pickerDoneText}>Færdig</Text>
+                    <Text style={[styles.dateTimeText, { color: textColor }]}>{editTime.substring(0, 5)}</Text>
+                    <IconSymbol
+                      ios_icon_name="clock"
+                      android_material_icon_name="access_time"
+                      size={20}
+                      color={colors.primary}
+                    />
                   </TouchableOpacity>
-                </View>
-              )}
-              {Platform.OS === 'android' && showTimePicker && (
-                <DateTimePicker
-                  value={new Date(`2000-01-01T${editTime}`)}
-                  mode="time"
-                  display="default"
-                  onChange={handleTimeChange}
-                />
+                  {Platform.OS === 'ios' && showTimePicker && (
+                    <View style={[styles.pickerContainer, { backgroundColor: bgColor }]}>
+                      <DateTimePicker
+                        value={new Date(`2000-01-01T${editTime}`)}
+                        mode="time"
+                        display="spinner"
+                        onChange={handleTimeChange}
+                        textColor={textColor}
+                        style={styles.iosPicker}
+                      />
+                      <TouchableOpacity
+                        style={[styles.pickerDoneButton, { backgroundColor: colors.primary }]}
+                        onPress={() => setShowTimePicker(false)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.pickerDoneText}>Færdig</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  {Platform.OS === 'android' && showTimePicker && (
+                    <DateTimePicker
+                      value={new Date(`2000-01-01T${editTime}`)}
+                      mode="time"
+                      display="default"
+                      onChange={handleTimeChange}
+                    />
+                  )}
+                </React.Fragment>
               )}
               <Text style={[styles.infoNote, { color: textSecondaryColor }]}>
                 Dato kan ikke ændres for aktiviteter i en serie
