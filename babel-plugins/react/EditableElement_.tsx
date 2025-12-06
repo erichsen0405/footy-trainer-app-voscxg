@@ -36,6 +36,19 @@ const toArray = <T,>(object: T | T[]): T[] => {
 
 export default function EditableElement_(_props: PropsWithChildren<any>) {
   const { children } = _props;
+
+  // Early validation: if children is undefined or null, return null
+  if (!children) {
+    console.warn('EditableElement_: children is undefined or null');
+    return null;
+  }
+
+  // Validate that children has props
+  if (!children.props) {
+    console.warn('EditableElement_: children does not have props property');
+    return children;
+  }
+
   const { props } = children;
 
   // If we are not running in the web the windows will causes
@@ -59,6 +72,13 @@ export default function EditableElement_(_props: PropsWithChildren<any>) {
   const type = getType(children);
   const __sourceLocation = props.__sourceLocation;
   const __trace = props.__trace;
+
+  // Validate __trace exists before using it
+  if (!__trace) {
+    console.warn('EditableElement_: __trace is undefined');
+    return cloneElement(children, props);
+  }
+
   const id = __trace.join("");
   const attributes = overwrittenProps[id] ?? {};
 
