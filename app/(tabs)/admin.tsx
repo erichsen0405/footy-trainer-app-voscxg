@@ -17,6 +17,7 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { useRouter } from 'expo-router';
 import CreatePlayerModal from '@/components/CreatePlayerModal';
 import PlayersList from '@/components/PlayersList';
+import ExternalCalendarManager from '@/components/ExternalCalendarManager';
 import { deleteTestTasksFromTraening } from '@/utils/cleanupTasks';
 import { testNotification, getNotificationStats, syncNotifications, getAllScheduledNotifications } from '@/utils/notificationService';
 import { rescheduleAllNotifications } from '@/utils/notificationRescheduler';
@@ -242,6 +243,25 @@ export default function AdminScreen() {
             <Text style={styles.headerTitle}>Admin Panel</Text>
             <Text style={styles.headerSubtitle}>Administrer spillere og indstillinger</Text>
           </View>
+        </View>
+
+        {/* External Calendars Section */}
+        <View style={[styles.section, { backgroundColor: cardBgColor }]}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleContainer}>
+              <IconSymbol
+                ios_icon_name="calendar.badge.plus"
+                android_material_icon_name="event"
+                size={28}
+                color={colors.primary}
+              />
+              <Text style={[styles.sectionTitle, { color: textColor }]}>Eksterne Kalendere</Text>
+            </View>
+          </View>
+          <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
+            Tilknyt eksterne kalendere (iCal/webcal) for automatisk at importere aktiviteter
+          </Text>
+          <ExternalCalendarManager />
         </View>
 
         {/* Players Section */}
@@ -576,7 +596,7 @@ export default function AdminScreen() {
             color={colors.secondary}
           />
           <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
-            Som admin har du adgang til at administrere spillere og udføre vedligeholdelsesopgaver.
+            Som admin har du adgang til at administrere spillere, eksterne kalendere og udføre vedligeholdelsesopgaver.
             Vær forsigtig med sletteoperationer, da de ikke kan fortrydes.
           </Text>
         </View>
@@ -645,10 +665,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
   },
+  sectionTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
   sectionTitle: {
     fontSize: 22,
     fontWeight: 'bold',
-    marginBottom: 16,
+  },
+  sectionDescription: {
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 20,
   },
   addButton: {
     flexDirection: 'row',
