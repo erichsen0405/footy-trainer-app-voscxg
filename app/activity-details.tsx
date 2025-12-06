@@ -104,7 +104,20 @@ export default function ActivityDetailsScreen() {
           return;
         }
 
+        console.log('✅ External activity category updated in database');
+
+        // CRITICAL FIX: Update local state immediately
+        const updatedActivity = {
+          ...activity,
+          category: editCategory!,
+        };
+        setActivity(updatedActivity);
+
+        // Also trigger a full refresh to ensure consistency
+        refreshData();
+
         Alert.alert('Gemt', 'Kategorien er blevet opdateret');
+        setIsEditing(false);
       } else if (activity.seriesId && showSeriesDialog) {
         // User chose to edit the entire series
         await updateActivitySeries(activity.seriesId, {
@@ -115,6 +128,10 @@ export default function ActivityDetailsScreen() {
         });
 
         Alert.alert('Gemt', 'Hele serien er blevet opdateret');
+        setIsEditing(false);
+        
+        // Refresh the activity data
+        refreshData();
       } else {
         // Edit single activity (or activity not in a series)
         await updateActivitySingle(activity.id, {
@@ -135,20 +152,22 @@ export default function ActivityDetailsScreen() {
         });
 
         Alert.alert('Gemt', 'Aktiviteten er blevet opdateret');
+        setIsEditing(false);
+        
+        // Refresh the activity data
+        const updatedActivity = {
+          ...activity,
+          title: editTitle,
+          date: editDate,
+          time: editTime,
+          location: editLocation,
+          category: editCategory!,
+        };
+        setActivity(updatedActivity);
+        
+        // Also trigger a full refresh to ensure consistency
+        refreshData();
       }
-
-      setIsEditing(false);
-      
-      // Refresh the activity data
-      const updatedActivity = {
-        ...activity,
-        title: editTitle,
-        date: editDate,
-        time: editTime,
-        location: editLocation,
-        category: editCategory!,
-      };
-      setActivity(updatedActivity);
     } catch (error) {
       console.error('Error saving activity:', error);
       Alert.alert('Fejl', 'Der opstod en fejl ved gemning');
@@ -387,7 +406,7 @@ export default function ActivityDetailsScreen() {
           )}
         </View>
 
-        {!activity.isExternal && !isEditing && (
+        {!isEditing && (
           <TouchableOpacity
             style={styles.editButton}
             onPress={handleEditClick}
@@ -686,7 +705,7 @@ export default function ActivityDetailsScreen() {
           {/* Category */}
           <View style={styles.fieldContainer}>
             <Text style={[styles.fieldLabel, { color: textColor }]}>Kategori</Text>
-            {isEditing || activity.isExternal ? (
+            {isEditing ? (
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
