@@ -27,7 +27,7 @@ import CreateActivityTaskModal from '@/components/CreateActivityTaskModal';
 export default function ActivityDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { activities, externalActivities, categories, updateActivity, updateActivitySingle, updateActivitySeries, toggleTaskCompletion, deleteActivityTask, deleteActivitySingle, deleteActivitySeries } = useFootball();
+  const { activities, externalActivities, categories, updateActivity, updateActivitySingle, updateActivitySeries, toggleTaskCompletion, deleteActivityTask, deleteActivitySingle, deleteActivitySeries, refreshData } = useFootball();
   const { isAdmin } = useUserRole();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -250,10 +250,11 @@ export default function ActivityDetailsScreen() {
     setShowCreateTaskModal(true);
   };
 
-  const handleTaskCreated = () => {
+  const handleTaskCreated = async () => {
     console.log('Task created successfully, refreshing activity data');
     setShowCreateTaskModal(false);
-    // The data will refresh automatically via the context
+    // Refresh data from context
+    refreshData();
   };
 
   const handleDeleteClick = () => {
@@ -917,13 +918,17 @@ export default function ActivityDetailsScreen() {
       />
 
       {/* Create Task Modal */}
-      <CreateActivityTaskModal
-        visible={showCreateTaskModal}
-        onClose={() => setShowCreateTaskModal(false)}
-        activityId={activity.id}
-        activityTitle={activity.title}
-        onTaskCreated={handleTaskCreated}
-      />
+      {activity && (
+        <CreateActivityTaskModal
+          visible={showCreateTaskModal}
+          onClose={() => setShowCreateTaskModal(false)}
+          onSave={handleTaskCreated}
+          activityId={activity.id}
+          activityTitle={activity.title}
+          activityDate={new Date(activity.date)}
+          activityTime={activity.time}
+        />
+      )}
     </View>
   );
 }
