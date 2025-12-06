@@ -8,11 +8,34 @@ import { Activity } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
 import { getWeek, startOfWeek, endOfWeek } from 'date-fns';
 import { requestNotificationPermissions } from '@/utils/notificationService';
+import CreateActivityModal, { ActivityCreationData } from '@/components/CreateActivityModal';
+import { supabase } from '@/app/integrations/supabase/client';
 
 export default function HomeScreen() {
-  const { currentWeekStats, todayActivities, activities, toggleTaskCompletion, externalCalendars, fetchExternalCalendarEvents } = useFootball();
+  const { currentWeekStats, todayActivities, activities, categories, toggleTaskCompletion, createActivity, externalCalendars, fetchExternalCalendarEvents } = useFootball();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
+  const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // Check if user is admin
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data, error } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', user.id)
+          .single();
+
+        if (!error && data) {
+          setIsAdmin(data.role === 'admin');
+        }
+      }
+    };
+    checkAdminStatus();
+  }, []);
 
   // Request notification permissions on mount
   useEffect(() => {
@@ -145,6 +168,15 @@ export default function HomeScreen() {
     router.push('/(tabs)/performance');
   };
 
+  const handleCreateActivity = async (activityData: ActivityCreationData) => {
+    try {
+      await createActivity(activityData);
+    } catch (error) {
+      console.error('Error creating activity:', error);
+      throw error;
+    }
+  };
+
   const activitiesByWeek = getActivitiesByWeek();
 
   return (
@@ -166,6 +198,17 @@ export default function HomeScreen() {
           <Text style={styles.headerSubtitle}>Hold styr på alt!</Text>
         </View>
       </View>
+
+      {isAdmin && (
+        <TouchableOpacity
+          style={[styles.createButton, { backgroundColor: colors.secondary }]}
+          onPress={() => setIsCreateModalVisible(true)}
+          activeOpacity={0.7}
+        >
+          <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add_circle" size={24} color="#fff" />
+          <Text style={styles.createButtonText}>Opret aktivitet</Text>
+        </TouchableOpacity>
+      )}
 
       <View style={[styles.statsCard, { backgroundColor: getProgressColor(currentWeekStats.percentage) }]}>
         <View style={styles.statsHeader}>
@@ -341,6 +384,13 @@ export default function HomeScreen() {
       </View>
 
       <View style={{ height: 100 }} />
+
+      <CreateActivityModal
+        visible={isCreateModalVisible}
+        onClose={() => setIsCreateModalVisible(false)}
+        onCreateActivity={handleCreateActivity}
+        categories={categories}
+      />
     </ScrollView>
   );
 }
@@ -372,6 +422,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#fff',
     opacity: 0.9,
+  },
+  createButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 16,
+    borderRadius: 16,
+    marginBottom: 20,
+  },
+  createButtonText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
   },
   statsCard: {
     borderRadius: 20,
