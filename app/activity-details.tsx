@@ -20,13 +20,14 @@ import { Activity, ActivityCategory } from '@/types';
 import { supabase } from '@/app/integrations/supabase/client';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import EditSeriesDialog from '@/components/EditSeriesDialog';
+import DeleteActivityDialog from '@/components/DeleteActivityDialog';
 import { useUserRole } from '@/hooks/useUserRole';
 import CreateActivityTaskModal from '@/components/CreateActivityTaskModal';
 
 export default function ActivityDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { activities, externalActivities, categories, updateActivity, updateActivitySingle, updateActivitySeries, toggleTaskCompletion, deleteActivityTask } = useFootball();
+  const { activities, externalActivities, categories, updateActivity, updateActivitySingle, updateActivitySeries, toggleTaskCompletion, deleteActivityTask, deleteActivitySingle, deleteActivitySeries } = useFootball();
   const { isAdmin } = useUserRole();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -35,8 +36,10 @@ export default function ActivityDetailsScreen() {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showSeriesDialog, setShowSeriesDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
   const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   // Edit state
   const [editTitle, setEditTitle] = useState('');
@@ -251,6 +254,57 @@ export default function ActivityDetailsScreen() {
     console.log('Task created successfully, refreshing activity data');
     setShowCreateTaskModal(false);
     // The data will refresh automatically via the context
+  };
+
+  const handleDeleteClick = () => {
+    if (activity?.isExternal) {
+      Alert.alert(
+        'Kan ikke slette',
+        'Denne aktivitet er fra en ekstern kalender og kan ikke slettes fra appen. Slet den i den eksterne kalender i stedet.'
+      );
+      return;
+    }
+    setShowDeleteDialog(true);
+  };
+
+  const handleDeleteSingle = async () => {
+    if (!activity) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteActivitySingle(activity.id);
+      Alert.alert('Slettet', 'Aktiviteten er blevet slettet', [
+        {
+          text: 'OK',
+          onPress: () => router.back(),
+        },
+      ]);
+    } catch (error: any) {
+      console.error('Error deleting activity:', error);
+      Alert.alert('Fejl', `Kunne ikke slette aktiviteten: ${error?.message || 'Ukendt fejl'}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDeleteSeries = async () => {
+    if (!activity || !activity.seriesId) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteActivitySeries(activity.seriesId);
+      Alert.alert('Slettet', 'Hele serien er blevet slettet', [
+        {
+          text: 'OK',
+          onPress: () => router.back(),
+        },
+      ]);
+    } catch (error: any) {
+      console.error('Error deleting series:', error);
+      Alert.alert('Fejl', `Kunne ikke slette serien: ${error?.message || 'Ukendt fejl'}`);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const formatDate = (date: Date) => {
@@ -738,33 +792,61 @@ export default function ActivityDetailsScreen() {
 
         {/* Action Buttons */}
         {isEditing && (
-          <View style={styles.actionButtons}>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.cancelButton, { borderColor: colors.error }]}
-              onPress={handleCancel}
-              activeOpacity={0.7}
-              disabled={isSaving}
-            >
-              <Text style={[styles.actionButtonText, { color: colors.error }]}>Annuller</Text>
-            </TouchableOpacity>
+          <React.Fragment>
+            <View style={styles.actionButtons}>
+              <TouchableOpacity
+                style={[styles.actionButton, styles.cancelButton, { borderColor: colors.error }]}
+                onPress={handleCancel}
+                activeOpacity={0.7}
+                disabled={isSaving}
+              >
+                <Text style={[styles.actionButtonText, { color: colors.error }]}>Annuller</Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[
-                styles.actionButton,
-                styles.saveButton,
-                { backgroundColor: colors.primary },
-              ]}
-              onPress={handleSave}
-              activeOpacity={0.7}
-              disabled={isSaving}
-            >
-              {isSaving ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={[styles.actionButtonText, { color: '#fff' }]}>Gem</Text>
-              )}
-            </TouchableOpacity>
-          </View>
+              <TouchableOpacity
+                style={[
+                  styles.actionButton,
+                  styles.saveButton,
+                  { backgroundColor: colors.primary },
+                ]}
+                onPress={handleSave}
+                activeOpacity={0.7}
+                disabled={isSaving}
+              >
+                {isSaving ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={[styles.actionButtonText, { color: '#fff' }]}>Gem</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {/* Delete Button */}
+            {!activity.isExternal && (
+              <TouchableOpacity
+                style={[styles.deleteButton, { backgroundColor: isDark ? '#3a1a1a' : '#ffe5e5' }]}
+                onPress={handleDeleteClick}
+                activeOpacity={0.7}
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <ActivityIndicator size="small" color={colors.error} />
+                ) : (
+                  <React.Fragment>
+                    <IconSymbol
+                      ios_icon_name="trash"
+                      android_material_icon_name="delete"
+                      size={24}
+                      color={colors.error}
+                    />
+                    <Text style={[styles.deleteButtonText, { color: colors.error }]}>
+                      Slet aktivitet
+                    </Text>
+                  </React.Fragment>
+                )}
+              </TouchableOpacity>
+            )}
+          </React.Fragment>
         )}
 
         {/* Info Box for External Activities */}
@@ -823,6 +905,15 @@ export default function ActivityDetailsScreen() {
         onClose={() => setShowSeriesDialog(false)}
         onEditSingle={handleEditSingle}
         onEditAll={handleEditAll}
+      />
+
+      {/* Delete Activity Dialog */}
+      <DeleteActivityDialog
+        visible={showDeleteDialog}
+        onClose={() => setShowDeleteDialog(false)}
+        onDeleteSingle={handleDeleteSingle}
+        onDeleteAll={handleDeleteSeries}
+        isSeries={!!activity.seriesId}
       />
 
       {/* Create Task Modal */}
@@ -1117,6 +1208,19 @@ const styles = StyleSheet.create({
   },
   saveButton: {},
   actionButtonText: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  deleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 16,
+    borderRadius: 14,
+    marginBottom: 20,
+  },
+  deleteButtonText: {
     fontSize: 18,
     fontWeight: '600',
   },

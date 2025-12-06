@@ -46,6 +46,8 @@ interface FootballContextType {
     time?: string;
   }) => Promise<void>;
   deleteActivity: (id: string) => void;
+  deleteActivitySingle: (activityId: string) => Promise<void>;
+  deleteActivitySeries: (seriesId: string) => Promise<void>;
   duplicateActivity: (id: string) => void;
   addTask: (task: Omit<Task, 'id'>) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;

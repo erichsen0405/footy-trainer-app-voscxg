@@ -824,6 +824,106 @@ export function useFootballData() {
     }
   };
 
+  const deleteActivitySingle = async (activityId: string) => {
+    if (!userId) {
+      throw new Error('User not authenticated');
+    }
+
+    console.log('Deleting single activity:', activityId);
+
+    try {
+      // Get the activity to cancel notifications
+      const activity = activities.find(a => a.id === activityId);
+      
+      // Delete from Supabase
+      const { error } = await supabase
+        .from('activities')
+        .delete()
+        .eq('id', activityId)
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('Error deleting activity:', error);
+        throw error;
+      }
+
+      console.log('Activity deleted successfully');
+
+      // Cancel notifications for this activity's tasks
+      if (activity) {
+        for (const task of activity.tasks) {
+          await cancelNotificationByTaskId(task.id);
+        }
+      }
+
+      // Update local state immediately
+      setActivities(prevActivities => prevActivities.filter(a => a.id !== activityId));
+      
+      // Trigger a refresh to ensure consistency
+      setRefreshTrigger(prev => prev + 1);
+    } catch (error) {
+      console.error('Failed to delete activity:', error);
+      throw error;
+    }
+  };
+
+  const deleteActivitySeries = async (seriesId: string) => {
+    if (!userId) {
+      throw new Error('User not authenticated');
+    }
+
+    console.log('Deleting activity series:', seriesId);
+
+    try {
+      // Get all activities in the series to cancel notifications
+      const seriesActivities = activities.filter(a => a.seriesId === seriesId);
+      
+      // Delete all activities in the series
+      const { error: activitiesError } = await supabase
+        .from('activities')
+        .delete()
+        .eq('series_id', seriesId)
+        .eq('user_id', userId);
+
+      if (activitiesError) {
+        console.error('Error deleting series activities:', activitiesError);
+        throw activitiesError;
+      }
+
+      console.log('Series activities deleted');
+
+      // Delete the series itself
+      const { error: seriesError } = await supabase
+        .from('activity_series')
+        .delete()
+        .eq('id', seriesId)
+        .eq('user_id', userId);
+
+      if (seriesError) {
+        console.error('Error deleting series:', seriesError);
+        throw seriesError;
+      }
+
+      console.log('Series deleted successfully');
+
+      // Cancel notifications for all activities in the series
+      for (const activity of seriesActivities) {
+        for (const task of activity.tasks) {
+          await cancelNotificationByTaskId(task.id);
+        }
+      }
+
+      // Update local state immediately
+      setActivities(prevActivities => prevActivities.filter(a => a.seriesId !== seriesId));
+      
+      // Trigger a refresh to ensure consistency
+      setRefreshTrigger(prev => prev + 1);
+    } catch (error) {
+      console.error('Failed to delete series:', error);
+      throw error;
+    }
+  };
+
   const duplicateActivity = (id: string) => {
     const activity = activities.find(a => a.id === id);
     if (activity) {
@@ -1528,6 +1628,8 @@ export function useFootballData() {
     updateActivitySingle,
     updateActivitySeries,
     deleteActivity,
+    deleteActivitySingle,
+    deleteActivitySeries,
     duplicateActivity,
     addTask,
     updateTask,
