@@ -21,10 +21,11 @@ import { deleteTestTasksFromTraening } from '@/utils/cleanupTasks';
 import { testNotification, getNotificationStats, syncNotifications, getAllScheduledNotifications } from '@/utils/notificationService';
 import { rescheduleAllNotifications } from '@/utils/notificationRescheduler';
 import { useFootball } from '@/contexts/FootballContext';
+import { supabase } from '@/app/integrations/supabase/client';
 
 export default function AdminScreen() {
   const { userRole, loading: roleLoading, isAdmin } = useUserRole();
-  const { activities } = useFootball();
+  const { activities, refreshData } = useFootball();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const router = useRouter();
@@ -32,6 +33,7 @@ export default function AdminScreen() {
   const [isCleaningUp, setIsCleaningUp] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isRescheduling, setIsRescheduling] = useState(false);
+  const [isDeletingAllActivities, setIsDeletingAllActivities] = useState(false);
   const [notificationStats, setNotificationStats] = useState<{
     scheduled: number;
     stored: number;
@@ -67,6 +69,69 @@ export default function AdminScreen() {
       );
     }
   }, [roleLoading, isAdmin, router]);
+
+  const handleDeleteAllActivities = () => {
+    const activityCount = activities.length;
+    
+    Alert.alert(
+      'Slet alle aktiviteter',
+      `Dette vil slette ALLE dine ${activityCount} aktiviteter permanent. Denne handling kan ikke fortrydes. Er du helt sikker?`,
+      [
+        { text: 'Annuller', style: 'cancel' },
+        {
+          text: 'Slet alle',
+          style: 'destructive',
+          onPress: async () => {
+            setIsDeletingAllActivities(true);
+            try {
+              console.log('🗑️ Starting to delete all activities...');
+              
+              // Get current user
+              const { data: { user }, error: userError } = await supabase.auth.getUser();
+              
+              if (userError || !user) {
+                throw new Error('Kunne ikke hente bruger information');
+              }
+
+              // Delete all activities for the current user
+              // The activity_tasks will be deleted automatically due to CASCADE foreign key
+              const { error: deleteError, count } = await supabase
+                .from('activities')
+                .delete()
+                .eq('user_id', user.id);
+
+              if (deleteError) {
+                console.error('❌ Error deleting activities:', deleteError);
+                throw deleteError;
+              }
+
+              console.log(`✅ Successfully deleted all activities (count: ${count})`);
+
+              // Refresh data to update UI
+              refreshData();
+
+              // Reload notification stats
+              await loadNotificationStats();
+
+              Alert.alert(
+                'Succes',
+                `Alle ${activityCount} aktiviteter er blevet slettet.`,
+                [{ text: 'OK' }]
+              );
+            } catch (error: any) {
+              console.error('❌ Error during delete all activities:', error);
+              Alert.alert(
+                'Fejl',
+                `Kunne ikke slette aktiviteter: ${error?.message || 'Ukendt fejl'}`
+              );
+            } finally {
+              setIsDeletingAllActivities(false);
+            }
+          }
+        }
+      ]
+    );
+  };
 
   const handleCleanupTestTasks = () => {
     Alert.alert(
@@ -404,11 +469,62 @@ export default function AdminScreen() {
         <View style={[styles.section, { backgroundColor: cardBgColor }]}>
           <Text style={[styles.sectionTitle, { color: textColor }]}>Vedligeholdelse</Text>
           
+          {/* Delete All Activities Button */}
           <View style={styles.maintenanceItem}>
             <View style={styles.maintenanceInfo}>
-              <View style={styles.maintenanceIconContainer}>
+              <View style={[styles.maintenanceIconContainer, { backgroundColor: 'rgba(244, 67, 54, 0.15)' }]}>
                 <IconSymbol
                   ios_icon_name="trash.circle.fill"
+                  android_material_icon_name="delete_forever"
+                  size={32}
+                  color={colors.error}
+                />
+              </View>
+              <View style={styles.maintenanceTextContainer}>
+                <Text style={[styles.maintenanceTitle, { color: textColor }]}>
+                  Slet alle aktiviteter
+                </Text>
+                <Text style={[styles.maintenanceDescription, { color: textSecondaryColor }]}>
+                  Slet alle dine {activities.length} aktiviteter permanent
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.maintenanceButton,
+                { backgroundColor: isDark ? '#3a1a1a' : '#ffebee' }
+              ]}
+              onPress={handleDeleteAllActivities}
+              activeOpacity={0.7}
+              disabled={isDeletingAllActivities || activities.length === 0}
+            >
+              {isDeletingAllActivities ? (
+                <ActivityIndicator size="small" color={colors.error} />
+              ) : (
+                <React.Fragment>
+                  <IconSymbol
+                    ios_icon_name="trash.fill"
+                    android_material_icon_name="delete"
+                    size={20}
+                    color={activities.length === 0 ? textSecondaryColor : colors.error}
+                  />
+                  <Text style={[
+                    styles.maintenanceButtonText, 
+                    { color: activities.length === 0 ? textSecondaryColor : colors.error }
+                  ]}>
+                    Slet alle
+                  </Text>
+                </React.Fragment>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* Cleanup Test Tasks Button */}
+          <View style={[styles.maintenanceItem, { marginTop: 16 }]}>
+            <View style={styles.maintenanceInfo}>
+              <View style={[styles.maintenanceIconContainer, { backgroundColor: 'rgba(244, 67, 54, 0.1)' }]}>
+                <IconSymbol
+                  ios_icon_name="trash.circle"
                   android_material_icon_name="delete_sweep"
                   size={32}
                   color={colors.error}
@@ -419,7 +535,7 @@ export default function AdminScreen() {
                   Ryd op i test-opgaver
                 </Text>
                 <Text style={[styles.maintenanceDescription, { color: textSecondaryColor }]}>
-                  Slet alle duplikerede "test" opgaver fra træningsaktiviteter
+                  Slet alle duplikerede &quot;test&quot; opgaver fra træningsaktiviteter
                 </Text>
               </View>
             </View>
