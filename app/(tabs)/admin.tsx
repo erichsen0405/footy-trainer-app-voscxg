@@ -19,16 +19,14 @@ import CreatePlayerModal from '@/components/CreatePlayerModal';
 import PlayersList from '@/components/PlayersList';
 import ExternalCalendarManager from '@/components/ExternalCalendarManager';
 import { useFootball } from '@/contexts/FootballContext';
-import { supabase } from '@/app/integrations/supabase/client';
 
 export default function AdminScreen() {
   const { userRole, loading: roleLoading, isAdmin } = useUserRole();
-  const { activities, refreshData } = useFootball();
+  const { refreshData } = useFootball();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const router = useRouter();
   const [showCreatePlayerModal, setShowCreatePlayerModal] = useState(false);
-  const [isDeletingAllActivities, setIsDeletingAllActivities] = useState(false);
 
   const bgColor = isDark ? '#1a1a1a' : colors.background;
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
@@ -45,66 +43,6 @@ export default function AdminScreen() {
       );
     }
   }, [roleLoading, isAdmin, router]);
-
-  const handleDeleteAllActivities = () => {
-    const activityCount = activities.length;
-    
-    Alert.alert(
-      'Slet alle aktiviteter',
-      `Dette vil slette ALLE dine ${activityCount} aktiviteter permanent. Denne handling kan ikke fortrydes. Er du helt sikker?`,
-      [
-        { text: 'Annuller', style: 'cancel' },
-        {
-          text: 'Slet alle',
-          style: 'destructive',
-          onPress: async () => {
-            setIsDeletingAllActivities(true);
-            try {
-              console.log('🗑️ Starting to delete all activities...');
-              
-              // Get current user
-              const { data: { user }, error: userError } = await supabase.auth.getUser();
-              
-              if (userError || !user) {
-                throw new Error('Kunne ikke hente bruger information');
-              }
-
-              // Delete all activities for the current user
-              // The activity_tasks will be deleted automatically due to CASCADE foreign key
-              const { error: deleteError, count } = await supabase
-                .from('activities')
-                .delete()
-                .eq('user_id', user.id);
-
-              if (deleteError) {
-                console.error('❌ Error deleting activities:', deleteError);
-                throw deleteError;
-              }
-
-              console.log(`✅ Successfully deleted all activities (count: ${count})`);
-
-              // Refresh data to update UI
-              refreshData();
-
-              Alert.alert(
-                'Succes',
-                `Alle ${activityCount} aktiviteter er blevet slettet.`,
-                [{ text: 'OK' }]
-              );
-            } catch (error: any) {
-              console.error('❌ Error during delete all activities:', error);
-              Alert.alert(
-                'Fejl',
-                `Kunne ikke slette aktiviteter: ${error?.message || 'Ukendt fejl'}`
-              );
-            } finally {
-              setIsDeletingAllActivities(false);
-            }
-          }
-        }
-      ]
-    );
-  };
 
   if (roleLoading) {
     return (
@@ -191,71 +129,6 @@ export default function AdminScreen() {
           <PlayersList />
         </View>
 
-        {/* Maintenance Section */}
-        <View style={[styles.section, { backgroundColor: cardBgColor }]}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleContainer}>
-              <IconSymbol
-                ios_icon_name="wrench.and.screwdriver.fill"
-                android_material_icon_name="build"
-                size={28}
-                color={colors.error}
-              />
-              <Text style={[styles.sectionTitle, { color: textColor }]}>Vedligeholdelse</Text>
-            </View>
-          </View>
-          
-          {/* Delete All Activities Button */}
-          <View style={styles.maintenanceItem}>
-            <View style={styles.maintenanceInfo}>
-              <View style={[styles.maintenanceIconContainer, { backgroundColor: 'rgba(244, 67, 54, 0.15)' }]}>
-                <IconSymbol
-                  ios_icon_name="trash.circle.fill"
-                  android_material_icon_name="delete_forever"
-                  size={32}
-                  color={colors.error}
-                />
-              </View>
-              <View style={styles.maintenanceTextContainer}>
-                <Text style={[styles.maintenanceTitle, { color: textColor }]}>
-                  Slet alle aktiviteter
-                </Text>
-                <Text style={[styles.maintenanceDescription, { color: textSecondaryColor }]}>
-                  Slet alle dine {activities.length} aktiviteter permanent
-                </Text>
-              </View>
-            </View>
-            <TouchableOpacity
-              style={[
-                styles.maintenanceButton,
-                { backgroundColor: isDark ? '#3a1a1a' : '#ffebee' }
-              ]}
-              onPress={handleDeleteAllActivities}
-              activeOpacity={0.7}
-              disabled={isDeletingAllActivities || activities.length === 0}
-            >
-              {isDeletingAllActivities ? (
-                <ActivityIndicator size="small" color={colors.error} />
-              ) : (
-                <React.Fragment>
-                  <IconSymbol
-                    ios_icon_name="trash.fill"
-                    android_material_icon_name="delete"
-                    size={20}
-                    color={activities.length === 0 ? textSecondaryColor : colors.error}
-                  />
-                  <Text style={[
-                    styles.maintenanceButtonText, 
-                    { color: activities.length === 0 ? textSecondaryColor : colors.error }
-                  ]}>
-                    Slet alle
-                  </Text>
-                </React.Fragment>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-
         {/* Info Section */}
         <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
           <IconSymbol
@@ -266,7 +139,6 @@ export default function AdminScreen() {
           />
           <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
             Som admin har du adgang til at administrere spillere og eksterne kalendere.
-            Vær forsigtig med sletteoperationer, da de ikke kan fortrydes.
           </Text>
         </View>
 
@@ -360,50 +232,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#fff',
-  },
-  maintenanceItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 16,
-  },
-  maintenanceInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    flex: 1,
-  },
-  maintenanceIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(244, 67, 54, 0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  maintenanceTextContainer: {
-    flex: 1,
-  },
-  maintenanceTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  maintenanceDescription: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  maintenanceButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-  },
-  maintenanceButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
   },
   infoBox: {
     flexDirection: 'row',
