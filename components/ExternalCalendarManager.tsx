@@ -184,7 +184,7 @@ export default function ExternalCalendarManager() {
 
       Alert.alert(
         'Succes',
-        'Kalender tilføjet! Klik på "Synkroniser" for at importere aktiviteter med automatisk kategori-tildeling.'
+        'Kalender tilføjet! Klik på "Synkroniser" for at importere aktiviteter. Aktiviteter tildeles automatisk kategorier baseret på deres navne, eller "Ukendt" hvis ingen match findes.'
       );
 
       setNewCalendarName('');
@@ -222,13 +222,11 @@ export default function ExternalCalendarManager() {
 
       console.log('Sync response:', data);
 
-      const message = data.categoriesFromNameParsing > 0
-        ? `${data.eventCount} aktiviteter blev importeret fra "${calendarName}".\n\n` +
-          `📊 Kategori-tildeling:\n` +
-          `• ${data.categoriesFromNameParsing} via navne-parsing\n` +
-          `• ${data.categoriesFromExplicitMapping} via eksplicitte kategorier\n` +
-          `• ${data.categoriesCreatedFromParsing} nye kategorier oprettet`
-        : `${data.eventCount} aktiviteter blev importeret fra "${calendarName}" med intelligent kategori-tildeling`;
+      const message = `${data.eventCount} aktiviteter blev importeret fra "${calendarName}".\n\n` +
+        `📊 Kategori-tildeling:\n` +
+        `• ${data.categoriesFromNameParsing} via navne-parsing\n` +
+        `• ${data.categoriesFromExplicitMapping} via eksplicitte kategorier\n` +
+        `• ${data.categoriesAssignedToUnknown} tildelt "Ukendt" (ingen match)`;
 
       Alert.alert('Succes', message);
 
@@ -305,7 +303,6 @@ export default function ExternalCalendarManager() {
   };
 
   const handleDeleteCalendar = async (calendarId: string, calendarName: string) => {
-    // First, check if there are any activities associated with this calendar
     const { data: { user } } = await supabase.auth.getUser();
     
     if (!user) {
@@ -313,7 +310,6 @@ export default function ExternalCalendarManager() {
       return;
     }
 
-    // Count activities for this calendar
     const { count: activityCount, error: countError } = await supabase
       .from('activities')
       .select('*', { count: 'exact', head: true })
@@ -326,7 +322,6 @@ export default function ExternalCalendarManager() {
       return;
     }
 
-    // Show confirmation dialog with option to delete activities
     if (activityCount && activityCount > 0) {
       Alert.alert(
         'Slet kalender',
@@ -352,7 +347,6 @@ export default function ExternalCalendarManager() {
         ]
       );
     } else {
-      // No activities, just confirm deletion
       Alert.alert(
         'Slet kalender',
         `Er du sikker på at du vil slette "${calendarName}"?`,
@@ -378,7 +372,6 @@ export default function ExternalCalendarManager() {
         throw new Error('Ikke logget ind');
       }
 
-      // Update activities to remove calendar reference (keep activities but mark as non-external)
       const { error: updateError } = await supabase
         .from('activities')
         .update({ 
@@ -393,7 +386,6 @@ export default function ExternalCalendarManager() {
         throw updateError;
       }
 
-      // Delete the calendar
       const { error: calendarError } = await supabase
         .from('external_calendars')
         .delete()
@@ -422,7 +414,6 @@ export default function ExternalCalendarManager() {
         throw new Error('Ikke logget ind');
       }
 
-      // Delete activities first
       const deleteResult = await deleteExternalActivitiesForCalendar(calendarId);
 
       if (!deleteResult.success) {
@@ -431,7 +422,6 @@ export default function ExternalCalendarManager() {
 
       console.log(`Deleted ${deleteResult.count} activities`);
 
-      // Delete the calendar
       const { error: calendarError } = await supabase
         .from('external_calendars')
         .delete()
@@ -521,7 +511,7 @@ export default function ExternalCalendarManager() {
             Automatiske kategori-tildelinger
           </Text>
           <Text style={[styles.mappingsSubtitle, { color: textSecondaryColor }]}>
-            Disse kategorier tildeles automatisk baseret på aktiviteternes navne og nøgleord
+            Disse kategorier tildeles automatisk baseret på aktiviteternes navne og nøgleord. Aktiviteter uden match tildeles &quot;Ukendt&quot;.
           </Text>
           {categoryMappings.map((mapping, index) => (
             <View key={index} style={[styles.mappingItem, { borderBottomColor: isDark ? '#444' : '#e0e0e0' }]}>
@@ -630,7 +620,7 @@ export default function ExternalCalendarManager() {
               color={colors.success}
             />
             <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
-              Kalenderen vil automatisk synkronisere hver time og tildele kategorier baseret på aktiviteternes navne og nøgleord (f.eks. &quot;træning&quot;, &quot;kamp&quot;, &quot;møde&quot;)
+              Kalenderen vil automatisk synkronisere hver time og tildele kategorier baseret på aktiviteternes navne og nøgleord. Aktiviteter uden match tildeles &quot;Ukendt&quot;.
             </Text>
           </View>
         </View>
@@ -646,7 +636,7 @@ export default function ExternalCalendarManager() {
           />
           <Text style={[styles.emptyTitle, { color: textColor }]}>Ingen eksterne kalendere</Text>
           <Text style={[styles.emptyText, { color: textSecondaryColor }]}>
-            Tilføj en ekstern kalender for at importere aktiviteter automatisk med intelligent kategori-tildeling
+            Tilføj en ekstern kalender for at importere aktiviteter automatisk med intelligent kategori-tildeling. Aktiviteter uden match tildeles &quot;Ukendt&quot;.
           </Text>
         </View>
       ) : (

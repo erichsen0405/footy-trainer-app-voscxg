@@ -361,7 +361,6 @@ async function findOrCreateCategoryMapping(
   externalCategory: string,
   userCategories: any[]
 ): Promise<string | null> {
-  // Check if there's an existing mapping
   const { data: existingMapping } = await supabaseClient
     .from('category_mappings')
     .select('internal_category_id')
@@ -374,7 +373,6 @@ async function findOrCreateCategoryMapping(
     return existingMapping.internal_category_id;
   }
 
-  // Try to find a matching category by exact name
   const normalizedExternal = externalCategory.toLowerCase().trim();
   const matchingCategory = userCategories.find(
     (cat) => cat.name.toLowerCase().trim() === normalizedExternal
@@ -383,7 +381,6 @@ async function findOrCreateCategoryMapping(
   if (matchingCategory) {
     console.log(`Found matching category by name: ${externalCategory} -> ${matchingCategory.name}`);
     
-    // Create mapping for future use
     await supabaseClient
       .from('category_mappings')
       .insert({
@@ -395,7 +392,6 @@ async function findOrCreateCategoryMapping(
     return matchingCategory.id;
   }
 
-  // Try partial match
   const partialMatch = userCategories.find((cat) => {
     const catName = cat.name.toLowerCase();
     return catName.includes(normalizedExternal) || normalizedExternal.includes(catName);
@@ -404,7 +400,6 @@ async function findOrCreateCategoryMapping(
   if (partialMatch) {
     console.log(`Found partial match: ${externalCategory} -> ${partialMatch.name}`);
     
-    // Create mapping for future use
     await supabaseClient
       .from('category_mappings')
       .insert({
@@ -416,7 +411,6 @@ async function findOrCreateCategoryMapping(
     return partialMatch.id;
   }
 
-  // No match found - return null (will be assigned to "unknown" category)
   console.log(`No matching category found for: ${externalCategory}`);
   return null;
 }
@@ -425,7 +419,6 @@ async function ensureUnknownCategory(
   supabaseClient: any,
   userId: string
 ): Promise<string> {
-  // Check if "Ukendt" category already exists
   const { data: existingCategory } = await supabaseClient
     .from('activity_categories')
     .select('*')
@@ -438,14 +431,13 @@ async function ensureUnknownCategory(
     return existingCategory.id;
   }
 
-  // Create "Ukendt" category
   console.log('Creating "Ukendt" category for user:', userId);
   const { data: newCategory, error: categoryError } = await supabaseClient
     .from('activity_categories')
     .insert({
       user_id: userId,
       name: 'Ukendt',
-      color: '#9E9E9E', // Gray color
+      color: '#9E9E9E',
       emoji: '❓',
     })
     .select()
@@ -514,10 +506,8 @@ serve(async (req) => {
       .select('*')
       .eq('user_id', user.id);
 
-    // Ensure "Ukendt" category exists
     const unknownCategoryId = await ensureUnknownCategory(supabaseClient, user.id);
 
-    // Refresh user categories to include the newly created "Ukendt" category if it was just created
     const { data: refreshedCategories } = await supabaseClient
       .from('activity_categories')
       .select('*')
@@ -539,11 +529,10 @@ serve(async (req) => {
 
     const activitiesToInsert = await Promise.all(
       events.map(async (event) => {
-        let categoryId = unknownCategoryId; // Default to unknown
+        let categoryId = unknownCategoryId;
         let externalCategory = null;
         let assignmentMethod = 'unknown';
 
-        // Method 1: Try explicit category from calendar event
         if (event.categories && event.categories.length > 0) {
           externalCategory = event.categories[0];
           
@@ -560,7 +549,6 @@ serve(async (req) => {
               assignmentMethod = 'explicit_category';
               categoriesFromExplicitMapping++;
             } else {
-              // No match found, use unknown
               categoriesAssignedToUnknown++;
               console.log(`No match for external category "${externalCategory}", assigning to "Ukendt"`);
             }
@@ -570,7 +558,6 @@ serve(async (req) => {
           }
         }
         
-        // Method 2: Parse activity name for category keywords (only if not already assigned)
         if (assignmentMethod === 'unknown') {
           const parsedCategory = parseActivityNameForCategory(event.summary, refreshedCategories);
           
@@ -582,7 +569,6 @@ serve(async (req) => {
             
             console.log(`✓ Assigned category "${parsedCategory.categoryName}" to "${event.summary}" via name parsing`);
           } else {
-            // No match found via name parsing either, assign to unknown
             categoriesAssignedToUnknown++;
             console.log(`✓ No category match for "${event.summary}", assigning to "Ukendt"`);
           }
