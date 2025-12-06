@@ -1,150 +1,178 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
-  Modal,
-  TouchableOpacity,
   TextInput,
+  TouchableOpacity,
+  Modal,
+  StyleSheet,
   ScrollView,
-  useColorScheme,
+  Switch,
   Alert,
-  ActivityIndicator,
   Platform,
-  KeyboardAvoidingView,
-  Keyboard,
-  TouchableWithoutFeedback,
-  Dimensions,
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
-import { IconSymbol } from '@/components/IconSymbol';
+import { Task } from '@/types';
 import { supabase } from '@/app/integrations/supabase/client';
-import { useFootball } from '@/contexts/FootballContext';
-import { scheduleTaskReminder } from '@/utils/notificationService';
+import { scheduleTaskReminder, getAllScheduledNotifications } from '@/utils/notificationService';
 
 interface CreateActivityTaskModalProps {
   visible: boolean;
   onClose: () => void;
+  onSave: (task: Omit<Task, 'id'>) => Promise<void>;
   activityId: string;
   activityTitle: string;
-  onTaskCreated?: () => void;
+  activityDate: Date;
+  activityTime: string;
 }
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-
-export default function CreateActivityTaskModal({
+export function CreateActivityTaskModal({
   visible,
   onClose,
+  onSave,
   activityId,
   activityTitle,
-  onTaskCreated,
+  activityDate,
+  activityTime,
 }: CreateActivityTaskModalProps) {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const { refreshData, activities } = useFootball();
-
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [reminderMinutes, setReminderMinutes] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
+  const [hasReminder, setHasReminder] = useState(false);
+  const [reminderMinutes, setReminderMinutes] = useState('10');
+  const [isLoading, setIsLoading] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
 
-  const bgColor = isDark ? '#1a1a1a' : '#fff';
-  const textColor = isDark ? '#e3e3e3' : colors.text;
-  const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
-  const inputBgColor = isDark ? '#2a2a2a' : '#f5f5f5';
+  useEffect(() => {
+    const getCurrentUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUserId(user?.id || null);
+    };
+    getCurrentUser();
+  }, []);
 
-  const handleCreate = async () => {
+  const handleSave = async () => {
     if (!title.trim()) {
       Alert.alert('Fejl', 'Opgavetitel er påkrævet');
       return;
     }
 
-    setIsCreating(true);
+    if (!userId) {
+      Alert.alert('Fejl', 'Bruger ikke autentificeret');
+      return;
+    }
+
+    setIsLoading(true);
 
     try {
-      console.log('🆕 Creating standalone task for activity:', activityId);
+      console.log('🆕 ========== CREATING NEW ACTIVITY TASK ==========');
+      console.log('  Activity ID:', activityId);
+      console.log('  Activity Title:', activityTitle);
+      console.log('  Activity Date:', activityDate);
+      console.log('  Activity Time:', activityTime);
+      console.log('  Task Title:', title);
+      console.log('  Has Reminder:', hasReminder);
+      console.log('  Reminder Minutes:', reminderMinutes);
+      console.log('  User ID:', userId);
+      console.log('  Timestamp:', new Date().toISOString());
 
-      // Parse reminder minutes
-      const reminderValue = reminderMinutes.trim() ? parseInt(reminderMinutes, 10) : null;
-      if (reminderMinutes.trim() && (isNaN(reminderValue!) || reminderValue! < 0)) {
-        Alert.alert('Fejl', 'Påmindelse skal være et positivt tal');
-        setIsCreating(false);
-        return;
-      }
-
-      // Insert the task directly into activity_tasks without a template
-      const { data, error } = await supabase
+      // Insert the task into the database
+      const { data: taskData, error: taskError } = await supabase
         .from('activity_tasks')
         .insert({
           activity_id: activityId,
           title: title.trim(),
-          description: description.trim() || null,
-          reminder_minutes: reminderValue,
+          description: description.trim(),
           completed: false,
-          task_template_id: null, // No template - standalone task
+          reminder_minutes: hasReminder ? parseInt(reminderMinutes, 10) : null,
         })
         .select()
         .single();
 
-      if (error) {
-        console.error('❌ Error creating activity task:', error);
-        throw error;
+      if (taskError) {
+        console.error('❌ Error creating task:', taskError);
+        throw taskError;
       }
 
-      console.log('✅ Activity task created successfully:', data.id);
+      console.log('✅ Task created in database:', taskData.id);
 
-      // CRITICAL FIX: Schedule notification if reminder is set
-      if (reminderValue && reminderValue > 0) {
-        console.log('📅 Task has reminder, scheduling notification...');
+      // If reminder is set, schedule notification immediately
+      if (hasReminder && taskData) {
+        console.log('📅 Scheduling notification for new task...');
+        console.log('  Task ID:', taskData.id);
+        console.log('  Reminder Minutes:', parseInt(reminderMinutes, 10));
         
-        // Find the activity to get date and time
-        const activity = activities.find(a => a.id === activityId);
-        if (activity) {
-          await scheduleTaskReminder(
-            title.trim(),
-            activityTitle,
-            activity.date,
-            activity.time,
-            reminderValue,
-            data.id,
-            activityId
-          );
-          console.log('✅ Notification scheduled for new task');
+        const notificationId = await scheduleTaskReminder(
+          title.trim(),
+          activityTitle,
+          activityDate,
+          activityTime,
+          parseInt(reminderMinutes, 10),
+          taskData.id,
+          activityId
+        );
+
+        if (notificationId) {
+          console.log('✅ Notification scheduled successfully:', notificationId);
+          
+          // Verify the notification was scheduled
+          console.log('🔍 Verifying notification was scheduled...');
+          const allNotifications = await getAllScheduledNotifications();
+          const ourNotification = allNotifications.find(n => n.identifier === notificationId);
+          
+          if (ourNotification) {
+            console.log('✅ Notification verified in queue');
+            Alert.alert(
+              'Opgave oprettet',
+              `Opgaven "${title}" er oprettet med påmindelse ${reminderMinutes} minutter før aktiviteten.`,
+              [{ text: 'OK' }]
+            );
+          } else {
+            console.log('⚠️ Warning: Notification not found in queue');
+            Alert.alert(
+              'Advarsel',
+              `Opgaven er oprettet, men notifikationen kunne ikke verificeres. Tjek notifikationsindstillingerne.`,
+              [{ text: 'OK' }]
+            );
+          }
         } else {
-          console.log('⚠️ Could not find activity to schedule notification');
+          console.log('⚠️ Notification scheduling failed');
+          Alert.alert(
+            'Advarsel',
+            `Opgaven er oprettet, men notifikationen kunne ikke planlægges. Tjek at aktiviteten er i fremtiden og at notifikationer er aktiveret.`,
+            [{ text: 'OK' }]
+          );
         }
+      } else {
+        console.log('ℹ️ No reminder set for this task');
+        Alert.alert('Opgave oprettet', `Opgaven "${title}" er oprettet.`, [{ text: 'OK' }]);
       }
 
-      Alert.alert('Succes', 'Opgaven er blevet oprettet');
+      console.log('========== TASK CREATION COMPLETE ==========');
 
-      // Reset form
+      // Call the onSave callback to refresh the UI
+      await onSave({
+        title: title.trim(),
+        description: description.trim(),
+        completed: false,
+        isTemplate: false,
+        categoryIds: [],
+        reminder: hasReminder ? parseInt(reminderMinutes, 10) : undefined,
+        subtasks: [],
+      });
+
+      // Reset form and close
       setTitle('');
       setDescription('');
-      setReminderMinutes('');
-
-      // Refresh data to show the new task
-      refreshData();
-
-      // Notify parent
-      if (onTaskCreated) {
-        onTaskCreated();
-      }
-
+      setHasReminder(false);
+      setReminderMinutes('10');
       onClose();
     } catch (error: any) {
-      console.error('❌ Failed to create activity task:', error);
-      Alert.alert('Fejl', `Kunne ikke oprette opgaven: ${error?.message || 'Ukendt fejl'}`);
+      console.error('❌ Error in handleSave:', error);
+      Alert.alert('Fejl', 'Kunne ikke oprette opgave: ' + error.message);
     } finally {
-      setIsCreating(false);
+      setIsLoading(false);
     }
-  };
-
-  const handleCancel = () => {
-    setTitle('');
-    setDescription('');
-    setReminderMinutes('');
-    onClose();
   };
 
   return (
@@ -152,162 +180,87 @@ export default function CreateActivityTaskModal({
       visible={visible}
       animationType="slide"
       transparent={true}
-      onRequestClose={handleCancel}
+      onRequestClose={onClose}
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.modalOverlay}
-        keyboardVerticalOffset={0}
-      >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={styles.modalOverlay}>
-            <TouchableWithoutFeedback>
-              <View style={[styles.modalContent, { backgroundColor: bgColor }]}>
-                {/* Header */}
-                <View style={styles.modalHeader}>
-                  <View style={styles.modalHeaderLeft}>
-                    <IconSymbol
-                      ios_icon_name="plus.circle.fill"
-                      android_material_icon_name="add_circle"
-                      size={28}
-                      color={colors.primary}
-                    />
-                    <View style={styles.headerTextContainer}>
-                      <Text style={[styles.modalTitle, { color: textColor }]}>
-                        Opret opgave
-                      </Text>
-                      <Text style={[styles.modalSubtitle, { color: textSecondaryColor }]} numberOfLines={1}>
-                        {activityTitle}
-                      </Text>
-                    </View>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.closeButton}
-                    onPress={handleCancel}
-                    activeOpacity={0.7}
-                  >
-                    <IconSymbol
-                      ios_icon_name="xmark"
-                      android_material_icon_name="close"
-                      size={24}
-                      color={textSecondaryColor}
-                    />
-                  </TouchableOpacity>
-                </View>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>Ny opgave</Text>
+          <Text style={styles.activityInfo}>
+            For: {activityTitle}
+          </Text>
+          <Text style={styles.activityInfo}>
+            Dato: {activityDate.toLocaleDateString('da-DK')} kl. {activityTime}
+          </Text>
 
-                <ScrollView
-                  style={styles.scrollView}
-                  contentContainerStyle={styles.scrollContent}
-                  showsVerticalScrollIndicator={true}
-                  keyboardShouldPersistTaps="handled"
-                  bounces={true}
-                >
-                  {/* Info Box */}
-                  <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
-                    <IconSymbol
-                      ios_icon_name="info.circle"
-                      android_material_icon_name="info"
-                      size={20}
-                      color={colors.secondary}
-                    />
-                    <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
-                      Denne opgave oprettes kun for denne aktivitet og er ikke en del af en skabelon.
-                    </Text>
-                  </View>
+          <ScrollView style={styles.scrollView}>
+            <Text style={styles.label}>Titel *</Text>
+            <TextInput
+              style={styles.input}
+              value={title}
+              onChangeText={setTitle}
+              placeholder="Opgavetitel"
+              placeholderTextColor={colors.textSecondary}
+            />
 
-                  {/* Title Input */}
-                  <View style={styles.fieldContainer}>
-                    <Text style={[styles.fieldLabel, { color: textColor }]}>
-                      Titel <Text style={{ color: colors.error }}>*</Text>
-                    </Text>
-                    <TextInput
-                      style={[styles.input, { backgroundColor: inputBgColor, color: textColor }]}
-                      value={title}
-                      onChangeText={setTitle}
-                      placeholder="Hvad skal gøres?"
-                      placeholderTextColor={textSecondaryColor}
-                      maxLength={100}
-                      returnKeyType="next"
-                    />
-                  </View>
+            <Text style={styles.label}>Beskrivelse</Text>
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              value={description}
+              onChangeText={setDescription}
+              placeholder="Beskrivelse (valgfri)"
+              placeholderTextColor={colors.textSecondary}
+              multiline
+              numberOfLines={4}
+            />
 
-                  {/* Description Input */}
-                  <View style={styles.fieldContainer}>
-                    <Text style={[styles.fieldLabel, { color: textColor }]}>Beskrivelse</Text>
-                    <TextInput
-                      style={[
-                        styles.input,
-                        styles.textArea,
-                        { backgroundColor: inputBgColor, color: textColor },
-                      ]}
-                      value={description}
-                      onChangeText={setDescription}
-                      placeholder="Tilføj detaljer om opgaven..."
-                      placeholderTextColor={textSecondaryColor}
-                      multiline
-                      numberOfLines={4}
-                      maxLength={500}
-                      returnKeyType="next"
-                    />
-                  </View>
-
-                  {/* Reminder Input */}
-                  <View style={styles.fieldContainer}>
-                    <Text style={[styles.fieldLabel, { color: textColor }]}>
-                      Påmindelse (minutter før aktivitet)
-                    </Text>
-                    <TextInput
-                      style={[styles.input, { backgroundColor: inputBgColor, color: textColor }]}
-                      value={reminderMinutes}
-                      onChangeText={setReminderMinutes}
-                      placeholder="f.eks. 30"
-                      placeholderTextColor={textSecondaryColor}
-                      keyboardType="number-pad"
-                      maxLength={4}
-                      returnKeyType="done"
-                    />
-                    <Text style={[styles.fieldHint, { color: textSecondaryColor }]}>
-                      Lad feltet være tomt hvis du ikke ønsker en påmindelse
-                    </Text>
-                  </View>
-
-                  {/* Action Buttons - Inside ScrollView */}
-                  <View style={styles.actionButtons}>
-                    <TouchableOpacity
-                      style={[styles.actionButton, styles.cancelButton, { borderColor: colors.error }]}
-                      onPress={handleCancel}
-                      activeOpacity={0.7}
-                      disabled={isCreating}
-                    >
-                      <Text style={[styles.actionButtonText, { color: colors.error }]}>Annuller</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[
-                        styles.actionButton,
-                        styles.createButton,
-                        { backgroundColor: colors.primary },
-                      ]}
-                      onPress={handleCreate}
-                      activeOpacity={0.7}
-                      disabled={isCreating || !title.trim()}
-                    >
-                      {isCreating ? (
-                        <ActivityIndicator size="small" color="#fff" />
-                      ) : (
-                        <Text style={[styles.actionButtonText, { color: '#fff' }]}>Opret</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Extra padding at bottom for safe area */}
-                  <View style={{ height: 60 }} />
-                </ScrollView>
+            <View style={styles.reminderContainer}>
+              <View style={styles.reminderHeader}>
+                <Text style={styles.label}>Påmindelse</Text>
+                <Switch
+                  value={hasReminder}
+                  onValueChange={setHasReminder}
+                  trackColor={{ false: colors.border, true: colors.primary }}
+                  thumbColor={hasReminder ? colors.primary : colors.textSecondary}
+                />
               </View>
-            </TouchableWithoutFeedback>
+
+              {hasReminder && (
+                <View style={styles.reminderInputContainer}>
+                  <Text style={styles.reminderLabel}>Minutter før aktivitet:</Text>
+                  <TextInput
+                    style={styles.reminderInput}
+                    value={reminderMinutes}
+                    onChangeText={setReminderMinutes}
+                    keyboardType="number-pad"
+                    placeholder="10"
+                    placeholderTextColor={colors.textSecondary}
+                  />
+                </View>
+              )}
+            </View>
+          </ScrollView>
+
+          <View style={styles.buttonContainer}>
+            <TouchableOpacity
+              style={[styles.button, styles.cancelButton]}
+              onPress={onClose}
+              disabled={isLoading}
+            >
+              <Text style={styles.cancelButtonText}>Annuller</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.button, styles.saveButton, isLoading && styles.disabledButton]}
+              onPress={handleSave}
+              disabled={isLoading}
+            >
+              <Text style={styles.saveButtonText}>
+                {isLoading ? 'Gemmer...' : 'Gem'}
+              </Text>
+            </TouchableOpacity>
           </View>
-        </TouchableWithoutFeedback>
-      </KeyboardAvoidingView>
+        </View>
+      </View>
     </Modal>
   );
 }
@@ -316,107 +269,112 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalContent: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 20,
-    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
-    height: Platform.OS === 'ios' ? SCREEN_HEIGHT * 0.75 : SCREEN_HEIGHT * 0.80,
-    maxHeight: Platform.OS === 'ios' ? SCREEN_HEIGHT * 0.75 : SCREEN_HEIGHT * 0.80,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingHorizontal: 24,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
-  },
-  modalHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-    paddingRight: 12,
-  },
-  headerTextContainer: {
-    flex: 1,
+    backgroundColor: colors.background,
+    borderRadius: 20,
+    padding: 20,
+    width: '90%',
+    maxHeight: '80%',
   },
   modalTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: 'bold',
-  },
-  modalSubtitle: {
-    fontSize: 14,
-    marginTop: 2,
-  },
-  closeButton: {
-    padding: 4,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 20,
-  },
-  infoBox: {
-    flexDirection: 'row',
-    gap: 12,
-    padding: 14,
-    borderRadius: 12,
-    marginBottom: 20,
-  },
-  infoText: {
-    flex: 1,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  fieldContainer: {
-    marginBottom: 20,
-  },
-  fieldLabel: {
-    fontSize: 16,
-    fontWeight: '600',
+    color: colors.text,
     marginBottom: 10,
   },
+  activityInfo: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 5,
+  },
+  scrollView: {
+    marginTop: 20,
+    marginBottom: 20,
+  },
+  label: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 8,
+    marginTop: 12,
+  },
   input: {
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 17,
+    backgroundColor: colors.cardBackground,
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 16,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   textArea: {
-    minHeight: 100,
+    height: 100,
     textAlignVertical: 'top',
   },
-  fieldHint: {
-    fontSize: 13,
-    marginTop: 6,
-    fontStyle: 'italic',
+  reminderContainer: {
+    marginTop: 20,
   },
-  actionButtons: {
+  reminderHeader: {
     flexDirection: 'row',
-    gap: 16,
-    marginTop: 12,
-    marginBottom: 8,
-  },
-  actionButton: {
-    flex: 1,
-    paddingVertical: 16,
-    borderRadius: 14,
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  reminderInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  reminderLabel: {
+    fontSize: 14,
+    color: colors.text,
+    marginRight: 10,
+  },
+  reminderInput: {
+    backgroundColor: colors.cardBackground,
+    borderRadius: 10,
+    padding: 10,
+    fontSize: 16,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
+    width: 80,
+    textAlign: 'center',
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 20,
+  },
+  button: {
+    flex: 1,
+    padding: 15,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginHorizontal: 5,
   },
   cancelButton: {
-    borderWidth: 2,
+    backgroundColor: colors.cardBackground,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  createButton: {},
-  actionButtonText: {
-    fontSize: 18,
+  cancelButtonText: {
+    color: colors.text,
+    fontSize: 16,
     fontWeight: '600',
+  },
+  saveButton: {
+    backgroundColor: colors.primary,
+  },
+  saveButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
 });

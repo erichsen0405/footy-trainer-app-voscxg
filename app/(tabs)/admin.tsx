@@ -203,7 +203,22 @@ export default function AdminScreen() {
 
         {/* Notifications Section */}
         <View style={[styles.section, { backgroundColor: cardBgColor }]}>
-          <Text style={[styles.sectionTitle, { color: textColor }]}>Notifikationer</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: textColor }]}>Notifikationer</Text>
+            <TouchableOpacity
+              style={[styles.debugButton, { backgroundColor: colors.secondary }]}
+              onPress={() => router.push('/notification-debug')}
+              activeOpacity={0.7}
+            >
+              <IconSymbol
+                ios_icon_name="ant.circle"
+                android_material_icon_name="bug_report"
+                size={18}
+                color="#fff"
+              />
+              <Text style={styles.debugButtonText}>Debug</Text>
+            </TouchableOpacity>
+          </View>
           
           {/* Notification Stats */}
           {notificationStats && (
@@ -514,6 +529,19 @@ const styles = StyleSheet.create({
   },
   addButtonText: {
     fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  debugButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  debugButtonText: {
+    fontSize: 14,
     fontWeight: '600',
     color: '#fff',
   },
