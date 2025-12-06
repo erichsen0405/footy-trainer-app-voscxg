@@ -156,62 +156,6 @@ function parseActivityNameForCategory(
   return null;
 }
 
-function getCategoryEmoji(categoryName: string): string {
-  const emojiMap: { [key: string]: string } = {
-    'kamp': '🏆',
-    'træning': '⚽',
-    'fysisk træning': '💪',
-    'taktik': '📋',
-    'møde': '📅',
-    'holdsamling': '🤝',
-    'lægebesøg': '🏥',
-    'rejse': '✈️',
-  };
-
-  return emojiMap[categoryName.toLowerCase()] || '📌';
-}
-
-function getCategoryColor(categoryName: string): string {
-  const colorMap: { [key: string]: string } = {
-    'kamp': '#FFD700',
-    'træning': '#4CAF50',
-    'fysisk træning': '#FF5722',
-    'taktik': '#2196F3',
-    'møde': '#9C27B0',
-    'holdsamling': '#FF9800',
-    'lægebesøg': '#F44336',
-    'rejse': '#00BCD4',
-  };
-
-  return colorMap[categoryName.toLowerCase()] || '#4CAF50';
-}
-
-function suggestCategoryFromActivityName(activityName: string): {
-  name: string;
-  emoji: string;
-  color: string;
-} {
-  const normalizedName = activityName.toLowerCase().trim();
-
-  for (const keywordSet of DEFAULT_CATEGORY_KEYWORDS) {
-    for (const keyword of keywordSet.keywords) {
-      if (normalizedName.includes(keyword.toLowerCase())) {
-        return {
-          name: keywordSet.categoryName,
-          emoji: getCategoryEmoji(keywordSet.categoryName),
-          color: getCategoryColor(keywordSet.categoryName),
-        };
-      }
-    }
-  }
-
-  return {
-    name: activityName.split(' ')[0] || 'Aktivitet',
-    emoji: '📌',
-    color: '#4CAF50',
-  };
-}
-
 function formatTimeFromICALTime(icalTime: any): { date: string; time: string; isAllDay: boolean } {
   try {
     const isAllDay = icalTime.isDate || false;
@@ -416,7 +360,8 @@ async function findOrCreateCategoryMapping(
   userId: string,
   externalCategory: string,
   userCategories: any[]
-): Promise<string> {
+): Promise<string | null> {
+  // Check if there's an existing mapping
   const { data: existingMapping } = await supabaseClient
     .from('category_mappings')
     .select('internal_category_id')
@@ -429,6 +374,7 @@ async function findOrCreateCategoryMapping(
     return existingMapping.internal_category_id;
   }
 
+  // Try to find a matching category by exact name
   const normalizedExternal = externalCategory.toLowerCase().trim();
   const matchingCategory = userCategories.find(
     (cat) => cat.name.toLowerCase().trim() === normalizedExternal
@@ -437,6 +383,7 @@ async function findOrCreateCategoryMapping(
   if (matchingCategory) {
     console.log(`Found matching category by name: ${externalCategory} -> ${matchingCategory.name}`);
     
+    // Create mapping for future use
     await supabaseClient
       .from('category_mappings')
       .insert({
@@ -448,6 +395,7 @@ async function findOrCreateCategoryMapping(
     return matchingCategory.id;
   }
 
+  // Try partial match
   const partialMatch = userCategories.find((cat) => {
     const catName = cat.name.toLowerCase();
     return catName.includes(normalizedExternal) || normalizedExternal.includes(catName);
@@ -456,6 +404,7 @@ async function findOrCreateCategoryMapping(
   if (partialMatch) {
     console.log(`Found partial match: ${externalCategory} -> ${partialMatch.name}`);
     
+    // Create mapping for future use
     await supabaseClient
       .from('category_mappings')
       .insert({
@@ -467,53 +416,47 @@ async function findOrCreateCategoryMapping(
     return partialMatch.id;
   }
 
-  console.log(`Creating new category for: ${externalCategory}`);
-  
-  const colors = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#F44336', '#00BCD4', '#FFEB3B', '#E91E63'];
-  const colorIndex = externalCategory.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length;
-  
-  const emojiMap: { [key: string]: string } = {
-    'træning': '⚽',
-    'training': '⚽',
-    'kamp': '🏆',
-    'match': '🏆',
-    'game': '🏆',
-    'møde': '📋',
-    'meeting': '📋',
-    'event': '📅',
-    'begivenhed': '📅',
-    'default': '📌',
-  };
-  
-  const emoji = Object.keys(emojiMap).find((key) => 
-    normalizedExternal.includes(key)
-  ) ? emojiMap[Object.keys(emojiMap).find((key) => normalizedExternal.includes(key))!] : emojiMap.default;
+  // No match found - return null (will be assigned to "unknown" category)
+  console.log(`No matching category found for: ${externalCategory}`);
+  return null;
+}
 
+async function ensureUnknownCategory(
+  supabaseClient: any,
+  userId: string
+): Promise<string> {
+  // Check if "Ukendt" category already exists
+  const { data: existingCategory } = await supabaseClient
+    .from('activity_categories')
+    .select('*')
+    .eq('user_id', userId)
+    .ilike('name', 'ukendt')
+    .single();
+
+  if (existingCategory) {
+    console.log('Found existing "Ukendt" category:', existingCategory.id);
+    return existingCategory.id;
+  }
+
+  // Create "Ukendt" category
+  console.log('Creating "Ukendt" category for user:', userId);
   const { data: newCategory, error: categoryError } = await supabaseClient
     .from('activity_categories')
     .insert({
       user_id: userId,
-      name: externalCategory,
-      color: colors[colorIndex],
-      emoji: emoji,
+      name: 'Ukendt',
+      color: '#9E9E9E', // Gray color
+      emoji: '❓',
     })
     .select()
     .single();
 
   if (categoryError) {
-    console.error('Error creating category:', categoryError);
+    console.error('Error creating "Ukendt" category:', categoryError);
     throw categoryError;
   }
 
-  await supabaseClient
-    .from('category_mappings')
-    .insert({
-      user_id: userId,
-      external_category: externalCategory,
-      internal_category_id: newCategory.id,
-    });
-
-  console.log(`Created new category: ${externalCategory} with ID ${newCategory.id}`);
+  console.log('Created "Ukendt" category:', newCategory.id);
   return newCategory.id;
 }
 
@@ -571,27 +514,14 @@ serve(async (req) => {
       .select('*')
       .eq('user_id', user.id);
 
-    let defaultCategoryId = userCategories && userCategories.length > 0 ? userCategories[0].id : null;
+    // Ensure "Ukendt" category exists
+    const unknownCategoryId = await ensureUnknownCategory(supabaseClient, user.id);
 
-    if (!defaultCategoryId) {
-      const { data: newCategory, error: categoryError } = await supabaseClient
-        .from('activity_categories')
-        .insert({
-          user_id: user.id,
-          name: 'Træning',
-          color: '#4CAF50',
-          emoji: '⚽',
-        })
-        .select()
-        .single();
-
-      if (categoryError) {
-        console.error('Error creating category:', categoryError);
-      } else {
-        defaultCategoryId = newCategory.id;
-        userCategories.push(newCategory);
-      }
-    }
+    // Refresh user categories to include the newly created "Ukendt" category if it was just created
+    const { data: refreshedCategories } = await supabaseClient
+      .from('activity_categories')
+      .select('*')
+      .eq('user_id', user.id);
 
     const { error: deleteError } = await supabaseClient
       .from('activities')
@@ -603,38 +533,46 @@ serve(async (req) => {
       console.error('Error deleting old activities:', deleteError);
     }
 
-    let categoriesCreatedFromParsing = 0;
     let categoriesFromExplicitMapping = 0;
     let categoriesFromNameParsing = 0;
+    let categoriesAssignedToUnknown = 0;
 
     const activitiesToInsert = await Promise.all(
       events.map(async (event) => {
-        let categoryId = defaultCategoryId;
+        let categoryId = unknownCategoryId; // Default to unknown
         let externalCategory = null;
-        let assignmentMethod = 'default';
+        let assignmentMethod = 'unknown';
 
         // Method 1: Try explicit category from calendar event
         if (event.categories && event.categories.length > 0) {
           externalCategory = event.categories[0];
           
           try {
-            categoryId = await findOrCreateCategoryMapping(
+            const mappedCategoryId = await findOrCreateCategoryMapping(
               supabaseClient,
               user.id,
               externalCategory,
-              userCategories
+              refreshedCategories
             );
-            assignmentMethod = 'explicit_category';
-            categoriesFromExplicitMapping++;
+            
+            if (mappedCategoryId) {
+              categoryId = mappedCategoryId;
+              assignmentMethod = 'explicit_category';
+              categoriesFromExplicitMapping++;
+            } else {
+              // No match found, use unknown
+              categoriesAssignedToUnknown++;
+              console.log(`No match for external category "${externalCategory}", assigning to "Ukendt"`);
+            }
           } catch (error) {
             console.error('Error mapping category:', error);
-            categoryId = defaultCategoryId;
+            categoriesAssignedToUnknown++;
           }
         }
         
-        // Method 2: Parse activity name for category keywords
-        if (!externalCategory || assignmentMethod === 'default') {
-          const parsedCategory = parseActivityNameForCategory(event.summary, userCategories);
+        // Method 2: Parse activity name for category keywords (only if not already assigned)
+        if (assignmentMethod === 'unknown') {
+          const parsedCategory = parseActivityNameForCategory(event.summary, refreshedCategories);
           
           if (parsedCategory) {
             categoryId = parsedCategory.categoryId;
@@ -644,45 +582,9 @@ serve(async (req) => {
             
             console.log(`✓ Assigned category "${parsedCategory.categoryName}" to "${event.summary}" via name parsing`);
           } else {
-            // Method 3: Create new category based on activity name suggestion
-            const suggestion = suggestCategoryFromActivityName(event.summary);
-            
-            // Check if suggested category already exists
-            const existingCategory = userCategories.find(
-              (cat) => cat.name.toLowerCase().trim() === suggestion.name.toLowerCase().trim()
-            );
-            
-            if (existingCategory) {
-              categoryId = existingCategory.id;
-              externalCategory = existingCategory.name;
-              assignmentMethod = 'suggested_existing';
-            } else {
-              // Create new category from suggestion
-              try {
-                const { data: newCategory, error: categoryError } = await supabaseClient
-                  .from('activity_categories')
-                  .insert({
-                    user_id: user.id,
-                    name: suggestion.name,
-                    color: suggestion.color,
-                    emoji: suggestion.emoji,
-                  })
-                  .select()
-                  .single();
-
-                if (!categoryError && newCategory) {
-                  categoryId = newCategory.id;
-                  externalCategory = newCategory.name;
-                  userCategories.push(newCategory);
-                  assignmentMethod = 'suggested_new';
-                  categoriesCreatedFromParsing++;
-                  
-                  console.log(`✓ Created new category "${suggestion.name}" for "${event.summary}"`);
-                }
-              } catch (error) {
-                console.error('Error creating suggested category:', error);
-              }
-            }
+            // No match found via name parsing either, assign to unknown
+            categoriesAssignedToUnknown++;
+            console.log(`✓ No category match for "${event.summary}", assigning to "Ukendt"`);
           }
         }
 
@@ -692,7 +594,7 @@ serve(async (req) => {
           time: event.startTimeString,
           isAllDay: event.isAllDay,
           originalTimezone: event.timezone,
-          category: externalCategory || 'default',
+          category: externalCategory || 'Ukendt',
           categoryId: categoryId,
           assignmentMethod: assignmentMethod,
         });
@@ -725,7 +627,7 @@ serve(async (req) => {
       console.log(`Inserted ${activitiesToInsert.length} activities with intelligent category assignment`);
       console.log(`- ${categoriesFromExplicitMapping} from explicit calendar categories`);
       console.log(`- ${categoriesFromNameParsing} from name parsing`);
-      console.log(`- ${categoriesCreatedFromParsing} new categories created from parsing`);
+      console.log(`- ${categoriesAssignedToUnknown} assigned to "Ukendt" (no match found)`);
     }
 
     const { error: updateError } = await supabaseClient
@@ -746,8 +648,8 @@ serve(async (req) => {
         eventCount: events.length,
         categoriesFromExplicitMapping,
         categoriesFromNameParsing,
-        categoriesCreatedFromParsing,
-        message: `Successfully synced ${events.length} events with intelligent category assignment (${categoriesFromNameParsing} via name parsing, ${categoriesFromExplicitMapping} via explicit categories, ${categoriesCreatedFromParsing} new categories created)`,
+        categoriesAssignedToUnknown,
+        message: `Successfully synced ${events.length} events (${categoriesFromNameParsing} via name parsing, ${categoriesFromExplicitMapping} via explicit categories, ${categoriesAssignedToUnknown} assigned to "Ukendt")`,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
