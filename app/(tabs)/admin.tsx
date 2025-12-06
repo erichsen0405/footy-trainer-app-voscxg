@@ -205,19 +205,34 @@ export default function AdminScreen() {
         <View style={[styles.section, { backgroundColor: cardBgColor }]}>
           <View style={styles.sectionHeader}>
             <Text style={[styles.sectionTitle, { color: textColor }]}>Notifikationer</Text>
-            <TouchableOpacity
-              style={[styles.debugButton, { backgroundColor: colors.secondary }]}
-              onPress={() => router.push('/notification-debug')}
-              activeOpacity={0.7}
-            >
-              <IconSymbol
-                ios_icon_name="ant.circle"
-                android_material_icon_name="bug_report"
-                size={18}
-                color="#fff"
-              />
-              <Text style={styles.debugButtonText}>Debug</Text>
-            </TouchableOpacity>
+            <View style={styles.debugButtons}>
+              <TouchableOpacity
+                style={[styles.debugButton, { backgroundColor: colors.accent }]}
+                onPress={() => router.push('/console-logs')}
+                activeOpacity={0.7}
+              >
+                <IconSymbol
+                  ios_icon_name="terminal"
+                  android_material_icon_name="code"
+                  size={18}
+                  color="#fff"
+                />
+                <Text style={styles.debugButtonText}>Logs</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.debugButton, { backgroundColor: colors.secondary }]}
+                onPress={() => router.push('/notification-debug')}
+                activeOpacity={0.7}
+              >
+                <IconSymbol
+                  ios_icon_name="ant.circle"
+                  android_material_icon_name="bug_report"
+                  size={18}
+                  color="#fff"
+                />
+                <Text style={styles.debugButtonText}>Debug</Text>
+              </TouchableOpacity>
+            </View>
           </View>
           
           {/* Notification Stats */}
@@ -531,6 +546,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#fff',
+  },
+  debugButtons: {
+    flexDirection: 'row',
+    gap: 8,
   },
   debugButton: {
     flexDirection: 'row',
