@@ -21,6 +21,7 @@ interface ParsedEvent {
   endTimeString: string;
   timezone?: string;
   isAllDay: boolean;
+  categories: string[];
 }
 
 function formatTimeFromICALTime(icalTime: any): { date: string; time: string; isAllDay: boolean } {
@@ -191,11 +192,29 @@ function parseICalendarData(icalData: string): ParsedEvent[] {
       const startInfo = formatTimeFromICALTime(event.startDate);
       const endInfo = formatTimeFromICALTime(event.endDate);
       
+      // Extract categories from the event
+      // Categories can be stored in the CATEGORIES property
+      let categories: string[] = [];
+      try {
+        const categoriesProp = vevent.getFirstProperty('categories');
+        if (categoriesProp) {
+          const categoriesValue = categoriesProp.getValues();
+          if (Array.isArray(categoriesValue)) {
+            categories = categoriesValue.filter((cat: any) => typeof cat === 'string' && cat.trim());
+          } else if (typeof categoriesValue === 'string') {
+            categories = categoriesValue.split(',').map((cat: string) => cat.trim()).filter(Boolean);
+          }
+        }
+      } catch (error) {
+        console.log('No categories found for event:', event.summary);
+      }
+      
       console.log('Event parsed:', {
         summary: event.summary,
         startDate: startInfo.date,
         startTime: startInfo.time,
         isAllDay: startInfo.isAllDay,
+        categories: categories,
       });
       
       return {
@@ -211,6 +230,7 @@ function parseICalendarData(icalData: string): ParsedEvent[] {
         endTimeString: endInfo.time,
         timezone: event.startDate.zone?.tzid,
         isAllDay: startInfo.isAllDay,
+        categories: categories,
       };
     });
     
@@ -219,6 +239,121 @@ function parseICalendarData(icalData: string): ParsedEvent[] {
     console.error('Error parsing iCal data:', error);
     throw error;
   }
+}
+
+async function findOrCreateCategoryMapping(
+  supabaseClient: any,
+  userId: string,
+  externalCategory: string,
+  userCategories: any[]
+): Promise<string> {
+  // First, check if we have a mapping for this external category
+  const { data: existingMapping } = await supabaseClient
+    .from('category_mappings')
+    .select('internal_category_id')
+    .eq('user_id', userId)
+    .eq('external_category', externalCategory)
+    .single();
+
+  if (existingMapping) {
+    console.log(`Found existing mapping: ${externalCategory} -> ${existingMapping.internal_category_id}`);
+    return existingMapping.internal_category_id;
+  }
+
+  // Try to find a matching category by name (case-insensitive)
+  const normalizedExternal = externalCategory.toLowerCase().trim();
+  const matchingCategory = userCategories.find(
+    (cat) => cat.name.toLowerCase().trim() === normalizedExternal
+  );
+
+  if (matchingCategory) {
+    console.log(`Found matching category by name: ${externalCategory} -> ${matchingCategory.name}`);
+    
+    // Create the mapping for future use
+    await supabaseClient
+      .from('category_mappings')
+      .insert({
+        user_id: userId,
+        external_category: externalCategory,
+        internal_category_id: matchingCategory.id,
+      });
+
+    return matchingCategory.id;
+  }
+
+  // Try partial matching (e.g., "Training" matches "Træning")
+  const partialMatch = userCategories.find((cat) => {
+    const catName = cat.name.toLowerCase();
+    return catName.includes(normalizedExternal) || normalizedExternal.includes(catName);
+  });
+
+  if (partialMatch) {
+    console.log(`Found partial match: ${externalCategory} -> ${partialMatch.name}`);
+    
+    // Create the mapping
+    await supabaseClient
+      .from('category_mappings')
+      .insert({
+        user_id: userId,
+        external_category: externalCategory,
+        internal_category_id: partialMatch.id,
+      });
+
+    return partialMatch.id;
+  }
+
+  // No match found, create a new category
+  console.log(`Creating new category for: ${externalCategory}`);
+  
+  // Generate a color based on the category name (simple hash)
+  const colors = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#F44336', '#00BCD4', '#FFEB3B', '#E91E63'];
+  const colorIndex = externalCategory.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length;
+  
+  // Generate an emoji based on common category names
+  const emojiMap: { [key: string]: string } = {
+    'træning': '⚽',
+    'training': '⚽',
+    'kamp': '🏆',
+    'match': '🏆',
+    'game': '🏆',
+    'møde': '📋',
+    'meeting': '📋',
+    'event': '📅',
+    'begivenhed': '📅',
+    'default': '📌',
+  };
+  
+  const emoji = Object.keys(emojiMap).find((key) => 
+    normalizedExternal.includes(key)
+  ) ? emojiMap[Object.keys(emojiMap).find((key) => normalizedExternal.includes(key))!] : emojiMap.default;
+
+  const { data: newCategory, error: categoryError } = await supabaseClient
+    .from('activity_categories')
+    .insert({
+      user_id: userId,
+      name: externalCategory,
+      color: colors[colorIndex],
+      emoji: emoji,
+    })
+    .select()
+    .single();
+
+  if (categoryError) {
+    console.error('Error creating category:', categoryError);
+    throw categoryError;
+  }
+
+  // Create the mapping
+  await supabaseClient
+    .from('category_mappings')
+    .insert({
+      user_id: userId,
+      external_category: externalCategory,
+      internal_category_id: newCategory.id,
+    });
+
+  console.log(`Created new category: ${externalCategory} with ID ${newCategory.id}`);
+  return newCategory.id;
 }
 
 serve(async (req) => {
@@ -276,17 +411,16 @@ serve(async (req) => {
     const events = await fetchAndParseICalendar(calendar.ics_url);
     console.log(`Parsed ${events.length} events`);
 
-    // Get the user's first category (or create a default one)
-    const { data: categories } = await supabaseClient
+    // Get all user's categories for mapping
+    const { data: userCategories } = await supabaseClient
       .from('activity_categories')
       .select('*')
-      .eq('user_id', user.id)
-      .limit(1);
+      .eq('user_id', user.id);
 
-    let categoryId = categories && categories.length > 0 ? categories[0].id : null;
+    let defaultCategoryId = userCategories && userCategories.length > 0 ? userCategories[0].id : null;
 
     // If no category exists, create a default one
-    if (!categoryId) {
+    if (!defaultCategoryId) {
       const { data: newCategory, error: categoryError } = await supabaseClient
         .from('activity_categories')
         .insert({
@@ -301,7 +435,8 @@ serve(async (req) => {
       if (categoryError) {
         console.error('Error creating category:', categoryError);
       } else {
-        categoryId = newCategory.id;
+        defaultCategoryId = newCategory.id;
+        userCategories.push(newCategory);
       }
     }
 
@@ -316,28 +451,55 @@ serve(async (req) => {
       console.error('Error deleting old activities:', deleteError);
     }
 
-    // Insert new activities with Copenhagen timezone
-    const activitiesToInsert = events.map((event) => {
-      console.log('Inserting activity with Copenhagen time:', {
-        title: event.summary,
-        date: event.startDateString,
-        time: event.startTimeString,
-        isAllDay: event.isAllDay,
-        originalTimezone: event.timezone,
-      });
-      
-      return {
-        user_id: user.id,
-        title: event.summary,
-        activity_date: event.startDateString,
-        activity_time: event.startTimeString,
-        location: event.location || 'Ingen lokation',
-        category_id: categoryId,
-        is_external: true,
-        external_calendar_id: calendarId,
-        external_event_id: event.uid,
-      };
-    });
+    // Process each event and determine its category
+    const activitiesToInsert = await Promise.all(
+      events.map(async (event) => {
+        let categoryId = defaultCategoryId;
+        let externalCategory = null;
+
+        // If the event has categories, try to map them
+        if (event.categories && event.categories.length > 0) {
+          // Use the first category
+          externalCategory = event.categories[0];
+          
+          try {
+            categoryId = await findOrCreateCategoryMapping(
+              supabaseClient,
+              user.id,
+              externalCategory,
+              userCategories
+            );
+          } catch (error) {
+            console.error('Error mapping category:', error);
+            // Fall back to default category
+            categoryId = defaultCategoryId;
+          }
+        }
+
+        console.log('Inserting activity with Copenhagen time:', {
+          title: event.summary,
+          date: event.startDateString,
+          time: event.startTimeString,
+          isAllDay: event.isAllDay,
+          originalTimezone: event.timezone,
+          category: externalCategory || 'default',
+          categoryId: categoryId,
+        });
+        
+        return {
+          user_id: user.id,
+          title: event.summary,
+          activity_date: event.startDateString,
+          activity_time: event.startTimeString,
+          location: event.location || 'Ingen lokation',
+          category_id: categoryId,
+          is_external: true,
+          external_calendar_id: calendarId,
+          external_event_id: event.uid,
+          external_category: externalCategory,
+        };
+      })
+    );
 
     if (activitiesToInsert.length > 0) {
       const { error: insertError } = await supabaseClient
@@ -349,7 +511,7 @@ serve(async (req) => {
         throw insertError;
       }
 
-      console.log(`Inserted ${activitiesToInsert.length} activities with Copenhagen timezone`);
+      console.log(`Inserted ${activitiesToInsert.length} activities with Copenhagen timezone and intelligent category mapping`);
     }
 
     // Update the calendar's last_fetched and event_count
@@ -369,7 +531,7 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         eventCount: events.length,
-        message: `Successfully synced ${events.length} events to Copenhagen timezone`,
+        message: `Successfully synced ${events.length} events with intelligent category mapping`,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -10,6 +10,7 @@ export interface Activity {
   isExternal?: boolean;
   externalCalendarId?: string;
   externalEventId?: string;
+  externalCategory?: string;
   seriesId?: string;
   seriesInstanceDate?: Date;
 }
@@ -69,6 +70,8 @@ export interface ExternalCalendar {
   enabled: boolean;
   lastFetched?: Date;
   eventCount?: number;
+  autoSyncEnabled?: boolean;
+  syncIntervalMinutes?: number;
 }
 
 export interface ExternalEvent {
@@ -79,4 +82,14 @@ export interface ExternalEvent {
   startDate: Date;
   endDate: Date;
   calendarId: string;
+  categories?: string[];
+}
+
+export interface CategoryMapping {
+  id: string;
+  userId: string;
+  externalCategory: string;
+  internalCategoryId: string;
+  createdAt: Date;
+  updatedAt: Date;
 }

@@ -10,10 +10,12 @@ import {
   ActivityIndicator,
   useColorScheme,
   ScrollView,
+  Switch,
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
+import { triggerManualSync, checkSyncStatus } from '@/utils/calendarAutoSync';
 
 interface ExternalCalendar {
   id: string;
@@ -23,16 +25,31 @@ interface ExternalCalendar {
   last_fetched: string | null;
   event_count: number;
   created_at: string;
+  auto_sync_enabled: boolean;
+  sync_interval_minutes: number;
+}
+
+interface CategoryMapping {
+  id: string;
+  external_category: string;
+  internal_category_id: string;
+  category_name: string;
+  category_color: string;
+  category_emoji: string;
 }
 
 export default function ExternalCalendarManager() {
   const [calendars, setCalendars] = useState<ExternalCalendar[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState<string | null>(null);
+  const [autoSyncing, setAutoSyncing] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newCalendarName, setNewCalendarName] = useState('');
   const [newCalendarUrl, setNewCalendarUrl] = useState('');
   const [adding, setAdding] = useState(false);
+  const [categoryMappings, setCategoryMappings] = useState<CategoryMapping[]>([]);
+  const [showMappings, setShowMappings] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<any>(null);
 
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -42,7 +59,14 @@ export default function ExternalCalendarManager() {
 
   useEffect(() => {
     fetchCalendars();
+    fetchCategoryMappings();
+    checkAutoSyncStatus();
   }, []);
+
+  const checkAutoSyncStatus = async () => {
+    const status = await checkSyncStatus();
+    setSyncStatus(status);
+  };
 
   const fetchCalendars = async () => {
     try {
@@ -71,6 +95,48 @@ export default function ExternalCalendarManager() {
       Alert.alert('Fejl', 'Kunne ikke hente kalendere');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchCategoryMappings = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('category_mappings')
+        .select(`
+          id,
+          external_category,
+          internal_category_id,
+          activity_categories (
+            name,
+            color,
+            emoji
+          )
+        `)
+        .eq('user_id', user.id);
+
+      if (error) {
+        console.error('Error fetching category mappings:', error);
+        return;
+      }
+
+      const mappings = (data || []).map((mapping: any) => ({
+        id: mapping.id,
+        external_category: mapping.external_category,
+        internal_category_id: mapping.internal_category_id,
+        category_name: mapping.activity_categories?.name || 'Unknown',
+        category_color: mapping.activity_categories?.color || '#999',
+        category_emoji: mapping.activity_categories?.emoji || '📌',
+      }));
+
+      setCategoryMappings(mappings);
+    } catch (error: any) {
+      console.error('Error in fetchCategoryMappings:', error);
     }
   };
 
@@ -105,6 +171,8 @@ export default function ExternalCalendarManager() {
           name: newCalendarName.trim(),
           ics_url: newCalendarUrl.trim(),
           enabled: true,
+          auto_sync_enabled: true,
+          sync_interval_minutes: 60,
         })
         .select()
         .single();
@@ -157,10 +225,11 @@ export default function ExternalCalendarManager() {
 
       Alert.alert(
         'Succes',
-        `${data.eventCount} aktiviteter blev importeret fra "${calendarName}"`
+        `${data.eventCount} aktiviteter blev importeret fra "${calendarName}" med intelligent kategori-tildeling`
       );
 
       await fetchCalendars();
+      await fetchCategoryMappings();
     } catch (error: any) {
       console.error('Error in handleSyncCalendar:', error);
       Alert.alert(
@@ -169,6 +238,27 @@ export default function ExternalCalendarManager() {
       );
     } finally {
       setSyncing(null);
+    }
+  };
+
+  const handleAutoSyncAll = async () => {
+    try {
+      setAutoSyncing(true);
+      
+      const result = await triggerManualSync();
+      
+      Alert.alert(
+        'Auto-synkronisering fuldført',
+        `${result.syncedCount} kalender(e) blev synkroniseret${result.failedCount > 0 ? `, ${result.failedCount} fejlede` : ''}`
+      );
+
+      await fetchCalendars();
+      await fetchCategoryMappings();
+    } catch (error: any) {
+      console.error('Error in handleAutoSyncAll:', error);
+      Alert.alert('Fejl', 'Kunne ikke auto-synkronisere kalendere');
+    } finally {
+      setAutoSyncing(false);
     }
   };
 
@@ -188,6 +278,25 @@ export default function ExternalCalendarManager() {
     } catch (error: any) {
       console.error('Error in handleToggleCalendar:', error);
       Alert.alert('Fejl', 'Kunne ikke opdatere kalender');
+    }
+  };
+
+  const handleToggleAutoSync = async (calendarId: string, currentAutoSync: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('external_calendars')
+        .update({ auto_sync_enabled: !currentAutoSync })
+        .eq('id', calendarId);
+
+      if (error) {
+        console.error('Error toggling auto-sync:', error);
+        throw error;
+      }
+
+      await fetchCalendars();
+    } catch (error: any) {
+      console.error('Error in handleToggleAutoSync:', error);
+      Alert.alert('Fejl', 'Kunne ikke opdatere auto-synkronisering');
     }
   };
 
@@ -226,6 +335,7 @@ export default function ExternalCalendarManager() {
 
               Alert.alert('Succes', 'Kalender og tilknyttede aktiviteter er slettet');
               await fetchCalendars();
+              await fetchCategoryMappings();
             } catch (error: any) {
               console.error('Error in handleDeleteCalendar:', error);
               Alert.alert('Fejl', 'Kunne ikke slette kalender');
@@ -247,6 +357,88 @@ export default function ExternalCalendarManager() {
 
   return (
     <View style={styles.container}>
+      {/* Auto-Sync All Button */}
+      {calendars.length > 0 && (
+        <TouchableOpacity
+          style={[styles.autoSyncButton, { backgroundColor: colors.secondary }]}
+          onPress={handleAutoSyncAll}
+          disabled={autoSyncing}
+          activeOpacity={0.7}
+        >
+          {autoSyncing ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <React.Fragment>
+              <IconSymbol
+                ios_icon_name="arrow.triangle.2.circlepath.circle.fill"
+                android_material_icon_name="sync"
+                size={24}
+                color="#fff"
+              />
+              <Text style={styles.autoSyncButtonText}>Auto-synkroniser alle</Text>
+            </React.Fragment>
+          )}
+        </TouchableOpacity>
+      )}
+
+      {/* Category Mappings Toggle */}
+      {categoryMappings.length > 0 && (
+        <TouchableOpacity
+          style={[styles.mappingsToggle, { backgroundColor: isDark ? '#2a2a2a' : colors.card }]}
+          onPress={() => setShowMappings(!showMappings)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.mappingsToggleContent}>
+            <IconSymbol
+              ios_icon_name="tag.fill"
+              android_material_icon_name="label"
+              size={20}
+              color={colors.primary}
+            />
+            <Text style={[styles.mappingsToggleText, { color: textColor }]}>
+              Kategori-tildelinger ({categoryMappings.length})
+            </Text>
+          </View>
+          <IconSymbol
+            ios_icon_name={showMappings ? 'chevron.up' : 'chevron.down'}
+            android_material_icon_name={showMappings ? 'expand_less' : 'expand_more'}
+            size={24}
+            color={textSecondaryColor}
+          />
+        </TouchableOpacity>
+      )}
+
+      {/* Category Mappings List */}
+      {showMappings && categoryMappings.length > 0 && (
+        <View style={[styles.mappingsList, { backgroundColor: isDark ? '#2a2a2a' : colors.card }]}>
+          <Text style={[styles.mappingsTitle, { color: textColor }]}>
+            Automatiske kategori-tildelinger
+          </Text>
+          <Text style={[styles.mappingsSubtitle, { color: textSecondaryColor }]}>
+            Disse kategorier tildeles automatisk baseret på kalender-aktiviteternes kategorier
+          </Text>
+          {categoryMappings.map((mapping, index) => (
+            <View key={index} style={[styles.mappingItem, { borderBottomColor: isDark ? '#444' : '#e0e0e0' }]}>
+              <Text style={[styles.mappingExternal, { color: textSecondaryColor }]}>
+                {mapping.external_category}
+              </Text>
+              <IconSymbol
+                ios_icon_name="arrow.right"
+                android_material_icon_name="arrow_forward"
+                size={16}
+                color={textSecondaryColor}
+              />
+              <View style={styles.mappingInternal}>
+                <Text style={{ fontSize: 18 }}>{mapping.category_emoji}</Text>
+                <Text style={[styles.mappingInternalText, { color: textColor }]}>
+                  {mapping.category_name}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+
       {/* Add Calendar Button */}
       {!showAddForm && (
         <TouchableOpacity
@@ -334,7 +526,7 @@ export default function ExternalCalendarManager() {
               color={colors.success}
             />
             <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
-              Du kan finde iCal URL&apos;en i din kalender app. Den starter typisk med webcal:// eller https://
+              Kalenderen vil automatisk synkronisere hver time og tildele kategorier baseret på aktiviteternes kategorier
             </Text>
           </View>
         </View>
@@ -386,6 +578,19 @@ export default function ExternalCalendarManager() {
                         • Sidst synkroniseret: {new Date(calendar.last_fetched).toLocaleDateString('da-DK')}
                       </Text>
                     )}
+                  </View>
+                  
+                  {/* Auto-sync toggle */}
+                  <View style={styles.autoSyncToggle}>
+                    <Text style={[styles.autoSyncLabel, { color: textColor }]}>
+                      Auto-synkronisering
+                    </Text>
+                    <Switch
+                      value={calendar.auto_sync_enabled}
+                      onValueChange={() => handleToggleAutoSync(calendar.id, calendar.auto_sync_enabled)}
+                      trackColor={{ false: '#767577', true: colors.primary }}
+                      thumbColor="#fff"
+                    />
                   </View>
                 </View>
               </View>
@@ -477,6 +682,73 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 16,
+  },
+  autoSyncButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  autoSyncButtonText: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  mappingsToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  mappingsToggleContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  mappingsToggleText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  mappingsList: {
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  mappingsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  mappingsSubtitle: {
+    fontSize: 14,
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  mappingItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  mappingExternal: {
+    fontSize: 14,
+    flex: 1,
+  },
+  mappingInternal: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  mappingInternalText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   addButton: {
     flexDirection: 'row',
@@ -597,6 +869,17 @@ const styles = StyleSheet.create({
   },
   calendarStat: {
     fontSize: 13,
+  },
+  autoSyncToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginLeft: 40,
+    marginTop: 8,
+  },
+  autoSyncLabel: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   calendarActions: {
     flexDirection: 'row',
