@@ -24,9 +24,196 @@ interface ParsedEvent {
   categories: string[];
 }
 
+interface CategoryKeywords {
+  categoryName: string;
+  keywords: string[];
+  priority: number;
+}
+
+const DEFAULT_CATEGORY_KEYWORDS: CategoryKeywords[] = [
+  {
+    categoryName: 'Kamp',
+    keywords: ['kamp', 'match', 'game', 'turnering', 'tournament', 'finale', 'semifinale', 'kvartfinale'],
+    priority: 10,
+  },
+  {
+    categoryName: 'Træning',
+    keywords: ['træning', 'training', 'practice', 'øvelse', 'drill', 'session'],
+    priority: 9,
+  },
+  {
+    categoryName: 'Fysisk træning',
+    keywords: ['fysisk', 'fitness', 'kondition', 'styrke', 'cardio', 'løb', 'gym', 'vægt'],
+    priority: 8,
+  },
+  {
+    categoryName: 'Taktik',
+    keywords: ['taktik', 'tactics', 'strategi', 'strategy', 'analyse', 'video', 'gennemgang'],
+    priority: 8,
+  },
+  {
+    categoryName: 'Møde',
+    keywords: ['møde', 'meeting', 'samtale', 'briefing', 'debriefing', 'evaluering'],
+    priority: 7,
+  },
+  {
+    categoryName: 'Holdsamling',
+    keywords: ['holdsamling', 'team building', 'social', 'sammenkomst', 'event', 'fest'],
+    priority: 7,
+  },
+  {
+    categoryName: 'Lægebesøg',
+    keywords: ['læge', 'doctor', 'fysioterapi', 'physio', 'behandling', 'skade', 'injury', 'sundhed'],
+    priority: 6,
+  },
+  {
+    categoryName: 'Rejse',
+    keywords: ['rejse', 'travel', 'transport', 'bus', 'fly', 'flight', 'afgang', 'departure'],
+    priority: 6,
+  },
+];
+
+function parseActivityNameForCategory(
+  activityName: string,
+  userCategories: any[]
+): { categoryId: string; categoryName: string; confidence: number } | null {
+  if (!activityName || !userCategories || userCategories.length === 0) {
+    return null;
+  }
+
+  const normalizedName = activityName.toLowerCase().trim();
+  const sortedKeywords = [...DEFAULT_CATEGORY_KEYWORDS].sort((a, b) => b.priority - a.priority);
+
+  const matches: Array<{
+    category: any;
+    score: number;
+    matchedKeyword: string;
+  }> = [];
+
+  for (const keywordSet of sortedKeywords) {
+    const matchingCategory = userCategories.find(
+      (cat) => cat.name.toLowerCase().trim() === keywordSet.categoryName.toLowerCase().trim()
+    );
+
+    if (!matchingCategory) {
+      continue;
+    }
+
+    for (const keyword of keywordSet.keywords) {
+      const normalizedKeyword = keyword.toLowerCase();
+      
+      const wordBoundaryRegex = new RegExp(`\\b${normalizedKeyword}\\b`, 'i');
+      if (wordBoundaryRegex.test(normalizedName)) {
+        matches.push({
+          category: matchingCategory,
+          score: keywordSet.priority * 10 + 5,
+          matchedKeyword: keyword,
+        });
+        continue;
+      }
+
+      if (normalizedName.includes(normalizedKeyword)) {
+        matches.push({
+          category: matchingCategory,
+          score: keywordSet.priority * 10,
+          matchedKeyword: keyword,
+        });
+      }
+    }
+  }
+
+  if (matches.length === 0) {
+    for (const category of userCategories) {
+      const categoryNameLower = category.name.toLowerCase().trim();
+      
+      if (normalizedName.includes(categoryNameLower)) {
+        matches.push({
+          category: category,
+          score: 50,
+          matchedKeyword: category.name,
+        });
+      }
+    }
+  }
+
+  if (matches.length > 0) {
+    matches.sort((a, b) => b.score - a.score);
+    const bestMatch = matches[0];
+
+    const maxPossibleScore = 100;
+    const confidence = Math.min(100, Math.round((bestMatch.score / maxPossibleScore) * 100));
+
+    console.log(`Activity "${activityName}" matched to category "${bestMatch.category.name}" (confidence: ${confidence}%, keyword: "${bestMatch.matchedKeyword}")`);
+
+    return {
+      categoryId: bestMatch.category.id,
+      categoryName: bestMatch.category.name,
+      confidence: confidence,
+    };
+  }
+
+  console.log(`No category match found for activity "${activityName}"`);
+  return null;
+}
+
+function getCategoryEmoji(categoryName: string): string {
+  const emojiMap: { [key: string]: string } = {
+    'kamp': '🏆',
+    'træning': '⚽',
+    'fysisk træning': '💪',
+    'taktik': '📋',
+    'møde': '📅',
+    'holdsamling': '🤝',
+    'lægebesøg': '🏥',
+    'rejse': '✈️',
+  };
+
+  return emojiMap[categoryName.toLowerCase()] || '📌';
+}
+
+function getCategoryColor(categoryName: string): string {
+  const colorMap: { [key: string]: string } = {
+    'kamp': '#FFD700',
+    'træning': '#4CAF50',
+    'fysisk træning': '#FF5722',
+    'taktik': '#2196F3',
+    'møde': '#9C27B0',
+    'holdsamling': '#FF9800',
+    'lægebesøg': '#F44336',
+    'rejse': '#00BCD4',
+  };
+
+  return colorMap[categoryName.toLowerCase()] || '#4CAF50';
+}
+
+function suggestCategoryFromActivityName(activityName: string): {
+  name: string;
+  emoji: string;
+  color: string;
+} {
+  const normalizedName = activityName.toLowerCase().trim();
+
+  for (const keywordSet of DEFAULT_CATEGORY_KEYWORDS) {
+    for (const keyword of keywordSet.keywords) {
+      if (normalizedName.includes(keyword.toLowerCase())) {
+        return {
+          name: keywordSet.categoryName,
+          emoji: getCategoryEmoji(keywordSet.categoryName),
+          color: getCategoryColor(keywordSet.categoryName),
+        };
+      }
+    }
+  }
+
+  return {
+    name: activityName.split(' ')[0] || 'Aktivitet',
+    emoji: '📌',
+    color: '#4CAF50',
+  };
+}
+
 function formatTimeFromICALTime(icalTime: any): { date: string; time: string; isAllDay: boolean } {
   try {
-    // Check if this is an all-day event
     const isAllDay = icalTime.isDate || false;
     
     console.log('Parsing ICAL time:', {
@@ -36,7 +223,6 @@ function formatTimeFromICALTime(icalTime: any): { date: string; time: string; is
       isDate: icalTime.isDate,
     });
     
-    // For all-day events, use the date components directly without timezone conversion
     if (isAllDay) {
       const year = icalTime.year;
       const month = String(icalTime.month).padStart(2, '0');
@@ -50,11 +236,6 @@ function formatTimeFromICALTime(icalTime: any): { date: string; time: string; is
         isAllDay: true,
       };
     }
-    
-    // For timed events, we need to handle timezone properly
-    // ICAL.js already converts to the correct timezone when calling toJSDate()
-    // The issue is that if the event is in UTC, toJSDate() gives us UTC time
-    // We need to convert that to Copenhagen time
     
     const jsDate = icalTime.toJSDate();
     const originalTimezone = icalTime.zone?.tzid;
@@ -70,16 +251,12 @@ function formatTimeFromICALTime(icalTime: any): { date: string; time: string; is
       minute: icalTime.minute,
     });
     
-    // If the event has no timezone or is in UTC, we need to convert to Copenhagen
-    // If it already has a timezone, ICAL.js has already handled it
     let copenhagenDate: Date;
     
     if (!originalTimezone || originalTimezone === 'UTC' || originalTimezone === 'Z') {
-      // Event is in UTC, convert to Copenhagen
-      // Use the ICAL time components directly and interpret them as UTC
       const utcDate = new Date(Date.UTC(
         icalTime.year,
-        icalTime.month - 1, // JavaScript months are 0-indexed
+        icalTime.month - 1,
         icalTime.day,
         icalTime.hour,
         icalTime.minute,
@@ -89,11 +266,9 @@ function formatTimeFromICALTime(icalTime: any): { date: string; time: string; is
       console.log('UTC date created:', utcDate.toISOString());
       copenhagenDate = utcDate;
     } else {
-      // Event already has a timezone, use the JS Date as-is
       copenhagenDate = jsDate;
     }
     
-    // Now format this date in Copenhagen timezone
     const copenhagenFormatter = new Intl.DateTimeFormat('en-US', {
       timeZone: 'Europe/Copenhagen',
       year: 'numeric',
@@ -133,7 +308,6 @@ function formatTimeFromICALTime(icalTime: any): { date: string; time: string; is
     };
   } catch (error) {
     console.error('Error formatting ICAL time:', error);
-    // Fallback to current date/time in Copenhagen
     const now = new Date();
     const copenhagenFormatter = new Intl.DateTimeFormat('en-US', {
       timeZone: 'Europe/Copenhagen',
@@ -162,7 +336,6 @@ function formatTimeFromICALTime(icalTime: any): { date: string; time: string; is
 async function fetchAndParseICalendar(url: string): Promise<ParsedEvent[]> {
   console.log('Fetching iCal from:', url);
   
-  // Convert webcal:// to https://
   const httpUrl = url.replace(/^webcal:\/\//, 'https://');
   
   const response = await fetch(httpUrl);
@@ -188,12 +361,9 @@ function parseICalendarData(icalData: string): ParsedEvent[] {
     const events: ParsedEvent[] = vevents.map((vevent) => {
       const event = new ICAL.Event(vevent);
       
-      // Parse start date/time with Copenhagen timezone conversion
       const startInfo = formatTimeFromICALTime(event.startDate);
       const endInfo = formatTimeFromICALTime(event.endDate);
       
-      // Extract categories from the event
-      // Categories can be stored in the CATEGORIES property
       let categories: string[] = [];
       try {
         const categoriesProp = vevent.getFirstProperty('categories');
@@ -247,7 +417,6 @@ async function findOrCreateCategoryMapping(
   externalCategory: string,
   userCategories: any[]
 ): Promise<string> {
-  // First, check if we have a mapping for this external category
   const { data: existingMapping } = await supabaseClient
     .from('category_mappings')
     .select('internal_category_id')
@@ -260,7 +429,6 @@ async function findOrCreateCategoryMapping(
     return existingMapping.internal_category_id;
   }
 
-  // Try to find a matching category by name (case-insensitive)
   const normalizedExternal = externalCategory.toLowerCase().trim();
   const matchingCategory = userCategories.find(
     (cat) => cat.name.toLowerCase().trim() === normalizedExternal
@@ -269,7 +437,6 @@ async function findOrCreateCategoryMapping(
   if (matchingCategory) {
     console.log(`Found matching category by name: ${externalCategory} -> ${matchingCategory.name}`);
     
-    // Create the mapping for future use
     await supabaseClient
       .from('category_mappings')
       .insert({
@@ -281,7 +448,6 @@ async function findOrCreateCategoryMapping(
     return matchingCategory.id;
   }
 
-  // Try partial matching (e.g., "Training" matches "Træning")
   const partialMatch = userCategories.find((cat) => {
     const catName = cat.name.toLowerCase();
     return catName.includes(normalizedExternal) || normalizedExternal.includes(catName);
@@ -290,7 +456,6 @@ async function findOrCreateCategoryMapping(
   if (partialMatch) {
     console.log(`Found partial match: ${externalCategory} -> ${partialMatch.name}`);
     
-    // Create the mapping
     await supabaseClient
       .from('category_mappings')
       .insert({
@@ -302,14 +467,11 @@ async function findOrCreateCategoryMapping(
     return partialMatch.id;
   }
 
-  // No match found, create a new category
   console.log(`Creating new category for: ${externalCategory}`);
   
-  // Generate a color based on the category name (simple hash)
   const colors = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#F44336', '#00BCD4', '#FFEB3B', '#E91E63'];
   const colorIndex = externalCategory.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length;
   
-  // Generate an emoji based on common category names
   const emojiMap: { [key: string]: string } = {
     'træning': '⚽',
     'training': '⚽',
@@ -343,7 +505,6 @@ async function findOrCreateCategoryMapping(
     throw categoryError;
   }
 
-  // Create the mapping
   await supabaseClient
     .from('category_mappings')
     .insert({
@@ -357,7 +518,6 @@ async function findOrCreateCategoryMapping(
 }
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -368,13 +528,11 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Get the authorization header
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       throw new Error('No authorization header');
     }
 
-    // Verify the user
     const token = authHeader.replace('Bearer ', '');
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
 
@@ -384,7 +542,6 @@ serve(async (req) => {
 
     console.log('User authenticated:', user.id);
 
-    // Get the calendar ID from the request
     const { calendarId } = await req.json();
     
     if (!calendarId) {
@@ -393,7 +550,6 @@ serve(async (req) => {
 
     console.log('Syncing calendar:', calendarId);
 
-    // Fetch the calendar from the database
     const { data: calendar, error: calendarError } = await supabaseClient
       .from('external_calendars')
       .select('*')
@@ -407,11 +563,9 @@ serve(async (req) => {
 
     console.log('Calendar found:', calendar.name);
 
-    // Fetch and parse the iCal data
     const events = await fetchAndParseICalendar(calendar.ics_url);
     console.log(`Parsed ${events.length} events`);
 
-    // Get all user's categories for mapping
     const { data: userCategories } = await supabaseClient
       .from('activity_categories')
       .select('*')
@@ -419,7 +573,6 @@ serve(async (req) => {
 
     let defaultCategoryId = userCategories && userCategories.length > 0 ? userCategories[0].id : null;
 
-    // If no category exists, create a default one
     if (!defaultCategoryId) {
       const { data: newCategory, error: categoryError } = await supabaseClient
         .from('activity_categories')
@@ -440,7 +593,6 @@ serve(async (req) => {
       }
     }
 
-    // Delete existing external activities for this calendar
     const { error: deleteError } = await supabaseClient
       .from('activities')
       .delete()
@@ -451,15 +603,18 @@ serve(async (req) => {
       console.error('Error deleting old activities:', deleteError);
     }
 
-    // Process each event and determine its category
+    let categoriesCreatedFromParsing = 0;
+    let categoriesFromExplicitMapping = 0;
+    let categoriesFromNameParsing = 0;
+
     const activitiesToInsert = await Promise.all(
       events.map(async (event) => {
         let categoryId = defaultCategoryId;
         let externalCategory = null;
+        let assignmentMethod = 'default';
 
-        // If the event has categories, try to map them
+        // Method 1: Try explicit category from calendar event
         if (event.categories && event.categories.length > 0) {
-          // Use the first category
           externalCategory = event.categories[0];
           
           try {
@@ -469,14 +624,69 @@ serve(async (req) => {
               externalCategory,
               userCategories
             );
+            assignmentMethod = 'explicit_category';
+            categoriesFromExplicitMapping++;
           } catch (error) {
             console.error('Error mapping category:', error);
-            // Fall back to default category
             categoryId = defaultCategoryId;
           }
         }
+        
+        // Method 2: Parse activity name for category keywords
+        if (!externalCategory || assignmentMethod === 'default') {
+          const parsedCategory = parseActivityNameForCategory(event.summary, userCategories);
+          
+          if (parsedCategory) {
+            categoryId = parsedCategory.categoryId;
+            externalCategory = parsedCategory.categoryName;
+            assignmentMethod = `name_parsing (${parsedCategory.confidence}% confidence)`;
+            categoriesFromNameParsing++;
+            
+            console.log(`✓ Assigned category "${parsedCategory.categoryName}" to "${event.summary}" via name parsing`);
+          } else {
+            // Method 3: Create new category based on activity name suggestion
+            const suggestion = suggestCategoryFromActivityName(event.summary);
+            
+            // Check if suggested category already exists
+            const existingCategory = userCategories.find(
+              (cat) => cat.name.toLowerCase().trim() === suggestion.name.toLowerCase().trim()
+            );
+            
+            if (existingCategory) {
+              categoryId = existingCategory.id;
+              externalCategory = existingCategory.name;
+              assignmentMethod = 'suggested_existing';
+            } else {
+              // Create new category from suggestion
+              try {
+                const { data: newCategory, error: categoryError } = await supabaseClient
+                  .from('activity_categories')
+                  .insert({
+                    user_id: user.id,
+                    name: suggestion.name,
+                    color: suggestion.color,
+                    emoji: suggestion.emoji,
+                  })
+                  .select()
+                  .single();
 
-        console.log('Inserting activity with Copenhagen time:', {
+                if (!categoryError && newCategory) {
+                  categoryId = newCategory.id;
+                  externalCategory = newCategory.name;
+                  userCategories.push(newCategory);
+                  assignmentMethod = 'suggested_new';
+                  categoriesCreatedFromParsing++;
+                  
+                  console.log(`✓ Created new category "${suggestion.name}" for "${event.summary}"`);
+                }
+              } catch (error) {
+                console.error('Error creating suggested category:', error);
+              }
+            }
+          }
+        }
+
+        console.log(`Inserting activity with Copenhagen time:`, {
           title: event.summary,
           date: event.startDateString,
           time: event.startTimeString,
@@ -484,6 +694,7 @@ serve(async (req) => {
           originalTimezone: event.timezone,
           category: externalCategory || 'default',
           categoryId: categoryId,
+          assignmentMethod: assignmentMethod,
         });
         
         return {
@@ -511,10 +722,12 @@ serve(async (req) => {
         throw insertError;
       }
 
-      console.log(`Inserted ${activitiesToInsert.length} activities with Copenhagen timezone and intelligent category mapping`);
+      console.log(`Inserted ${activitiesToInsert.length} activities with intelligent category assignment`);
+      console.log(`- ${categoriesFromExplicitMapping} from explicit calendar categories`);
+      console.log(`- ${categoriesFromNameParsing} from name parsing`);
+      console.log(`- ${categoriesCreatedFromParsing} new categories created from parsing`);
     }
 
-    // Update the calendar's last_fetched and event_count
     const { error: updateError } = await supabaseClient
       .from('external_calendars')
       .update({
@@ -531,7 +744,10 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         eventCount: events.length,
-        message: `Successfully synced ${events.length} events with intelligent category mapping`,
+        categoriesFromExplicitMapping,
+        categoriesFromNameParsing,
+        categoriesCreatedFromParsing,
+        message: `Successfully synced ${events.length} events with intelligent category assignment (${categoriesFromNameParsing} via name parsing, ${categoriesFromExplicitMapping} via explicit categories, ${categoriesCreatedFromParsing} new categories created)`,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

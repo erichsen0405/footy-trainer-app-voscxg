@@ -146,7 +146,6 @@ export default function ExternalCalendarManager() {
       return;
     }
 
-    // Validate URL format
     const urlPattern = /^(https?:\/\/|webcal:\/\/)/i;
     if (!urlPattern.test(newCalendarUrl)) {
       Alert.alert(
@@ -184,7 +183,7 @@ export default function ExternalCalendarManager() {
 
       Alert.alert(
         'Succes',
-        'Kalender tilføjet! Klik på "Synkroniser" for at importere aktiviteter.'
+        'Kalender tilføjet! Klik på "Synkroniser" for at importere aktiviteter med automatisk kategori-tildeling.'
       );
 
       setNewCalendarName('');
@@ -211,7 +210,6 @@ export default function ExternalCalendarManager() {
 
       console.log('Syncing calendar:', calendarId);
 
-      // Call the Edge Function
       const { data, error } = await supabase.functions.invoke('sync-external-calendar', {
         body: { calendarId },
       });
@@ -223,10 +221,15 @@ export default function ExternalCalendarManager() {
 
       console.log('Sync response:', data);
 
-      Alert.alert(
-        'Succes',
-        `${data.eventCount} aktiviteter blev importeret fra "${calendarName}" med intelligent kategori-tildeling`
-      );
+      const message = data.categoriesFromNameParsing > 0
+        ? `${data.eventCount} aktiviteter blev importeret fra "${calendarName}".\n\n` +
+          `📊 Kategori-tildeling:\n` +
+          `• ${data.categoriesFromNameParsing} via navne-parsing\n` +
+          `• ${data.categoriesFromExplicitMapping} via eksplicitte kategorier\n` +
+          `• ${data.categoriesCreatedFromParsing} nye kategorier oprettet`
+        : `${data.eventCount} aktiviteter blev importeret fra "${calendarName}" med intelligent kategori-tildeling`;
+
+      Alert.alert('Succes', message);
 
       await fetchCalendars();
       await fetchCategoryMappings();
@@ -311,7 +314,6 @@ export default function ExternalCalendarManager() {
           style: 'destructive',
           onPress: async () => {
             try {
-              // First delete all activities from this calendar
               const { error: activitiesError } = await supabase
                 .from('activities')
                 .delete()
@@ -322,7 +324,6 @@ export default function ExternalCalendarManager() {
                 throw activitiesError;
               }
 
-              // Then delete the calendar
               const { error: calendarError } = await supabase
                 .from('external_calendars')
                 .delete()
@@ -357,7 +358,6 @@ export default function ExternalCalendarManager() {
 
   return (
     <View style={styles.container}>
-      {/* Auto-Sync All Button */}
       {calendars.length > 0 && (
         <TouchableOpacity
           style={[styles.autoSyncButton, { backgroundColor: colors.secondary }]}
@@ -381,7 +381,6 @@ export default function ExternalCalendarManager() {
         </TouchableOpacity>
       )}
 
-      {/* Category Mappings Toggle */}
       {categoryMappings.length > 0 && (
         <TouchableOpacity
           style={[styles.mappingsToggle, { backgroundColor: isDark ? '#2a2a2a' : colors.card }]}
@@ -408,14 +407,13 @@ export default function ExternalCalendarManager() {
         </TouchableOpacity>
       )}
 
-      {/* Category Mappings List */}
       {showMappings && categoryMappings.length > 0 && (
         <View style={[styles.mappingsList, { backgroundColor: isDark ? '#2a2a2a' : colors.card }]}>
           <Text style={[styles.mappingsTitle, { color: textColor }]}>
             Automatiske kategori-tildelinger
           </Text>
           <Text style={[styles.mappingsSubtitle, { color: textSecondaryColor }]}>
-            Disse kategorier tildeles automatisk baseret på kalender-aktiviteternes kategorier
+            Disse kategorier tildeles automatisk baseret på aktiviteternes navne og nøgleord
           </Text>
           {categoryMappings.map((mapping, index) => (
             <View key={index} style={[styles.mappingItem, { borderBottomColor: isDark ? '#444' : '#e0e0e0' }]}>
@@ -439,7 +437,6 @@ export default function ExternalCalendarManager() {
         </View>
       )}
 
-      {/* Add Calendar Button */}
       {!showAddForm && (
         <TouchableOpacity
           style={[styles.addButton, { backgroundColor: colors.primary }]}
@@ -456,7 +453,6 @@ export default function ExternalCalendarManager() {
         </TouchableOpacity>
       )}
 
-      {/* Add Calendar Form */}
       {showAddForm && (
         <View style={[styles.addForm, { backgroundColor: isDark ? '#2a2a2a' : colors.card }]}>
           <View style={styles.formHeader}>
@@ -526,13 +522,12 @@ export default function ExternalCalendarManager() {
               color={colors.success}
             />
             <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
-              Kalenderen vil automatisk synkronisere hver time og tildele kategorier baseret på aktiviteternes kategorier
+              Kalenderen vil automatisk synkronisere hver time og tildele kategorier baseret på aktiviteternes navne og nøgleord (f.eks. &quot;træning&quot;, &quot;kamp&quot;, &quot;møde&quot;)
             </Text>
           </View>
         </View>
       )}
 
-      {/* Calendars List */}
       {calendars.length === 0 ? (
         <View style={[styles.emptyState, { backgroundColor: isDark ? '#2a2a2a' : colors.card }]}>
           <IconSymbol
@@ -543,7 +538,7 @@ export default function ExternalCalendarManager() {
           />
           <Text style={[styles.emptyTitle, { color: textColor }]}>Ingen eksterne kalendere</Text>
           <Text style={[styles.emptyText, { color: textSecondaryColor }]}>
-            Tilføj en ekstern kalender for at importere aktiviteter automatisk
+            Tilføj en ekstern kalender for at importere aktiviteter automatisk med intelligent kategori-tildeling
           </Text>
         </View>
       ) : (
@@ -580,7 +575,6 @@ export default function ExternalCalendarManager() {
                     )}
                   </View>
                   
-                  {/* Auto-sync toggle */}
                   <View style={styles.autoSyncToggle}>
                     <Text style={[styles.autoSyncLabel, { color: textColor }]}>
                       Auto-synkronisering
