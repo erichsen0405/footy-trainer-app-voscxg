@@ -190,7 +190,7 @@ export default function HomeScreen() {
   const currentYear = new Date().getFullYear();
 
   return (
-    <React.Fragment>
+    <View style={{ flex: 1 }}>
       <ScrollView 
         style={[styles.container, { backgroundColor: bgColor }]} 
         contentContainerStyle={styles.contentContainer}
@@ -210,7 +210,6 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Create Activity Button for Admins */}
         {isAdmin && (
           <TouchableOpacity
             style={[styles.createButton, { backgroundColor: colors.secondary }]}
@@ -276,75 +275,73 @@ export default function HomeScreen() {
               <Text style={[styles.emptyText, { color: textSecondaryColor }]}>Ingen aktiviteter i dag</Text>
             </View>
           ) : (
-            <React.Fragment>
-              {todayActivities.map((activity) => (
-                <TouchableOpacity
-                  key={activity.id}
-                  style={[styles.activityCard, { backgroundColor: activity.category.color }]}
-                  onPress={() => handleActivityPress(activity.id)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.activityHeader}>
-                    <Text style={styles.activityEmoji}>{activity.category.emoji}</Text>
-                    <View style={styles.activityInfo}>
-                      <View style={styles.activityTitleRow}>
-                        <Text style={styles.activityTitle}>{activity.title}</Text>
-                        {activity.isExternal && (
-                          <View style={styles.externalBadge}>
-                            <IconSymbol 
-                              ios_icon_name="calendar.badge.clock" 
-                              android_material_icon_name="event" 
-                              size={14} 
-                              color="#fff" 
-                            />
-                          </View>
-                        )}
-                      </View>
-                      <Text style={styles.activityTime}>
-                        {formatDateTime(new Date(activity.date), activity.time)}
-                      </Text>
-                      <View style={styles.locationRow}>
-                        <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={16} color="#fff" />
-                        <Text style={styles.activityLocation}>{activity.location}</Text>
-                      </View>
+            todayActivities.map((activity) => (
+              <TouchableOpacity
+                key={activity.id}
+                style={[styles.activityCard, { backgroundColor: activity.category.color }]}
+                onPress={() => handleActivityPress(activity.id)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.activityHeader}>
+                  <Text style={styles.activityEmoji}>{activity.category.emoji}</Text>
+                  <View style={styles.activityInfo}>
+                    <View style={styles.activityTitleRow}>
+                      <Text style={styles.activityTitle}>{activity.title}</Text>
+                      {activity.isExternal && (
+                        <View style={styles.externalBadge}>
+                          <IconSymbol 
+                            ios_icon_name="calendar.badge.clock" 
+                            android_material_icon_name="event" 
+                            size={14} 
+                            color="#fff" 
+                          />
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.activityTime}>
+                      {formatDateTime(new Date(activity.date), activity.time)}
+                    </Text>
+                    <View style={styles.locationRow}>
+                      <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={16} color="#fff" />
+                      <Text style={styles.activityLocation}>{activity.location}</Text>
                     </View>
                   </View>
+                </View>
 
-                  {activity.tasks.length > 0 && (
-                    <View style={styles.tasksSection}>
-                      <Text style={styles.tasksTitle}>Opgaver:</Text>
-                      {activity.tasks.map((task) => (
-                        <TouchableOpacity
-                          key={task.id}
-                          style={styles.taskItem}
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            handleTaskPress(task, activity.id, activity.title);
-                          }}
-                        >
-                          <View style={[styles.checkbox, task.completed && styles.checkboxChecked]}>
-                            {task.completed && (
-                              <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
-                            )}
-                          </View>
-                          <View style={styles.taskContent}>
-                            <Text style={[styles.taskText, task.completed && styles.taskTextCompleted]}>
-                              {task.title}
-                            </Text>
-                            {task.reminder && (
-                              <View style={styles.reminderBadgeSmall}>
-                                <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={12} color="#fff" />
-                                <Text style={styles.reminderTextSmall}>{task.reminder} min</Text>
-                              </View>
-                            )}
-                          </View>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
-                </TouchableOpacity>
-              ))}
-            </React.Fragment>
+                {activity.tasks.length > 0 && (
+                  <View style={styles.tasksSection}>
+                    <Text style={styles.tasksTitle}>Opgaver:</Text>
+                    {activity.tasks.map((task) => (
+                      <TouchableOpacity
+                        key={task.id}
+                        style={styles.taskItem}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleTaskPress(task, activity.id, activity.title);
+                        }}
+                      >
+                        <View style={[styles.checkbox, task.completed && styles.checkboxChecked]}>
+                          {task.completed && (
+                            <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
+                          )}
+                        </View>
+                        <View style={styles.taskContent}>
+                          <Text style={[styles.taskText, task.completed && styles.taskTextCompleted]}>
+                            {task.title}
+                          </Text>
+                          {task.reminder && (
+                            <View style={styles.reminderBadgeSmall}>
+                              <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={12} color="#fff" />
+                              <Text style={styles.reminderTextSmall}>{task.reminder} min</Text>
+                            </View>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </TouchableOpacity>
+            ))
           )}
         </View>
 
@@ -356,71 +353,68 @@ export default function HomeScreen() {
               <Text style={[styles.emptyText, { color: textSecondaryColor }]}>Ingen kommende aktiviteter</Text>
             </View>
           ) : (
-            <React.Fragment>
-              {Object.entries(upcomingByWeek).map(([weekKey, data]) => {
-                const weekNumber = weekKey.split('-W')[1];
-                return (
-                  <View key={weekKey} style={styles.weekSection}>
-                    <Text style={[styles.weekTitle, { color: textColor }]}>
-                      Uge {weekNumber}
-                    </Text>
-                    <Text style={[styles.weekDates, { color: textSecondaryColor }]}>
-                      {data.dateRange}
-                    </Text>
-                    
-                    {data.activities.map((activity) => (
-                      <TouchableOpacity
-                        key={activity.id}
-                        style={[styles.upcomingActivityCard, { backgroundColor: activity.category.color }]}
-                        onPress={() => handleActivityPress(activity.id)}
-                        activeOpacity={0.7}
-                      >
-                        <View style={styles.upcomingActivityHeader}>
-                          <Text style={styles.upcomingActivityEmoji}>{activity.category.emoji}</Text>
-                          <View style={styles.upcomingActivityInfo}>
-                            <View style={styles.activityTitleRow}>
-                              <Text style={styles.upcomingActivityTitle}>{activity.title}</Text>
-                              {activity.isExternal && (
-                                <View style={styles.externalBadgeSmall}>
-                                  <IconSymbol 
-                                    ios_icon_name="calendar.badge.clock" 
-                                    android_material_icon_name="event" 
-                                    size={12} 
-                                    color="#fff" 
-                                  />
-                                </View>
-                              )}
-                            </View>
-                            <Text style={styles.upcomingActivityTime}>
-                              {new Date(activity.date).toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' })} kl. {formatTime(activity.time)}
-                            </Text>
-                            <View style={styles.locationRow}>
-                              <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={14} color="#fff" />
-                              <Text style={styles.upcomingActivityLocation}>{activity.location}</Text>
-                            </View>
+            Object.entries(upcomingByWeek).map(([weekKey, data]) => {
+              const weekNumber = weekKey.split('-W')[1];
+              return (
+                <View key={weekKey} style={styles.weekSection}>
+                  <Text style={[styles.weekTitle, { color: textColor }]}>
+                    Uge {weekNumber}
+                  </Text>
+                  <Text style={[styles.weekDates, { color: textSecondaryColor }]}>
+                    {data.dateRange}
+                  </Text>
+                  
+                  {data.activities.map((activity) => (
+                    <TouchableOpacity
+                      key={activity.id}
+                      style={[styles.upcomingActivityCard, { backgroundColor: activity.category.color }]}
+                      onPress={() => handleActivityPress(activity.id)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.upcomingActivityHeader}>
+                        <Text style={styles.upcomingActivityEmoji}>{activity.category.emoji}</Text>
+                        <View style={styles.upcomingActivityInfo}>
+                          <View style={styles.activityTitleRow}>
+                            <Text style={styles.upcomingActivityTitle}>{activity.title}</Text>
+                            {activity.isExternal && (
+                              <View style={styles.externalBadgeSmall}>
+                                <IconSymbol 
+                                  ios_icon_name="calendar.badge.clock" 
+                                  android_material_icon_name="event" 
+                                  size={12} 
+                                  color="#fff" 
+                                />
+                              </View>
+                            )}
+                          </View>
+                          <Text style={styles.upcomingActivityTime}>
+                            {new Date(activity.date).toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' })} kl. {formatTime(activity.time)}
+                          </Text>
+                          <View style={styles.locationRow}>
+                            <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={14} color="#fff" />
+                            <Text style={styles.upcomingActivityLocation}>{activity.location}</Text>
                           </View>
                         </View>
-                        
-                        {activity.tasks.length > 0 && (
-                          <View style={styles.upcomingTasksPreview}>
-                            <Text style={styles.upcomingTasksText}>
-                              {activity.tasks.filter(t => t.completed).length} / {activity.tasks.length} opgaver udført
-                            </Text>
-                          </View>
-                        )}
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                );
-              })}
-            </React.Fragment>
+                      </View>
+                      
+                      {activity.tasks.length > 0 && (
+                        <View style={styles.upcomingTasksPreview}>
+                          <Text style={styles.upcomingTasksText}>
+                            {activity.tasks.filter(t => t.completed).length} / {activity.tasks.length} opgaver udført
+                          </Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              );
+            })
           )}
         </View>
 
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Task Modal */}
       <Modal
         visible={isTaskModalVisible}
         animationType="slide"
@@ -476,14 +470,13 @@ export default function HomeScreen() {
         </View>
       </Modal>
 
-      {/* Create Activity Modal */}
       <CreateActivityModal
         visible={isCreateModalVisible}
         onClose={() => setIsCreateModalVisible(false)}
         onCreateActivity={handleCreateActivity}
         categories={categories}
       />
-    </React.Fragment>
+    </View>
   );
 }
 
