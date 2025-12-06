@@ -8,6 +8,7 @@ import {
 } from '@/utils/notificationService';
 import { refreshNotificationQueue, forceRefreshNotificationQueue } from '@/utils/notificationScheduler';
 import { startOfWeek, endOfWeek } from 'date-fns';
+import { AppState, AppStateStatus } from 'react-native';
 
 function getWeekNumber(date: Date): number {
   const d = new Date(date.getTime());
@@ -111,6 +112,20 @@ export function useFootballData() {
     initializeNotifications();
   }, []);
 
+  // CRITICAL FIX: Add app state listener to refresh data when app comes to foreground
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'active') {
+        console.log('🔄 App became active, triggering data refresh...');
+        setRefreshTrigger(prev => prev + 1);
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
   // Load categories from Supabase
   useEffect(() => {
     if (!userId) {
@@ -119,14 +134,15 @@ export function useFootballData() {
     }
 
     const loadCategories = async () => {
-      console.log('Loading categories for user:', userId);
+      console.log('🔄 Loading categories for user:', userId);
       const { data, error } = await supabase
         .from('activity_categories')
         .select('*')
-        .eq('user_id', userId);
+        .eq('user_id', userId)
+        .order('name', { ascending: true });
 
       if (error) {
-        console.error('Error loading categories:', error);
+        console.error('❌ Error loading categories:', error);
         setIsLoading(false);
         return;
       }
@@ -138,16 +154,16 @@ export function useFootballData() {
           color: cat.color,
           emoji: cat.emoji,
         }));
-        console.log('Loaded categories:', loadedCategories.length);
+        console.log('✅ Loaded categories:', loadedCategories.length, loadedCategories.map(c => c.name));
         setCategories(loadedCategories);
       } else {
-        console.log('No categories found in database');
+        console.log('⚠️ No categories found in database');
         setCategories([]);
       }
     };
 
     loadCategories();
-  }, [userId]);
+  }, [userId, refreshTrigger]);
 
   // Load task templates from Supabase
   useEffect(() => {
@@ -232,7 +248,7 @@ export function useFootballData() {
     }
 
     const loadActivities = async () => {
-      console.log('Loading activities for user:', userId);
+      console.log('🔄 Loading activities for user:', userId);
       const { data, error } = await supabase
         .from('activities')
         .select(`
@@ -251,13 +267,13 @@ export function useFootballData() {
         .order('activity_date', { ascending: true });
 
       if (error) {
-        console.error('Error loading activities:', error);
+        console.error('❌ Error loading activities:', error);
         setIsLoading(false);
         return;
       }
 
       if (data) {
-        console.log(`Loaded ${data.length} activities from database`);
+        console.log(`✅ Loaded ${data.length} activities from database`);
         
         const loadedActivities: Activity[] = data.map(act => {
           const category = act.category ? {
@@ -290,7 +306,9 @@ export function useFootballData() {
               subtasks: [],
             }));
 
-          console.log(`Activity "${act.title}" (${act.is_external ? 'external' : 'internal'}) has ${activityTasks.length} tasks`);
+          if (act.is_external) {
+            console.log(`📅 External activity "${act.title}" -> Category: ${category.name} (${category.emoji})`);
+          }
 
           return {
             id: act.id,
@@ -308,9 +326,9 @@ export function useFootballData() {
           };
         });
 
-        console.log('Total activities loaded:', loadedActivities.length);
-        console.log('Internal activities:', loadedActivities.filter(a => !a.isExternal).length);
-        console.log('External activities:', loadedActivities.filter(a => a.isExternal).length);
+        console.log('✅ Total activities loaded:', loadedActivities.length);
+        console.log('📊 Internal activities:', loadedActivities.filter(a => !a.isExternal).length);
+        console.log('📊 External activities:', loadedActivities.filter(a => a.isExternal).length);
         
         // CRITICAL FIX: Store ALL activities together (both internal and external)
         setActivities(loadedActivities);
