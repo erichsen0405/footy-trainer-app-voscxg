@@ -16,6 +16,7 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 import { triggerManualSync, checkSyncStatus } from '@/utils/calendarAutoSync';
+import { deleteExternalActivitiesForCalendar } from '@/utils/deleteExternalActivities';
 
 interface ExternalCalendar {
   id: string;
@@ -304,47 +305,154 @@ export default function ExternalCalendarManager() {
   };
 
   const handleDeleteCalendar = async (calendarId: string, calendarName: string) => {
-    Alert.alert(
-      'Slet kalender',
-      `Er du sikker på at du vil slette "${calendarName}"?\n\nAlle importerede aktiviteter fra denne kalender vil også blive slettet.`,
-      [
-        { text: 'Annuller', style: 'cancel' },
-        {
-          text: 'Slet',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const { error: activitiesError } = await supabase
-                .from('activities')
-                .delete()
-                .eq('external_calendar_id', calendarId);
+    // First, check if there are any activities associated with this calendar
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) {
+      Alert.alert('Fejl', 'Ikke logget ind');
+      return;
+    }
 
-              if (activitiesError) {
-                console.error('Error deleting activities:', activitiesError);
-                throw activitiesError;
-              }
+    // Count activities for this calendar
+    const { count: activityCount, error: countError } = await supabase
+      .from('activities')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('external_calendar_id', calendarId);
 
-              const { error: calendarError } = await supabase
-                .from('external_calendars')
-                .delete()
-                .eq('id', calendarId);
+    if (countError) {
+      console.error('Error counting activities:', countError);
+      Alert.alert('Fejl', 'Kunne ikke tælle aktiviteter');
+      return;
+    }
 
-              if (calendarError) {
-                console.error('Error deleting calendar:', calendarError);
-                throw calendarError;
-              }
-
-              Alert.alert('Succes', 'Kalender og tilknyttede aktiviteter er slettet');
-              await fetchCalendars();
-              await fetchCategoryMappings();
-            } catch (error: any) {
-              console.error('Error in handleDeleteCalendar:', error);
-              Alert.alert('Fejl', 'Kunne ikke slette kalender');
-            }
+    // Show confirmation dialog with option to delete activities
+    if (activityCount && activityCount > 0) {
+      Alert.alert(
+        'Slet kalender',
+        `Vil du slette kalenderen "${calendarName}"?\n\nDer er ${activityCount} aktivitet${activityCount === 1 ? '' : 'er'} tilknyttet denne kalender.\n\nVil du også slette disse aktiviteter?`,
+        [
+          { 
+            text: 'Annuller', 
+            style: 'cancel' 
           },
-        },
-      ]
-    );
+          {
+            text: 'Behold aktiviteter',
+            onPress: async () => {
+              await deleteCalendarOnly(calendarId, calendarName);
+            },
+          },
+          {
+            text: 'Slet alt',
+            style: 'destructive',
+            onPress: async () => {
+              await deleteCalendarWithActivities(calendarId, calendarName);
+            },
+          },
+        ]
+      );
+    } else {
+      // No activities, just confirm deletion
+      Alert.alert(
+        'Slet kalender',
+        `Er du sikker på at du vil slette "${calendarName}"?`,
+        [
+          { text: 'Annuller', style: 'cancel' },
+          {
+            text: 'Slet',
+            style: 'destructive',
+            onPress: async () => {
+              await deleteCalendarOnly(calendarId, calendarName);
+            },
+          },
+        ]
+      );
+    }
+  };
+
+  const deleteCalendarOnly = async (calendarId: string, calendarName: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Ikke logget ind');
+      }
+
+      // Update activities to remove calendar reference (keep activities but mark as non-external)
+      const { error: updateError } = await supabase
+        .from('activities')
+        .update({ 
+          external_calendar_id: null,
+          is_external: false,
+        })
+        .eq('external_calendar_id', calendarId)
+        .eq('user_id', user.id);
+
+      if (updateError) {
+        console.error('Error updating activities:', updateError);
+        throw updateError;
+      }
+
+      // Delete the calendar
+      const { error: calendarError } = await supabase
+        .from('external_calendars')
+        .delete()
+        .eq('id', calendarId)
+        .eq('user_id', user.id);
+
+      if (calendarError) {
+        console.error('Error deleting calendar:', calendarError);
+        throw calendarError;
+      }
+
+      Alert.alert('Succes', `Kalender "${calendarName}" er slettet. Aktiviteterne er bevaret.`);
+      await fetchCalendars();
+      await fetchCategoryMappings();
+    } catch (error: any) {
+      console.error('Error in deleteCalendarOnly:', error);
+      Alert.alert('Fejl', 'Kunne ikke slette kalender');
+    }
+  };
+
+  const deleteCalendarWithActivities = async (calendarId: string, calendarName: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Ikke logget ind');
+      }
+
+      // Delete activities first
+      const deleteResult = await deleteExternalActivitiesForCalendar(calendarId);
+
+      if (!deleteResult.success) {
+        throw new Error(deleteResult.error || 'Kunne ikke slette aktiviteter');
+      }
+
+      console.log(`Deleted ${deleteResult.count} activities`);
+
+      // Delete the calendar
+      const { error: calendarError } = await supabase
+        .from('external_calendars')
+        .delete()
+        .eq('id', calendarId)
+        .eq('user_id', user.id);
+
+      if (calendarError) {
+        console.error('Error deleting calendar:', calendarError);
+        throw calendarError;
+      }
+
+      Alert.alert(
+        'Succes', 
+        `Kalender "${calendarName}" og ${deleteResult.count} aktivitet${deleteResult.count === 1 ? '' : 'er'} er slettet`
+      );
+      await fetchCalendars();
+      await fetchCategoryMappings();
+    } catch (error: any) {
+      console.error('Error in deleteCalendarWithActivities:', error);
+      Alert.alert('Fejl', error.message || 'Kunne ikke slette kalender og aktiviteter');
+    }
   };
 
   if (loading) {
