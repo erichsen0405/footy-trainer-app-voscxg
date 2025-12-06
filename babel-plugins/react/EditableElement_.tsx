@@ -1,3 +1,4 @@
+
 /* eslint-disable */
 
 // @eslint-ignore-file
@@ -28,12 +29,21 @@ export const getType = (el: any): ElementTypes | undefined => {
   return undefined;
 };
 
-const toArray = (object: T | T[]): T[] => {
+const toArray = <T,>(object: T | T[]): T[] => {
   if (Array.isArray(object)) return object;
   return [object];
 };
 
 export default function EditableElement_(_props: PropsWithChildren<any>) {
+  const { children } = _props;
+  const { props } = children;
+
+  // If we are not running in the web the windows will causes
+  // issues hence editable mode is not enabled.
+  if (Platform.OS !== "web") {
+    return cloneElement(children, props);
+  }
+
   const {
     editModeEnabled,
     selected,
@@ -43,15 +53,6 @@ export default function EditableElement_(_props: PropsWithChildren<any>) {
     pushHovered,
     popHovered,
   } = useContext(EditableContext);
-
-  const { children } = _props;
-  const { props } = children;
-
-  // If we are not running in the web the windows will causes
-  // issues hence editable mode is not enabled.
-  if (Platform.OS !== "web") {
-    return cloneElement(children, props);
-  }
 
   const type = getType(children);
   const __sourceLocation = props.__sourceLocation;
@@ -135,4 +136,6 @@ export default function EditableElement_(_props: PropsWithChildren<any>) {
       children: children.props.children,
     });
   }
+
+  return children;
 }
