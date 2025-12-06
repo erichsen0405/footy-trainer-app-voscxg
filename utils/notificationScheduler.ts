@@ -11,7 +11,7 @@ import { Platform } from 'react-native';
  * similar to how iOS Calendar handles many future reminders.
  * 
  * Key Features:
- * - Only schedules notifications within a configurable window (default: 60 days)
+ * - Only schedules notifications within a configurable window (default: 5 days)
  * - Stores all reminder metadata in the database
  * - Automatically refreshes the notification queue as time passes
  * - Respects iOS's 64 notification limit
@@ -19,7 +19,7 @@ import { Platform } from 'react-native';
  */
 
 // Configuration
-const SCHEDULING_WINDOW_DAYS = 60; // Only schedule notifications within this window
+const SCHEDULING_WINDOW_DAYS = 5; // Only schedule notifications within this window
 const MAX_NOTIFICATIONS_IOS = 60; // Leave some buffer below the 64 limit
 const LAST_REFRESH_KEY = '@notification_last_refresh';
 const REFRESH_INTERVAL_HOURS = 24; // Refresh daily
