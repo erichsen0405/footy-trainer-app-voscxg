@@ -274,16 +274,18 @@ export default function ActivityDetailsScreen() {
     setIsDeleting(true);
     try {
       await deleteActivitySingle(activity.id);
-      Alert.alert('Slettet', 'Aktiviteten er blevet slettet', [
-        {
-          text: 'OK',
-          onPress: () => router.back(),
-        },
-      ]);
+      console.log('✅ Activity deleted successfully, navigating to home screen');
+      
+      // Navigate to home screen immediately
+      router.replace('/(tabs)/(home)');
+      
+      // Show success message after navigation
+      setTimeout(() => {
+        Alert.alert('Slettet', 'Aktiviteten er blevet slettet');
+      }, 300);
     } catch (error: any) {
-      console.error('Error deleting activity:', error);
+      console.error('❌ Error deleting activity:', error);
       Alert.alert('Fejl', `Kunne ikke slette aktiviteten: ${error?.message || 'Ukendt fejl'}`);
-    } finally {
       setIsDeleting(false);
     }
   };
@@ -294,16 +296,18 @@ export default function ActivityDetailsScreen() {
     setIsDeleting(true);
     try {
       await deleteActivitySeries(activity.seriesId);
-      Alert.alert('Slettet', 'Hele serien er blevet slettet', [
-        {
-          text: 'OK',
-          onPress: () => router.back(),
-        },
-      ]);
+      console.log('✅ Activity series deleted successfully, navigating to home screen');
+      
+      // Navigate to home screen immediately
+      router.replace('/(tabs)/(home)');
+      
+      // Show success message after navigation
+      setTimeout(() => {
+        Alert.alert('Slettet', 'Hele serien er blevet slettet');
+      }, 300);
     } catch (error: any) {
-      console.error('Error deleting series:', error);
+      console.error('❌ Error deleting series:', error);
       Alert.alert('Fejl', `Kunne ikke slette serien: ${error?.message || 'Ukendt fejl'}`);
-    } finally {
       setIsDeleting(false);
     }
   };
