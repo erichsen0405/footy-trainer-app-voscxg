@@ -307,7 +307,7 @@ export function useFootballData() {
             }));
 
           if (act.is_external) {
-            console.log(`📅 External activity "${act.title}" -> Category: ${category.name} (${category.emoji})`);
+            console.log(`📅 External activity "${act.title}" -> Category: ${category.name} (${category.emoji}), Manually set: ${act.manually_set_category || false}`);
           }
 
           return {
@@ -672,16 +672,22 @@ export function useFootballData() {
       throw new Error('User not authenticated');
     }
 
-    console.log('Updating single activity:', activityId);
+    console.log('🔄 Updating single activity:', activityId, updates);
 
     try {
       const updateData: any = {};
       
       if (updates.title) updateData.title = updates.title;
       if (updates.location) updateData.location = updates.location;
-      if (updates.categoryId) updateData.category_id = updates.categoryId;
       if (updates.date) updateData.activity_date = updates.date.toISOString().split('T')[0];
       if (updates.time) updateData.activity_time = updates.time;
+      
+      // CRITICAL FIX: Set manually_set_category flag when user changes category
+      if (updates.categoryId) {
+        updateData.category_id = updates.categoryId;
+        updateData.manually_set_category = true;
+        console.log('🔒 Setting manually_set_category=true for activity:', activityId);
+      }
       
       // Remove from series when updating single activity
       updateData.series_id = null;
@@ -695,11 +701,11 @@ export function useFootballData() {
         .eq('user_id', userId);
 
       if (error) {
-        console.error('Error updating activity:', error);
+        console.error('❌ Error updating activity:', error);
         throw error;
       }
 
-      console.log('Activity updated successfully');
+      console.log('✅ Activity updated successfully with manually_set_category flag');
       
       setRefreshTrigger(prev => prev + 1);
       

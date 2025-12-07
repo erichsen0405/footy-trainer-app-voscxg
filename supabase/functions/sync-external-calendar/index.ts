@@ -513,10 +513,10 @@ serve(async (req) => {
       .select('*')
       .eq('user_id', user.id);
 
-    // Fetch existing external activities for this calendar to preserve manually set categories
+    // CRITICAL FIX: Fetch existing external activities with manually_set_category flag
     const { data: existingActivities } = await supabaseClient
       .from('activities')
-      .select('id, external_event_id, category_id, activity_categories(name)')
+      .select('id, external_event_id, category_id, manually_set_category, activity_categories(name)')
       .eq('external_calendar_id', calendarId)
       .eq('user_id', user.id);
 
@@ -530,6 +530,7 @@ serve(async (req) => {
           id: activity.id,
           categoryId: activity.category_id,
           categoryName: activity.activity_categories?.name || 'Unknown',
+          manuallySetCategory: activity.manually_set_category || false,
         });
       });
     }
@@ -571,13 +572,19 @@ serve(async (req) => {
         let externalCategory = null;
         let assignmentMethod = 'unknown';
 
-        // Check if activity exists and has a manually set category (not "Ukendt")
-        if (existingActivity && existingActivity.categoryName.toLowerCase() !== 'ukendt') {
-          // Preserve the existing category
+        // CRITICAL FIX: Check if activity has manually_set_category flag
+        if (existingActivity && existingActivity.manuallySetCategory) {
+          // ALWAYS preserve manually set categories, regardless of value
+          categoryId = existingActivity.categoryId;
+          assignmentMethod = 'manually_set';
+          categoriesPreserved++;
+          console.log(`🔒 PRESERVING manually set category "${existingActivity.categoryName}" for "${event.summary}" (manually_set_category=true)`);
+        } else if (existingActivity && existingActivity.categoryName.toLowerCase() !== 'ukendt') {
+          // Preserve existing non-"Ukendt" categories (backward compatibility)
           categoryId = existingActivity.categoryId;
           assignmentMethod = 'preserved';
           categoriesPreserved++;
-          console.log(`✓ Preserving manually set category "${existingActivity.categoryName}" for "${event.summary}"`);
+          console.log(`✓ Preserving existing category "${existingActivity.categoryName}" for "${event.summary}"`);
         } else {
           // New activity or activity with "Ukendt" - assign category
           if (event.categories && event.categories.length > 0) {
@@ -631,6 +638,7 @@ serve(async (req) => {
           category: externalCategory || (existingActivity ? existingActivity.categoryName : 'Ukendt'),
           categoryId: categoryId,
           assignmentMethod: assignmentMethod,
+          manuallySet: existingActivity?.manuallySetCategory || false,
         });
 
         if (existingActivity) {
@@ -650,6 +658,8 @@ serve(async (req) => {
           external_calendar_id: calendarId,
           external_event_id: event.uid,
           external_category: externalCategory,
+          // CRITICAL FIX: Preserve manually_set_category flag if it exists
+          manually_set_category: existingActivity?.manuallySetCategory || false,
         };
 
         if (existingActivity) {
@@ -700,7 +710,7 @@ serve(async (req) => {
     }
 
     console.log(`Sync complete with intelligent category assignment:`);
-    console.log(`- ${categoriesPreserved} categories preserved (manually set)`);
+    console.log(`- ${categoriesPreserved} categories preserved (manually set or existing non-Ukendt)`);
     console.log(`- ${categoriesFromExplicitMapping} from explicit calendar categories`);
     console.log(`- ${categoriesFromNameParsing} from name parsing`);
     console.log(`- ${categoriesAssignedToUnknown} assigned to "Ukendt" (no match found)`);
