@@ -678,42 +678,78 @@ export function useFootballData() {
       throw new Error('User not authenticated');
     }
 
-    console.log('🔄 Updating single activity:', activityId, updates);
+    console.log('');
+    console.log('🔄 ========== UPDATE ACTIVITY STARTED ==========');
+    console.log(`📱 Platform: ${Platform.OS}`);
+    console.log(`🆔 Activity ID: ${activityId}`);
+    console.log(`👤 User ID: ${userId}`);
+    console.log(`📝 Updates:`, JSON.stringify(updates, null, 2));
+    console.log(`⏰ Timestamp: ${new Date().toISOString()}`);
 
     try {
       // First, check if this is an external activity
       const activity = activities.find(a => a.id === activityId);
-      const isExternal = activity?.isExternal || false;
+      if (!activity) {
+        console.error('❌ Activity not found in local state');
+        throw new Error('Activity not found');
+      }
+
+      const isExternal = activity.isExternal || false;
+      console.log(`📦 Activity type: ${isExternal ? 'EXTERNAL' : 'INTERNAL'}`);
+      console.log(`📋 Current category: ${activity.category.name} (${activity.category.id})`);
 
       const updateData: any = {};
       
-      if (updates.title !== undefined) updateData.title = updates.title;
-      if (updates.location !== undefined) updateData.location = updates.location;
-      if (updates.date !== undefined) updateData.activity_date = updates.date.toISOString().split('T')[0];
-      if (updates.time !== undefined) updateData.activity_time = updates.time;
+      if (updates.title !== undefined) {
+        updateData.title = updates.title;
+        console.log(`   ✏️ Updating title: "${updates.title}"`);
+      }
+      if (updates.location !== undefined) {
+        updateData.location = updates.location;
+        console.log(`   📍 Updating location: "${updates.location}"`);
+      }
+      if (updates.date !== undefined) {
+        updateData.activity_date = updates.date.toISOString().split('T')[0];
+        console.log(`   📅 Updating date: ${updateData.activity_date}`);
+      }
+      if (updates.time !== undefined) {
+        updateData.activity_time = updates.time;
+        console.log(`   ⏰ Updating time: ${updates.time}`);
+      }
       
       // CRITICAL FIX FOR iOS: Set manually_set_category flag when updating category
       if (updates.categoryId !== undefined) {
         updateData.category_id = updates.categoryId;
+        console.log(`   🏷️ Updating category ID: ${updates.categoryId}`);
+        
+        // Find the category name for logging
+        const newCategory = categories.find(c => c.id === updates.categoryId);
+        if (newCategory) {
+          console.log(`   🏷️ New category name: ${newCategory.name} (${newCategory.emoji})`);
+        }
         
         // If this is an external activity, mark the category as manually set
         if (isExternal) {
           updateData.manually_set_category = true;
-          console.log('🔒 Setting manually_set_category = true for external activity');
+          console.log('   🔒 Setting manually_set_category = TRUE for external activity');
+          console.log('   ⚠️ This flag should prevent sync from overwriting the category');
+        } else {
+          console.log('   ℹ️ Internal activity - manually_set_category flag not needed');
         }
-        
-        console.log('📝 Updating category to:', updates.categoryId);
       }
       
       // Remove from series when updating single activity (only if not just updating category)
       if (updates.title !== undefined || updates.location !== undefined || updates.date !== undefined || updates.time !== undefined) {
         updateData.series_id = null;
         updateData.series_instance_date = null;
+        console.log('   🔗 Removing from series (if applicable)');
       }
       
       updateData.updated_at = new Date().toISOString();
 
-      console.log('📝 Update data being sent to database:', updateData);
+      console.log('');
+      console.log('📤 Sending update to database...');
+      console.log('📝 Update payload:', JSON.stringify(updateData, null, 2));
 
       const { data, error } = await supabase
         .from('activities')
@@ -727,20 +763,46 @@ export function useFootballData() {
         .single();
 
       if (error) {
-        console.error('❌ Error updating activity:', error);
+        console.error('');
+        console.error('❌ ========== DATABASE UPDATE FAILED ==========');
+        console.error('Error:', error);
+        console.error('Error message:', error.message);
+        console.error('Error details:', JSON.stringify(error, null, 2));
         throw error;
       }
 
-      console.log('✅ Activity updated successfully:', data);
-      console.log('   - category_id:', data.category_id);
-      console.log('   - category name:', data.category?.name);
-      console.log('   - manually_set_category:', data.manually_set_category);
+      console.log('');
+      console.log('✅ ========== DATABASE UPDATE SUCCESSFUL ==========');
+      console.log('📊 Response data:');
+      console.log(`   - ID: ${data.id}`);
+      console.log(`   - Title: ${data.title}`);
+      console.log(`   - Category ID: ${data.category_id}`);
+      console.log(`   - Category name: ${data.category?.name || 'N/A'}`);
+      console.log(`   - Is external: ${data.is_external}`);
+      console.log(`   - Manually set category: ${data.manually_set_category}`);
+      console.log(`   - Updated at: ${data.updated_at}`);
       
+      if (isExternal && updates.categoryId !== undefined) {
+        console.log('');
+        console.log('🔍 ========== VERIFICATION ==========');
+        console.log(`✅ Category was updated to: ${data.category?.name}`);
+        console.log(`✅ manually_set_category flag is: ${data.manually_set_category}`);
+        if (data.manually_set_category === true) {
+          console.log('✅ SUCCESS: Flag is set correctly!');
+          console.log('✅ This category should now be preserved during sync');
+        } else {
+          console.log('❌ WARNING: Flag is NOT set correctly!');
+          console.log('❌ This is the iOS bug - the flag should be true but it is:', data.manually_set_category);
+        }
+      }
+      
+      console.log('');
+      console.log('🔄 Updating local state...');
       // Immediately update local state with the new data
       setActivities(prevActivities => 
         prevActivities.map(act => {
           if (act.id === activityId) {
-            return {
+            const updated = {
               ...act,
               title: data.title,
               location: data.location,
@@ -753,25 +815,36 @@ export function useFootballData() {
                 emoji: data.category.emoji,
               } : act.category,
             };
+            console.log('   ✅ Local state updated for activity:', activityId);
+            return updated;
           }
           return act;
         })
       );
       
       // Wait for database propagation before full refresh
-      console.log('⏳ Waiting for database propagation...');
+      console.log('');
+      console.log('⏳ Waiting 500ms for database propagation...');
       await new Promise(resolve => setTimeout(resolve, 500));
       
       // Trigger a full refresh to ensure consistency
-      console.log('🔄 Triggering full data refresh after update...');
+      console.log('🔄 Triggering full data refresh...');
       setRefreshTrigger(prev => prev + 1);
       
       // Refresh notification queue if date/time changed
       if ((updates.date || updates.time) && notificationsEnabled) {
+        console.log('🔔 Refreshing notification queue...');
         await refreshNotificationQueue(true);
       }
+
+      console.log('');
+      console.log('✅ ========== UPDATE ACTIVITY COMPLETED ==========');
+      console.log('');
     } catch (error) {
+      console.error('');
+      console.error('❌ ========== UPDATE ACTIVITY FAILED ==========');
       console.error('Failed to update activity:', error);
+      console.error('');
       throw error;
     }
   };
