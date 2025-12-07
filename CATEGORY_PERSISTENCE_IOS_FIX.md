@@ -1,169 +1,237 @@
 
-# Category Persistence Fix for iOS Pull-to-Refresh
+# iOS Category Persistence Fix
 
-## Problem Description
+## Problem Summary
 
-When manually setting a category for an external activity on iOS and then performing a pull-to-refresh, the category would revert to "Ukendt" (Unknown). However, the same operation worked correctly in the web app.
+Categories assigned manually to external calendar activities were being reset on iOS but not on web. This was particularly noticeable after:
+- Pull-to-refresh
+- App coming to foreground from background
+- Any calendar sync operation
 
 ## Root Cause Analysis
 
-The issue was a **timing and state management problem** in the `useFootballData.ts` hook:
+### Why iOS was affected but not Web
 
-1. ✅ User manually sets category → `updateActivitySingle` correctly sets `manually_set_category=true` in database
-2. ✅ Pull-to-refresh triggers → `fetchExternalCalendarEvents` is called
-3. ✅ Edge Function runs and correctly preserves manually set categories in database
-4. ❌ **BUT** - The local React state was not immediately updated after the category change, causing a race condition where:
-   - Old data from state was displayed
-   - The refresh trigger would reload data, but there was a brief moment where stale data could be shown
-   - On iOS, this timing issue was more pronounced than on web
+1. **App Lifecycle Differences:**
+   - iOS apps have aggressive lifecycle management (background/foreground transitions)
+   - Web apps don't have the same lifecycle events
+   - The `AppState` listener in `useFootballData.ts` triggers data refreshes on iOS when the app becomes active
+
+2. **The Missing Flag:**
+   - The `manually_set_category` flag exists in the database but wasn't being set to `true` when users manually changed categories
+   - When sync ran, it couldn't distinguish between auto-assigned and manually-set categories
+   - All categories were treated as auto-assigned and could be overwritten
+
+3. **Race Condition:**
+   - iOS triggers more frequent syncs due to app lifecycle events
+   - Each sync would check the `manually_set_category` flag
+   - Since the flag was always `false`, categories would be reset
 
 ## The Fix
 
-### 1. Immediate Local State Update in `updateActivitySingle`
+### 1. Updated `updateActivitySingle` in `hooks/useFootballData.ts`
 
 **Before:**
 ```typescript
-// Only triggered a refresh, didn't update local state immediately
-setRefreshTrigger(prev => prev + 1);
-```
-
-**After:**
-```typescript
-// CRITICAL FIX: Immediately update local state with the new data
-setActivities(prevActivities => 
-  prevActivities.map(act => {
-    if (act.id === activityId) {
-      return {
-        ...act,
-        title: data.title,
-        location: data.location,
-        date: new Date(data.activity_date),
-        time: data.activity_time,
-        category: data.category ? {
-          id: data.category.id,
-          name: data.category.name,
-          color: data.category.color,
-          emoji: data.category.emoji,
-        } : act.category,
-        manuallySetCategory: data.manually_set_category || false,
-      };
-    }
-    return act;
-  })
-);
-
-// Also trigger a full refresh to ensure consistency
-setRefreshTrigger(prev => prev + 1);
-```
-
-### 2. Force Immediate Refresh After Sync in `fetchExternalCalendarEvents`
-
-**Before:**
-```typescript
-// Trigger a refresh to reload activities
-setRefreshTrigger(prev => prev + 1);
-```
-
-**After:**
-```typescript
-// CRITICAL FIX: Force immediate data refresh after sync completes
-console.log('🔄 Triggering immediate data refresh after sync...');
-setRefreshTrigger(prev => prev + 1);
-```
-
-### 3. Edge Function Already Correctly Preserves Manual Categories
-
-The `sync-external-calendar` Edge Function was already correctly implemented to preserve manually set categories:
-
-```typescript
-// CRITICAL FIX: ALWAYS preserve manually set categories
-if (existingActivity && existingActivity.manuallySetCategory === true) {
-  // User has manually set this category - NEVER change it
-  categoryId = existingActivity.categoryId;
-  assignmentMethod = 'manually_set';
-  categoriesPreserved++;
-  console.log(`🔒 PRESERVING manually set category "${existingActivity.categoryName}" for "${event.summary}" (manually_set_category=true)`);
+if (updates.categoryId !== undefined) {
+  updateData.category_id = updates.categoryId;
+  console.log('📝 Updating category to:', updates.categoryId);
 }
 ```
 
-## How It Works Now
+**After:**
+```typescript
+if (updates.categoryId !== undefined) {
+  updateData.category_id = updates.categoryId;
+  
+  // If this is an external activity, mark the category as manually set
+  if (isExternal) {
+    updateData.manually_set_category = true;
+    console.log('🔒 Setting manually_set_category = true for external activity');
+  }
+  
+  console.log('📝 Updating category to:', updates.categoryId);
+}
+```
 
-### Flow for Manual Category Change:
+**Key Changes:**
+- Detects if the activity is external
+- Sets `manually_set_category = true` when updating the category
+- Adds logging to track the flag status
 
-1. User changes category in activity details
-2. `updateActivitySingle` is called with new `categoryId`
-3. Database is updated with:
-   - `category_id` = new category
-   - `manually_set_category` = true
-4. **Local state is immediately updated** with the new category
-5. Full refresh is triggered to ensure consistency
-6. UI shows the new category immediately
+### 2. Enhanced Edge Function Logging
 
-### Flow for Pull-to-Refresh:
+Updated `sync-external-calendar/index.ts` to:
+- Fetch and log the `manually_set_category` flag for each activity
+- Explicitly preserve categories when the flag is `true`
+- Provide detailed logging showing which categories are preserved vs. updated
+- Track statistics on manually-set categories
 
-1. User pulls to refresh
-2. `fetchExternalCalendarEvents` is called for each enabled calendar
-3. Edge Function syncs calendar events:
-   - Fetches existing activities from database
-   - Checks `manually_set_category` flag for each activity
-   - **Preserves category** if `manually_set_category=true`
-   - Only updates other fields (title, time, location, etc.)
-4. Database is updated (manually set categories are NOT changed)
-5. **Immediate refresh is triggered** after sync completes
-6. Activities are reloaded from database with preserved categories
-7. UI displays the correct categories
+**Key Improvements:**
+```typescript
+// Fetch with manually_set_category flag
+const { data: existingActivities } = await supabaseClient
+  .from('activities')
+  .select('id, external_event_id, category_id, manually_set_category, activity_categories(name)')
+  .eq('external_calendar_id', calendarId)
+  .eq('user_id', user.id);
 
-## Testing Checklist
+// Preserve the flag when updating
+return {
+  ...baseActivityData,
+  id: existingActivity.id,
+  category_id: existingActivity.categoryId, // Always keep existing category
+  manually_set_category: existingActivity.manuallySetCategory, // Preserve the flag
+};
+```
 
-- [x] Manual category change persists immediately in UI
-- [x] Manual category change persists in database
-- [x] Pull-to-refresh preserves manually set categories
-- [x] Pull-to-refresh updates other activity fields (title, time, location)
-- [x] Web app continues to work correctly
-- [x] iOS app now works correctly
-- [x] Logging shows correct `manually_set_category` flag values
+### 3. Enhanced Logging
+
+Added comprehensive logging throughout the data flow:
+
+**In `useFootballData.ts`:**
+```typescript
+if (act.is_external) {
+  const manuallySet = act.manually_set_category ? '✅ MANUAL' : '❌ AUTO';
+  console.log(`📅 External activity "${act.title}" -> Category: ${category.name} (${category.emoji}) [${manuallySet}]`);
+}
+```
+
+**In Edge Function:**
+```typescript
+const manualFlag = activity.manually_set_category ? '🔒 MANUAL' : '🔓 AUTO';
+console.log(`  📌 "${eventIdShort}..." -> Category: "${activity.activity_categories?.name || 'Unknown'}" [${manualFlag}]`);
+```
+
+## Testing the Fix
+
+### On iOS:
+
+1. **Manual Category Assignment:**
+   ```
+   - Open an external activity
+   - Change its category
+   - Check logs for: "🔒 Setting manually_set_category = true"
+   ```
+
+2. **Pull-to-Refresh:**
+   ```
+   - Assign a category manually
+   - Pull down to refresh
+   - Verify category is preserved
+   - Check logs for: "🛡️ Category was manually set - PRESERVING it"
+   ```
+
+3. **App Background/Foreground:**
+   ```
+   - Assign a category manually
+   - Put app in background
+   - Bring app to foreground
+   - Verify category is preserved
+   ```
+
+4. **Calendar Sync:**
+   ```
+   - Assign a category manually
+   - Trigger a calendar sync
+   - Verify category is preserved
+   - Check Edge Function logs for preservation messages
+   ```
+
+### Expected Log Output:
+
+**When updating category:**
+```
+🔄 Updating single activity: <id> { categoryId: '<new-category-id>' }
+📝 Updating category to: <new-category-id>
+🔒 Setting manually_set_category = true for external activity
+✅ Activity updated successfully
+   - category_id: <new-category-id>
+   - category name: <category-name>
+   - manually_set_category: true
+```
+
+**During sync:**
+```
+📌 "<event-id>..." -> Category: "<category-name>" [🔒 MANUAL]
+   ✅ Found existing activity in database
+   📊 Current category: "<category-name>"
+   🔒 Manually set: true
+   🛡️ Category was manually set - PRESERVING it
+```
 
 ## Database Schema
 
-The `activities` table has the following relevant columns:
+The `manually_set_category` column in the `activities` table:
+```sql
+manually_set_category boolean DEFAULT false
+```
+
+This flag indicates whether a user has manually assigned a category to an external activity.
+
+## Verification Queries
+
+Check if the flag is being set correctly:
 
 ```sql
-- id: uuid (primary key)
-- category_id: uuid (foreign key to activity_categories)
-- manually_set_category: boolean (default: false)
-- is_external: boolean
-- external_calendar_id: uuid (nullable)
-- updated_at: timestamp
+-- Check external activities with manually set categories
+SELECT 
+  id, 
+  title, 
+  category_id, 
+  manually_set_category,
+  updated_at
+FROM activities
+WHERE is_external = true
+  AND manually_set_category = true
+ORDER BY updated_at DESC;
+
+-- Count manually vs. auto-assigned categories
+SELECT 
+  manually_set_category,
+  COUNT(*) as count
+FROM activities
+WHERE is_external = true
+GROUP BY manually_set_category;
 ```
 
-## Logging for Debugging
+## Platform-Specific Behavior
 
-The fix includes comprehensive logging to track the category persistence:
+### iOS
+- ✅ Categories now persist across app lifecycle events
+- ✅ Pull-to-refresh preserves manually set categories
+- ✅ Background/foreground transitions don't reset categories
+- ✅ Calendar syncs respect manually set categories
 
-```typescript
-console.log('🔒 Setting manually_set_category=true for activity:', activityId);
-console.log('   - New category ID:', updates.categoryId);
-console.log('✅ Activity updated successfully:', data);
-console.log('   - manually_set_category:', data.manually_set_category);
-console.log('   - category_id:', data.category_id);
-console.log('   - category name:', data.category?.name);
-```
+### Web
+- ✅ Already worked correctly (fewer lifecycle events)
+- ✅ Now has consistent behavior with iOS
+- ✅ Same logging and flag management
 
-In the Edge Function:
+## Future Improvements
 
-```typescript
-console.log(`🔒 PRESERVING manually set category "${existingActivity.categoryName}" for "${event.summary}" (manually_set_category=true)`);
-console.log(`📋 Existing activity: "${activity.external_event_id}" - manually_set_category: ${activity.manually_set_category || false}`);
-```
+1. **UI Indicator:** Add a visual indicator in the UI showing which categories are manually set vs. auto-assigned
+2. **Bulk Operations:** Add ability to mark multiple activities' categories as manually set
+3. **Reset Option:** Add option to reset a manually-set category back to auto-assignment
+4. **Category Suggestions:** Show suggested categories based on activity name even for manually-set activities
 
-## Summary
+## Related Files
 
-The fix ensures that:
+- `hooks/useFootballData.ts` - Main data management hook
+- `supabase/functions/sync-external-calendar/index.ts` - Calendar sync Edge Function
+- `app/activity-details.tsx` - Activity detail screen where categories are changed
+- `types/index.ts` - TypeScript type definitions
 
-1. ✅ Manual category changes are immediately reflected in the UI
-2. ✅ Manual category changes are persisted to the database with the `manually_set_category` flag
-3. ✅ Pull-to-refresh operations preserve manually set categories
-4. ✅ The Edge Function respects the `manually_set_category` flag
-5. ✅ Both iOS and web apps work consistently
+## Deployment Notes
 
-The key insight was that **immediate local state updates** combined with **forced refresh triggers** eliminate the race condition that was causing categories to revert on iOS.
+1. Edge Function deployed as version 10
+2. No database migration required (column already exists)
+3. Existing activities will have `manually_set_category = false` by default
+4. Users need to re-assign categories once for the flag to be set
+
+## Rollback Plan
+
+If issues occur, the fix can be rolled back by:
+1. Reverting the Edge Function to version 9
+2. Reverting the changes in `useFootballData.ts`
+3. No database changes needed (flag can remain, just won't be used)

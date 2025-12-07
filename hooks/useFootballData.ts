@@ -8,7 +8,7 @@ import {
 } from '@/utils/notificationService';
 import { refreshNotificationQueue, forceRefreshNotificationQueue } from '@/utils/notificationScheduler';
 import { startOfWeek, endOfWeek } from 'date-fns';
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, Platform } from 'react-native';
 
 function getWeekNumber(date: Date): number {
   const d = new Date(date.getTime());
@@ -116,7 +116,7 @@ export function useFootballData() {
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
       if (nextAppState === 'active') {
-        console.log('🔄 App became active, triggering data refresh...');
+        console.log(`🔄 App became active on ${Platform.OS}, triggering data refresh...`);
         setRefreshTrigger(prev => prev + 1);
       }
     });
@@ -308,7 +308,8 @@ export function useFootballData() {
             }));
           
           if (act.is_external) {
-            console.log(`📅 External activity "${act.title}" -> Category: ${category.name} (${category.emoji})`);
+            const manuallySet = act.manually_set_category ? '✅ MANUAL' : '❌ AUTO';
+            console.log(`📅 External activity "${act.title}" -> Category: ${category.name} (${category.emoji}) [${manuallySet}]`);
           }
 
           return {
@@ -680,14 +681,27 @@ export function useFootballData() {
     console.log('🔄 Updating single activity:', activityId, updates);
 
     try {
+      // First, check if this is an external activity
+      const activity = activities.find(a => a.id === activityId);
+      const isExternal = activity?.isExternal || false;
+
       const updateData: any = {};
       
       if (updates.title !== undefined) updateData.title = updates.title;
       if (updates.location !== undefined) updateData.location = updates.location;
       if (updates.date !== undefined) updateData.activity_date = updates.date.toISOString().split('T')[0];
       if (updates.time !== undefined) updateData.activity_time = updates.time;
+      
+      // CRITICAL FIX FOR iOS: Set manually_set_category flag when updating category
       if (updates.categoryId !== undefined) {
         updateData.category_id = updates.categoryId;
+        
+        // If this is an external activity, mark the category as manually set
+        if (isExternal) {
+          updateData.manually_set_category = true;
+          console.log('🔒 Setting manually_set_category = true for external activity');
+        }
+        
         console.log('📝 Updating category to:', updates.categoryId);
       }
       
@@ -720,6 +734,7 @@ export function useFootballData() {
       console.log('✅ Activity updated successfully:', data);
       console.log('   - category_id:', data.category_id);
       console.log('   - category name:', data.category?.name);
+      console.log('   - manually_set_category:', data.manually_set_category);
       
       // Immediately update local state with the new data
       setActivities(prevActivities => 
