@@ -650,30 +650,46 @@ serve(async (req) => {
           activitiesCreated++;
         }
         
-        const activityData = {
+        // CRITICAL FIX: Build activity data differently based on whether category is manually set
+        const baseActivityData = {
           user_id: user.id,
           title: event.summary,
           activity_date: event.startDateString,
           activity_time: event.startTimeString,
           location: event.location || 'Ingen lokation',
-          category_id: categoryId,
           is_external: true,
           external_calendar_id: calendarId,
           external_event_id: event.uid,
           external_category: externalCategory,
-          // CRITICAL FIX: Preserve manually_set_category flag if it exists
-          manually_set_category: existingActivity?.manuallySetCategory || false,
         };
 
         if (existingActivity) {
           // Update existing activity
-          return {
-            ...activityData,
-            id: existingActivity.id,
-          };
+          if (existingActivity.manuallySetCategory === true) {
+            // CRITICAL: Do NOT update category_id if manually set
+            console.log(`🔒 Skipping category_id update for manually set activity: ${event.summary}`);
+            return {
+              ...baseActivityData,
+              id: existingActivity.id,
+              category_id: existingActivity.categoryId, // Keep existing category
+              manually_set_category: true, // Preserve the flag
+            };
+          } else {
+            // Update category normally
+            return {
+              ...baseActivityData,
+              id: existingActivity.id,
+              category_id: categoryId,
+              manually_set_category: false,
+            };
+          }
         } else {
           // Create new activity
-          return activityData;
+          return {
+            ...baseActivityData,
+            category_id: categoryId,
+            manually_set_category: false,
+          };
         }
       })
     );
@@ -687,7 +703,10 @@ serve(async (req) => {
       for (const activity of activitiesToUpdate) {
         const { id, ...updateData } = activity;
         
-        console.log(`🔄 Updating activity ${id} with manually_set_category=${updateData.manually_set_category}`);
+        console.log(`🔄 Updating activity ${id}:`);
+        console.log(`   - Title: ${updateData.title}`);
+        console.log(`   - Category ID: ${updateData.category_id}`);
+        console.log(`   - Manually set: ${updateData.manually_set_category}`);
         
         const { error: updateError } = await supabaseClient
           .from('activities')
@@ -695,7 +714,7 @@ serve(async (req) => {
           .eq('id', id);
 
         if (updateError) {
-          console.error('Error updating activity:', updateError);
+          console.error('❌ Error updating activity:', updateError);
         } else {
           console.log(`✅ Updated activity ${id} successfully`);
         }

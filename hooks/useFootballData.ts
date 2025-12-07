@@ -693,6 +693,7 @@ export function useFootballData() {
         updateData.category_id = updates.categoryId;
         updateData.manually_set_category = true;
         console.log('🔒 Setting manually_set_category=true for activity:', activityId);
+        console.log('   - New category ID:', updates.categoryId);
       }
       
       // Remove from series when updating single activity (only if not just updating category)
@@ -710,7 +711,10 @@ export function useFootballData() {
         .update(updateData)
         .eq('id', activityId)
         .eq('user_id', userId)
-        .select()
+        .select(`
+          *,
+          category:activity_categories(*)
+        `)
         .single();
 
       if (error) {
@@ -720,6 +724,8 @@ export function useFootballData() {
 
       console.log('✅ Activity updated successfully:', data);
       console.log('   - manually_set_category:', data.manually_set_category);
+      console.log('   - category_id:', data.category_id);
+      console.log('   - category name:', data.category?.name);
       
       // CRITICAL FIX: Force immediate refresh to ensure UI reflects database state
       setRefreshTrigger(prev => prev + 1);
