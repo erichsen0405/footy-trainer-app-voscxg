@@ -439,9 +439,9 @@ export function useFootballData() {
         console.error('Error updating calendar:', updateError);
       }
 
-      // CRITICAL FIX: Add a small delay before triggering refresh to ensure database writes complete
-      console.log('⏳ Waiting for database writes to complete...');
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // CRITICAL FIX: Add a longer delay to ensure database writes complete and propagate
+      console.log('⏳ Waiting for database writes to complete and propagate...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       // CRITICAL FIX: Force immediate data refresh after sync completes
       console.log('🔄 Triggering immediate data refresh after sync...');
@@ -755,9 +755,9 @@ export function useFootballData() {
         })
       );
       
-      // CRITICAL FIX: Add a small delay before triggering full refresh
-      console.log('⏳ Waiting before triggering full refresh...');
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // CRITICAL FIX: Wait longer before triggering full refresh to ensure database propagation
+      console.log('⏳ Waiting for database propagation before full refresh...');
+      await new Promise(resolve => setTimeout(resolve, 800));
       
       // CRITICAL FIX: Also trigger a full refresh to ensure consistency
       console.log('🔄 Triggering full data refresh after update...');
