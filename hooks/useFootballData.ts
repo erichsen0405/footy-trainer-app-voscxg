@@ -249,6 +249,7 @@ export function useFootballData() {
 
     const loadActivities = async () => {
       console.log('🔄 Loading activities for user:', userId);
+      // CRITICAL FIX: Include manually_set_category in the SELECT query
       const { data, error } = await supabase
         .from('activities')
         .select(`
@@ -306,9 +307,11 @@ export function useFootballData() {
               subtasks: [],
             }));
 
-          // CRITICAL FIX: Log manually_set_category flag for external activities
+          // CRITICAL FIX: Read and store manually_set_category flag from database
+          const manuallySetCategory = act.manually_set_category || false;
+          
           if (act.is_external) {
-            console.log(`📅 External activity "${act.title}" -> Category: ${category.name} (${category.emoji}), Manually set: ${act.manually_set_category || false}`);
+            console.log(`📅 External activity "${act.title}" -> Category: ${category.name} (${category.emoji}), Manually set: ${manuallySetCategory}`);
           }
 
           return {
@@ -324,12 +327,14 @@ export function useFootballData() {
             externalEventId: act.external_event_id || undefined,
             seriesId: act.series_id || undefined,
             seriesInstanceDate: act.series_instance_date ? new Date(act.series_instance_date) : undefined,
+            manuallySetCategory: manuallySetCategory, // CRITICAL FIX: Store the flag in the Activity object
           };
         });
 
         console.log('✅ Total activities loaded:', loadedActivities.length);
         console.log('📊 Internal activities:', loadedActivities.filter(a => !a.isExternal).length);
         console.log('📊 External activities:', loadedActivities.filter(a => a.isExternal).length);
+        console.log('🔒 Manually set categories:', loadedActivities.filter(a => a.manuallySetCategory).length);
         
         // CRITICAL FIX: Store ALL activities together (both internal and external)
         setActivities(loadedActivities);

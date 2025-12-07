@@ -13,6 +13,7 @@ export interface Activity {
   externalCategory?: string;
   seriesId?: string;
   seriesInstanceDate?: Date;
+  manuallySetCategory?: boolean; // CRITICAL FIX: Add flag to track manually set categories
 }
 
 export interface ActivityCategory {
