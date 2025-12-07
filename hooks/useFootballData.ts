@@ -395,7 +395,7 @@ export function useFootballData() {
     }
 
     try {
-      console.log('Fetching calendar:', calendar.name);
+      console.log('🔄 Fetching calendar:', calendar.name);
       console.log('Calendar URL:', calendar.icsUrl);
       
       // Get the current session to ensure we have a valid token
@@ -424,7 +424,7 @@ export function useFootballData() {
         throw error;
       }
 
-      console.log('Sync response:', data);
+      console.log('✅ Sync response:', data);
 
       // Update the calendar's last fetched time
       const { error: updateError } = await supabase
@@ -439,10 +439,11 @@ export function useFootballData() {
         console.error('Error updating calendar:', updateError);
       }
 
-      // Trigger a refresh to reload activities
+      // CRITICAL FIX: Force immediate data refresh after sync completes
+      console.log('🔄 Triggering immediate data refresh after sync...');
       setRefreshTrigger(prev => prev + 1);
 
-      console.log(`Successfully synced calendar: ${calendar.name}`);
+      console.log(`✅ Successfully synced calendar: ${calendar.name}`);
     } catch (error: any) {
       console.error('Error fetching external calendar:', error);
       console.error('Error name:', error?.name);
@@ -727,7 +728,31 @@ export function useFootballData() {
       console.log('   - category_id:', data.category_id);
       console.log('   - category name:', data.category?.name);
       
-      // CRITICAL FIX: Force immediate refresh to ensure UI reflects database state
+      // CRITICAL FIX: Immediately update local state with the new data
+      setActivities(prevActivities => 
+        prevActivities.map(act => {
+          if (act.id === activityId) {
+            return {
+              ...act,
+              title: data.title,
+              location: data.location,
+              date: new Date(data.activity_date),
+              time: data.activity_time,
+              category: data.category ? {
+                id: data.category.id,
+                name: data.category.name,
+                color: data.category.color,
+                emoji: data.category.emoji,
+              } : act.category,
+              manuallySetCategory: data.manually_set_category || false,
+            };
+          }
+          return act;
+        })
+      );
+      
+      // CRITICAL FIX: Also trigger a full refresh to ensure consistency
+      console.log('🔄 Triggering full data refresh after update...');
       setRefreshTrigger(prev => prev + 1);
       
       // Refresh notification queue if date/time changed
