@@ -84,6 +84,8 @@ export function useFootballData() {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  // CRITICAL FIX: Track pending updates to prevent race conditions
+  const [pendingUpdates, setPendingUpdates] = useState<Set<string>>(new Set());
 
   // Get current user
   useEffect(() => {
@@ -249,6 +251,8 @@ export function useFootballData() {
 
     const loadActivities = async () => {
       console.log('🔄 Loading activities for user:', userId);
+      console.log('🔒 Pending updates:', Array.from(pendingUpdates));
+      
       // CRITICAL FIX: Include manually_set_category in the SELECT query
       const { data, error } = await supabase
         .from('activities')
@@ -336,8 +340,26 @@ export function useFootballData() {
         console.log('📊 External activities:', loadedActivities.filter(a => a.isExternal).length);
         console.log('🔒 Manually set categories:', loadedActivities.filter(a => a.manuallySetCategory).length);
         
-        // CRITICAL FIX: Store ALL activities together (both internal and external)
-        setActivities(loadedActivities);
+        // CRITICAL FIX: Preserve manually set categories from pending updates
+        setActivities(prevActivities => {
+          const updatedActivities = loadedActivities.map(newAct => {
+            // Check if this activity has a pending update
+            if (pendingUpdates.has(newAct.id)) {
+              // Find the previous version of this activity
+              const prevAct = prevActivities.find(a => a.id === newAct.id);
+              if (prevAct && prevAct.manuallySetCategory) {
+                console.log(`🔒 Preserving manually set category for activity ${newAct.id} during refresh`);
+                return {
+                  ...newAct,
+                  category: prevAct.category,
+                  manuallySetCategory: true,
+                };
+              }
+            }
+            return newAct;
+          });
+          return updatedActivities;
+        });
 
         // Refresh notification queue after loading activities
         if (notificationsEnabled) {
@@ -351,7 +373,7 @@ export function useFootballData() {
     };
 
     loadActivities();
-  }, [userId, categories, refreshTrigger, notificationsEnabled]);
+  }, [userId, categories, refreshTrigger, notificationsEnabled, pendingUpdates]);
 
   // Load trophies from database
   useEffect(() => {
@@ -398,6 +420,13 @@ export function useFootballData() {
       console.log('🔄 Fetching calendar:', calendar.name);
       console.log('Calendar URL:', calendar.icsUrl);
       
+      // CRITICAL FIX: Wait for any pending updates to complete before syncing
+      if (pendingUpdates.size > 0) {
+        console.log('⏳ Waiting for pending updates to complete before sync...');
+        console.log('🔒 Pending updates:', Array.from(pendingUpdates));
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      
       // Get the current session to ensure we have a valid token
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) {
@@ -441,7 +470,7 @@ export function useFootballData() {
 
       // CRITICAL FIX: Add a longer delay to ensure database writes complete and propagate
       console.log('⏳ Waiting for database writes to complete and propagate...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 1500));
 
       // CRITICAL FIX: Force immediate data refresh after sync completes
       console.log('🔄 Triggering immediate data refresh after sync...');
@@ -455,7 +484,7 @@ export function useFootballData() {
       console.error('Error stack:', error?.stack);
       throw error;
     }
-  }, [userId]);
+  }, [userId, pendingUpdates]);
 
   // Auto-fetch enabled calendars on mount and when calendars change
   useEffect(() => {
@@ -686,6 +715,10 @@ export function useFootballData() {
     console.log('🔄 Updating single activity:', activityId, updates);
 
     try {
+      // CRITICAL FIX: Mark this activity as having a pending update
+      setPendingUpdates(prev => new Set(prev).add(activityId));
+      console.log('🔒 Added activity to pending updates:', activityId);
+      
       const updateData: any = {};
       
       if (updates.title !== undefined) updateData.title = updates.title;
@@ -724,6 +757,12 @@ export function useFootballData() {
 
       if (error) {
         console.error('❌ Error updating activity:', error);
+        // CRITICAL FIX: Remove from pending updates on error
+        setPendingUpdates(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(activityId);
+          return newSet;
+        });
         throw error;
       }
 
@@ -757,7 +796,15 @@ export function useFootballData() {
       
       // CRITICAL FIX: Wait longer before triggering full refresh to ensure database propagation
       console.log('⏳ Waiting for database propagation before full refresh...');
-      await new Promise(resolve => setTimeout(resolve, 800));
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // CRITICAL FIX: Remove from pending updates after propagation delay
+      setPendingUpdates(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(activityId);
+        console.log('🔓 Removed activity from pending updates:', activityId);
+        return newSet;
+      });
       
       // CRITICAL FIX: Also trigger a full refresh to ensure consistency
       console.log('🔄 Triggering full data refresh after update...');

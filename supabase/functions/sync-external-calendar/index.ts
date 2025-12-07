@@ -525,12 +525,22 @@ serve(async (req) => {
 
     console.log(`Found ${existingActivities?.length || 0} existing activities in database`);
 
+    // CRITICAL FIX: Double-check the manually_set_category values
+    if (existingActivities && existingActivities.length > 0) {
+      console.log('🔍 VERIFYING manually_set_category flags in database:');
+      for (const act of existingActivities) {
+        const flagValue = act.manually_set_category;
+        const flagType = typeof flagValue;
+        console.log(`  Activity ${act.id}: manually_set_category = ${flagValue} (type: ${flagType})`);
+      }
+    }
+
     // Create a map of existing activities by external_event_id
     const existingActivitiesMap = new Map();
     if (existingActivities) {
       console.log('📊 Existing activities status:');
       existingActivities.forEach((activity: any) => {
-        const manuallySet = activity.manually_set_category || false;
+        const manuallySet = activity.manually_set_category === true;
         existingActivitiesMap.set(activity.external_event_id, {
           id: activity.id,
           categoryId: activity.category_id,
@@ -539,7 +549,8 @@ serve(async (req) => {
         });
         
         // Log each existing activity's status
-        console.log(`  📌 "${activity.external_event_id.substring(0, 30)}..." -> Category: "${activity.activity_categories?.name || 'Unknown'}", Manually set: ${manuallySet}`);
+        const eventIdShort = activity.external_event_id.substring(0, 30);
+        console.log(`  📌 "${eventIdShort}..." -> Category: "${activity.activity_categories?.name || 'Unknown'}", Manually set: ${manuallySet} (raw: ${activity.manually_set_category})`);
       });
     }
 
@@ -588,8 +599,9 @@ serve(async (req) => {
         if (existingActivity) {
           console.log(`   ✅ Found existing activity in database`);
           console.log(`   📊 Current category: "${existingActivity.categoryName}"`);
-          console.log(`   🔒 Manually set: ${existingActivity.manuallySetCategory}`);
+          console.log(`   🔒 Manually set flag: ${existingActivity.manuallySetCategory} (type: ${typeof existingActivity.manuallySetCategory})`);
           
+          // CRITICAL FIX: Use strict equality check
           if (existingActivity.manuallySetCategory === true) {
             // User has manually set this category - NEVER change it
             categoryId = existingActivity.categoryId;
@@ -737,6 +749,19 @@ serve(async (req) => {
           console.error(`   ❌ Error updating activity:`, updateError);
         } else {
           console.log(`   ✅ Updated successfully`);
+          
+          // CRITICAL FIX: Verify the update by reading back the value
+          const { data: verifyData, error: verifyError } = await supabaseClient
+            .from('activities')
+            .select('id, manually_set_category, category_id')
+            .eq('id', id)
+            .single();
+          
+          if (verifyError) {
+            console.error(`   ⚠️ Could not verify update:`, verifyError);
+          } else {
+            console.log(`   ✅ VERIFIED: manually_set_category = ${verifyData.manually_set_category}, category_id = ${verifyData.category_id}`);
+          }
         }
       }
       console.log(`\n✅ Updated ${activitiesToUpdate.length} existing activities`);
