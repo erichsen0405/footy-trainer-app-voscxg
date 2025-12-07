@@ -306,6 +306,7 @@ export function useFootballData() {
               subtasks: [],
             }));
 
+          // CRITICAL FIX: Log manually_set_category flag for external activities
           if (act.is_external) {
             console.log(`📅 External activity "${act.title}" -> Category: ${category.name} (${category.emoji}), Manually set: ${act.manually_set_category || false}`);
           }
@@ -677,36 +678,45 @@ export function useFootballData() {
     try {
       const updateData: any = {};
       
-      if (updates.title) updateData.title = updates.title;
-      if (updates.location) updateData.location = updates.location;
-      if (updates.date) updateData.activity_date = updates.date.toISOString().split('T')[0];
-      if (updates.time) updateData.activity_time = updates.time;
+      if (updates.title !== undefined) updateData.title = updates.title;
+      if (updates.location !== undefined) updateData.location = updates.location;
+      if (updates.date !== undefined) updateData.activity_date = updates.date.toISOString().split('T')[0];
+      if (updates.time !== undefined) updateData.activity_time = updates.time;
       
       // CRITICAL FIX: Set manually_set_category flag when user changes category
-      if (updates.categoryId) {
+      if (updates.categoryId !== undefined) {
         updateData.category_id = updates.categoryId;
         updateData.manually_set_category = true;
         console.log('🔒 Setting manually_set_category=true for activity:', activityId);
       }
       
-      // Remove from series when updating single activity
-      updateData.series_id = null;
-      updateData.series_instance_date = null;
+      // Remove from series when updating single activity (only if not just updating category)
+      if (updates.title !== undefined || updates.location !== undefined || updates.date !== undefined || updates.time !== undefined) {
+        updateData.series_id = null;
+        updateData.series_instance_date = null;
+      }
+      
       updateData.updated_at = new Date().toISOString();
 
-      const { error } = await supabase
+      console.log('📝 Update data being sent to database:', updateData);
+
+      const { data, error } = await supabase
         .from('activities')
         .update(updateData)
         .eq('id', activityId)
-        .eq('user_id', userId);
+        .eq('user_id', userId)
+        .select()
+        .single();
 
       if (error) {
         console.error('❌ Error updating activity:', error);
         throw error;
       }
 
-      console.log('✅ Activity updated successfully with manually_set_category flag');
+      console.log('✅ Activity updated successfully:', data);
+      console.log('   - manually_set_category:', data.manually_set_category);
       
+      // CRITICAL FIX: Force immediate refresh to ensure UI reflects database state
       setRefreshTrigger(prev => prev + 1);
       
       // Refresh notification queue if date/time changed

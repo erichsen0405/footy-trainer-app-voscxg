@@ -532,6 +532,9 @@ serve(async (req) => {
           categoryName: activity.activity_categories?.name || 'Unknown',
           manuallySetCategory: activity.manually_set_category || false,
         });
+        
+        // Log each existing activity's manually_set_category status
+        console.log(`📋 Existing activity: "${activity.external_event_id}" - manually_set_category: ${activity.manually_set_category || false}`);
       });
     }
 
@@ -572,9 +575,9 @@ serve(async (req) => {
         let externalCategory = null;
         let assignmentMethod = 'unknown';
 
-        // CRITICAL FIX: Check if activity has manually_set_category flag
-        if (existingActivity && existingActivity.manuallySetCategory) {
-          // ALWAYS preserve manually set categories, regardless of value
+        // CRITICAL FIX: ALWAYS preserve manually set categories
+        if (existingActivity && existingActivity.manuallySetCategory === true) {
+          // User has manually set this category - NEVER change it
           categoryId = existingActivity.categoryId;
           assignmentMethod = 'manually_set';
           categoriesPreserved++;
@@ -683,6 +686,9 @@ serve(async (req) => {
     if (activitiesToUpdate.length > 0) {
       for (const activity of activitiesToUpdate) {
         const { id, ...updateData } = activity;
+        
+        console.log(`🔄 Updating activity ${id} with manually_set_category=${updateData.manually_set_category}`);
+        
         const { error: updateError } = await supabaseClient
           .from('activities')
           .update(updateData)
@@ -690,6 +696,8 @@ serve(async (req) => {
 
         if (updateError) {
           console.error('Error updating activity:', updateError);
+        } else {
+          console.log(`✅ Updated activity ${id} successfully`);
         }
       }
       console.log(`Updated ${activitiesToUpdate.length} existing activities`);
