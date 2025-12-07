@@ -329,57 +329,59 @@ export default function HomeScreen() {
             <Text style={styles.emptyText}>Ingen kommende aktiviteter</Text>
           </View>
         ) : (
-          Object.entries(activitiesByWeek).map(([week, data]) => (
-            <View key={week} style={styles.weekSection}>
-              <Text style={styles.weekTitle}>
-                {week}
-              </Text>
-              <Text style={styles.weekDates}>
-                {data.dateRange}
-              </Text>
-              
-              {data.activities.map((activity) => (
-                <TouchableOpacity
-                  key={activity.id}
-                  style={[styles.upcomingActivityCard, { backgroundColor: activity.category.color }]}
-                  onPress={() => handleActivityPress(activity.id)}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.upcomingActivityHeader}>
-                    <Text style={styles.upcomingActivityEmoji}>{activity.category.emoji}</Text>
-                    <View style={styles.upcomingActivityInfo}>
-                      <View style={styles.activityTitleRow}>
-                        <Text style={styles.upcomingActivityTitle}>{activity.title}</Text>
-                        {activity.isExternal && (
-                          <View style={styles.externalBadgeSmall}>
-                            <IconSymbol 
-                              ios_icon_name="calendar.badge.clock" 
-                              android_material_icon_name="event" 
-                              size={12} 
-                              color="#fff" 
-                            />
-                          </View>
-                        )}
+          <React.Fragment>
+            {Object.entries(activitiesByWeek).map(([week, data], weekIndex) => (
+              <View key={`week-${week}-${weekIndex}`} style={styles.weekSection}>
+                <Text style={styles.weekTitle}>
+                  {week}
+                </Text>
+                <Text style={styles.weekDates}>
+                  {data.dateRange}
+                </Text>
+                
+                {data.activities.map((activity) => (
+                  <TouchableOpacity
+                    key={activity.id}
+                    style={[styles.upcomingActivityCard, { backgroundColor: activity.category.color }]}
+                    onPress={() => handleActivityPress(activity.id)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.upcomingActivityHeader}>
+                      <Text style={styles.upcomingActivityEmoji}>{activity.category.emoji}</Text>
+                      <View style={styles.upcomingActivityInfo}>
+                        <View style={styles.activityTitleRow}>
+                          <Text style={styles.upcomingActivityTitle}>{activity.title}</Text>
+                          {activity.isExternal && (
+                            <View style={styles.externalBadgeSmall}>
+                              <IconSymbol 
+                                ios_icon_name="calendar.badge.clock" 
+                                android_material_icon_name="event" 
+                                size={12} 
+                                color="#fff" 
+                              />
+                            </View>
+                          )}
+                        </View>
+                        <Text style={styles.upcomingActivityTime}>
+                          {new Date(activity.date).toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' })} kl. {formatTime(activity.time)}
+                        </Text>
+                        <View style={styles.locationRow}>
+                          <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={14} color="#fff" />
+                          <Text style={styles.upcomingActivityLocation}>{activity.location}</Text>
+                        </View>
                       </View>
-                      <Text style={styles.upcomingActivityTime}>
-                        {new Date(activity.date).toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' })} kl. {formatTime(activity.time)}
-                      </Text>
-                      <View style={styles.locationRow}>
-                        <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={14} color="#fff" />
-                        <Text style={styles.upcomingActivityLocation}>{activity.location}</Text>
-                      </View>
+                      <IconSymbol 
+                        ios_icon_name="chevron.right" 
+                        android_material_icon_name="chevron_right" 
+                        size={20} 
+                        color="rgba(255,255,255,0.7)" 
+                      />
                     </View>
-                    <IconSymbol 
-                      ios_icon_name="chevron.right" 
-                      android_material_icon_name="chevron_right" 
-                      size={20} 
-                      color="rgba(255,255,255,0.7)" 
-                    />
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
-          ))
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ))}
+          </React.Fragment>
         )}
       </View>
 
