@@ -89,24 +89,18 @@ export default function ActivityDetailsScreen() {
 
     try {
       if (activity.isExternal) {
-        // For external activities, only allow category change
-        const { error } = await supabase
-          .from('activities')
-          .update({
-            category_id: editCategory?.id,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', activity.id);
+        // CRITICAL FIX: Use updateActivitySingle for external activities to ensure manually_set_category flag is set
+        console.log('🔄 Updating external activity category via updateActivitySingle');
+        console.log('  Activity ID:', activity.id);
+        console.log('  New Category:', editCategory?.name, editCategory?.id);
+        
+        await updateActivitySingle(activity.id, {
+          categoryId: editCategory?.id,
+        });
 
-        if (error) {
-          console.error('Error updating external activity:', error);
-          Alert.alert('Fejl', 'Kunne ikke opdatere aktiviteten');
-          return;
-        }
+        console.log('✅ External activity category updated with manually_set_category=true');
 
-        console.log('✅ External activity category updated in database');
-
-        // CRITICAL FIX: Update local state immediately
+        // Update local state immediately
         const updatedActivity = {
           ...activity,
           category: editCategory!,
@@ -116,7 +110,7 @@ export default function ActivityDetailsScreen() {
         // Also trigger a full refresh to ensure consistency
         refreshData();
 
-        Alert.alert('Gemt', 'Kategorien er blevet opdateret');
+        Alert.alert('Gemt', 'Kategorien er blevet opdateret og vil ikke blive ændret ved næste synkronisering');
         setIsEditing(false);
       } else if (activity.seriesId && showSeriesDialog) {
         // User chose to edit the entire series
@@ -931,7 +925,7 @@ export default function ActivityDetailsScreen() {
             />
             <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
               Dette er en ekstern aktivitet. Du kan kun ændre kategorien. For at redigere andre
-              detaljer skal du opdatere den i den eksterne kalender.
+              detaljer skal du opdatere den i den eksterne kalender. Manuelt tildelte kategorier bevares ved synkronisering.
             </Text>
           </View>
         )}
