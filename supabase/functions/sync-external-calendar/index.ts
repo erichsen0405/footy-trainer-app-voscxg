@@ -515,11 +515,11 @@ serve(async (req) => {
       .select('*')
       .eq('user_id', user.id);
 
-    // Fetch existing external activities (only need ID and category)
+    // CRITICAL FIX: Fetch existing external activities with manually_set_category flag
     console.log('📋 Fetching existing activities from database...');
     const { data: existingActivities } = await supabaseClient
       .from('activities')
-      .select('id, external_event_id, category_id, activity_categories(name)')
+      .select('id, external_event_id, category_id, manually_set_category, activity_categories(name)')
       .eq('external_calendar_id', calendarId)
       .eq('user_id', user.id);
 
@@ -534,11 +534,13 @@ serve(async (req) => {
           id: activity.id,
           categoryId: activity.category_id,
           categoryName: activity.activity_categories?.name || 'Unknown',
+          manuallySetCategory: activity.manually_set_category || false,
         });
         
         // Log each existing activity's status
         const eventIdShort = activity.external_event_id.substring(0, 30);
-        console.log(`  📌 "${eventIdShort}..." -> Category: "${activity.activity_categories?.name || 'Unknown'}"`);
+        const manualFlag = activity.manually_set_category ? '🔒 MANUAL' : '🔓 AUTO';
+        console.log(`  📌 "${eventIdShort}..." -> Category: "${activity.activity_categories?.name || 'Unknown'}" [${manualFlag}]`);
       });
     }
 
@@ -566,6 +568,7 @@ serve(async (req) => {
 
     let activitiesUpdated = 0;
     let activitiesCreated = 0;
+    let categoriesPreserved = 0;
 
     console.log('🔄 Processing events...');
     const activitiesToUpsert = await Promise.all(
@@ -578,7 +581,16 @@ serve(async (req) => {
         if (existingActivity) {
           console.log(`   ✅ Found existing activity in database`);
           console.log(`   📊 Current category: "${existingActivity.categoryName}"`);
-          console.log(`   🔒 Category will NOT be changed by sync`);
+          console.log(`   🔒 Manually set: ${existingActivity.manuallySetCategory}`);
+          
+          // CRITICAL FIX: Check if category was manually set
+          if (existingActivity.manuallySetCategory) {
+            console.log(`   🛡️ CATEGORY PROTECTED - Will preserve manually set category`);
+            categoriesPreserved++;
+          } else {
+            console.log(`   🔓 Category not manually set - Will keep existing category`);
+          }
+          
           activitiesUpdated++;
         } else {
           console.log(`   ➕ New activity - will be assigned "Ukendt" category`);
@@ -598,12 +610,13 @@ serve(async (req) => {
         };
 
         if (existingActivity) {
-          // Update existing activity - NEVER touch the category
-          console.log(`   🔄 Updating activity, preserving category`);
+          // CRITICAL FIX: Update existing activity - ALWAYS preserve category
+          console.log(`   🔄 Updating activity, preserving category (ID: ${existingActivity.categoryId})`);
           return {
             ...baseActivityData,
             id: existingActivity.id,
             category_id: existingActivity.categoryId, // Always keep existing category
+            // CRITICAL: Do NOT update manually_set_category flag - preserve it
           };
         } else {
           // Create new activity with "Ukendt" category
@@ -611,6 +624,7 @@ serve(async (req) => {
           return {
             ...baseActivityData,
             category_id: unknownCategoryId, // New activities get "Ukendt"
+            manually_set_category: false, // New activities are not manually set
           };
         }
       })
@@ -623,8 +637,9 @@ serve(async (req) => {
     console.log('\n📤 Applying database changes...');
     console.log(`   Updates: ${activitiesToUpdate.length}`);
     console.log(`   Inserts: ${activitiesToInsert.length}`);
+    console.log(`   Categories preserved: ${categoriesPreserved}`);
 
-    // Update existing activities
+    // CRITICAL FIX: Update existing activities WITHOUT touching manually_set_category
     if (activitiesToUpdate.length > 0) {
       for (const activity of activitiesToUpdate) {
         const { id, ...updateData } = activity;
@@ -633,15 +648,26 @@ serve(async (req) => {
         console.log(`   Title: ${updateData.title}`);
         console.log(`   Category ID: ${updateData.category_id} (preserved from existing)`);
         
+        // CRITICAL FIX: Only update the fields we want to change
+        // Do NOT include manually_set_category in the update
+        const fieldsToUpdate = {
+          title: updateData.title,
+          activity_date: updateData.activity_date,
+          activity_time: updateData.activity_time,
+          location: updateData.location,
+          category_id: updateData.category_id, // Preserve existing category
+          // Do NOT update manually_set_category - let it stay as is
+        };
+        
         const { error: updateError } = await supabaseClient
           .from('activities')
-          .update(updateData)
+          .update(fieldsToUpdate)
           .eq('id', id);
 
         if (updateError) {
           console.error(`   ❌ Error updating activity:`, updateError);
         } else {
-          console.log(`   ✅ Updated successfully`);
+          console.log(`   ✅ Updated successfully (category preserved)`);
         }
       }
       console.log(`\n✅ Updated ${activitiesToUpdate.length} existing activities`);
@@ -663,9 +689,10 @@ serve(async (req) => {
 
     console.log('\n📊 Sync Summary:');
     console.log(`   ➕ New activities created: ${activitiesCreated} (assigned "Ukendt")`);
-    console.log(`   🔄 Existing activities updated: ${activitiesUpdated} (categories preserved)`);
+    console.log(`   🔄 Existing activities updated: ${activitiesUpdated}`);
+    console.log(`   🛡️ Categories preserved (manually set): ${categoriesPreserved}`);
     console.log(`   🗑️ Activities deleted: ${activitiesToDelete.length}`);
-    console.log(`   ℹ️  Categories are NOT automatically assigned - set them manually`);
+    console.log(`   ℹ️  New activities get "Ukendt" - set categories manually`);
 
     const { error: updateError } = await supabaseClient
       .from('external_calendars')
@@ -687,8 +714,9 @@ serve(async (req) => {
         eventCount: events.length,
         activitiesCreated,
         activitiesUpdated,
+        categoriesPreserved,
         activitiesDeleted: activitiesToDelete.length,
-        message: `Successfully synced ${events.length} events (${activitiesCreated} new with "Ukendt" category, ${activitiesUpdated} updated with categories preserved, ${activitiesToDelete.length} deleted). Categories are not automatically assigned - set them manually.`,
+        message: `Successfully synced ${events.length} events (${activitiesCreated} new with "Ukendt" category, ${activitiesUpdated} updated with ${categoriesPreserved} categories preserved, ${activitiesToDelete.length} deleted). Manually set categories are protected.`,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

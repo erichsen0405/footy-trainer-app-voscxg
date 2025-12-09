@@ -728,11 +728,12 @@ export function useFootballData() {
           console.log(`   🏷️ New category name: ${newCategory.name} (${newCategory.emoji})`);
         }
         
-        // If this is an external activity, mark the category as manually set
+        // CRITICAL FIX: If this is an external activity, mark the category as manually set
         if (isExternal) {
           updateData.manually_set_category = true;
           console.log('   🔒 Setting manually_set_category = TRUE for external activity');
-          console.log('   ⚠️ This flag should prevent sync from overwriting the category');
+          console.log('   ⚠️ This flag MUST be set to prevent sync from overwriting the category');
+          console.log('   ⚠️ The Edge Function will check this flag and preserve the category');
         } else {
           console.log('   ℹ️ Internal activity - manually_set_category flag not needed');
         }
@@ -790,9 +791,11 @@ export function useFootballData() {
         if (data.manually_set_category === true) {
           console.log('✅ SUCCESS: Flag is set correctly!');
           console.log('✅ This category should now be preserved during sync');
+          console.log('✅ The Edge Function will check this flag and NOT overwrite the category');
         } else {
           console.log('❌ WARNING: Flag is NOT set correctly!');
-          console.log('❌ This is the iOS bug - the flag should be true but it is:', data.manually_set_category);
+          console.log('❌ Expected: true, Got:', data.manually_set_category);
+          console.log('❌ This is a critical bug - the category may be overwritten during sync');
         }
       }
       
