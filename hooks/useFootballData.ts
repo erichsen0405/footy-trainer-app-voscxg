@@ -785,17 +785,73 @@ export function useFootballData() {
       
       if (isExternal && updates.categoryId !== undefined) {
         console.log('');
-        console.log('🔍 ========== VERIFICATION ==========');
+        console.log('🔍 ========== VERIFICATION STEP 1: Check Response ==========');
         console.log(`✅ Category was updated to: ${data.category?.name}`);
-        console.log(`✅ manually_set_category flag is: ${data.manually_set_category}`);
+        console.log(`✅ manually_set_category flag in response: ${data.manually_set_category}`);
         if (data.manually_set_category === true) {
-          console.log('✅ SUCCESS: Flag is set correctly!');
-          console.log('✅ This category should now be preserved during sync');
-          console.log('✅ The Edge Function will check this flag and NOT overwrite the category');
+          console.log('✅ SUCCESS: Flag is set correctly in response!');
         } else {
-          console.log('❌ WARNING: Flag is NOT set correctly!');
+          console.log('❌ WARNING: Flag is NOT set correctly in response!');
           console.log('❌ Expected: true, Got:', data.manually_set_category);
-          console.log('❌ This is a critical bug - the category may be overwritten during sync');
+        }
+        
+        // CRITICAL FIX: Add a second verification step - query the database directly
+        console.log('');
+        console.log('🔍 ========== VERIFICATION STEP 2: Query Database ==========');
+        console.log('⏳ Waiting 500ms for database write to complete...');
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        console.log('📡 Querying database to verify flag was persisted...');
+        const { data: verifyData, error: verifyError } = await supabase
+          .from('activities')
+          .select('id, category_id, manually_set_category, activity_categories(name)')
+          .eq('id', activityId)
+          .single();
+        
+        if (verifyError) {
+          console.error('❌ Verification query failed:', verifyError);
+        } else {
+          console.log('📊 Verification query result:');
+          console.log(`   - ID: ${verifyData.id}`);
+          console.log(`   - Category ID: ${verifyData.category_id}`);
+          console.log(`   - Category name: ${verifyData.activity_categories?.name}`);
+          console.log(`   - manually_set_category: ${verifyData.manually_set_category}`);
+          
+          if (verifyData.manually_set_category === true) {
+            console.log('✅✅✅ VERIFICATION SUCCESSFUL! Flag is persisted in database!');
+            console.log('✅ This category will be protected during next sync');
+          } else {
+            console.log('❌❌❌ VERIFICATION FAILED! Flag is NOT persisted in database!');
+            console.log('❌ Expected: true, Got:', verifyData.manually_set_category);
+            console.log('❌ This is a CRITICAL BUG - investigating...');
+            
+            // CRITICAL FIX: Try to set the flag again with a direct update
+            console.log('');
+            console.log('🔧 ========== ATTEMPTING RECOVERY ==========');
+            console.log('🔄 Attempting to set flag again with direct update...');
+            const { data: recoveryData, error: recoveryError } = await supabase
+              .from('activities')
+              .update({ manually_set_category: true })
+              .eq('id', activityId)
+              .eq('user_id', userId)
+              .select('id, manually_set_category')
+              .single();
+            
+            if (recoveryError) {
+              console.error('❌ Recovery update failed:', recoveryError);
+            } else {
+              console.log('📊 Recovery update result:');
+              console.log(`   - ID: ${recoveryData.id}`);
+              console.log(`   - manually_set_category: ${recoveryData.manually_set_category}`);
+              
+              if (recoveryData.manually_set_category === true) {
+                console.log('✅ RECOVERY SUCCESSFUL! Flag is now set!');
+              } else {
+                console.log('❌ RECOVERY FAILED! Flag still not set!');
+                console.log('❌ This indicates a database constraint or RLS policy issue');
+              }
+            }
+          }
         }
       }
       

@@ -588,7 +588,7 @@ serve(async (req) => {
             console.log(`   🛡️ CATEGORY PROTECTED - Will preserve manually set category`);
             categoriesPreserved++;
           } else {
-            console.log(`   🔓 Category not manually set - Will keep existing category`);
+            console.log(`   🔓 Category not manually set - Will keep existing category (no auto-update)`);
           }
           
           activitiesUpdated++;
@@ -616,7 +616,7 @@ serve(async (req) => {
             ...baseActivityData,
             id: existingActivity.id,
             category_id: existingActivity.categoryId, // Always keep existing category
-            // CRITICAL: Do NOT update manually_set_category flag - preserve it
+            // CRITICAL: Do NOT include manually_set_category in update - preserve existing value
           };
         } else {
           // Create new activity with "Ukendt" category
@@ -716,7 +716,7 @@ serve(async (req) => {
         activitiesUpdated,
         categoriesPreserved,
         activitiesDeleted: activitiesToDelete.length,
-        message: `Successfully synced ${events.length} events (${activitiesCreated} new with "Ukendt" category, ${activitiesUpdated} updated with ${categoriesPreserved} categories preserved, ${activitiesToDelete.length} deleted). Manually set categories are protected.`,
+        message: `Successfully synced ${events.length} events (${activitiesCreated} new with "Ukendt" category, ${activitiesUpdated} updated, ${categoriesPreserved} manually set categories preserved, ${activitiesToDelete.length} deleted).`,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
