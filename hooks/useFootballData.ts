@@ -658,46 +658,92 @@ export function useFootballData() {
       console.log('📤 Sending update to database...');
       console.log('📝 Update payload:', JSON.stringify(updateData, null, 2));
 
-      // CRITICAL FIX: Perform the update WITHOUT .select() to avoid race conditions
-      const { error: updateError } = await supabase
-        .from('activities')
-        .update(updateData)
-        .eq('id', activityId)
-        .eq('user_id', userId);
+      // ENHANCED FIX: Use a more robust update strategy with explicit verification
+      let updateSuccess = false;
+      let verifyData: any = null;
+      let retryCount = 0;
+      const maxRetries = 3;
 
-      if (updateError) {
-        console.error('');
-        console.error('❌ ========== DATABASE UPDATE FAILED ==========');
-        console.error('Error:', updateError);
-        console.error('Error message:', updateError.message);
-        console.error('Error details:', JSON.stringify(updateError, null, 2));
-        throw updateError;
+      while (!updateSuccess && retryCount < maxRetries) {
+        if (retryCount > 0) {
+          console.log(`🔄 Retry attempt ${retryCount}/${maxRetries}...`);
+          await new Promise(resolve => setTimeout(resolve, 500 * retryCount));
+        }
+
+        // Perform the update
+        const { error: updateError } = await supabase
+          .from('activities')
+          .update(updateData)
+          .eq('id', activityId)
+          .eq('user_id', userId);
+
+        if (updateError) {
+          console.error('');
+          console.error('❌ ========== DATABASE UPDATE FAILED ==========');
+          console.error('Error:', updateError);
+          console.error('Error message:', updateError.message);
+          console.error('Error details:', JSON.stringify(updateError, null, 2));
+          
+          if (retryCount === maxRetries - 1) {
+            throw updateError;
+          }
+          retryCount++;
+          continue;
+        }
+
+        console.log('✅ Database update command executed successfully');
+        
+        // CRITICAL: Wait for database propagation
+        console.log('⏳ Waiting 800ms for database propagation...');
+        await new Promise(resolve => setTimeout(resolve, 800));
+        
+        // CRITICAL: Verify the update by fetching from database
+        console.log('🔍 Verifying update by fetching from database...');
+        const { data: fetchedData, error: verifyError } = await supabase
+          .from('activities')
+          .select(`
+            *,
+            category:activity_categories(*)
+          `)
+          .eq('id', activityId)
+          .eq('user_id', userId)
+          .single();
+
+        if (verifyError || !fetchedData) {
+          console.error('❌ Failed to verify update:', verifyError);
+          if (retryCount === maxRetries - 1) {
+            throw new Error('Failed to verify update');
+          }
+          retryCount++;
+          continue;
+        }
+
+        verifyData = fetchedData;
+
+        // Check if the update was successful
+        if (updates.categoryId !== undefined) {
+          if (verifyData.manually_set_category === true && verifyData.category_id === updates.categoryId) {
+            updateSuccess = true;
+            console.log('✅ Update verified successfully!');
+          } else {
+            console.log('⚠️ Update verification failed, will retry...');
+            console.log(`   Expected: manually_set_category=true, category_id=${updates.categoryId}`);
+            console.log(`   Got: manually_set_category=${verifyData.manually_set_category}, category_id=${verifyData.category_id}`);
+            retryCount++;
+          }
+        } else {
+          updateSuccess = true;
+          console.log('✅ Update verified successfully (no category change)!');
+        }
+      }
+
+      if (!updateSuccess) {
+        console.error('❌ Failed to verify update after all retries');
+        throw new Error('Update verification failed - manually_set_category flag not persisted');
       }
 
       console.log('');
       console.log('✅ ========== DATABASE UPDATE SUCCESSFUL ==========');
-      
-      // CRITICAL FIX: Wait for database propagation
-      console.log('⏳ Waiting 1000ms for database propagation...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // CRITICAL FIX: Now fetch the updated data to verify the flag was set
-      console.log('🔍 Verifying update by fetching from database...');
-      const { data: verifyData, error: verifyError } = await supabase
-        .from('activities')
-        .select(`
-          *,
-          category:activity_categories(*)
-        `)
-        .eq('id', activityId)
-        .eq('user_id', userId)
-        .single();
-
-      if (verifyError || !verifyData) {
-        console.error('❌ Failed to verify update:', verifyError);
-        throw new Error('Failed to verify update');
-      }
-
       console.log('📊 Verified data from database:');
       console.log(`   - ID: ${verifyData.id}`);
       console.log(`   - Title: ${verifyData.title}`);
@@ -724,24 +770,6 @@ export function useFootballData() {
           console.log(`❌ manually_set_category: ${verifyData.manually_set_category}`);
           console.log('❌ The flag was NOT set in the database!');
           console.log('❌ This is a database or RLS policy issue!');
-          
-          // Try one more time with explicit update
-          console.log('🔄 Attempting explicit flag update...');
-          const { error: flagError } = await supabase
-            .from('activities')
-            .update({ 
-              manually_set_category: true,
-              category_updated_at: new Date().toISOString()
-            })
-            .eq('id', activityId)
-            .eq('user_id', userId);
-          
-          if (flagError) {
-            console.error('❌ Failed to set flag explicitly:', flagError);
-          } else {
-            console.log('✅ Flag set explicitly - waiting for propagation...');
-            await new Promise(resolve => setTimeout(resolve, 500));
-          }
         }
       }
       
