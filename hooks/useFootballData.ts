@@ -658,72 +658,110 @@ export function useFootballData() {
       console.log('📤 Sending update to database...');
       console.log('📝 Update payload:', JSON.stringify(updateData, null, 2));
 
-      const { data, error } = await supabase
+      // CRITICAL FIX: Perform the update WITHOUT .select() to avoid race conditions
+      const { error: updateError } = await supabase
         .from('activities')
         .update(updateData)
         .eq('id', activityId)
-        .eq('user_id', userId)
-        .select(`
-          *,
-          category:activity_categories(*)
-        `)
-        .single();
+        .eq('user_id', userId);
 
-      if (error) {
+      if (updateError) {
         console.error('');
         console.error('❌ ========== DATABASE UPDATE FAILED ==========');
-        console.error('Error:', error);
-        console.error('Error message:', error.message);
-        console.error('Error details:', JSON.stringify(error, null, 2));
-        throw error;
+        console.error('Error:', updateError);
+        console.error('Error message:', updateError.message);
+        console.error('Error details:', JSON.stringify(updateError, null, 2));
+        throw updateError;
       }
 
       console.log('');
       console.log('✅ ========== DATABASE UPDATE SUCCESSFUL ==========');
-      console.log('📊 Response data:');
-      console.log(`   - ID: ${data.id}`);
-      console.log(`   - Title: ${data.title}`);
-      console.log(`   - Category ID: ${data.category_id}`);
-      console.log(`   - Category name: ${data.category?.name || 'N/A'}`);
-      console.log(`   - Is external: ${data.is_external}`);
-      console.log(`   - Manually set category: ${data.manually_set_category}`);
-      console.log(`   - Category updated at: ${data.category_updated_at}`);
-      console.log(`   - Updated at: ${data.updated_at}`);
+      
+      // CRITICAL FIX: Wait for database propagation
+      console.log('⏳ Waiting 1000ms for database propagation...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // CRITICAL FIX: Now fetch the updated data to verify the flag was set
+      console.log('🔍 Verifying update by fetching from database...');
+      const { data: verifyData, error: verifyError } = await supabase
+        .from('activities')
+        .select(`
+          *,
+          category:activity_categories(*)
+        `)
+        .eq('id', activityId)
+        .eq('user_id', userId)
+        .single();
+
+      if (verifyError || !verifyData) {
+        console.error('❌ Failed to verify update:', verifyError);
+        throw new Error('Failed to verify update');
+      }
+
+      console.log('📊 Verified data from database:');
+      console.log(`   - ID: ${verifyData.id}`);
+      console.log(`   - Title: ${verifyData.title}`);
+      console.log(`   - Category ID: ${verifyData.category_id}`);
+      console.log(`   - Category name: ${verifyData.category?.name || 'N/A'}`);
+      console.log(`   - Is external: ${verifyData.is_external}`);
+      console.log(`   - Manually set category: ${verifyData.manually_set_category}`);
+      console.log(`   - Category updated at: ${verifyData.category_updated_at}`);
+      console.log(`   - Updated at: ${verifyData.updated_at}`);
       
       if (updates.categoryId !== undefined) {
         console.log('');
         console.log('🔍 ========== VERIFICATION: Manual Category Protection ==========');
-        console.log(`✅ Category was updated to: ${data.category?.name}`);
-        console.log(`✅ manually_set_category flag: ${data.manually_set_category}`);
-        console.log(`✅ category_updated_at timestamp: ${data.category_updated_at}`);
+        console.log(`✅ Category was updated to: ${verifyData.category?.name}`);
+        console.log(`✅ manually_set_category flag: ${verifyData.manually_set_category}`);
+        console.log(`✅ category_updated_at timestamp: ${verifyData.category_updated_at}`);
         
-        if (data.manually_set_category === true) {
+        if (verifyData.manually_set_category === true) {
           console.log('✅✅✅ SUCCESS: Manual category protection is ACTIVE!');
           console.log('✅ This category will NEVER be overwritten by sync');
           console.log('✅ The sync function will skip ALL category updates for this activity');
         } else {
-          console.log('❌ WARNING: Manual category protection may not be active!');
-          console.log(`❌ manually_set_category: ${data.manually_set_category}`);
+          console.log('❌❌❌ CRITICAL ERROR: Manual category protection FAILED!');
+          console.log(`❌ manually_set_category: ${verifyData.manually_set_category}`);
+          console.log('❌ The flag was NOT set in the database!');
+          console.log('❌ This is a database or RLS policy issue!');
+          
+          // Try one more time with explicit update
+          console.log('🔄 Attempting explicit flag update...');
+          const { error: flagError } = await supabase
+            .from('activities')
+            .update({ 
+              manually_set_category: true,
+              category_updated_at: new Date().toISOString()
+            })
+            .eq('id', activityId)
+            .eq('user_id', userId);
+          
+          if (flagError) {
+            console.error('❌ Failed to set flag explicitly:', flagError);
+          } else {
+            console.log('✅ Flag set explicitly - waiting for propagation...');
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
         }
       }
       
       console.log('');
       console.log('🔄 Updating local state...');
-      // Immediately update local state with the new data
+      // Update local state with the verified data
       setActivities(prevActivities => 
         prevActivities.map(act => {
           if (act.id === activityId) {
             const updated = {
               ...act,
-              title: data.title,
-              location: data.location,
-              date: new Date(data.activity_date),
-              time: data.activity_time,
-              category: data.category ? {
-                id: data.category.id,
-                name: data.category.name,
-                color: data.category.color,
-                emoji: data.category.emoji,
+              title: verifyData.title,
+              location: verifyData.location,
+              date: new Date(verifyData.activity_date),
+              time: verifyData.activity_time,
+              category: verifyData.category ? {
+                id: verifyData.category.id,
+                name: verifyData.category.name,
+                color: verifyData.category.color,
+                emoji: verifyData.category.emoji,
               } : act.category,
             };
             console.log('   ✅ Local state updated for activity:', activityId);
@@ -733,9 +771,8 @@ export function useFootballData() {
         })
       );
       
-      // Wait for database propagation before full refresh
-      console.log('');
-      console.log('⏳ Waiting 500ms for database propagation...');
+      // Wait for local state propagation
+      console.log('⏳ Waiting 500ms for local state propagation...');
       await new Promise(resolve => setTimeout(resolve, 500));
       
       // Trigger a full refresh to ensure consistency
