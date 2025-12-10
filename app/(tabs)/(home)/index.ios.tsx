@@ -42,26 +42,39 @@ export default function HomeScreen() {
   }, []);
 
   const onRefresh = async () => {
-    console.log('Pull to refresh triggered on iOS home screen');
+    console.log('');
+    console.log('🔄 ========== PULL TO REFRESH STARTED ==========');
+    console.log('⏰ Timestamp:', new Date().toISOString());
+    console.log('📱 Platform: iOS');
     setRefreshing(true);
     
     try {
+      // CRITICAL FIX: Wait for any pending database writes to complete
+      // This ensures that manual category changes are fully persisted before syncing
+      console.log('⏳ Waiting 2 seconds for pending database writes to complete...');
+      console.log('   This ensures manual category changes are fully persisted');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      console.log('✅ Wait complete - proceeding with sync');
+      
       // Sync all enabled external calendars
       const enabledCalendars = externalCalendars.filter(cal => cal.enabled);
-      console.log(`Syncing ${enabledCalendars.length} enabled calendars`);
+      console.log(`📅 Found ${enabledCalendars.length} enabled calendars to sync`);
       
       for (const calendar of enabledCalendars) {
         try {
+          console.log(`🔄 Syncing calendar: "${calendar.name}"`);
           await fetchExternalCalendarEvents(calendar);
-          console.log(`Successfully synced calendar: ${calendar.name}`);
+          console.log(`✅ Successfully synced calendar: "${calendar.name}"`);
         } catch (error) {
-          console.error(`Failed to sync calendar ${calendar.name}:`, error);
+          console.error(`❌ Failed to sync calendar "${calendar.name}":`, error);
         }
       }
       
-      console.log('Refresh completed');
+      console.log('✅ ========== PULL TO REFRESH COMPLETED ==========');
+      console.log('');
     } catch (error) {
-      console.error('Error during refresh:', error);
+      console.error('❌ Error during refresh:', error);
+      console.log('');
     } finally {
       setRefreshing(false);
     }
