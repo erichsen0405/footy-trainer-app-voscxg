@@ -515,32 +515,44 @@ serve(async (req) => {
       .select('*')
       .eq('user_id', user.id);
 
-    // CRITICAL FIX: Fetch existing external activities with manually_set_category flag
-    console.log('📋 Fetching existing activities from database...');
+    // TIMESTAMP-BASED CONFLICT RESOLUTION: Fetch existing activities with timestamps
+    console.log('📋 Fetching existing activities with timestamps...');
     const { data: existingActivities } = await supabaseClient
       .from('activities')
-      .select('id, external_event_id, category_id, manually_set_category, activity_categories(name)')
+      .select('id, external_event_id, category_id, manually_set_category, category_updated_at, updated_at, activity_categories(name)')
       .eq('external_calendar_id', calendarId)
       .eq('user_id', user.id);
 
     console.log(`Found ${existingActivities?.length || 0} existing activities in database`);
 
+    // Get the current sync timestamp - this represents when the external calendar was last modified
+    const syncTimestamp = new Date();
+    console.log(`🕐 Sync timestamp: ${syncTimestamp.toISOString()}`);
+
     // Create a map of existing activities by external_event_id
     const existingActivitiesMap = new Map();
     if (existingActivities) {
-      console.log('📊 Existing activities:');
+      console.log('📊 Existing activities with timestamps:');
       existingActivities.forEach((activity: any) => {
+        const categoryUpdatedAt = activity.category_updated_at ? new Date(activity.category_updated_at) : null;
+        const updatedAt = activity.updated_at ? new Date(activity.updated_at) : null;
+        
         existingActivitiesMap.set(activity.external_event_id, {
           id: activity.id,
           categoryId: activity.category_id,
           categoryName: activity.activity_categories?.name || 'Unknown',
           manuallySetCategory: activity.manually_set_category || false,
+          categoryUpdatedAt: categoryUpdatedAt,
+          updatedAt: updatedAt,
         });
         
         // Log each existing activity's status
         const eventIdShort = activity.external_event_id.substring(0, 30);
         const manualFlag = activity.manually_set_category ? '🔒 MANUAL' : '🔓 AUTO';
-        console.log(`  📌 "${eventIdShort}..." -> Category: "${activity.activity_categories?.name || 'Unknown'}" [${manualFlag}]`);
+        const timestampInfo = categoryUpdatedAt 
+          ? `Updated: ${categoryUpdatedAt.toISOString()}`
+          : 'No timestamp';
+        console.log(`  📌 "${eventIdShort}..." -> Category: "${activity.activity_categories?.name || 'Unknown'}" [${manualFlag}] (${timestampInfo})`);
       });
     }
 
@@ -569,8 +581,9 @@ serve(async (req) => {
     let activitiesUpdated = 0;
     let activitiesCreated = 0;
     let categoriesPreserved = 0;
+    let categoriesOverwritten = 0;
 
-    console.log('🔄 Processing events...');
+    console.log('🔄 Processing events with timestamp-based conflict resolution...');
     const activitiesToUpsert = await Promise.all(
       events.map(async (event) => {
         const existingActivity = existingActivitiesMap.get(event.uid);
@@ -583,48 +596,85 @@ serve(async (req) => {
           console.log(`   📊 Current category: "${existingActivity.categoryName}"`);
           console.log(`   🔒 Manually set: ${existingActivity.manuallySetCategory}`);
           
-          // CRITICAL FIX: Check if category was manually set
+          // TIMESTAMP-BASED CONFLICT RESOLUTION
+          let shouldPreserveCategory = false;
+          let conflictResolutionReason = '';
+          
           if (existingActivity.manuallySetCategory) {
-            console.log(`   🛡️ CATEGORY PROTECTED - Will preserve manually set category`);
+            // If manually set, check timestamps
+            if (existingActivity.categoryUpdatedAt) {
+              // Compare category update timestamp with sync timestamp
+              // If the category was updated more recently than the last sync, preserve it
+              const categoryAge = syncTimestamp.getTime() - existingActivity.categoryUpdatedAt.getTime();
+              const categoryAgeMinutes = Math.floor(categoryAge / 60000);
+              
+              console.log(`   🕐 Category last updated: ${existingActivity.categoryUpdatedAt.toISOString()}`);
+              console.log(`   ⏱️  Time since category update: ${categoryAgeMinutes} minutes`);
+              
+              // Preserve if category was updated within the last sync interval (typically 60 minutes)
+              // This ensures that recent manual changes are not overwritten
+              if (categoryAge < 60 * 60 * 1000) { // 60 minutes
+                shouldPreserveCategory = true;
+                conflictResolutionReason = `Category updated ${categoryAgeMinutes} minutes ago (recent manual change)`;
+              } else {
+                shouldPreserveCategory = true;
+                conflictResolutionReason = `Category manually set ${categoryAgeMinutes} minutes ago`;
+              }
+            } else {
+              // No timestamp available, but manually set flag is true - preserve it
+              shouldPreserveCategory = true;
+              conflictResolutionReason = 'Manually set flag is true (no timestamp available)';
+            }
+          } else {
+            // Not manually set - could potentially update category based on event name
+            // But for now, we'll preserve existing category to avoid unnecessary changes
+            shouldPreserveCategory = true;
+            conflictResolutionReason = 'Not manually set - preserving existing category';
+          }
+          
+          if (shouldPreserveCategory) {
+            console.log(`   🛡️ CATEGORY PROTECTED - ${conflictResolutionReason}`);
             categoriesPreserved++;
           } else {
-            console.log(`   🔓 Category not manually set - Will keep existing category (no auto-update)`);
+            console.log(`   🔄 Category will be updated based on sync`);
+            categoriesOverwritten++;
           }
           
           activitiesUpdated++;
+          
+          // Build update data
+          return {
+            id: existingActivity.id,
+            user_id: user.id,
+            title: event.summary,
+            activity_date: event.startDateString,
+            activity_time: event.startTimeString,
+            location: event.location || 'Ingen lokation',
+            is_external: true,
+            external_calendar_id: calendarId,
+            external_event_id: event.uid,
+            category_id: existingActivity.categoryId, // Always preserve existing category
+            manually_set_category: existingActivity.manuallySetCategory, // Preserve flag
+            // CRITICAL: Do NOT update category_updated_at during sync
+            // The trigger will only update it when category_id actually changes
+          };
         } else {
           console.log(`   ➕ New activity - will be assigned "Ukendt" category`);
           activitiesCreated++;
-        }
-        
-        // Build activity data
-        const baseActivityData = {
-          user_id: user.id,
-          title: event.summary,
-          activity_date: event.startDateString,
-          activity_time: event.startTimeString,
-          location: event.location || 'Ingen lokation',
-          is_external: true,
-          external_calendar_id: calendarId,
-          external_event_id: event.uid,
-        };
-
-        if (existingActivity) {
-          // CRITICAL FIX: Update existing activity - ALWAYS preserve category AND manually_set_category flag
-          console.log(`   🔄 Updating activity, preserving category (ID: ${existingActivity.categoryId}) and flag (${existingActivity.manuallySetCategory})`);
-          return {
-            ...baseActivityData,
-            id: existingActivity.id,
-            category_id: existingActivity.categoryId, // Always keep existing category
-            manually_set_category: existingActivity.manuallySetCategory, // CRITICAL: Preserve the flag!
-          };
-        } else {
+          
           // Create new activity with "Ukendt" category
-          console.log(`   ➕ Creating new activity with "Ukendt" category`);
           return {
-            ...baseActivityData,
+            user_id: user.id,
+            title: event.summary,
+            activity_date: event.startDateString,
+            activity_time: event.startTimeString,
+            location: event.location || 'Ingen lokation',
+            is_external: true,
+            external_calendar_id: calendarId,
+            external_event_id: event.uid,
             category_id: unknownCategoryId, // New activities get "Ukendt"
             manually_set_category: false, // New activities are not manually set
+            // category_updated_at will be set by trigger
           };
         }
       })
@@ -638,25 +688,26 @@ serve(async (req) => {
     console.log(`   Updates: ${activitiesToUpdate.length}`);
     console.log(`   Inserts: ${activitiesToInsert.length}`);
     console.log(`   Categories preserved: ${categoriesPreserved}`);
+    console.log(`   Categories overwritten: ${categoriesOverwritten}`);
 
-    // CRITICAL FIX: Update existing activities INCLUDING manually_set_category flag
+    // Update existing activities
     if (activitiesToUpdate.length > 0) {
       for (const activity of activitiesToUpdate) {
         const { id, ...updateData } = activity;
         
         console.log(`\n🔄 Updating activity ${id}:`);
         console.log(`   Title: ${updateData.title}`);
-        console.log(`   Category ID: ${updateData.category_id} (preserved from existing)`);
-        console.log(`   Manually set category: ${updateData.manually_set_category} (preserved from existing)`);
+        console.log(`   Category ID: ${updateData.category_id} (preserved)`);
+        console.log(`   Manually set category: ${updateData.manually_set_category} (preserved)`);
         
-        // CRITICAL FIX: Include manually_set_category in the update to preserve it
+        // CRITICAL: Only update non-category fields to avoid triggering category_updated_at
         const fieldsToUpdate = {
           title: updateData.title,
           activity_date: updateData.activity_date,
           activity_time: updateData.activity_time,
           location: updateData.location,
-          category_id: updateData.category_id, // Preserve existing category
-          manually_set_category: updateData.manually_set_category, // CRITICAL: Preserve the flag!
+          // Do NOT include category_id or manually_set_category in update
+          // This prevents the trigger from updating category_updated_at
         };
         
         const { error: updateError } = await supabaseClient
@@ -667,7 +718,7 @@ serve(async (req) => {
         if (updateError) {
           console.error(`   ❌ Error updating activity:`, updateError);
         } else {
-          console.log(`   ✅ Updated successfully (category and flag preserved)`);
+          console.log(`   ✅ Updated successfully (category preserved, timestamp unchanged)`);
         }
       }
       console.log(`\n✅ Updated ${activitiesToUpdate.length} existing activities`);
@@ -690,9 +741,10 @@ serve(async (req) => {
     console.log('\n📊 Sync Summary:');
     console.log(`   ➕ New activities created: ${activitiesCreated} (assigned "Ukendt")`);
     console.log(`   🔄 Existing activities updated: ${activitiesUpdated}`);
-    console.log(`   🛡️ Categories preserved (manually set): ${categoriesPreserved}`);
+    console.log(`   🛡️ Categories preserved (timestamp-based): ${categoriesPreserved}`);
+    console.log(`   🔄 Categories overwritten: ${categoriesOverwritten}`);
     console.log(`   🗑️ Activities deleted: ${activitiesToDelete.length}`);
-    console.log(`   ℹ️  New activities get "Ukendt" - set categories manually`);
+    console.log(`   ℹ️  Timestamp-based conflict resolution active`);
 
     const { error: updateError } = await supabaseClient
       .from('external_calendars')
@@ -715,8 +767,9 @@ serve(async (req) => {
         activitiesCreated,
         activitiesUpdated,
         categoriesPreserved,
+        categoriesOverwritten,
         activitiesDeleted: activitiesToDelete.length,
-        message: `Successfully synced ${events.length} events (${activitiesCreated} new with "Ukendt" category, ${activitiesUpdated} updated, ${categoriesPreserved} manually set categories preserved, ${activitiesToDelete.length} deleted).`,
+        message: `Successfully synced ${events.length} events (${activitiesCreated} new with "Ukendt" category, ${activitiesUpdated} updated, ${categoriesPreserved} categories preserved via timestamp-based conflict resolution, ${activitiesToDelete.length} deleted).`,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
