@@ -610,13 +610,13 @@ serve(async (req) => {
         };
 
         if (existingActivity) {
-          // CRITICAL FIX: Update existing activity - ALWAYS preserve category
-          console.log(`   🔄 Updating activity, preserving category (ID: ${existingActivity.categoryId})`);
+          // CRITICAL FIX: Update existing activity - ALWAYS preserve category AND manually_set_category flag
+          console.log(`   🔄 Updating activity, preserving category (ID: ${existingActivity.categoryId}) and flag (${existingActivity.manuallySetCategory})`);
           return {
             ...baseActivityData,
             id: existingActivity.id,
             category_id: existingActivity.categoryId, // Always keep existing category
-            // CRITICAL: Do NOT include manually_set_category in update - preserve existing value
+            manually_set_category: existingActivity.manuallySetCategory, // CRITICAL: Preserve the flag!
           };
         } else {
           // Create new activity with "Ukendt" category
@@ -639,7 +639,7 @@ serve(async (req) => {
     console.log(`   Inserts: ${activitiesToInsert.length}`);
     console.log(`   Categories preserved: ${categoriesPreserved}`);
 
-    // CRITICAL FIX: Update existing activities WITHOUT touching manually_set_category
+    // CRITICAL FIX: Update existing activities INCLUDING manually_set_category flag
     if (activitiesToUpdate.length > 0) {
       for (const activity of activitiesToUpdate) {
         const { id, ...updateData } = activity;
@@ -647,16 +647,16 @@ serve(async (req) => {
         console.log(`\n🔄 Updating activity ${id}:`);
         console.log(`   Title: ${updateData.title}`);
         console.log(`   Category ID: ${updateData.category_id} (preserved from existing)`);
+        console.log(`   Manually set category: ${updateData.manually_set_category} (preserved from existing)`);
         
-        // CRITICAL FIX: Only update the fields we want to change
-        // Do NOT include manually_set_category in the update
+        // CRITICAL FIX: Include manually_set_category in the update to preserve it
         const fieldsToUpdate = {
           title: updateData.title,
           activity_date: updateData.activity_date,
           activity_time: updateData.activity_time,
           location: updateData.location,
           category_id: updateData.category_id, // Preserve existing category
-          // Do NOT update manually_set_category - let it stay as is
+          manually_set_category: updateData.manually_set_category, // CRITICAL: Preserve the flag!
         };
         
         const { error: updateError } = await supabaseClient
@@ -667,7 +667,7 @@ serve(async (req) => {
         if (updateError) {
           console.error(`   ❌ Error updating activity:`, updateError);
         } else {
-          console.log(`   ✅ Updated successfully (category preserved)`);
+          console.log(`   ✅ Updated successfully (category and flag preserved)`);
         }
       }
       console.log(`\n✅ Updated ${activitiesToUpdate.length} existing activities`);
