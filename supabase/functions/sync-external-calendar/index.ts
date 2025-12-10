@@ -324,7 +324,6 @@ function parseICalendarData(icalData: string): ParsedEvent[] {
         console.log('No categories found for event:', event.summary);
       }
 
-      // Try to get LAST-MODIFIED timestamp from the event
       let lastModified: Date | undefined;
       try {
         const lastModifiedProp = vevent.getFirstProperty('last-modified');
@@ -472,7 +471,6 @@ serve(async (req) => {
       .select('*')
       .eq('user_id', user.id);
 
-    // ABSOLUTE MANUAL CATEGORY PROTECTION
     console.log('📋 Fetching existing activities with manual category flags...');
     const { data: existingActivities } = await supabaseClient
       .from('activities')
@@ -482,7 +480,6 @@ serve(async (req) => {
 
     console.log(`Found ${existingActivities?.length || 0} existing activities in database`);
 
-    // Create a map of existing activities by external_event_id
     const existingActivitiesMap = new Map();
     if (existingActivities) {
       console.log('📊 Existing activities with manual category flags:');
@@ -500,10 +497,8 @@ serve(async (req) => {
       });
     }
 
-    // Get the list of external event IDs from the fetched events
     const fetchedEventIds = new Set(events.map(event => event.uid));
 
-    // Delete activities that no longer exist in the external calendar
     const activitiesToDelete = existingActivities?.filter(
       (activity: any) => !fetchedEventIds.has(activity.external_event_id)
     ) || [];
@@ -542,7 +537,6 @@ serve(async (req) => {
         console.log(`   📊 Current category: "${existingActivity.categoryName}"`);
         console.log(`   🔒 Manually set: ${existingActivity.manuallySetCategory}`);
         
-        // CRITICAL FIX: Build update data WITHOUT category fields if manually set
         const updateData: any = {
           id: existingActivity.id,
           user_id: user.id,
@@ -555,9 +549,8 @@ serve(async (req) => {
           external_event_id: event.uid,
         };
         
-        // ABSOLUTE HARD STOP: If manually set, DO NOT include category fields AT ALL
+        // CRITICAL FIX: If manually set, DO NOT include category fields AT ALL
         if (existingActivity.manuallySetCategory === true) {
-          // HARD STOP - Category was manually set by user
           categoriesPreserved++;
           console.log(`   🛡️🛡️🛡️ ABSOLUTE PROTECTION: Category manually set by user`);
           console.log(`   🚫 SKIPPING ALL CATEGORY UPDATES - Keeping "${existingActivity.categoryName}"`);
@@ -572,12 +565,12 @@ serve(async (req) => {
             categoriesUpdated++;
             console.log(`   🎯 Auto-detected category: "${categoryMatch.categoryName}" (confidence: ${categoryMatch.confidence}%)`);
           } else {
-            // No match - keep existing category
             updateData.category_id = existingActivity.categoryId;
             console.log(`   ❓ No category match found - preserving existing "${existingActivity.categoryName}"`);
           }
-          // Keep manually_set_category as false for auto-detected categories
-          updateData.manually_set_category = false;
+          // CRITICAL FIX: DO NOT set manually_set_category to false
+          // This allows the existing value to be preserved if it was set to true
+          console.log(`   ℹ️ NOT modifying manually_set_category flag (preserving existing value)`);
         }
         
         activitiesUpdated++;
@@ -585,7 +578,6 @@ serve(async (req) => {
       } else {
         console.log(`   ➕ New activity - determining category...`);
         
-        // Try to determine category from event name
         const categoryMatch = parseActivityNameForCategory(event.summary, refreshedCategories || []);
         let categoryId = unknownCategoryId;
         
@@ -598,7 +590,6 @@ serve(async (req) => {
         
         activitiesCreated++;
         
-        // Create new activity
         activitiesToUpsert.push({
           user_id: user.id,
           title: event.summary,
@@ -614,7 +605,6 @@ serve(async (req) => {
       }
     }
 
-    // Separate updates and inserts
     const activitiesToUpdate = activitiesToUpsert.filter((a: any) => a.id);
     const activitiesToInsert = activitiesToUpsert.filter((a: any) => !a.id);
 
@@ -624,7 +614,6 @@ serve(async (req) => {
     console.log(`   Categories preserved (ABSOLUTE PROTECTION): ${categoriesPreserved}`);
     console.log(`   Categories updated (auto-detected): ${categoriesUpdated}`);
 
-    // Update existing activities
     if (activitiesToUpdate.length > 0) {
       for (const activity of activitiesToUpdate) {
         const { id, ...updateData } = activity;
@@ -632,7 +621,7 @@ serve(async (req) => {
         console.log(`\n🔄 Updating activity ${id}:`);
         console.log(`   Title: ${updateData.title}`);
         console.log(`   Category ID: ${updateData.category_id || 'NOT UPDATING (manually set)'}`);
-        console.log(`   Manually set category: ${updateData.manually_set_category !== undefined ? updateData.manually_set_category : 'NOT UPDATING (manually set)'}`);
+        console.log(`   Manually set category: ${updateData.manually_set_category !== undefined ? updateData.manually_set_category : 'NOT UPDATING (preserving existing)'}`);
         
         const { error: updateError } = await supabaseClient
           .from('activities')
@@ -648,7 +637,6 @@ serve(async (req) => {
       console.log(`\n✅ Updated ${activitiesToUpdate.length} existing activities`);
     }
 
-    // Insert new activities
     if (activitiesToInsert.length > 0) {
       const { error: insertError } = await supabaseClient
         .from('activities')
@@ -669,6 +657,7 @@ serve(async (req) => {
     console.log(`   🔄 Categories updated (auto-detected): ${categoriesUpdated}`);
     console.log(`   🗑️ Activities deleted: ${activitiesToDelete.length}`);
     console.log(`   ⚠️ CRITICAL: Manually set categories are NEVER overwritten`);
+    console.log(`   ⚠️ CRITICAL: manually_set_category flag is NEVER reset to false by sync`);
 
     const { error: updateError } = await supabaseClient
       .from('external_calendars')
