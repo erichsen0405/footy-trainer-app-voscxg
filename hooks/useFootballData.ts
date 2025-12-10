@@ -625,7 +625,7 @@ export function useFootballData() {
         console.log(`   ⏰ Updating time: ${updates.time}`);
       }
       
-      // TIMESTAMP-BASED CONFLICT RESOLUTION: Set manually_set_category and category_updated_at
+      // CRITICAL FIX: Set manually_set_category for ALL activities when category is changed
       if (updates.categoryId !== undefined) {
         updateData.category_id = updates.categoryId;
         console.log(`   🏷️ Updating category ID: ${updates.categoryId}`);
@@ -636,17 +636,13 @@ export function useFootballData() {
           console.log(`   🏷️ New category name: ${newCategory.name} (${newCategory.emoji})`);
         }
         
-        // CRITICAL: Set manually_set_category flag and update timestamp
-        if (isExternal) {
-          updateData.manually_set_category = true;
-          updateData.category_updated_at = new Date().toISOString();
-          console.log('   🔒 Setting manually_set_category = TRUE for external activity');
-          console.log(`   🕐 Setting category_updated_at = ${updateData.category_updated_at}`);
-          console.log('   ⚠️ These fields enable timestamp-based conflict resolution');
-          console.log('   ⚠️ The Edge Function will compare timestamps to preserve recent changes');
-        } else {
-          console.log('   ℹ️ Internal activity - manually_set_category flag not needed');
-        }
+        // CRITICAL FIX: ALWAYS set manually_set_category flag when user changes category
+        // This applies to BOTH internal AND external activities
+        updateData.manually_set_category = true;
+        updateData.category_updated_at = new Date().toISOString();
+        console.log('   🔒 Setting manually_set_category = TRUE (user manually changed category)');
+        console.log(`   🕐 Setting category_updated_at = ${updateData.category_updated_at}`);
+        console.log('   ⚠️ This category will be PERMANENTLY protected from sync overwrites');
       }
       
       // Remove from series when updating single activity (only if not just updating category)
@@ -694,21 +690,20 @@ export function useFootballData() {
       console.log(`   - Category updated at: ${data.category_updated_at}`);
       console.log(`   - Updated at: ${data.updated_at}`);
       
-      if (isExternal && updates.categoryId !== undefined) {
+      if (updates.categoryId !== undefined) {
         console.log('');
-        console.log('🔍 ========== VERIFICATION: Timestamp-Based Protection ==========');
+        console.log('🔍 ========== VERIFICATION: Manual Category Protection ==========');
         console.log(`✅ Category was updated to: ${data.category?.name}`);
         console.log(`✅ manually_set_category flag: ${data.manually_set_category}`);
         console.log(`✅ category_updated_at timestamp: ${data.category_updated_at}`);
         
-        if (data.manually_set_category === true && data.category_updated_at) {
-          console.log('✅✅✅ SUCCESS: Timestamp-based protection is active!');
-          console.log('✅ This category will be preserved during next sync');
-          console.log('✅ The sync will compare timestamps and keep the most recent change');
+        if (data.manually_set_category === true) {
+          console.log('✅✅✅ SUCCESS: Manual category protection is ACTIVE!');
+          console.log('✅ This category will NEVER be overwritten by sync');
+          console.log('✅ The sync function will skip ALL category updates for this activity');
         } else {
-          console.log('❌ WARNING: Timestamp-based protection may not be active!');
+          console.log('❌ WARNING: Manual category protection may not be active!');
           console.log(`❌ manually_set_category: ${data.manually_set_category}`);
-          console.log(`❌ category_updated_at: ${data.category_updated_at}`);
         }
       }
       

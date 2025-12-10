@@ -472,7 +472,7 @@ serve(async (req) => {
       .select('*')
       .eq('user_id', user.id);
 
-    // PERMANENT MANUAL CATEGORY PROTECTION
+    // ABSOLUTE MANUAL CATEGORY PROTECTION
     console.log('📋 Fetching existing activities with manual category flags...');
     const { data: existingActivities } = await supabaseClient
       .from('activities')
@@ -481,10 +481,6 @@ serve(async (req) => {
       .eq('user_id', user.id);
 
     console.log(`Found ${existingActivities?.length || 0} existing activities in database`);
-
-    // Get the current sync timestamp
-    const syncTimestamp = new Date();
-    console.log(`🕐 Sync timestamp: ${syncTimestamp.toISOString()}`);
 
     // Create a map of existing activities by external_event_id
     const existingActivitiesMap = new Map();
@@ -531,7 +527,7 @@ serve(async (req) => {
     let categoriesPreserved = 0;
     let categoriesUpdated = 0;
 
-    console.log('🔄 Processing events with PERMANENT manual category protection...');
+    console.log('🔄 Processing events with ABSOLUTE manual category protection...');
     
     const activitiesToUpsert = [];
     
@@ -546,46 +542,34 @@ serve(async (req) => {
         console.log(`   📊 Current category: "${existingActivity.categoryName}"`);
         console.log(`   🔒 Manually set: ${existingActivity.manuallySetCategory}`);
         
-        // PERMANENT MANUAL CATEGORY PROTECTION
-        let shouldPreserveCategory = false;
-        let shouldUpdateCategory = false;
-        let newCategoryId = existingActivity.categoryId;
-        let protectionReason = '';
+        // ABSOLUTE HARD STOP: If manually set, DO NOT touch the category AT ALL
+        let categoryId = existingActivity.categoryId;
+        let preserveCategory = false;
         
-        // CRITICAL: If manually set, ALWAYS preserve - no time limit
-        if (existingActivity.manuallySetCategory) {
-          shouldPreserveCategory = true;
-          protectionReason = 'Manually set category - PERMANENT protection';
-          console.log(`   🛡️ PERMANENT PROTECTION: Category was manually set by user`);
+        if (existingActivity.manuallySetCategory === true) {
+          // HARD STOP - Category was manually set by user
+          preserveCategory = true;
+          categoriesPreserved++;
+          console.log(`   🛡️🛡️🛡️ ABSOLUTE PROTECTION: Category manually set by user`);
+          console.log(`   🚫 SKIPPING ALL CATEGORY UPDATES - Keeping "${existingActivity.categoryName}"`);
+          console.log(`   ⚠️ This category will NEVER be changed by sync`);
         } else {
-          // Not manually set - always try to update based on event name
-          shouldUpdateCategory = true;
-          protectionReason = 'Not manually set - auto-updating';
-          
-          // Try to determine category from event name
+          // Not manually set - try to auto-detect category
           const categoryMatch = parseActivityNameForCategory(event.summary, refreshedCategories || []);
           if (categoryMatch) {
-            newCategoryId = categoryMatch.categoryId;
+            categoryId = categoryMatch.categoryId;
+            categoriesUpdated++;
             console.log(`   🎯 Auto-detected category: "${categoryMatch.categoryName}" (confidence: ${categoryMatch.confidence}%)`);
           } else {
             // No match - keep existing category
-            shouldPreserveCategory = true;
-            shouldUpdateCategory = false;
-            protectionReason = `No category match found - preserving existing`;
+            preserveCategory = true;
+            console.log(`   ❓ No category match found - preserving existing "${existingActivity.categoryName}"`);
           }
-        }
-        
-        if (shouldPreserveCategory) {
-          console.log(`   🛡️ CATEGORY PRESERVED - ${protectionReason}`);
-          categoriesPreserved++;
-        } else if (shouldUpdateCategory) {
-          console.log(`   🔄 CATEGORY UPDATED - ${protectionReason}`);
-          categoriesUpdated++;
         }
         
         activitiesUpdated++;
         
-        // Build update data
+        // Build update data - ONLY update non-category fields if manually set
         activitiesToUpsert.push({
           id: existingActivity.id,
           user_id: user.id,
@@ -596,7 +580,7 @@ serve(async (req) => {
           is_external: true,
           external_calendar_id: calendarId,
           external_event_id: event.uid,
-          category_id: newCategoryId,
+          category_id: categoryId,
           // CRITICAL: Preserve manually_set_category flag if it was set
           manually_set_category: existingActivity.manuallySetCategory,
         });
@@ -639,7 +623,7 @@ serve(async (req) => {
     console.log('\n📤 Applying database changes...');
     console.log(`   Updates: ${activitiesToUpdate.length}`);
     console.log(`   Inserts: ${activitiesToInsert.length}`);
-    console.log(`   Categories preserved (PERMANENT): ${categoriesPreserved}`);
+    console.log(`   Categories preserved (ABSOLUTE PROTECTION): ${categoriesPreserved}`);
     console.log(`   Categories updated (auto-detected): ${categoriesUpdated}`);
 
     // Update existing activities
@@ -683,10 +667,10 @@ serve(async (req) => {
     console.log('\n📊 Sync Summary:');
     console.log(`   ➕ New activities created: ${activitiesCreated}`);
     console.log(`   🔄 Existing activities updated: ${activitiesUpdated}`);
-    console.log(`   🛡️ Categories preserved (PERMANENT manual protection): ${categoriesPreserved}`);
+    console.log(`   🛡️ Categories preserved (ABSOLUTE manual protection): ${categoriesPreserved}`);
     console.log(`   🔄 Categories updated (auto-detected): ${categoriesUpdated}`);
     console.log(`   🗑️ Activities deleted: ${activitiesToDelete.length}`);
-    console.log(`   ⚠️ IMPORTANT: Manually set categories are NEVER overwritten`);
+    console.log(`   ⚠️ CRITICAL: Manually set categories are NEVER overwritten`);
 
     const { error: updateError } = await supabaseClient
       .from('external_calendars')
@@ -711,7 +695,7 @@ serve(async (req) => {
         categoriesPreserved,
         categoriesUpdated,
         activitiesDeleted: activitiesToDelete.length,
-        message: `Successfully synced ${events.length} events (${activitiesCreated} new, ${activitiesUpdated} updated, ${categoriesPreserved} manual categories PERMANENTLY preserved, ${categoriesUpdated} categories auto-updated, ${activitiesToDelete.length} deleted).`,
+        message: `Successfully synced ${events.length} events (${activitiesCreated} new, ${activitiesUpdated} updated, ${categoriesPreserved} manual categories ABSOLUTELY preserved, ${categoriesUpdated} categories auto-updated, ${activitiesToDelete.length} deleted).`,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
