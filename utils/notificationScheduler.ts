@@ -91,6 +91,7 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
     const now = new Date();
     const windowEnd = new Date(now.getTime() + SCHEDULING_WINDOW_DAYS * 24 * 60 * 60 * 1000);
     
+    // CRITICAL FIX: Use correct column name 'activity_date' and proper order syntax
     const { data: tasks, error } = await supabase
       .from('activity_tasks')
       .select(`
@@ -101,14 +102,19 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
         activities!inner (
           id,
           title,
-          date,
-          time
+          activity_date,
+          activity_time,
+          user_id
         )
       `)
       .not('reminder_minutes', 'is', null)
-      .gte('activities.date', now.toISOString().split('T')[0])
-      .lte('activities.date', windowEnd.toISOString().split('T')[0])
-      .order('activities.date', { ascending: true });
+      .eq('activities.user_id', user.id)
+      .gte('activities.activity_date', now.toISOString().split('T')[0])
+      .lte('activities.activity_date', windowEnd.toISOString().split('T')[0])
+      .order('activity_date', { 
+        ascending: true,
+        foreignTable: 'activities'
+      });
     
     if (error) {
       console.error('❌ Error fetching reminders:', error);
@@ -130,8 +136,8 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
       if (!activity) continue;
       
       const notificationTime = calculateNotificationTime(
-        activity.date,
-        activity.time,
+        activity.activity_date,
+        activity.activity_time,
         task.reminder_minutes!
       );
       
@@ -142,8 +148,8 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
           activityId: activity.id,
           taskTitle: task.title,
           activityTitle: activity.title,
-          activityDate: activity.date,
-          activityTime: activity.time,
+          activityDate: activity.activity_date,
+          activityTime: activity.activity_time,
           reminderMinutes: task.reminder_minutes!,
           notificationTime,
         });
