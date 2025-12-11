@@ -385,7 +385,24 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: textColor }]}>Kommende aktiviteter</Text>
+          <View style={styles.upcomingHeader}>
+            <Text style={[styles.sectionTitle, { color: textColor }]}>Kommende aktiviteter</Text>
+            <TouchableOpacity
+              style={styles.loadPreviousButton}
+              onPress={handleLoadPreviousWeek}
+              activeOpacity={0.6}
+            >
+              <IconSymbol 
+                ios_icon_name="chevron.up" 
+                android_material_icon_name="expand_less" 
+                size={16} 
+                color={textSecondaryColor} 
+              />
+              <Text style={[styles.loadPreviousText, { color: textSecondaryColor }]}>
+                Tidligere
+              </Text>
+            </TouchableOpacity>
+          </View>
           
           {sortedWeeks.length === 0 ? (
             <View style={[styles.emptyCard, { backgroundColor: cardBgColor }]}>
@@ -465,22 +482,6 @@ export default function HomeScreen() {
               })}
             </React.Fragment>
           )}
-          
-          <TouchableOpacity
-            style={styles.loadMoreButton}
-            onPress={handleLoadPreviousWeek}
-            activeOpacity={0.7}
-          >
-            <IconSymbol 
-              ios_icon_name="arrow.up.circle.fill" 
-              android_material_icon_name="expand_less" 
-              size={28} 
-              color={colors.primary} 
-            />
-            <Text style={styles.loadMoreButtonText}>
-              Indlæs tidligere uge
-            </Text>
-          </TouchableOpacity>
         </View>
 
         <View style={{ height: 120 }} />
@@ -668,6 +669,23 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 12,
   },
+  upcomingHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  loadPreviousButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  loadPreviousText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
   emptyCard: {
     borderRadius: 16,
     padding: 32,
@@ -852,26 +870,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#fff',
     opacity: 0.9,
-  },
-  loadMoreButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    paddingVertical: 18,
-    paddingHorizontal: 24,
-    borderRadius: 16,
-    marginTop: 16,
-    marginBottom: 20,
-    backgroundColor: 'rgba(76, 175, 80, 0.1)',
-    borderWidth: 2,
-    borderColor: colors.primary,
-    borderStyle: 'solid',
-  },
-  loadMoreButtonText: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: colors.primary,
   },
   modalOverlay: {
     flex: 1,
