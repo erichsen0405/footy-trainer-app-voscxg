@@ -166,23 +166,31 @@ export default function HomeScreen() {
       return activityDate >= now;
     });
     
-    const grouped: { [key: string]: { activities: Activity[], dateRange: string } } = {};
+    const grouped: { [key: string]: { activities: Activity[], dateRange: string, sortDate: Date } } = {};
     
     upcoming.forEach(activity => {
       const activityDate = new Date(activity.date);
-      const weekNumber = getWeek(activityDate);
+      const weekNumber = getWeek(activityDate, { weekStartsOn: 1 });
       const year = activityDate.getFullYear();
       const key = `${year}-W${weekNumber}`;
       
       if (!grouped[key]) {
-        grouped[key] = { activities: [], dateRange: '' };
+        grouped[key] = { activities: [], dateRange: '', sortDate: activityDate };
       }
       grouped[key].activities.push(activity);
+      
+      // Update sortDate to be the earliest date in the week
+      if (activityDate < grouped[key].sortDate) {
+        grouped[key].sortDate = activityDate;
+      }
     });
 
     Object.keys(grouped).forEach(key => {
       const weekActivities = grouped[key].activities;
       if (weekActivities.length > 0) {
+        // Sort activities by date
+        weekActivities.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        
         const firstDate = new Date(weekActivities[0].date);
         const lastDate = new Date(weekActivities[weekActivities.length - 1].date);
         grouped[key].dateRange = `${firstDate.getDate()}/${firstDate.getMonth() + 1} - ${lastDate.getDate()}/${lastDate.getMonth() + 1}`;
@@ -193,6 +201,11 @@ export default function HomeScreen() {
   };
 
   const upcomingByWeek = getUpcomingActivitiesByWeek();
+  
+  // Sort weeks by date (earliest first)
+  const sortedWeeks = Object.entries(upcomingByWeek).sort((a, b) => {
+    return a[1].sortDate.getTime() - b[1].sortDate.getTime();
+  });
 
   const bgColor = isDark ? '#1a1a1a' : colors.background;
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
@@ -361,12 +374,12 @@ export default function HomeScreen() {
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: textColor }]}>Kommende aktiviteter</Text>
           
-          {Object.keys(upcomingByWeek).length === 0 ? (
+          {sortedWeeks.length === 0 ? (
             <View style={[styles.emptyCard, { backgroundColor: cardBgColor }]}>
               <Text style={[styles.emptyText, { color: textSecondaryColor }]}>Ingen kommende aktiviteter</Text>
             </View>
           ) : (
-            Object.entries(upcomingByWeek).map(([weekKey, data]) => {
+            sortedWeeks.map(([weekKey, data]) => {
               const weekNumber = weekKey.split('-W')[1];
               return (
                 <View key={weekKey} style={styles.weekSection}>

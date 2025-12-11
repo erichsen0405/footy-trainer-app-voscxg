@@ -128,7 +128,7 @@ export default function HomeScreen() {
       return activityDate >= currentWeekStart;
     });
     
-    const grouped: { [key: string]: { activities: Activity[], dateRange: string } } = {};
+    const grouped: { [key: string]: { activities: Activity[], dateRange: string, sortDate: Date } } = {};
     
     relevantActivities.forEach(activity => {
       const activityDate = new Date(activity.date);
@@ -137,9 +137,14 @@ export default function HomeScreen() {
       const key = `Uge ${weekNumber}`;
       
       if (!grouped[key]) {
-        grouped[key] = { activities: [], dateRange: '' };
+        grouped[key] = { activities: [], dateRange: '', sortDate: activityDate };
       }
       grouped[key].activities.push(activity);
+      
+      // Update sortDate to be the earliest date in the week
+      if (activityDate < grouped[key].sortDate) {
+        grouped[key].sortDate = activityDate;
+      }
     });
 
     // Calculate date ranges for each week and sort activities
@@ -178,6 +183,11 @@ export default function HomeScreen() {
   };
 
   const activitiesByWeek = getActivitiesByWeek();
+  
+  // Sort weeks by date (earliest first)
+  const sortedWeeks = Object.entries(activitiesByWeek).sort((a, b) => {
+    return a[1].sortDate.getTime() - b[1].sortDate.getTime();
+  });
 
   return (
     <ScrollView 
@@ -324,13 +334,13 @@ export default function HomeScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Kommende aktiviteter</Text>
         
-        {Object.keys(activitiesByWeek).length === 0 ? (
+        {sortedWeeks.length === 0 ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyText}>Ingen kommende aktiviteter</Text>
           </View>
         ) : (
           <React.Fragment>
-            {Object.entries(activitiesByWeek).map(([week, data], weekIndex) => (
+            {sortedWeeks.map(([week, data], weekIndex) => (
               <View key={`week-${week}-${weekIndex}`} style={styles.weekSection}>
                 <Text style={styles.weekTitle}>
                   {week}
