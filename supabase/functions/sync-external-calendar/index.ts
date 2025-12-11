@@ -34,7 +34,7 @@ interface CategoryKeywords {
 const DEFAULT_CATEGORY_KEYWORDS: CategoryKeywords[] = [
   {
     categoryName: 'Kamp',
-    keywords: ['kamp', 'match', 'game', 'turnering', 'tournament', 'finale', 'semifinale', 'kvartfinale'],
+    keywords: ['kamp', 'match', 'game', 'turnering', 'tournament', 'finale', 'semifinale', 'kvartfinale', 'vs', '-'],
     priority: 10,
   },
   {
@@ -54,7 +54,7 @@ const DEFAULT_CATEGORY_KEYWORDS: CategoryKeywords[] = [
   },
   {
     categoryName: 'Møde',
-    keywords: ['møde', 'meeting', 'samtale', 'briefing', 'debriefing', 'evaluering'],
+    keywords: ['møde', 'meeting', 'samtale', 'briefing', 'debriefing', 'evaluering', 'forældremøde', 'spillermøde'],
     priority: 7,
   },
   {
@@ -455,9 +455,10 @@ serve(async (req) => {
     }
 
     console.log('Calendar found:', calendar.name);
+    console.log('Calendar URL:', calendar.ics_url);
 
     const events = await fetchAndParseICalendar(calendar.ics_url);
-    console.log(`Parsed ${events.length} events`);
+    console.log(`✅ Parsed ${events.length} events from iCal feed`);
 
     const { data: userCategories } = await supabaseClient
       .from('activity_categories')
@@ -479,7 +480,7 @@ serve(async (req) => {
       });
     }
 
-    console.log(`Found ${existingEventsMap.size} existing external events`);
+    console.log(`Found ${existingEventsMap.size} existing external events in database`);
 
     // Fetch existing local metadata for this user
     const { data: existingLocalMeta } = await supabaseClient
@@ -519,6 +520,7 @@ serve(async (req) => {
     );
 
     if (eventsToDelete.length > 0) {
+      console.log(`🗑️ Deleting ${eventsToDelete.length} events that no longer exist in calendar`);
       const idsToDelete = eventsToDelete.map(uid => existingEventsMap.get(uid).id);
       const { error: deleteError } = await supabaseClient
         .from('events_external')
@@ -528,7 +530,7 @@ serve(async (req) => {
       if (deleteError) {
         console.error('Error deleting removed events:', deleteError);
       } else {
-        console.log(`Deleted ${eventsToDelete.length} events that no longer exist in calendar`);
+        console.log(`✅ Deleted ${eventsToDelete.length} events`);
       }
     }
 
@@ -544,13 +546,14 @@ serve(async (req) => {
       const existingMeta = localMetaMap.get(event.uid);
       
       console.log(`\n📝 Processing event: "${event.summary}"`);
-      console.log(`   External ID: ${event.uid.substring(0, 30)}...`);
+      console.log(`   UID: ${event.uid.substring(0, 50)}...`);
+      console.log(`   Start: ${event.startDateString} ${event.startTimeString}`);
 
       let externalEventId: string;
 
       if (existingExternal) {
         // Update external event data
-        console.log(`   ✅ Updating existing external event`);
+        console.log(`   🔄 Updating existing external event (ID: ${existingExternal.id})`);
         
         const { error: updateError } = await supabaseClient
           .from('events_external')
@@ -583,7 +586,7 @@ serve(async (req) => {
         console.log(`   ✅ External event updated`);
       } else {
         // Create new external event
-        console.log(`   ➕ Creating new external event`);
+        console.log(`   ➕ Creating NEW external event`);
         
         const { data: newExternal, error: insertError } = await supabaseClient
           .from('events_external')
@@ -616,7 +619,7 @@ serve(async (req) => {
 
         externalEventId = newExternal.id;
         eventsCreated++;
-        console.log(`   ✅ External event created`);
+        console.log(`   ✅ NEW external event created (ID: ${externalEventId})`);
       }
 
       // Handle local metadata
@@ -653,7 +656,7 @@ serve(async (req) => {
         }
       } else {
         // Create new local metadata with auto-detected category
-        console.log(`   ➕ Creating new local metadata`);
+        console.log(`   ➕ Creating NEW local metadata`);
         
         const categoryMatch = parseActivityNameForCategory(event.summary, userCategories || []);
         const categoryId = categoryMatch ? categoryMatch.categoryId : unknownCategoryId;
@@ -677,7 +680,7 @@ serve(async (req) => {
           console.error(`   ❌ Error creating metadata:`, insertMetaError);
         } else {
           metadataCreated++;
-          console.log(`   ✅ Local metadata created`);
+          console.log(`   ✅ NEW local metadata created`);
         }
       }
 
@@ -696,13 +699,15 @@ serve(async (req) => {
         });
     }
 
-    console.log('\n📊 Sync Summary (NEW ARCHITECTURE):');
-    console.log(`   ➕ External events created: ${eventsCreated}`);
-    console.log(`   🔄 External events updated: ${eventsUpdated}`);
-    console.log(`   ➕ Local metadata created: ${metadataCreated}`);
+    console.log('\n📊 ========== SYNC SUMMARY (NEW ARCHITECTURE) ==========');
+    console.log(`   📥 Total events in iCal feed: ${events.length}`);
+    console.log(`   ➕ NEW external events created: ${eventsCreated}`);
+    console.log(`   🔄 Existing external events updated: ${eventsUpdated}`);
+    console.log(`   🗑️ Events deleted (no longer in feed): ${eventsToDelete.length}`);
+    console.log(`   ➕ NEW local metadata created: ${metadataCreated}`);
     console.log(`   🔒 Local metadata preserved (manually set): ${metadataPreserved}`);
-    console.log(`   🗑️ Events deleted: ${eventsToDelete.length}`);
     console.log(`   ✅ GUARANTEE: Manually set categories are NEVER overwritten`);
+    console.log('========================================================\n');
 
     const { error: updateError } = await supabaseClient
       .from('external_calendars')
@@ -727,7 +732,7 @@ serve(async (req) => {
         metadataCreated,
         metadataPreserved,
         eventsDeleted: eventsToDelete.length,
-        message: `Successfully synced ${events.length} events. ${metadataPreserved} manually set categories preserved.`,
+        message: `Successfully synced ${events.length} events. ${eventsCreated} new events created, ${eventsUpdated} updated, ${eventsToDelete.length} deleted. ${metadataPreserved} manually set categories preserved.`,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
