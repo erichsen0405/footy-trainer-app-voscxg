@@ -474,25 +474,25 @@ export default function HomeScreen() {
                   </View>
                 );
               })}
-              
-              {/* Load Previous Week Button */}
-              <TouchableOpacity
-                style={[styles.loadMoreButton, { backgroundColor: cardBgColor }]}
-                onPress={handleLoadPreviousWeek}
-                activeOpacity={0.7}
-              >
-                <IconSymbol 
-                  ios_icon_name="arrow.up.circle.fill" 
-                  android_material_icon_name="expand_less" 
-                  size={24} 
-                  color={colors.primary} 
-                />
-                <Text style={[styles.loadMoreButtonText, { color: textColor }]}>
-                  Indlæs tidligere uge
-                </Text>
-              </TouchableOpacity>
             </React.Fragment>
           )}
+          
+          {/* Load Previous Week Button - Now always visible */}
+          <TouchableOpacity
+            style={[styles.loadMoreButton, { backgroundColor: cardBgColor }]}
+            onPress={handleLoadPreviousWeek}
+            activeOpacity={0.7}
+          >
+            <IconSymbol 
+              ios_icon_name="arrow.up.circle.fill" 
+              android_material_icon_name="expand_less" 
+              size={24} 
+              color={colors.primary} 
+            />
+            <Text style={[styles.loadMoreButtonText, { color: textColor }]}>
+              Indlæs tidligere uge
+            </Text>
+          </TouchableOpacity>
         </View>
 
         <View style={{ height: 100 }} />
