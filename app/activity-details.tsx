@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Alert,
   Platform,
   ActivityIndicator,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useFootball } from '@/contexts/FootballContext';
@@ -24,13 +25,24 @@ import DeleteActivityDialog from '@/components/DeleteActivityDialog';
 import { useUserRole } from '@/hooks/useUserRole';
 import { CreateActivityTaskModal } from '@/components/CreateActivityTaskModal';
 
+const DAYS_OF_WEEK = [
+  { label: 'Søn', value: 0 },
+  { label: 'Man', value: 1 },
+  { label: 'Tir', value: 2 },
+  { label: 'Ons', value: 3 },
+  { label: 'Tor', value: 4 },
+  { label: 'Fre', value: 5 },
+  { label: 'Lør', value: 6 },
+];
+
 export default function ActivityDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { activities, externalActivities, categories, updateActivity, updateActivitySingle, updateActivitySeries, toggleTaskCompletion, deleteActivityTask, deleteActivitySingle, deleteActivitySeries, refreshData } = useFootball();
+  const { activities, externalActivities, categories, updateActivity, updateActivitySingle, updateActivitySeries, toggleTaskCompletion, deleteActivityTask, deleteActivitySingle, deleteActivitySeries, refreshData, createActivity } = useFootball();
   const { isAdmin } = useUserRole();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const scrollViewRef = useRef<ScrollView>(null);
 
   const [activity, setActivity] = useState<Activity | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -49,6 +61,14 @@ export default function ActivityDetailsScreen() {
   const [editCategory, setEditCategory] = useState<ActivityCategory | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  
+  // Recurring event conversion state
+  const [convertToRecurring, setConvertToRecurring] = useState(false);
+  const [recurrenceType, setRecurrenceType] = useState<'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly'>('weekly');
+  const [selectedDays, setSelectedDays] = useState<number[]>([]);
+  const [hasEndDate, setHasEndDate] = useState(false);
+  const [endDate, setEndDate] = useState(new Date(Date.now() + 90 * 24 * 60 * 60 * 1000));
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
 
   useEffect(() => {
     // Find the activity in either internal or external activities
@@ -63,6 +83,15 @@ export default function ActivityDetailsScreen() {
       setEditCategory(foundActivity.category);
     }
   }, [id, activities, externalActivities]);
+
+  // Scroll to bottom when picker is shown
+  useEffect(() => {
+    if (showDatePicker || showTimePicker || showEndDatePicker) {
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
+  }, [showDatePicker, showTimePicker, showEndDatePicker]);
 
   const handleEditClick = () => {
     if (activity?.seriesId) {
@@ -88,6 +117,36 @@ export default function ActivityDetailsScreen() {
     setIsSaving(true);
 
     try {
+      // Check if converting to recurring
+      if (convertToRecurring && !activity.seriesId && !activity.isExternal) {
+        // Validate recurring settings
+        if ((recurrenceType === 'weekly' || recurrenceType === 'biweekly' || recurrenceType === 'triweekly') && selectedDays.length === 0) {
+          Alert.alert('Fejl', 'Vælg venligst mindst én dag for gentagelse');
+          setIsSaving(false);
+          return;
+        }
+
+        // Delete the current single activity
+        await deleteActivitySingle(activity.id);
+
+        // Create a new recurring series
+        await createActivity({
+          title: editTitle,
+          location: editLocation,
+          categoryId: editCategory?.id || activity.category.id,
+          date: editDate,
+          time: editTime,
+          isRecurring: true,
+          recurrenceType,
+          recurrenceDays: (recurrenceType === 'weekly' || recurrenceType === 'biweekly' || recurrenceType === 'triweekly') ? selectedDays : undefined,
+          endDate: hasEndDate ? endDate : undefined,
+        });
+
+        Alert.alert('Succes', 'Aktiviteten er blevet konverteret til en gentagende serie');
+        router.replace('/(tabs)/(home)');
+        return;
+      }
+
       if (activity.isExternal) {
         // CRITICAL FIX: Use updateActivitySingle for external activities to ensure manually_set_category flag is set
         console.log('🔄 Updating external activity category via updateActivitySingle');
@@ -179,6 +238,7 @@ export default function ActivityDetailsScreen() {
     setEditDate(new Date(activity.date));
     setEditTime(activity.time);
     setEditCategory(activity.category);
+    setConvertToRecurring(false);
     setIsEditing(false);
   };
 
@@ -207,6 +267,21 @@ export default function ActivityDetailsScreen() {
     if (value) {
       setEditTime(value);
     }
+  };
+
+  const handleEndDateChange = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowEndDatePicker(false);
+    }
+    if (selectedDate) {
+      setEndDate(selectedDate);
+    }
+  };
+
+  const toggleDay = (day: number) => {
+    setSelectedDays(prev =>
+      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort()
+    );
   };
 
   const handleToggleTask = async (taskId: string) => {
@@ -365,8 +440,13 @@ export default function ActivityDetailsScreen() {
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
 
+  const needsDaySelection = recurrenceType === 'weekly' || recurrenceType === 'biweekly' || recurrenceType === 'triweekly';
+
   return (
-    <View style={[styles.container, { backgroundColor: bgColor }]}>
+    <KeyboardAvoidingView 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={[styles.container, { backgroundColor: bgColor }]}
+    >
       {/* Header */}
       <View style={[styles.header, { backgroundColor: activity.category.color }]}>
         <TouchableOpacity
@@ -417,6 +497,7 @@ export default function ActivityDetailsScreen() {
       </View>
 
       <ScrollView
+        ref={scrollViewRef}
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -750,6 +831,214 @@ export default function ActivityDetailsScreen() {
               </View>
             )}
           </View>
+
+          {/* Convert to Recurring Option */}
+          {isEditing && !activity.seriesId && !activity.isExternal && (
+            <React.Fragment>
+              <View style={styles.fieldContainer}>
+                <TouchableOpacity
+                  style={styles.recurringToggle}
+                  onPress={() => setConvertToRecurring(!convertToRecurring)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.recurringToggleLeft}>
+                    <IconSymbol
+                      ios_icon_name="repeat"
+                      android_material_icon_name="repeat"
+                      size={24}
+                      color={convertToRecurring ? colors.primary : textSecondaryColor}
+                    />
+                    <Text style={[styles.recurringToggleText, { color: textColor }]}>
+                      Konverter til gentagende event
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.toggle,
+                      { backgroundColor: convertToRecurring ? colors.primary : colors.highlight },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.toggleThumb,
+                        convertToRecurring && styles.toggleThumbActive,
+                      ]}
+                    />
+                  </View>
+                </TouchableOpacity>
+              </View>
+
+              {convertToRecurring && (
+                <React.Fragment>
+                  <View style={styles.fieldContainer}>
+                    <Text style={[styles.fieldLabel, { color: textColor }]}>Gentagelsesmønster</Text>
+                    <View style={styles.recurrenceOptions}>
+                      {[
+                        { label: 'Dagligt', value: 'daily' as const },
+                        { label: 'Hver uge', value: 'weekly' as const },
+                        { label: 'Hver anden uge', value: 'biweekly' as const },
+                        { label: 'Hver tredje uge', value: 'triweekly' as const },
+                        { label: 'Månedligt', value: 'monthly' as const },
+                      ].map((option, index) => (
+                        <TouchableOpacity
+                          key={index}
+                          style={[
+                            styles.recurrenceOption,
+                            {
+                              backgroundColor:
+                                recurrenceType === option.value ? colors.primary : bgColor,
+                              borderColor: colors.primary,
+                              borderWidth: 2,
+                            },
+                          ]}
+                          onPress={() => {
+                            setRecurrenceType(option.value);
+                            if (option.value !== 'weekly' && option.value !== 'biweekly' && option.value !== 'triweekly') {
+                              setSelectedDays([]);
+                            }
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text
+                            style={[
+                              styles.recurrenceOptionText,
+                              {
+                                color: recurrenceType === option.value ? '#fff' : textColor,
+                              },
+                            ]}
+                          >
+                            {option.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+
+                  {needsDaySelection && (
+                    <View style={styles.fieldContainer}>
+                      <Text style={[styles.fieldLabel, { color: textColor }]}>
+                        Vælg dage *
+                      </Text>
+                      <View style={styles.daysContainer}>
+                        {DAYS_OF_WEEK.map((day, index) => (
+                          <TouchableOpacity
+                            key={index}
+                            style={[
+                              styles.dayButton,
+                              {
+                                backgroundColor: selectedDays.includes(day.value)
+                                  ? colors.primary
+                                  : bgColor,
+                                borderColor: colors.primary,
+                                borderWidth: 2,
+                              },
+                            ]}
+                            onPress={() => toggleDay(day.value)}
+                            activeOpacity={0.7}
+                          >
+                            <Text
+                              style={[
+                                styles.dayButtonText,
+                                {
+                                  color: selectedDays.includes(day.value) ? '#fff' : textColor,
+                                },
+                              ]}
+                            >
+                              {day.label}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+
+                  <View style={styles.fieldContainer}>
+                    <TouchableOpacity
+                      style={styles.recurringToggle}
+                      onPress={() => setHasEndDate(!hasEndDate)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.recurringToggleLeft}>
+                        <IconSymbol
+                          ios_icon_name="calendar.badge.clock"
+                          android_material_icon_name="event_available"
+                          size={24}
+                          color={hasEndDate ? colors.primary : textSecondaryColor}
+                        />
+                        <Text style={[styles.recurringToggleText, { color: textColor }]}>
+                          Sæt slutdato
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.toggle,
+                          { backgroundColor: hasEndDate ? colors.primary : colors.highlight },
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.toggleThumb,
+                            hasEndDate && styles.toggleThumbActive,
+                          ]}
+                        />
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+
+                  {hasEndDate && (
+                    <View style={styles.fieldContainer}>
+                      <Text style={[styles.fieldLabel, { color: textColor }]}>Slutdato</Text>
+                      <TouchableOpacity
+                        style={[styles.dateTimeButton, { backgroundColor: bgColor }]}
+                        onPress={() => setShowEndDatePicker(true)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.dateTimeText, { color: textColor }]}>
+                          {formatDate(endDate)}
+                        </Text>
+                        <IconSymbol
+                          ios_icon_name="calendar"
+                          android_material_icon_name="calendar_today"
+                          size={20}
+                          color={colors.primary}
+                        />
+                      </TouchableOpacity>
+                      {Platform.OS === 'ios' && showEndDatePicker && (
+                        <View style={[styles.pickerContainer, { backgroundColor: bgColor }]}>
+                          <DateTimePicker
+                            value={endDate}
+                            mode="date"
+                            display="spinner"
+                            onChange={handleEndDateChange}
+                            minimumDate={editDate}
+                            textColor={textColor}
+                            style={styles.iosPicker}
+                          />
+                          <TouchableOpacity
+                            style={[styles.pickerDoneButton, { backgroundColor: colors.primary }]}
+                            onPress={() => setShowEndDatePicker(false)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.pickerDoneText}>Færdig</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                  )}
+
+                  {Platform.OS === 'android' && showEndDatePicker && (
+                    <DateTimePicker
+                      value={endDate}
+                      mode="date"
+                      display="default"
+                      onChange={handleEndDateChange}
+                      minimumDate={editDate}
+                    />
+                  )}
+                </React.Fragment>
+              )}
+            </React.Fragment>
+          )}
         </View>
 
         {/* Tasks Section */}
@@ -961,7 +1250,7 @@ export default function ActivityDetailsScreen() {
         )}
 
         {/* Bottom Padding */}
-        <View style={{ height: 100 }} />
+        <View style={{ height: 200 }} />
       </ScrollView>
 
       {/* Edit Series Dialog */}
@@ -993,7 +1282,7 @@ export default function ActivityDetailsScreen() {
           activityTime={activity.time}
         />
       )}
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -1212,6 +1501,64 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
+  },
+  recurringToggle: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  recurringToggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  recurringToggleText: {
+    fontSize: 17,
+    fontWeight: '500',
+  },
+  toggle: {
+    width: 56,
+    height: 32,
+    borderRadius: 16,
+    padding: 2,
+  },
+  toggleThumb: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#fff',
+  },
+  toggleThumbActive: {
+    transform: [{ translateX: 24 }],
+  },
+  recurrenceOptions: {
+    gap: 12,
+  },
+  recurrenceOption: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  recurrenceOptionText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  daysContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  dayButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  dayButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   taskRow: {
     flexDirection: 'row',

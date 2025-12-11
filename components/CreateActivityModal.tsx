@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -55,6 +56,7 @@ export default function CreateActivityModal({
 }: CreateActivityModalProps) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const scrollViewRef = useRef<ScrollView>(null);
 
   const [title, setTitle] = useState('');
   const [location, setLocation] = useState('');
@@ -75,6 +77,15 @@ export default function CreateActivityModal({
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
+
+  // Scroll to bottom when picker is shown
+  useEffect(() => {
+    if (showDatePicker || showTimePicker || showEndDatePicker) {
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
+  }, [showDatePicker, showTimePicker, showEndDatePicker]);
 
   const resetForm = () => {
     setTitle('');
@@ -191,7 +202,10 @@ export default function CreateActivityModal({
 
   return (
     <Modal visible={visible} animationType="slide" transparent={true}>
-      <View style={styles.modalOverlay}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.modalOverlay}
+      >
         <View style={[styles.modalContent, { backgroundColor: cardBgColor }]}>
           <View style={styles.modalHeader}>
             <Text style={[styles.modalTitle, { color: textColor }]}>Opret aktivitet</Text>
@@ -205,7 +219,12 @@ export default function CreateActivityModal({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+          <ScrollView 
+            ref={scrollViewRef}
+            style={styles.modalBody} 
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollContent}
+          >
             {/* Title */}
             <View style={styles.fieldContainer}>
               <Text style={[styles.fieldLabel, { color: textColor }]}>Titel *</Text>
@@ -587,6 +606,9 @@ export default function CreateActivityModal({
                 minimumDate={date}
               />
             )}
+
+            {/* Extra padding for scroll */}
+            <View style={{ height: 200 }} />
           </ScrollView>
 
           <View style={styles.modalFooter}>
@@ -620,7 +642,7 @@ export default function CreateActivityModal({
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -649,7 +671,10 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   modalBody: {
-    padding: 24,
+    paddingHorizontal: 24,
+  },
+  scrollContent: {
+    paddingTop: 24,
   },
   fieldContainer: {
     marginBottom: 20,
