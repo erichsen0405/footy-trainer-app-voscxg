@@ -471,10 +471,10 @@ serve(async (req) => {
       .select('*')
       .eq('user_id', user.id);
 
-    console.log('📋 Fetching existing activities...');
+    console.log('📋 Fetching existing activities WITH manually_set_category flag...');
     const { data: existingActivities } = await supabaseClient
       .from('activities')
-      .select('id, external_event_id, category_id, activity_categories(name)')
+      .select('id, external_event_id, category_id, manually_set_category, activity_categories(name)')
       .eq('external_calendar_id', calendarId)
       .eq('user_id', user.id);
 
@@ -488,10 +488,12 @@ serve(async (req) => {
           id: activity.id,
           categoryId: activity.category_id,
           categoryName: activity.activity_categories?.name || 'Unknown',
+          manuallySetCategory: activity.manually_set_category || false,
         });
         
         const eventIdShort = activity.external_event_id.substring(0, 30);
-        console.log(`  📌 "${eventIdShort}..." -> Category: "${activity.activity_categories?.name || 'Unknown'}"`);
+        const manualFlag = activity.manually_set_category ? '🔒 MANUAL' : '🤖 AUTO';
+        console.log(`  📌 "${eventIdShort}..." -> Category: "${activity.activity_categories?.name || 'Unknown'}" [${manualFlag}]`);
       });
     }
 
@@ -517,9 +519,9 @@ serve(async (req) => {
 
     let activitiesUpdated = 0;
     let activitiesCreated = 0;
-    let categoriesSkipped = 0;
+    let activitiesSkipped = 0;
 
-    console.log('🔄 Processing events - NEVER updating categories on existing activities...');
+    console.log('🔄 Processing events - SKIPPING activities with manually_set_category = true...');
     
     const activitiesToUpsert = [];
     
@@ -532,8 +534,17 @@ serve(async (req) => {
       if (existingActivity) {
         console.log(`   ✅ Found existing activity in database`);
         console.log(`   📊 Current category: "${existingActivity.categoryName}"`);
+        console.log(`   🔒 Manually set: ${existingActivity.manuallySetCategory}`);
         
-        // CRITICAL: For existing activities, NEVER include category_id in the update
+        // CRITICAL FIX: Skip the ENTIRE update if manually_set_category is true
+        if (existingActivity.manuallySetCategory === true) {
+          activitiesSkipped++;
+          console.log(`   🛡️ SKIPPING ENTIRE UPDATE - User has manually set category`);
+          console.log(`   ⚠️ This activity will NOT be touched by sync at all`);
+          continue; // Skip to next event
+        }
+        
+        // Only update if NOT manually set
         const updateData: any = {
           id: existingActivity.id,
           user_id: user.id,
@@ -544,13 +555,11 @@ serve(async (req) => {
           is_external: true,
           external_calendar_id: calendarId,
           external_event_id: event.uid,
+          // NEVER include category_id for existing activities
         };
         
-        categoriesSkipped++;
-        console.log(`   🛡️ SKIPPING CATEGORY UPDATE - Preserving existing category "${existingActivity.categoryName}"`);
-        console.log(`   ⚠️ Category will NEVER be changed by sync for existing activities`);
-        
         activitiesUpdated++;
+        console.log(`   🔄 Will update activity (category preserved)`);
         activitiesToUpsert.push(updateData);
       } else {
         console.log(`   ➕ New activity - determining category...`);
@@ -588,7 +597,7 @@ serve(async (req) => {
     console.log('\n📤 Applying database changes...');
     console.log(`   Updates: ${activitiesToUpdate.length}`);
     console.log(`   Inserts: ${activitiesToInsert.length}`);
-    console.log(`   Categories skipped (existing activities): ${categoriesSkipped}`);
+    console.log(`   Skipped (manually set): ${activitiesSkipped}`);
 
     if (activitiesToUpdate.length > 0) {
       for (const activity of activitiesToUpdate) {
@@ -628,9 +637,9 @@ serve(async (req) => {
     console.log('\n📊 Sync Summary:');
     console.log(`   ➕ New activities created: ${activitiesCreated}`);
     console.log(`   🔄 Existing activities updated: ${activitiesUpdated}`);
-    console.log(`   🛡️ Categories preserved (existing activities): ${categoriesSkipped}`);
+    console.log(`   🛡️ Activities skipped (manually set): ${activitiesSkipped}`);
     console.log(`   🗑️ Activities deleted: ${activitiesToDelete.length}`);
-    console.log(`   ⚠️ POLICY: Categories are NEVER updated on existing activities`);
+    console.log(`   ⚠️ POLICY: Activities with manually_set_category=true are NEVER touched`);
 
     const { error: updateError } = await supabaseClient
       .from('external_calendars')
@@ -652,9 +661,9 @@ serve(async (req) => {
         eventCount: events.length,
         activitiesCreated,
         activitiesUpdated,
-        categoriesSkipped,
+        activitiesSkipped,
         activitiesDeleted: activitiesToDelete.length,
-        message: `Successfully synced ${events.length} events (${activitiesCreated} new, ${activitiesUpdated} updated, ${categoriesSkipped} categories preserved, ${activitiesToDelete.length} deleted).`,
+        message: `Successfully synced ${events.length} events (${activitiesCreated} new, ${activitiesUpdated} updated, ${activitiesSkipped} skipped, ${activitiesToDelete.length} deleted).`,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
