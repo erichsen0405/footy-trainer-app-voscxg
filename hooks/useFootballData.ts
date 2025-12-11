@@ -240,7 +240,7 @@ export function useFootballData() {
     loadExternalCalendars();
   }, [userId, refreshTrigger]);
 
-  // Load ALL activities from Supabase (both internal and external) WITH TASKS
+  // Load ALL activities (internal + external with NEW ARCHITECTURE) WITH TASKS
   useEffect(() => {
     if (!userId) {
       setIsLoading(false);
@@ -248,9 +248,10 @@ export function useFootballData() {
     }
 
     const loadActivities = async () => {
-      console.log('🔄 Loading activities for user:', userId);
+      console.log('🔄 Loading activities for user (NEW ARCHITECTURE):', userId);
       
-      const { data, error } = await supabase
+      // Load internal activities (non-external)
+      const { data: internalData, error: internalError } = await supabase
         .from('activities')
         .select(`
           *,
@@ -265,18 +266,50 @@ export function useFootballData() {
           )
         `)
         .eq('user_id', userId)
+        .eq('is_external', false)
         .order('activity_date', { ascending: true });
 
-      if (error) {
-        console.error('❌ Error loading activities:', error);
-        setIsLoading(false);
-        return;
+      if (internalError) {
+        console.error('❌ Error loading internal activities:', internalError);
       }
 
-      if (data) {
-        console.log(`✅ Loaded ${data.length} activities from database`);
+      // Load external activities using NEW ARCHITECTURE
+      const { data: externalData, error: externalError } = await supabase
+        .from('events_external')
+        .select(`
+          id,
+          title,
+          description,
+          location,
+          start_date,
+          start_time,
+          end_date,
+          end_time,
+          is_all_day,
+          provider_event_uid,
+          provider_calendar_id,
+          events_local_meta!inner(
+            id,
+            user_id,
+            category_id,
+            manually_set_category,
+            category_updated_at,
+            activity_categories(*)
+          )
+        `)
+        .eq('events_local_meta.user_id', userId);
+
+      if (externalError) {
+        console.error('❌ Error loading external activities:', externalError);
+      }
+
+      const loadedActivities: Activity[] = [];
+
+      // Process internal activities
+      if (internalData) {
+        console.log(`✅ Loaded ${internalData.length} internal activities`);
         
-        const loadedActivities: Activity[] = data.map(act => {
+        internalData.forEach(act => {
           const category = act.category ? {
             id: act.category.id,
             name: act.category.name,
@@ -286,16 +319,8 @@ export function useFootballData() {
 
           const activityDate = new Date(act.activity_date);
           
-          // Map activity_tasks to Task format - ONLY include tasks that exist
           const activityTasks: Task[] = (act.activity_tasks || [])
-            .filter((at: any) => {
-              // Filter out any tasks that might be orphaned or invalid
-              if (!at || !at.id || !at.title) {
-                console.log('Filtering out invalid task:', at);
-                return false;
-              }
-              return true;
-            })
+            .filter((at: any) => at && at.id && at.title)
             .map((at: any) => ({
               id: at.id,
               title: at.title,
@@ -306,13 +331,8 @@ export function useFootballData() {
               reminder: at.reminder_minutes || undefined,
               subtasks: [],
             }));
-          
-          if (act.is_external) {
-            const manuallySet = act.manually_set_category ? '✅ MANUAL' : '❌ AUTO';
-            console.log(`📅 External activity "${act.title}" -> Category: ${category.name} (${category.emoji}) [${manuallySet}]`);
-          }
 
-          return {
+          loadedActivities.push({
             id: act.id,
             title: act.title,
             date: activityDate,
@@ -320,28 +340,69 @@ export function useFootballData() {
             location: act.location || 'Ingen lokation',
             category,
             tasks: activityTasks,
-            isExternal: act.is_external,
-            externalCalendarId: act.external_calendar_id || undefined,
-            externalEventId: act.external_event_id || undefined,
+            isExternal: false,
             seriesId: act.series_id || undefined,
             seriesInstanceDate: act.series_instance_date ? new Date(act.series_instance_date) : undefined,
-          };
-        });
-
-        console.log('✅ Total activities loaded:', loadedActivities.length);
-        console.log('📊 Internal activities:', loadedActivities.filter(a => !a.isExternal).length);
-        console.log('📊 External activities:', loadedActivities.filter(a => a.isExternal).length);
-        
-        setActivities(loadedActivities);
-
-        // Refresh notification queue after loading activities
-        if (notificationsEnabled) {
-          console.log('🔔 Refreshing notification queue after loading activities...');
-          refreshNotificationQueue().catch(err => {
-            console.error('❌ Error refreshing notification queue:', err);
           });
-        }
+        });
       }
+
+      // Process external activities (NEW ARCHITECTURE)
+      if (externalData) {
+        console.log(`✅ Loaded ${externalData.length} external activities (NEW ARCHITECTURE)`);
+        
+        externalData.forEach((extEvent: any) => {
+          // Get the first local metadata entry (should only be one per user)
+          const localMeta = Array.isArray(extEvent.events_local_meta) 
+            ? extEvent.events_local_meta[0] 
+            : extEvent.events_local_meta;
+
+          if (!localMeta) {
+            console.warn('⚠️ External event without local metadata:', extEvent.id);
+            return;
+          }
+
+          const category = localMeta.activity_categories ? {
+            id: localMeta.activity_categories.id,
+            name: localMeta.activity_categories.name,
+            color: localMeta.activity_categories.color,
+            emoji: localMeta.activity_categories.emoji,
+          } : categories[0];
+
+          const activityDate = new Date(extEvent.start_date);
+          
+          const manuallySet = localMeta.manually_set_category ? '✅ MANUAL' : '❌ AUTO';
+          console.log(`📅 External activity "${extEvent.title}" -> Category: ${category.name} (${category.emoji}) [${manuallySet}]`);
+
+          loadedActivities.push({
+            id: localMeta.id, // Use local metadata ID as the activity ID
+            title: extEvent.title,
+            date: activityDate,
+            time: extEvent.start_time,
+            location: extEvent.location || 'Ingen lokation',
+            category,
+            tasks: [], // External activities don't have tasks yet
+            isExternal: true,
+            externalCalendarId: extEvent.provider_calendar_id,
+            externalEventId: extEvent.provider_event_uid,
+          });
+        });
+      }
+
+      console.log('✅ Total activities loaded:', loadedActivities.length);
+      console.log('📊 Internal activities:', loadedActivities.filter(a => !a.isExternal).length);
+      console.log('📊 External activities:', loadedActivities.filter(a => a.isExternal).length);
+      
+      setActivities(loadedActivities);
+
+      // Refresh notification queue after loading activities
+      if (notificationsEnabled) {
+        console.log('🔔 Refreshing notification queue after loading activities...');
+        refreshNotificationQueue().catch(err => {
+          console.error('❌ Error refreshing notification queue:', err);
+        });
+      }
+
       setIsLoading(false);
     };
 
@@ -587,7 +648,7 @@ export function useFootballData() {
     }
 
     console.log('');
-    console.log('🔄 ========== UPDATE ACTIVITY STARTED ==========');
+    console.log('🔄 ========== UPDATE ACTIVITY STARTED (NEW ARCHITECTURE) ==========');
     console.log(`📱 Platform: ${Platform.OS}`);
     console.log(`🆔 Activity ID: ${activityId}`);
     console.log(`👤 User ID: ${userId}`);
@@ -606,71 +667,85 @@ export function useFootballData() {
       console.log(`📦 Activity type: ${isExternal ? 'EXTERNAL' : 'INTERNAL'}`);
       console.log(`📋 Current category: ${activity.category.name} (${activity.category.id})`);
 
-      const updateData: any = {};
-      
-      if (updates.title !== undefined) {
-        updateData.title = updates.title;
-        console.log(`   ✏️ Updating title: "${updates.title}"`);
-      }
-      if (updates.location !== undefined) {
-        updateData.location = updates.location;
-        console.log(`   📍 Updating location: "${updates.location}"`);
-      }
-      if (updates.date !== undefined) {
-        updateData.activity_date = updates.date.toISOString().split('T')[0];
-        console.log(`   📅 Updating date: ${updateData.activity_date}`);
-      }
-      if (updates.time !== undefined) {
-        updateData.activity_time = updates.time;
-        console.log(`   ⏰ Updating time: ${updates.time}`);
-      }
-      
-      // CRITICAL FIX: Set manually_set_category for ALL activities when category is changed
-      if (updates.categoryId !== undefined) {
-        updateData.category_id = updates.categoryId;
-        console.log(`   🏷️ Updating category ID: ${updates.categoryId}`);
+      if (isExternal) {
+        // Update local metadata for external activity
+        console.log('🔄 Updating local metadata for external activity...');
         
-        // Find the category name for logging
-        const newCategory = categories.find(c => c.id === updates.categoryId);
-        if (newCategory) {
-          console.log(`   🏷️ New category name: ${newCategory.name} (${newCategory.emoji})`);
+        const updateData: any = {};
+        
+        if (updates.categoryId !== undefined) {
+          updateData.category_id = updates.categoryId;
+          updateData.manually_set_category = true;
+          updateData.category_updated_at = new Date().toISOString();
+          console.log(`   🏷️ Updating category ID: ${updates.categoryId}`);
+          console.log('   🔒 Setting manually_set_category = TRUE');
+          console.log(`   🕐 Setting category_updated_at = ${updateData.category_updated_at}`);
         }
         
-        // CRITICAL FIX: ALWAYS set manually_set_category flag when user changes category
-        // This applies to BOTH internal AND external activities
-        updateData.manually_set_category = true;
-        updateData.category_updated_at = new Date().toISOString();
-        console.log('   🔒 Setting manually_set_category = TRUE (user manually changed category)');
-        console.log(`   🕐 Setting category_updated_at = ${updateData.category_updated_at}`);
-        console.log('   ⚠️ This category will be PERMANENTLY protected from sync overwrites');
-      }
-      
-      // Remove from series when updating single activity (only if not just updating category)
-      if (updates.title !== undefined || updates.location !== undefined || updates.date !== undefined || updates.time !== undefined) {
-        updateData.series_id = null;
-        updateData.series_instance_date = null;
-        console.log('   🔗 Removing from series (if applicable)');
-      }
-      
-      updateData.updated_at = new Date().toISOString();
+        if (updates.title !== undefined) {
+          updateData.local_title_override = updates.title;
+          console.log(`   ✏️ Setting title override: "${updates.title}"`);
+        }
+        
+        updateData.last_local_modified = new Date().toISOString();
+        updateData.updated_at = new Date().toISOString();
 
-      console.log('');
-      console.log('📤 Sending update to database...');
-      console.log('📝 Update payload:', JSON.stringify(updateData, null, 2));
+        console.log('📤 Sending update to events_local_meta...');
+        
+        const { error: updateError } = await supabase
+          .from('events_local_meta')
+          .update(updateData)
+          .eq('id', activityId)
+          .eq('user_id', userId);
 
-      // ENHANCED FIX: Use a more robust update strategy with explicit verification
-      let updateSuccess = false;
-      let verifyData: any = null;
-      let retryCount = 0;
-      const maxRetries = 3;
-
-      while (!updateSuccess && retryCount < maxRetries) {
-        if (retryCount > 0) {
-          console.log(`🔄 Retry attempt ${retryCount}/${maxRetries}...`);
-          await new Promise(resolve => setTimeout(resolve, 500 * retryCount));
+        if (updateError) {
+          console.error('❌ Error updating local metadata:', updateError);
+          throw updateError;
         }
 
-        // Perform the update
+        console.log('✅ Local metadata updated successfully');
+      } else {
+        // Update internal activity
+        console.log('🔄 Updating internal activity...');
+        
+        const updateData: any = {};
+        
+        if (updates.title !== undefined) {
+          updateData.title = updates.title;
+          console.log(`   ✏️ Updating title: "${updates.title}"`);
+        }
+        if (updates.location !== undefined) {
+          updateData.location = updates.location;
+          console.log(`   📍 Updating location: "${updates.location}"`);
+        }
+        if (updates.date !== undefined) {
+          updateData.activity_date = updates.date.toISOString().split('T')[0];
+          console.log(`   📅 Updating date: ${updateData.activity_date}`);
+        }
+        if (updates.time !== undefined) {
+          updateData.activity_time = updates.time;
+          console.log(`   ⏰ Updating time: ${updates.time}`);
+        }
+        
+        if (updates.categoryId !== undefined) {
+          updateData.category_id = updates.categoryId;
+          updateData.manually_set_category = true;
+          updateData.category_updated_at = new Date().toISOString();
+          console.log(`   🏷️ Updating category ID: ${updates.categoryId}`);
+          console.log('   🔒 Setting manually_set_category = TRUE');
+        }
+        
+        // Remove from series when updating single activity
+        if (updates.title !== undefined || updates.location !== undefined || updates.date !== undefined || updates.time !== undefined) {
+          updateData.series_id = null;
+          updateData.series_instance_date = null;
+          console.log('   🔗 Removing from series (if applicable)');
+        }
+        
+        updateData.updated_at = new Date().toISOString();
+
+        console.log('📤 Sending update to activities...');
+        
         const { error: updateError } = await supabase
           .from('activities')
           .update(updateData)
@@ -678,129 +753,15 @@ export function useFootballData() {
           .eq('user_id', userId);
 
         if (updateError) {
-          console.error('');
-          console.error('❌ ========== DATABASE UPDATE FAILED ==========');
-          console.error('Error:', updateError);
-          console.error('Error message:', updateError.message);
-          console.error('Error details:', JSON.stringify(updateError, null, 2));
-          
-          if (retryCount === maxRetries - 1) {
-            throw updateError;
-          }
-          retryCount++;
-          continue;
+          console.error('❌ Error updating activity:', updateError);
+          throw updateError;
         }
 
-        console.log('✅ Database update command executed successfully');
-        
-        // CRITICAL: Wait for database propagation
-        console.log('⏳ Waiting 800ms for database propagation...');
-        await new Promise(resolve => setTimeout(resolve, 800));
-        
-        // CRITICAL: Verify the update by fetching from database
-        console.log('🔍 Verifying update by fetching from database...');
-        const { data: fetchedData, error: verifyError } = await supabase
-          .from('activities')
-          .select(`
-            *,
-            category:activity_categories(*)
-          `)
-          .eq('id', activityId)
-          .eq('user_id', userId)
-          .single();
-
-        if (verifyError || !fetchedData) {
-          console.error('❌ Failed to verify update:', verifyError);
-          if (retryCount === maxRetries - 1) {
-            throw new Error('Failed to verify update');
-          }
-          retryCount++;
-          continue;
-        }
-
-        verifyData = fetchedData;
-
-        // Check if the update was successful
-        if (updates.categoryId !== undefined) {
-          if (verifyData.manually_set_category === true && verifyData.category_id === updates.categoryId) {
-            updateSuccess = true;
-            console.log('✅ Update verified successfully!');
-          } else {
-            console.log('⚠️ Update verification failed, will retry...');
-            console.log(`   Expected: manually_set_category=true, category_id=${updates.categoryId}`);
-            console.log(`   Got: manually_set_category=${verifyData.manually_set_category}, category_id=${verifyData.category_id}`);
-            retryCount++;
-          }
-        } else {
-          updateSuccess = true;
-          console.log('✅ Update verified successfully (no category change)!');
-        }
-      }
-
-      if (!updateSuccess) {
-        console.error('❌ Failed to verify update after all retries');
-        throw new Error('Update verification failed - manually_set_category flag not persisted');
-      }
-
-      console.log('');
-      console.log('✅ ========== DATABASE UPDATE SUCCESSFUL ==========');
-      console.log('📊 Verified data from database:');
-      console.log(`   - ID: ${verifyData.id}`);
-      console.log(`   - Title: ${verifyData.title}`);
-      console.log(`   - Category ID: ${verifyData.category_id}`);
-      console.log(`   - Category name: ${verifyData.category?.name || 'N/A'}`);
-      console.log(`   - Is external: ${verifyData.is_external}`);
-      console.log(`   - Manually set category: ${verifyData.manually_set_category}`);
-      console.log(`   - Category updated at: ${verifyData.category_updated_at}`);
-      console.log(`   - Updated at: ${verifyData.updated_at}`);
-      
-      if (updates.categoryId !== undefined) {
-        console.log('');
-        console.log('🔍 ========== VERIFICATION: Manual Category Protection ==========');
-        console.log(`✅ Category was updated to: ${verifyData.category?.name}`);
-        console.log(`✅ manually_set_category flag: ${verifyData.manually_set_category}`);
-        console.log(`✅ category_updated_at timestamp: ${verifyData.category_updated_at}`);
-        
-        if (verifyData.manually_set_category === true) {
-          console.log('✅✅✅ SUCCESS: Manual category protection is ACTIVE!');
-          console.log('✅ This category will NEVER be overwritten by sync');
-          console.log('✅ The sync function will skip ALL category updates for this activity');
-        } else {
-          console.log('❌❌❌ CRITICAL ERROR: Manual category protection FAILED!');
-          console.log(`❌ manually_set_category: ${verifyData.manually_set_category}`);
-          console.log('❌ The flag was NOT set in the database!');
-          console.log('❌ This is a database or RLS policy issue!');
-        }
+        console.log('✅ Activity updated successfully');
       }
       
-      console.log('');
-      console.log('🔄 Updating local state...');
-      // Update local state with the verified data
-      setActivities(prevActivities => 
-        prevActivities.map(act => {
-          if (act.id === activityId) {
-            const updated = {
-              ...act,
-              title: verifyData.title,
-              location: verifyData.location,
-              date: new Date(verifyData.activity_date),
-              time: verifyData.activity_time,
-              category: verifyData.category ? {
-                id: verifyData.category.id,
-                name: verifyData.category.name,
-                color: verifyData.category.color,
-                emoji: verifyData.category.emoji,
-              } : act.category,
-            };
-            console.log('   ✅ Local state updated for activity:', activityId);
-            return updated;
-          }
-          return act;
-        })
-      );
-      
-      // Wait for local state propagation
-      console.log('⏳ Waiting 500ms for local state propagation...');
+      // Wait for database propagation
+      console.log('⏳ Waiting 500ms for database propagation...');
       await new Promise(resolve => setTimeout(resolve, 500));
       
       // Trigger a full refresh to ensure consistency
@@ -814,7 +775,7 @@ export function useFootballData() {
       }
 
       console.log('');
-      console.log('✅ ========== UPDATE ACTIVITY COMPLETED ==========');
+      console.log('✅ ========== UPDATE ACTIVITY COMPLETED (NEW ARCHITECTURE) ==========');
       console.log('');
     } catch (error) {
       console.error('');
@@ -1480,20 +1441,19 @@ export function useFootballData() {
     }
 
     try {
-      // First delete all activities associated with this calendar
-      console.log('Deleting activities for calendar:', id);
-      const { error: activitiesError } = await supabase
-        .from('activities')
+      // Delete external events (cascade will delete local metadata)
+      console.log('Deleting external events for calendar:', id);
+      const { error: eventsError } = await supabase
+        .from('events_external')
         .delete()
-        .eq('external_calendar_id', id)
-        .eq('user_id', userId);
+        .eq('provider_calendar_id', id);
 
-      if (activitiesError) {
-        console.error('Error deleting calendar activities:', activitiesError);
-        throw activitiesError;
+      if (eventsError) {
+        console.error('Error deleting external events:', eventsError);
+        throw eventsError;
       }
 
-      console.log('Activities deleted, now deleting calendar');
+      console.log('External events deleted, now deleting calendar');
 
       // Then delete the calendar itself
       const { error } = await supabase
