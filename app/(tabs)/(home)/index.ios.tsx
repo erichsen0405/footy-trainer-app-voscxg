@@ -21,9 +21,8 @@ export default function HomeScreen() {
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [weeksToLoad, setWeeksToLoad] = useState(0); // Number of previous weeks to load
+  const [weeksToLoad, setWeeksToLoad] = useState(0);
 
-  // Check if user is admin
   useEffect(() => {
     const checkAdminStatus = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -49,18 +48,14 @@ export default function HomeScreen() {
     console.log('📱 Platform: iOS');
     setRefreshing(true);
     
-    // Reset loaded previous weeks
     setWeeksToLoad(0);
     
     try {
-      // CRITICAL FIX: Wait for any pending database writes to complete
-      // This ensures that manual category changes are fully persisted before syncing
       console.log('⏳ Waiting 2 seconds for pending database writes to complete...');
       console.log('   This ensures manual category changes are fully persisted');
       await new Promise(resolve => setTimeout(resolve, 2000));
       console.log('✅ Wait complete - proceeding with sync');
       
-      // Sync all enabled external calendars
       const enabledCalendars = externalCalendars.filter(cal => cal.enabled);
       console.log(`📅 Found ${enabledCalendars.length} enabled calendars to sync`);
       
@@ -120,7 +115,6 @@ export default function HomeScreen() {
   };
 
   const formatTime = (time: string) => {
-    // Extract just HH:MM from the time string (removing seconds if present)
     return time.substring(0, 5);
   };
 
@@ -132,7 +126,6 @@ export default function HomeScreen() {
     const now = new Date();
     const activityDate = new Date(activity.date);
     
-    // Parse time (HH:MM format)
     const [hours, minutes] = activity.time.split(':').map(Number);
     activityDate.setHours(hours, minutes, 0, 0);
     
@@ -172,7 +165,7 @@ export default function HomeScreen() {
   };
 
   const handleLoadPreviousWeek = () => {
-    console.log('Loading previous week');
+    console.log('Loading previous week, current weeksToLoad:', weeksToLoad);
     setWeeksToLoad(prev => prev + 1);
   };
 
@@ -180,7 +173,6 @@ export default function HomeScreen() {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
     
-    // Calculate how far back to go based on weeksToLoad
     const currentWeekStart = startOfWeek(now, { weekStartsOn: 1 });
     const loadFromWeekStart = subWeeks(currentWeekStart, weeksToLoad);
     
@@ -203,7 +195,6 @@ export default function HomeScreen() {
       }
       grouped[key].activities.push(activity);
       
-      // Update sortDate to be the earliest date in the week
       if (activityDate < grouped[key].sortDate) {
         grouped[key].sortDate = activityDate;
       }
@@ -212,7 +203,6 @@ export default function HomeScreen() {
     Object.keys(grouped).forEach(key => {
       const weekActivities = grouped[key].activities;
       if (weekActivities.length > 0) {
-        // Sort activities by date
         weekActivities.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
         
         const firstDate = new Date(weekActivities[0].date);
@@ -226,7 +216,6 @@ export default function HomeScreen() {
 
   const upcomingByWeek = getUpcomingActivitiesByWeek();
   
-  // Sort weeks by date (earliest first)
   const sortedWeeks = Object.entries(upcomingByWeek).sort((a, b) => {
     return a[1].sortDate.getTime() - b[1].sortDate.getTime();
   });
@@ -477,25 +466,24 @@ export default function HomeScreen() {
             </React.Fragment>
           )}
           
-          {/* Load Previous Week Button - Now always visible */}
           <TouchableOpacity
-            style={[styles.loadMoreButton, { backgroundColor: cardBgColor }]}
+            style={styles.loadMoreButton}
             onPress={handleLoadPreviousWeek}
             activeOpacity={0.7}
           >
             <IconSymbol 
               ios_icon_name="arrow.up.circle.fill" 
               android_material_icon_name="expand_less" 
-              size={24} 
+              size={28} 
               color={colors.primary} 
             />
-            <Text style={[styles.loadMoreButtonText, { color: textColor }]}>
+            <Text style={styles.loadMoreButtonText}>
               Indlæs tidligere uge
             </Text>
           </TouchableOpacity>
         </View>
 
-        <View style={{ height: 100 }} />
+        <View style={{ height: 120 }} />
       </ScrollView>
 
       <Modal
@@ -870,13 +858,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
-    paddingVertical: 16,
-    borderRadius: 12,
-    marginTop: 8,
+    paddingVertical: 18,
+    paddingHorizontal: 24,
+    borderRadius: 16,
+    marginTop: 16,
+    marginBottom: 20,
+    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+    borderWidth: 2,
+    borderColor: colors.primary,
+    borderStyle: 'solid',
   },
   loadMoreButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.primary,
   },
   modalOverlay: {
     flex: 1,
