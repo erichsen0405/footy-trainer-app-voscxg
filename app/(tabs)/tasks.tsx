@@ -17,7 +17,6 @@ export default function TasksScreen() {
   const isDark = colorScheme === 'dark';
 
   const templateTasks = tasks.filter(task => task.isTemplate);
-  const activityTasks = tasks.filter(task => !task.isTemplate);
 
   const filteredTemplateTasks = templateTasks.filter(task =>
     task.title.toLowerCase().includes(searchQuery.toLowerCase())
@@ -176,55 +175,6 @@ export default function TasksScreen() {
               </View>
             </TouchableOpacity>
           ))}
-        </View>
-
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: textColor }]}>Aktivitetsopgaver</Text>
-            <Text style={[styles.taskCount, { color: textSecondaryColor }]}>{activityTasks.length} opgaver</Text>
-          </View>
-          
-          <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
-            Opgaver der ikke er tilknyttet skabeloner
-          </Text>
-
-          {activityTasks.length === 0 ? (
-            <View style={[styles.emptyCard, { backgroundColor: cardBgColor }]}>
-              <Text style={[styles.emptyText, { color: textSecondaryColor }]}>Ingen aktivitetsopgaver</Text>
-            </View>
-          ) : (
-            activityTasks.map((task) => (
-              <View key={task.id} style={[styles.taskCard, { backgroundColor: cardBgColor }]}>
-                <View style={styles.taskHeader}>
-                  <View style={styles.taskHeaderLeft}>
-                    <View style={[styles.checkbox, task.completed && styles.checkboxChecked]}>
-                      {task.completed && (
-                        <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
-                      )}
-                    </View>
-                    <Text style={[styles.taskTitle, { color: textColor }, task.completed && styles.taskTitleCompleted]}>
-                      {task.title}
-                    </Text>
-                  </View>
-                  <View style={styles.taskActions}>
-                    <TouchableOpacity onPress={() => openTaskModal(task)} style={styles.actionButton}>
-                      <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={20} color={colors.accent} />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => handleDeleteTask(task.id)} style={styles.actionButton}>
-                      <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={20} color={colors.error} />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {task.reminder && (
-                  <View style={styles.reminderBadge}>
-                    <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={14} color={colors.accent} />
-                    <Text style={[styles.reminderText, { color: colors.accent }]}>{task.reminder} min før</Text>
-                  </View>
-                )}
-              </View>
-            ))
-          )}
         </View>
 
         <View style={{ height: 100 }} />
