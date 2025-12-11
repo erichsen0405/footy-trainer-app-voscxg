@@ -339,6 +339,7 @@ function parseICalendarData(icalData: string): ParsedEvent[] {
       
       console.log('Event parsed:', {
         summary: event.summary,
+        uid: event.uid?.substring(0, 40) + '...',
         startDate: startInfo.date,
         startTime: startInfo.time,
         isAllDay: startInfo.isAllDay,
@@ -538,165 +539,178 @@ serve(async (req) => {
     let eventsUpdated = 0;
     let metadataCreated = 0;
     let metadataPreserved = 0;
+    let eventsFailed = 0;
+    const failedEvents: Array<{ title: string; error: string }> = [];
 
     console.log('🔄 Processing events with NEW ARCHITECTURE...');
     
     for (const event of events) {
-      const existingExternal = existingEventsMap.get(event.uid);
-      const existingMeta = localMetaMap.get(event.uid);
-      
-      console.log(`\n📝 Processing event: "${event.summary}"`);
-      console.log(`   UID: ${event.uid.substring(0, 50)}...`);
-      console.log(`   Start: ${event.startDateString} ${event.startTimeString}`);
-
-      let externalEventId: string;
-
-      if (existingExternal) {
-        // Update external event data
-        console.log(`   🔄 Updating existing external event (ID: ${existingExternal.id})`);
+      try {
+        const existingExternal = existingEventsMap.get(event.uid);
+        const existingMeta = localMetaMap.get(event.uid);
         
-        const { error: updateError } = await supabaseClient
-          .from('events_external')
-          .update({
-            title: event.summary,
-            description: event.description,
-            location: event.location,
-            start_date: event.startDateString,
-            start_time: event.startTimeString,
-            end_date: event.endDateString,
-            end_time: event.endTimeString,
-            is_all_day: event.isAllDay,
-            external_last_modified: event.lastModified?.toISOString() || new Date().toISOString(),
-            fetched_at: new Date().toISOString(),
-            raw_payload: {
-              categories: event.categories,
-              timezone: event.timezone,
-            },
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', existingExternal.id);
+        console.log(`\n📝 Processing event: "${event.summary}"`);
+        console.log(`   UID: ${event.uid.substring(0, 50)}...`);
+        console.log(`   Start: ${event.startDateString} ${event.startTimeString}`);
 
-        if (updateError) {
-          console.error(`   ❌ Error updating external event:`, updateError);
-          continue;
-        }
+        let externalEventId: string;
 
-        externalEventId = existingExternal.id;
-        eventsUpdated++;
-        console.log(`   ✅ External event updated`);
-      } else {
-        // Create new external event
-        console.log(`   ➕ Creating NEW external event`);
-        
-        const { data: newExternal, error: insertError } = await supabaseClient
-          .from('events_external')
-          .insert({
-            provider: 'ics',
-            provider_event_uid: event.uid,
-            provider_calendar_id: calendarId,
-            title: event.summary,
-            description: event.description,
-            location: event.location,
-            start_date: event.startDateString,
-            start_time: event.startTimeString,
-            end_date: event.endDateString,
-            end_time: event.endTimeString,
-            is_all_day: event.isAllDay,
-            external_last_modified: event.lastModified?.toISOString() || new Date().toISOString(),
-            fetched_at: new Date().toISOString(),
-            raw_payload: {
-              categories: event.categories,
-              timezone: event.timezone,
-            },
-          })
-          .select('id')
-          .single();
-
-        if (insertError || !newExternal) {
-          console.error(`   ❌ Error creating external event:`, insertError);
-          continue;
-        }
-
-        externalEventId = newExternal.id;
-        eventsCreated++;
-        console.log(`   ✅ NEW external event created (ID: ${externalEventId})`);
-      }
-
-      // Handle local metadata
-      if (existingMeta) {
-        // Metadata exists - check if manually set
-        if (existingMeta.manuallySetCategory) {
-          metadataPreserved++;
-          console.log(`   🔒 Local metadata preserved (manually set category)`);
-          console.log(`   ⚠️ Category will NOT be updated - user has manually set it`);
-        } else {
-          // Not manually set - we can update the category based on name parsing
-          const categoryMatch = parseActivityNameForCategory(event.summary, userCategories || []);
-          const newCategoryId = categoryMatch ? categoryMatch.categoryId : unknownCategoryId;
+        if (existingExternal) {
+          // Update external event data
+          console.log(`   🔄 Updating existing external event (ID: ${existingExternal.id})`);
           
-          if (newCategoryId !== existingMeta.categoryId) {
-            console.log(`   🔄 Updating category (auto-detected change)`);
-            
-            const { error: updateMetaError } = await supabaseClient
-              .from('events_local_meta')
-              .update({
-                category_id: newCategoryId,
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', existingMeta.id);
+          const { error: updateError } = await supabaseClient
+            .from('events_external')
+            .update({
+              title: event.summary,
+              description: event.description,
+              location: event.location,
+              start_date: event.startDateString,
+              start_time: event.startTimeString,
+              end_date: event.endDateString,
+              end_time: event.endTimeString,
+              is_all_day: event.isAllDay,
+              external_last_modified: event.lastModified?.toISOString() || new Date().toISOString(),
+              fetched_at: new Date().toISOString(),
+              raw_payload: {
+                categories: event.categories,
+                timezone: event.timezone,
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', existingExternal.id);
 
-            if (updateMetaError) {
-              console.error(`   ❌ Error updating metadata:`, updateMetaError);
-            } else {
-              console.log(`   ✅ Category updated via auto-detection`);
-            }
+          if (updateError) {
+            console.error(`   ❌ Error updating external event:`, updateError);
+            eventsFailed++;
+            failedEvents.push({ title: event.summary, error: updateError.message });
+            continue;
+          }
+
+          externalEventId = existingExternal.id;
+          eventsUpdated++;
+          console.log(`   ✅ External event updated`);
+        } else {
+          // Create new external event
+          console.log(`   ➕ Creating NEW external event`);
+          
+          const { data: newExternal, error: insertError } = await supabaseClient
+            .from('events_external')
+            .insert({
+              provider: 'ics',
+              provider_event_uid: event.uid,
+              provider_calendar_id: calendarId,
+              title: event.summary,
+              description: event.description,
+              location: event.location,
+              start_date: event.startDateString,
+              start_time: event.startTimeString,
+              end_date: event.endDateString,
+              end_time: event.endTimeString,
+              is_all_day: event.isAllDay,
+              external_last_modified: event.lastModified?.toISOString() || new Date().toISOString(),
+              fetched_at: new Date().toISOString(),
+              raw_payload: {
+                categories: event.categories,
+                timezone: event.timezone,
+              },
+            })
+            .select('id')
+            .single();
+
+          if (insertError || !newExternal) {
+            console.error(`   ❌ Error creating external event:`, insertError);
+            eventsFailed++;
+            failedEvents.push({ title: event.summary, error: insertError?.message || 'Unknown error' });
+            continue;
+          }
+
+          externalEventId = newExternal.id;
+          eventsCreated++;
+          console.log(`   ✅ NEW external event created (ID: ${externalEventId})`);
+        }
+
+        // Handle local metadata
+        if (existingMeta) {
+          // Metadata exists - check if manually set
+          if (existingMeta.manuallySetCategory) {
+            metadataPreserved++;
+            console.log(`   🔒 Local metadata preserved (manually set category)`);
+            console.log(`   ⚠️ Category will NOT be updated - user has manually set it`);
           } else {
-            console.log(`   ✅ Category unchanged (same as before)`);
+            // Not manually set - we can update the category based on name parsing
+            const categoryMatch = parseActivityNameForCategory(event.summary, userCategories || []);
+            const newCategoryId = categoryMatch ? categoryMatch.categoryId : unknownCategoryId;
+            
+            if (newCategoryId !== existingMeta.categoryId) {
+              console.log(`   🔄 Updating category (auto-detected change)`);
+              
+              const { error: updateMetaError } = await supabaseClient
+                .from('events_local_meta')
+                .update({
+                  category_id: newCategoryId,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', existingMeta.id);
+
+              if (updateMetaError) {
+                console.error(`   ❌ Error updating metadata:`, updateMetaError);
+              } else {
+                console.log(`   ✅ Category updated via auto-detection`);
+              }
+            } else {
+              console.log(`   ✅ Category unchanged (same as before)`);
+            }
+          }
+        } else {
+          // Create new local metadata with auto-detected category
+          console.log(`   ➕ Creating NEW local metadata`);
+          
+          const categoryMatch = parseActivityNameForCategory(event.summary, userCategories || []);
+          const categoryId = categoryMatch ? categoryMatch.categoryId : unknownCategoryId;
+          
+          if (categoryMatch) {
+            console.log(`   🎯 Auto-detected category: "${categoryMatch.categoryName}" (confidence: ${categoryMatch.confidence}%)`);
+          } else {
+            console.log(`   ❓ No category match - assigning "Ukendt"`);
+          }
+          
+          const { error: insertMetaError } = await supabaseClient
+            .from('events_local_meta')
+            .insert({
+              external_event_id: externalEventId,
+              user_id: user.id,
+              category_id: categoryId,
+              manually_set_category: false,
+            });
+
+          if (insertMetaError) {
+            console.error(`   ❌ Error creating metadata:`, insertMetaError);
+            // Don't fail the whole sync if metadata creation fails
+          } else {
+            metadataCreated++;
+            console.log(`   ✅ NEW local metadata created`);
           }
         }
-      } else {
-        // Create new local metadata with auto-detected category
-        console.log(`   ➕ Creating NEW local metadata`);
-        
-        const categoryMatch = parseActivityNameForCategory(event.summary, userCategories || []);
-        const categoryId = categoryMatch ? categoryMatch.categoryId : unknownCategoryId;
-        
-        if (categoryMatch) {
-          console.log(`   🎯 Auto-detected category: "${categoryMatch.categoryName}" (confidence: ${categoryMatch.confidence}%)`);
-        } else {
-          console.log(`   ❓ No category match - assigning "Ukendt"`);
-        }
-        
-        const { error: insertMetaError } = await supabaseClient
-          .from('events_local_meta')
+
+        // Log sync action
+        await supabaseClient
+          .from('event_sync_log')
           .insert({
             external_event_id: externalEventId,
+            calendar_id: calendarId,
             user_id: user.id,
-            category_id: categoryId,
-            manually_set_category: false,
+            action: existingExternal ? 'updated' : 'created',
+            details: {
+              title: event.summary,
+              manually_set_preserved: existingMeta?.manuallySetCategory || false,
+            },
           });
-
-        if (insertMetaError) {
-          console.error(`   ❌ Error creating metadata:`, insertMetaError);
-        } else {
-          metadataCreated++;
-          console.log(`   ✅ NEW local metadata created`);
-        }
+      } catch (eventError: any) {
+        console.error(`   ❌ CRITICAL ERROR processing event "${event.summary}":`, eventError);
+        eventsFailed++;
+        failedEvents.push({ title: event.summary, error: eventError.message });
       }
-
-      // Log sync action
-      await supabaseClient
-        .from('event_sync_log')
-        .insert({
-          external_event_id: externalEventId,
-          calendar_id: calendarId,
-          user_id: user.id,
-          action: existingExternal ? 'updated' : 'created',
-          details: {
-            title: event.summary,
-            manually_set_preserved: existingMeta?.manuallySetCategory || false,
-          },
-        });
     }
 
     console.log('\n📊 ========== SYNC SUMMARY (NEW ARCHITECTURE) ==========');
@@ -706,8 +720,19 @@ serve(async (req) => {
     console.log(`   🗑️ Events deleted (no longer in feed): ${eventsToDelete.length}`);
     console.log(`   ➕ NEW local metadata created: ${metadataCreated}`);
     console.log(`   🔒 Local metadata preserved (manually set): ${metadataPreserved}`);
+    console.log(`   ❌ Events FAILED to process: ${eventsFailed}`);
+    
+    if (failedEvents.length > 0) {
+      console.log('\n   ⚠️ FAILED EVENTS:');
+      failedEvents.forEach((failed, index) => {
+        console.log(`      ${index + 1}. "${failed.title}": ${failed.error}`);
+      });
+    }
+    
     console.log(`   ✅ GUARANTEE: Manually set categories are NEVER overwritten`);
     console.log('========================================================\n');
+
+    const successfullyProcessed = eventsCreated + eventsUpdated;
 
     const { error: updateError } = await supabaseClient
       .from('external_calendars')
@@ -732,7 +757,9 @@ serve(async (req) => {
         metadataCreated,
         metadataPreserved,
         eventsDeleted: eventsToDelete.length,
-        message: `Successfully synced ${events.length} events. ${eventsCreated} new events created, ${eventsUpdated} updated, ${eventsToDelete.length} deleted. ${metadataPreserved} manually set categories preserved.`,
+        eventsFailed,
+        failedEvents: failedEvents.length > 0 ? failedEvents : undefined,
+        message: `Successfully synced ${events.length} events. ${eventsCreated} new events created, ${eventsUpdated} updated, ${eventsToDelete.length} deleted. ${metadataPreserved} manually set categories preserved.${eventsFailed > 0 ? ` WARNING: ${eventsFailed} events failed to process.` : ''}`,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -745,6 +772,7 @@ serve(async (req) => {
       JSON.stringify({
         success: false,
         error: error.message,
+        stack: error.stack,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

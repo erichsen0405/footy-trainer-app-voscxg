@@ -224,32 +224,40 @@ export default function ExternalCalendarManager() {
 
       let message = `${data.eventCount} aktiviteter blev synkroniseret fra "${calendarName}".\n\n`;
       
-      if (data.activitiesCreated > 0) {
-        message += `✨ ${data.activitiesCreated} nye aktivitet${data.activitiesCreated === 1 ? '' : 'er'} oprettet\n`;
+      if (data.eventsCreated > 0) {
+        message += `✨ ${data.eventsCreated} nye aktivitet${data.eventsCreated === 1 ? '' : 'er'} oprettet\n`;
       }
-      if (data.activitiesUpdated > 0) {
-        message += `🔄 ${data.activitiesUpdated} aktivitet${data.activitiesUpdated === 1 ? '' : 'er'} opdateret\n`;
+      if (data.eventsUpdated > 0) {
+        message += `🔄 ${data.eventsUpdated} aktivitet${data.eventsUpdated === 1 ? '' : 'er'} opdateret\n`;
       }
-      if (data.activitiesDeleted > 0) {
-        message += `🗑️ ${data.activitiesDeleted} aktivitet${data.activitiesDeleted === 1 ? '' : 'er'} slettet\n`;
+      if (data.eventsDeleted > 0) {
+        message += `🗑️ ${data.eventsDeleted} aktivitet${data.eventsDeleted === 1 ? '' : 'er'} slettet\n`;
+      }
+      
+      if (data.eventsFailed && data.eventsFailed > 0) {
+        message += `\n⚠️ ADVARSEL: ${data.eventsFailed} aktivitet${data.eventsFailed === 1 ? '' : 'er'} kunne ikke importeres\n`;
+        
+        if (data.failedEvents && data.failedEvents.length > 0) {
+          message += `\nFejlede aktiviteter:\n`;
+          data.failedEvents.forEach((failed: any, index: number) => {
+            message += `${index + 1}. "${failed.title}": ${failed.error}\n`;
+          });
+        }
       }
       
       message += `\n📊 Kategori-tildeling:\n`;
       
-      if (data.categoriesPreserved > 0) {
-        message += `• ${data.categoriesPreserved} manuelt tildelte kategorier bevaret\n`;
+      if (data.metadataPreserved > 0) {
+        message += `• ${data.metadataPreserved} manuelt tildelte kategorier bevaret\n`;
       }
-      if (data.categoriesFromNameParsing > 0) {
-        message += `• ${data.categoriesFromNameParsing} via navne-parsing\n`;
-      }
-      if (data.categoriesFromExplicitMapping > 0) {
-        message += `• ${data.categoriesFromExplicitMapping} via eksplicitte kategorier\n`;
-      }
-      if (data.categoriesAssignedToUnknown > 0) {
-        message += `• ${data.categoriesAssignedToUnknown} tildelt "Ukendt" (ingen match)`;
+      if (data.metadataCreated > 0) {
+        message += `• ${data.metadataCreated} nye kategorier tildelt automatisk\n`;
       }
 
-      Alert.alert('Succes', message);
+      Alert.alert(
+        data.eventsFailed > 0 ? 'Synkronisering delvist fuldført' : 'Succes',
+        message
+      );
 
       await fetchCalendars();
       await fetchCategoryMappings();
