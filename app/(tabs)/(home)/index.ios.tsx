@@ -6,7 +6,7 @@ import { useFootball } from '@/contexts/FootballContext';
 import { colors } from '@/styles/commonStyles';
 import { Activity, Task } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
-import { getWeek } from 'date-fns';
+import { getWeek, subWeeks, startOfWeek } from 'date-fns';
 import CreateActivityModal, { ActivityCreationData } from '@/components/CreateActivityModal';
 import { supabase } from '@/app/integrations/supabase/client';
 
@@ -21,6 +21,7 @@ export default function HomeScreen() {
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [weeksToLoad, setWeeksToLoad] = useState(0); // Number of previous weeks to load
 
   // Check if user is admin
   useEffect(() => {
@@ -47,6 +48,9 @@ export default function HomeScreen() {
     console.log('⏰ Timestamp:', new Date().toISOString());
     console.log('📱 Platform: iOS');
     setRefreshing(true);
+    
+    // Reset loaded previous weeks
+    setWeeksToLoad(0);
     
     try {
       // CRITICAL FIX: Wait for any pending database writes to complete
@@ -124,6 +128,17 @@ export default function HomeScreen() {
     return `${formatDate(date)} kl. ${formatTime(time)}`;
   };
 
+  const isActivityCompleted = (activity: Activity) => {
+    const now = new Date();
+    const activityDate = new Date(activity.date);
+    
+    // Parse time (HH:MM format)
+    const [hours, minutes] = activity.time.split(':').map(Number);
+    activityDate.setHours(hours, minutes, 0, 0);
+    
+    return activityDate < now;
+  };
+
   const handleActivityPress = (activityId: string) => {
     console.log('Opening activity details for:', activityId);
     router.push(`/activity-details?id=${activityId}`);
@@ -156,14 +171,23 @@ export default function HomeScreen() {
     }
   };
 
+  const handleLoadPreviousWeek = () => {
+    console.log('Loading previous week');
+    setWeeksToLoad(prev => prev + 1);
+  };
+
   const getUpcomingActivitiesByWeek = () => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
     
+    // Calculate how far back to go based on weeksToLoad
+    const currentWeekStart = startOfWeek(now, { weekStartsOn: 1 });
+    const loadFromWeekStart = subWeeks(currentWeekStart, weeksToLoad);
+    
     const upcoming = activities.filter(activity => {
       const activityDate = new Date(activity.date);
       activityDate.setHours(0, 0, 0, 0);
-      return activityDate >= now;
+      return activityDate >= loadFromWeekStart;
     });
     
     const grouped: { [key: string]: { activities: Activity[], dateRange: string, sortDate: Date } } = {};
@@ -379,62 +403,95 @@ export default function HomeScreen() {
               <Text style={[styles.emptyText, { color: textSecondaryColor }]}>Ingen kommende aktiviteter</Text>
             </View>
           ) : (
-            sortedWeeks.map(([weekKey, data]) => {
-              const weekNumber = weekKey.split('-W')[1];
-              return (
-                <View key={weekKey} style={styles.weekSection}>
-                  <Text style={[styles.weekTitle, { color: textColor }]}>
-                    Uge {weekNumber}
-                  </Text>
-                  <Text style={[styles.weekDates, { color: textSecondaryColor }]}>
-                    {data.dateRange}
-                  </Text>
-                  
-                  {data.activities.map((activity) => (
-                    <TouchableOpacity
-                      key={activity.id}
-                      style={[styles.upcomingActivityCard, { backgroundColor: activity.category.color }]}
-                      onPress={() => handleActivityPress(activity.id)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.upcomingActivityHeader}>
-                        <Text style={styles.upcomingActivityEmoji}>{activity.category.emoji}</Text>
-                        <View style={styles.upcomingActivityInfo}>
-                          <View style={styles.activityTitleRow}>
-                            <Text style={styles.upcomingActivityTitle}>{activity.title}</Text>
-                            {activity.isExternal && (
-                              <View style={styles.externalBadgeSmall}>
-                                <IconSymbol 
-                                  ios_icon_name="calendar.badge.clock" 
-                                  android_material_icon_name="event" 
-                                  size={12} 
-                                  color="#fff" 
-                                />
-                              </View>
-                            )}
-                          </View>
-                          <Text style={styles.upcomingActivityTime}>
-                            {new Date(activity.date).toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' })} kl. {formatTime(activity.time)}
-                          </Text>
-                          <View style={styles.locationRow}>
-                            <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={14} color="#fff" />
-                            <Text style={styles.upcomingActivityLocation}>{activity.location}</Text>
-                          </View>
-                        </View>
-                      </View>
+            <React.Fragment>
+              {sortedWeeks.map(([weekKey, data]) => {
+                const weekNumber = weekKey.split('-W')[1];
+                return (
+                  <View key={weekKey} style={styles.weekSection}>
+                    <Text style={[styles.weekTitle, { color: textColor }]}>
+                      Uge {weekNumber}
+                    </Text>
+                    <Text style={[styles.weekDates, { color: textSecondaryColor }]}>
+                      {data.dateRange}
+                    </Text>
+                    
+                    {data.activities.map((activity) => {
+                      const isCompleted = isActivityCompleted(activity);
                       
-                      {activity.tasks.length > 0 && (
-                        <View style={styles.upcomingTasksPreview}>
-                          <Text style={styles.upcomingTasksText}>
-                            {activity.tasks.filter(t => t.completed).length} / {activity.tasks.length} opgaver udført
-                          </Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              );
-            })
+                      return (
+                        <TouchableOpacity
+                          key={activity.id}
+                          style={[styles.upcomingActivityCard, { backgroundColor: activity.category.color }]}
+                          onPress={() => handleActivityPress(activity.id)}
+                          activeOpacity={0.7}
+                        >
+                          <View style={styles.upcomingActivityHeader}>
+                            <Text style={styles.upcomingActivityEmoji}>{activity.category.emoji}</Text>
+                            <View style={styles.upcomingActivityInfo}>
+                              <View style={styles.activityTitleRow}>
+                                <Text style={styles.upcomingActivityTitle}>{activity.title}</Text>
+                                {activity.isExternal && (
+                                  <View style={styles.externalBadgeSmall}>
+                                    <IconSymbol 
+                                      ios_icon_name="calendar.badge.clock" 
+                                      android_material_icon_name="event" 
+                                      size={12} 
+                                      color="#fff" 
+                                    />
+                                  </View>
+                                )}
+                                {isCompleted && (
+                                  <View style={styles.completedBadge}>
+                                    <IconSymbol 
+                                      ios_icon_name="checkmark.circle.fill" 
+                                      android_material_icon_name="check_circle" 
+                                      size={16} 
+                                      color="#fff" 
+                                    />
+                                  </View>
+                                )}
+                              </View>
+                              <Text style={styles.upcomingActivityTime}>
+                                {new Date(activity.date).toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' })} kl. {formatTime(activity.time)}
+                              </Text>
+                              <View style={styles.locationRow}>
+                                <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={14} color="#fff" />
+                                <Text style={styles.upcomingActivityLocation}>{activity.location}</Text>
+                              </View>
+                            </View>
+                          </View>
+                          
+                          {activity.tasks.length > 0 && (
+                            <View style={styles.upcomingTasksPreview}>
+                              <Text style={styles.upcomingTasksText}>
+                                {activity.tasks.filter(t => t.completed).length} / {activity.tasks.length} opgaver udført
+                              </Text>
+                            </View>
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                );
+              })}
+              
+              {/* Load Previous Week Button */}
+              <TouchableOpacity
+                style={[styles.loadMoreButton, { backgroundColor: cardBgColor }]}
+                onPress={handleLoadPreviousWeek}
+                activeOpacity={0.7}
+              >
+                <IconSymbol 
+                  ios_icon_name="arrow.up.circle.fill" 
+                  android_material_icon_name="expand_less" 
+                  size={24} 
+                  color={colors.primary} 
+                />
+                <Text style={[styles.loadMoreButtonText, { color: textColor }]}>
+                  Indlæs tidligere uge
+                </Text>
+              </TouchableOpacity>
+            </React.Fragment>
           )}
         </View>
 
@@ -670,6 +727,11 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 3,
   },
+  completedBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
+    borderRadius: 12,
+    padding: 2,
+  },
   activityTime: {
     fontSize: 14,
     color: '#fff',
@@ -802,6 +864,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#fff',
     opacity: 0.9,
+  },
+  loadMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 16,
+    borderRadius: 12,
+    marginTop: 8,
+  },
+  loadMoreButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,
