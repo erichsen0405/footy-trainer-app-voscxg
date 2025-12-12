@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Switch,
   Alert,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { Task } from '@/types';
@@ -43,6 +44,7 @@ export function CreateActivityTaskModal({
   const [isLoading, setIsLoading] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [activityExists, setActivityExists] = useState(false);
+  const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     const getCurrentUser = async () => {
@@ -263,9 +265,23 @@ export function CreateActivityTaskModal({
       transparent={true}
       onRequestClose={onClose}
     >
-      <View style={styles.modalOverlay}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.modalOverlay}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
         <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>Ny opgave</Text>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Ny opgave</Text>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={onClose}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.closeButtonText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
           <Text style={styles.activityInfo}>
             For: {activityTitle}
           </Text>
@@ -281,7 +297,13 @@ export function CreateActivityTaskModal({
             </View>
           )}
 
-          <ScrollView style={styles.scrollView}>
+          <ScrollView 
+            ref={scrollViewRef}
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             <Text style={styles.label}>Titel *</Text>
             <TextInput
               style={styles.input}
@@ -290,6 +312,7 @@ export function CreateActivityTaskModal({
               placeholder="Opgavetitel"
               placeholderTextColor={colors.textSecondary}
               editable={activityExists}
+              returnKeyType="next"
             />
 
             <Text style={styles.label}>Beskrivelse</Text>
@@ -302,6 +325,7 @@ export function CreateActivityTaskModal({
               multiline
               numberOfLines={4}
               editable={activityExists}
+              textAlignVertical="top"
             />
 
             <View style={styles.reminderContainer}>
@@ -327,10 +351,14 @@ export function CreateActivityTaskModal({
                     placeholder="10"
                     placeholderTextColor={colors.textSecondary}
                     editable={activityExists}
+                    returnKeyType="done"
                   />
                 </View>
               )}
             </View>
+
+            {/* Extra padding to ensure content is visible above keyboard */}
+            <View style={{ height: 100 }} />
           </ScrollView>
 
           <View style={styles.buttonContainer}>
@@ -357,7 +385,7 @@ export function CreateActivityTaskModal({
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -366,21 +394,40 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'flex-end',
   },
   modalContent: {
     backgroundColor: colors.background,
-    borderRadius: 20,
-    padding: 20,
-    width: '90%',
-    maxHeight: '80%',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 20,
+    paddingHorizontal: 20,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+    maxHeight: '90%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
   },
   modalTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: colors.text,
-    marginBottom: 10,
+  },
+  closeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.cardBackground,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  closeButtonText: {
+    fontSize: 20,
+    color: colors.text,
+    fontWeight: '600',
   },
   activityInfo: {
     fontSize: 14,
@@ -401,7 +448,9 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     marginTop: 20,
-    marginBottom: 20,
+  },
+  scrollContent: {
+    paddingBottom: 20,
   },
   label: {
     fontSize: 16,
@@ -457,13 +506,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: 20,
+    gap: 12,
   },
   button: {
     flex: 1,
     padding: 15,
     borderRadius: 10,
     alignItems: 'center',
-    marginHorizontal: 5,
   },
   cancelButton: {
     backgroundColor: colors.cardBackground,
