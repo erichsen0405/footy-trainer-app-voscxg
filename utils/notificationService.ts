@@ -322,9 +322,10 @@ function calculateNotificationTime(
   }
 }
 
-// CRITICAL iOS FIX: Schedule a notification with iOS-specific configuration
+// CRITICAL iOS FIX: Schedule a notification with iOS-specific configuration and deep linking
 export async function scheduleTaskReminder(
   taskTitle: string,
+  taskDescription: string,
   activityTitle: string,
   activityDate: Date | string,
   activityTime: string,
@@ -368,16 +369,24 @@ export async function scheduleTaskReminder(
       await removeNotificationIdentifier(taskId);
     }
 
-    // iOS CRITICAL FIX: Build notification content with iOS-specific options
+    // Build notification body with task description
+    let notificationBody = `${activityTitle} starter om ${reminderMinutes} minutter`;
+    if (taskDescription) {
+      notificationBody += `\n\n${taskDescription}`;
+    }
+
+    // iOS CRITICAL FIX: Build notification content with iOS-specific options and deep linking
     const notificationContent: Notifications.NotificationContentInput = {
       title: `⚽ Påmindelse: ${taskTitle}`,
-      body: `${activityTitle} starter om ${reminderMinutes} minutter`,
+      body: notificationBody,
       sound: 'default',
       data: {
         taskId,
         activityId,
         type: 'task-reminder',
         scheduledFor: notificationTime.toISOString(),
+        // Deep linking data
+        url: `/activity-details?id=${activityId}`,
       },
       badge: 1,
     };
@@ -517,6 +526,7 @@ export async function getAllScheduledNotifications(): Promise<Notifications.Noti
       if (notification.content.data) {
         console.log(`     Task ID: ${notification.content.data.taskId}`);
         console.log(`     Activity ID: ${notification.content.data.activityId}`);
+        console.log(`     Deep link URL: ${notification.content.data.url}`);
       }
     });
     
@@ -556,13 +566,14 @@ export async function syncNotifications(): Promise<void> {
 }
 
 // Listen for notification responses (when user taps on a notification)
-export function addNotificationResponseListener(
+export function addNotificationResponseReceivedListener(
   callback: (response: Notifications.NotificationResponse) => void
 ): Notifications.EventSubscription {
   console.log('👂 Setting up notification response listener');
   return Notifications.addNotificationResponseReceivedListener((response) => {
     console.log('🔔 Notification tapped:', response.notification.request.content.title);
     console.log('   Action identifier:', response.actionIdentifier);
+    console.log('   Notification data:', response.notification.request.content.data);
     callback(response);
   });
 }
@@ -599,10 +610,12 @@ export async function testNotification(): Promise<void> {
     
     const notificationContent: Notifications.NotificationContentInput = {
       title: '⚽ Test Påmindelse',
-      body: 'Dette er en test notifikation. Hvis du ser denne, virker notifikationer!',
+      body: 'Dette er en test notifikation. Hvis du ser denne, virker notifikationer!\n\nTryk på denne notifikation for at teste deep linking.',
       sound: 'default',
       data: {
         type: 'test',
+        // Test deep linking - this would navigate to home screen
+        url: '/(tabs)/(home)',
       },
       badge: 1,
     };
@@ -638,7 +651,7 @@ export async function testNotification(): Promise<void> {
     console.log('✅ Test notification scheduled for 2 seconds from now');
     console.log('========== TEST NOTIFICATION SCHEDULED ==========');
     
-    Alert.alert('Test notifikation', 'En test notifikation vil vises om 2 sekunder');
+    Alert.alert('Test notifikation', 'En test notifikation vil vises om 2 sekunder. Tryk på den for at teste deep linking!');
   } catch (error) {
     console.error('❌ Error sending test notification:', error);
     console.error('   Error details:', JSON.stringify(error, null, 2));

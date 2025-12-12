@@ -16,6 +16,7 @@ import { Platform } from 'react-native';
  * - Automatically refreshes the notification queue as time passes
  * - Respects iOS's 64 notification limit
  * - Handles app lifecycle events to keep notifications fresh
+ * - Supports deep linking to specific activities
  */
 
 // Configuration
@@ -29,6 +30,7 @@ interface PendingReminder {
   taskId: string;
   activityId: string;
   taskTitle: string;
+  taskDescription: string;
   activityTitle: string;
   activityDate: string; // ISO date string
   activityTime: string;
@@ -97,6 +99,7 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
       .select(`
         id,
         title,
+        description,
         reminder_minutes,
         activity_id,
         activities!inner (
@@ -147,6 +150,7 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
           taskId: task.id,
           activityId: activity.id,
           taskTitle: task.title,
+          taskDescription: task.description || '',
           activityTitle: activity.title,
           activityDate: activity.activity_date,
           activityTime: activity.activity_time,
@@ -202,15 +206,23 @@ async function scheduleNotifications(reminders: PendingReminder[]): Promise<numb
     
     for (const reminder of toSchedule) {
       try {
+        // Build notification body with task description
+        let notificationBody = `${reminder.activityTitle} starter om ${reminder.reminderMinutes} minutter`;
+        if (reminder.taskDescription) {
+          notificationBody += `\n\n${reminder.taskDescription}`;
+        }
+
         const notificationContent: Notifications.NotificationContentInput = {
           title: `⚽ Påmindelse: ${reminder.taskTitle}`,
-          body: `${reminder.activityTitle} starter om ${reminder.reminderMinutes} minutter`,
+          body: notificationBody,
           sound: 'default',
           data: {
             taskId: reminder.taskId,
             activityId: reminder.activityId,
             type: 'task-reminder',
             scheduledFor: reminder.notificationTime.toISOString(),
+            // Deep linking data
+            url: `/activity-details?id=${reminder.activityId}`,
           },
           badge: 1,
         };
@@ -341,6 +353,7 @@ export async function refreshNotificationQueue(force: boolean = false): Promise<
 export async function scheduleTaskReminderImmediate(
   taskId: string,
   taskTitle: string,
+  taskDescription: string,
   activityId: string,
   activityTitle: string,
   activityDate: string,
@@ -377,16 +390,24 @@ export async function scheduleTaskReminderImmediate(
       return false;
     }
     
+    // Build notification body with task description
+    let notificationBody = `${activityTitle} starter om ${reminderMinutes} minutter`;
+    if (taskDescription) {
+      notificationBody += `\n\n${taskDescription}`;
+    }
+
     // Schedule the notification
     const notificationContent: Notifications.NotificationContentInput = {
       title: `⚽ Påmindelse: ${taskTitle}`,
-      body: `${activityTitle} starter om ${reminderMinutes} minutter`,
+      body: notificationBody,
       sound: 'default',
       data: {
         taskId,
         activityId,
         type: 'task-reminder',
         scheduledFor: notificationTime.toISOString(),
+        // Deep linking data
+        url: `/activity-details?id=${activityId}`,
       },
       badge: 1,
     };
