@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react';
 import { Stack, useRouter } from 'expo-router';
 import { FootballProvider } from '@/contexts/FootballContext';
 import { WidgetProvider } from '@/contexts/WidgetContext';
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, Platform } from 'react-native';
 import { refreshNotificationQueue } from '@/utils/notificationScheduler';
 import { requestNotificationPermissions, addNotificationResponseReceivedListener } from '@/utils/notificationService';
 import * as Notifications from 'expo-notifications';
@@ -13,65 +13,71 @@ export default function RootLayout() {
   const router = useRouter();
 
   useEffect(() => {
-    // Initialize notifications on app start
-    const initializeNotifications = async () => {
-      console.log('🚀 Initializing notifications...');
-      
-      // Request permissions
-      const hasPermission = await requestNotificationPermissions();
-      
-      if (hasPermission) {
-        // Refresh notification queue
-        await refreshNotificationQueue();
-      }
-    };
-
-    initializeNotifications();
-
-    // Listen for app state changes
-    const subscription = AppState.addEventListener('change', async (nextAppState: AppStateStatus) => {
-      if (
-        appState.current.match(/inactive|background/) &&
-        nextAppState === 'active'
-      ) {
-        console.log('📱 App has come to the foreground');
+    // Only initialize notifications on native platforms
+    if (Platform.OS === 'ios' || Platform.OS === 'android') {
+      // Initialize notifications on app start
+      const initializeNotifications = async () => {
+        console.log('🚀 Initializing notifications...');
         
-        // Refresh notifications when app comes to foreground
-        await refreshNotificationQueue();
-      }
+        // Request permissions
+        const hasPermission = await requestNotificationPermissions();
+        
+        if (hasPermission) {
+          // Refresh notification queue
+          await refreshNotificationQueue();
+        }
+      };
 
-      appState.current = nextAppState;
-    });
+      initializeNotifications();
 
-    return () => {
-      subscription.remove();
-    };
+      // Listen for app state changes
+      const subscription = AppState.addEventListener('change', async (nextAppState: AppStateStatus) => {
+        if (
+          appState.current.match(/inactive|background/) &&
+          nextAppState === 'active'
+        ) {
+          console.log('📱 App has come to the foreground');
+          
+          // Refresh notifications when app comes to foreground
+          await refreshNotificationQueue();
+        }
+
+        appState.current = nextAppState;
+      });
+
+      return () => {
+        subscription.remove();
+      };
+    }
   }, []);
 
-  // DEEP LINKING: Handle notification responses
+  // DEEP LINKING: Handle notification responses (only on native platforms)
   useEffect(() => {
-    console.log('🔗 Setting up notification deep linking...');
+    // Only set up notification deep linking on native platforms
+    if (Platform.OS === 'ios' || Platform.OS === 'android') {
+      console.log('🔗 Setting up notification deep linking...');
 
-    // Handle notification that opened the app (when app was closed)
-    const checkInitialNotification = async () => {
-      const response = await Notifications.getLastNotificationResponseAsync();
-      if (response?.notification) {
-        console.log('📬 App opened from notification (was closed)');
+      // Handle notification that opened the app (when app was closed)
+      const checkInitialNotification = async () => {
+        const response = await Notifications.getLastNotificationResponseAsync();
+        if (response?.notification) {
+          console.log('📬 App opened from notification (was closed)');
+          handleNotificationResponse(response.notification);
+        }
+      };
+
+      checkInitialNotification();
+
+      // Handle notification taps when app is running or in background
+      const subscription = addNotificationResponseReceivedListener((response) => {
+        console.log('📬 Notification tapped (app was running/background)');
         handleNotificationResponse(response.notification);
-      }
-    };
+      });
 
-    checkInitialNotification();
-
-    // Handle notification taps when app is running or in background
-    const subscription = addNotificationResponseReceivedListener((response) => {
-      console.log('📬 Notification tapped (app was running/background)');
-      handleNotificationResponse(response.notification);
-    });
-
-    return () => {
-      subscription.remove();
-    };
+      return () => {
+        subscription.remove();
+      };
+    }
   }, [router]);
 
   // Navigate to activity details when notification is tapped
