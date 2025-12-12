@@ -211,7 +211,7 @@ export default function ExternalCalendarManager() {
 
       console.log('Syncing calendar:', calendarId);
 
-      const { data, error } = await supabase.functions.invoke('sync-external-calendar', {
+      const { data, error } = await supabase.functions.invoke('sync-external-calendar-v4', {
         body: { calendarId },
       });
 
@@ -230,8 +230,14 @@ export default function ExternalCalendarManager() {
       if (data.eventsUpdated > 0) {
         message += `🔄 ${data.eventsUpdated} aktivitet${data.eventsUpdated === 1 ? '' : 'er'} opdateret\n`;
       }
-      if (data.eventsDeleted > 0) {
-        message += `🗑️ ${data.eventsDeleted} aktivitet${data.eventsDeleted === 1 ? '' : 'er'} slettet\n`;
+      if (data.eventsRestored > 0) {
+        message += `♻️ ${data.eventsRestored} aktivitet${data.eventsRestored === 1 ? '' : 'er'} gendannet\n`;
+      }
+      if (data.eventsSoftDeleted > 0) {
+        message += `🗑️ ${data.eventsSoftDeleted} aktivitet${data.eventsSoftDeleted === 1 ? '' : 'er'} soft-slettet (mangler i feed)\n`;
+      }
+      if (data.eventsImmediatelyDeleted > 0) {
+        message += `❌ ${data.eventsImmediatelyDeleted} aktivitet${data.eventsImmediatelyDeleted === 1 ? '' : 'er'} slettet (annulleret)\n`;
       }
       
       if (data.eventsFailed && data.eventsFailed > 0) {

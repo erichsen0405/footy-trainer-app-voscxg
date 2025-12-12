@@ -1,0 +1,1068 @@
+
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
+import ICAL from 'https://esm.sh/ical.js@2.0.0';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+interface ParsedEvent {
+  uid: string;
+  summary: string;
+  description: string;
+  location: string;
+  startDate: Date;
+  endDate: Date;
+  startDateString: string;
+  startTimeString: string;
+  endDateString: string;
+  endTimeString: string;
+  timezone?: string;
+  isAllDay: boolean;
+  categories: string[];
+  lastModified?: Date;
+  status?: string;
+  method?: string;
+}
+
+interface CategoryKeywords {
+  categoryName: string;
+  keywords: string[];
+  priority: number;
+}
+
+const DEFAULT_CATEGORY_KEYWORDS: CategoryKeywords[] = [
+  {
+    categoryName: 'Kamp',
+    keywords: ['kamp', 'match', 'game', 'turnering', 'tournament', 'finale', 'semifinale', 'kvartfinale', 'vs', '-'],
+    priority: 10,
+  },
+  {
+    categoryName: 'Træning',
+    keywords: ['træning', 'training', 'practice', 'øvelse', 'drill', 'session'],
+    priority: 9,
+  },
+  {
+    categoryName: 'Fysisk træning',
+    keywords: ['fysisk', 'fitness', 'kondition', 'styrke', 'cardio', 'løb', 'gym', 'vægt'],
+    priority: 8,
+  },
+  {
+    categoryName: 'Taktik',
+    keywords: ['taktik', 'tactics', 'strategi', 'strategy', 'analyse', 'video', 'gennemgang'],
+    priority: 8,
+  },
+  {
+    categoryName: 'Møde',
+    keywords: ['møde', 'meeting', 'samtale', 'briefing', 'debriefing', 'evaluering', 'forældremøde', 'spillermøde'],
+    priority: 7,
+  },
+  {
+    categoryName: 'Holdsamling',
+    keywords: ['holdsamling', 'team building', 'social', 'sammenkomst', 'event', 'fest'],
+    priority: 7,
+  },
+  {
+    categoryName: 'Lægebesøg',
+    keywords: ['læge', 'doctor', 'fysioterapi', 'physio', 'behandling', 'skade', 'injury', 'sundhed'],
+    priority: 6,
+  },
+  {
+    categoryName: 'Rejse',
+    keywords: ['rejse', 'travel', 'transport', 'bus', 'fly', 'flight', 'afgang', 'departure'],
+    priority: 6,
+  },
+];
+
+function parseActivityNameForCategory(
+  activityName: string,
+  userCategories: any[]
+): { categoryId: string; categoryName: string; confidence: number } | null {
+  if (!activityName || !userCategories || userCategories.length === 0) {
+    return null;
+  }
+
+  const normalizedName = activityName.toLowerCase().trim();
+  const sortedKeywords = [...DEFAULT_CATEGORY_KEYWORDS].sort((a, b) => b.priority - a.priority);
+
+  const matches: Array<{
+    category: any;
+    score: number;
+    matchedKeyword: string;
+  }> = [];
+
+  for (const keywordSet of sortedKeywords) {
+    const matchingCategory = userCategories.find(
+      (cat) => cat.name.toLowerCase().trim() === keywordSet.categoryName.toLowerCase().trim()
+    );
+
+    if (!matchingCategory) {
+      continue;
+    }
+
+    for (const keyword of keywordSet.keywords) {
+      const normalizedKeyword = keyword.toLowerCase();
+      
+      const wordBoundaryRegex = new RegExp(`\\b${normalizedKeyword}\\b`, 'i');
+      if (wordBoundaryRegex.test(normalizedName)) {
+        matches.push({
+          category: matchingCategory,
+          score: keywordSet.priority * 10 + 5,
+          matchedKeyword: keyword,
+        });
+        continue;
+      }
+
+      if (normalizedName.includes(normalizedKeyword)) {
+        matches.push({
+          category: matchingCategory,
+          score: keywordSet.priority * 10,
+          matchedKeyword: keyword,
+        });
+      }
+    }
+  }
+
+  if (matches.length === 0) {
+    for (const category of userCategories) {
+      const categoryNameLower = category.name.toLowerCase().trim();
+      
+      if (normalizedName.includes(categoryNameLower)) {
+        matches.push({
+          category: category,
+          score: 50,
+          matchedKeyword: category.name,
+        });
+      }
+    }
+  }
+
+  if (matches.length > 0) {
+    matches.sort((a, b) => b.score - a.score);
+    const bestMatch = matches[0];
+
+    const maxPossibleScore = 100;
+    const confidence = Math.min(100, Math.round((bestMatch.score / maxPossibleScore) * 100));
+
+    return {
+      categoryId: bestMatch.category.id,
+      categoryName: bestMatch.category.name,
+      confidence: confidence,
+    };
+  }
+
+  return null;
+}
+
+function formatTimeFromICALTime(icalTime: any): { date: string; time: string; isAllDay: boolean } {
+  try {
+    const isAllDay = icalTime.isDate || false;
+    
+    if (isAllDay) {
+      const year = icalTime.year;
+      const month = String(icalTime.month).padStart(2, '0');
+      const day = String(icalTime.day).padStart(2, '0');
+      
+      return {
+        date: `${year}-${month}-${day}`,
+        time: '00:00:00',
+        isAllDay: true,
+      };
+    }
+    
+    const jsDate = icalTime.toJSDate();
+    const originalTimezone = icalTime.zone?.tzid;
+    
+    let copenhagenDate: Date;
+    
+    if (!originalTimezone || originalTimezone === 'UTC' || originalTimezone === 'Z') {
+      const utcDate = new Date(Date.UTC(
+        icalTime.year,
+        icalTime.month - 1,
+        icalTime.day,
+        icalTime.hour,
+        icalTime.minute,
+        icalTime.second || 0
+      ));
+      
+      copenhagenDate = utcDate;
+    } else {
+      copenhagenDate = jsDate;
+    }
+    
+    const copenhagenFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Europe/Copenhagen',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+    
+    const parts = copenhagenFormatter.formatToParts(copenhagenDate);
+    const partsMap: { [key: string]: string } = {};
+    parts.forEach(part => {
+      if (part.type !== 'literal') {
+        partsMap[part.type] = part.value;
+      }
+    });
+    
+    const year = partsMap.year;
+    const month = partsMap.month;
+    const day = partsMap.day;
+    const hour = partsMap.hour;
+    const minute = partsMap.minute;
+    const second = partsMap.second || '00';
+    
+    return {
+      date: `${year}-${month}-${day}`,
+      time: `${hour}:${minute}:${second}`,
+      isAllDay: false,
+    };
+  } catch (error) {
+    console.error('Error formatting ICAL time:', error);
+    const now = new Date();
+    const copenhagenFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Europe/Copenhagen',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour12: false
+    });
+    
+    const parts = copenhagenFormatter.formatToParts(now);
+    const partsMap: { [key: string]: string } = {};
+    parts.forEach(part => {
+      if (part.type !== 'literal') {
+        partsMap[part.type] = part.value;
+      }
+    });
+    
+    return {
+      date: `${partsMap.year}-${partsMap.month}-${partsMap.day}`,
+      time: '12:00:00',
+      isAllDay: false,
+    };
+  }
+}
+
+async function fetchAndParseICalendar(url: string): Promise<ParsedEvent[]> {
+  console.log('Fetching iCal from:', url);
+  
+  const httpUrl = url.replace(/^webcal:\/\//, 'https://');
+  
+  const response = await fetch(httpUrl);
+  
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+  
+  const icalData = await response.text();
+  console.log('iCal data fetched, length:', icalData.length);
+  
+  return parseICalendarData(icalData);
+}
+
+function parseICalendarData(icalData: string): ParsedEvent[] {
+  try {
+    const jcalData = ICAL.parse(icalData);
+    const comp = new ICAL.Component(jcalData);
+    const vevents = comp.getAllSubcomponents('vevent');
+    
+    console.log(`Found ${vevents.length} events in calendar`);
+    
+    const events: ParsedEvent[] = vevents.map((vevent) => {
+      const event = new ICAL.Event(vevent);
+      
+      const startInfo = formatTimeFromICALTime(event.startDate);
+      const endInfo = formatTimeFromICALTime(event.endDate);
+      
+      let categories: string[] = [];
+      try {
+        const categoriesProp = vevent.getFirstProperty('categories');
+        if (categoriesProp) {
+          const categoriesValue = categoriesProp.getValues();
+          if (Array.isArray(categoriesValue)) {
+            categories = categoriesValue.filter((cat: any) => typeof cat === 'string' && cat.trim());
+          } else if (typeof categoriesValue === 'string') {
+            categories = categoriesValue.split(',').map((cat: string) => cat.trim()).filter(Boolean);
+          }
+        }
+      } catch (error) {
+        console.log('No categories found for event:', event.summary);
+      }
+
+      let lastModified: Date | undefined;
+      try {
+        const lastModifiedProp = vevent.getFirstProperty('last-modified');
+        if (lastModifiedProp) {
+          const lastModifiedTime = lastModifiedProp.getFirstValue();
+          if (lastModifiedTime) {
+            lastModified = lastModifiedTime.toJSDate();
+          }
+        }
+      } catch (error) {
+        console.log('No LAST-MODIFIED found for event:', event.summary);
+      }
+      
+      // Extract STATUS and METHOD
+      let status: string | undefined;
+      let method: string | undefined;
+      
+      try {
+        const statusProp = vevent.getFirstProperty('status');
+        if (statusProp) {
+          status = statusProp.getFirstValue();
+        }
+      } catch (error) {
+        // No status
+      }
+      
+      try {
+        const methodProp = vevent.getFirstProperty('method');
+        if (methodProp) {
+          method = methodProp.getFirstValue();
+        }
+      } catch (error) {
+        // No method
+      }
+      
+      return {
+        uid: event.uid || `event-${Date.now()}-${Math.random()}`,
+        summary: event.summary || 'Ingen titel',
+        description: event.description || '',
+        location: event.location || '',
+        startDate: event.startDate.toJSDate(),
+        endDate: event.endDate.toJSDate(),
+        startDateString: startInfo.date,
+        startTimeString: startInfo.time,
+        endDateString: endInfo.date,
+        endTimeString: endInfo.time,
+        timezone: event.startDate.zone?.tzid,
+        isAllDay: startInfo.isAllDay,
+        categories: categories,
+        lastModified: lastModified,
+        status: status,
+        method: method,
+      };
+    });
+    
+    return events;
+  } catch (error) {
+    console.error('Error parsing iCal data:', error);
+    throw error;
+  }
+}
+
+async function ensureUnknownCategory(
+  supabaseClient: any,
+  userId: string
+): Promise<string> {
+  const { data: existingCategory } = await supabaseClient
+    .from('activity_categories')
+    .select('*')
+    .eq('user_id', userId)
+    .ilike('name', 'ukendt')
+    .single();
+
+  if (existingCategory) {
+    return existingCategory.id;
+  }
+
+  const { data: newCategory, error: categoryError } = await supabaseClient
+    .from('activity_categories')
+    .insert({
+      user_id: userId,
+      name: 'Ukendt',
+      color: '#9E9E9E',
+      emoji: '❓',
+    })
+    .select()
+    .single();
+
+  if (categoryError) {
+    throw categoryError;
+  }
+
+  return newCategory.id;
+}
+
+// Inline computeSyncOps implementation
+function tokenize(text: string): Set<string> {
+  if (!text) return new Set();
+  
+  const normalized = text.toLowerCase()
+    .replace(/[^a-z0-9æøå\s]/g, ' ')
+    .trim();
+  
+  const tokens = normalized.split(/\s+/).filter(t => t.length > 2);
+  return new Set(tokens);
+}
+
+function calculateTokenOverlap(text1: string, text2: string): number {
+  const tokens1 = tokenize(text1);
+  const tokens2 = tokenize(text2);
+  
+  if (tokens1.size === 0 || tokens2.size === 0) return 0;
+  
+  const intersection = new Set([...tokens1].filter(t => tokens2.has(t)));
+  const union = new Set([...tokens1, ...tokens2]);
+  
+  return intersection.size / union.size;
+}
+
+function isWithinTimeTolerance(
+  dt1: Date,
+  dt2: Date,
+  toleranceSeconds: number
+): boolean {
+  const diffMs = Math.abs(dt1.getTime() - dt2.getTime());
+  const diffSeconds = diffMs / 1000;
+  
+  return diffSeconds <= toleranceSeconds;
+}
+
+function isCancelled(event: ParsedEvent): boolean {
+  const status = event.status?.toUpperCase();
+  const method = event.method?.toUpperCase();
+  
+  return status === 'CANCELLED' || method === 'CANCEL';
+}
+
+function matchEvent(
+  fetchedEvent: ParsedEvent,
+  dbRows: any[],
+  options: any
+): any | null {
+  // Step 1: Try exact UID match
+  for (const row of dbRows) {
+    if (row.provider_event_uid === fetchedEvent.uid) {
+      return row;
+    }
+  }
+  
+  // Step 2: Try exact summary + datetime match
+  const fetchedStart = new Date(`${fetchedEvent.startDateString}T${fetchedEvent.startTimeString}`);
+  
+  for (const row of dbRows) {
+    const rowStart = new Date(`${row.start_date}T${row.start_time}`);
+    
+    if (
+      row.title === fetchedEvent.summary &&
+      fetchedStart.getTime() === rowStart.getTime()
+    ) {
+      return row;
+    }
+  }
+  
+  // Step 3: Try fuzzy match
+  let bestMatch: any | null = null;
+  let bestScore = 0;
+  
+  for (const row of dbRows) {
+    const rowStart = new Date(`${row.start_date}T${row.start_time}`);
+    
+    if (!isWithinTimeTolerance(fetchedStart, rowStart, options.dtToleranceSeconds)) {
+      continue;
+    }
+    
+    const summaryOverlap = calculateTokenOverlap(fetchedEvent.summary, row.title);
+    const locationOverlap = fetchedEvent.location && row.location
+      ? calculateTokenOverlap(fetchedEvent.location, row.location)
+      : 0;
+    
+    const score = summaryOverlap * 0.7 + locationOverlap * 0.3;
+    
+    if (score >= options.fuzzyThreshold && score > bestScore) {
+      bestScore = score;
+      bestMatch = row;
+    }
+  }
+  
+  return bestMatch;
+}
+
+function computeSyncOps(
+  fetched: ParsedEvent[],
+  dbRows: any[],
+  methodCancel: boolean,
+  opts: any
+) {
+  const options = {
+    graceHours: opts.graceHours ?? 6,
+    fuzzyThreshold: opts.fuzzyThreshold ?? 0.65,
+    dtToleranceSeconds: opts.dtToleranceSeconds ?? 300,
+    maxMissCount: opts.maxMissCount ?? 3,
+  };
+  
+  const operations = {
+    creates: [] as any[],
+    updates: [] as any[],
+    softDeletes: [] as any[],
+    restores: [] as any[],
+    immediateDeletes: [] as any[],
+  };
+  
+  const matchedDbRowIds = new Set<string>();
+  const now = new Date();
+  
+  for (const event of fetched) {
+    const matchedRow = matchEvent(event, dbRows, options);
+    
+    if (matchedRow) {
+      matchedDbRowIds.add(matchedRow.id);
+      
+      if (methodCancel && isCancelled(event)) {
+        operations.immediateDeletes.push({
+          dbRowId: matchedRow.id,
+          reason: `Event cancelled (STATUS:${event.status || 'N/A'}, METHOD:${event.method || 'N/A'})`,
+        });
+        continue;
+      }
+      
+      if (matchedRow.deleted) {
+        operations.restores.push({
+          dbRowId: matchedRow.id,
+          event: event,
+          reason: 'Event reappeared in feed after soft delete',
+        });
+        continue;
+      }
+      
+      operations.updates.push({
+        dbRowId: matchedRow.id,
+        event: event,
+        reason: 'Event exists and needs update',
+      });
+    } else {
+      if (methodCancel && isCancelled(event)) {
+        console.log(`Skipping cancelled event: ${event.summary}`);
+        continue;
+      }
+      
+      operations.creates.push({
+        event: event,
+        reason: 'New event not found in database',
+      });
+    }
+  }
+  
+  for (const row of dbRows) {
+    if (matchedDbRowIds.has(row.id)) {
+      continue;
+    }
+    
+    if (row.deleted) {
+      continue;
+    }
+    
+    const updatedAt = new Date(row.updated_at);
+    const hoursSinceUpdate = (now.getTime() - updatedAt.getTime()) / (1000 * 60 * 60);
+    
+    const missCount = row.miss_count ?? 0;
+    
+    if (hoursSinceUpdate >= options.graceHours || missCount >= options.maxMissCount) {
+      operations.softDeletes.push({
+        dbRowId: row.id,
+        reason: `Event missing from feed (${hoursSinceUpdate.toFixed(1)}h since update, miss_count: ${missCount})`,
+      });
+    } else {
+      console.log(`Event "${row.title}" missing but within grace period (${hoursSinceUpdate.toFixed(1)}h, miss_count: ${missCount})`);
+    }
+  }
+  
+  return operations;
+}
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
+  try {
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      throw new Error('No authorization header');
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
+
+    if (userError || !user) {
+      throw new Error('Unauthorized');
+    }
+
+    console.log('🔄 ========== SYNC STARTED (computeSyncOps v4) ==========');
+    console.log('User authenticated:', user.id);
+    console.log('Timestamp:', new Date().toISOString());
+
+    const { calendarId } = await req.json();
+    
+    if (!calendarId) {
+      throw new Error('Calendar ID is required');
+    }
+
+    console.log('Syncing calendar:', calendarId);
+
+    const { data: calendar, error: calendarError } = await supabaseClient
+      .from('external_calendars')
+      .select('*')
+      .eq('id', calendarId)
+      .eq('user_id', user.id)
+      .single();
+
+    if (calendarError || !calendar) {
+      throw new Error('Calendar not found');
+    }
+
+    console.log('Calendar found:', calendar.name);
+    console.log('Calendar URL:', calendar.ics_url);
+
+    const events = await fetchAndParseICalendar(calendar.ics_url);
+    console.log(`✅ Parsed ${events.length} events from iCal feed`);
+
+    const { data: userCategories } = await supabaseClient
+      .from('activity_categories')
+      .select('*')
+      .eq('user_id', user.id);
+
+    const unknownCategoryId = await ensureUnknownCategory(supabaseClient, user.id);
+
+    // Fetch existing external events for this calendar
+    const { data: existingExternalEvents } = await supabaseClient
+      .from('events_external')
+      .select('*')
+      .eq('provider_calendar_id', calendarId);
+
+    console.log(`Found ${existingExternalEvents?.length || 0} existing external events in database`);
+
+    // Compute sync operations
+    const syncOps = computeSyncOps(
+      events,
+      existingExternalEvents || [],
+      true, // methodCancel
+      {
+        graceHours: 6,
+        fuzzyThreshold: 0.65,
+        dtToleranceSeconds: 300,
+        maxMissCount: 3,
+      }
+    );
+
+    console.log('\n📊 Sync Operations Computed:');
+    console.log(`   ➕ Creates: ${syncOps.creates.length}`);
+    console.log(`   🔄 Updates: ${syncOps.updates.length}`);
+    console.log(`   🗑️ Soft Deletes: ${syncOps.softDeletes.length}`);
+    console.log(`   ♻️ Restores: ${syncOps.restores.length}`);
+    console.log(`   ❌ Immediate Deletes: ${syncOps.immediateDeletes.length}`);
+
+    let eventsCreated = 0;
+    let eventsUpdated = 0;
+    let eventsRestored = 0;
+    let eventsSoftDeleted = 0;
+    let eventsImmediatelyDeleted = 0;
+    let metadataCreated = 0;
+    let metadataPreserved = 0;
+    let eventsFailed = 0;
+    const failedEvents: Array<{ title: string; error: string }> = [];
+
+    // Execute creates
+    console.log('\n🔄 Executing CREATE operations...');
+    for (const op of syncOps.creates) {
+      try {
+        const event = op.event;
+        console.log(`   ➕ Creating: "${event.summary}"`);
+        
+        const { data: newExternal, error: insertError } = await supabaseClient
+          .from('events_external')
+          .insert({
+            provider: 'ics',
+            provider_event_uid: event.uid,
+            provider_calendar_id: calendarId,
+            title: event.summary,
+            description: event.description,
+            location: event.location,
+            start_date: event.startDateString,
+            start_time: event.startTimeString,
+            end_date: event.endDateString,
+            end_time: event.endTimeString,
+            is_all_day: event.isAllDay,
+            external_last_modified: event.lastModified?.toISOString() || new Date().toISOString(),
+            fetched_at: new Date().toISOString(),
+            raw_payload: {
+              categories: event.categories,
+              timezone: event.timezone,
+              status: event.status,
+              method: event.method,
+            },
+            miss_count: 0,
+            deleted: false,
+          })
+          .select('id')
+          .single();
+
+        if (insertError || !newExternal) {
+          console.error(`   ❌ Error creating external event:`, insertError);
+          eventsFailed++;
+          failedEvents.push({ title: event.summary, error: insertError?.message || 'Unknown error' });
+          continue;
+        }
+
+        eventsCreated++;
+        
+        // Create local metadata with auto-detected category
+        const categoryMatch = parseActivityNameForCategory(event.summary, userCategories || []);
+        const categoryId = categoryMatch ? categoryMatch.categoryId : unknownCategoryId;
+        
+        const { error: insertMetaError } = await supabaseClient
+          .from('events_local_meta')
+          .insert({
+            external_event_id: newExternal.id,
+            user_id: user.id,
+            category_id: categoryId,
+            manually_set_category: false,
+          });
+
+        if (insertMetaError) {
+          console.error(`   ❌ Error creating metadata:`, insertMetaError);
+        } else {
+          metadataCreated++;
+        }
+
+        await supabaseClient
+          .from('event_sync_log')
+          .insert({
+            external_event_id: newExternal.id,
+            calendar_id: calendarId,
+            user_id: user.id,
+            action: 'created',
+            details: {
+              title: event.summary,
+              reason: op.reason,
+            },
+          });
+      } catch (error: any) {
+        console.error(`   ❌ Error in create operation:`, error);
+        eventsFailed++;
+        failedEvents.push({ title: op.event.summary, error: error.message });
+      }
+    }
+
+    // Execute updates
+    console.log('\n🔄 Executing UPDATE operations...');
+    for (const op of syncOps.updates) {
+      try {
+        const event = op.event;
+        console.log(`   🔄 Updating: "${event.summary}"`);
+        
+        const { error: updateError } = await supabaseClient
+          .from('events_external')
+          .update({
+            title: event.summary,
+            description: event.description,
+            location: event.location,
+            start_date: event.startDateString,
+            start_time: event.startTimeString,
+            end_date: event.endDateString,
+            end_time: event.endTimeString,
+            is_all_day: event.isAllDay,
+            external_last_modified: event.lastModified?.toISOString() || new Date().toISOString(),
+            fetched_at: new Date().toISOString(),
+            raw_payload: {
+              categories: event.categories,
+              timezone: event.timezone,
+              status: event.status,
+              method: event.method,
+            },
+            miss_count: 0, // Reset miss count
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', op.dbRowId);
+
+        if (updateError) {
+          console.error(`   ❌ Error updating external event:`, updateError);
+          eventsFailed++;
+          failedEvents.push({ title: event.summary, error: updateError.message });
+          continue;
+        }
+
+        eventsUpdated++;
+
+        // Check if metadata exists and if category is manually set
+        const { data: existingMeta } = await supabaseClient
+          .from('events_local_meta')
+          .select('*')
+          .eq('external_event_id', op.dbRowId)
+          .eq('user_id', user.id)
+          .single();
+
+        if (existingMeta) {
+          if (existingMeta.manually_set_category) {
+            metadataPreserved++;
+            console.log(`   🔒 Category preserved (manually set)`);
+          } else {
+            // Auto-update category
+            const categoryMatch = parseActivityNameForCategory(event.summary, userCategories || []);
+            const newCategoryId = categoryMatch ? categoryMatch.categoryId : unknownCategoryId;
+            
+            if (newCategoryId !== existingMeta.category_id) {
+              await supabaseClient
+                .from('events_local_meta')
+                .update({
+                  category_id: newCategoryId,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', existingMeta.id);
+              
+              console.log(`   🎯 Category auto-updated`);
+            }
+          }
+        } else {
+          // Create metadata if it doesn't exist
+          const categoryMatch = parseActivityNameForCategory(event.summary, userCategories || []);
+          const categoryId = categoryMatch ? categoryMatch.categoryId : unknownCategoryId;
+          
+          await supabaseClient
+            .from('events_local_meta')
+            .insert({
+              external_event_id: op.dbRowId,
+              user_id: user.id,
+              category_id: categoryId,
+              manually_set_category: false,
+            });
+          
+          metadataCreated++;
+        }
+
+        await supabaseClient
+          .from('event_sync_log')
+          .insert({
+            external_event_id: op.dbRowId,
+            calendar_id: calendarId,
+            user_id: user.id,
+            action: 'updated',
+            details: {
+              title: event.summary,
+              reason: op.reason,
+            },
+          });
+      } catch (error: any) {
+        console.error(`   ❌ Error in update operation:`, error);
+        eventsFailed++;
+        failedEvents.push({ title: op.event.summary, error: error.message });
+      }
+    }
+
+    // Execute restores
+    console.log('\n🔄 Executing RESTORE operations...');
+    for (const op of syncOps.restores) {
+      try {
+        const event = op.event;
+        console.log(`   ♻️ Restoring: "${event.summary}"`);
+        
+        const { error: restoreError } = await supabaseClient
+          .from('events_external')
+          .update({
+            title: event.summary,
+            description: event.description,
+            location: event.location,
+            start_date: event.startDateString,
+            start_time: event.startTimeString,
+            end_date: event.endDateString,
+            end_time: event.endTimeString,
+            is_all_day: event.isAllDay,
+            external_last_modified: event.lastModified?.toISOString() || new Date().toISOString(),
+            fetched_at: new Date().toISOString(),
+            raw_payload: {
+              categories: event.categories,
+              timezone: event.timezone,
+              status: event.status,
+              method: event.method,
+            },
+            miss_count: 0,
+            deleted: false, // Restore
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', op.dbRowId);
+
+        if (restoreError) {
+          console.error(`   ❌ Error restoring event:`, restoreError);
+          eventsFailed++;
+          failedEvents.push({ title: event.summary, error: restoreError.message });
+          continue;
+        }
+
+        eventsRestored++;
+
+        await supabaseClient
+          .from('event_sync_log')
+          .insert({
+            external_event_id: op.dbRowId,
+            calendar_id: calendarId,
+            user_id: user.id,
+            action: 'updated',
+            details: {
+              title: event.summary,
+              reason: op.reason,
+              restored: true,
+            },
+          });
+      } catch (error: any) {
+        console.error(`   ❌ Error in restore operation:`, error);
+        eventsFailed++;
+        failedEvents.push({ title: op.event.summary, error: error.message });
+      }
+    }
+
+    // Execute soft deletes
+    console.log('\n🔄 Executing SOFT DELETE operations...');
+    for (const op of syncOps.softDeletes) {
+      try {
+        console.log(`   🗑️ Soft deleting: ${op.reason}`);
+        
+        const { error: softDeleteError } = await supabaseClient
+          .from('events_external')
+          .update({
+            deleted: true,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', op.dbRowId);
+
+        if (softDeleteError) {
+          console.error(`   ❌ Error soft deleting event:`, softDeleteError);
+          continue;
+        }
+
+        eventsSoftDeleted++;
+
+        await supabaseClient
+          .from('event_sync_log')
+          .insert({
+            external_event_id: op.dbRowId,
+            calendar_id: calendarId,
+            user_id: user.id,
+            action: 'deleted',
+            details: {
+              reason: op.reason,
+              soft_delete: true,
+            },
+          });
+      } catch (error: any) {
+        console.error(`   ❌ Error in soft delete operation:`, error);
+      }
+    }
+
+    // Execute immediate deletes
+    console.log('\n🔄 Executing IMMEDIATE DELETE operations...');
+    for (const op of syncOps.immediateDeletes) {
+      try {
+        console.log(`   ❌ Immediately deleting: ${op.reason}`);
+        
+        const { error: deleteError } = await supabaseClient
+          .from('events_external')
+          .delete()
+          .eq('id', op.dbRowId);
+
+        if (deleteError) {
+          console.error(`   ❌ Error immediately deleting event:`, deleteError);
+          continue;
+        }
+
+        eventsImmediatelyDeleted++;
+
+        await supabaseClient
+          .from('event_sync_log')
+          .insert({
+            external_event_id: op.dbRowId,
+            calendar_id: calendarId,
+            user_id: user.id,
+            action: 'deleted',
+            details: {
+              reason: op.reason,
+              immediate_delete: true,
+            },
+          });
+      } catch (error: any) {
+        console.error(`   ❌ Error in immediate delete operation:`, error);
+      }
+    }
+
+    console.log('\n📊 ========== SYNC SUMMARY (computeSyncOps v4) ==========');
+    console.log(`   📥 Total events in iCal feed: ${events.length}`);
+    console.log(`   ➕ NEW external events created: ${eventsCreated}`);
+    console.log(`   🔄 Existing external events updated: ${eventsUpdated}`);
+    console.log(`   ♻️ Events restored: ${eventsRestored}`);
+    console.log(`   🗑️ Events soft-deleted: ${eventsSoftDeleted}`);
+    console.log(`   ❌ Events immediately deleted (cancelled): ${eventsImmediatelyDeleted}`);
+    console.log(`   ➕ NEW local metadata created: ${metadataCreated}`);
+    console.log(`   🔒 Local metadata preserved (manually set): ${metadataPreserved}`);
+    console.log(`   ❌ Events FAILED to process: ${eventsFailed}`);
+    
+    if (failedEvents.length > 0) {
+      console.log('\n   ⚠️ FAILED EVENTS:');
+      failedEvents.forEach((failed, index) => {
+        console.log(`      ${index + 1}. "${failed.title}": ${failed.error}`);
+      });
+    }
+    
+    console.log(`   ✅ GUARANTEE: Manually set categories are NEVER overwritten`);
+    console.log('========================================================\n');
+
+    const { error: updateError } = await supabaseClient
+      .from('external_calendars')
+      .update({
+        last_fetched: new Date().toISOString(),
+        event_count: events.length,
+      })
+      .eq('id', calendarId);
+
+    if (updateError) {
+      console.error('Error updating calendar:', updateError);
+    }
+
+    console.log('🔄 ========== SYNC COMPLETED (computeSyncOps v4) ==========\n');
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        eventCount: events.length,
+        eventsCreated,
+        eventsUpdated,
+        eventsRestored,
+        eventsSoftDeleted,
+        eventsImmediatelyDeleted,
+        metadataCreated,
+        metadataPreserved,
+        eventsFailed,
+        failedEvents: failedEvents.length > 0 ? failedEvents : undefined,
+        message: `Successfully synced ${events.length} events using computeSyncOps. ${eventsCreated} created, ${eventsUpdated} updated, ${eventsRestored} restored, ${eventsSoftDeleted} soft-deleted, ${eventsImmediatelyDeleted} immediately deleted (cancelled). ${metadataPreserved} manually set categories preserved.${eventsFailed > 0 ? ` WARNING: ${eventsFailed} events failed to process.` : ''}`,
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      }
+    );
+  } catch (error: any) {
+    console.error('❌ Error in sync-external-calendar-v4:', error);
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: error.message,
+        stack: error.stack,
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400,
+      }
+    );
+  }
+});
