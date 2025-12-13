@@ -16,18 +16,26 @@ Deno.serve(async (req) => {
   try {
     console.log('=== Create Player Function Started ===');
     console.log('Request method:', req.method);
-    console.log('Request headers:', Object.fromEntries(req.headers.entries()));
 
     // Get the authorization header
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       console.error('No authorization header found');
-      throw new Error('No authorization header');
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'No authorization header',
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 401,
+        }
+      );
     }
 
     console.log('Authorization header present');
 
-    // Parse request body first to see if that's the issue
+    // Parse request body
     let requestBody;
     try {
       const bodyText = await req.text();
@@ -36,14 +44,32 @@ Deno.serve(async (req) => {
       console.log('Parsed request body:', requestBody);
     } catch (parseError) {
       console.error('Failed to parse request body:', parseError);
-      throw new Error(`Invalid JSON in request body: ${parseError.message}`);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: `Invalid JSON in request body: ${parseError.message}`,
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        }
+      );
     }
 
     const { email, fullName, phoneNumber } = requestBody;
 
     if (!email || !fullName) {
       console.error('Missing required fields:', { email: !!email, fullName: !!fullName });
-      throw new Error('Email and full name are required');
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Email and full name are required',
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        }
+      );
     }
 
     console.log('Creating player account for:', email);
@@ -60,10 +86,19 @@ Deno.serve(async (req) => {
     });
 
     if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) {
-      throw new Error('Missing required environment variables');
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Missing required environment variables',
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 500,
+        }
+      );
     }
 
-    // Create a Supabase client with the user's JWT
+    // Create a Supabase client with the user's JWT to verify they're an admin
     const supabaseClient = createClient(
       supabaseUrl,
       supabaseAnonKey,
@@ -79,11 +114,29 @@ Deno.serve(async (req) => {
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
     if (userError) {
       console.error('User authentication error:', userError);
-      throw new Error(`Unauthorized: ${userError.message}`);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: `Unauthorized: ${userError.message}`,
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 401,
+        }
+      );
     }
     if (!user) {
       console.error('No user found');
-      throw new Error('Unauthorized: No user found');
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Unauthorized: No user found',
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 401,
+        }
+      );
     }
 
     console.log('User authenticated:', user.id);
@@ -98,17 +151,36 @@ Deno.serve(async (req) => {
 
     if (roleError) {
       console.error('Role check error:', roleError);
-      throw new Error(`Failed to check user role: ${roleError.message}`);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: `Failed to check user role: ${roleError.message}`,
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 403,
+        }
+      );
     }
 
     if (!roleData || roleData.role !== 'admin') {
       console.error('User is not admin:', roleData);
-      throw new Error('Only admins can create player accounts');
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Only admins can create player accounts',
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 403,
+        }
+      );
     }
 
     console.log('User is admin, proceeding with player creation');
 
     // Create a Supabase admin client with service role
+    // This client bypasses RLS policies
     const supabaseAdmin = createClient(
       supabaseUrl,
       supabaseServiceKey,
@@ -137,30 +209,57 @@ Deno.serve(async (req) => {
 
     if (signUpError) {
       console.error('Sign up error:', signUpError);
-      throw new Error(`Failed to create user account: ${signUpError.message}`);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: `Failed to create user account: ${signUpError.message}`,
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        }
+      );
     }
 
     if (!signUpData.user) {
       console.error('No user data returned from signup');
-      throw new Error('No user data returned from signup');
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'No user data returned from signup',
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 500,
+        }
+      );
     }
 
     const playerId = signUpData.user.id;
     console.log('Player account created:', playerId);
 
     // Create profile for the player using admin client
+    // We need to use RPC or direct SQL to bypass RLS
     console.log('Creating profile...');
-    const { error: profileError } = await supabaseAdmin
-      .from('profiles')
-      .insert({
-        user_id: playerId,
-        full_name: fullName,
-        phone_number: phoneNumber || null,
-      });
+    const { error: profileError } = await supabaseAdmin.rpc('create_player_profile', {
+      p_user_id: playerId,
+      p_full_name: fullName,
+      p_phone_number: phoneNumber || null,
+    }).catch(async (rpcError) => {
+      // If RPC doesn't exist, fall back to direct insert
+      console.log('RPC not found, using direct insert with service role');
+      return await supabaseAdmin
+        .from('profiles')
+        .insert({
+          user_id: playerId,
+          full_name: fullName,
+          phone_number: phoneNumber || null,
+        });
+    });
 
     if (profileError) {
       console.error('Profile creation error:', profileError);
-      // Don't throw - we can continue without profile
+      // Continue anyway - profile is not critical
       console.log('Continuing despite profile error...');
     } else {
       console.log('Profile created successfully');
@@ -168,32 +267,63 @@ Deno.serve(async (req) => {
 
     // Set user role as player using admin client
     console.log('Assigning player role...');
-    const { error: roleInsertError } = await supabaseAdmin
-      .from('user_roles')
-      .insert({
-        user_id: playerId,
-        role: 'player',
-      });
+    const { error: roleInsertError } = await supabaseAdmin.rpc('create_player_role', {
+      p_user_id: playerId,
+    }).catch(async (rpcError) => {
+      // If RPC doesn't exist, fall back to direct insert
+      console.log('RPC not found, using direct insert with service role');
+      return await supabaseAdmin
+        .from('user_roles')
+        .insert({
+          user_id: playerId,
+          role: 'player',
+        });
+    });
 
     if (roleInsertError) {
       console.error('Role assignment error:', roleInsertError);
-      throw new Error(`Failed to assign player role: ${roleInsertError.message}`);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: `Failed to assign player role: ${roleInsertError.message}`,
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 500,
+        }
+      );
     }
 
     console.log('Player role assigned successfully');
 
     // Create admin-player relationship using admin client
     console.log('Creating admin-player relationship...');
-    const { error: relationshipError } = await supabaseAdmin
-      .from('admin_player_relationships')
-      .insert({
-        admin_id: user.id,
-        player_id: playerId,
-      });
+    const { error: relationshipError } = await supabaseAdmin.rpc('create_admin_player_relationship', {
+      p_admin_id: user.id,
+      p_player_id: playerId,
+    }).catch(async (rpcError) => {
+      // If RPC doesn't exist, fall back to direct insert
+      console.log('RPC not found, using direct insert with service role');
+      return await supabaseAdmin
+        .from('admin_player_relationships')
+        .insert({
+          admin_id: user.id,
+          player_id: playerId,
+        });
+    });
 
     if (relationshipError) {
       console.error('Relationship creation error:', relationshipError);
-      throw new Error(`Failed to create admin-player relationship: ${relationshipError.message}`);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: `Failed to create admin-player relationship: ${relationshipError.message}`,
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 500,
+        }
+      );
     }
 
     console.log('Admin-player relationship created successfully');
@@ -210,11 +340,11 @@ Deno.serve(async (req) => {
 
     if (resetError) {
       console.error('Password reset email error:', resetError);
-      // Don't throw - the account is created, they can request reset later
+      // Don't fail - the account is created, they can request reset later
       console.log('Continuing despite email error...');
     } else {
       console.log('Password reset email sent successfully');
-      console.log('Reset link generated:', linkData);
+      console.log('Reset link generated');
     }
 
     console.log('=== Create Player Function Completed Successfully ===');
@@ -244,7 +374,7 @@ Deno.serve(async (req) => {
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400,
+        status: 500,
       }
     );
   }

@@ -368,6 +368,18 @@ export type Database = {
           trophy_type: string
         }[]
       }
+      create_admin_player_relationship: {
+        Args: { p_admin_id: string; p_player_id: string }
+        Returns: undefined
+      }
+      create_player_profile: {
+        Args: { p_user_id: string; p_full_name: string; p_phone_number?: string }
+        Returns: undefined
+      }
+      create_player_role: {
+        Args: { p_user_id: string }
+        Returns: undefined
+      }
       create_tasks_for_activity: {
         Args: { p_activity_id: string }
         Returns: undefined
