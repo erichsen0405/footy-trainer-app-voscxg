@@ -158,21 +158,34 @@ export default function HomeScreen() {
     Object.keys(grouped).forEach(key => {
       const weekActivities = grouped[key].activities;
       if (weekActivities.length > 0) {
-        // Sort by date AND time
+        // CRITICAL FIX: Sort by date AND time without mutating date objects
         weekActivities.sort((a, b) => {
+          // Create new date objects for comparison
           const dateA = new Date(a.date);
           const dateB = new Date(b.date);
           
           // Parse time strings (format: "HH:MM" or "HH:MM:SS")
-          const [hoursA, minutesA] = a.time.split(':').map(Number);
-          const [hoursB, minutesB] = b.time.split(':').map(Number);
+          const timePartsA = a.time.split(':');
+          const timePartsB = b.time.split(':');
           
-          // Set the time on the date objects
-          dateA.setHours(hoursA, minutesA, 0, 0);
-          dateB.setHours(hoursB, minutesB, 0, 0);
+          const hoursA = parseInt(timePartsA[0], 10);
+          const minutesA = parseInt(timePartsA[1], 10);
+          const hoursB = parseInt(timePartsB[0], 10);
+          const minutesB = parseInt(timePartsB[1], 10);
           
-          // Compare the full date+time
-          return dateA.getTime() - dateB.getTime();
+          // Create complete timestamps for comparison
+          const timestampA = new Date(dateA.getFullYear(), dateA.getMonth(), dateA.getDate(), hoursA, minutesA, 0, 0);
+          const timestampB = new Date(dateB.getFullYear(), dateB.getMonth(), dateB.getDate(), hoursB, minutesB, 0, 0);
+          
+          // Compare the full date+time timestamps
+          const result = timestampA.getTime() - timestampB.getTime();
+          
+          // Debug logging for sorting
+          if (result !== 0) {
+            console.log(`Sorting: ${a.title} (${a.category.name}) at ${dateA.toISOString().split('T')[0]} ${a.time} vs ${b.title} (${b.category.name}) at ${dateB.toISOString().split('T')[0]} ${b.time} = ${result}`);
+          }
+          
+          return result;
         });
         
         const firstDate = new Date(weekActivities[0].date);
