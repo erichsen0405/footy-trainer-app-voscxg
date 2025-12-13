@@ -216,27 +216,27 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Generate a temporary password
-    const tempPassword = `temp_${crypto.randomUUID()}`;
-
-    console.log('Creating user account...');
-    // Create the player account using admin client
-    const { data: signUpData, error: signUpError } = await supabaseAdmin.auth.admin.createUser({
+    console.log('Inviting user via email...');
+    
+    // Use inviteUserByEmail instead of createUser
+    // This will send an invitation email to the user
+    const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
       email,
-      password: tempPassword,
-      email_confirm: true, // Auto-confirm email
-      user_metadata: {
-        full_name: fullName,
-        phone_number: phoneNumber && phoneNumber.trim() ? phoneNumber : null,
-      },
-    });
+      {
+        data: {
+          full_name: fullName,
+          phone_number: phoneNumber && phoneNumber.trim() ? phoneNumber : null,
+        },
+        redirectTo: 'https://natively.dev/email-confirmed',
+      }
+    );
 
-    if (signUpError) {
-      console.error('Sign up error:', signUpError);
+    if (inviteError) {
+      console.error('Invite error:', inviteError);
       return new Response(
         JSON.stringify({
           success: false,
-          error: `Failed to create user account: ${signUpError.message}`,
+          error: `Failed to invite user: ${inviteError.message}`,
         }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -245,12 +245,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!signUpData.user) {
-      console.error('No user data returned from signup');
+    if (!inviteData.user) {
+      console.error('No user data returned from invite');
       return new Response(
         JSON.stringify({
           success: false,
-          error: 'No user data returned from signup',
+          error: 'No user data returned from invite',
         }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -259,8 +259,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    const playerId = signUpData.user.id;
-    console.log('Player account created:', playerId);
+    const playerId = inviteData.user.id;
+    console.log('Player invitation sent, user ID:', playerId);
 
     // Create profile for the player using RPC function
     console.log('Creating profile using RPC...');
@@ -325,34 +325,14 @@ Deno.serve(async (req) => {
     }
 
     console.log('Admin-player relationship created successfully');
-
-    // Send password reset email so the player can set their own password
-    console.log('Sending password reset email to player...');
-    const { data: linkData, error: resetError } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'recovery',
-      email: email,
-      options: {
-        redirectTo: 'https://natively.dev/email-confirmed',
-      },
-    });
-
-    if (resetError) {
-      console.error('Password reset email error:', resetError);
-      console.error('Reset error details:', JSON.stringify(resetError, null, 2));
-      // Don't fail - the account is created, they can request reset later
-      console.log('Continuing despite email error...');
-    } else {
-      console.log('Password reset email sent successfully');
-      console.log('Reset link generated');
-    }
-
     console.log('=== Create Player Function Completed Successfully ===');
+    console.log('Invitation email has been sent to:', email);
 
     return new Response(
       JSON.stringify({
         success: true,
         playerId,
-        message: 'Player account created successfully',
+        message: 'Player invitation sent successfully. The user will receive an email with instructions to set up their account.',
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
