@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useColorScheme, Modal, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFootball } from '@/contexts/FootballContext';
@@ -137,23 +137,35 @@ export default function HomeScreen() {
     router.push(`/activity-details?id=${activityId}`);
   };
 
-  const handleTaskPress = (task: Task, activityId: string, activityTitle: string) => {
-    console.log('Opening task modal for:', task.title);
+  // PERFORMANCE FIX: Use useCallback to prevent re-creating this function on every render
+  const handleTaskPress = useCallback((task: Task, activityId: string, activityTitle: string) => {
+    console.log('⚡ FAST: Opening task modal for:', task.title);
     setSelectedTask({ task, activityId, activityTitle });
     setIsTaskModalVisible(true);
-  };
+  }, []);
 
-  const handleToggleTaskCompletion = async () => {
+  // PERFORMANCE FIX: Use useCallback and optimistic update for instant UI feedback
+  const handleToggleTaskCompletion = useCallback(async () => {
     if (!selectedTask) return;
     
+    console.log('⚡ FAST: Toggling task completion with optimistic update');
+    
+    // Close modal immediately for instant feedback
+    setIsTaskModalVisible(false);
+    
+    // Update task in background
     try {
       await toggleTaskCompletion(selectedTask.activityId, selectedTask.task.id);
-      setIsTaskModalVisible(false);
-      setSelectedTask(null);
+      console.log('✅ Task completion toggled successfully');
     } catch (error) {
-      console.error('Error toggling task completion:', error);
+      console.error('❌ Error toggling task completion:', error);
+    } finally {
+      // Clear selected task after a short delay to allow modal animation to complete
+      setTimeout(() => {
+        setSelectedTask(null);
+      }, 300);
     }
-  };
+  }, [selectedTask, toggleTaskCompletion]);
 
   const handleCreateActivity = async (activityData: ActivityCreationData) => {
     try {
@@ -502,22 +514,32 @@ export default function HomeScreen() {
         <View style={{ height: 120 }} />
       </ScrollView>
 
-      <Modal
-        visible={isTaskModalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setIsTaskModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: cardBgColor }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: textColor }]}>Opgave</Text>
-              <TouchableOpacity onPress={() => setIsTaskModalVisible(false)} activeOpacity={0.7}>
-                <IconSymbol ios_icon_name="xmark.circle.fill" android_material_icon_name="close" size={32} color={textSecondaryColor} />
-              </TouchableOpacity>
-            </View>
+      {/* PERFORMANCE FIX: Simplified modal with minimal re-renders */}
+      {isTaskModalVisible && selectedTask && (
+        <Modal
+          visible={true}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => {
+            setIsTaskModalVisible(false);
+            setTimeout(() => setSelectedTask(null), 300);
+          }}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: cardBgColor }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: textColor }]}>Opgave</Text>
+                <TouchableOpacity 
+                  onPress={() => {
+                    setIsTaskModalVisible(false);
+                    setTimeout(() => setSelectedTask(null), 300);
+                  }} 
+                  activeOpacity={0.7}
+                >
+                  <IconSymbol ios_icon_name="xmark.circle.fill" android_material_icon_name="close" size={32} color={textSecondaryColor} />
+                </TouchableOpacity>
+              </View>
 
-            {selectedTask && (
               <View style={styles.modalBody}>
                 <Text style={[styles.taskModalActivity, { color: textSecondaryColor }]}>
                   {selectedTask.activityTitle}
@@ -552,10 +574,10 @@ export default function HomeScreen() {
                   </Text>
                 </TouchableOpacity>
               </View>
-            )}
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
 
       <CreateActivityModal
         visible={isCreateModalVisible}

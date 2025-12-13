@@ -1285,7 +1285,7 @@ export function useFootballData() {
   };
 
   const toggleTaskCompletion = async (activityId: string, taskId: string) => {
-    console.log('Toggling task completion:', { activityId, taskId });
+    console.log('⚡ OPTIMISTIC: Toggling task completion:', { activityId, taskId });
     
     // Find the activity and task
     const activity = activities.find(a => a.id === activityId);
@@ -1301,27 +1301,11 @@ export function useFootballData() {
     }
 
     const newCompleted = !task.completed;
-    console.log('Setting task completed to:', newCompleted);
+    console.log('⚡ OPTIMISTIC: Setting task completed to:', newCompleted);
 
-    try {
-      // Determine which table to update based on whether it's an external activity
-      const tableName = activity.isExternal ? 'external_event_tasks' : 'activity_tasks';
-      
-      // Update in database
-      const { error } = await supabase
-        .from(tableName)
-        .update({ completed: newCompleted })
-        .eq('id', taskId);
-
-      if (error) {
-        console.error('Error updating task completion:', error);
-        throw error;
-      }
-
-      console.log(`Task completion updated in ${tableName}`);
-
-      // Update local state
-      setActivities(activities.map(act => {
+    // CRITICAL PERFORMANCE FIX: Update local state IMMEDIATELY (optimistic update)
+    setActivities(prevActivities => 
+      prevActivities.map(act => {
         if (act.id === activityId) {
           return {
             ...act,
@@ -1331,14 +1315,51 @@ export function useFootballData() {
           };
         }
         return act;
-      }));
+      })
+    );
 
-      // Trigger a refresh to ensure consistency
-      setRefreshTrigger(prev => prev + 1);
+    // Then update database in the background
+    try {
+      // Determine which table to update based on whether it's an external activity
+      const tableName = activity.isExternal ? 'external_event_tasks' : 'activity_tasks';
       
-      // Refresh notification queue after toggling task completion
+      console.log(`🔄 BACKGROUND: Updating ${tableName} in database...`);
+      
+      // Update in database
+      const { error } = await supabase
+        .from(tableName)
+        .update({ completed: newCompleted })
+        .eq('id', taskId);
+
+      if (error) {
+        console.error('❌ Error updating task completion in database:', error);
+        
+        // ROLLBACK: Revert the optimistic update if database update fails
+        console.log('⚠️ ROLLBACK: Reverting optimistic update due to database error');
+        setActivities(prevActivities => 
+          prevActivities.map(act => {
+            if (act.id === activityId) {
+              return {
+                ...act,
+                tasks: act.tasks.map(t =>
+                  t.id === taskId ? { ...t, completed: !newCompleted } : t
+                ),
+              };
+            }
+            return act;
+          })
+        );
+        
+        throw error;
+      }
+
+      console.log(`✅ BACKGROUND: Task completion updated in ${tableName}`);
+      
+      // Refresh notification queue in the background (don't wait for it)
       if (notificationsEnabled) {
-        await refreshNotificationQueue(true);
+        refreshNotificationQueue(true).catch(err => {
+          console.error('❌ Error refreshing notification queue:', err);
+        });
       }
     } catch (error) {
       console.error('Failed to toggle task completion:', error);
