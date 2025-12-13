@@ -69,88 +69,27 @@ export default function CreatePlayerModal({
 
       console.log('Creating player invitation for:', playerEmail);
 
-      // Generate a temporary password (player will never see this)
-      // They will set their own password through the magic link
-      const tempPassword = `temp_${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
-
-      // Create the player account
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: playerEmail,
-        password: tempPassword,
-        options: {
-          data: {
-            full_name: playerName,
-            phone_number: playerPhone,
-          },
-          emailRedirectTo: 'https://natively.dev/email-confirmed',
+      // Call the Edge Function to create the player
+      // This bypasses RLS by using service role on the backend
+      const { data, error } = await supabase.functions.invoke('create-player', {
+        body: {
+          email: playerEmail,
+          fullName: playerName,
+          phoneNumber: playerPhone,
         },
       });
 
-      if (signUpError) {
-        console.error('Sign up error:', signUpError);
-        throw signUpError;
+      if (error) {
+        console.error('Edge function error:', error);
+        throw new Error(error.message || 'Kunne ikke oprette spillerprofil');
       }
 
-      if (!signUpData.user) {
-        throw new Error('Kunne ikke oprette spillerprofil');
+      if (!data || !data.success) {
+        console.error('Edge function returned error:', data);
+        throw new Error(data?.error || 'Kunne ikke oprette spillerprofil');
       }
 
-      const playerId = signUpData.user.id;
-      console.log('Player account created:', playerId);
-
-      // Create profile for the player
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert({
-          user_id: playerId,
-          full_name: playerName,
-          phone_number: playerPhone,
-        });
-
-      if (profileError) {
-        console.error('Profile creation error:', profileError);
-        // Continue even if profile creation fails
-      }
-
-      // Set user role as player
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .insert({
-          user_id: playerId,
-          role: 'player',
-        });
-
-      if (roleError) {
-        console.error('Role assignment error:', roleError);
-        throw new Error('Kunne ikke tildele spillerrolle');
-      }
-
-      // Create admin-player relationship
-      const { error: relationshipError } = await supabase
-        .from('admin_player_relationships')
-        .insert({
-          admin_id: adminUser.id,
-          player_id: playerId,
-        });
-
-      if (relationshipError) {
-        console.error('Relationship creation error:', relationshipError);
-        throw new Error('Kunne ikke oprette admin-spiller relation');
-      }
-
-      // Now send a password reset email so the player can set their own password
-      console.log('Sending password reset email to player');
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
-        playerEmail,
-        {
-          redirectTo: 'https://natively.dev/email-confirmed',
-        }
-      );
-
-      if (resetError) {
-        console.error('Password reset email error:', resetError);
-        // Don't throw - the account is created, they can request reset later
-      }
+      console.log('Player created successfully:', data.playerId);
 
       Alert.alert(
         'Succes! 🎉',

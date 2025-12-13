@@ -158,13 +158,10 @@ export default function HomeScreen() {
     Object.keys(grouped).forEach(key => {
       const weekActivities = grouped[key].activities;
       if (weekActivities.length > 0) {
-        // CRITICAL FIX: Sort by date AND time without mutating date objects
         weekActivities.sort((a, b) => {
-          // Create new date objects for comparison
           const dateA = new Date(a.date);
           const dateB = new Date(b.date);
           
-          // Parse time strings (format: "HH:MM" or "HH:MM:SS")
           const timePartsA = a.time.split(':');
           const timePartsB = b.time.split(':');
           
@@ -173,19 +170,10 @@ export default function HomeScreen() {
           const hoursB = parseInt(timePartsB[0], 10);
           const minutesB = parseInt(timePartsB[1], 10);
           
-          // Create complete timestamps for comparison
           const timestampA = new Date(dateA.getFullYear(), dateA.getMonth(), dateA.getDate(), hoursA, minutesA, 0, 0);
           const timestampB = new Date(dateB.getFullYear(), dateB.getMonth(), dateB.getDate(), hoursB, minutesB, 0, 0);
           
-          // Compare the full date+time timestamps
-          const result = timestampA.getTime() - timestampB.getTime();
-          
-          // Debug logging for sorting
-          if (result !== 0) {
-            console.log(`Sorting: ${a.title} (${a.category.name}) at ${dateA.toISOString().split('T')[0]} ${a.time} vs ${b.title} (${b.category.name}) at ${dateB.toISOString().split('T')[0]} ${b.time} = ${result}`);
-          }
-          
-          return result;
+          return timestampA.getTime() - timestampB.getTime();
         });
         
         const firstDate = new Date(weekActivities[0].date);
@@ -198,8 +186,22 @@ export default function HomeScreen() {
   };
 
   const handleActivityPress = (activityId: string) => {
-    console.log('Opening activity details for:', activityId);
+    console.log('⚡ FAST: Opening activity details for:', activityId);
     router.push(`/activity-details?id=${activityId}`);
+  };
+
+  const handleTaskToggle = async (activityId: string, taskId: string, e: any) => {
+    // CRITICAL: Stop event propagation to prevent opening activity details
+    e.stopPropagation();
+    
+    console.log('⚡ INSTANT: Toggling task completion');
+    
+    // Call toggle immediately - optimistic update happens inside
+    try {
+      await toggleTaskCompletion(activityId, taskId);
+    } catch (error) {
+      console.error('Error toggling task:', error);
+    }
   };
 
   const handleHistoryPress = () => {
@@ -339,10 +341,8 @@ export default function HomeScreen() {
                     <TouchableOpacity
                       key={task.id}
                       style={styles.taskItem}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        toggleTaskCompletion(activity.id, task.id);
-                      }}
+                      onPress={(e) => handleTaskToggle(activity.id, task.id, e)}
+                      activeOpacity={0.6}
                     >
                       <View style={[styles.checkbox, task.completed && styles.checkboxChecked]}>
                         {task.completed && (
