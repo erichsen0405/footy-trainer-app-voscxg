@@ -360,10 +360,13 @@ export function useFootballData() {
         console.log(`✅ Loaded ${externalData.length} external activities (NEW ARCHITECTURE)`);
         
         externalData.forEach((extEvent: any) => {
-          // Get the first local metadata entry (should only be one per user)
-          const localMeta = Array.isArray(extEvent.events_local_meta) 
-            ? extEvent.events_local_meta[0] 
-            : extEvent.events_local_meta;
+          // CRITICAL FIX: Handle events_local_meta as an array (due to !inner join)
+          const localMetaArray = extEvent.events_local_meta;
+          
+          // If it's an array, take the first element; otherwise use it directly
+          const localMeta = Array.isArray(localMetaArray) && localMetaArray.length > 0
+            ? localMetaArray[0]
+            : (Array.isArray(localMetaArray) ? null : localMetaArray);
 
           if (!localMeta) {
             console.warn('⚠️ External event without local metadata:', extEvent.id);
@@ -379,8 +382,9 @@ export function useFootballData() {
 
           const activityDate = new Date(extEvent.start_date);
           
-          // Process external event tasks
-          const externalTasks: Task[] = (localMeta.external_event_tasks || [])
+          // CRITICAL FIX: Process external event tasks (handle both array and null)
+          const externalTasksRaw = localMeta.external_event_tasks;
+          const externalTasks: Task[] = (Array.isArray(externalTasksRaw) ? externalTasksRaw : [])
             .filter((eet: any) => eet && eet.id && eet.title)
             .map((eet: any) => ({
               id: eet.id,
@@ -414,6 +418,7 @@ export function useFootballData() {
       console.log('✅ Total activities loaded:', loadedActivities.length);
       console.log('📊 Internal activities:', loadedActivities.filter(a => !a.isExternal).length);
       console.log('📊 External activities:', loadedActivities.filter(a => a.isExternal).length);
+      console.log('📊 Total tasks across all activities:', loadedActivities.reduce((sum, a) => sum + a.tasks.length, 0));
       
       setActivities(loadedActivities);
 
