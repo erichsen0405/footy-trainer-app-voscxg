@@ -32,6 +32,7 @@ export default function CreatePlayerModal({
   const [playerEmail, setPlayerEmail] = useState('');
   const [playerPhone, setPlayerPhone] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
 
   const resetForm = () => {
     setPlayerName('');
@@ -153,20 +154,17 @@ export default function CreatePlayerModal({
 
       console.log('Player created successfully:', data.playerId);
 
-      Alert.alert(
-        'Succes! 🎉',
-        `Spillerprofil for ${playerName} er oprettet.\n\nEmail: ${playerEmail}\n\n✉️ Spilleren har modtaget en email med et link til at oprette sin adgangskode.\n\n⚠️ Spilleren skal klikke på linket i emailen og oprette en adgangskode før login er muligt.`,
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              resetForm();
-              onPlayerCreated();
-              onClose();
-            },
-          },
-        ]
-      );
+      // Show success message
+      setShowSuccess(true);
+
+      // Wait 2 seconds, then close modal and navigate back
+      setTimeout(() => {
+        setShowSuccess(false);
+        resetForm();
+        onPlayerCreated();
+        onClose();
+      }, 2000);
+
     } catch (error: any) {
       console.error('Error creating player:', error);
       console.error('Error stack:', error.stack);
@@ -205,133 +203,178 @@ export default function CreatePlayerModal({
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.container}
       >
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <IconSymbol
-              ios_icon_name="xmark"
-              android_material_icon_name="close"
-              size={24}
-              color={colors.text}
-            />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Opret Spillerprofil</Text>
-          <View style={styles.placeholder} />
-        </View>
-
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={styles.iconContainer}>
-            <View style={[styles.iconCircle, { backgroundColor: colors.primary }]}>
+        {showSuccess ? (
+          // Success Screen
+          <View style={styles.successContainer}>
+            <View style={[styles.successIconCircle, { backgroundColor: colors.primary }]}>
               <IconSymbol
-                ios_icon_name="person.badge.plus"
-                android_material_icon_name="person_add"
-                size={48}
+                ios_icon_name="checkmark"
+                android_material_icon_name="check"
+                size={80}
                 color="#fff"
               />
             </View>
-          </View>
-
-          <Text style={styles.description}>
-            Opret en ny spillerprofil. Spilleren vil modtage en email med et link til at oprette sin egen adgangskode.
-          </Text>
-
-          <View style={styles.form}>
-            <Text style={styles.label}>Spillerens navn *</Text>
-            <TextInput
-              style={styles.input}
-              value={playerName}
-              onChangeText={setPlayerName}
-              placeholder="F.eks. Anders Hansen"
-              placeholderTextColor={colors.textSecondary}
-              editable={!loading}
-              autoCorrect={false}
-            />
-
-            <Text style={styles.label}>Email *</Text>
-            <TextInput
-              style={styles.input}
-              value={playerEmail}
-              onChangeText={setPlayerEmail}
-              placeholder="spiller@email.dk"
-              placeholderTextColor={colors.textSecondary}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              editable={!loading}
-              autoCorrect={false}
-            />
-
-            <Text style={styles.label}>Telefonnummer</Text>
-            <TextInput
-              style={styles.input}
-              value={playerPhone}
-              onChangeText={setPlayerPhone}
-              placeholder="+45 12 34 56 78"
-              placeholderTextColor={colors.textSecondary}
-              keyboardType="phone-pad"
-              editable={!loading}
-              autoCorrect={false}
-            />
-
-            <View style={styles.infoBox}>
-              <IconSymbol
-                ios_icon_name="info.circle"
-                android_material_icon_name="info"
-                size={20}
-                color={colors.secondary}
-              />
-              <View style={styles.infoTextContainer}>
-                <Text style={styles.infoTitle}>Sådan fungerer det:</Text>
-                <Text style={styles.infoText}>
-                  1. Du opretter spillerprofilen med navn og email{'\n'}
-                  2. Spilleren modtager en email med et link{'\n'}
-                  3. Spilleren klikker på linket og opretter sin egen adgangskode{'\n'}
-                  4. Spilleren kan nu logge ind i appen
+            <Text style={styles.successTitle}>Invitation sendt! 🎉</Text>
+            <Text style={styles.successMessage}>
+              Spillerprofil for {playerName} er oprettet.
+            </Text>
+            <View style={styles.successDetails}>
+              <View style={styles.successDetailRow}>
+                <IconSymbol
+                  ios_icon_name="envelope.fill"
+                  android_material_icon_name="email"
+                  size={20}
+                  color={colors.primary}
+                />
+                <Text style={styles.successDetailText}>{playerEmail}</Text>
+              </View>
+              <View style={styles.successInfoBox}>
+                <IconSymbol
+                  ios_icon_name="info.circle.fill"
+                  android_material_icon_name="info"
+                  size={20}
+                  color={colors.secondary}
+                />
+                <Text style={styles.successInfoText}>
+                  Spilleren har modtaget en email med et link til at oprette sin adgangskode.
                 </Text>
               </View>
             </View>
-
-            <View style={[styles.infoBox, { backgroundColor: colors.highlight, marginTop: 16 }]}>
-              <IconSymbol
-                ios_icon_name="lock.shield"
-                android_material_icon_name="security"
-                size={20}
-                color={colors.primary}
-              />
-              <Text style={styles.infoText}>
-                Spilleren vil kun have adgang til Hjem, Performance og Profil menuer.
-              </Text>
-            </View>
+            <ActivityIndicator size="small" color={colors.primary} style={styles.successLoader} />
+            <Text style={styles.successRedirectText}>Returnerer til profilskærmen...</Text>
           </View>
-        </ScrollView>
+        ) : (
+          // Create Player Form
+          <>
+            <View style={styles.header}>
+              <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+                <IconSymbol
+                  ios_icon_name="xmark"
+                  android_material_icon_name="close"
+                  size={24}
+                  color={colors.text}
+                />
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>Opret Spillerprofil</Text>
+              <View style={styles.placeholder} />
+            </View>
 
-        <View style={styles.footer}>
-          <TouchableOpacity
-            style={[styles.cancelButton]}
-            onPress={onClose}
-            disabled={loading}
-          >
-            <Text style={styles.cancelButtonText}>Annuller</Text>
-          </TouchableOpacity>
+            <ScrollView
+              style={styles.scrollView}
+              contentContainerStyle={styles.scrollContent}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={styles.iconContainer}>
+                <View style={[styles.iconCircle, { backgroundColor: colors.primary }]}>
+                  <IconSymbol
+                    ios_icon_name="person.badge.plus"
+                    android_material_icon_name="person_add"
+                    size={48}
+                    color="#fff"
+                  />
+                </View>
+              </View>
 
-          <TouchableOpacity
-            style={[
-              styles.createButton,
-              { backgroundColor: colors.primary },
-              loading && { opacity: 0.6 },
-            ]}
-            onPress={handleCreatePlayer}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Text style={styles.createButtonText}>Send Invitation</Text>
-            )}
-          </TouchableOpacity>
-        </View>
+              <Text style={styles.description}>
+                Opret en ny spillerprofil. Spilleren vil modtage en email med et link til at oprette sin egen adgangskode.
+              </Text>
+
+              <View style={styles.form}>
+                <Text style={styles.label}>Spillerens navn *</Text>
+                <TextInput
+                  style={styles.input}
+                  value={playerName}
+                  onChangeText={setPlayerName}
+                  placeholder="F.eks. Anders Hansen"
+                  placeholderTextColor={colors.textSecondary}
+                  editable={!loading}
+                  autoCorrect={false}
+                />
+
+                <Text style={styles.label}>Email *</Text>
+                <TextInput
+                  style={styles.input}
+                  value={playerEmail}
+                  onChangeText={setPlayerEmail}
+                  placeholder="spiller@email.dk"
+                  placeholderTextColor={colors.textSecondary}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  editable={!loading}
+                  autoCorrect={false}
+                />
+
+                <Text style={styles.label}>Telefonnummer</Text>
+                <TextInput
+                  style={styles.input}
+                  value={playerPhone}
+                  onChangeText={setPlayerPhone}
+                  placeholder="+45 12 34 56 78"
+                  placeholderTextColor={colors.textSecondary}
+                  keyboardType="phone-pad"
+                  editable={!loading}
+                  autoCorrect={false}
+                />
+
+                <View style={styles.infoBox}>
+                  <IconSymbol
+                    ios_icon_name="info.circle"
+                    android_material_icon_name="info"
+                    size={20}
+                    color={colors.secondary}
+                  />
+                  <View style={styles.infoTextContainer}>
+                    <Text style={styles.infoTitle}>Sådan fungerer det:</Text>
+                    <Text style={styles.infoText}>
+                      1. Du opretter spillerprofilen med navn og email{'\n'}
+                      2. Spilleren modtager en email med et link{'\n'}
+                      3. Spilleren klikker på linket og opretter sin egen adgangskode{'\n'}
+                      4. Spilleren kan nu logge ind i appen
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={[styles.infoBox, { backgroundColor: colors.highlight, marginTop: 16 }]}>
+                  <IconSymbol
+                    ios_icon_name="lock.shield"
+                    android_material_icon_name="security"
+                    size={20}
+                    color={colors.primary}
+                  />
+                  <Text style={styles.infoText}>
+                    Spilleren vil kun have adgang til Hjem, Performance og Profil menuer.
+                  </Text>
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.footer}>
+              <TouchableOpacity
+                style={[styles.cancelButton]}
+                onPress={onClose}
+                disabled={loading}
+              >
+                <Text style={styles.cancelButtonText}>Annuller</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.createButton,
+                  { backgroundColor: colors.primary },
+                  loading && { opacity: 0.6 },
+                ]}
+                onPress={handleCreatePlayer}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.createButtonText}>Send Invitation</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -459,5 +502,74 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
+  },
+  // Success Screen Styles
+  successContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+    backgroundColor: colors.background,
+  },
+  successIconCircle: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 32,
+  },
+  successTitle: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  successMessage: {
+    fontSize: 18,
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: 32,
+    lineHeight: 26,
+  },
+  successDetails: {
+    width: '100%',
+    gap: 16,
+  },
+  successDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+  },
+  successDetailText: {
+    fontSize: 16,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  successInfoBox: {
+    flexDirection: 'row',
+    gap: 12,
+    padding: 16,
+    backgroundColor: colors.highlight,
+    borderRadius: 12,
+  },
+  successInfoText: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 20,
+  },
+  successLoader: {
+    marginTop: 40,
+    marginBottom: 12,
+  },
+  successRedirectText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
 });
