@@ -108,81 +108,70 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
     setDeletingPlayerId(playerId);
     
     try {
-      // Get current user
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      
-      if (userError || !user) {
-        console.error('Error getting user:', userError);
-        Alert.alert('Fejl', 'Kunne ikke hente bruger');
-        return;
-      }
+      console.log('Calling delete-player Edge Function...');
 
-      console.log('Current admin user ID:', user.id);
-      console.log('Attempting to delete relationship where admin_id =', user.id, 'AND player_id =', playerId);
+      // Call the Edge Function to delete the player
+      const { data, error } = await supabase.functions.invoke('delete-player', {
+        body: {
+          playerId,
+        },
+      });
 
-      // First, let's verify the relationship exists
-      const { data: existingRel, error: checkError } = await supabase
-        .from('admin_player_relationships')
-        .select('*')
-        .eq('admin_id', user.id)
-        .eq('player_id', playerId);
-
-      console.log('Existing relationship check:', existingRel);
-      console.log('Check error:', checkError);
-
-      if (checkError) {
-        console.error('Error checking relationship:', checkError);
-        Alert.alert('Fejl', `Kunne ikke verificere relation: ${checkError.message}`);
-        return;
-      }
-
-      if (!existingRel || existingRel.length === 0) {
-        console.warn('No relationship found to delete');
-        Alert.alert('Fejl', 'Relationen findes ikke');
-        return;
-      }
-
-      // Now perform the delete
-      console.log('Executing delete operation...');
-      const { data, error, status, statusText } = await supabase
-        .from('admin_player_relationships')
-        .delete()
-        .eq('admin_id', user.id)
-        .eq('player_id', playerId)
-        .select();
-
-      console.log('Delete operation completed');
-      console.log('Delete result - data:', data);
-      console.log('Delete result - error:', error);
-      console.log('Delete result - status:', status);
-      console.log('Delete result - statusText:', statusText);
+      console.log('Edge function response:', { data, error });
 
       if (error) {
-        console.error('Delete error details:', JSON.stringify(error, null, 2));
-        Alert.alert('Fejl', `Kunne ikke slette: ${error.message}`);
-        return;
+        console.error('Edge function error:', error);
+        
+        // Try to extract error message
+        let errorMessage = 'Kunne ikke slette spilleren';
+        
+        if (error.context && error.context instanceof Response) {
+          try {
+            const clonedResponse = error.context.clone();
+            const errorBody = await clonedResponse.json();
+            console.log('Error response body:', errorBody);
+            if (errorBody.error) {
+              errorMessage = errorBody.error;
+            }
+          } catch (e) {
+            console.error('Could not parse error response:', e);
+          }
+        } else if (error.message) {
+          errorMessage = error.message;
+        }
+        
+        throw new Error(errorMessage);
       }
 
-      if (!data || data.length === 0) {
-        console.warn('No rows were deleted. This might mean RLS prevented deletion.');
-        Alert.alert('Fejl', 'Ingen rækker blev slettet. RLS politikken kan have forhindret sletningen.');
-        return;
+      if (!data || !data.success) {
+        console.error('Edge function returned error:', data);
+        const errorMessage = data?.error || 'Kunne ikke slette spilleren';
+        throw new Error(errorMessage);
       }
 
-      console.log('Successfully deleted player relationship');
-      Alert.alert('Succes', `${playerName} er fjernet fra din liste`);
+      console.log('Player deleted successfully');
+      
+      const fullyDeleted = data.fullyDeleted;
+      const message = fullyDeleted 
+        ? `${playerName} er blevet fuldstændigt slettet fra systemet`
+        : `${playerName} er fjernet fra din liste`;
+
+      Alert.alert('Succes', message);
       
       // Refresh the list
       console.log('Refreshing player list...');
       await fetchPlayers();
       console.log('Player list refreshed');
     } catch (error: any) {
-      console.error('Error deleting player relationship:', error);
+      console.error('Error deleting player:', error);
       console.error('Error details:', JSON.stringify(error, null, 2));
-      Alert.alert(
-        'Fejl', 
-        `Kunne ikke fjerne spilleren.\n\nFejl: ${error.message || 'Ukendt fejl'}`
-      );
+      
+      let errorMessage = 'Der opstod en fejl ved sletning af spilleren';
+      if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      Alert.alert('Fejl', errorMessage);
     } finally {
       console.log('Clearing deletingPlayerId');
       setDeletingPlayerId(null);
@@ -196,7 +185,7 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
     
     Alert.alert(
       'Slet spillerprofil',
-      `Er du sikker på at du vil fjerne ${playerName} som din spiller?\n\nDette sletter ikke spillerens konto, men fjerner kun relationen mellem jer.`,
+      `Er du sikker på at du vil slette ${playerName}?\n\nDette vil permanent fjerne spilleren fra systemet, inklusive deres konto og alle data.`,
       [
         { 
           text: 'Annuller', 
@@ -206,11 +195,10 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
           }
         },
         {
-          text: 'Fjern',
+          text: 'Slet',
           style: 'destructive',
           onPress: () => {
             console.log('User confirmed delete, calling performDelete...');
-            // Use setTimeout to ensure the Alert is dismissed before starting the async operation
             setTimeout(() => {
               performDelete(playerId, playerName);
             }, 100);

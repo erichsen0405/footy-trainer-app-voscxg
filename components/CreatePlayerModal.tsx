@@ -81,7 +81,6 @@ export default function CreatePlayerModal({
       console.log('Request payload:', requestPayload);
 
       // Call the Edge Function to create the player
-      // The supabase client automatically includes the Authorization header
       const { data, error } = await supabase.functions.invoke('create-player', {
         body: requestPayload,
       });
@@ -202,6 +201,7 @@ export default function CreatePlayerModal({
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.container}
+        keyboardVerticalOffset={0}
       >
         {showSuccess ? (
           // Success Screen
@@ -263,6 +263,7 @@ export default function CreatePlayerModal({
               style={styles.scrollView}
               contentContainerStyle={styles.scrollContent}
               keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
             >
               <View style={styles.iconContainer}>
                 <View style={[styles.iconCircle, { backgroundColor: colors.primary }]}>
@@ -346,6 +347,9 @@ export default function CreatePlayerModal({
                   </Text>
                 </View>
               </View>
+
+              {/* Extra padding at bottom to ensure button is visible above keyboard */}
+              <View style={{ height: 120 }} />
             </ScrollView>
 
             <View style={styles.footer}>
@@ -411,6 +415,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 20,
+    paddingBottom: 40,
   },
   iconContainer: {
     alignItems: 'center',
@@ -477,8 +482,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     padding: 20,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
     borderTopWidth: 1,
     borderTopColor: colors.highlight,
+    backgroundColor: colors.background,
   },
   cancelButton: {
     flex: 1,
