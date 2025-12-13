@@ -203,7 +203,22 @@ export default function HomeScreen() {
     Object.keys(grouped).forEach(key => {
       const weekActivities = grouped[key].activities;
       if (weekActivities.length > 0) {
-        weekActivities.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        // Sort by date AND time
+        weekActivities.sort((a, b) => {
+          const dateA = new Date(a.date);
+          const dateB = new Date(b.date);
+          
+          // Parse time strings (format: "HH:MM" or "HH:MM:SS")
+          const [hoursA, minutesA] = a.time.split(':').map(Number);
+          const [hoursB, minutesB] = b.time.split(':').map(Number);
+          
+          // Set the time on the date objects
+          dateA.setHours(hoursA, minutesA, 0, 0);
+          dateB.setHours(hoursB, minutesB, 0, 0);
+          
+          // Compare the full date+time
+          return dateA.getTime() - dateB.getTime();
+        });
         
         const firstDate = new Date(weekActivities[0].date);
         const lastDate = new Date(weekActivities[weekActivities.length - 1].date);
