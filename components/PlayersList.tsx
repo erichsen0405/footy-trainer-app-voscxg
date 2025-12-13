@@ -101,11 +101,17 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
   }, [refreshTrigger]);
 
   const handleDeletePlayer = async (playerId: string, playerName: string) => {
+    console.log('Delete button pressed for player:', playerId, playerName);
+    
     Alert.alert(
       'Slet spillerprofil',
       `Er du sikker på at du vil fjerne ${playerName} som din spiller?\n\nDette sletter ikke spillerens konto, men fjerner kun relationen mellem jer.`,
       [
-        { text: 'Annuller', style: 'cancel' },
+        { 
+          text: 'Annuller', 
+          style: 'cancel',
+          onPress: () => console.log('Delete cancelled')
+        },
         {
           text: 'Fjern',
           style: 'destructive',
@@ -228,8 +234,13 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
               </View>
               <TouchableOpacity
                 style={styles.deleteButton}
-                onPress={() => handleDeletePlayer(player.id, player.full_name)}
+                onPress={() => {
+                  console.log('Delete button onPress triggered');
+                  handleDeletePlayer(player.id, player.full_name);
+                }}
                 disabled={deletingPlayerId === player.id}
+                activeOpacity={0.6}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 {deletingPlayerId === player.id ? (
                   <ActivityIndicator size="small" color={colors.error} />
@@ -237,7 +248,7 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
                   <IconSymbol
                     ios_icon_name="trash"
                     android_material_icon_name="delete"
-                    size={20}
+                    size={22}
                     color={colors.error}
                   />
                 )}
@@ -259,6 +270,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 16,
+    minHeight: 200,
   },
   loadingText: {
     fontSize: 16,
@@ -294,6 +306,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 40,
     paddingVertical: 60,
+    minHeight: 200,
   },
   emptyTitle: {
     fontSize: 20,
@@ -347,10 +360,12 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   deleteButton: {
-    padding: 8,
-    minWidth: 36,
-    minHeight: 36,
+    padding: 12,
+    minWidth: 48,
+    minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 59, 48, 0.1)',
   },
 });
