@@ -105,10 +105,9 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
     console.log('Player ID:', playerId);
     console.log('Player Name:', playerName);
     
+    setDeletingPlayerId(playerId);
+    
     try {
-      setDeletingPlayerId(playerId);
-      console.log('Set deletingPlayerId to:', playerId);
-      
       // Get current user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       
@@ -120,8 +119,29 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
       console.log('Current admin user ID:', user.id);
       console.log('Attempting to delete relationship where admin_id =', user.id, 'AND player_id =', playerId);
 
-      // Delete the relationship
-      const { data, error, count } = await supabase
+      // First, let's verify the relationship exists
+      const { data: existingRel, error: checkError } = await supabase
+        .from('admin_player_relationships')
+        .select('*')
+        .eq('admin_id', user.id)
+        .eq('player_id', playerId);
+
+      console.log('Existing relationship check:', existingRel);
+      console.log('Check error:', checkError);
+
+      if (checkError) {
+        console.error('Error checking relationship:', checkError);
+        throw new Error(`Kunne ikke verificere relation: ${checkError.message}`);
+      }
+
+      if (!existingRel || existingRel.length === 0) {
+        console.warn('No relationship found to delete');
+        throw new Error('Relationen findes ikke');
+      }
+
+      // Now perform the delete
+      console.log('Executing delete operation...');
+      const { data, error, status, statusText } = await supabase
         .from('admin_player_relationships')
         .delete()
         .eq('admin_id', user.id)
@@ -131,20 +151,21 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
       console.log('Delete operation completed');
       console.log('Delete result - data:', data);
       console.log('Delete result - error:', error);
-      console.log('Delete result - count:', count);
+      console.log('Delete result - status:', status);
+      console.log('Delete result - statusText:', statusText);
 
       if (error) {
         console.error('Delete error details:', JSON.stringify(error, null, 2));
-        throw error;
+        throw new Error(`Kunne ikke slette: ${error.message}`);
       }
 
       if (!data || data.length === 0) {
-        console.warn('No rows were deleted. This might mean the relationship does not exist or RLS prevented deletion.');
-        throw new Error('Ingen rækker blev slettet. Relationen findes muligvis ikke.');
+        console.warn('No rows were deleted. This might mean RLS prevented deletion.');
+        throw new Error('Ingen rækker blev slettet. RLS politikken kan have forhindret sletningen.');
       }
 
       console.log('Successfully deleted player relationship');
-      Alert.alert('Succes', 'Spilleren er fjernet fra din liste');
+      Alert.alert('Succes', `${playerName} er fjernet fra din liste`);
       
       // Refresh the list
       console.log('Refreshing player list...');
@@ -164,7 +185,7 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
     }
   };
 
-  const handleDeletePlayer = async (playerId: string, playerName: string) => {
+  const handleDeletePlayer = (playerId: string, playerName: string) => {
     console.log('Delete button pressed for player:', playerId, playerName);
     
     Alert.alert(
