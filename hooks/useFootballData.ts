@@ -992,20 +992,96 @@ export function useFootballData() {
     }
   };
 
-  const duplicateActivity = (id: string) => {
+  const duplicateActivity = async (id: string) => {
+    if (!userId) {
+      throw new Error('User not authenticated');
+    }
+
+    console.log('🔄 Duplicating activity:', id);
+
     const activity = activities.find(a => a.id === id);
-    if (activity) {
-      const newActivity: Activity = {
-        ...activity,
-        id: `activity-${Date.now()}`,
-        title: `${activity.title} (kopi)`,
-        tasks: activity.tasks.map(task => ({
-          ...task,
-          id: `${task.id}-copy-${Date.now()}`,
-          completed: false,
-        })),
-      };
-      setActivities([...activities, newActivity]);
+    if (!activity) {
+      console.error('❌ Activity not found');
+      throw new Error('Activity not found');
+    }
+
+    // Check if it's an external activity
+    if (activity.isExternal) {
+      console.error('❌ Cannot duplicate external activity');
+      throw new Error('Cannot duplicate external activities. Only manual activities can be duplicated.');
+    }
+
+    try {
+      // Create a duplicate of the activity with " (kopi)" appended to the title
+      const duplicateTitle = `${activity.title} (kopi)`;
+      
+      console.log(`📝 Creating duplicate: "${duplicateTitle}"`);
+      console.log(`📅 Date: ${activity.date.toISOString().split('T')[0]}`);
+      console.log(`⏰ Time: ${activity.time}`);
+      console.log(`📍 Location: ${activity.location}`);
+      console.log(`🏷️ Category: ${activity.category.name} (${activity.category.id})`);
+
+      // Insert the duplicate activity
+      const { data: newActivity, error: activityError } = await supabase
+        .from('activities')
+        .insert({
+          user_id: userId,
+          title: duplicateTitle,
+          activity_date: activity.date.toISOString().split('T')[0],
+          activity_time: activity.time,
+          location: activity.location,
+          category_id: activity.category.id,
+          is_external: false,
+          // Don't copy series_id - this is a standalone duplicate
+        })
+        .select()
+        .single();
+
+      if (activityError) {
+        console.error('❌ Error creating duplicate activity:', activityError);
+        throw activityError;
+      }
+
+      console.log('✅ Duplicate activity created:', newActivity.id);
+
+      // Duplicate all tasks from the original activity
+      if (activity.tasks.length > 0) {
+        console.log(`📋 Duplicating ${activity.tasks.length} tasks...`);
+        
+        const tasksToInsert = activity.tasks.map(task => ({
+          activity_id: newActivity.id,
+          task_template_id: null, // Don't link to template for duplicated tasks
+          title: task.title,
+          description: task.description,
+          completed: false, // Reset completion status
+          reminder_minutes: task.reminder,
+        }));
+
+        const { error: tasksError } = await supabase
+          .from('activity_tasks')
+          .insert(tasksToInsert);
+
+        if (tasksError) {
+          console.error('❌ Error duplicating tasks:', tasksError);
+          // Don't throw - activity was created successfully
+        } else {
+          console.log('✅ Tasks duplicated successfully');
+        }
+      }
+
+      // Trigger refresh to show the new activity
+      console.log('🔄 Triggering data refresh...');
+      setRefreshTrigger(prev => prev + 1);
+      
+      // Refresh notification queue after duplicating activity
+      if (notificationsEnabled) {
+        await refreshNotificationQueue(true);
+      }
+
+      console.log('✅ Activity duplication completed successfully');
+    } catch (error) {
+      console.error('❌ Failed to duplicate activity:', error);
+      throw error;
     }
   };
 

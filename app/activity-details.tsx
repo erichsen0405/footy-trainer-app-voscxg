@@ -38,7 +38,7 @@ const DAYS_OF_WEEK = [
 export default function ActivityDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { activities, externalActivities, categories, updateActivity, updateActivitySingle, updateActivitySeries, toggleTaskCompletion, deleteActivityTask, deleteActivitySingle, deleteActivitySeries, refreshData, createActivity } = useFootball();
+  const { activities, externalActivities, categories, updateActivity, updateActivitySingle, updateActivitySeries, toggleTaskCompletion, deleteActivityTask, deleteActivitySingle, deleteActivitySeries, refreshData, createActivity, duplicateActivity } = useFootball();
   const { isAdmin } = useUserRole();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -52,6 +52,7 @@ export default function ActivityDetailsScreen() {
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
   const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isDuplicating, setIsDuplicating] = useState(false);
   
   // Edit state
   const [editTitle, setEditTitle] = useState('');
@@ -109,6 +110,44 @@ export default function ActivityDetailsScreen() {
 
   const handleEditAll = () => {
     setIsEditing(true);
+  };
+
+  const handleDuplicate = async () => {
+    if (!activity) return;
+
+    // Check if it's an external activity
+    if (activity.isExternal) {
+      Alert.alert(
+        'Kan ikke duplikere',
+        'Denne aktivitet er fra en ekstern kalender og kan ikke duplikeres. Kun manuelle aktiviteter kan duplikeres.'
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Duplikér aktivitet',
+      `Er du sikker på at du vil duplikere "${activity.title}"? En kopi vil blive oprettet med samme dato, tid, lokation og opgaver.`,
+      [
+        { text: 'Annuller', style: 'cancel' },
+        {
+          text: 'Duplikér',
+          onPress: async () => {
+            setIsDuplicating(true);
+            try {
+              await duplicateActivity(activity.id);
+              Alert.alert('Succes', 'Aktiviteten er blevet duplikeret');
+              // Navigate back to home to see the duplicated activity
+              router.replace('/(tabs)/(home)');
+            } catch (error: any) {
+              console.error('Error duplicating activity:', error);
+              Alert.alert('Fejl', error?.message || 'Kunne ikke duplikere aktiviteten');
+            } finally {
+              setIsDuplicating(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handleSave = async () => {
@@ -481,18 +520,42 @@ export default function ActivityDetailsScreen() {
         </View>
 
         {!isEditing && (
-          <TouchableOpacity
-            style={styles.editButton}
-            onPress={handleEditClick}
-            activeOpacity={0.7}
-          >
-            <IconSymbol
-              ios_icon_name="pencil"
-              android_material_icon_name="edit"
-              size={24}
-              color="#fff"
-            />
-          </TouchableOpacity>
+          <View style={styles.headerButtons}>
+            {/* Duplicate button - only for manual activities */}
+            {!activity.isExternal && (
+              <TouchableOpacity
+                style={styles.headerButton}
+                onPress={handleDuplicate}
+                activeOpacity={0.7}
+                disabled={isDuplicating}
+              >
+                {isDuplicating ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <IconSymbol
+                    ios_icon_name="doc.on.doc"
+                    android_material_icon_name="content_copy"
+                    size={24}
+                    color="#fff"
+                  />
+                )}
+              </TouchableOpacity>
+            )}
+            
+            {/* Edit button */}
+            <TouchableOpacity
+              style={styles.headerButton}
+              onPress={handleEditClick}
+              activeOpacity={0.7}
+            >
+              <IconSymbol
+                ios_icon_name="pencil"
+                android_material_icon_name="edit"
+                size={24}
+                color="#fff"
+              />
+            </TouchableOpacity>
+          </View>
         )}
       </View>
 
@@ -1340,10 +1403,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
   },
-  editButton: {
+  headerButtons: {
     position: 'absolute',
     top: Platform.OS === 'android' ? 60 : 70,
     right: 20,
+    flexDirection: 'row',
+    gap: 12,
+  },
+  headerButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
