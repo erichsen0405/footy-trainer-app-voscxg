@@ -64,10 +64,12 @@ export default function CreatePlayerModal({
       const { data: { user: adminUser }, error: adminError } = await supabase.auth.getUser();
       
       if (adminError || !adminUser) {
-        throw new Error('Kunne ikke hente admin bruger');
+        console.error('Admin user error:', adminError);
+        throw new Error('Kunne ikke hente admin bruger. Log venligst ind igen.');
       }
 
       console.log('Creating player invitation for:', playerEmail);
+      console.log('Admin user ID:', adminUser.id);
       console.log('Request payload:', {
         email: playerEmail,
         fullName: playerName,
@@ -88,15 +90,37 @@ export default function CreatePlayerModal({
 
       if (error) {
         console.error('Edge function error:', error);
-        console.error('Error details:', JSON.stringify(error, null, 2));
-        throw new Error(error.message || 'Kunne ikke oprette spillerprofil');
+        console.error('Error name:', error.name);
+        console.error('Error message:', error.message);
+        console.error('Error context:', error.context);
+        
+        // Provide more specific error messages
+        if (error.message?.includes('Only admins')) {
+          throw new Error('Du har ikke admin rettigheder til at oprette spillere.');
+        } else if (error.message?.includes('already registered')) {
+          throw new Error('Denne email er allerede registreret i systemet.');
+        } else if (error.message?.includes('Unauthorized')) {
+          throw new Error('Din session er udløbet. Log venligst ind igen.');
+        } else {
+          throw new Error(error.message || 'Kunne ikke oprette spillerprofil');
+        }
       }
 
       if (!data || !data.success) {
         console.error('Edge function returned error:', data);
         const errorMessage = data?.error || 'Kunne ikke oprette spillerprofil';
-        const errorType = data?.errorType || 'Unknown';
-        throw new Error(`${errorMessage} (${errorType})`);
+        const errorCode = data?.errorCode || '';
+        const userRole = data?.userRole || '';
+        
+        let detailedMessage = errorMessage;
+        if (userRole && userRole !== 'admin') {
+          detailedMessage = `Du har ikke admin rettigheder (din rolle: ${userRole})`;
+        }
+        if (errorCode) {
+          detailedMessage += `\n\nFejlkode: ${errorCode}`;
+        }
+        
+        throw new Error(detailedMessage);
       }
 
       console.log('Player created successfully:', data.playerId);
@@ -125,10 +149,18 @@ export default function CreatePlayerModal({
         errorMessage = error.message;
       }
       
-      Alert.alert(
-        'Fejl',
-        errorMessage + '\n\nTjek venligst:\n- At du er logget ind som admin\n- At emailen ikke allerede er i brug\n- At du har internetforbindelse'
-      );
+      let helpText = '\n\nTjek venligst:\n';
+      if (errorMessage.includes('admin')) {
+        helpText += '- At du er logget ind som admin\n- At din admin rolle er korrekt sat op';
+      } else if (errorMessage.includes('email')) {
+        helpText += '- At emailen ikke allerede er i brug\n- At emailen er korrekt formateret';
+      } else if (errorMessage.includes('session') || errorMessage.includes('Unauthorized')) {
+        helpText += '- At du er logget ind\n- Prøv at logge ud og ind igen';
+      } else {
+        helpText += '- At du har internetforbindelse\n- At alle felter er udfyldt korrekt\n- Prøv igen om et øjeblik';
+      }
+      
+      Alert.alert('Fejl', errorMessage + helpText);
     } finally {
       setLoading(false);
     }
