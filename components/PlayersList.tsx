@@ -28,10 +28,12 @@ interface PlayersListProps {
 export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersListProps) {
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deletingPlayerId, setDeletingPlayerId] = useState<string | null>(null);
 
   const fetchPlayers = async () => {
     try {
       setLoading(true);
+      console.log('Fetching players...');
       
       // Get current user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -40,6 +42,8 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
         console.error('Error getting user:', userError);
         return;
       }
+
+      console.log('Current admin user ID:', user.id);
 
       // Get all player relationships for this admin
       const { data: relationships, error: relError } = await supabase
@@ -52,12 +56,16 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
         return;
       }
 
+      console.log('Found relationships:', relationships);
+
       if (!relationships || relationships.length === 0) {
+        console.log('No player relationships found');
         setPlayers([]);
         return;
       }
 
       const playerIds = relationships.map(rel => rel.player_id);
+      console.log('Player IDs:', playerIds);
 
       // Get profiles for all players
       const { data: profiles, error: profilesError } = await supabase
@@ -70,17 +78,16 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
         return;
       }
 
-      // Get auth users to get emails (we need to use a different approach)
-      // Since we can't directly query auth.users, we'll use the profiles data
-      // and fetch additional info if needed
-      
+      console.log('Found profiles:', profiles);
+
       const playersData: Player[] = profiles?.map(profile => ({
         id: profile.user_id,
-        email: '', // We'll need to get this differently
+        email: '', // Email not available through RLS
         full_name: profile.full_name || 'Unavngivet',
         phone_number: profile.phone_number || '',
       })) || [];
 
+      console.log('Players data:', playersData);
       setPlayers(playersData);
     } catch (error) {
       console.error('Error in fetchPlayers:', error);
@@ -104,25 +111,48 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
           style: 'destructive',
           onPress: async () => {
             try {
+              setDeletingPlayerId(playerId);
+              console.log('Starting delete process for player:', playerId);
+              
+              // Get current user
               const { data: { user }, error: userError } = await supabase.auth.getUser();
               
               if (userError || !user) {
+                console.error('Error getting user:', userError);
                 throw new Error('Kunne ikke hente bruger');
               }
 
-              const { error } = await supabase
+              console.log('Current admin user ID:', user.id);
+              console.log('Attempting to delete relationship:', { admin_id: user.id, player_id: playerId });
+
+              // Delete the relationship
+              const { data, error, count } = await supabase
                 .from('admin_player_relationships')
                 .delete()
                 .eq('admin_id', user.id)
-                .eq('player_id', playerId);
+                .eq('player_id', playerId)
+                .select();
 
-              if (error) throw error;
+              console.log('Delete result:', { data, error, count });
 
+              if (error) {
+                console.error('Delete error:', error);
+                throw error;
+              }
+
+              console.log('Successfully deleted player relationship');
               Alert.alert('Succes', 'Spilleren er fjernet fra din liste');
-              fetchPlayers();
+              
+              // Refresh the list
+              await fetchPlayers();
             } catch (error: any) {
               console.error('Error deleting player relationship:', error);
-              Alert.alert('Fejl', 'Kunne ikke fjerne spilleren');
+              Alert.alert(
+                'Fejl', 
+                `Kunne ikke fjerne spilleren.\n\nFejl: ${error.message || 'Ukendt fejl'}`
+              );
+            } finally {
+              setDeletingPlayerId(null);
             }
           },
         },
@@ -199,13 +229,18 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
               <TouchableOpacity
                 style={styles.deleteButton}
                 onPress={() => handleDeletePlayer(player.id, player.full_name)}
+                disabled={deletingPlayerId === player.id}
               >
-                <IconSymbol
-                  ios_icon_name="trash"
-                  android_material_icon_name="delete"
-                  size={20}
-                  color={colors.error}
-                />
+                {deletingPlayerId === player.id ? (
+                  <ActivityIndicator size="small" color={colors.error} />
+                ) : (
+                  <IconSymbol
+                    ios_icon_name="trash"
+                    android_material_icon_name="delete"
+                    size={20}
+                    color={colors.error}
+                  />
+                )}
               </TouchableOpacity>
             </View>
           ))}
@@ -313,5 +348,9 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     padding: 8,
+    minWidth: 36,
+    minHeight: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
