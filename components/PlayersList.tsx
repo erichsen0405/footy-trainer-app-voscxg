@@ -113,7 +113,8 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
       
       if (userError || !user) {
         console.error('Error getting user:', userError);
-        throw new Error('Kunne ikke hente bruger');
+        Alert.alert('Fejl', 'Kunne ikke hente bruger');
+        return;
       }
 
       console.log('Current admin user ID:', user.id);
@@ -131,12 +132,14 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
 
       if (checkError) {
         console.error('Error checking relationship:', checkError);
-        throw new Error(`Kunne ikke verificere relation: ${checkError.message}`);
+        Alert.alert('Fejl', `Kunne ikke verificere relation: ${checkError.message}`);
+        return;
       }
 
       if (!existingRel || existingRel.length === 0) {
         console.warn('No relationship found to delete');
-        throw new Error('Relationen findes ikke');
+        Alert.alert('Fejl', 'Relationen findes ikke');
+        return;
       }
 
       // Now perform the delete
@@ -156,12 +159,14 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
 
       if (error) {
         console.error('Delete error details:', JSON.stringify(error, null, 2));
-        throw new Error(`Kunne ikke slette: ${error.message}`);
+        Alert.alert('Fejl', `Kunne ikke slette: ${error.message}`);
+        return;
       }
 
       if (!data || data.length === 0) {
         console.warn('No rows were deleted. This might mean RLS prevented deletion.');
-        throw new Error('Ingen rækker blev slettet. RLS politikken kan have forhindret sletningen.');
+        Alert.alert('Fejl', 'Ingen rækker blev slettet. RLS politikken kan have forhindret sletningen.');
+        return;
       }
 
       console.log('Successfully deleted player relationship');
@@ -186,6 +191,7 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
   };
 
   const handleDeletePlayer = (playerId: string, playerName: string) => {
+    console.log('=== DELETE BUTTON PRESSED ===');
     console.log('Delete button pressed for player:', playerId, playerName);
     
     Alert.alert(
@@ -204,10 +210,14 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
           style: 'destructive',
           onPress: () => {
             console.log('User confirmed delete, calling performDelete...');
-            performDelete(playerId, playerName);
+            // Use setTimeout to ensure the Alert is dismissed before starting the async operation
+            setTimeout(() => {
+              performDelete(playerId, playerName);
+            }, 100);
           },
         },
-      ]
+      ],
+      { cancelable: true }
     );
   };
 
