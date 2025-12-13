@@ -68,6 +68,11 @@ export default function CreatePlayerModal({
       }
 
       console.log('Creating player invitation for:', playerEmail);
+      console.log('Request payload:', {
+        email: playerEmail,
+        fullName: playerName,
+        phoneNumber: playerPhone,
+      });
 
       // Call the Edge Function to create the player
       // This bypasses RLS by using service role on the backend
@@ -79,14 +84,19 @@ export default function CreatePlayerModal({
         },
       });
 
+      console.log('Edge function response:', { data, error });
+
       if (error) {
         console.error('Edge function error:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
         throw new Error(error.message || 'Kunne ikke oprette spillerprofil');
       }
 
       if (!data || !data.success) {
         console.error('Edge function returned error:', data);
-        throw new Error(data?.error || 'Kunne ikke oprette spillerprofil');
+        const errorMessage = data?.error || 'Kunne ikke oprette spillerprofil';
+        const errorType = data?.errorType || 'Unknown';
+        throw new Error(`${errorMessage} (${errorType})`);
       }
 
       console.log('Player created successfully:', data.playerId);
@@ -107,9 +117,17 @@ export default function CreatePlayerModal({
       );
     } catch (error: any) {
       console.error('Error creating player:', error);
+      console.error('Error stack:', error.stack);
+      
+      // Provide more detailed error message
+      let errorMessage = 'Der opstod en fejl ved oprettelse af spillerprofil';
+      if (error.message) {
+        errorMessage = error.message;
+      }
+      
       Alert.alert(
         'Fejl',
-        error.message || 'Der opstod en fejl ved oprettelse af spillerprofil'
+        errorMessage + '\n\nTjek venligst:\n- At du er logget ind som admin\n- At emailen ikke allerede er i brug\n- At du har internetforbindelse'
       );
     } finally {
       setLoading(false);
