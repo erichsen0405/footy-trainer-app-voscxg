@@ -273,7 +273,7 @@ export function useFootballData() {
         console.error('❌ Error loading internal activities:', internalError);
       }
 
-      // Load external activities using NEW ARCHITECTURE
+      // Load external activities using NEW ARCHITECTURE WITH TASKS
       const { data: externalData, error: externalError } = await supabase
         .from('events_external')
         .select(`
@@ -294,7 +294,15 @@ export function useFootballData() {
             category_id,
             manually_set_category,
             category_updated_at,
-            activity_categories(*)
+            activity_categories(*),
+            external_event_tasks(
+              id,
+              title,
+              description,
+              completed,
+              reminder_minutes,
+              task_template_id
+            )
           )
         `)
         .eq('events_local_meta.user_id', userId);
@@ -347,7 +355,7 @@ export function useFootballData() {
         });
       }
 
-      // Process external activities (NEW ARCHITECTURE)
+      // Process external activities (NEW ARCHITECTURE WITH TASKS)
       if (externalData) {
         console.log(`✅ Loaded ${externalData.length} external activities (NEW ARCHITECTURE)`);
         
@@ -371,8 +379,22 @@ export function useFootballData() {
 
           const activityDate = new Date(extEvent.start_date);
           
+          // Process external event tasks
+          const externalTasks: Task[] = (localMeta.external_event_tasks || [])
+            .filter((eet: any) => eet && eet.id && eet.title)
+            .map((eet: any) => ({
+              id: eet.id,
+              title: eet.title,
+              description: eet.description || '',
+              completed: eet.completed || false,
+              isTemplate: false,
+              categoryIds: [],
+              reminder: eet.reminder_minutes || undefined,
+              subtasks: [],
+            }));
+          
           const manuallySet = localMeta.manually_set_category ? '✅ MANUAL' : '❌ AUTO';
-          console.log(`📅 External activity "${extEvent.title}" -> Category: ${category.name} (${category.emoji}) [${manuallySet}]`);
+          console.log(`📅 External activity "${extEvent.title}" -> Category: ${category.name} (${category.emoji}) [${manuallySet}] - ${externalTasks.length} tasks`);
 
           loadedActivities.push({
             id: localMeta.id, // Use local metadata ID as the activity ID
@@ -381,7 +403,7 @@ export function useFootballData() {
             time: extEvent.start_time,
             location: extEvent.location || 'Ingen lokation',
             category,
-            tasks: [], // External activities don't have tasks yet
+            tasks: externalTasks,
             isExternal: true,
             externalCalendarId: extEvent.provider_calendar_id,
             externalEventId: extEvent.provider_event_uid,
@@ -1201,9 +1223,12 @@ export function useFootballData() {
     console.log('Setting task completed to:', newCompleted);
 
     try {
+      // Determine which table to update based on whether it's an external activity
+      const tableName = activity.isExternal ? 'external_event_tasks' : 'activity_tasks';
+      
       // Update in database
       const { error } = await supabase
-        .from('activity_tasks')
+        .from(tableName)
         .update({ completed: newCompleted })
         .eq('id', taskId);
 
@@ -1212,7 +1237,7 @@ export function useFootballData() {
         throw error;
       }
 
-      console.log('Task completion updated in database');
+      console.log(`Task completion updated in ${tableName}`);
 
       // Update local state
       setActivities(activities.map(act => {
@@ -1248,34 +1273,60 @@ export function useFootballData() {
     console.log('🗑️ Deleting activity task:', { activityId, taskId, userId });
 
     try {
-      // CRITICAL FIX: First verify the activity belongs to the user
-      const { data: activityData, error: activityError } = await supabase
-        .from('activities')
-        .select('id, user_id')
-        .eq('id', activityId)
-        .eq('user_id', userId)
-        .single();
-
-      if (activityError || !activityData) {
-        console.error('❌ Activity not found or access denied:', activityError);
-        throw new Error('Activity not found or you do not have permission to delete this task');
+      // Find the activity to determine if it's external
+      const activity = activities.find(a => a.id === activityId);
+      if (!activity) {
+        console.error('❌ Activity not found in local state');
+        throw new Error('Activity not found');
       }
 
-      console.log('✅ Activity ownership verified');
+      const isExternal = activity.isExternal || false;
+      const tableName = isExternal ? 'external_event_tasks' : 'activity_tasks';
+      
+      console.log(`📦 Deleting from ${tableName} (isExternal: ${isExternal})`);
 
-      // CRITICAL FIX: Delete the activity task with proper RLS verification
-      const { error: deleteError } = await supabase
-        .from('activity_tasks')
-        .delete()
-        .eq('id', taskId)
-        .eq('activity_id', activityId);
+      if (!isExternal) {
+        // CRITICAL FIX: First verify the activity belongs to the user (for internal activities)
+        const { data: activityData, error: activityError } = await supabase
+          .from('activities')
+          .select('id, user_id')
+          .eq('id', activityId)
+          .eq('user_id', userId)
+          .single();
 
-      if (deleteError) {
-        console.error('❌ Error deleting activity task from database:', deleteError);
-        throw deleteError;
+        if (activityError || !activityData) {
+          console.error('❌ Activity not found or access denied:', activityError);
+          throw new Error('Activity not found or you do not have permission to delete this task');
+        }
+
+        console.log('✅ Activity ownership verified');
+
+        // Delete the activity task
+        const { error: deleteError } = await supabase
+          .from('activity_tasks')
+          .delete()
+          .eq('id', taskId)
+          .eq('activity_id', activityId);
+
+        if (deleteError) {
+          console.error('❌ Error deleting activity task from database:', deleteError);
+          throw deleteError;
+        }
+      } else {
+        // For external events, delete from external_event_tasks
+        // RLS will handle permission checking
+        const { error: deleteError } = await supabase
+          .from('external_event_tasks')
+          .delete()
+          .eq('id', taskId);
+
+        if (deleteError) {
+          console.error('❌ Error deleting external event task from database:', deleteError);
+          throw deleteError;
+        }
       }
 
-      console.log('✅ Activity task deleted from database successfully');
+      console.log(`✅ Task deleted from ${tableName} successfully`);
 
       // CRITICAL FIX: Update local state immediately to reflect the deletion
       console.log('🔄 Updating local state to remove task');
