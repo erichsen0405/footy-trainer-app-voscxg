@@ -70,20 +70,19 @@ export default function CreatePlayerModal({
 
       console.log('Creating player invitation for:', playerEmail);
       console.log('Admin user ID:', adminUser.id);
-      console.log('Request payload:', {
+
+      const requestPayload = {
         email: playerEmail,
         fullName: playerName,
-        phoneNumber: playerPhone,
-      });
+        phoneNumber: playerPhone || null,
+      };
+
+      console.log('Request payload:', requestPayload);
 
       // Call the Edge Function to create the player
-      // This bypasses RLS by using service role on the backend
+      // The supabase client automatically includes the Authorization header
       const { data, error } = await supabase.functions.invoke('create-player', {
-        body: {
-          email: playerEmail,
-          fullName: playerName,
-          phoneNumber: playerPhone,
-        },
+        body: requestPayload,
       });
 
       console.log('Edge function response:', { data, error });
@@ -94,15 +93,44 @@ export default function CreatePlayerModal({
         console.error('Error message:', error.message);
         console.error('Error context:', error.context);
         
+        // Try to extract error message from context if it's a Response object
+        let errorMessage = 'Kunne ikke oprette spillerprofil';
+        
+        if (error.context && error.context instanceof Response) {
+          try {
+            // Clone the response so we can read it
+            const clonedResponse = error.context.clone();
+            const errorBody = await clonedResponse.json();
+            console.log('Error response body:', errorBody);
+            if (errorBody.error) {
+              errorMessage = errorBody.error;
+            }
+          } catch (e) {
+            console.error('Could not parse error response:', e);
+            try {
+              const clonedResponse = error.context.clone();
+              const errorText = await clonedResponse.text();
+              console.log('Error response text:', errorText);
+              if (errorText) {
+                errorMessage = errorText;
+              }
+            } catch (e2) {
+              console.error('Could not read error response text:', e2);
+            }
+          }
+        } else if (error.message) {
+          errorMessage = error.message;
+        }
+        
         // Provide more specific error messages
-        if (error.message?.includes('Only admins')) {
+        if (errorMessage.includes('Only admins')) {
           throw new Error('Du har ikke admin rettigheder til at oprette spillere.');
-        } else if (error.message?.includes('already registered')) {
+        } else if (errorMessage.includes('already registered') || errorMessage.includes('already exists')) {
           throw new Error('Denne email er allerede registreret i systemet.');
-        } else if (error.message?.includes('Unauthorized')) {
+        } else if (errorMessage.includes('Unauthorized') || errorMessage.includes('No authorization')) {
           throw new Error('Din session er udløbet. Log venligst ind igen.');
         } else {
-          throw new Error(error.message || 'Kunne ikke oprette spillerprofil');
+          throw new Error(errorMessage);
         }
       }
 

@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
       .from('user_roles')
       .select('role')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
     if (roleError) {
       console.error('Role check error:', roleError);
@@ -163,12 +163,15 @@ Deno.serve(async (req) => {
       );
     }
 
+    console.log('Role data:', roleData);
+
     if (!roleData || roleData.role !== 'admin') {
       console.error('User is not admin:', roleData);
       return new Response(
         JSON.stringify({
           success: false,
           error: 'Only admins can create player accounts',
+          userRole: roleData?.role || 'none',
         }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -192,6 +195,27 @@ Deno.serve(async (req) => {
       }
     );
 
+    // Check if user already exists
+    console.log('Checking if user already exists...');
+    const { data: existingUser, error: existingUserError } = await supabaseAdmin.auth.admin.listUsers();
+    
+    if (!existingUserError && existingUser) {
+      const userExists = existingUser.users.find(u => u.email === email);
+      if (userExists) {
+        console.error('User already exists:', email);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'A user with this email already exists',
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 400,
+          }
+        );
+      }
+    }
+
     // Generate a temporary password
     const tempPassword = `temp_${crypto.randomUUID()}`;
 
@@ -200,10 +224,10 @@ Deno.serve(async (req) => {
     const { data: signUpData, error: signUpError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password: tempPassword,
-      email_confirm: false, // Require email confirmation
+      email_confirm: true, // Auto-confirm email
       user_metadata: {
         full_name: fullName,
-        phone_number: phoneNumber || null,
+        phone_number: phoneNumber && phoneNumber.trim() ? phoneNumber : null,
       },
     });
 
@@ -243,7 +267,7 @@ Deno.serve(async (req) => {
     const { data: profileData, error: profileError } = await supabaseAdmin.rpc('create_player_profile', {
       p_user_id: playerId,
       p_full_name: fullName,
-      p_phone_number: phoneNumber || null,
+      p_phone_number: phoneNumber && phoneNumber.trim() ? phoneNumber : null,
     });
 
     if (profileError) {
