@@ -238,50 +238,32 @@ Deno.serve(async (req) => {
     const playerId = signUpData.user.id;
     console.log('Player account created:', playerId);
 
-    // Create profile for the player using admin client
-    // We need to use RPC or direct SQL to bypass RLS
-    console.log('Creating profile...');
-    const { error: profileError } = await supabaseAdmin.rpc('create_player_profile', {
+    // Create profile for the player using RPC function
+    console.log('Creating profile using RPC...');
+    const { data: profileData, error: profileError } = await supabaseAdmin.rpc('create_player_profile', {
       p_user_id: playerId,
       p_full_name: fullName,
       p_phone_number: phoneNumber || null,
-    }).catch(async (rpcError) => {
-      // If RPC doesn't exist, fall back to direct insert
-      console.log('RPC not found, using direct insert with service role');
-      return await supabaseAdmin
-        .from('profiles')
-        .insert({
-          user_id: playerId,
-          full_name: fullName,
-          phone_number: phoneNumber || null,
-        });
     });
 
     if (profileError) {
       console.error('Profile creation error:', profileError);
+      console.error('Profile error details:', JSON.stringify(profileError, null, 2));
       // Continue anyway - profile is not critical
       console.log('Continuing despite profile error...');
     } else {
       console.log('Profile created successfully');
     }
 
-    // Set user role as player using admin client
-    console.log('Assigning player role...');
-    const { error: roleInsertError } = await supabaseAdmin.rpc('create_player_role', {
+    // Set user role as player using RPC function
+    console.log('Assigning player role using RPC...');
+    const { data: roleInsertData, error: roleInsertError } = await supabaseAdmin.rpc('create_player_role', {
       p_user_id: playerId,
-    }).catch(async (rpcError) => {
-      // If RPC doesn't exist, fall back to direct insert
-      console.log('RPC not found, using direct insert with service role');
-      return await supabaseAdmin
-        .from('user_roles')
-        .insert({
-          user_id: playerId,
-          role: 'player',
-        });
     });
 
     if (roleInsertError) {
       console.error('Role assignment error:', roleInsertError);
+      console.error('Role error details:', JSON.stringify(roleInsertError, null, 2));
       return new Response(
         JSON.stringify({
           success: false,
@@ -296,24 +278,16 @@ Deno.serve(async (req) => {
 
     console.log('Player role assigned successfully');
 
-    // Create admin-player relationship using admin client
-    console.log('Creating admin-player relationship...');
-    const { error: relationshipError } = await supabaseAdmin.rpc('create_admin_player_relationship', {
+    // Create admin-player relationship using RPC function
+    console.log('Creating admin-player relationship using RPC...');
+    const { data: relationshipData, error: relationshipError } = await supabaseAdmin.rpc('create_admin_player_relationship', {
       p_admin_id: user.id,
       p_player_id: playerId,
-    }).catch(async (rpcError) => {
-      // If RPC doesn't exist, fall back to direct insert
-      console.log('RPC not found, using direct insert with service role');
-      return await supabaseAdmin
-        .from('admin_player_relationships')
-        .insert({
-          admin_id: user.id,
-          player_id: playerId,
-        });
     });
 
     if (relationshipError) {
       console.error('Relationship creation error:', relationshipError);
+      console.error('Relationship error details:', JSON.stringify(relationshipError, null, 2));
       return new Response(
         JSON.stringify({
           success: false,
@@ -340,6 +314,7 @@ Deno.serve(async (req) => {
 
     if (resetError) {
       console.error('Password reset email error:', resetError);
+      console.error('Reset error details:', JSON.stringify(resetError, null, 2));
       // Don't fail - the account is created, they can request reset later
       console.log('Continuing despite email error...');
     } else {
