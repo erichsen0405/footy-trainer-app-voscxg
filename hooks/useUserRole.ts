@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/app/integrations/supabase/client';
 
 export function useUserRole() {
-  const [userRole, setUserRole] = useState<'admin' | 'player' | null>(null);
+  const [userRole, setUserRole] = useState<'admin' | 'trainer' | 'player' | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -26,29 +26,29 @@ export function useUserRole() {
 
         if (error) {
           console.error('Error fetching user role:', error);
-          // If there's an error, default to admin for existing users
+          // If there's an error, default to player for new users
           // This ensures the app remains functional
-          setUserRole('admin');
+          setUserRole('player');
         } else if (data) {
-          setUserRole(data.role as 'admin' | 'player');
+          setUserRole(data.role as 'admin' | 'trainer' | 'player');
         } else {
-          // No role found - this is a new user, default to admin
-          console.log('No role found for user, defaulting to admin');
+          // No role found - this is a new user, default to player
+          console.log('No role found for user, defaulting to player');
           
-          // Try to create a default admin role for this user
+          // Try to create a default player role for this user
           const { error: insertError } = await supabase
             .from('user_roles')
-            .insert({ user_id: user.id, role: 'admin' });
+            .insert({ user_id: user.id, role: 'player' });
           
           if (insertError) {
             console.error('Error creating default role:', insertError);
           }
           
-          setUserRole('admin');
+          setUserRole('player');
         }
       } catch (error) {
         console.error('Error in fetchUserRole:', error);
-        setUserRole('admin');
+        setUserRole('player');
       } finally {
         setLoading(false);
       }
@@ -69,8 +69,8 @@ export function useUserRole() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // CRITICAL FIX: Export isAdmin as a computed property
-  const isAdmin = userRole === 'admin';
+  // Export isAdmin as a computed property - includes both admin and trainer roles
+  const isAdmin = userRole === 'admin' || userRole === 'trainer';
 
   return { userRole, loading, isAdmin };
 }
