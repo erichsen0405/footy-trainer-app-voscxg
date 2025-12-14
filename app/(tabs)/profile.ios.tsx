@@ -8,6 +8,8 @@ import { useTheme } from '@react-navigation/native';
 import { supabase } from '@/app/integrations/supabase/client';
 import CreatePlayerModal from '@/components/CreatePlayerModal';
 import PlayersList from '@/components/PlayersList';
+import ExternalCalendarManager from '@/components/ExternalCalendarManager';
+import SubscriptionManager from '@/components/SubscriptionManager';
 
 interface UserProfile {
   full_name: string;
@@ -23,7 +25,7 @@ interface AdminInfo {
 export default function ProfileScreen() {
   const theme = useTheme();
   const [user, setUser] = useState<any>(null);
-  const [userRole, setUserRole] = useState<'admin' | 'player' | null>(null);
+  const [userRole, setUserRole] = useState<'admin' | 'trainer' | 'player' | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [adminInfo, setAdminInfo] = useState<AdminInfo | null>(null);
   const [email, setEmail] = useState('');
@@ -34,6 +36,11 @@ export default function ProfileScreen() {
   const [showCreatePlayerModal, setShowCreatePlayerModal] = useState(false);
   const [playersRefreshTrigger, setPlayersRefreshTrigger] = useState(0);
   
+  // New onboarding flow states
+  const [needsRoleSelection, setNeedsRoleSelection] = useState(false);
+  const [needsSubscription, setNeedsSubscription] = useState(false);
+  const [selectedRole, setSelectedRole] = useState<'player' | 'trainer' | null>(null);
+  
   // Profile editing
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editName, setEditName] = useState('');
@@ -43,66 +50,86 @@ export default function ProfileScreen() {
   const [debugInfo, setDebugInfo] = useState<string[]>([]);
 
   const addDebugInfo = (message: string) => {
-    console.log('[SIGNUP DEBUG]', message);
+    console.log('[PROFILE DEBUG]', message);
     setDebugInfo(prev => [...prev, `${new Date().toISOString().split('T')[1].split('.')[0]} - ${message}`]);
   };
 
   useEffect(() => {
-    // Check current user
     const checkUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       console.log('Current user:', user);
       setUser(user);
       
       if (user) {
-        await fetchUserRole(user.id);
-        await fetchUserProfile(user.id);
+        await checkUserOnboarding(user.id);
       }
     };
     checkUser();
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       console.log('Auth state changed:', _event, session?.user);
       setUser(session?.user || null);
       
       if (session?.user) {
-        await fetchUserRole(session.user.id);
-        await fetchUserProfile(session.user.id);
+        await checkUserOnboarding(session.user.id);
       } else {
         setUserRole(null);
         setProfile(null);
         setAdminInfo(null);
+        setNeedsRoleSelection(false);
+        setNeedsSubscription(false);
       }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  const fetchUserRole = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', userId)
+  const checkUserOnboarding = async (userId: string) => {
+    addDebugInfo('Checking user onboarding status...');
+    
+    // Check if user has a role
+    const { data: roleData, error: roleError } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', userId)
+      .single();
+
+    if (roleError || !roleData) {
+      addDebugInfo('No role found - needs role selection');
+      setNeedsRoleSelection(true);
+      setNeedsSubscription(false);
+      return;
+    }
+
+    const role = roleData.role as 'admin' | 'trainer' | 'player';
+    setUserRole(role);
+    addDebugInfo(`Role found: ${role}`);
+
+    // If role is trainer or admin, check if they have a subscription
+    if (role === 'trainer' || role === 'admin') {
+      const { data: subData, error: subError } = await supabase
+        .from('subscriptions')
+        .select('id, status')
+        .eq('admin_id', userId)
         .single();
 
-      if (error) {
-        console.error('Error fetching user role:', error);
-        // Default to admin if no role is set
-        setUserRole('admin');
+      if (subError || !subData) {
+        addDebugInfo('No subscription found - needs subscription');
+        setNeedsRoleSelection(false);
+        setNeedsSubscription(true);
         return;
       }
 
-      setUserRole(data?.role as 'admin' | 'player');
-      
-      // If player, fetch admin info
-      if (data?.role === 'player') {
-        await fetchAdminInfo(userId);
-      }
-    } catch (error) {
-      console.error('Error in fetchUserRole:', error);
-      setUserRole('admin');
+      addDebugInfo(`Subscription found: ${subData.status}`);
+    }
+
+    // User is fully onboarded
+    setNeedsRoleSelection(false);
+    setNeedsSubscription(false);
+    await fetchUserProfile(userId);
+    
+    if (role === 'player') {
+      await fetchAdminInfo(userId);
     }
   };
 
@@ -131,7 +158,6 @@ export default function ProfileScreen() {
 
   const fetchAdminInfo = async (playerId: string) => {
     try {
-      // Get admin relationship
       const { data: relationship, error: relError } = await supabase
         .from('admin_player_relationships')
         .select('admin_id')
@@ -143,7 +169,6 @@ export default function ProfileScreen() {
         return;
       }
 
-      // Get admin profile
       const { data: adminProfile, error: profileError } = await supabase
         .from('profiles')
         .select('full_name, phone_number')
@@ -154,11 +179,10 @@ export default function ProfileScreen() {
         console.error('Error fetching admin profile:', profileError);
       }
 
-      // We can't directly get the email from auth.users, so we'll show what we have
       setAdminInfo({
         full_name: adminProfile?.full_name || 'Din træner',
         phone_number: adminProfile?.phone_number || '',
-        email: '', // Email not available through RLS
+        email: '',
       });
     } catch (error) {
       console.error('Error in fetchAdminInfo:', error);
@@ -178,7 +202,6 @@ export default function ProfileScreen() {
         .single();
 
       if (existingProfile) {
-        // Update existing profile
         const { error } = await supabase
           .from('profiles')
           .update({
@@ -189,7 +212,6 @@ export default function ProfileScreen() {
 
         if (error) throw error;
       } else {
-        // Create new profile
         const { error } = await supabase
           .from('profiles')
           .insert({
@@ -212,7 +234,7 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleAuth = async () => {
+  const handleSignup = async () => {
     if (!email || !password) {
       Alert.alert('Fejl', 'Udfyld venligst både email og adgangskode');
       return;
@@ -231,111 +253,203 @@ export default function ProfileScreen() {
 
     setLoading(true);
     setDebugInfo([]);
-    console.log(`Starting ${isSignUp ? 'signup' : 'login'} process for:`, email);
+    addDebugInfo('Starting signup process...');
     
     try {
-      if (isSignUp) {
-        addDebugInfo('Starting signup process...');
-        console.log('Attempting to sign up with:', email);
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: 'https://natively.dev/email-confirmed',
-            data: {
-              role: 'admin', // Default role for iOS simple signup
-            }
-          }
-        });
-
-        console.log('Sign up response:', { 
-          user: data.user?.id, 
-          session: data.session ? 'exists' : 'null',
-          error: error?.message 
-        });
-
-        if (error) {
-          addDebugInfo(`❌ Signup error: ${error.message}`);
-          console.error('Sign up error:', error);
-          Alert.alert(
-            'Kunne ikke oprette konto',
-            error.message || 'Der opstod en fejl. Prøv venligst igen.'
-          );
-          return;
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: 'https://natively.dev/email-confirmed'
         }
+      });
 
-        if (!data.user) {
-          addDebugInfo('❌ No user returned from signup');
-          Alert.alert('Fejl', 'Kunne ikke oprette bruger. Prøv venligst igen.');
-          return;
-        }
+      if (error) {
+        addDebugInfo(`❌ Signup error: ${error.message}`);
+        console.error('Sign up error:', error);
+        Alert.alert(
+          'Kunne ikke oprette konto',
+          error.message || 'Der opstod en fejl. Prøv venligst igen.'
+        );
+        return;
+      }
 
-        addDebugInfo(`✅ User created: ${data.user.id}`);
-        addDebugInfo(`Session exists: ${data.session ? 'Yes' : 'No (email confirmation required)'}`);
+      if (!data.user) {
+        addDebugInfo('❌ No user returned from signup');
+        Alert.alert('Fejl', 'Kunne ikke oprette bruger. Prøv venligst igen.');
+        return;
+      }
 
-        setShowSuccessMessage(true);
-        setEmail('');
-        setPassword('');
+      addDebugInfo(`✅ User created: ${data.user.id}`);
+      addDebugInfo(`Session exists: ${data.session ? 'Yes' : 'No (email confirmation required)'}`);
 
-        setTimeout(() => {
-          setShowSuccessMessage(false);
-          setIsSignUp(false);
-        }, 5000);
+      setEmail('');
+      setPassword('');
+      setShowSuccessMessage(true);
 
-        if (data.user && !data.session) {
-          addDebugInfo('📧 Email confirmation required');
-          Alert.alert(
-            'Bekræft din email ✉️',
-            'Vi har sendt en bekræftelsesmail til dig. Tjek venligst din indbakke og klik på linket for at aktivere din konto.\n\n⚠️ Bemærk: Tjek også din spam-mappe hvis du ikke kan finde emailen.\n\n✅ Din konto er oprettet, men du skal bekræfte din email før du kan logge ind.',
-            [{ text: 'OK' }]
-          );
-        } else if (data.session) {
-          addDebugInfo('✅ User logged in automatically');
-          Alert.alert('Succes! 🎉', 'Din konto er oprettet og du er nu logget ind!');
-        }
-      } else {
-        console.log('Attempting to sign in with:', email);
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
+      setTimeout(() => {
+        setShowSuccessMessage(false);
+        setIsSignUp(false);
+      }, 5000);
 
-        console.log('Sign in response:', { 
-          user: data.user?.id, 
-          session: data.session ? 'exists' : 'null',
-          error: error?.message 
-        });
-
-        if (error) {
-          console.error('Sign in error:', error);
-          
-          if (error.message.includes('Invalid login credentials')) {
-            Alert.alert(
-              'Login fejlede', 
-              'Email eller adgangskode er forkert.\n\nHusk:\n• Har du bekræftet din email?\n• Er du sikker på at du har oprettet en konto?\n• Prøv at nulstille din adgangskode hvis du har glemt den.'
-            );
-          } else if (error.message.includes('Email not confirmed')) {
-            Alert.alert(
-              'Email ikke bekræftet',
-              'Du skal bekræfte din email før du kan logge ind. Tjek din indbakke for bekræftelsesmailen.\n\nTjek også din spam-mappe.'
-            );
-          } else {
-            Alert.alert('Login fejlede', error.message || 'Der opstod en fejl. Prøv venligst igen.');
-          }
-          return;
-        }
-
-        if (data.session) {
-          Alert.alert('Succes! 🎉', 'Du er nu logget ind!');
-        }
+      if (data.user && !data.session) {
+        addDebugInfo('📧 Email confirmation required');
+        Alert.alert(
+          'Bekræft din email ✉️',
+          'Vi har sendt en bekræftelsesmail til dig. Tjek venligst din indbakke og klik på linket for at aktivere din konto.\n\n⚠️ Bemærk: Tjek også din spam-mappe hvis du ikke kan finde emailen.\n\n✅ Din konto er oprettet, men du skal bekræfte din email før du kan logge ind.\n\nNår du logger ind, vil du blive bedt om at vælge din rolle.',
+          [{ text: 'OK' }]
+        );
+      } else if (data.session) {
+        addDebugInfo('✅ User logged in automatically - will show role selection');
+        Alert.alert(
+          'Succes! 🎉', 
+          'Din konto er oprettet! Nu skal du vælge din rolle.',
+          [{ text: 'OK' }]
+        );
       }
     } catch (error: any) {
       addDebugInfo(`❌ Unexpected error: ${error.message}`);
-      console.error('Auth error:', error);
+      console.error('Signup error:', error);
       Alert.alert('Fejl', error.message || 'Der opstod en uventet fejl. Prøv venligst igen.');
     } finally {
       setLoading(false);
-      console.log(`${isSignUp ? 'Signup' : 'Login'} process completed`);
+    }
+  };
+
+  const handleLogin = async () => {
+    if (!email || !password) {
+      Alert.alert('Fejl', 'Udfyld venligst både email og adgangskode');
+      return;
+    }
+
+    setLoading(true);
+    console.log('Attempting to sign in with:', email);
+    
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      console.log('Sign in response:', { 
+        user: data.user?.id, 
+        session: data.session ? 'exists' : 'null',
+        error: error?.message 
+      });
+
+      if (error) {
+        console.error('Sign in error:', error);
+        
+        if (error.message.includes('Invalid login credentials')) {
+          Alert.alert(
+            'Login fejlede', 
+            'Email eller adgangskode er forkert.\n\nHusk:\n• Har du bekræftet din email?\n• Er du sikker på at du har oprettet en konto?\n• Prøv at nulstille din adgangskode hvis du har glemt den.'
+          );
+        } else if (error.message.includes('Email not confirmed')) {
+          Alert.alert(
+            'Email ikke bekræftet',
+            'Du skal bekræfte din email før du kan logge ind. Tjek din indbakke for bekræftelsesmailen.\n\nTjek også din spam-mappe.'
+          );
+        } else {
+          Alert.alert('Login fejlede', error.message || 'Der opstod en fejl. Prøv venligst igen.');
+        }
+        return;
+      }
+
+      if (data.session) {
+        Alert.alert('Succes! 🎉', 'Du er nu logget ind!');
+        setEmail('');
+        setPassword('');
+      }
+    } catch (error: any) {
+      console.error('Login error:', error);
+      Alert.alert('Fejl', error.message || 'Der opstod en uventet fejl. Prøv venligst igen.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRoleSelection = async (role: 'player' | 'trainer') => {
+    if (!user) return;
+
+    setLoading(true);
+    addDebugInfo(`Setting role to: ${role}`);
+
+    try {
+      // Insert role into user_roles table
+      const { error: roleError } = await supabase
+        .from('user_roles')
+        .insert({
+          user_id: user.id,
+          role: role
+        });
+
+      if (roleError) {
+        addDebugInfo(`❌ Error setting role: ${roleError.message}`);
+        Alert.alert('Fejl', 'Kunne ikke gemme rolle. Prøv venligst igen.');
+        return;
+      }
+
+      addDebugInfo(`✅ Role set successfully`);
+      setSelectedRole(role);
+      setUserRole(role);
+      setNeedsRoleSelection(false);
+
+      // If trainer, show subscription selection
+      if (role === 'trainer') {
+        setNeedsSubscription(true);
+        Alert.alert(
+          'Vælg abonnement',
+          'Som træner skal du vælge et abonnement for at kunne administrere spillere.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        // Player doesn't need subscription
+        Alert.alert(
+          'Velkommen! 🎉',
+          'Din konto er nu klar til brug!',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error: any) {
+      addDebugInfo(`❌ Unexpected error: ${error.message}`);
+      Alert.alert('Fejl', error.message || 'Der opstod en fejl. Prøv venligst igen.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCompleteSubscription = async (planId: string) => {
+    if (!user) return;
+
+    setLoading(true);
+    addDebugInfo(`Creating subscription with plan: ${planId}`);
+
+    try {
+      // Call the create-subscription edge function
+      const { data, error } = await supabase.functions.invoke('create-subscription', {
+        body: { planId }
+      });
+
+      if (error) {
+        addDebugInfo(`❌ Error creating subscription: ${error.message}`);
+        Alert.alert('Fejl', 'Kunne ikke oprette abonnement. Prøv venligst igen.');
+        return;
+      }
+
+      addDebugInfo(`✅ Subscription created successfully`);
+      setNeedsSubscription(false);
+      
+      Alert.alert(
+        'Velkommen! 🎉',
+        'Dit abonnement er aktiveret med 14 dages gratis prøveperiode. Du kan nu oprette spillere og hold!',
+        [{ text: 'OK' }]
+      );
+    } catch (error: any) {
+      addDebugInfo(`❌ Unexpected error: ${error.message}`);
+      Alert.alert('Fejl', error.message || 'Der opstod en fejl. Prøv venligst igen.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -349,6 +463,130 @@ export default function ProfileScreen() {
       Alert.alert('Fejl', error.message || 'Der opstod en fejl');
     }
   };
+
+  // Show role selection if user is logged in but has no role
+  if (user && needsRoleSelection) {
+    return (
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]} edges={['top']}>
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={styles.contentContainer}
+        >
+          <Text style={[styles.title, { color: theme.colors.text }]}>Vælg din rolle</Text>
+          <Text style={[styles.subtitle, { color: theme.dark ? '#98989D' : '#666' }]}>
+            Vælg om du er spiller eller træner for at fortsætte
+          </Text>
+
+          <GlassView style={styles.onboardingCard} glassEffectStyle="regular">
+            <Text style={[styles.onboardingTitle, { color: theme.colors.text }]}>
+              Velkommen til din nye konto! 🎉
+            </Text>
+            <Text style={[styles.onboardingDescription, { color: theme.dark ? '#98989D' : '#666' }]}>
+              For at komme i gang skal du vælge din rolle. Dette hjælper os med at tilpasse oplevelsen til dig.
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.roleCard, { backgroundColor: theme.dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}
+              onPress={() => handleRoleSelection('player')}
+              disabled={loading}
+              activeOpacity={0.7}
+            >
+              <IconSymbol
+                ios_icon_name="figure.run"
+                android_material_icon_name="directions_run"
+                size={48}
+                color={theme.colors.primary}
+              />
+              <Text style={[styles.roleTitle, { color: theme.colors.text }]}>Spiller</Text>
+              <Text style={[styles.roleDescription, { color: theme.dark ? '#98989D' : '#666' }]}>
+                Jeg er en spiller og vil holde styr på min træning
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.roleCard, { backgroundColor: theme.dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}
+              onPress={() => handleRoleSelection('trainer')}
+              disabled={loading}
+              activeOpacity={0.7}
+            >
+              <IconSymbol
+                ios_icon_name="person.3.fill"
+                android_material_icon_name="group"
+                size={48}
+                color={theme.colors.primary}
+              />
+              <Text style={[styles.roleTitle, { color: theme.colors.text }]}>Træner</Text>
+              <Text style={[styles.roleDescription, { color: theme.dark ? '#98989D' : '#666' }]}>
+                Jeg er træner og vil administrere spillere og hold
+              </Text>
+            </TouchableOpacity>
+
+            {loading && (
+              <View style={styles.loadingOverlay}>
+                <ActivityIndicator size="large" color={theme.colors.primary} />
+                <Text style={[styles.loadingText, { color: theme.colors.text }]}>
+                  Gemmer din rolle...
+                </Text>
+              </View>
+            )}
+          </GlassView>
+
+          {/* Debug Info */}
+          {debugInfo.length > 0 && (
+            <GlassView style={[styles.debugCard, { marginTop: 20 }]} glassEffectStyle="regular">
+              <Text style={[styles.debugTitle, { color: theme.colors.text }]}>📋 Debug Log:</Text>
+              <ScrollView style={styles.debugScroll} nestedScrollEnabled>
+                {debugInfo.map((info, index) => (
+                  <Text key={index} style={[styles.debugText, { color: theme.dark ? '#98989D' : '#666' }]}>
+                    {info}
+                  </Text>
+                ))}
+              </ScrollView>
+            </GlassView>
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // Show subscription selection if user is trainer but has no subscription
+  if (user && needsSubscription) {
+    return (
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]} edges={['top']}>
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={styles.contentContainer}
+        >
+          <Text style={[styles.title, { color: theme.colors.text }]}>Vælg dit abonnement</Text>
+          <Text style={[styles.subtitle, { color: theme.dark ? '#98989D' : '#666' }]}>
+            Som træner skal du vælge et abonnement for at administrere spillere
+          </Text>
+
+          <GlassView style={styles.subscriptionCard} glassEffectStyle="regular">
+            <SubscriptionManager 
+              onPlanSelected={handleCompleteSubscription}
+              isSignupFlow={true}
+              selectedRole="trainer"
+            />
+          </GlassView>
+
+          {/* Debug Info */}
+          {debugInfo.length > 0 && (
+            <GlassView style={[styles.debugCard, { marginTop: 20 }]} glassEffectStyle="regular">
+              <Text style={[styles.debugTitle, { color: theme.colors.text }]}>📋 Debug Log:</Text>
+              <ScrollView style={styles.debugScroll} nestedScrollEnabled>
+                {debugInfo.map((info, index) => (
+                  <Text key={index} style={[styles.debugText, { color: theme.dark ? '#98989D' : '#666' }]}>
+                    {info}
+                  </Text>
+                ))}
+              </ScrollView>
+            </GlassView>
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]} edges={['top']}>
@@ -374,10 +612,10 @@ export default function ProfileScreen() {
               </Text>
               {userRole && (
                 <View style={[styles.roleBadge, { 
-                  backgroundColor: userRole === 'admin' ? theme.colors.primary : '#FF9500' 
+                  backgroundColor: (userRole === 'admin' || userRole === 'trainer') ? theme.colors.primary : '#FF9500' 
                 }]}>
                   <Text style={styles.roleText}>
-                    {userRole === 'admin' ? 'Admin/Træner' : 'Spiller'}
+                    {(userRole === 'admin' || userRole === 'trainer') ? 'Træner' : 'Spiller'}
                   </Text>
                 </View>
               )}
@@ -524,8 +762,46 @@ export default function ProfileScreen() {
               </GlassView>
             )}
 
-            {/* Player Management Section for Admins */}
-            {userRole === 'admin' && (
+            {/* Calendar Sync Section */}
+            <GlassView style={styles.section} glassEffectStyle="regular">
+              <View style={styles.sectionHeader}>
+                <IconSymbol
+                  ios_icon_name="calendar.badge.plus"
+                  android_material_icon_name="event"
+                  size={28}
+                  color={theme.colors.primary}
+                />
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+                  Kalender Synkronisering
+                </Text>
+              </View>
+              <Text style={[styles.sectionDescription, { color: theme.dark ? '#98989D' : '#666' }]}>
+                Tilknyt eksterne kalendere (iCal/webcal) for automatisk at importere aktiviteter
+              </Text>
+              <ExternalCalendarManager />
+            </GlassView>
+
+            {/* Subscription Section */}
+            <GlassView style={styles.section} glassEffectStyle="regular">
+              <View style={styles.sectionHeader}>
+                <IconSymbol
+                  ios_icon_name="creditcard.fill"
+                  android_material_icon_name="payment"
+                  size={28}
+                  color={theme.colors.primary}
+                />
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+                  Abonnement
+                </Text>
+              </View>
+              <Text style={[styles.sectionDescription, { color: theme.dark ? '#98989D' : '#666' }]}>
+                Administrer dit abonnement
+              </Text>
+              <SubscriptionManager />
+            </GlassView>
+
+            {/* Player Management Section for Trainers */}
+            {(userRole === 'admin' || userRole === 'trainer') && (
               <GlassView style={styles.playerManagementSection} glassEffectStyle="regular">
                 <View style={styles.playerManagementHeader}>
                   <IconSymbol 
@@ -544,7 +820,6 @@ export default function ProfileScreen() {
                   </View>
                 </View>
 
-                {/* Players List */}
                 <PlayersList 
                   onCreatePlayer={() => setShowCreatePlayerModal(true)}
                   refreshTrigger={playersRefreshTrigger}
@@ -574,7 +849,8 @@ export default function ProfileScreen() {
                 <Text style={styles.successTitle}>Konto oprettet! 🎉</Text>
                 <Text style={styles.successText}>
                   Din konto er blevet oprettet succesfuldt.{'\n'}
-                  Tjek din email for at bekræfte din konto.
+                  Tjek din email for at bekræfte din konto.{'\n\n'}
+                  Når du logger ind, vil du blive bedt om at vælge din rolle.
                 </Text>
                 
                 {/* Debug Info */}
@@ -675,7 +951,7 @@ export default function ProfileScreen() {
                       { backgroundColor: theme.colors.primary },
                       loading && { opacity: 0.6 }
                     ]}
-                    onPress={handleAuth}
+                    onPress={isSignUp ? handleSignup : handleLogin}
                     disabled={loading}
                     activeOpacity={0.7}
                   >
@@ -703,7 +979,7 @@ export default function ProfileScreen() {
                   />
                   <Text style={[styles.infoBoxText, { color: theme.dark ? '#98989D' : '#666' }]}>
                     {isSignUp 
-                      ? 'Efter du opretter din konto, vil du modtage en bekræftelsesmail. Du skal klikke på linket i emailen før du kan logge ind.'
+                      ? 'Efter du opretter din konto, vil du modtage en bekræftelsesmail. Når du logger ind, vil du blive bedt om at vælge din rolle (spiller eller træner).'
                       : 'Log ind for at gemme dine data sikkert i skyen.'
                     }
                   </Text>
@@ -787,6 +1063,11 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
+  },
+  sectionDescription: {
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 20,
   },
   profileInfo: {
     gap: 12,
@@ -895,6 +1176,11 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     textAlign: 'center',
   },
+  subtitle: {
+    fontSize: 16,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
   authToggle: {
     flexDirection: 'row',
     gap: 12,
@@ -970,5 +1256,58 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     color: '#fff',
     opacity: 0.9,
+  },
+  onboardingCard: {
+    borderRadius: 12,
+    padding: 24,
+    marginBottom: 16,
+  },
+  onboardingTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  onboardingDescription: {
+    fontSize: 16,
+    lineHeight: 24,
+    marginBottom: 32,
+    textAlign: 'center',
+  },
+  roleCard: {
+    padding: 24,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: 'rgba(0,122,255,0.5)',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  roleTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  roleDescription: {
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  loadingOverlay: {
+    marginTop: 24,
+    alignItems: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 16,
+  },
+  subscriptionCard: {
+    borderRadius: 12,
+    padding: 24,
+    marginBottom: 16,
+  },
+  debugCard: {
+    borderRadius: 12,
+    padding: 16,
   },
 });

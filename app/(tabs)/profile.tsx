@@ -33,10 +33,10 @@ export default function ProfileScreen() {
   const [showCreatePlayerModal, setShowCreatePlayerModal] = useState(false);
   const [playersRefreshTrigger, setPlayersRefreshTrigger] = useState(0);
   
-  // New signup flow states
-  const [signupStep, setSignupStep] = useState<'credentials' | 'role' | 'subscription'>('credentials');
+  // New onboarding flow states
+  const [needsRoleSelection, setNeedsRoleSelection] = useState(false);
+  const [needsSubscription, setNeedsSubscription] = useState(false);
   const [selectedRole, setSelectedRole] = useState<'player' | 'trainer' | null>(null);
-  const [pendingSignupData, setPendingSignupData] = useState<{ email: string; password: string } | null>(null);
   
   // Profile editing
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -50,7 +50,7 @@ export default function ProfileScreen() {
   const isDark = colorScheme === 'dark';
 
   const addDebugInfo = (message: string) => {
-    console.log('[SIGNUP DEBUG]', message);
+    console.log('[PROFILE DEBUG]', message);
     setDebugInfo(prev => [...prev, `${new Date().toISOString().split('T')[1].split('.')[0]} - ${message}`]);
   };
 
@@ -61,8 +61,7 @@ export default function ProfileScreen() {
       setUser(user);
       
       if (user) {
-        await fetchUserRole(user.id);
-        await fetchUserProfile(user.id);
+        await checkUserOnboarding(user.id);
       }
     };
     checkUser();
@@ -72,40 +71,65 @@ export default function ProfileScreen() {
       setUser(session?.user || null);
       
       if (session?.user) {
-        await fetchUserRole(session.user.id);
-        await fetchUserProfile(session.user.id);
+        await checkUserOnboarding(session.user.id);
       } else {
         setUserRole(null);
         setProfile(null);
         setAdminInfo(null);
+        setNeedsRoleSelection(false);
+        setNeedsSubscription(false);
       }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  const fetchUserRole = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', userId)
+  const checkUserOnboarding = async (userId: string) => {
+    addDebugInfo('Checking user onboarding status...');
+    
+    // Check if user has a role
+    const { data: roleData, error: roleError } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', userId)
+      .single();
+
+    if (roleError || !roleData) {
+      addDebugInfo('No role found - needs role selection');
+      setNeedsRoleSelection(true);
+      setNeedsSubscription(false);
+      return;
+    }
+
+    const role = roleData.role as 'admin' | 'trainer' | 'player';
+    setUserRole(role);
+    addDebugInfo(`Role found: ${role}`);
+
+    // If role is trainer or admin, check if they have a subscription
+    if (role === 'trainer' || role === 'admin') {
+      const { data: subData, error: subError } = await supabase
+        .from('subscriptions')
+        .select('id, status')
+        .eq('admin_id', userId)
         .single();
 
-      if (error) {
-        console.error('Error fetching user role:', error);
-        setUserRole('player');
+      if (subError || !subData) {
+        addDebugInfo('No subscription found - needs subscription');
+        setNeedsRoleSelection(false);
+        setNeedsSubscription(true);
         return;
       }
 
-      setUserRole(data?.role as 'admin' | 'trainer' | 'player');
-      
-      if (data?.role === 'player') {
-        await fetchAdminInfo(userId);
-      }
-    } catch (error) {
-      console.error('Error in fetchUserRole:', error);
-      setUserRole('player');
+      addDebugInfo(`Subscription found: ${subData.status}`);
+    }
+
+    // User is fully onboarded
+    setNeedsRoleSelection(false);
+    setNeedsSubscription(false);
+    await fetchUserProfile(userId);
+    
+    if (role === 'player') {
+      await fetchAdminInfo(userId);
     }
   };
 
@@ -210,7 +234,7 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleStartSignup = () => {
+  const handleSignup = async () => {
     if (!email || !password) {
       Alert.alert('Fejl', 'Udfyld venligst både email og adgangskode');
       return;
@@ -227,73 +251,40 @@ export default function ProfileScreen() {
       return;
     }
 
-    // Store credentials and move to role selection
-    setPendingSignupData({ email, password });
-    setSignupStep('role');
-    setDebugInfo([]); // Clear debug info
-    addDebugInfo('Credentials validated, moving to role selection');
-  };
-
-  const handleRoleSelection = (role: 'player' | 'trainer') => {
-    setSelectedRole(role);
-    setSignupStep('subscription');
-    addDebugInfo(`Role selected: ${role}`);
-  };
-
-  const handleCompleteSignup = async (planId: string) => {
-    if (!pendingSignupData || !selectedRole) {
-      Alert.alert('Fejl', 'Manglende oplysninger. Prøv venligst igen.');
-      setSignupStep('credentials');
-      return;
-    }
-
     setLoading(true);
-    addDebugInfo(`Starting signup with role: ${selectedRole}, plan: ${planId}`);
+    setDebugInfo([]);
+    addDebugInfo('Starting signup process...');
     
     try {
-      // Step 1: Create the user account with metadata
-      addDebugInfo('Step 1: Creating user account...');
-      const { data: signupData, error: signupError } = await supabase.auth.signUp({
-        email: pendingSignupData.email,
-        password: pendingSignupData.password,
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
         options: {
-          emailRedirectTo: 'https://natively.dev/email-confirmed',
-          data: {
-            role: selectedRole,
-            plan_id: planId,
-          }
+          emailRedirectTo: 'https://natively.dev/email-confirmed'
         }
       });
 
-      if (signupError) {
-        addDebugInfo(`❌ Signup error: ${signupError.message}`);
-        console.error('Sign up error:', signupError);
+      if (error) {
+        addDebugInfo(`❌ Signup error: ${error.message}`);
+        console.error('Sign up error:', error);
         Alert.alert(
           'Kunne ikke oprette konto',
-          signupError.message || 'Der opstod en fejl. Prøv venligst igen.'
+          error.message || 'Der opstod en fejl. Prøv venligst igen.'
         );
         return;
       }
 
-      if (!signupData.user) {
+      if (!data.user) {
         addDebugInfo('❌ No user returned from signup');
         Alert.alert('Fejl', 'Kunne ikke oprette bruger. Prøv venligst igen.');
         return;
       }
 
-      addDebugInfo(`✅ User created: ${signupData.user.id}`);
-      addDebugInfo(`Session exists: ${signupData.session ? 'Yes' : 'No (email confirmation required)'}`);
+      addDebugInfo(`✅ User created: ${data.user.id}`);
+      addDebugInfo(`Session exists: ${data.session ? 'Yes' : 'No (email confirmation required)'}`);
 
-      // Step 2: The role and subscription will be set by a database trigger or Edge Function
-      // For now, we'll show a success message
-      addDebugInfo('✅ Account creation completed');
-
-      // Reset form
       setEmail('');
       setPassword('');
-      setPendingSignupData(null);
-      setSelectedRole(null);
-      setSignupStep('credentials');
       setShowSuccessMessage(true);
 
       setTimeout(() => {
@@ -301,23 +292,23 @@ export default function ProfileScreen() {
         setIsSignUp(false);
       }, 5000);
 
-      if (signupData.user && !signupData.session) {
+      if (data.user && !data.session) {
         addDebugInfo('📧 Email confirmation required');
         Alert.alert(
           'Bekræft din email ✉️',
-          `Vi har sendt en bekræftelsesmail til ${pendingSignupData.email}.\n\n` +
+          `Vi har sendt en bekræftelsesmail til ${email}.\n\n` +
           `Tjek venligst din indbakke og klik på linket for at aktivere din konto.\n\n` +
           `⚠️ Bemærk: Tjek også din spam-mappe hvis du ikke kan finde emailen.\n\n` +
-          `✅ Din konto er oprettet med:\n` +
-          `• Rolle: ${selectedRole === 'player' ? 'Spiller' : 'Træner'}\n` +
-          `• Abonnement: Valgt plan\n` +
-          `• 14 dages gratis prøveperiode\n\n` +
-          `Når du bekræfter din email, vil alle funktioner være aktive.`,
+          `Når du bekræfter din email og logger ind, vil du blive bedt om at vælge din rolle (spiller eller træner).`,
           [{ text: 'OK' }]
         );
-      } else if (signupData.session) {
-        addDebugInfo('✅ User logged in automatically');
-        Alert.alert('Succes! 🎉', 'Din konto er oprettet og du er nu logget ind! Dit abonnement er aktivt.');
+      } else if (data.session) {
+        addDebugInfo('✅ User logged in automatically - will show role selection');
+        Alert.alert(
+          'Succes! 🎉', 
+          'Din konto er oprettet! Nu skal du vælge din rolle.',
+          [{ text: 'OK' }]
+        );
       }
     } catch (error: any) {
       addDebugInfo(`❌ Unexpected error: ${error.message}`);
@@ -381,6 +372,90 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleRoleSelection = async (role: 'player' | 'trainer') => {
+    if (!user) return;
+
+    setLoading(true);
+    addDebugInfo(`Setting role to: ${role}`);
+
+    try {
+      // Insert role into user_roles table
+      const { error: roleError } = await supabase
+        .from('user_roles')
+        .insert({
+          user_id: user.id,
+          role: role
+        });
+
+      if (roleError) {
+        addDebugInfo(`❌ Error setting role: ${roleError.message}`);
+        Alert.alert('Fejl', 'Kunne ikke gemme rolle. Prøv venligst igen.');
+        return;
+      }
+
+      addDebugInfo(`✅ Role set successfully`);
+      setSelectedRole(role);
+      setUserRole(role);
+      setNeedsRoleSelection(false);
+
+      // If trainer, show subscription selection
+      if (role === 'trainer') {
+        setNeedsSubscription(true);
+        Alert.alert(
+          'Vælg abonnement',
+          'Som træner skal du vælge et abonnement for at kunne administrere spillere.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        // Player doesn't need subscription
+        Alert.alert(
+          'Velkommen! 🎉',
+          'Din konto er nu klar til brug!',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error: any) {
+      addDebugInfo(`❌ Unexpected error: ${error.message}`);
+      Alert.alert('Fejl', error.message || 'Der opstod en fejl. Prøv venligst igen.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCompleteSubscription = async (planId: string) => {
+    if (!user) return;
+
+    setLoading(true);
+    addDebugInfo(`Creating subscription with plan: ${planId}`);
+
+    try {
+      // Call the create-subscription edge function
+      const { data, error } = await supabase.functions.invoke('create-subscription', {
+        body: { planId }
+      });
+
+      if (error) {
+        addDebugInfo(`❌ Error creating subscription: ${error.message}`);
+        Alert.alert('Fejl', 'Kunne ikke oprette abonnement. Prøv venligst igen.');
+        return;
+      }
+
+      addDebugInfo(`✅ Subscription created successfully`);
+      setNeedsSubscription(false);
+      
+      Alert.alert(
+        'Velkommen! 🎉',
+        'Dit abonnement er aktiveret med 14 dages gratis prøveperiode. Du kan nu oprette spillere og hold!',
+        [{ text: 'OK' }]
+      );
+    } catch (error: any) {
+      addDebugInfo(`❌ Unexpected error: ${error.message}`);
+      Alert.alert('Fejl', error.message || 'Der opstod en fejl. Prøv venligst igen.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSignOut = async () => {
     try {
       const { error } = await supabase.auth.signOut();
@@ -398,6 +473,136 @@ export default function ProfileScreen() {
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
 
   const isTrainer = userRole === 'admin' || userRole === 'trainer';
+
+  // Show role selection if user is logged in but has no role
+  if (user && needsRoleSelection) {
+    return (
+      <View style={[styles.container, { backgroundColor: bgColor }]}>
+        <ScrollView 
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.header}>
+            <Text style={[styles.headerTitle, { color: textColor }]}>Vælg din rolle</Text>
+            <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
+              Vælg om du er spiller eller træner for at fortsætte
+            </Text>
+          </View>
+
+          <View style={[styles.card, { backgroundColor: cardBgColor }]}>
+            <Text style={[styles.onboardingTitle, { color: textColor }]}>
+              Velkommen til din nye konto! 🎉
+            </Text>
+            <Text style={[styles.onboardingDescription, { color: textSecondaryColor }]}>
+              For at komme i gang skal du vælge din rolle. Dette hjælper os med at tilpasse oplevelsen til dig.
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.roleCard, { backgroundColor: bgColor }]}
+              onPress={() => handleRoleSelection('player')}
+              disabled={loading}
+              activeOpacity={0.7}
+            >
+              <IconSymbol
+                ios_icon_name="figure.run"
+                android_material_icon_name="directions_run"
+                size={48}
+                color={colors.primary}
+              />
+              <Text style={[styles.roleTitle, { color: textColor }]}>Spiller</Text>
+              <Text style={[styles.roleDescription, { color: textSecondaryColor }]}>
+                Jeg er en spiller og vil holde styr på min træning
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.roleCard, { backgroundColor: bgColor }]}
+              onPress={() => handleRoleSelection('trainer')}
+              disabled={loading}
+              activeOpacity={0.7}
+            >
+              <IconSymbol
+                ios_icon_name="person.3.fill"
+                android_material_icon_name="group"
+                size={48}
+                color={colors.primary}
+              />
+              <Text style={[styles.roleTitle, { color: textColor }]}>Træner</Text>
+              <Text style={[styles.roleDescription, { color: textSecondaryColor }]}>
+                Jeg er træner og vil administrere spillere og hold
+              </Text>
+            </TouchableOpacity>
+
+            {loading && (
+              <View style={styles.loadingOverlay}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={[styles.loadingText, { color: textColor }]}>
+                  Gemmer din rolle...
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* Debug Info */}
+          {debugInfo.length > 0 && (
+            <View style={[styles.card, { backgroundColor: cardBgColor }]}>
+              <Text style={[styles.debugTitle, { color: textColor }]}>📋 Debug Log:</Text>
+              <ScrollView style={styles.debugScroll} nestedScrollEnabled>
+                {debugInfo.map((info, index) => (
+                  <Text key={index} style={[styles.debugText, { color: textSecondaryColor }]}>
+                    {info}
+                  </Text>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // Show subscription selection if user is trainer but has no subscription
+  if (user && needsSubscription) {
+    return (
+      <View style={[styles.container, { backgroundColor: bgColor }]}>
+        <ScrollView 
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.header}>
+            <Text style={[styles.headerTitle, { color: textColor }]}>Vælg dit abonnement</Text>
+            <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
+              Som træner skal du vælge et abonnement for at administrere spillere
+            </Text>
+          </View>
+
+          <View style={[styles.card, { backgroundColor: cardBgColor }]}>
+            <SubscriptionManager 
+              onPlanSelected={handleCompleteSubscription}
+              isSignupFlow={true}
+              selectedRole="trainer"
+            />
+          </View>
+
+          {/* Debug Info */}
+          {debugInfo.length > 0 && (
+            <View style={[styles.card, { backgroundColor: cardBgColor, marginTop: 16 }]}>
+              <Text style={[styles.debugTitle, { color: textColor }]}>📋 Debug Log:</Text>
+              <ScrollView style={styles.debugScroll} nestedScrollEnabled>
+                {debugInfo.map((info, index) => (
+                  <Text key={index} style={[styles.debugText, { color: textSecondaryColor }]}>
+                    {info}
+                  </Text>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+        </ScrollView>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: bgColor }]}>
@@ -645,8 +850,9 @@ export default function ProfileScreen() {
                 />
                 <Text style={styles.successTitle}>Konto oprettet! 🎉</Text>
                 <Text style={styles.successText}>
-                  Din konto er blevet oprettet succesfuldt med dit valgte abonnement.{'\n'}
-                  Tjek din email for at bekræfte din konto.
+                  Din konto er blevet oprettet succesfuldt.{'\n'}
+                  Tjek din email for at bekræfte din konto.{'\n\n'}
+                  Når du logger ind, vil du blive bedt om at vælge din rolle.
                 </Text>
                 
                 {/* Debug Info */}
@@ -671,9 +877,6 @@ export default function ProfileScreen() {
                     ]}
                     onPress={() => {
                       setIsSignUp(false);
-                      setSignupStep('credentials');
-                      setPendingSignupData(null);
-                      setSelectedRole(null);
                       setDebugInfo([]);
                     }}
                     activeOpacity={0.7}
@@ -692,7 +895,6 @@ export default function ProfileScreen() {
                     ]}
                     onPress={() => {
                       setIsSignUp(true);
-                      setSignupStep('credentials');
                       setDebugInfo([]);
                     }}
                     activeOpacity={0.7}
@@ -706,212 +908,77 @@ export default function ProfileScreen() {
                   </TouchableOpacity>
                 </View>
 
-                {!isSignUp ? (
-                  // Login Form
-                  <View style={styles.form}>
-                    <Text style={[styles.label, { color: textColor }]}>Email</Text>
-                    <TextInput
-                      style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
-                      value={email}
-                      onChangeText={setEmail}
-                      placeholder="din@email.dk"
-                      placeholderTextColor={textSecondaryColor}
-                      autoCapitalize="none"
-                      keyboardType="email-address"
-                      editable={!loading}
-                      autoCorrect={false}
-                    />
+                <View style={styles.form}>
+                  <Text style={[styles.label, { color: textColor }]}>Email</Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+                    value={email}
+                    onChangeText={setEmail}
+                    placeholder="din@email.dk"
+                    placeholderTextColor={textSecondaryColor}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                    editable={!loading}
+                    autoCorrect={false}
+                  />
 
-                    <Text style={[styles.label, { color: textColor }]}>Adgangskode</Text>
-                    <TextInput
-                      style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
-                      value={password}
-                      onChangeText={setPassword}
-                      placeholder="Mindst 6 tegn"
-                      placeholderTextColor={textSecondaryColor}
-                      secureTextEntry
-                      editable={!loading}
-                      autoCorrect={false}
-                      autoCapitalize="none"
-                    />
+                  <Text style={[styles.label, { color: textColor }]}>Adgangskode</Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="Mindst 6 tegn"
+                    placeholderTextColor={textSecondaryColor}
+                    secureTextEntry
+                    editable={!loading}
+                    autoCorrect={false}
+                    autoCapitalize="none"
+                  />
 
-                    <TouchableOpacity
-                      style={[
-                        styles.authButton,
-                        { backgroundColor: colors.primary },
-                        loading && { opacity: 0.6 }
-                      ]}
-                      onPress={handleLogin}
-                      disabled={loading}
-                      activeOpacity={0.7}
-                    >
-                      {loading ? (
-                        <View style={styles.loadingContainer}>
-                          <ActivityIndicator color="#fff" size="small" />
-                          <Text style={[styles.authButtonText, { marginLeft: 12 }]}>
-                            Logger ind...
-                          </Text>
-                        </View>
-                      ) : (
-                        <Text style={styles.authButtonText}>Log ind</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                ) : signupStep === 'credentials' ? (
-                  // Signup Step 1: Credentials
-                  <View style={styles.form}>
-                    <Text style={[styles.stepTitle, { color: textColor }]}>Trin 1 af 3: Opret login</Text>
-                    
-                    <Text style={[styles.label, { color: textColor }]}>Email</Text>
-                    <TextInput
-                      style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
-                      value={email}
-                      onChangeText={setEmail}
-                      placeholder="din@email.dk"
-                      placeholderTextColor={textSecondaryColor}
-                      autoCapitalize="none"
-                      keyboardType="email-address"
-                      editable={!loading}
-                      autoCorrect={false}
-                    />
-
-                    <Text style={[styles.label, { color: textColor }]}>Adgangskode</Text>
-                    <TextInput
-                      style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
-                      value={password}
-                      onChangeText={setPassword}
-                      placeholder="Mindst 6 tegn"
-                      placeholderTextColor={textSecondaryColor}
-                      secureTextEntry
-                      editable={!loading}
-                      autoCorrect={false}
-                      autoCapitalize="none"
-                    />
-
-                    <TouchableOpacity
-                      style={[styles.authButton, { backgroundColor: colors.primary }]}
-                      onPress={handleStartSignup}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.authButtonText}>Næste</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : signupStep === 'role' ? (
-                  // Signup Step 2: Role Selection
-                  <View style={styles.form}>
-                    <Text style={[styles.stepTitle, { color: textColor }]}>Trin 2 af 3: Vælg din rolle</Text>
-                    <Text style={[styles.stepDescription, { color: textSecondaryColor }]}>
-                      Vælg om du er spiller eller træner
-                    </Text>
-
-                    <TouchableOpacity
-                      style={[
-                        styles.roleCard,
-                        { backgroundColor: bgColor, borderColor: selectedRole === 'player' ? colors.primary : 'transparent' }
-                      ]}
-                      onPress={() => handleRoleSelection('player')}
-                      activeOpacity={0.7}
-                    >
-                      <IconSymbol
-                        ios_icon_name="figure.run"
-                        android_material_icon_name="directions_run"
-                        size={48}
-                        color={colors.primary}
-                      />
-                      <Text style={[styles.roleTitle, { color: textColor }]}>Spiller</Text>
-                      <Text style={[styles.roleDescription, { color: textSecondaryColor }]}>
-                        Jeg er en spiller og vil holde styr på min træning
+                  <TouchableOpacity
+                    style={[
+                      styles.authButton,
+                      { backgroundColor: colors.primary },
+                      loading && { opacity: 0.6 }
+                    ]}
+                    onPress={isSignUp ? handleSignup : handleLogin}
+                    disabled={loading}
+                    activeOpacity={0.7}
+                  >
+                    {loading ? (
+                      <View style={styles.loadingContainer}>
+                        <ActivityIndicator color="#fff" size="small" />
+                        <Text style={[styles.authButtonText, { marginLeft: 12 }]}>
+                          {isSignUp ? 'Opretter konto...' : 'Logger ind...'}
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.authButtonText}>
+                        {isSignUp ? 'Opret konto' : 'Log ind'}
                       </Text>
-                    </TouchableOpacity>
+                    )}
+                  </TouchableOpacity>
+                </View>
 
-                    <TouchableOpacity
-                      style={[
-                        styles.roleCard,
-                        { backgroundColor: bgColor, borderColor: selectedRole === 'trainer' ? colors.primary : 'transparent' }
-                      ]}
-                      onPress={() => handleRoleSelection('trainer')}
-                      activeOpacity={0.7}
-                    >
-                      <IconSymbol
-                        ios_icon_name="person.3.fill"
-                        android_material_icon_name="group"
-                        size={48}
-                        color={colors.primary}
-                      />
-                      <Text style={[styles.roleTitle, { color: textColor }]}>Træner</Text>
-                      <Text style={[styles.roleDescription, { color: textSecondaryColor }]}>
-                        Jeg er træner og vil administrere spillere og hold
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[styles.backButton, { backgroundColor: colors.highlight }]}
-                      onPress={() => setSignupStep('credentials')}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.backButtonText, { color: textColor }]}>Tilbage</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  // Signup Step 3: Subscription Selection
-                  <View style={styles.form}>
-                    <Text style={[styles.stepTitle, { color: textColor }]}>
-                      Trin 3 af 3: Vælg abonnement
+                <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd', marginTop: 24 }]}>
+                  <IconSymbol 
+                    ios_icon_name="info.circle" 
+                    android_material_icon_name="info" 
+                    size={28} 
+                    color={colors.secondary} 
+                  />
+                  <View style={styles.infoTextContainer}>
+                    <Text style={[styles.infoTitle, { color: textColor }]}>
+                      {isSignUp ? 'Hvad sker der efter oprettelse?' : 'Hvorfor skal jeg logge ind?'}
                     </Text>
-                    <Text style={[styles.stepDescription, { color: textSecondaryColor }]}>
-                      {selectedRole === 'trainer' 
-                        ? 'Vælg et trænerabonnement baseret på antal spillere'
-                        : 'Vælg et spillerabonnement for at få adgang til alle funktioner'
+                    <Text style={[styles.infoBoxText, { color: textSecondaryColor }]}>
+                      {isSignUp 
+                        ? 'Efter du opretter din konto, vil du modtage en bekræftelsesmail. Når du logger ind, vil du blive bedt om at vælge din rolle (spiller eller træner) og derefter vælge et abonnement hvis du er træner.'
+                        : 'For at gemme eksterne kalendere og synkronisere dine data på tværs af enheder, skal du oprette en gratis konto.\n\nDine data gemmes sikkert i Supabase og er kun tilgængelige for dig.'
                       }
                     </Text>
-
-                    <SubscriptionManager 
-                      onPlanSelected={handleCompleteSignup}
-                      isSignupFlow={true}
-                      selectedRole={selectedRole}
-                    />
-
-                    <TouchableOpacity
-                      style={[styles.backButton, { backgroundColor: colors.highlight, marginTop: 16 }]}
-                      onPress={() => setSignupStep('role')}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.backButtonText, { color: textColor }]}>Tilbage</Text>
-                    </TouchableOpacity>
-                    
-                    {/* Debug Info during signup */}
-                    {debugInfo.length > 0 && (
-                      <View style={[styles.debugContainer, { backgroundColor: isDark ? '#1a2a3a' : '#f0f8ff', marginTop: 20 }]}>
-                        <Text style={[styles.debugTitle, { color: textColor }]}>📋 Debug Log:</Text>
-                        <ScrollView style={styles.debugScroll} nestedScrollEnabled>
-                          {debugInfo.map((info, index) => (
-                            <Text key={index} style={[styles.debugText, { color: textSecondaryColor }]}>{info}</Text>
-                          ))}
-                        </ScrollView>
-                      </View>
-                    )}
                   </View>
-                )}
-
-                {!isSignUp && (
-                  <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd', marginTop: 24 }]}>
-                    <IconSymbol 
-                      ios_icon_name="info.circle" 
-                      android_material_icon_name="info" 
-                      size={28} 
-                      color={colors.secondary} 
-                    />
-                    <View style={styles.infoTextContainer}>
-                      <Text style={[styles.infoTitle, { color: textColor }]}>
-                        Hvorfor skal jeg logge ind?
-                      </Text>
-                      <Text style={[styles.infoBoxText, { color: textSecondaryColor }]}>
-                        For at gemme eksterne kalendere og synkronisere dine data på tværs af enheder, skal du oprette en gratis konto.{'\n\n'}
-                        Dine data gemmes sikkert i Supabase og er kun tilgængelige for dig.
-                      </Text>
-                    </View>
-                  </View>
-                )}
+                </View>
               </>
             )}
           </View>
@@ -1118,34 +1185,6 @@ const styles = StyleSheet.create({
   form: {
     gap: 8,
   },
-  stepTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  stepDescription: {
-    fontSize: 16,
-    lineHeight: 22,
-    marginBottom: 20,
-  },
-  roleCard: {
-    padding: 24,
-    borderRadius: 16,
-    borderWidth: 3,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  roleTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginTop: 12,
-    marginBottom: 8,
-  },
-  roleDescription: {
-    fontSize: 15,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
   authButton: {
     paddingVertical: 18,
     borderRadius: 14,
@@ -1156,16 +1195,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#fff',
-  },
-  backButton: {
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  backButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
   },
   loadingContainer: {
     flexDirection: 'row',
@@ -1194,6 +1223,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     marginTop: 16,
+    backgroundColor: 'rgba(0,0,0,0.2)',
   },
   debugTitle: {
     fontSize: 14,
@@ -1210,5 +1240,44 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     color: '#fff',
     opacity: 0.9,
+  },
+  onboardingTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  onboardingDescription: {
+    fontSize: 16,
+    lineHeight: 24,
+    marginBottom: 32,
+    textAlign: 'center',
+  },
+  roleCard: {
+    padding: 24,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  roleTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  roleDescription: {
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  loadingOverlay: {
+    marginTop: 24,
+    alignItems: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 16,
   },
 });
