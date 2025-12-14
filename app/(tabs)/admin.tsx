@@ -19,13 +19,17 @@ import CreatePlayerModal from '@/components/CreatePlayerModal';
 import PlayersList from '@/components/PlayersList';
 import ExternalCalendarManager from '@/components/ExternalCalendarManager';
 import SubscriptionManager from '@/components/SubscriptionManager';
+import TeamManagement from '@/components/TeamManagement';
+import TeamPlayerSelector from '@/components/TeamPlayerSelector';
 import { useFootball } from '@/contexts/FootballContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 
 export default function AdminScreen() {
   const { userRole, loading: roleLoading, isAdmin } = useUserRole();
   const { refreshData } = useFootball();
   const { subscriptionStatus, loading: subscriptionLoading } = useSubscription();
+  const { refreshTeams, refreshPlayers } = useTeamPlayer();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const router = useRouter();
@@ -50,6 +54,7 @@ export default function AdminScreen() {
 
   const handlePlayerCreated = () => {
     setRefreshTrigger(prev => prev + 1);
+    refreshPlayers();
   };
 
   const handleCreatePlayer = () => {
@@ -107,8 +112,27 @@ export default function AdminScreen() {
               color="#fff"
             />
             <Text style={styles.headerTitle}>Admin Panel</Text>
-            <Text style={styles.headerSubtitle}>Administrer abonnement, spillere og indstillinger</Text>
+            <Text style={styles.headerSubtitle}>Administrer abonnement, teams, spillere og indstillinger</Text>
           </View>
+        </View>
+
+        {/* Team/Player Selector */}
+        <View style={[styles.section, { backgroundColor: cardBgColor }]}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleContainer}>
+              <IconSymbol
+                ios_icon_name="person.crop.circle.badge.checkmark"
+                android_material_icon_name="how_to_reg"
+                size={28}
+                color={colors.primary}
+              />
+              <Text style={[styles.sectionTitle, { color: textColor }]}>Aktiv kontekst</Text>
+            </View>
+          </View>
+          <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
+            Vælg hvilken spiller eller hvilket team du vil administrere aktiviteter for
+          </Text>
+          <TeamPlayerSelector />
         </View>
 
         {/* Subscription Section */}
@@ -130,12 +154,31 @@ export default function AdminScreen() {
           <SubscriptionManager />
         </View>
 
-        {/* Players Section */}
+        {/* Teams Section */}
         <View style={[styles.section, { backgroundColor: cardBgColor }]}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleContainer}>
               <IconSymbol
                 ios_icon_name="person.3.fill"
+                android_material_icon_name="groups"
+                size={28}
+                color={colors.primary}
+              />
+              <Text style={[styles.sectionTitle, { color: textColor }]}>Teams</Text>
+            </View>
+          </View>
+          <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
+            Opret og administrer teams, og tilknyt spillere til teams
+          </Text>
+          <TeamManagement />
+        </View>
+
+        {/* Players Section */}
+        <View style={[styles.section, { backgroundColor: cardBgColor }]}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleContainer}>
+              <IconSymbol
+                ios_icon_name="person.2.fill"
                 android_material_icon_name="group"
                 size={28}
                 color={colors.primary}
@@ -191,7 +234,8 @@ export default function AdminScreen() {
             color={colors.secondary}
           />
           <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
-            Som admin har du adgang til at administrere abonnement, spillere og eksterne kalendere.
+            Som admin har du adgang til at administrere abonnement, teams, spillere og eksterne kalendere. 
+            Husk at vælge en spiller eller et team før du administrerer aktiviteter.
           </Text>
         </View>
 

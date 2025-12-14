@@ -119,3 +119,19 @@ export interface Subscription {
   created_at: Date;
   updated_at: Date;
 }
+
+export interface Team {
+  id: string;
+  admin_id: string;
+  name: string;
+  description?: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface TeamMember {
+  id: string;
+  team_id: string;
+  player_id: string;
+  created_at: Date;
+}
