@@ -10,7 +10,10 @@ export default function TabLayout() {
   const { userRole, loading } = useUserRole();
 
   const tabs: TabBarItem[] = useMemo(() => {
+    // Check if user is a player (not admin/trainer)
     const isPlayer = userRole === 'player';
+    // Check if user is trainer/admin
+    const isTrainer = userRole === 'admin' || userRole === 'trainer';
 
     const allTabs: TabBarItem[] = [
       {
@@ -35,11 +38,18 @@ export default function TabLayout() {
         label: 'Performance',
       },
       {
-        name: 'admin',
-        route: '/(tabs)/admin',
-        icon: 'gearshape.fill',
-        materialIcon: 'settings',
-        label: 'Admin',
+        name: 'library',
+        route: '/(tabs)/library',
+        icon: 'book.fill',
+        materialIcon: 'menu_book',
+        label: 'Bibliotek',
+      },
+      {
+        name: 'trainer',
+        route: '/(tabs)/trainer',
+        icon: 'person.3.fill',
+        materialIcon: 'groups',
+        label: 'Træner',
       },
       {
         name: 'profile',
@@ -50,15 +60,30 @@ export default function TabLayout() {
       },
     ];
 
-    // Filter tabs for players - only show Home, Performance, Profile
+    // Filter tabs based on user role
     if (isPlayer) {
+      // Players can see: Home, Tasks, Performance, Profile
       return allTabs.filter(tab => 
         tab.name === '(home)' || 
+        tab.name === 'tasks' ||
         tab.name === 'performance' || 
         tab.name === 'profile'
       );
     }
 
+    if (isTrainer) {
+      // Trainers can see: Home, Tasks, Performance, Library, Trainer, Profile
+      return allTabs.filter(tab => 
+        tab.name === '(home)' || 
+        tab.name === 'tasks' ||
+        tab.name === 'performance' || 
+        tab.name === 'library' ||
+        tab.name === 'trainer' ||
+        tab.name === 'profile'
+      );
+    }
+
+    // Default: show all tabs
     return allTabs;
   }, [userRole]);
 
@@ -81,7 +106,8 @@ export default function TabLayout() {
         <Stack.Screen key="home" name="(home)" />
         <Stack.Screen key="tasks" name="tasks" />
         <Stack.Screen key="performance" name="performance" />
-        <Stack.Screen key="admin" name="admin" />
+        <Stack.Screen key="library" name="library" />
+        <Stack.Screen key="trainer" name="trainer" />
         <Stack.Screen key="profile" name="profile" />
       </Stack>
       <FloatingTabBar tabs={tabs} />

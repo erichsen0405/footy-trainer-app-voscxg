@@ -6,6 +6,8 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 import CreatePlayerModal from '@/components/CreatePlayerModal';
 import PlayersList from '@/components/PlayersList';
+import ExternalCalendarManager from '@/components/ExternalCalendarManager';
+import SubscriptionManager from '@/components/SubscriptionManager';
 
 interface UserProfile {
   full_name: string;
@@ -20,7 +22,7 @@ interface AdminInfo {
 
 export default function ProfileScreen() {
   const [user, setUser] = useState<any>(null);
-  const [userRole, setUserRole] = useState<'admin' | 'player' | null>(null);
+  const [userRole, setUserRole] = useState<'admin' | 'trainer' | 'player' | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [adminInfo, setAdminInfo] = useState<AdminInfo | null>(null);
   const [email, setEmail] = useState('');
@@ -83,7 +85,7 @@ export default function ProfileScreen() {
         return;
       }
 
-      setUserRole(data?.role as 'admin' | 'player');
+      setUserRole(data?.role as 'admin' | 'trainer' | 'player');
       
       if (data?.role === 'player') {
         await fetchAdminInfo(userId);
@@ -242,9 +244,10 @@ export default function ProfileScreen() {
         }
 
         if (data.user) {
+          // Default new users to player role
           await supabase.from('user_roles').insert({
             user_id: data.user.id,
-            role: 'admin',
+            role: 'player',
           });
         }
 
@@ -327,6 +330,8 @@ export default function ProfileScreen() {
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
 
+  const isTrainer = userRole === 'admin' || userRole === 'trainer';
+
   return (
     <View style={[styles.container, { backgroundColor: bgColor }]}>
       <ScrollView 
@@ -362,10 +367,10 @@ export default function ProfileScreen() {
                   </Text>
                   {userRole && (
                     <View style={[styles.roleBadge, { 
-                      backgroundColor: userRole === 'admin' ? colors.primary : '#FF9500' 
+                      backgroundColor: isTrainer ? colors.primary : '#FF9500' 
                     }]}>
                       <Text style={styles.roleText}>
-                        {userRole === 'admin' ? 'Admin/Træner' : 'Spiller'}
+                        {isTrainer ? 'Træner' : 'Spiller'}
                       </Text>
                     </View>
                   )}
@@ -508,33 +513,43 @@ export default function ProfileScreen() {
               </View>
             )}
 
-            {/* Player Management Section for Admins */}
-            {userRole === 'admin' && (
-              <View style={[styles.playerManagementSection, { backgroundColor: cardBgColor }]}>
-                <View style={styles.playerManagementHeader}>
-                  <View style={styles.playerManagementHeaderLeft}>
-                    <IconSymbol 
-                      ios_icon_name="person.2.fill" 
-                      android_material_icon_name="group" 
-                      size={28} 
-                      color={colors.primary} 
-                    />
-                    <View style={styles.playerManagementTitleContainer}>
-                      <Text style={[styles.playerManagementTitle, { color: textColor }]}>Spillerstyring</Text>
-                      <Text style={[styles.playerManagementSubtitle, { color: textSecondaryColor }]}>
-                        Administrer dine spillerprofiler
-                      </Text>
-                    </View>
-                  </View>
+            {/* Calendar Sync Section - Available for all users */}
+            <View style={[styles.card, { backgroundColor: cardBgColor }]}>
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionTitleContainer}>
+                  <IconSymbol
+                    ios_icon_name="calendar.badge.plus"
+                    android_material_icon_name="event"
+                    size={28}
+                    color={colors.primary}
+                  />
+                  <Text style={[styles.sectionTitle, { color: textColor }]}>Kalender Synkronisering</Text>
                 </View>
-
-                {/* Players List */}
-                <PlayersList 
-                  onCreatePlayer={() => setShowCreatePlayerModal(true)}
-                  refreshTrigger={playersRefreshTrigger}
-                />
               </View>
-            )}
+              <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
+                Tilknyt eksterne kalendere (iCal/webcal) for automatisk at importere aktiviteter
+              </Text>
+              <ExternalCalendarManager />
+            </View>
+
+            {/* Subscription Section - Available for all users */}
+            <View style={[styles.card, { backgroundColor: cardBgColor }]}>
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionTitleContainer}>
+                  <IconSymbol
+                    ios_icon_name="creditcard.fill"
+                    android_material_icon_name="payment"
+                    size={28}
+                    color={colors.primary}
+                  />
+                  <Text style={[styles.sectionTitle, { color: textColor }]}>Abonnement</Text>
+                </View>
+              </View>
+              <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
+                Administrer dit abonnement
+              </Text>
+              <SubscriptionManager />
+            </View>
 
             <TouchableOpacity
               style={[styles.signOutButton, { backgroundColor: colors.error }]}
@@ -764,9 +779,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
+  sectionTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
   sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
+  },
+  sectionDescription: {
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 20,
   },
   profileInfo: {
     gap: 12,
@@ -812,33 +837,6 @@ const styles = StyleSheet.create({
   buttonText: {
     fontSize: 16,
     fontWeight: '600',
-  },
-  playerManagementSection: {
-    marginHorizontal: 20,
-    marginBottom: 16,
-    borderRadius: 20,
-    padding: 20,
-    borderWidth: 2,
-    borderColor: colors.primary,
-  },
-  playerManagementHeader: {
-    marginBottom: 16,
-  },
-  playerManagementHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  playerManagementTitleContainer: {
-    flex: 1,
-  },
-  playerManagementTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  playerManagementSubtitle: {
-    fontSize: 15,
   },
   signOutButton: {
     flexDirection: 'row',
