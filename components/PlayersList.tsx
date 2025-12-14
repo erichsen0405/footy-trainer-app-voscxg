@@ -220,22 +220,6 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Mine Spillere</Text>
-        <TouchableOpacity
-          style={[styles.addButton, { backgroundColor: colors.primary }]}
-          onPress={onCreatePlayer}
-        >
-          <IconSymbol
-            ios_icon_name="plus"
-            android_material_icon_name="add"
-            size={20}
-            color="#fff"
-          />
-          <Text style={styles.addButtonText}>Tilføj Spiller</Text>
-        </TouchableOpacity>
-      </View>
-
       {players.length === 0 ? (
         <View style={styles.emptyState}>
           <IconSymbol
@@ -318,30 +302,6 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     color: colors.textSecondary,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.text,
-  },
-  addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-  },
-  addButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
   },
   emptyState: {
     flex: 1,

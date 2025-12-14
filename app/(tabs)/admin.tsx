@@ -18,15 +18,19 @@ import { useRouter } from 'expo-router';
 import CreatePlayerModal from '@/components/CreatePlayerModal';
 import PlayersList from '@/components/PlayersList';
 import ExternalCalendarManager from '@/components/ExternalCalendarManager';
+import SubscriptionManager from '@/components/SubscriptionManager';
 import { useFootball } from '@/contexts/FootballContext';
+import { useSubscription } from '@/contexts/SubscriptionContext';
 
 export default function AdminScreen() {
   const { userRole, loading: roleLoading, isAdmin } = useUserRole();
   const { refreshData } = useFootball();
+  const { subscriptionStatus, loading: subscriptionLoading } = useSubscription();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const router = useRouter();
   const [showCreatePlayerModal, setShowCreatePlayerModal] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const bgColor = isDark ? '#1a1a1a' : colors.background;
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
@@ -43,6 +47,33 @@ export default function AdminScreen() {
       );
     }
   }, [roleLoading, isAdmin, router]);
+
+  const handlePlayerCreated = () => {
+    setRefreshTrigger(prev => prev + 1);
+  };
+
+  const handleCreatePlayer = () => {
+    // Check if user has subscription and player limit
+    if (!subscriptionStatus?.hasSubscription) {
+      Alert.alert(
+        'Abonnement påkrævet',
+        'Du skal have et aktivt abonnement for at oprette spillere. Start din 14-dages gratis prøveperiode nu!',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    if (subscriptionStatus.currentPlayers >= subscriptionStatus.maxPlayers) {
+      Alert.alert(
+        'Spillergrænse nået',
+        `Din ${subscriptionStatus.planName} plan tillader op til ${subscriptionStatus.maxPlayers} spiller${subscriptionStatus.maxPlayers > 1 ? 'e' : ''}. Opgrader din plan for at tilføje flere spillere.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    setShowCreatePlayerModal(true);
+  };
 
   if (roleLoading) {
     return (
@@ -76,8 +107,60 @@ export default function AdminScreen() {
               color="#fff"
             />
             <Text style={styles.headerTitle}>Admin Panel</Text>
-            <Text style={styles.headerSubtitle}>Administrer spillere og indstillinger</Text>
+            <Text style={styles.headerSubtitle}>Administrer abonnement, spillere og indstillinger</Text>
           </View>
+        </View>
+
+        {/* Subscription Section */}
+        <View style={[styles.section, { backgroundColor: cardBgColor }]}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleContainer}>
+              <IconSymbol
+                ios_icon_name="creditcard.fill"
+                android_material_icon_name="payment"
+                size={28}
+                color={colors.primary}
+              />
+              <Text style={[styles.sectionTitle, { color: textColor }]}>Abonnement</Text>
+            </View>
+          </View>
+          <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
+            Administrer dit abonnement og spillergrænser
+          </Text>
+          <SubscriptionManager />
+        </View>
+
+        {/* Players Section */}
+        <View style={[styles.section, { backgroundColor: cardBgColor }]}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleContainer}>
+              <IconSymbol
+                ios_icon_name="person.3.fill"
+                android_material_icon_name="group"
+                size={28}
+                color={colors.primary}
+              />
+              <Text style={[styles.sectionTitle, { color: textColor }]}>Spillere</Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.addButton, { backgroundColor: colors.primary }]}
+              onPress={handleCreatePlayer}
+              activeOpacity={0.7}
+            >
+              <IconSymbol
+                ios_icon_name="plus"
+                android_material_icon_name="add"
+                size={20}
+                color="#fff"
+              />
+              <Text style={styles.addButtonText}>Tilføj spiller</Text>
+            </TouchableOpacity>
+          </View>
+
+          <PlayersList 
+            onCreatePlayer={handleCreatePlayer}
+            refreshTrigger={refreshTrigger}
+          />
         </View>
 
         {/* External Calendars Section */}
@@ -99,36 +182,6 @@ export default function AdminScreen() {
           <ExternalCalendarManager />
         </View>
 
-        {/* Players Section */}
-        <View style={[styles.section, { backgroundColor: cardBgColor }]}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleContainer}>
-              <IconSymbol
-                ios_icon_name="person.3.fill"
-                android_material_icon_name="group"
-                size={28}
-                color={colors.primary}
-              />
-              <Text style={[styles.sectionTitle, { color: textColor }]}>Spillere</Text>
-            </View>
-            <TouchableOpacity
-              style={[styles.addButton, { backgroundColor: colors.primary }]}
-              onPress={() => setShowCreatePlayerModal(true)}
-              activeOpacity={0.7}
-            >
-              <IconSymbol
-                ios_icon_name="plus"
-                android_material_icon_name="add"
-                size={20}
-                color="#fff"
-              />
-              <Text style={styles.addButtonText}>Tilføj spiller</Text>
-            </TouchableOpacity>
-          </View>
-
-          <PlayersList />
-        </View>
-
         {/* Info Section */}
         <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
           <IconSymbol
@@ -138,7 +191,7 @@ export default function AdminScreen() {
             color={colors.secondary}
           />
           <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
-            Som admin har du adgang til at administrere spillere og eksterne kalendere.
+            Som admin har du adgang til at administrere abonnement, spillere og eksterne kalendere.
           </Text>
         </View>
 
@@ -150,6 +203,7 @@ export default function AdminScreen() {
       <CreatePlayerModal
         visible={showCreatePlayerModal}
         onClose={() => setShowCreatePlayerModal(false)}
+        onPlayerCreated={handlePlayerCreated}
       />
     </View>
   );
