@@ -72,11 +72,10 @@ export default function TabLayout() {
     }
 
     if (isTrainer) {
-      // Trainers can see: Home, Tasks, Performance, Library, Trainer, Profile
+      // Trainers can see: Home, Tasks, Library, Trainer, Profile (Performance removed)
       return allTabs.filter(tab => 
         tab.name === '(home)' || 
         tab.name === 'tasks' ||
-        tab.name === 'performance' || 
         tab.name === 'library' ||
         tab.name === 'trainer' ||
         tab.name === 'profile'

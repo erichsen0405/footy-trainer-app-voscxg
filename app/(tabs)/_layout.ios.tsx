@@ -18,8 +18,10 @@ export default function TabLayout() {
     );
   }
 
-  // Player only sees: Home, Performance, Profile
+  // Player only sees: Home, Tasks, Performance, Profile
   const isPlayer = userRole === 'player';
+  // Trainer sees: Home, Tasks, Library, Trainer, Profile (Performance removed)
+  const isTrainer = userRole === 'admin' || userRole === 'trainer';
   
   // CRITICAL FIX: Ensure proper colors for icons and labels
   // Use high contrast colors that work on both light and dark backgrounds
@@ -82,27 +84,9 @@ export default function TabLayout() {
         </Label>
       </NativeTabs.Trigger>
       
-      {!isPlayer && (
-        <NativeTabs.Trigger key="tasks" name="tasks">
-          <Icon 
-            sf={{ default: 'checklist', selected: 'checklist' }}
-            color={selectedColor}
-          />
-          <Label 
-            style={{ 
-              fontSize: 10,
-              fontWeight: '500',
-              color: selectedColor,
-            }}
-          >
-            Opgaver
-          </Label>
-        </NativeTabs.Trigger>
-      )}
-      
-      <NativeTabs.Trigger key="performance" name="performance">
+      <NativeTabs.Trigger key="tasks" name="tasks">
         <Icon 
-          sf={{ default: 'trophy', selected: 'trophy.fill' }}
+          sf={{ default: 'checklist', selected: 'checklist' }}
           color={selectedColor}
         />
         <Label 
@@ -112,14 +96,14 @@ export default function TabLayout() {
             color: selectedColor,
           }}
         >
-          Performance
+          Opgaver
         </Label>
       </NativeTabs.Trigger>
-        
-      {!isPlayer && (
-        <NativeTabs.Trigger key="admin" name="admin">
+      
+      {isPlayer && (
+        <NativeTabs.Trigger key="performance" name="performance">
           <Icon 
-            sf={{ default: 'gearshape', selected: 'gearshape.fill' }}
+            sf={{ default: 'trophy', selected: 'trophy.fill' }}
             color={selectedColor}
           />
           <Label 
@@ -129,7 +113,43 @@ export default function TabLayout() {
               color: selectedColor,
             }}
           >
-            Admin
+            Performance
+          </Label>
+        </NativeTabs.Trigger>
+      )}
+      
+      {isTrainer && (
+        <NativeTabs.Trigger key="library" name="library">
+          <Icon 
+            sf={{ default: 'book', selected: 'book.fill' }}
+            color={selectedColor}
+          />
+          <Label 
+            style={{ 
+              fontSize: 10,
+              fontWeight: '500',
+              color: selectedColor,
+            }}
+          >
+            Bibliotek
+          </Label>
+        </NativeTabs.Trigger>
+      )}
+      
+      {isTrainer && (
+        <NativeTabs.Trigger key="trainer" name="trainer">
+          <Icon 
+            sf={{ default: 'person.3', selected: 'person.3.fill' }}
+            color={selectedColor}
+          />
+          <Label 
+            style={{ 
+              fontSize: 10,
+              fontWeight: '500',
+              color: selectedColor,
+            }}
+          >
+            Træner
           </Label>
         </NativeTabs.Trigger>
       )}
