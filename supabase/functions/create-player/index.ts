@@ -220,6 +220,7 @@ Deno.serve(async (req) => {
     
     // Use inviteUserByEmail instead of createUser
     // This will send an invitation email to the user
+    // The redirectTo URL should point to the update-password screen in your app
     const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
       email,
       {
@@ -227,7 +228,8 @@ Deno.serve(async (req) => {
           full_name: fullName,
           phone_number: phoneNumber && phoneNumber.trim() ? phoneNumber : null,
         },
-        redirectTo: 'https://natively.dev/email-confirmed',
+        // This is where the user will be redirected after clicking the invitation link
+        redirectTo: 'https://natively.dev/update-password',
       }
     );
 
