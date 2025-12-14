@@ -14,7 +14,17 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 
-export default function SubscriptionManager() {
+interface SubscriptionManagerProps {
+  onPlanSelected?: (planId: string) => void;
+  isSignupFlow?: boolean;
+  selectedRole?: 'player' | 'trainer' | null;
+}
+
+export default function SubscriptionManager({ 
+  onPlanSelected, 
+  isSignupFlow = false,
+  selectedRole = null 
+}: SubscriptionManagerProps) {
   const { subscriptionStatus, subscriptionPlans, loading, createSubscription } = useSubscription();
   const [creatingPlanId, setCreatingPlanId] = useState<string | null>(null);
   const colorScheme = useColorScheme();
@@ -24,7 +34,21 @@ export default function SubscriptionManager() {
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
 
+  // Filter plans based on role in signup flow
+  const filteredPlans = isSignupFlow && selectedRole
+    ? selectedRole === 'player'
+      ? subscriptionPlans.filter(plan => plan.max_players <= 1) // Player plans
+      : subscriptionPlans.filter(plan => plan.max_players > 1)  // Trainer plans
+    : subscriptionPlans;
+
   const handleSelectPlan = async (planId: string, planName: string, maxPlayers: number) => {
+    if (isSignupFlow && onPlanSelected) {
+      // In signup flow, just pass the plan ID back
+      onPlanSelected(planId);
+      return;
+    }
+
+    // Normal flow - create subscription
     Alert.alert(
       'Start prøveperiode',
       `Vil du starte en 14-dages gratis prøveperiode med ${planName} planen?\n\nDu kan oprette op til ${maxPlayers} spiller${maxPlayers > 1 ? 'e' : ''}.`,
@@ -70,7 +94,7 @@ export default function SubscriptionManager() {
     return Math.ceil(diff / (1000 * 60 * 60 * 24));
   };
 
-  if (loading) {
+  if (loading && !isSignupFlow) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -79,8 +103,8 @@ export default function SubscriptionManager() {
     );
   }
 
-  // Show current subscription if exists
-  if (subscriptionStatus?.hasSubscription) {
+  // Show current subscription if exists (not in signup flow)
+  if (!isSignupFlow && subscriptionStatus?.hasSubscription) {
     const daysRemaining = getDaysRemaining(
       subscriptionStatus.status === 'trial'
         ? subscriptionStatus.trialEnd
@@ -163,19 +187,25 @@ export default function SubscriptionManager() {
     );
   }
 
-  // Show subscription plans if no subscription
+  // Show subscription plans
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: textColor }]}>Vælg din plan</Text>
-        <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
-          Start med 14 dages gratis prøveperiode
-        </Text>
-      </View>
+    <ScrollView 
+      style={styles.container} 
+      showsVerticalScrollIndicator={false}
+      nestedScrollEnabled={true}
+    >
+      {!isSignupFlow && (
+        <View style={styles.header}>
+          <Text style={[styles.headerTitle, { color: textColor }]}>Vælg din plan</Text>
+          <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
+            Start med 14 dages gratis prøveperiode
+          </Text>
+        </View>
+      )}
 
       <View style={styles.plansContainer}>
-        {subscriptionPlans.map((plan, index) => {
-          const isPopular = index === 1; // Middle plan is popular
+        {filteredPlans.map((plan, index) => {
+          const isPopular = index === Math.floor(filteredPlans.length / 2); // Middle plan is popular
           const isCreating = creatingPlanId === plan.id;
 
           return (
@@ -212,7 +242,10 @@ export default function SubscriptionManager() {
                     color={colors.primary}
                   />
                   <Text style={[styles.featureText, { color: textColor }]}>
-                    Op til {plan.max_players} spiller{plan.max_players > 1 ? 'e' : ''}
+                    {plan.max_players === 1 
+                      ? 'Personlig spiller konto'
+                      : `Op til ${plan.max_players} spillere`
+                    }
                   </Text>
                 </View>
 
@@ -271,7 +304,7 @@ export default function SubscriptionManager() {
                       { color: isPopular ? '#fff' : colors.primary },
                     ]}
                   >
-                    Start prøveperiode
+                    {isSignupFlow ? 'Vælg denne plan' : 'Start prøveperiode'}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -288,7 +321,10 @@ export default function SubscriptionManager() {
           color={colors.secondary}
         />
         <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
-          Du kan opsige dit abonnement når som helst. Ingen binding.
+          {isSignupFlow 
+            ? 'Du får 14 dages gratis prøveperiode. Ingen binding - du kan opsige når som helst.'
+            : 'Du kan opsige dit abonnement når som helst. Ingen binding.'
+          }
         </Text>
       </View>
     </ScrollView>

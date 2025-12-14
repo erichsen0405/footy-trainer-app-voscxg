@@ -33,6 +33,11 @@ export default function ProfileScreen() {
   const [showCreatePlayerModal, setShowCreatePlayerModal] = useState(false);
   const [playersRefreshTrigger, setPlayersRefreshTrigger] = useState(0);
   
+  // New signup flow states
+  const [signupStep, setSignupStep] = useState<'credentials' | 'role' | 'subscription'>('credentials');
+  const [selectedRole, setSelectedRole] = useState<'player' | 'trainer' | null>(null);
+  const [pendingSignupData, setPendingSignupData] = useState<{ email: string; password: string } | null>(null);
+  
   // Profile editing
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editName, setEditName] = useState('');
@@ -81,7 +86,7 @@ export default function ProfileScreen() {
 
       if (error) {
         console.error('Error fetching user role:', error);
-        setUserRole('admin');
+        setUserRole('player');
         return;
       }
 
@@ -92,7 +97,7 @@ export default function ProfileScreen() {
       }
     } catch (error) {
       console.error('Error in fetchUserRole:', error);
-      setUserRole('admin');
+      setUserRole('player');
     }
   };
 
@@ -197,7 +202,7 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleAuth = async () => {
+  const handleStartSignup = () => {
     if (!email || !password) {
       Alert.alert('Fejl', 'Udfyld venligst både email og adgangskode');
       return;
@@ -214,103 +219,173 @@ export default function ProfileScreen() {
       return;
     }
 
+    // Store credentials and move to role selection
+    setPendingSignupData({ email, password });
+    setSignupStep('role');
+  };
+
+  const handleRoleSelection = (role: 'player' | 'trainer') => {
+    setSelectedRole(role);
+    setSignupStep('subscription');
+  };
+
+  const handleCompleteSignup = async (planId: string) => {
+    if (!pendingSignupData || !selectedRole) {
+      Alert.alert('Fejl', 'Manglende oplysninger. Prøv venligst igen.');
+      setSignupStep('credentials');
+      return;
+    }
+
     setLoading(true);
-    console.log(`Starting ${isSignUp ? 'signup' : 'login'} process for:`, email);
+    console.log('Starting signup process with role:', selectedRole, 'and plan:', planId);
     
     try {
-      if (isSignUp) {
-        console.log('Attempting to sign up with:', email);
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: 'https://natively.dev/email-confirmed'
+      // Step 1: Create the user account
+      console.log('Creating user account...');
+      const { data: signupData, error: signupError } = await supabase.auth.signUp({
+        email: pendingSignupData.email,
+        password: pendingSignupData.password,
+        options: {
+          emailRedirectTo: 'https://natively.dev/email-confirmed',
+          data: {
+            role: selectedRole,
+            plan_id: planId,
           }
+        }
+      });
+
+      if (signupError) {
+        console.error('Sign up error:', signupError);
+        Alert.alert(
+          'Kunne ikke oprette konto',
+          signupError.message || 'Der opstod en fejl. Prøv venligst igen.'
+        );
+        return;
+      }
+
+      if (!signupData.user) {
+        Alert.alert('Fejl', 'Kunne ikke oprette bruger. Prøv venligst igen.');
+        return;
+      }
+
+      console.log('User created:', signupData.user.id);
+
+      // Step 2: Set user role
+      console.log('Setting user role...');
+      const { error: roleError } = await supabase.from('user_roles').insert({
+        user_id: signupData.user.id,
+        role: selectedRole,
+      });
+
+      if (roleError) {
+        console.error('Error setting role:', roleError);
+        // Continue anyway - role can be set later
+      }
+
+      // Step 3: Create subscription (only for trainers or if player wants subscription)
+      if (selectedRole === 'trainer' || selectedRole === 'player') {
+        console.log('Creating subscription...');
+        const { data: subData, error: subError } = await supabase.functions.invoke('create-subscription', {
+          body: { planId, userId: signupData.user.id },
         });
 
-        console.log('Sign up response:', { 
-          user: data.user?.id, 
-          session: data.session ? 'exists' : 'null',
-          error: error?.message 
-        });
-
-        if (error) {
-          console.error('Sign up error:', error);
+        if (subError) {
+          console.error('Error creating subscription:', subError);
           Alert.alert(
-            'Kunne ikke oprette konto',
-            error.message || 'Der opstod en fejl. Prøv venligst igen.'
+            'Advarsel',
+            'Din konto er oprettet, men der var et problem med at oprette abonnementet. Du kan oprette det senere fra din profil.'
           );
-          return;
-        }
-
-        if (data.user) {
-          // Default new users to player role
-          await supabase.from('user_roles').insert({
-            user_id: data.user.id,
-            role: 'player',
-          });
-        }
-
-        setShowSuccessMessage(true);
-        setEmail('');
-        setPassword('');
-
-        setTimeout(() => {
-          setShowSuccessMessage(false);
-          setIsSignUp(false);
-        }, 3000);
-
-        if (data.user && !data.session) {
+        } else if (!subData?.success) {
+          console.error('Subscription creation failed:', subData?.error);
           Alert.alert(
-            'Bekræft din email ✉️',
-            'Vi har sendt en bekræftelsesmail til dig. Tjek venligst din indbakke og klik på linket for at aktivere din konto.\n\n⚠️ Bemærk: Tjek også din spam-mappe hvis du ikke kan finde emailen.\n\n✅ Din konto er oprettet, men du skal bekræfte din email før du kan logge ind.',
-            [{ text: 'OK' }]
+            'Advarsel',
+            'Din konto er oprettet, men der var et problem med at oprette abonnementet. Du kan oprette det senere fra din profil.'
           );
-        } else if (data.session) {
-          Alert.alert('Succes! 🎉', 'Din konto er oprettet og du er nu logget ind!');
-        }
-      } else {
-        console.log('Attempting to sign in with:', email);
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-
-        console.log('Sign in response:', { 
-          user: data.user?.id, 
-          session: data.session ? 'exists' : 'null',
-          error: error?.message 
-        });
-
-        if (error) {
-          console.error('Sign in error:', error);
-          
-          if (error.message.includes('Invalid login credentials')) {
-            Alert.alert(
-              'Login fejlede', 
-              'Email eller adgangskode er forkert.\n\nHusk:\n• Har du bekræftet din email?\n• Er du sikker på at du har oprettet en konto?\n• Prøv at nulstille din adgangskode hvis du har glemt den.'
-            );
-          } else if (error.message.includes('Email not confirmed')) {
-            Alert.alert(
-              'Email ikke bekræftet',
-              'Du skal bekræfte din email før du kan logge ind. Tjek din indbakke for bekræftelsesmailen.\n\nTjek også din spam-mappe.'
-            );
-          } else {
-            Alert.alert('Login fejlede', error.message || 'Der opstod en fejl. Prøv venligst igen.');
-          }
-          return;
-        }
-
-        if (data.session) {
-          Alert.alert('Succes! 🎉', 'Du er nu logget ind!');
+        } else {
+          console.log('Subscription created successfully');
         }
       }
+
+      // Reset form
+      setEmail('');
+      setPassword('');
+      setPendingSignupData(null);
+      setSelectedRole(null);
+      setSignupStep('credentials');
+      setShowSuccessMessage(true);
+
+      setTimeout(() => {
+        setShowSuccessMessage(false);
+        setIsSignUp(false);
+      }, 3000);
+
+      if (signupData.user && !signupData.session) {
+        Alert.alert(
+          'Bekræft din email ✉️',
+          'Vi har sendt en bekræftelsesmail til dig. Tjek venligst din indbakke og klik på linket for at aktivere din konto.\n\n⚠️ Bemærk: Tjek også din spam-mappe hvis du ikke kan finde emailen.\n\n✅ Din konto er oprettet med dit valgte abonnement. Når du bekræfter din email, vil alle funktioner være aktive.',
+          [{ text: 'OK' }]
+        );
+      } else if (signupData.session) {
+        Alert.alert('Succes! 🎉', 'Din konto er oprettet og du er nu logget ind! Dit abonnement er aktivt.');
+      }
     } catch (error: any) {
-      console.error('Auth error:', error);
+      console.error('Signup error:', error);
       Alert.alert('Fejl', error.message || 'Der opstod en uventet fejl. Prøv venligst igen.');
     } finally {
       setLoading(false);
-      console.log(`${isSignUp ? 'Signup' : 'Login'} process completed`);
+    }
+  };
+
+  const handleLogin = async () => {
+    if (!email || !password) {
+      Alert.alert('Fejl', 'Udfyld venligst både email og adgangskode');
+      return;
+    }
+
+    setLoading(true);
+    console.log('Attempting to sign in with:', email);
+    
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      console.log('Sign in response:', { 
+        user: data.user?.id, 
+        session: data.session ? 'exists' : 'null',
+        error: error?.message 
+      });
+
+      if (error) {
+        console.error('Sign in error:', error);
+        
+        if (error.message.includes('Invalid login credentials')) {
+          Alert.alert(
+            'Login fejlede', 
+            'Email eller adgangskode er forkert.\n\nHusk:\n• Har du bekræftet din email?\n• Er du sikker på at du har oprettet en konto?\n• Prøv at nulstille din adgangskode hvis du har glemt den.'
+          );
+        } else if (error.message.includes('Email not confirmed')) {
+          Alert.alert(
+            'Email ikke bekræftet',
+            'Du skal bekræfte din email før du kan logge ind. Tjek din indbakke for bekræftelsesmailen.\n\nTjek også din spam-mappe.'
+          );
+        } else {
+          Alert.alert('Login fejlede', error.message || 'Der opstod en fejl. Prøv venligst igen.');
+        }
+        return;
+      }
+
+      if (data.session) {
+        Alert.alert('Succes! 🎉', 'Du er nu logget ind!');
+        setEmail('');
+        setPassword('');
+      }
+    } catch (error: any) {
+      console.error('Login error:', error);
+      Alert.alert('Fejl', error.message || 'Der opstod en uventet fejl. Prøv venligst igen.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -578,8 +653,8 @@ export default function ProfileScreen() {
                 />
                 <Text style={styles.successTitle}>Konto oprettet! 🎉</Text>
                 <Text style={styles.successText}>
-                  Din konto er blevet oprettet succesfuldt.{'\n'}
-                  Du bliver nu sendt til login siden...
+                  Din konto er blevet oprettet succesfuldt med dit valgte abonnement.{'\n'}
+                  Tjek din email for at bekræfte din konto.
                 </Text>
               </View>
             )}
@@ -592,7 +667,12 @@ export default function ProfileScreen() {
                       styles.authToggleButton,
                       !isSignUp && [styles.authToggleButtonActive, { backgroundColor: colors.primary }]
                     ]}
-                    onPress={() => setIsSignUp(false)}
+                    onPress={() => {
+                      setIsSignUp(false);
+                      setSignupStep('credentials');
+                      setPendingSignupData(null);
+                      setSelectedRole(null);
+                    }}
                     activeOpacity={0.7}
                   >
                     <Text style={[
@@ -607,7 +687,10 @@ export default function ProfileScreen() {
                       styles.authToggleButton,
                       isSignUp && [styles.authToggleButtonActive, { backgroundColor: colors.primary }]
                     ]}
-                    onPress={() => setIsSignUp(true)}
+                    onPress={() => {
+                      setIsSignUp(true);
+                      setSignupStep('credentials');
+                    }}
                     activeOpacity={0.7}
                   >
                     <Text style={[
@@ -619,77 +702,200 @@ export default function ProfileScreen() {
                   </TouchableOpacity>
                 </View>
 
-                <View style={styles.form}>
-                  <Text style={[styles.label, { color: textColor }]}>Email</Text>
-                  <TextInput
-                    style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
-                    value={email}
-                    onChangeText={setEmail}
-                    placeholder="din@email.dk"
-                    placeholderTextColor={textSecondaryColor}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                    editable={!loading}
-                    autoCorrect={false}
-                  />
+                {!isSignUp ? (
+                  // Login Form
+                  <View style={styles.form}>
+                    <Text style={[styles.label, { color: textColor }]}>Email</Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+                      value={email}
+                      onChangeText={setEmail}
+                      placeholder="din@email.dk"
+                      placeholderTextColor={textSecondaryColor}
+                      autoCapitalize="none"
+                      keyboardType="email-address"
+                      editable={!loading}
+                      autoCorrect={false}
+                    />
 
-                  <Text style={[styles.label, { color: textColor }]}>Adgangskode</Text>
-                  <TextInput
-                    style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
-                    value={password}
-                    onChangeText={setPassword}
-                    placeholder="Mindst 6 tegn"
-                    placeholderTextColor={textSecondaryColor}
-                    secureTextEntry
-                    editable={!loading}
-                    autoCorrect={false}
-                    autoCapitalize="none"
-                  />
+                    <Text style={[styles.label, { color: textColor }]}>Adgangskode</Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+                      value={password}
+                      onChangeText={setPassword}
+                      placeholder="Mindst 6 tegn"
+                      placeholderTextColor={textSecondaryColor}
+                      secureTextEntry
+                      editable={!loading}
+                      autoCorrect={false}
+                      autoCapitalize="none"
+                    />
 
-                  <TouchableOpacity
-                    style={[
-                      styles.authButton,
-                      { backgroundColor: colors.primary },
-                      loading && { opacity: 0.6 }
-                    ]}
-                    onPress={handleAuth}
-                    disabled={loading}
-                    activeOpacity={0.7}
-                  >
-                    {loading ? (
-                      <View style={styles.loadingContainer}>
-                        <ActivityIndicator color="#fff" size="small" />
-                        <Text style={[styles.authButtonText, { marginLeft: 12 }]}>
-                          {isSignUp ? 'Opretter konto...' : 'Logger ind...'}
-                        </Text>
-                      </View>
-                    ) : (
-                      <Text style={styles.authButtonText}>
-                        {isSignUp ? 'Opret konto' : 'Log ind'}
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
+                    <TouchableOpacity
+                      style={[
+                        styles.authButton,
+                        { backgroundColor: colors.primary },
+                        loading && { opacity: 0.6 }
+                      ]}
+                      onPress={handleLogin}
+                      disabled={loading}
+                      activeOpacity={0.7}
+                    >
+                      {loading ? (
+                        <View style={styles.loadingContainer}>
+                          <ActivityIndicator color="#fff" size="small" />
+                          <Text style={[styles.authButtonText, { marginLeft: 12 }]}>
+                            Logger ind...
+                          </Text>
+                        </View>
+                      ) : (
+                        <Text style={styles.authButtonText}>Log ind</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                ) : signupStep === 'credentials' ? (
+                  // Signup Step 1: Credentials
+                  <View style={styles.form}>
+                    <Text style={[styles.stepTitle, { color: textColor }]}>Trin 1 af 3: Opret login</Text>
+                    
+                    <Text style={[styles.label, { color: textColor }]}>Email</Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+                      value={email}
+                      onChangeText={setEmail}
+                      placeholder="din@email.dk"
+                      placeholderTextColor={textSecondaryColor}
+                      autoCapitalize="none"
+                      keyboardType="email-address"
+                      editable={!loading}
+                      autoCorrect={false}
+                    />
 
-                <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd', marginTop: 24 }]}>
-                  <IconSymbol 
-                    ios_icon_name="info.circle" 
-                    android_material_icon_name="info" 
-                    size={28} 
-                    color={colors.secondary} 
-                  />
-                  <View style={styles.infoTextContainer}>
-                    <Text style={[styles.infoTitle, { color: textColor }]}>
-                      {isSignUp ? 'Opret din konto' : 'Hvorfor skal jeg logge ind?'}
+                    <Text style={[styles.label, { color: textColor }]}>Adgangskode</Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+                      value={password}
+                      onChangeText={setPassword}
+                      placeholder="Mindst 6 tegn"
+                      placeholderTextColor={textSecondaryColor}
+                      secureTextEntry
+                      editable={!loading}
+                      autoCorrect={false}
+                      autoCapitalize="none"
+                    />
+
+                    <TouchableOpacity
+                      style={[styles.authButton, { backgroundColor: colors.primary }]}
+                      onPress={handleStartSignup}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.authButtonText}>Næste</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : signupStep === 'role' ? (
+                  // Signup Step 2: Role Selection
+                  <View style={styles.form}>
+                    <Text style={[styles.stepTitle, { color: textColor }]}>Trin 2 af 3: Vælg din rolle</Text>
+                    <Text style={[styles.stepDescription, { color: textSecondaryColor }]}>
+                      Vælg om du er spiller eller træner
                     </Text>
-                    <Text style={[styles.infoBoxText, { color: textSecondaryColor }]}>
-                      {isSignUp 
-                        ? 'Efter du opretter din konto, vil du modtage en bekræftelsesmail. Du skal klikke på linket i emailen før du kan logge ind.\n\nTjek også din spam-mappe hvis du ikke modtager emailen.'
-                        : 'For at gemme eksterne kalendere og synkronisere dine data på tværs af enheder, skal du oprette en gratis konto.\n\nDine data gemmes sikkert i Supabase og er kun tilgængelige for dig.'
+
+                    <TouchableOpacity
+                      style={[
+                        styles.roleCard,
+                        { backgroundColor: bgColor, borderColor: selectedRole === 'player' ? colors.primary : 'transparent' }
+                      ]}
+                      onPress={() => handleRoleSelection('player')}
+                      activeOpacity={0.7}
+                    >
+                      <IconSymbol
+                        ios_icon_name="figure.run"
+                        android_material_icon_name="directions_run"
+                        size={48}
+                        color={colors.primary}
+                      />
+                      <Text style={[styles.roleTitle, { color: textColor }]}>Spiller</Text>
+                      <Text style={[styles.roleDescription, { color: textSecondaryColor }]}>
+                        Jeg er en spiller og vil holde styr på min træning
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.roleCard,
+                        { backgroundColor: bgColor, borderColor: selectedRole === 'trainer' ? colors.primary : 'transparent' }
+                      ]}
+                      onPress={() => handleRoleSelection('trainer')}
+                      activeOpacity={0.7}
+                    >
+                      <IconSymbol
+                        ios_icon_name="person.3.fill"
+                        android_material_icon_name="group"
+                        size={48}
+                        color={colors.primary}
+                      />
+                      <Text style={[styles.roleTitle, { color: textColor }]}>Træner</Text>
+                      <Text style={[styles.roleDescription, { color: textSecondaryColor }]}>
+                        Jeg er træner og vil administrere spillere og hold
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.backButton, { backgroundColor: colors.highlight }]}
+                      onPress={() => setSignupStep('credentials')}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.backButtonText, { color: textColor }]}>Tilbage</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  // Signup Step 3: Subscription Selection
+                  <View style={styles.form}>
+                    <Text style={[styles.stepTitle, { color: textColor }]}>
+                      Trin 3 af 3: Vælg abonnement
+                    </Text>
+                    <Text style={[styles.stepDescription, { color: textSecondaryColor }]}>
+                      {selectedRole === 'trainer' 
+                        ? 'Vælg et trænerabonnement baseret på antal spillere'
+                        : 'Vælg et spillerabonnement for at få adgang til alle funktioner'
                       }
                     </Text>
+
+                    <SubscriptionManager 
+                      onPlanSelected={handleCompleteSignup}
+                      isSignupFlow={true}
+                      selectedRole={selectedRole}
+                    />
+
+                    <TouchableOpacity
+                      style={[styles.backButton, { backgroundColor: colors.highlight, marginTop: 16 }]}
+                      onPress={() => setSignupStep('role')}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.backButtonText, { color: textColor }]}>Tilbage</Text>
+                    </TouchableOpacity>
                   </View>
-                </View>
+                )}
+
+                {!isSignUp && (
+                  <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd', marginTop: 24 }]}>
+                    <IconSymbol 
+                      ios_icon_name="info.circle" 
+                      android_material_icon_name="info" 
+                      size={28} 
+                      color={colors.secondary} 
+                    />
+                    <View style={styles.infoTextContainer}>
+                      <Text style={[styles.infoTitle, { color: textColor }]}>
+                        Hvorfor skal jeg logge ind?
+                      </Text>
+                      <Text style={[styles.infoBoxText, { color: textSecondaryColor }]}>
+                        For at gemme eksterne kalendere og synkronisere dine data på tværs af enheder, skal du oprette en gratis konto.{'\n\n'}
+                        Dine data gemmes sikkert i Supabase og er kun tilgængelige for dig.
+                      </Text>
+                    </View>
+                  </View>
+                )}
               </>
             )}
           </View>
@@ -896,6 +1102,34 @@ const styles = StyleSheet.create({
   form: {
     gap: 8,
   },
+  stepTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  stepDescription: {
+    fontSize: 16,
+    lineHeight: 22,
+    marginBottom: 20,
+  },
+  roleCard: {
+    padding: 24,
+    borderRadius: 16,
+    borderWidth: 3,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  roleTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  roleDescription: {
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
   authButton: {
     paddingVertical: 18,
     borderRadius: 14,
@@ -906,6 +1140,16 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#fff',
+  },
+  backButton: {
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  backButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   loadingContainer: {
     flexDirection: 'row',
