@@ -1,15 +1,46 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Stack } from 'expo-router';
 import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
 import { colors } from '@/styles/commonStyles';
 import { useUserRole } from '@/hooks/useUserRole';
 import { ActivityIndicator, View } from 'react-native';
+import { supabase } from '@/app/integrations/supabase/client';
 
 export default function TabLayout() {
   const { userRole, loading } = useUserRole();
+  const [user, setUser] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+      setAuthLoading(false);
+    };
+    checkUser();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      setUser(session?.user || null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const tabs: TabBarItem[] = useMemo(() => {
+    // If user is not logged in, only show profile tab
+    if (!user) {
+      return [
+        {
+          name: 'profile',
+          route: '/(tabs)/profile',
+          icon: 'person.fill',
+          materialIcon: 'person',
+          label: 'Profil',
+        },
+      ];
+    }
+
     // Check if user is a player (not admin/trainer)
     const isPlayer = userRole === 'player';
     // Check if user is trainer/admin
@@ -84,9 +115,9 @@ export default function TabLayout() {
 
     // Default: show all tabs
     return allTabs;
-  }, [userRole]);
+  }, [userRole, user]);
 
-  if (loading) {
+  if (loading || authLoading) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}>
         <ActivityIndicator size="large" color={colors.primary} />
