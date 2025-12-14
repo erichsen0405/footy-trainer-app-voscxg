@@ -38,6 +38,14 @@ export default function ProfileScreen() {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
+  
+  // Debug state
+  const [debugInfo, setDebugInfo] = useState<string[]>([]);
+
+  const addDebugInfo = (message: string) => {
+    console.log('[SIGNUP DEBUG]', message);
+    setDebugInfo(prev => [...prev, `${new Date().toISOString().split('T')[1].split('.')[0]} - ${message}`]);
+  };
 
   useEffect(() => {
     // Check current user
@@ -222,16 +230,21 @@ export default function ProfileScreen() {
     }
 
     setLoading(true);
+    setDebugInfo([]);
     console.log(`Starting ${isSignUp ? 'signup' : 'login'} process for:`, email);
     
     try {
       if (isSignUp) {
+        addDebugInfo('Starting signup process...');
         console.log('Attempting to sign up with:', email);
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
-            emailRedirectTo: 'https://natively.dev/email-confirmed'
+            emailRedirectTo: 'https://natively.dev/email-confirmed',
+            data: {
+              role: 'admin', // Default role for iOS simple signup
+            }
           }
         });
 
@@ -242,6 +255,7 @@ export default function ProfileScreen() {
         });
 
         if (error) {
+          addDebugInfo(`❌ Signup error: ${error.message}`);
           console.error('Sign up error:', error);
           Alert.alert(
             'Kunne ikke oprette konto',
@@ -250,13 +264,14 @@ export default function ProfileScreen() {
           return;
         }
 
-        // Set default role as admin for self-signup
-        if (data.user) {
-          await supabase.from('user_roles').insert({
-            user_id: data.user.id,
-            role: 'admin',
-          });
+        if (!data.user) {
+          addDebugInfo('❌ No user returned from signup');
+          Alert.alert('Fejl', 'Kunne ikke oprette bruger. Prøv venligst igen.');
+          return;
         }
+
+        addDebugInfo(`✅ User created: ${data.user.id}`);
+        addDebugInfo(`Session exists: ${data.session ? 'Yes' : 'No (email confirmation required)'}`);
 
         setShowSuccessMessage(true);
         setEmail('');
@@ -265,15 +280,17 @@ export default function ProfileScreen() {
         setTimeout(() => {
           setShowSuccessMessage(false);
           setIsSignUp(false);
-        }, 3000);
+        }, 5000);
 
         if (data.user && !data.session) {
+          addDebugInfo('📧 Email confirmation required');
           Alert.alert(
             'Bekræft din email ✉️',
             'Vi har sendt en bekræftelsesmail til dig. Tjek venligst din indbakke og klik på linket for at aktivere din konto.\n\n⚠️ Bemærk: Tjek også din spam-mappe hvis du ikke kan finde emailen.\n\n✅ Din konto er oprettet, men du skal bekræfte din email før du kan logge ind.',
             [{ text: 'OK' }]
           );
         } else if (data.session) {
+          addDebugInfo('✅ User logged in automatically');
           Alert.alert('Succes! 🎉', 'Din konto er oprettet og du er nu logget ind!');
         }
       } else {
@@ -313,6 +330,7 @@ export default function ProfileScreen() {
         }
       }
     } catch (error: any) {
+      addDebugInfo(`❌ Unexpected error: ${error.message}`);
       console.error('Auth error:', error);
       Alert.alert('Fejl', error.message || 'Der opstod en uventet fejl. Prøv venligst igen.');
     } finally {
@@ -556,8 +574,18 @@ export default function ProfileScreen() {
                 <Text style={styles.successTitle}>Konto oprettet! 🎉</Text>
                 <Text style={styles.successText}>
                   Din konto er blevet oprettet succesfuldt.{'\n'}
-                  Du bliver nu sendt til login siden...
+                  Tjek din email for at bekræfte din konto.
                 </Text>
+                
+                {/* Debug Info */}
+                {debugInfo.length > 0 && (
+                  <View style={styles.debugContainer}>
+                    <Text style={styles.debugTitle}>📋 Debug Log:</Text>
+                    {debugInfo.map((info, index) => (
+                      <Text key={index} style={styles.debugText}>{info}</Text>
+                    ))}
+                  </View>
+                )}
               </View>
             )}
 
@@ -573,7 +601,10 @@ export default function ProfileScreen() {
                       styles.authToggleButton,
                       !isSignUp && styles.authToggleButtonActive
                     ]}
-                    onPress={() => setIsSignUp(false)}
+                    onPress={() => {
+                      setIsSignUp(false);
+                      setDebugInfo([]);
+                    }}
                     activeOpacity={0.7}
                   >
                     <Text style={[
@@ -589,7 +620,10 @@ export default function ProfileScreen() {
                       styles.authToggleButton,
                       isSignUp && styles.authToggleButtonActive
                     ]}
-                    onPress={() => setIsSignUp(true)}
+                    onPress={() => {
+                      setIsSignUp(true);
+                      setDebugInfo([]);
+                    }}
                     activeOpacity={0.7}
                   >
                     <Text style={[
@@ -674,6 +708,18 @@ export default function ProfileScreen() {
                     }
                   </Text>
                 </View>
+                
+                {/* Debug Info during signup */}
+                {debugInfo.length > 0 && (
+                  <View style={styles.debugContainer}>
+                    <Text style={[styles.debugTitle, { color: theme.colors.text }]}>📋 Debug Log:</Text>
+                    <ScrollView style={styles.debugScroll} nestedScrollEnabled>
+                      {debugInfo.map((info, index) => (
+                        <Text key={index} style={[styles.debugText, { color: theme.dark ? '#98989D' : '#666' }]}>{info}</Text>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
               </>
             )}
           </GlassView>
@@ -902,5 +948,27 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     lineHeight: 20,
+  },
+  debugContainer: {
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 16,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+  },
+  debugTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    color: '#fff',
+  },
+  debugScroll: {
+    maxHeight: 200,
+  },
+  debugText: {
+    fontSize: 12,
+    fontFamily: 'Courier',
+    marginBottom: 4,
+    color: '#fff',
+    opacity: 0.9,
   },
 });

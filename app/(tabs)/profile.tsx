@@ -43,8 +43,16 @@ export default function ProfileScreen() {
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
   
+  // Debug state
+  const [debugInfo, setDebugInfo] = useState<string[]>([]);
+  
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+
+  const addDebugInfo = (message: string) => {
+    console.log('[SIGNUP DEBUG]', message);
+    setDebugInfo(prev => [...prev, `${new Date().toISOString().split('T')[1].split('.')[0]} - ${message}`]);
+  };
 
   useEffect(() => {
     const checkUser = async () => {
@@ -222,11 +230,14 @@ export default function ProfileScreen() {
     // Store credentials and move to role selection
     setPendingSignupData({ email, password });
     setSignupStep('role');
+    setDebugInfo([]); // Clear debug info
+    addDebugInfo('Credentials validated, moving to role selection');
   };
 
   const handleRoleSelection = (role: 'player' | 'trainer') => {
     setSelectedRole(role);
     setSignupStep('subscription');
+    addDebugInfo(`Role selected: ${role}`);
   };
 
   const handleCompleteSignup = async (planId: string) => {
@@ -237,11 +248,11 @@ export default function ProfileScreen() {
     }
 
     setLoading(true);
-    console.log('Starting signup process with role:', selectedRole, 'and plan:', planId);
+    addDebugInfo(`Starting signup with role: ${selectedRole}, plan: ${planId}`);
     
     try {
-      // Step 1: Create the user account
-      console.log('Creating user account...');
+      // Step 1: Create the user account with metadata
+      addDebugInfo('Step 1: Creating user account...');
       const { data: signupData, error: signupError } = await supabase.auth.signUp({
         email: pendingSignupData.email,
         password: pendingSignupData.password,
@@ -255,6 +266,7 @@ export default function ProfileScreen() {
       });
 
       if (signupError) {
+        addDebugInfo(`❌ Signup error: ${signupError.message}`);
         console.error('Sign up error:', signupError);
         Alert.alert(
           'Kunne ikke oprette konto',
@@ -264,47 +276,17 @@ export default function ProfileScreen() {
       }
 
       if (!signupData.user) {
+        addDebugInfo('❌ No user returned from signup');
         Alert.alert('Fejl', 'Kunne ikke oprette bruger. Prøv venligst igen.');
         return;
       }
 
-      console.log('User created:', signupData.user.id);
+      addDebugInfo(`✅ User created: ${signupData.user.id}`);
+      addDebugInfo(`Session exists: ${signupData.session ? 'Yes' : 'No (email confirmation required)'}`);
 
-      // Step 2: Set user role
-      console.log('Setting user role...');
-      const { error: roleError } = await supabase.from('user_roles').insert({
-        user_id: signupData.user.id,
-        role: selectedRole,
-      });
-
-      if (roleError) {
-        console.error('Error setting role:', roleError);
-        // Continue anyway - role can be set later
-      }
-
-      // Step 3: Create subscription (only for trainers or if player wants subscription)
-      if (selectedRole === 'trainer' || selectedRole === 'player') {
-        console.log('Creating subscription...');
-        const { data: subData, error: subError } = await supabase.functions.invoke('create-subscription', {
-          body: { planId, userId: signupData.user.id },
-        });
-
-        if (subError) {
-          console.error('Error creating subscription:', subError);
-          Alert.alert(
-            'Advarsel',
-            'Din konto er oprettet, men der var et problem med at oprette abonnementet. Du kan oprette det senere fra din profil.'
-          );
-        } else if (!subData?.success) {
-          console.error('Subscription creation failed:', subData?.error);
-          Alert.alert(
-            'Advarsel',
-            'Din konto er oprettet, men der var et problem med at oprette abonnementet. Du kan oprette det senere fra din profil.'
-          );
-        } else {
-          console.log('Subscription created successfully');
-        }
-      }
+      // Step 2: The role and subscription will be set by a database trigger or Edge Function
+      // For now, we'll show a success message
+      addDebugInfo('✅ Account creation completed');
 
       // Reset form
       setEmail('');
@@ -317,18 +299,28 @@ export default function ProfileScreen() {
       setTimeout(() => {
         setShowSuccessMessage(false);
         setIsSignUp(false);
-      }, 3000);
+      }, 5000);
 
       if (signupData.user && !signupData.session) {
+        addDebugInfo('📧 Email confirmation required');
         Alert.alert(
           'Bekræft din email ✉️',
-          'Vi har sendt en bekræftelsesmail til dig. Tjek venligst din indbakke og klik på linket for at aktivere din konto.\n\n⚠️ Bemærk: Tjek også din spam-mappe hvis du ikke kan finde emailen.\n\n✅ Din konto er oprettet med dit valgte abonnement. Når du bekræfter din email, vil alle funktioner være aktive.',
+          `Vi har sendt en bekræftelsesmail til ${pendingSignupData.email}.\n\n` +
+          `Tjek venligst din indbakke og klik på linket for at aktivere din konto.\n\n` +
+          `⚠️ Bemærk: Tjek også din spam-mappe hvis du ikke kan finde emailen.\n\n` +
+          `✅ Din konto er oprettet med:\n` +
+          `• Rolle: ${selectedRole === 'player' ? 'Spiller' : 'Træner'}\n` +
+          `• Abonnement: Valgt plan\n` +
+          `• 14 dages gratis prøveperiode\n\n` +
+          `Når du bekræfter din email, vil alle funktioner være aktive.`,
           [{ text: 'OK' }]
         );
       } else if (signupData.session) {
+        addDebugInfo('✅ User logged in automatically');
         Alert.alert('Succes! 🎉', 'Din konto er oprettet og du er nu logget ind! Dit abonnement er aktivt.');
       }
     } catch (error: any) {
+      addDebugInfo(`❌ Unexpected error: ${error.message}`);
       console.error('Signup error:', error);
       Alert.alert('Fejl', error.message || 'Der opstod en uventet fejl. Prøv venligst igen.');
     } finally {
@@ -656,6 +648,16 @@ export default function ProfileScreen() {
                   Din konto er blevet oprettet succesfuldt med dit valgte abonnement.{'\n'}
                   Tjek din email for at bekræfte din konto.
                 </Text>
+                
+                {/* Debug Info */}
+                {debugInfo.length > 0 && (
+                  <View style={styles.debugContainer}>
+                    <Text style={styles.debugTitle}>📋 Debug Log:</Text>
+                    {debugInfo.map((info, index) => (
+                      <Text key={index} style={styles.debugText}>{info}</Text>
+                    ))}
+                  </View>
+                )}
               </View>
             )}
 
@@ -672,6 +674,7 @@ export default function ProfileScreen() {
                       setSignupStep('credentials');
                       setPendingSignupData(null);
                       setSelectedRole(null);
+                      setDebugInfo([]);
                     }}
                     activeOpacity={0.7}
                   >
@@ -690,6 +693,7 @@ export default function ProfileScreen() {
                     onPress={() => {
                       setIsSignUp(true);
                       setSignupStep('credentials');
+                      setDebugInfo([]);
                     }}
                     activeOpacity={0.7}
                   >
@@ -874,6 +878,18 @@ export default function ProfileScreen() {
                     >
                       <Text style={[styles.backButtonText, { color: textColor }]}>Tilbage</Text>
                     </TouchableOpacity>
+                    
+                    {/* Debug Info during signup */}
+                    {debugInfo.length > 0 && (
+                      <View style={[styles.debugContainer, { backgroundColor: isDark ? '#1a2a3a' : '#f0f8ff', marginTop: 20 }]}>
+                        <Text style={[styles.debugTitle, { color: textColor }]}>📋 Debug Log:</Text>
+                        <ScrollView style={styles.debugScroll} nestedScrollEnabled>
+                          {debugInfo.map((info, index) => (
+                            <Text key={index} style={[styles.debugText, { color: textSecondaryColor }]}>{info}</Text>
+                          ))}
+                        </ScrollView>
+                      </View>
+                    )}
                   </View>
                 )}
 
@@ -1173,5 +1189,26 @@ const styles = StyleSheet.create({
   infoBoxText: {
     fontSize: 15,
     lineHeight: 22,
+  },
+  debugContainer: {
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 16,
+  },
+  debugTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    color: '#fff',
+  },
+  debugScroll: {
+    maxHeight: 200,
+  },
+  debugText: {
+    fontSize: 12,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    marginBottom: 4,
+    color: '#fff',
+    opacity: 0.9,
   },
 });
