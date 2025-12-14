@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log('Deleting player:', playerId);
+    console.log('Removing player from trainer:', playerId);
 
     // Get environment variables
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -98,7 +98,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Create a Supabase client with the user's JWT to verify they're an admin
+    // Create a Supabase client with the user's JWT to verify they're a trainer
     const supabaseClient = createClient(
       supabaseUrl,
       supabaseAnonKey,
@@ -109,7 +109,7 @@ Deno.serve(async (req) => {
       }
     );
 
-    // Verify the user is authenticated and is an admin
+    // Verify the user is authenticated and is a trainer
     console.log('Verifying user authentication...');
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
     if (userError) {
@@ -141,8 +141,8 @@ Deno.serve(async (req) => {
 
     console.log('User authenticated:', user.id);
 
-    // Check if user is admin
-    console.log('Checking admin role...');
+    // Check if user is trainer or admin
+    console.log('Checking trainer/admin role...');
     const { data: roleData, error: roleError } = await supabaseClient
       .from('user_roles')
       .select('role')
@@ -165,12 +165,12 @@ Deno.serve(async (req) => {
 
     console.log('Role data:', roleData);
 
-    if (!roleData || roleData.role !== 'admin') {
-      console.error('User is not admin:', roleData);
+    if (!roleData || (roleData.role !== 'trainer' && roleData.role !== 'admin')) {
+      console.error('User is not trainer or admin:', roleData);
       return new Response(
         JSON.stringify({
           success: false,
-          error: 'Only admins can delete player accounts',
+          error: 'Only trainers can remove players from their profile',
           userRole: roleData?.role || 'none',
         }),
         {
@@ -180,10 +180,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log('User is admin, proceeding with player deletion');
+    console.log('User is trainer/admin, proceeding with player removal');
 
-    // Verify the admin-player relationship exists
-    console.log('Verifying admin-player relationship...');
+    // Verify the trainer-player relationship exists
+    console.log('Verifying trainer-player relationship...');
     const { data: relationshipData, error: relationshipCheckError } = await supabaseClient
       .from('admin_player_relationships')
       .select('*')
@@ -206,11 +206,11 @@ Deno.serve(async (req) => {
     }
 
     if (!relationshipData) {
-      console.error('No relationship found between admin and player');
+      console.error('No relationship found between trainer and player');
       return new Response(
         JSON.stringify({
           success: false,
-          error: 'You do not have permission to delete this player',
+          error: 'You do not have permission to remove this player',
         }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -219,7 +219,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log('Relationship verified, proceeding with deletion');
+    console.log('Relationship verified, proceeding with removal');
 
     // Create a Supabase admin client with service role
     const supabaseAdmin = createClient(
@@ -233,8 +233,128 @@ Deno.serve(async (req) => {
       }
     );
 
-    // Delete the admin-player relationship first
-    console.log('Deleting admin-player relationship...');
+    // Step 1: Delete task_templates assigned by this trainer to this player
+    console.log('Deleting task templates assigned by trainer to player...');
+    const { error: deleteTaskTemplatesError } = await supabaseAdmin
+      .from('task_templates')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('player_id', playerId);
+
+    if (deleteTaskTemplatesError) {
+      console.error('Failed to delete task templates:', deleteTaskTemplatesError);
+      // Continue anyway - we want to remove as much as possible
+    } else {
+      console.log('Task templates deleted successfully');
+    }
+
+    // Step 2: Delete exercise assignments from this trainer to this player
+    console.log('Deleting exercise assignments from trainer to player...');
+    const { error: deleteExerciseAssignmentsError } = await supabaseAdmin
+      .from('exercise_assignments')
+      .delete()
+      .eq('trainer_id', user.id)
+      .eq('player_id', playerId);
+
+    if (deleteExerciseAssignmentsError) {
+      console.error('Failed to delete exercise assignments:', deleteExerciseAssignmentsError);
+      // Continue anyway
+    } else {
+      console.log('Exercise assignments deleted successfully');
+    }
+
+    // Step 3: Delete activities created by trainer for this player
+    console.log('Deleting activities created by trainer for player...');
+    const { error: deleteActivitiesError } = await supabaseAdmin
+      .from('activities')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('player_id', playerId);
+
+    if (deleteActivitiesError) {
+      console.error('Failed to delete activities:', deleteActivitiesError);
+      // Continue anyway
+    } else {
+      console.log('Activities deleted successfully');
+    }
+
+    // Step 4: Delete activity_categories created by trainer for this player
+    console.log('Deleting activity categories created by trainer for player...');
+    const { error: deleteCategoriesError } = await supabaseAdmin
+      .from('activity_categories')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('player_id', playerId);
+
+    if (deleteCategoriesError) {
+      console.error('Failed to delete activity categories:', deleteCategoriesError);
+      // Continue anyway
+    } else {
+      console.log('Activity categories deleted successfully');
+    }
+
+    // Step 5: Delete activity_series created by trainer for this player
+    console.log('Deleting activity series created by trainer for player...');
+    const { error: deleteSeriesError } = await supabaseAdmin
+      .from('activity_series')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('player_id', playerId);
+
+    if (deleteSeriesError) {
+      console.error('Failed to delete activity series:', deleteSeriesError);
+      // Continue anyway
+    } else {
+      console.log('Activity series deleted successfully');
+    }
+
+    // Step 6: Delete external_calendars created by trainer for this player
+    console.log('Deleting external calendars created by trainer for player...');
+    const { error: deleteCalendarsError } = await supabaseAdmin
+      .from('external_calendars')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('player_id', playerId);
+
+    if (deleteCalendarsError) {
+      console.error('Failed to delete external calendars:', deleteCalendarsError);
+      // Continue anyway
+    } else {
+      console.log('External calendars deleted successfully');
+    }
+
+    // Step 7: Delete events_local_meta created by trainer for this player
+    console.log('Deleting events local meta created by trainer for player...');
+    const { error: deleteEventsMetaError } = await supabaseAdmin
+      .from('events_local_meta')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('player_id', playerId);
+
+    if (deleteEventsMetaError) {
+      console.error('Failed to delete events local meta:', deleteEventsMetaError);
+      // Continue anyway
+    } else {
+      console.log('Events local meta deleted successfully');
+    }
+
+    // Step 8: Delete weekly_performance created by trainer for this player
+    console.log('Deleting weekly performance created by trainer for player...');
+    const { error: deletePerformanceError } = await supabaseAdmin
+      .from('weekly_performance')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('player_id', playerId);
+
+    if (deletePerformanceError) {
+      console.error('Failed to delete weekly performance:', deletePerformanceError);
+      // Continue anyway
+    } else {
+      console.log('Weekly performance deleted successfully');
+    }
+
+    // Step 9: Finally, delete the trainer-player relationship
+    console.log('Deleting trainer-player relationship...');
     const { error: deleteRelError } = await supabaseAdmin
       .from('admin_player_relationships')
       .delete()
@@ -256,54 +376,14 @@ Deno.serve(async (req) => {
     }
 
     console.log('Relationship deleted successfully');
-
-    // Check if this player has any other admin relationships
-    console.log('Checking for other admin relationships...');
-    const { data: otherRelationships, error: otherRelError } = await supabaseAdmin
-      .from('admin_player_relationships')
-      .select('id')
-      .eq('player_id', playerId);
-
-    if (otherRelError) {
-      console.error('Failed to check other relationships:', otherRelError);
-      // Continue anyway - we've already deleted the relationship
-    }
-
-    // If no other relationships exist, delete the player completely
-    if (!otherRelationships || otherRelationships.length === 0) {
-      console.log('No other relationships found, deleting player completely...');
-
-      // Delete user from Supabase Auth
-      console.log('Deleting user from auth.users...');
-      const { error: deleteUserError } = await supabaseAdmin.auth.admin.deleteUser(playerId);
-
-      if (deleteUserError) {
-        console.error('Failed to delete user from auth:', deleteUserError);
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: `Failed to delete user: ${deleteUserError.message}`,
-          }),
-          {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 500,
-          }
-        );
-      }
-
-      console.log('User deleted from auth successfully');
-      console.log('Note: Profile and user_roles will be cascade deleted automatically');
-    } else {
-      console.log(`Player has ${otherRelationships.length} other admin relationship(s), keeping account active`);
-    }
-
-    console.log('=== Delete Player Function Completed Successfully ===');
+    console.log('=== Player Removal Completed Successfully ===');
+    console.log('Note: Player account and self-created content remain intact');
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'Player deleted successfully',
-        fullyDeleted: !otherRelationships || otherRelationships.length === 0,
+        message: 'Player removed from your profile successfully',
+        playerAccountRetained: true,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -43,9 +43,9 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
         return;
       }
 
-      console.log('Current admin user ID:', user.id);
+      console.log('Current trainer user ID:', user.id);
 
-      // Get all player relationships for this admin
+      // Get all player relationships for this trainer
       const { data: relationships, error: relError } = await supabase
         .from('admin_player_relationships')
         .select('player_id')
@@ -101,7 +101,7 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
   }, [refreshTrigger]);
 
   const performDelete = async (playerId: string, playerName: string) => {
-    console.log('=== STARTING DELETE OPERATION ===');
+    console.log('=== STARTING PLAYER REMOVAL OPERATION ===');
     console.log('Player ID:', playerId);
     console.log('Player Name:', playerName);
     
@@ -110,7 +110,7 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
     try {
       console.log('Calling delete-player Edge Function...');
 
-      // Call the Edge Function to delete the player
+      // Call the Edge Function to remove the player from trainer's profile
       const { data, error } = await supabase.functions.invoke('delete-player', {
         body: {
           playerId,
@@ -123,7 +123,7 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
         console.error('Edge function error:', error);
         
         // Try to extract error message
-        let errorMessage = 'Kunne ikke slette spilleren';
+        let errorMessage = 'Kunne ikke fjerne spilleren';
         
         if (error.context && error.context instanceof Response) {
           try {
@@ -145,16 +145,13 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
 
       if (!data || !data.success) {
         console.error('Edge function returned error:', data);
-        const errorMessage = data?.error || 'Kunne ikke slette spilleren';
+        const errorMessage = data?.error || 'Kunne ikke fjerne spilleren';
         throw new Error(errorMessage);
       }
 
-      console.log('Player deleted successfully');
+      console.log('Player removed successfully from trainer profile');
       
-      const fullyDeleted = data.fullyDeleted;
-      const message = fullyDeleted 
-        ? `${playerName} er blevet fuldstændigt slettet fra systemet`
-        : `${playerName} er fjernet fra din liste`;
+      const message = `${playerName} er blevet fjernet fra din profil.\n\nSpilleren beholder sin egen konto og selvoprettede opgaver og aktiviteter.\n\nDe opgaver og aktiviteter du har tildelt spilleren er blevet slettet.`;
 
       Alert.alert('Succes', message);
       
@@ -163,10 +160,10 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
       await fetchPlayers();
       console.log('Player list refreshed');
     } catch (error: any) {
-      console.error('Error deleting player:', error);
+      console.error('Error removing player:', error);
       console.error('Error details:', JSON.stringify(error, null, 2));
       
-      let errorMessage = 'Der opstod en fejl ved sletning af spilleren';
+      let errorMessage = 'Der opstod en fejl ved fjernelse af spilleren';
       if (error.message) {
         errorMessage = error.message;
       }
@@ -175,30 +172,30 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
     } finally {
       console.log('Clearing deletingPlayerId');
       setDeletingPlayerId(null);
-      console.log('=== DELETE OPERATION COMPLETE ===');
+      console.log('=== PLAYER REMOVAL OPERATION COMPLETE ===');
     }
   };
 
   const handleDeletePlayer = (playerId: string, playerName: string) => {
-    console.log('=== DELETE BUTTON PRESSED ===');
-    console.log('Delete button pressed for player:', playerId, playerName);
+    console.log('=== REMOVE BUTTON PRESSED ===');
+    console.log('Remove button pressed for player:', playerId, playerName);
     
     Alert.alert(
-      'Slet spillerprofil',
-      `Er du sikker på at du vil slette ${playerName}?\n\nDette vil permanent fjerne spilleren fra systemet, inklusive deres konto og alle data.`,
+      'Fjern spiller',
+      `Er du sikker på at du vil fjerne ${playerName} fra din profil?\n\nSpilleren vil blive fjernet fra din liste, og alle opgaver og aktiviteter du har tildelt spilleren vil blive slettet.\n\nSpilleren beholder sin egen konto og selvoprettede opgaver og aktiviteter.`,
       [
         { 
           text: 'Annuller', 
           style: 'cancel',
           onPress: () => {
-            console.log('Delete cancelled by user');
+            console.log('Remove cancelled by user');
           }
         },
         {
-          text: 'Slet',
+          text: 'Fjern',
           style: 'destructive',
           onPress: () => {
-            console.log('User confirmed delete, calling performDelete...');
+            console.log('User confirmed removal, calling performDelete...');
             setTimeout(() => {
               performDelete(playerId, playerName);
             }, 100);
@@ -262,7 +259,7 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
               <TouchableOpacity
                 style={styles.deleteButton}
                 onPress={() => {
-                  console.log('Delete button onPress triggered');
+                  console.log('Remove button onPress triggered');
                   handleDeletePlayer(player.id, player.full_name);
                 }}
                 disabled={deletingPlayerId === player.id}
@@ -273,8 +270,8 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
                   <ActivityIndicator size="small" color={colors.error} />
                 ) : (
                   <IconSymbol
-                    ios_icon_name="trash"
-                    android_material_icon_name="delete"
+                    ios_icon_name="person.badge.minus"
+                    android_material_icon_name="person_remove"
                     size={22}
                     color={colors.error}
                   />
