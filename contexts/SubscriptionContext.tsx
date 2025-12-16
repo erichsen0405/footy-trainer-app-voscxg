@@ -55,14 +55,14 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
   const fetchSubscriptionStatus = async () => {
     try {
-      console.log('[SubscriptionContext] Fetching subscription status...');
+      console.log('[SubscriptionContext] ========== FETCHING SUBSCRIPTION STATUS ==========');
       setLoading(true);
       
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
         console.log('[SubscriptionContext] No user found');
-        setSubscriptionStatus({
+        const emptyStatus: SubscriptionStatus = {
           hasSubscription: false,
           status: null,
           planName: null,
@@ -70,28 +70,30 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
           currentPlayers: 0,
           trialEnd: null,
           currentPeriodEnd: null,
-        });
+        };
+        setSubscriptionStatus(emptyStatus);
+        console.log('[SubscriptionContext] Set empty subscription status');
         return;
       }
 
-      console.log('[SubscriptionContext] Calling get-subscription-status for user:', user.id);
+      console.log('[SubscriptionContext] User found:', user.email, user.id);
+      console.log('[SubscriptionContext] Calling get-subscription-status Edge Function...');
       
       const { data, error } = await supabase.functions.invoke('get-subscription-status');
 
-      console.log('[SubscriptionContext] Edge Function response:', {
-        data,
-        error,
-        dataType: typeof data,
-        dataKeys: data ? Object.keys(data) : null,
-      });
+      console.log('[SubscriptionContext] ========== EDGE FUNCTION RESPONSE ==========');
+      console.log('[SubscriptionContext] Error:', error);
+      console.log('[SubscriptionContext] Data:', JSON.stringify(data, null, 2));
+      console.log('[SubscriptionContext] Data type:', typeof data);
+      console.log('[SubscriptionContext] Has subscription:', data?.hasSubscription);
+      console.log('[SubscriptionContext] Plan name:', data?.planName);
+      console.log('[SubscriptionContext] Status:', data?.status);
 
       if (error) {
         console.error('[SubscriptionContext] Error from Edge Function:', error);
         // Even if there's an error, try to use the data if it exists
-        if (data) {
-          console.log('[SubscriptionContext] Using data despite error');
-        } else {
-          setSubscriptionStatus({
+        if (!data) {
+          const emptyStatus: SubscriptionStatus = {
             hasSubscription: false,
             status: null,
             planName: null,
@@ -99,31 +101,42 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
             currentPlayers: 0,
             trialEnd: null,
             currentPeriodEnd: null,
-          });
+          };
+          setSubscriptionStatus(emptyStatus);
+          console.log('[SubscriptionContext] Set empty subscription status due to error');
           return;
         }
       }
 
       // Ensure we have a valid subscription status object
       const statusData: SubscriptionStatus = {
-        hasSubscription: data?.hasSubscription ?? false,
+        hasSubscription: Boolean(data?.hasSubscription),
         status: data?.status ?? null,
         planName: data?.planName ?? null,
-        maxPlayers: data?.maxPlayers ?? 0,
-        currentPlayers: data?.currentPlayers ?? 0,
+        maxPlayers: Number(data?.maxPlayers) || 0,
+        currentPlayers: Number(data?.currentPlayers) || 0,
         trialEnd: data?.trialEnd ?? null,
         currentPeriodEnd: data?.currentPeriodEnd ?? null,
       };
 
-      console.log('[SubscriptionContext] Processed subscription status:', statusData);
-      console.log('[SubscriptionContext] Setting subscription status to state');
+      console.log('[SubscriptionContext] ========== PROCESSED STATUS DATA ==========');
+      console.log('[SubscriptionContext] Processed status:', JSON.stringify(statusData, null, 2));
+      console.log('[SubscriptionContext] Has subscription (boolean):', statusData.hasSubscription);
+      console.log('[SubscriptionContext] Plan name:', statusData.planName);
+      console.log('[SubscriptionContext] Status:', statusData.status);
       
+      console.log('[SubscriptionContext] Setting subscription status to state...');
       setSubscriptionStatus(statusData);
       
-      console.log('[SubscriptionContext] Subscription status set successfully');
+      // Force a small delay to ensure state is updated
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      console.log('[SubscriptionContext] ========== SUBSCRIPTION STATUS SET SUCCESSFULLY ==========');
+      console.log('[SubscriptionContext] Current state should now be:', JSON.stringify(statusData, null, 2));
     } catch (error) {
+      console.error('[SubscriptionContext] ========== UNEXPECTED ERROR ==========');
       console.error('[SubscriptionContext] Error in fetchSubscriptionStatus:', error);
-      setSubscriptionStatus({
+      const emptyStatus: SubscriptionStatus = {
         hasSubscription: false,
         status: null,
         planName: null,
@@ -131,20 +144,23 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         currentPlayers: 0,
         trialEnd: null,
         currentPeriodEnd: null,
-      });
+      };
+      setSubscriptionStatus(emptyStatus);
     } finally {
       setLoading(false);
+      console.log('[SubscriptionContext] Loading set to false');
     }
   };
 
   const refreshSubscription = async () => {
-    console.log('[SubscriptionContext] Manual refresh requested');
+    console.log('[SubscriptionContext] ========== MANUAL REFRESH REQUESTED ==========');
     await fetchSubscriptionStatus();
   };
 
   const createSubscription = async (planId: string): Promise<{ success: boolean; error?: string; alreadyHasSubscription?: boolean }> => {
     try {
-      console.log('[SubscriptionContext] Creating subscription with planId:', planId);
+      console.log('[SubscriptionContext] ========== CREATING SUBSCRIPTION ==========');
+      console.log('[SubscriptionContext] Plan ID:', planId);
       
       // Verify we have a valid session
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -158,7 +174,6 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       }
 
       console.log('[SubscriptionContext] Session verified, user ID:', session.user.id);
-      console.log('[SubscriptionContext] Access token present:', !!session.access_token);
 
       // Get the Supabase URL
       const supabaseUrl = 'https://lhpczofddvwcyrgotzha.supabase.co';
@@ -167,7 +182,6 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       // Prepare the request body
       const requestBody = { planId };
       console.log('[SubscriptionContext] Request body:', JSON.stringify(requestBody));
-      console.log('[SubscriptionContext] Calling function URL:', functionUrl);
 
       // Make a direct fetch call with explicit body
       const response = await fetch(functionUrl, {
@@ -181,7 +195,6 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       });
 
       console.log('[SubscriptionContext] Response status:', response.status);
-      console.log('[SubscriptionContext] Response ok:', response.ok);
 
       // Parse the response
       const responseData = await response.json();
@@ -195,8 +208,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         if (errorMessage.includes('allerede et abonnement') || errorMessage.includes('already has')) {
           console.log('[SubscriptionContext] User already has a subscription, refreshing status...');
           // Refresh subscription status to show current subscription
-          // Add a small delay to ensure the database is consistent
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise(resolve => setTimeout(resolve, 1500));
           await fetchSubscriptionStatus();
           return { 
             success: false, 
@@ -218,9 +230,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         const errorMessage = responseData?.error || '';
         if (errorMessage.includes('allerede et abonnement') || errorMessage.includes('already has')) {
           console.log('[SubscriptionContext] User already has a subscription, refreshing status...');
-          // Refresh subscription status to show current subscription
-          // Add a small delay to ensure the database is consistent
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise(resolve => setTimeout(resolve, 1500));
           await fetchSubscriptionStatus();
           return { 
             success: false, 
@@ -237,13 +247,14 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
       console.log('[SubscriptionContext] Subscription created successfully, refreshing status...');
 
-      // Refresh subscription status with a small delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Refresh subscription status with a delay
+      await new Promise(resolve => setTimeout(resolve, 1500));
       await fetchSubscriptionStatus();
 
       return { success: true };
     } catch (error: any) {
-      console.error('[SubscriptionContext] Unexpected error in createSubscription:', error);
+      console.error('[SubscriptionContext] ========== UNEXPECTED ERROR ==========');
+      console.error('[SubscriptionContext] Error in createSubscription:', error);
       console.error('[SubscriptionContext] Error stack:', error.stack);
       
       // Provide user-friendly error messages
@@ -257,14 +268,21 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       return { 
         success: false, 
         error: 'Der opstod en uventet fejl. Prøv igen om et øjeblik.' 
-        };
+      };
     }
   };
 
   useEffect(() => {
+    console.log('[SubscriptionContext] ========== CONTEXT INITIALIZED ==========');
     fetchSubscriptionPlans();
     fetchSubscriptionStatus();
   }, []);
+
+  // Log whenever subscription status changes
+  useEffect(() => {
+    console.log('[SubscriptionContext] ========== SUBSCRIPTION STATUS CHANGED ==========');
+    console.log('[SubscriptionContext] New status:', JSON.stringify(subscriptionStatus, null, 2));
+  }, [subscriptionStatus]);
 
   return (
     <SubscriptionContext.Provider

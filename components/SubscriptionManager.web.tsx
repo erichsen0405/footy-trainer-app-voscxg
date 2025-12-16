@@ -47,13 +47,18 @@ export default function SubscriptionManager({
 
   // Log subscription status changes for debugging
   useEffect(() => {
-    console.log('[SubscriptionManager.web] Subscription status updated:', {
-      hasSubscription: subscriptionStatus?.hasSubscription,
-      planName: subscriptionStatus?.planName,
-      status: subscriptionStatus?.status,
-      fullStatus: subscriptionStatus,
-    });
-  }, [subscriptionStatus]);
+    console.log('[SubscriptionManager.web] ========== SUBSCRIPTION STATUS UPDATED ==========');
+    console.log('[SubscriptionManager.web] Has subscription:', subscriptionStatus?.hasSubscription);
+    console.log('[SubscriptionManager.web] Plan name:', subscriptionStatus?.planName);
+    console.log('[SubscriptionManager.web] Status:', subscriptionStatus?.status);
+    console.log('[SubscriptionManager.web] Full status:', JSON.stringify(subscriptionStatus, null, 2));
+    
+    // Automatically hide plans if user has a subscription
+    if (subscriptionStatus?.hasSubscription && !isSignupFlow) {
+      console.log('[SubscriptionManager.web] User has subscription, hiding plans');
+      setShowPlans(false);
+    }
+  }, [subscriptionStatus, isSignupFlow]);
 
   // Filter plans based on role in signup flow
   const filteredPlans = isSignupFlow && selectedRole
@@ -64,7 +69,7 @@ export default function SubscriptionManager({
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    console.log('[SubscriptionManager.web] Manual refresh triggered');
+    console.log('[SubscriptionManager.web] ========== MANUAL REFRESH TRIGGERED ==========');
     await refreshSubscription();
     setIsRefreshing(false);
   };
@@ -90,7 +95,8 @@ export default function SubscriptionManager({
     setCreatingPlanId(planId);
     
     try {
-      console.log(`[SubscriptionManager.web] Attempting to create subscription (retry: ${isRetry})`);
+      console.log(`[SubscriptionManager.web] ========== ATTEMPTING TO CREATE SUBSCRIPTION ==========`);
+      console.log(`[SubscriptionManager.web] Is retry:`, isRetry);
       const result = await createSubscription(planId);
       
       if (result.success) {
@@ -99,14 +105,23 @@ export default function SubscriptionManager({
         setRetryCount(0);
         
         window.alert('Succes! 🎉\n\nDin 14-dages gratis prøveperiode er startet. Du kan nu oprette spillere.');
+        
+        // Force another refresh to ensure UI is updated
+        console.log('[SubscriptionManager.web] Forcing final refresh after successful creation...');
+        await refreshSubscription();
       } else if (result.alreadyHasSubscription) {
         // User already has a subscription - hide plans and show current subscription
-        console.log('[SubscriptionManager.web] User already has subscription, hiding plans and showing current subscription');
+        console.log('[SubscriptionManager.web] ========== USER ALREADY HAS SUBSCRIPTION ==========');
         setShowPlans(false);
         setRetryCount(0);
         
-        // Force a refresh to ensure UI is updated
-        console.log('[SubscriptionManager.web] Forcing subscription refresh...');
+        // Force multiple refreshes to ensure UI is updated
+        console.log('[SubscriptionManager.web] Forcing subscription refresh (attempt 1)...');
+        await refreshSubscription();
+        
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        console.log('[SubscriptionManager.web] Forcing subscription refresh (attempt 2)...');
         await refreshSubscription();
         
         // Show a friendly message
@@ -144,7 +159,8 @@ export default function SubscriptionManager({
         }
       }
     } catch (error: any) {
-      console.error('[SubscriptionManager.web] Unexpected error:', error);
+      console.error('[SubscriptionManager.web] ========== UNEXPECTED ERROR ==========');
+      console.error('[SubscriptionManager.web] Error:', error);
       window.alert('Uventet fejl\n\nDer opstod en uventet fejl. Prøv venligst igen.');
       setRetryCount(0);
     } finally {
