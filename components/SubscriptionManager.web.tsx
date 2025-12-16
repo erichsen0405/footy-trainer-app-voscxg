@@ -11,6 +11,7 @@ import {
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import SubscriptionDiagnostic from './SubscriptionDiagnostic';
 
 interface SubscriptionManagerProps {
   onPlanSelected?: (planId: string) => void;
@@ -28,6 +29,7 @@ export default function SubscriptionManager({
   const [showPlans, setShowPlans] = useState(isSignupFlow); // Collapsed by default unless in signup flow
   const [retryCount, setRetryCount] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showDiagnostic, setShowDiagnostic] = useState(false);
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
@@ -233,6 +235,23 @@ export default function SubscriptionManager({
     );
   }
 
+  // Show diagnostic if requested
+  if (showDiagnostic) {
+    return (
+      <View>
+        <TouchableOpacity
+          style={[styles.diagnosticButton, { backgroundColor: cardBgColor }]}
+          onPress={() => setShowDiagnostic(false)}
+        >
+          <Text style={[styles.diagnosticButtonText, { color: colors.primary }]}>
+            ← Tilbage til abonnementer
+          </Text>
+        </TouchableOpacity>
+        <SubscriptionDiagnostic />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -243,28 +262,45 @@ export default function SubscriptionManager({
             Start med 14 dages gratis prøveperiode
           </Text>
           
-          {/* Refresh Button */}
-          <TouchableOpacity
-            style={[styles.refreshButton, { backgroundColor: cardBgColor }]}
-            onPress={handleRefresh}
-            disabled={isRefreshing}
-          >
-            {isRefreshing ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <>
-                <IconSymbol
-                  ios_icon_name="arrow.clockwise"
-                  android_material_icon_name="refresh"
-                  size={20}
-                  color={colors.primary}
-                />
-                <Text style={[styles.refreshButtonText, { color: colors.primary }]}>
-                  Opdater status
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
+          {/* Action Buttons */}
+          <View style={styles.actionButtons}>
+            <TouchableOpacity
+              style={[styles.refreshButton, { backgroundColor: cardBgColor }]}
+              onPress={handleRefresh}
+              disabled={isRefreshing}
+            >
+              {isRefreshing ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <>
+                  <IconSymbol
+                    ios_icon_name="arrow.clockwise"
+                    android_material_icon_name="refresh"
+                    size={20}
+                    color={colors.primary}
+                  />
+                  <Text style={[styles.refreshButtonText, { color: colors.primary }]}>
+                    Opdater status
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.diagnosticButton, { backgroundColor: cardBgColor }]}
+              onPress={() => setShowDiagnostic(true)}
+            >
+              <IconSymbol
+                ios_icon_name="stethoscope"
+                android_material_icon_name="bug_report"
+                size={20}
+                color={colors.secondary}
+              />
+              <Text style={[styles.diagnosticButtonText, { color: colors.secondary }]}>
+                Diagnostik
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
 
@@ -586,6 +622,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 16,
   },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
   refreshButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -593,9 +634,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 8,
-    marginTop: 8,
   },
   refreshButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  diagnosticButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  diagnosticButtonText: {
     fontSize: 14,
     fontWeight: '600',
   },
