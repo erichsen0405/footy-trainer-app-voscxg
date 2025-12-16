@@ -162,10 +162,17 @@ export default function ProfileScreen() {
         .from('admin_player_relationships')
         .select('admin_id')
         .eq('player_id', playerId)
-        .single();
+        .maybeSingle();
 
-      if (relError || !relationship) {
+      // If no relationship exists yet (player hasn't been added by a trainer), just return
+      if (relError && relError.code !== 'PGRST116') {
         console.error('Error fetching admin relationship:', relError);
+        return;
+      }
+
+      if (!relationship) {
+        console.log('No admin relationship found yet - player has not been added by a trainer');
+        setAdminInfo(null);
         return;
       }
 
