@@ -1,12 +1,13 @@
 
+import React from 'react';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
-import { useColorScheme } from 'react-native';
+import { useColorScheme, View, Text, ActivityIndicator, Platform } from 'react-native';
 import { FootballProvider } from '@/contexts/FootballContext';
 import { SubscriptionProvider } from '@/contexts/SubscriptionContext';
 import { TeamPlayerProvider } from '@/contexts/TeamPlayerContext';
@@ -14,20 +15,71 @@ import { TeamPlayerProvider } from '@/contexts/TeamPlayerContext';
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
-export default function RootLayout() {
+// Error Boundary Component
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('App Error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>
+            Noget gik galt
+          </Text>
+          <Text style={{ textAlign: 'center', color: '#666' }}>
+            {this.state.error?.message || 'Der opstod en uventet fejl'}
+          </Text>
+        </View>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+function RootLayoutContent() {
   const colorScheme = useColorScheme();
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     if (loaded) {
-      SplashScreen.hideAsync();
+      // Add a small delay for web to ensure everything is mounted
+      if (Platform.OS === 'web') {
+        setTimeout(() => {
+          SplashScreen.hideAsync();
+          setIsReady(true);
+        }, 100);
+      } else {
+        SplashScreen.hideAsync();
+        setIsReady(true);
+      }
     }
   }, [loaded]);
 
-  if (!loaded) {
-    return null;
+  // Show a simple loading indicator while fonts are loading
+  if (!loaded || !isReady) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FF6347' }}>
+        <ActivityIndicator size="large" color="#FFFFFF" />
+      </View>
+    );
   }
 
   return (
@@ -101,5 +153,13 @@ export default function RootLayout() {
         </TeamPlayerProvider>
       </SubscriptionProvider>
     </ThemeProvider>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <ErrorBoundary>
+      <RootLayoutContent />
+    </ErrorBoundary>
   );
 }
