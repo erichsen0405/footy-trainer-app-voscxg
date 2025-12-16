@@ -43,6 +43,14 @@ export default function SubscriptionManager({
     }
   }, [isSignupFlow]);
 
+  // Auto-hide plans when subscription status is loaded and user has subscription
+  useEffect(() => {
+    if (!isSignupFlow && subscriptionStatus?.hasSubscription && showPlans) {
+      console.log('[SubscriptionManager] User has subscription, hiding plans');
+      setShowPlans(false);
+    }
+  }, [subscriptionStatus, isSignupFlow, showPlans]);
+
   // Filter plans based on role in signup flow
   const filteredPlans = isSignupFlow && selectedRole
     ? selectedRole === 'player'
@@ -91,11 +99,17 @@ export default function SubscriptionManager({
           [{ text: 'OK' }]
         );
       } else if (result.alreadyHasSubscription) {
-        // User already has a subscription - just keep showing the plans
-        console.log('[SubscriptionManager] User already has subscription, keeping plan selection visible');
+        // User already has a subscription - hide plans and show current subscription
+        console.log('[SubscriptionManager] User already has subscription, hiding plans and showing current subscription');
+        setShowPlans(false);
         setRetryCount(0);
-        // Don't show error, just keep the UI as is
-        // The subscription status will be refreshed and shown automatically
+        
+        // Show a friendly message
+        Alert.alert(
+          'Du har allerede et abonnement',
+          'Dit nuværende abonnement vises nu.',
+          [{ text: 'OK' }]
+        );
       } else {
         console.error('[SubscriptionManager] Subscription creation failed:', result.error);
         
