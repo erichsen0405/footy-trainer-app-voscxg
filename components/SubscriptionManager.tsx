@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -25,14 +25,22 @@ export default function SubscriptionManager({
   isSignupFlow = false,
   selectedRole = null 
 }: SubscriptionManagerProps) {
-  const { subscriptionStatus, subscriptionPlans, loading, createSubscription } = useSubscription();
+  const { subscriptionStatus, subscriptionPlans, loading, createSubscription, refreshSubscription } = useSubscription();
   const [creatingPlanId, setCreatingPlanId] = useState<string | null>(null);
+  const [showPlans, setShowPlans] = useState(false);
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
+
+  // Refresh subscription status when component mounts
+  useEffect(() => {
+    if (!isSignupFlow) {
+      refreshSubscription();
+    }
+  }, [isSignupFlow]);
 
   // Filter plans based on role in signup flow
   const filteredPlans = isSignupFlow && selectedRole
@@ -62,6 +70,9 @@ export default function SubscriptionManager({
             setCreatingPlanId(null);
 
             if (result.success) {
+              // Collapse the plan selection
+              setShowPlans(false);
+              
               Alert.alert(
                 'Succes! 🎉',
                 'Din 14-dages gratis prøveperiode er startet. Du kan nu oprette spillere.',
@@ -94,6 +105,34 @@ export default function SubscriptionManager({
     return Math.ceil(diff / (1000 * 60 * 60 * 24));
   };
 
+  const getPlanIcon = (planName: string | null) => {
+    if (!planName) return 'star.fill';
+    
+    const lowerName = planName.toLowerCase();
+    if (lowerName.includes('bronze') || lowerName.includes('basic')) {
+      return 'star.fill';
+    } else if (lowerName.includes('silver') || lowerName.includes('standard')) {
+      return 'star.leadinghalf.filled';
+    } else if (lowerName.includes('gold') || lowerName.includes('premium')) {
+      return 'star.circle.fill';
+    }
+    return 'star.fill';
+  };
+
+  const getPlanColor = (planName: string | null) => {
+    if (!planName) return '#CD7F32';
+    
+    const lowerName = planName.toLowerCase();
+    if (lowerName.includes('bronze') || lowerName.includes('basic')) {
+      return '#CD7F32'; // Bronze
+    } else if (lowerName.includes('silver') || lowerName.includes('standard')) {
+      return '#C0C0C0'; // Silver
+    } else if (lowerName.includes('gold') || lowerName.includes('premium')) {
+      return '#FFD700'; // Gold
+    }
+    return colors.primary;
+  };
+
   if (loading && !isSignupFlow) {
     return (
       <View style={styles.loadingContainer}>
@@ -104,19 +143,21 @@ export default function SubscriptionManager({
   }
 
   // Show current subscription if exists (not in signup flow)
-  if (!isSignupFlow && subscriptionStatus?.hasSubscription) {
+  if (!isSignupFlow && subscriptionStatus?.hasSubscription && !showPlans) {
     const daysRemaining = getDaysRemaining(
       subscriptionStatus.status === 'trial'
         ? subscriptionStatus.trialEnd
         : subscriptionStatus.currentPeriodEnd
     );
 
+    const planColor = getPlanColor(subscriptionStatus.planName);
+
     return (
       <View style={styles.container}>
-        <View style={[styles.currentSubscriptionCard, { backgroundColor: colors.primary }]}>
+        <View style={[styles.currentSubscriptionCard, { backgroundColor: planColor }]}>
           <View style={styles.subscriptionHeader}>
             <IconSymbol
-              ios_icon_name="checkmark.seal.fill"
+              ios_icon_name={getPlanIcon(subscriptionStatus.planName)}
               android_material_icon_name="verified"
               size={48}
               color="#fff"
@@ -168,6 +209,13 @@ export default function SubscriptionManager({
               </Text>
             </View>
           </View>
+
+          <TouchableOpacity
+            style={styles.changePlanButton}
+            onPress={() => setShowPlans(true)}
+          >
+            <Text style={styles.changePlanButtonText}>Skift abonnement</Text>
+          </TouchableOpacity>
         </View>
 
         {subscriptionStatus.status === 'trial' && (
@@ -194,6 +242,21 @@ export default function SubscriptionManager({
       showsVerticalScrollIndicator={false}
       nestedScrollEnabled={true}
     >
+      {!isSignupFlow && showPlans && (
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => setShowPlans(false)}
+        >
+          <IconSymbol
+            ios_icon_name="chevron.left"
+            android_material_icon_name="arrow_back"
+            size={20}
+            color={colors.primary}
+          />
+          <Text style={[styles.backButtonText, { color: colors.primary }]}>Tilbage</Text>
+        </TouchableOpacity>
+      )}
+
       {!isSignupFlow && (
         <View style={styles.header}>
           <Text style={[styles.headerTitle, { color: textColor }]}>Vælg din plan</Text>
@@ -345,6 +408,16 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
   },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 16,
+  },
+  backButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
   header: {
     marginBottom: 24,
     alignItems: 'center',
@@ -385,6 +458,7 @@ const styles = StyleSheet.create({
   },
   subscriptionDetails: {
     gap: 12,
+    marginBottom: 20,
   },
   detailRow: {
     flexDirection: 'row',
@@ -395,6 +469,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#fff',
     opacity: 0.95,
+  },
+  changePlanButton: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  changePlanButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
   plansContainer: {
     gap: 16,

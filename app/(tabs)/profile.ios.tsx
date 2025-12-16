@@ -10,6 +10,7 @@ import CreatePlayerModal from '@/components/CreatePlayerModal';
 import PlayersList from '@/components/PlayersList';
 import ExternalCalendarManager from '@/components/ExternalCalendarManager';
 import SubscriptionManager from '@/components/SubscriptionManager';
+import { useSubscription } from '@/contexts/SubscriptionContext';
 
 interface UserProfile {
   full_name: string;
@@ -48,6 +49,9 @@ export default function ProfileScreen() {
   
   // Debug state
   const [debugInfo, setDebugInfo] = useState<string[]>([]);
+
+  // Get subscription status
+  const { subscriptionStatus, refreshSubscription } = useSubscription();
 
   const addDebugInfo = (message: string) => {
     console.log('[PROFILE DEBUG]', message);
@@ -121,6 +125,8 @@ export default function ProfileScreen() {
       }
 
       addDebugInfo(`Subscription found: ${subData.status}`);
+      // Refresh subscription status
+      await refreshSubscription();
     }
 
     // User is fully onboarded
@@ -451,6 +457,9 @@ export default function ProfileScreen() {
       addDebugInfo(`✅ Subscription created successfully`);
       setNeedsSubscription(false);
       
+      // Refresh subscription status
+      await refreshSubscription();
+      
       Alert.alert(
         'Velkommen! 🎉',
         'Dit abonnement er aktiveret med 14 dages gratis prøveperiode. Du kan nu oprette spillere og hold!',
@@ -473,6 +482,20 @@ export default function ProfileScreen() {
       console.error('Sign out error:', error);
       Alert.alert('Fejl', error.message || 'Der opstod en fejl');
     }
+  };
+
+  const getPlanColor = (planName: string | null) => {
+    if (!planName) return theme.colors.primary;
+    
+    const lowerName = planName.toLowerCase();
+    if (lowerName.includes('bronze') || lowerName.includes('basic')) {
+      return '#CD7F32'; // Bronze
+    } else if (lowerName.includes('silver') || lowerName.includes('standard')) {
+      return '#C0C0C0'; // Silver
+    } else if (lowerName.includes('gold') || lowerName.includes('premium')) {
+      return '#FFD700'; // Gold
+    }
+    return theme.colors.primary;
   };
 
   // Show role selection if user is logged in but has no role
@@ -609,27 +632,64 @@ export default function ProfileScreen() {
           // Logged in view
           <>
             <GlassView style={styles.profileHeader} glassEffectStyle="regular">
-              <IconSymbol 
-                ios_icon_name="person.circle.fill" 
-                android_material_icon_name="person" 
-                size={80} 
-                color={theme.colors.primary} 
-              />
+              <View style={styles.avatarContainer}>
+                <View style={[styles.avatar, { 
+                  backgroundColor: subscriptionStatus?.hasSubscription 
+                    ? getPlanColor(subscriptionStatus.planName)
+                    : theme.colors.primary 
+                }]}>
+                  <IconSymbol 
+                    ios_icon_name="person.circle.fill" 
+                    android_material_icon_name="person" 
+                    size={80} 
+                    color="#fff" 
+                  />
+                </View>
+                {subscriptionStatus?.hasSubscription && (
+                  <View style={[styles.subscriptionBadge, { 
+                    backgroundColor: getPlanColor(subscriptionStatus.planName) 
+                  }]}>
+                    <IconSymbol
+                      ios_icon_name="star.fill"
+                      android_material_icon_name="star"
+                      size={16}
+                      color="#fff"
+                    />
+                  </View>
+                )}
+              </View>
               <Text style={[styles.name, { color: theme.colors.text }]}>
                 {profile?.full_name || user.email?.split('@')[0] || 'Bruger'}
               </Text>
               <Text style={[styles.email, { color: theme.dark ? '#98989D' : '#666' }]}>
                 {user.email}
               </Text>
-              {userRole && (
-                <View style={[styles.roleBadge, { 
-                  backgroundColor: (userRole === 'admin' || userRole === 'trainer') ? theme.colors.primary : '#FF9500' 
-                }]}>
-                  <Text style={styles.roleText}>
-                    {(userRole === 'admin' || userRole === 'trainer') ? 'Træner' : 'Spiller'}
-                  </Text>
-                </View>
-              )}
+              <View style={styles.badgesRow}>
+                {userRole && (
+                  <View style={[styles.roleBadge, { 
+                    backgroundColor: (userRole === 'admin' || userRole === 'trainer') ? theme.colors.primary : '#FF9500' 
+                  }]}>
+                    <Text style={styles.roleText}>
+                      {(userRole === 'admin' || userRole === 'trainer') ? 'Træner' : 'Spiller'}
+                    </Text>
+                  </View>
+                )}
+                {subscriptionStatus?.hasSubscription && (
+                  <View style={[styles.planBadge, { 
+                    backgroundColor: getPlanColor(subscriptionStatus.planName) 
+                  }]}>
+                    <IconSymbol
+                      ios_icon_name="star.fill"
+                      android_material_icon_name="star"
+                      size={12}
+                      color="#fff"
+                    />
+                    <Text style={styles.planBadgeText}>
+                      {subscriptionStatus.planName}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </GlassView>
 
             {/* Profile Info Section */}
@@ -1041,6 +1101,28 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     gap: 12,
   },
+  avatarContainer: {
+    position: 'relative',
+  },
+  avatar: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subscriptionBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: '#fff',
+  },
   name: {
     fontSize: 24,
     fontWeight: 'bold',
@@ -1048,13 +1130,31 @@ const styles = StyleSheet.create({
   email: {
     fontSize: 16,
   },
+  badgesRow: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+    marginTop: 8,
+  },
   roleBadge: {
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 20,
-    marginTop: 8,
   },
   roleText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  planBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  planBadgeText: {
     fontSize: 14,
     fontWeight: '600',
     color: '#fff',
