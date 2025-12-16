@@ -38,9 +38,19 @@ export default function SubscriptionManager({
   // Refresh subscription status when component mounts
   useEffect(() => {
     if (!isSignupFlow) {
+      console.log('[SubscriptionManager.web] Component mounted, refreshing subscription');
       refreshSubscription();
     }
   }, [isSignupFlow]);
+
+  // Log subscription status changes for debugging
+  useEffect(() => {
+    console.log('[SubscriptionManager.web] Subscription status updated:', {
+      hasSubscription: subscriptionStatus?.hasSubscription,
+      planName: subscriptionStatus?.planName,
+      status: subscriptionStatus?.status,
+    });
+  }, [subscriptionStatus]);
 
   // Filter plans based on role in signup flow
   const filteredPlans = isSignupFlow && selectedRole
@@ -70,7 +80,7 @@ export default function SubscriptionManager({
     setCreatingPlanId(planId);
     
     try {
-      console.log(`[SubscriptionManager] Attempting to create subscription (retry: ${isRetry})`);
+      console.log(`[SubscriptionManager.web] Attempting to create subscription (retry: ${isRetry})`);
       const result = await createSubscription(planId);
       
       if (result.success) {
@@ -81,14 +91,14 @@ export default function SubscriptionManager({
         window.alert('Succes! 🎉\n\nDin 14-dages gratis prøveperiode er startet. Du kan nu oprette spillere.');
       } else if (result.alreadyHasSubscription) {
         // User already has a subscription - hide plans and show current subscription
-        console.log('[SubscriptionManager] User already has subscription, hiding plans and showing current subscription');
+        console.log('[SubscriptionManager.web] User already has subscription, hiding plans and showing current subscription');
         setShowPlans(false);
         setRetryCount(0);
         
         // Show a friendly message
         window.alert('Du har allerede et abonnement\n\nDit nuværende abonnement vises nu.');
       } else {
-        console.error('[SubscriptionManager] Subscription creation failed:', result.error);
+        console.error('[SubscriptionManager.web] Subscription creation failed:', result.error);
         
         // Show error with retry option
         const retry = window.confirm(
@@ -120,7 +130,7 @@ export default function SubscriptionManager({
         }
       }
     } catch (error: any) {
-      console.error('[SubscriptionManager] Unexpected error:', error);
+      console.error('[SubscriptionManager.web] Unexpected error:', error);
       window.alert('Uventet fejl\n\nDer opstod en uventet fejl. Prøv venligst igen.');
       setRetryCount(0);
     } finally {
@@ -172,6 +182,29 @@ export default function SubscriptionManager({
       return '#FFD700'; // Gold
     }
     return colors.primary;
+  };
+
+  // Helper function to check if a plan is the current plan
+  const isCurrentPlanCheck = (planName: string): boolean => {
+    if (isSignupFlow || !subscriptionStatus?.hasSubscription || !subscriptionStatus?.planName) {
+      return false;
+    }
+    
+    // Normalize both strings for comparison (trim whitespace and compare case-insensitively)
+    const normalizedCurrentPlan = subscriptionStatus.planName.trim().toLowerCase();
+    const normalizedPlanName = planName.trim().toLowerCase();
+    
+    const isMatch = normalizedCurrentPlan === normalizedPlanName;
+    
+    console.log('[SubscriptionManager.web] Plan comparison:', {
+      currentPlan: subscriptionStatus.planName,
+      checkingPlan: planName,
+      normalizedCurrentPlan,
+      normalizedPlanName,
+      isMatch,
+    });
+    
+    return isMatch;
   };
 
   if (loading && !isSignupFlow) {
@@ -251,7 +284,7 @@ export default function SubscriptionManager({
           {filteredPlans.map((plan, index) => {
             const isPopular = index === Math.floor(filteredPlans.length / 2); // Middle plan is popular
             const isCreating = creatingPlanId === plan.id;
-            const isCurrentPlan = !isSignupFlow && subscriptionStatus?.planName === plan.name;
+            const isCurrentPlan = isCurrentPlanCheck(plan.name);
 
             return (
               <TouchableOpacity
@@ -259,7 +292,7 @@ export default function SubscriptionManager({
                 style={[
                   styles.planCard,
                   { backgroundColor: cardBgColor },
-                  isPopular && styles.popularPlan,
+                  isPopular && !isCurrentPlan && styles.popularPlan,
                   isCurrentPlan && styles.currentPlanCard,
                 ]}
                 onPress={() => handleSelectPlan(plan.id, plan.name, plan.max_players)}
@@ -361,6 +394,18 @@ export default function SubscriptionManager({
                       </Text>
                     )}
                   </TouchableOpacity>
+                )}
+
+                {isCurrentPlan && (
+                  <View style={[styles.currentPlanIndicator, { backgroundColor: colors.success || '#4CAF50' }]}>
+                    <IconSymbol
+                      ios_icon_name="checkmark.circle.fill"
+                      android_material_icon_name="check_circle"
+                      size={20}
+                      color="#fff"
+                    />
+                    <Text style={styles.currentPlanIndicatorText}>Din aktive plan</Text>
+                  </View>
                 )}
               </TouchableOpacity>
             );
@@ -549,7 +594,7 @@ const styles = StyleSheet.create({
   },
   currentPlanCard: {
     borderColor: colors.success || '#4CAF50',
-    opacity: 0.7,
+    borderWidth: 3,
   },
   popularBadge: {
     position: 'absolute',
@@ -616,6 +661,19 @@ const styles = StyleSheet.create({
   selectButtonText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  currentPlanIndicator: {
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  currentPlanIndicatorText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
   subscriptionDetailsContainer: {
     gap: 16,

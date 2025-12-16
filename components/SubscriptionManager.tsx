@@ -39,9 +39,19 @@ export default function SubscriptionManager({
   // Refresh subscription status when component mounts
   useEffect(() => {
     if (!isSignupFlow) {
+      console.log('[SubscriptionManager] Component mounted, refreshing subscription');
       refreshSubscription();
     }
   }, [isSignupFlow]);
+
+  // Log subscription status changes for debugging
+  useEffect(() => {
+    console.log('[SubscriptionManager] Subscription status updated:', {
+      hasSubscription: subscriptionStatus?.hasSubscription,
+      planName: subscriptionStatus?.planName,
+      status: subscriptionStatus?.status,
+    });
+  }, [subscriptionStatus]);
 
   // Filter plans based on role in signup flow
   const filteredPlans = isSignupFlow && selectedRole
@@ -198,6 +208,29 @@ export default function SubscriptionManager({
     return colors.primary;
   };
 
+  // Helper function to check if a plan is the current plan
+  const isCurrentPlanCheck = (planName: string): boolean => {
+    if (isSignupFlow || !subscriptionStatus?.hasSubscription || !subscriptionStatus?.planName) {
+      return false;
+    }
+    
+    // Normalize both strings for comparison (trim whitespace and compare case-insensitively)
+    const normalizedCurrentPlan = subscriptionStatus.planName.trim().toLowerCase();
+    const normalizedPlanName = planName.trim().toLowerCase();
+    
+    const isMatch = normalizedCurrentPlan === normalizedPlanName;
+    
+    console.log('[SubscriptionManager] Plan comparison:', {
+      currentPlan: subscriptionStatus.planName,
+      checkingPlan: planName,
+      normalizedCurrentPlan,
+      normalizedPlanName,
+      isMatch,
+    });
+    
+    return isMatch;
+  };
+
   if (loading && !isSignupFlow) {
     return (
       <View style={styles.loadingContainer}>
@@ -279,7 +312,7 @@ export default function SubscriptionManager({
           {filteredPlans.map((plan, index) => {
             const isPopular = index === Math.floor(filteredPlans.length / 2); // Middle plan is popular
             const isCreating = creatingPlanId === plan.id;
-            const isCurrentPlan = !isSignupFlow && subscriptionStatus?.planName === plan.name;
+            const isCurrentPlan = isCurrentPlanCheck(plan.name);
 
             return (
               <TouchableOpacity
@@ -287,7 +320,7 @@ export default function SubscriptionManager({
                 style={[
                   styles.planCard,
                   { backgroundColor: cardBgColor },
-                  isPopular && styles.popularPlan,
+                  isPopular && !isCurrentPlan && styles.popularPlan,
                   isCurrentPlan && styles.currentPlanCard,
                 ]}
                 onPress={() => handleSelectPlan(plan.id, plan.name, plan.max_players)}
@@ -389,6 +422,18 @@ export default function SubscriptionManager({
                       </Text>
                     )}
                   </TouchableOpacity>
+                )}
+
+                {isCurrentPlan && (
+                  <View style={[styles.currentPlanIndicator, { backgroundColor: colors.success || '#4CAF50' }]}>
+                    <IconSymbol
+                      ios_icon_name="checkmark.circle.fill"
+                      android_material_icon_name="check_circle"
+                      size={20}
+                      color="#fff"
+                    />
+                    <Text style={styles.currentPlanIndicatorText}>Din aktive plan</Text>
+                  </View>
                 )}
               </TouchableOpacity>
             );
@@ -577,7 +622,7 @@ const styles = StyleSheet.create({
   },
   currentPlanCard: {
     borderColor: colors.success || '#4CAF50',
-    opacity: 0.7,
+    borderWidth: 3,
   },
   popularBadge: {
     position: 'absolute',
@@ -644,6 +689,19 @@ const styles = StyleSheet.create({
   selectButtonText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  currentPlanIndicator: {
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  currentPlanIndicatorText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
   subscriptionDetailsContainer: {
     gap: 16,
