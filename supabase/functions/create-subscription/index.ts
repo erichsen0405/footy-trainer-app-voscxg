@@ -15,6 +15,8 @@ serve(async (req) => {
 
   try {
     console.log('[create-subscription] Request received');
+    console.log('[create-subscription] Request method:', req.method);
+    console.log('[create-subscription] Request headers:', Object.fromEntries(req.headers.entries()));
     
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -70,15 +72,34 @@ serve(async (req) => {
 
     // Parse request body
     let requestBody;
+    let rawBody = '';
     try {
-      requestBody = await req.json();
-      console.log('[create-subscription] Request body:', requestBody);
+      rawBody = await req.text();
+      console.log('[create-subscription] Raw request body:', rawBody);
+      
+      if (!rawBody || rawBody.trim() === '') {
+        console.error('[create-subscription] Empty request body');
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Tom anmodning. Prøv igen.',
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 400,
+          }
+        );
+      }
+      
+      requestBody = JSON.parse(rawBody);
+      console.log('[create-subscription] Parsed request body:', requestBody);
     } catch (e) {
       console.error('[create-subscription] Failed to parse request body:', e);
+      console.error('[create-subscription] Raw body was:', rawBody);
       return new Response(
         JSON.stringify({
           success: false,
-          error: 'Ugyldig anmodning. Prøv igen.',
+          error: 'Ugyldig anmodning format. Prøv igen.',
         }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -212,6 +233,7 @@ serve(async (req) => {
     );
   } catch (error) {
     console.error('[create-subscription] Unexpected error:', error);
+    console.error('[create-subscription] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     return new Response(
       JSON.stringify({
         success: false,

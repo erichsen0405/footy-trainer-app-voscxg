@@ -115,13 +115,15 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         };
       }
 
-      console.log('[SubscriptionContext] Session verified, calling Edge Function...');
+      console.log('[SubscriptionContext] Session verified, user ID:', session.user.id);
+      console.log('[SubscriptionContext] Calling Edge Function with body:', { planId });
 
       // Call the Edge Function with explicit headers
       const { data, error } = await supabase.functions.invoke('create-subscription', {
         body: { planId },
         headers: {
           Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
         },
       });
 
@@ -129,6 +131,11 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
       if (error) {
         console.error('[SubscriptionContext] Error creating subscription:', error);
+        console.error('[SubscriptionContext] Error details:', {
+          message: error.message,
+          name: error.name,
+          context: error.context,
+        });
         
         // Provide more specific error messages
         if (error.message?.includes('Failed to send a request')) {
@@ -138,10 +145,17 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
           };
         }
         
-        if (error.message?.includes('Unauthorized')) {
+        if (error.message?.includes('Unauthorized') || error.message?.includes('401')) {
           return { 
             success: false, 
             error: 'Din session er udløbet. Prøv at logge ud og ind igen.' 
+          };
+        }
+
+        if (error.message?.includes('400')) {
+          return { 
+            success: false, 
+            error: 'Ugyldig anmodning. Prøv at genindlæse siden og prøv igen.' 
           };
         }
         
@@ -167,6 +181,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       return { success: true };
     } catch (error: any) {
       console.error('[SubscriptionContext] Unexpected error in createSubscription:', error);
+      console.error('[SubscriptionContext] Error stack:', error.stack);
       
       // Provide user-friendly error messages
       if (error.message?.includes('network') || error.message?.includes('fetch')) {
