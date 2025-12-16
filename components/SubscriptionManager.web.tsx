@@ -316,15 +316,33 @@ export default function SubscriptionManager({
                 )}
 
                 {isCurrentPlan && (
-                  <View style={[styles.currentBadge, { backgroundColor: colors.success || '#4CAF50' }]}>
+                  <View style={[styles.currentBadge, { backgroundColor: colors.success }]}>
+                    <IconSymbol
+                      ios_icon_name="checkmark.circle.fill"
+                      android_material_icon_name="check_circle"
+                      size={16}
+                      color="#fff"
+                    />
                     <Text style={styles.currentBadgeText}>Din nuværende plan</Text>
                   </View>
                 )}
 
-                <Text style={[styles.planName, { color: textColor }]}>{plan.name}</Text>
+                <View style={styles.planHeader}>
+                  <Text style={[styles.planName, { color: textColor }]}>{plan.name}</Text>
+                  {isCurrentPlan && (
+                    <View style={styles.activeIndicatorCircle}>
+                      <IconSymbol
+                        ios_icon_name="checkmark"
+                        android_material_icon_name="check"
+                        size={20}
+                        color="#fff"
+                      />
+                    </View>
+                  )}
+                </View>
                 
                 <View style={styles.priceContainer}>
-                  <Text style={[styles.price, { color: colors.primary }]}>{plan.price_dkk} kr</Text>
+                  <Text style={[styles.price, { color: isCurrentPlan ? colors.success : colors.primary }]}>{plan.price_dkk} kr</Text>
                   <Text style={[styles.priceUnit, { color: textSecondaryColor }]}>/ måned</Text>
                 </View>
 
@@ -334,7 +352,7 @@ export default function SubscriptionManager({
                       ios_icon_name="checkmark.circle.fill"
                       android_material_icon_name="check_circle"
                       size={20}
-                      color={colors.primary}
+                      color={isCurrentPlan ? colors.success : colors.primary}
                     />
                     <Text style={[styles.featureText, { color: textColor }]}>
                       {plan.max_players === 1 
@@ -349,7 +367,7 @@ export default function SubscriptionManager({
                       ios_icon_name="checkmark.circle.fill"
                       android_material_icon_name="check_circle"
                       size={20}
-                      color={colors.primary}
+                      color={isCurrentPlan ? colors.success : colors.primary}
                     />
                     <Text style={[styles.featureText, { color: textColor }]}>
                       14 dages gratis prøveperiode
@@ -361,7 +379,7 @@ export default function SubscriptionManager({
                       ios_icon_name="checkmark.circle.fill"
                       android_material_icon_name="check_circle"
                       size={20}
-                      color={colors.primary}
+                      color={isCurrentPlan ? colors.success : colors.primary}
                     />
                     <Text style={[styles.featureText, { color: textColor }]}>
                       Fuld adgang til alle funktioner
@@ -373,7 +391,7 @@ export default function SubscriptionManager({
                       ios_icon_name="checkmark.circle.fill"
                       android_material_icon_name="check_circle"
                       size={20}
-                      color={colors.primary}
+                      color={isCurrentPlan ? colors.success : colors.primary}
                     />
                     <Text style={[styles.featureText, { color: textColor }]}>
                       Opsig når som helst
@@ -407,7 +425,7 @@ export default function SubscriptionManager({
                 )}
 
                 {isCurrentPlan && (
-                  <View style={[styles.currentPlanIndicator, { backgroundColor: colors.success || '#4CAF50' }]}>
+                  <View style={[styles.currentPlanIndicator, { backgroundColor: colors.success }]}>
                     <IconSymbol
                       ios_icon_name="checkmark.circle.fill"
                       android_material_icon_name="check_circle"
@@ -603,8 +621,9 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   currentPlanCard: {
-    borderColor: colors.success || '#4CAF50',
+    borderColor: colors.success,
     borderWidth: 3,
+    backgroundColor: 'rgba(76, 175, 80, 0.05)',
   },
   popularBadge: {
     position: 'absolute',
@@ -626,16 +645,34 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   currentBadgeText: {
     fontSize: 12,
     fontWeight: 'bold',
     color: '#fff',
   },
+  planHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
   planName: {
     fontSize: 24,
     fontWeight: 'bold',
-    marginBottom: 12,
+    flex: 1,
+  },
+  activeIndicatorCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.success,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 12,
   },
   priceContainer: {
     flexDirection: 'row',
