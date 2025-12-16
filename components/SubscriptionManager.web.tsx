@@ -49,6 +49,7 @@ export default function SubscriptionManager({
       hasSubscription: subscriptionStatus?.hasSubscription,
       planName: subscriptionStatus?.planName,
       status: subscriptionStatus?.status,
+      fullStatus: subscriptionStatus,
     });
   }, [subscriptionStatus]);
 
@@ -94,6 +95,10 @@ export default function SubscriptionManager({
         console.log('[SubscriptionManager.web] User already has subscription, hiding plans and showing current subscription');
         setShowPlans(false);
         setRetryCount(0);
+        
+        // Force a refresh to ensure UI is updated
+        console.log('[SubscriptionManager.web] Forcing subscription refresh...');
+        await refreshSubscription();
         
         // Show a friendly message
         window.alert('Du har allerede et abonnement\n\nDit nuværende abonnement vises nu.');
@@ -160,7 +165,7 @@ export default function SubscriptionManager({
     if (!planName) return 'star.fill';
     
     const lowerName = planName.toLowerCase();
-    if (lowerName.includes('bronze') || lowerName.includes('basic')) {
+    if (lowerName.includes('bronze') || lowerName.includes('basic') || lowerName.includes('spiller')) {
       return 'star.fill';
     } else if (lowerName.includes('silver') || lowerName.includes('standard')) {
       return 'star.leadinghalf.filled';
@@ -174,7 +179,7 @@ export default function SubscriptionManager({
     if (!planName) return '#CD7F32';
     
     const lowerName = planName.toLowerCase();
-    if (lowerName.includes('bronze') || lowerName.includes('basic')) {
+    if (lowerName.includes('bronze') || lowerName.includes('basic') || lowerName.includes('spiller')) {
       return '#CD7F32'; // Bronze
     } else if (lowerName.includes('silver') || lowerName.includes('standard')) {
       return '#C0C0C0'; // Silver
@@ -187,6 +192,11 @@ export default function SubscriptionManager({
   // Helper function to check if a plan is the current plan
   const isCurrentPlanCheck = (planName: string): boolean => {
     if (isSignupFlow || !subscriptionStatus?.hasSubscription || !subscriptionStatus?.planName) {
+      console.log('[SubscriptionManager.web] isCurrentPlanCheck: Not checking (signup flow or no subscription)', {
+        isSignupFlow,
+        hasSubscription: subscriptionStatus?.hasSubscription,
+        currentPlanName: subscriptionStatus?.planName,
+      });
       return false;
     }
     

@@ -42,31 +42,35 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         .order('price_dkk', { ascending: true });
 
       if (error) {
-        console.error('Error fetching subscription plans:', error);
+        console.error('[SubscriptionContext] Error fetching subscription plans:', error);
         return;
       }
 
+      console.log('[SubscriptionContext] Fetched subscription plans:', data);
       setSubscriptionPlans(data || []);
     } catch (error) {
-      console.error('Error in fetchSubscriptionPlans:', error);
+      console.error('[SubscriptionContext] Error in fetchSubscriptionPlans:', error);
     }
   };
 
   const fetchSubscriptionStatus = async () => {
     try {
+      console.log('[SubscriptionContext] Fetching subscription status...');
       setLoading(true);
       
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
+        console.log('[SubscriptionContext] No user found');
         setSubscriptionStatus(null);
         return;
       }
 
+      console.log('[SubscriptionContext] Calling get-subscription-status for user:', user.id);
       const { data, error } = await supabase.functions.invoke('get-subscription-status');
 
       if (error) {
-        console.error('Error fetching subscription status:', error);
+        console.error('[SubscriptionContext] Error fetching subscription status:', error);
         setSubscriptionStatus({
           hasSubscription: false,
           status: null,
@@ -79,9 +83,23 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      setSubscriptionStatus(data);
+      console.log('[SubscriptionContext] Subscription status received:', data);
+      
+      // Ensure we have a valid subscription status object
+      const statusData = data || {
+        hasSubscription: false,
+        status: null,
+        planName: null,
+        maxPlayers: 0,
+        currentPlayers: 0,
+        trialEnd: null,
+        currentPeriodEnd: null,
+      };
+
+      console.log('[SubscriptionContext] Setting subscription status:', statusData);
+      setSubscriptionStatus(statusData);
     } catch (error) {
-      console.error('Error in fetchSubscriptionStatus:', error);
+      console.error('[SubscriptionContext] Error in fetchSubscriptionStatus:', error);
       setSubscriptionStatus({
         hasSubscription: false,
         status: null,
@@ -97,6 +115,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshSubscription = async () => {
+    console.log('[SubscriptionContext] Manual refresh requested');
     await fetchSubscriptionStatus();
   };
 
@@ -153,6 +172,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         if (errorMessage.includes('allerede et abonnement') || errorMessage.includes('already has')) {
           console.log('[SubscriptionContext] User already has a subscription, refreshing status...');
           // Refresh subscription status to show current subscription
+          // Add a small delay to ensure the database is consistent
+          await new Promise(resolve => setTimeout(resolve, 500));
           await fetchSubscriptionStatus();
           return { 
             success: false, 
@@ -175,6 +196,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         if (errorMessage.includes('allerede et abonnement') || errorMessage.includes('already has')) {
           console.log('[SubscriptionContext] User already has a subscription, refreshing status...');
           // Refresh subscription status to show current subscription
+          // Add a small delay to ensure the database is consistent
+          await new Promise(resolve => setTimeout(resolve, 500));
           await fetchSubscriptionStatus();
           return { 
             success: false, 
@@ -191,7 +214,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
       console.log('[SubscriptionContext] Subscription created successfully, refreshing status...');
 
-      // Refresh subscription status
+      // Refresh subscription status with a small delay
+      await new Promise(resolve => setTimeout(resolve, 500));
       await fetchSubscriptionStatus();
 
       return { success: true };
