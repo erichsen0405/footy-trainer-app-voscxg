@@ -260,7 +260,7 @@ export default function ProfileScreen() {
         email,
         password,
         options: {
-          emailRedirectTo: 'https://natively.dev/email-confirmed'
+          emailRedirectTo: 'natively://auth-callback'
         }
       });
 
