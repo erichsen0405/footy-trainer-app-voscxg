@@ -6,7 +6,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   useColorScheme,
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
@@ -28,6 +27,7 @@ export default function SubscriptionManager({
   const [creatingPlanId, setCreatingPlanId] = useState<string | null>(null);
   const [showPlans, setShowPlans] = useState(isSignupFlow); // Collapsed by default unless in signup flow
   const [retryCount, setRetryCount] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
@@ -59,6 +59,13 @@ export default function SubscriptionManager({
       ? subscriptionPlans.filter(plan => plan.max_players <= 1) // Player plans
       : subscriptionPlans.filter(plan => plan.max_players > 1)  // Trainer plans
     : subscriptionPlans;
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    console.log('[SubscriptionManager.web] Manual refresh triggered');
+    await refreshSubscription();
+    setIsRefreshing(false);
+  };
 
   const handleSelectPlan = async (planId: string, planName: string, maxPlayers: number) => {
     if (isSignupFlow && onPlanSelected) {
@@ -235,6 +242,29 @@ export default function SubscriptionManager({
           <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
             Start med 14 dages gratis prøveperiode
           </Text>
+          
+          {/* Refresh Button */}
+          <TouchableOpacity
+            style={[styles.refreshButton, { backgroundColor: cardBgColor }]}
+            onPress={handleRefresh}
+            disabled={isRefreshing}
+          >
+            {isRefreshing ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <>
+                <IconSymbol
+                  ios_icon_name="arrow.clockwise"
+                  android_material_icon_name="refresh"
+                  size={20}
+                  color={colors.primary}
+                />
+                <Text style={[styles.refreshButtonText, { color: colors.primary }]}>
+                  Opdater status
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
         </View>
       )}
 
@@ -554,6 +584,20 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 16,
     textAlign: 'center',
+    marginBottom: 16,
+  },
+  refreshButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  refreshButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   currentPlanBanner: {
     borderRadius: 16,

@@ -62,22 +62,6 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       
       if (!user) {
         console.log('[SubscriptionContext] No user found');
-        setSubscriptionStatus(null);
-        return;
-      }
-
-      console.log('[SubscriptionContext] Calling get-subscription-status for user:', user.id);
-      const { data, error } = await supabase.functions.invoke('get-subscription-status');
-
-      console.log('[SubscriptionContext] Raw response from Edge Function:', {
-        data,
-        error,
-        dataType: typeof data,
-        dataKeys: data ? Object.keys(data) : null,
-      });
-
-      if (error) {
-        console.error('[SubscriptionContext] Error fetching subscription status:', error);
         setSubscriptionStatus({
           hasSubscription: false,
           status: null,
@@ -90,28 +74,50 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Ensure we have a valid subscription status object
-      const statusData = data || {
-        hasSubscription: false,
-        status: null,
-        planName: null,
-        maxPlayers: 0,
-        currentPlayers: 0,
-        trialEnd: null,
-        currentPeriodEnd: null,
-      };
+      console.log('[SubscriptionContext] Calling get-subscription-status for user:', user.id);
+      
+      const { data, error } = await supabase.functions.invoke('get-subscription-status');
 
-      console.log('[SubscriptionContext] Processed subscription status:', {
-        hasSubscription: statusData.hasSubscription,
-        status: statusData.status,
-        planName: statusData.planName,
-        maxPlayers: statusData.maxPlayers,
-        currentPlayers: statusData.currentPlayers,
-        trialEnd: statusData.trialEnd,
-        currentPeriodEnd: statusData.currentPeriodEnd,
+      console.log('[SubscriptionContext] Edge Function response:', {
+        data,
+        error,
+        dataType: typeof data,
+        dataKeys: data ? Object.keys(data) : null,
       });
 
+      if (error) {
+        console.error('[SubscriptionContext] Error from Edge Function:', error);
+        // Even if there's an error, try to use the data if it exists
+        if (data) {
+          console.log('[SubscriptionContext] Using data despite error');
+        } else {
+          setSubscriptionStatus({
+            hasSubscription: false,
+            status: null,
+            planName: null,
+            maxPlayers: 0,
+            currentPlayers: 0,
+            trialEnd: null,
+            currentPeriodEnd: null,
+          });
+          return;
+        }
+      }
+
+      // Ensure we have a valid subscription status object
+      const statusData: SubscriptionStatus = {
+        hasSubscription: data?.hasSubscription ?? false,
+        status: data?.status ?? null,
+        planName: data?.planName ?? null,
+        maxPlayers: data?.maxPlayers ?? 0,
+        currentPlayers: data?.currentPlayers ?? 0,
+        trialEnd: data?.trialEnd ?? null,
+        currentPeriodEnd: data?.currentPeriodEnd ?? null,
+      };
+
+      console.log('[SubscriptionContext] Processed subscription status:', statusData);
       console.log('[SubscriptionContext] Setting subscription status to state');
+      
       setSubscriptionStatus(statusData);
       
       console.log('[SubscriptionContext] Subscription status set successfully');
@@ -190,7 +196,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
           console.log('[SubscriptionContext] User already has a subscription, refreshing status...');
           // Refresh subscription status to show current subscription
           // Add a small delay to ensure the database is consistent
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, 1000));
           await fetchSubscriptionStatus();
           return { 
             success: false, 
@@ -214,7 +220,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
           console.log('[SubscriptionContext] User already has a subscription, refreshing status...');
           // Refresh subscription status to show current subscription
           // Add a small delay to ensure the database is consistent
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, 1000));
           await fetchSubscriptionStatus();
           return { 
             success: false, 
@@ -232,7 +238,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       console.log('[SubscriptionContext] Subscription created successfully, refreshing status...');
 
       // Refresh subscription status with a small delay
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 1000));
       await fetchSubscriptionStatus();
 
       return { success: true };
