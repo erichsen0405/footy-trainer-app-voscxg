@@ -281,29 +281,33 @@ export default function ProfileScreen() {
       }
 
       addDebugInfo(`✅ User created: ${data.user.id}`);
-      addDebugInfo(`Session exists: ${data.session ? 'Yes' : 'No (email confirmation required)'}`);
+      addDebugInfo(`Session exists: ${data.session ? 'Yes - Auto logged in!' : 'No - Email confirmation required'}`);
 
       setEmail('');
       setPassword('');
-      setShowSuccessMessage(true);
 
-      setTimeout(() => {
-        setShowSuccessMessage(false);
-        setIsSignUp(false);
-      }, 5000);
-
-      if (data.user && !data.session) {
-        addDebugInfo('📧 Email confirmation required');
-        Alert.alert(
-          'Bekræft din email ✉️',
-          'Vi har sendt en bekræftelsesmail til dig. Tjek venligst din indbakke og klik på linket for at aktivere din konto.\n\n⚠️ Bemærk: Tjek også din spam-mappe hvis du ikke kan finde emailen.\n\n✅ Din konto er oprettet, men du skal bekræfte din email før du kan logge ind.\n\nNår du logger ind, vil du blive bedt om at vælge din rolle.',
-          [{ text: 'OK' }]
-        );
-      } else if (data.session) {
+      // Check if user is automatically logged in
+      if (data.session) {
+        // User is logged in immediately - show success and they'll be prompted for role
         addDebugInfo('✅ User logged in automatically - will show role selection');
         Alert.alert(
-          'Succes! 🎉', 
-          'Din konto er oprettet! Nu skal du vælge din rolle.',
+          'Velkommen! 🎉', 
+          `Din konto er oprettet og du er nu logget ind!\n\nVi har sendt en bekræftelsesmail til ${email}. Bekræft venligst din email når du får tid.\n\nNu skal du vælge din rolle for at fortsætte.`,
+          [{ text: 'OK' }]
+        );
+      } else {
+        // Email confirmation required before login
+        addDebugInfo('📧 Email confirmation required before login');
+        setShowSuccessMessage(true);
+        
+        setTimeout(() => {
+          setShowSuccessMessage(false);
+          setIsSignUp(false);
+        }, 5000);
+
+        Alert.alert(
+          'Bekræft din email ✉️',
+          `Din konto er oprettet!\n\nVi har sendt en bekræftelsesmail til ${email}.\n\nTjek venligst din indbakke og klik på linket for at bekræfte din email. Derefter kan du logge ind.\n\n⚠️ Bemærk: Tjek også din spam-mappe hvis du ikke kan finde emailen.`,
           [{ text: 'OK' }]
         );
       }
@@ -849,8 +853,7 @@ export default function ProfileScreen() {
                 <Text style={styles.successTitle}>Konto oprettet! 🎉</Text>
                 <Text style={styles.successText}>
                   Din konto er blevet oprettet succesfuldt.{'\n'}
-                  Tjek din email for at bekræfte din konto.{'\n\n'}
-                  Når du logger ind, vil du blive bedt om at vælge din rolle.
+                  Tjek din email for at bekræfte din konto, og log derefter ind.
                 </Text>
                 
                 {/* Debug Info */}
@@ -979,7 +982,7 @@ export default function ProfileScreen() {
                   />
                   <Text style={[styles.infoBoxText, { color: theme.dark ? '#98989D' : '#666' }]}>
                     {isSignUp 
-                      ? 'Efter du opretter din konto, vil du modtage en bekræftelsesmail. Når du logger ind, vil du blive bedt om at vælge din rolle (spiller eller træner).'
+                      ? 'Efter du opretter din konto, bliver du automatisk logget ind og kan begynde at bruge appen med det samme. Du vil modtage en bekræftelsesmail som du kan bekræfte når du har tid.\n\nDu vil blive bedt om at vælge din rolle (spiller eller træner) og derefter vælge et abonnement hvis du er træner.'
                       : 'Log ind for at gemme dine data sikkert i skyen.'
                     }
                   </Text>
