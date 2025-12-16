@@ -102,26 +102,84 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
   const createSubscription = async (planId: string): Promise<{ success: boolean; error?: string }> => {
     try {
+      console.log('[SubscriptionContext] Creating subscription with planId:', planId);
+      
+      // Verify we have a valid session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        console.error('[SubscriptionContext] No valid session:', sessionError);
+        return { 
+          success: false, 
+          error: 'Du skal være logget ind for at oprette et abonnement. Prøv at logge ud og ind igen.' 
+        };
+      }
+
+      console.log('[SubscriptionContext] Session verified, calling Edge Function...');
+
+      // Call the Edge Function with explicit headers
       const { data, error } = await supabase.functions.invoke('create-subscription', {
         body: { planId },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
       });
 
+      console.log('[SubscriptionContext] Edge Function response:', { data, error });
+
       if (error) {
-        console.error('Error creating subscription:', error);
-        return { success: false, error: error.message || 'Failed to create subscription' };
+        console.error('[SubscriptionContext] Error creating subscription:', error);
+        
+        // Provide more specific error messages
+        if (error.message?.includes('Failed to send a request')) {
+          return { 
+            success: false, 
+            error: 'Kunne ikke oprette forbindelse til serveren. Tjek din internetforbindelse og prøv igen.' 
+          };
+        }
+        
+        if (error.message?.includes('Unauthorized')) {
+          return { 
+            success: false, 
+            error: 'Din session er udløbet. Prøv at logge ud og ind igen.' 
+          };
+        }
+        
+        return { 
+          success: false, 
+          error: error.message || 'Kunne ikke oprette abonnement. Prøv igen.' 
+        };
       }
 
-      if (!data.success) {
-        return { success: false, error: data.error || 'Failed to create subscription' };
+      if (!data || !data.success) {
+        console.error('[SubscriptionContext] Subscription creation failed:', data);
+        return { 
+          success: false, 
+          error: data?.error || 'Kunne ikke oprette abonnement. Prøv igen.' 
+        };
       }
+
+      console.log('[SubscriptionContext] Subscription created successfully, refreshing status...');
 
       // Refresh subscription status
       await fetchSubscriptionStatus();
 
       return { success: true };
     } catch (error: any) {
-      console.error('Error in createSubscription:', error);
-      return { success: false, error: error.message || 'An error occurred' };
+      console.error('[SubscriptionContext] Unexpected error in createSubscription:', error);
+      
+      // Provide user-friendly error messages
+      if (error.message?.includes('network') || error.message?.includes('fetch')) {
+        return { 
+          success: false, 
+          error: 'Netværksfejl. Tjek din internetforbindelse og prøv igen.' 
+        };
+      }
+      
+      return { 
+        success: false, 
+        error: 'Der opstod en uventet fejl. Prøv igen om et øjeblik.' 
+      };
     }
   };
 

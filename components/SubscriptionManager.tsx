@@ -28,6 +28,7 @@ export default function SubscriptionManager({
   const { subscriptionStatus, subscriptionPlans, loading, createSubscription, refreshSubscription } = useSubscription();
   const [creatingPlanId, setCreatingPlanId] = useState<string | null>(null);
   const [showPlans, setShowPlans] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
@@ -65,26 +66,78 @@ export default function SubscriptionManager({
         {
           text: 'Start prøveperiode',
           onPress: async () => {
-            setCreatingPlanId(planId);
-            const result = await createSubscription(planId);
-            setCreatingPlanId(null);
-
-            if (result.success) {
-              // Collapse the plan selection
-              setShowPlans(false);
-              
-              Alert.alert(
-                'Succes! 🎉',
-                'Din 14-dages gratis prøveperiode er startet. Du kan nu oprette spillere.',
-                [{ text: 'OK' }]
-              );
-            } else {
-              Alert.alert('Fejl', result.error || 'Kunne ikke oprette abonnement');
-            }
+            await attemptCreateSubscription(planId, planName);
           },
         },
       ]
     );
+  };
+
+  const attemptCreateSubscription = async (planId: string, planName: string, isRetry: boolean = false) => {
+    setCreatingPlanId(planId);
+    
+    try {
+      console.log(`[SubscriptionManager] Attempting to create subscription (retry: ${isRetry})`);
+      const result = await createSubscription(planId);
+      
+      if (result.success) {
+        // Collapse the plan selection
+        setShowPlans(false);
+        setRetryCount(0);
+        
+        Alert.alert(
+          'Succes! 🎉',
+          'Din 14-dages gratis prøveperiode er startet. Du kan nu oprette spillere.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        console.error('[SubscriptionManager] Subscription creation failed:', result.error);
+        
+        // Show error with retry option
+        Alert.alert(
+          'Fejl ved oprettelse af abonnement',
+          result.error || 'Kunne ikke oprette abonnement',
+          [
+            { text: 'Annuller', style: 'cancel', onPress: () => setRetryCount(0) },
+            {
+              text: 'Prøv igen',
+              onPress: () => {
+                const newRetryCount = retryCount + 1;
+                setRetryCount(newRetryCount);
+                
+                if (newRetryCount >= 3) {
+                  Alert.alert(
+                    'Vedvarende fejl',
+                    'Der er problemer med at oprette dit abonnement. Dette kan skyldes:\n\n' +
+                    '• Dårlig internetforbindelse\n' +
+                    '• Server problemer\n\n' +
+                    'Prøv venligst:\n' +
+                    '1. Tjek din internetforbindelse\n' +
+                    '2. Log ud og ind igen\n' +
+                    '3. Genstart appen\n\n' +
+                    'Hvis problemet fortsætter, kontakt support.',
+                    [{ text: 'OK', onPress: () => setRetryCount(0) }]
+                  );
+                } else {
+                  attemptCreateSubscription(planId, planName, true);
+                }
+              },
+            },
+          ]
+        );
+      }
+    } catch (error: any) {
+      console.error('[SubscriptionManager] Unexpected error:', error);
+      Alert.alert(
+        'Uventet fejl',
+        'Der opstod en uventet fejl. Prøv venligst igen.',
+        [
+          { text: 'OK', onPress: () => setRetryCount(0) }
+        ]
+      );
+    } finally {
+      setCreatingPlanId(null);
+    }
   };
 
   const formatDate = (dateString: string | null) => {

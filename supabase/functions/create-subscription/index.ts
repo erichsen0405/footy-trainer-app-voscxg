@@ -14,6 +14,8 @@ serve(async (req) => {
   }
 
   try {
+    console.log('[create-subscription] Request received');
+    
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
@@ -27,31 +29,97 @@ serve(async (req) => {
 
     // Get the authorization header from the request
     const authHeader = req.headers.get('Authorization');
+    console.log('[create-subscription] Auth header present:', !!authHeader);
+    
     if (!authHeader) {
-      throw new Error('No authorization header');
+      console.error('[create-subscription] No authorization header');
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Ingen autorisation. Log venligst ind igen.',
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 401,
+        }
+      );
     }
 
     // Get the user from the auth header
     const token = authHeader.replace('Bearer ', '');
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
 
+    console.log('[create-subscription] User verification:', { 
+      userId: user?.id, 
+      error: userError?.message 
+    });
+
     if (userError || !user) {
-      throw new Error('Unauthorized');
+      console.error('[create-subscription] Unauthorized:', userError);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Ugyldig session. Log venligst ind igen.',
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 401,
+        }
+      );
     }
 
-    const { planId, userId } = await req.json();
+    // Parse request body
+    let requestBody;
+    try {
+      requestBody = await req.json();
+      console.log('[create-subscription] Request body:', requestBody);
+    } catch (e) {
+      console.error('[create-subscription] Failed to parse request body:', e);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Ugyldig anmodning. Prøv igen.',
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        }
+      );
+    }
+
+    const { planId, userId } = requestBody;
     const targetUserId = userId || user.id; // Allow specifying userId for signup flow
 
-    console.log('Creating subscription for user:', targetUserId, 'with plan:', planId);
+    console.log('[create-subscription] Creating subscription for user:', targetUserId, 'with plan:', planId);
+
+    if (!planId) {
+      console.error('[create-subscription] No planId provided');
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Ingen plan valgt. Vælg venligst en plan.',
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        }
+      );
+    }
 
     // Check if user already has a subscription
-    const { data: existingSub } = await supabaseClient
+    const { data: existingSub, error: existingSubError } = await supabaseClient
       .from('subscriptions')
       .select('id')
       .eq('admin_id', targetUserId)
-      .single();
+      .maybeSingle();
+
+    console.log('[create-subscription] Existing subscription check:', { 
+      exists: !!existingSub, 
+      error: existingSubError?.message 
+    });
 
     if (existingSub) {
+      console.log('[create-subscription] User already has a subscription');
       return new Response(
         JSON.stringify({
           success: false,
@@ -71,13 +139,34 @@ serve(async (req) => {
       .eq('id', planId)
       .single();
 
+    console.log('[create-subscription] Plan lookup:', { 
+      planFound: !!plan, 
+      planName: plan?.name,
+      error: planError?.message 
+    });
+
     if (planError || !plan) {
-      throw new Error('Plan not found');
+      console.error('[create-subscription] Plan not found:', planError);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Ugyldig plan. Vælg venligst en gyldig plan.',
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        }
+      );
     }
 
     // Calculate trial period (14 days)
     const now = new Date();
     const trialEnd = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+
+    console.log('[create-subscription] Creating subscription with trial period:', {
+      trialStart: now.toISOString(),
+      trialEnd: trialEnd.toISOString(),
+    });
 
     // Create the subscription
     const { data: subscription, error: subError } = await supabaseClient
@@ -96,11 +185,20 @@ serve(async (req) => {
       .single();
 
     if (subError) {
-      console.error('Error creating subscription:', subError);
-      throw new Error('Failed to create subscription');
+      console.error('[create-subscription] Error creating subscription:', subError);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Kunne ikke oprette abonnement. Prøv igen.',
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 500,
+        }
+      );
     }
 
-    console.log('Subscription created successfully:', subscription.id);
+    console.log('[create-subscription] Subscription created successfully:', subscription.id);
 
     return new Response(
       JSON.stringify({
@@ -113,15 +211,15 @@ serve(async (req) => {
       }
     );
   } catch (error) {
-    console.error('Error in create-subscription:', error);
+    console.error('[create-subscription] Unexpected error:', error);
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || 'An error occurred',
+        error: 'Der opstod en uventet fejl. Prøv igen om et øjeblik.',
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400,
+        status: 500,
       }
     );
   }
