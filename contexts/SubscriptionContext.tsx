@@ -116,60 +116,48 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       }
 
       console.log('[SubscriptionContext] Session verified, user ID:', session.user.id);
-      console.log('[SubscriptionContext] Calling Edge Function with body:', { planId });
+      console.log('[SubscriptionContext] Access token present:', !!session.access_token);
 
-      // Call the Edge Function with explicit headers
-      const { data, error } = await supabase.functions.invoke('create-subscription', {
-        body: { planId },
+      // Get the Supabase URL
+      const supabaseUrl = 'https://lhpczofddvwcyrgotzha.supabase.co';
+      const functionUrl = `${supabaseUrl}/functions/v1/create-subscription`;
+
+      // Prepare the request body
+      const requestBody = { planId };
+      console.log('[SubscriptionContext] Request body:', JSON.stringify(requestBody));
+      console.log('[SubscriptionContext] Calling function URL:', functionUrl);
+
+      // Make a direct fetch call with explicit body
+      const response = await fetch(functionUrl, {
+        method: 'POST',
         headers: {
-          Authorization: `Bearer ${session.access_token}`,
+          'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
+          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxocGN6b2ZkZHZ3Y3lyZ290emhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQxNTgzMjQsImV4cCI6MjA3OTczNDMyNH0.5oWZ_G5ryy_ae77CG8YMeEDEyAJkSS7Jv4cFZy-G7qA',
         },
+        body: JSON.stringify(requestBody),
       });
 
-      console.log('[SubscriptionContext] Edge Function response:', { data, error });
+      console.log('[SubscriptionContext] Response status:', response.status);
+      console.log('[SubscriptionContext] Response ok:', response.ok);
 
-      if (error) {
-        console.error('[SubscriptionContext] Error creating subscription:', error);
-        console.error('[SubscriptionContext] Error details:', {
-          message: error.message,
-          name: error.name,
-          context: error.context,
-        });
-        
-        // Provide more specific error messages
-        if (error.message?.includes('Failed to send a request')) {
-          return { 
-            success: false, 
-            error: 'Kunne ikke oprette forbindelse til serveren. Tjek din internetforbindelse og prøv igen.' 
-          };
-        }
-        
-        if (error.message?.includes('Unauthorized') || error.message?.includes('401')) {
-          return { 
-            success: false, 
-            error: 'Din session er udløbet. Prøv at logge ud og ind igen.' 
-          };
-        }
+      // Parse the response
+      const responseData = await response.json();
+      console.log('[SubscriptionContext] Response data:', responseData);
 
-        if (error.message?.includes('400')) {
-          return { 
-            success: false, 
-            error: 'Ugyldig anmodning. Prøv at genindlæse siden og prøv igen.' 
-          };
-        }
-        
+      if (!response.ok) {
+        console.error('[SubscriptionContext] Error response:', responseData);
         return { 
           success: false, 
-          error: error.message || 'Kunne ikke oprette abonnement. Prøv igen.' 
+          error: responseData.error || `HTTP ${response.status}: Kunne ikke oprette abonnement` 
         };
       }
 
-      if (!data || !data.success) {
-        console.error('[SubscriptionContext] Subscription creation failed:', data);
+      if (!responseData || !responseData.success) {
+        console.error('[SubscriptionContext] Subscription creation failed:', responseData);
         return { 
           success: false, 
-          error: data?.error || 'Kunne ikke oprette abonnement. Prøv igen.' 
+          error: responseData?.error || 'Kunne ikke oprette abonnement. Prøv igen.' 
         };
       }
 
@@ -184,7 +172,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       console.error('[SubscriptionContext] Error stack:', error.stack);
       
       // Provide user-friendly error messages
-      if (error.message?.includes('network') || error.message?.includes('fetch')) {
+      if (error.message?.includes('network') || error.message?.includes('fetch') || error.message?.includes('Failed to fetch')) {
         return { 
           success: false, 
           error: 'Netværksfejl. Tjek din internetforbindelse og prøv igen.' 
