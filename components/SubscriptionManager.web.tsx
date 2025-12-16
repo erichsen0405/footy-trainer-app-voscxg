@@ -79,6 +79,12 @@ export default function SubscriptionManager({
         setRetryCount(0);
         
         window.alert('Succes! 🎉\n\nDin 14-dages gratis prøveperiode er startet. Du kan nu oprette spillere.');
+      } else if (result.alreadyHasSubscription) {
+        // User already has a subscription - just keep showing the plans
+        console.log('[SubscriptionManager] User already has subscription, keeping plan selection visible');
+        setRetryCount(0);
+        // Don't show error, just keep the UI as is
+        // The subscription status will be refreshed and shown automatically
       } else {
         console.error('[SubscriptionManager] Subscription creation failed:', result.error);
         

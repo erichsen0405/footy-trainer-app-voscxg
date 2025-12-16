@@ -24,7 +24,7 @@ interface SubscriptionContextType {
   subscriptionPlans: SubscriptionPlan[];
   loading: boolean;
   refreshSubscription: () => Promise<void>;
-  createSubscription: (planId: string) => Promise<{ success: boolean; error?: string }>;
+  createSubscription: (planId: string) => Promise<{ success: boolean; error?: string; alreadyHasSubscription?: boolean }>;
 }
 
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
@@ -100,7 +100,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     await fetchSubscriptionStatus();
   };
 
-  const createSubscription = async (planId: string): Promise<{ success: boolean; error?: string }> => {
+  const createSubscription = async (planId: string): Promise<{ success: boolean; error?: string; alreadyHasSubscription?: boolean }> => {
     try {
       console.log('[SubscriptionContext] Creating subscription with planId:', planId);
       
@@ -147,17 +147,45 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
       if (!response.ok) {
         console.error('[SubscriptionContext] Error response:', responseData);
+        
+        // Check if the error is "already has subscription"
+        const errorMessage = responseData.error || '';
+        if (errorMessage.includes('allerede et abonnement') || errorMessage.includes('already has')) {
+          console.log('[SubscriptionContext] User already has a subscription, refreshing status...');
+          // Refresh subscription status to show current subscription
+          await fetchSubscriptionStatus();
+          return { 
+            success: false, 
+            error: errorMessage,
+            alreadyHasSubscription: true 
+          };
+        }
+        
         return { 
           success: false, 
-          error: responseData.error || `HTTP ${response.status}: Kunne ikke oprette abonnement` 
+          error: errorMessage || `HTTP ${response.status}: Kunne ikke oprette abonnement` 
         };
       }
 
       if (!responseData || !responseData.success) {
         console.error('[SubscriptionContext] Subscription creation failed:', responseData);
+        
+        // Check if the error is "already has subscription"
+        const errorMessage = responseData?.error || '';
+        if (errorMessage.includes('allerede et abonnement') || errorMessage.includes('already has')) {
+          console.log('[SubscriptionContext] User already has a subscription, refreshing status...');
+          // Refresh subscription status to show current subscription
+          await fetchSubscriptionStatus();
+          return { 
+            success: false, 
+            error: errorMessage,
+            alreadyHasSubscription: true 
+          };
+        }
+        
         return { 
           success: false, 
-          error: responseData?.error || 'Kunne ikke oprette abonnement. Prøv igen.' 
+          error: errorMessage || 'Kunne ikke oprette abonnement. Prøv igen.' 
         };
       }
 
