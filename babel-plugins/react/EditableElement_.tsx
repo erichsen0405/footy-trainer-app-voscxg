@@ -39,13 +39,11 @@ export default function EditableElement_(_props: PropsWithChildren<any>) {
 
   // Early validation: if children is undefined or null, return null
   if (!children) {
-    console.warn('EditableElement_: children is undefined or null');
     return null;
   }
 
   // Validate that children has props
   if (!children.props) {
-    console.warn('EditableElement_: children does not have props property');
     return children;
   }
 
@@ -70,17 +68,20 @@ export default function EditableElement_(_props: PropsWithChildren<any>) {
   } = useContext(EditableContext);
 
   const type = getType(children);
-  const __sourceLocation = props.__sourceLocation;
-  const __trace = props.__trace;
+  const __sourceLocation = props?.__sourceLocation;
+  const __trace = props?.__trace;
 
-  // Validate __trace exists before using it
-  if (!__trace) {
-    console.warn('EditableElement_: __trace is undefined');
+  // Validate __trace and __sourceLocation exist before using them
+  if (!__trace || !Array.isArray(__trace) || __trace.length === 0) {
+    return cloneElement(children, props);
+  }
+
+  if (!__sourceLocation) {
     return cloneElement(children, props);
   }
 
   const id = __trace.join("");
-  const attributes = overwrittenProps[id] ?? {};
+  const attributes = overwrittenProps?.[id] ?? {};
 
   const editStyling =
     selected === id
