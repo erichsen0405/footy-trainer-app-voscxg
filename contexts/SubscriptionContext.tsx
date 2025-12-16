@@ -69,6 +69,13 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       console.log('[SubscriptionContext] Calling get-subscription-status for user:', user.id);
       const { data, error } = await supabase.functions.invoke('get-subscription-status');
 
+      console.log('[SubscriptionContext] Raw response from Edge Function:', {
+        data,
+        error,
+        dataType: typeof data,
+        dataKeys: data ? Object.keys(data) : null,
+      });
+
       if (error) {
         console.error('[SubscriptionContext] Error fetching subscription status:', error);
         setSubscriptionStatus({
@@ -83,8 +90,6 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      console.log('[SubscriptionContext] Subscription status received:', data);
-      
       // Ensure we have a valid subscription status object
       const statusData = data || {
         hasSubscription: false,
@@ -96,8 +101,20 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         currentPeriodEnd: null,
       };
 
-      console.log('[SubscriptionContext] Setting subscription status:', statusData);
+      console.log('[SubscriptionContext] Processed subscription status:', {
+        hasSubscription: statusData.hasSubscription,
+        status: statusData.status,
+        planName: statusData.planName,
+        maxPlayers: statusData.maxPlayers,
+        currentPlayers: statusData.currentPlayers,
+        trialEnd: statusData.trialEnd,
+        currentPeriodEnd: statusData.currentPeriodEnd,
+      });
+
+      console.log('[SubscriptionContext] Setting subscription status to state');
       setSubscriptionStatus(statusData);
+      
+      console.log('[SubscriptionContext] Subscription status set successfully');
     } catch (error) {
       console.error('[SubscriptionContext] Error in fetchSubscriptionStatus:', error);
       setSubscriptionStatus({
@@ -234,7 +251,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       return { 
         success: false, 
         error: 'Der opstod en uventet fejl. Prøv igen om et øjeblik.' 
-      };
+        };
     }
   };
 
