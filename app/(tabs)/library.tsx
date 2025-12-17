@@ -329,7 +329,15 @@ export default function LibraryScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { error } = await supabase
+      console.log('🔄 Assigning exercise to player:', {
+        exerciseId: selectedExercise.id,
+        exerciseTitle: selectedExercise.title,
+        playerId,
+        trainerId: user.id,
+      });
+
+      // 1. Create exercise assignment
+      const { error: assignmentError } = await supabase
         .from('exercise_assignments')
         .insert({
           exercise_id: selectedExercise.id,
@@ -338,16 +346,69 @@ export default function LibraryScreen() {
           team_id: null,
         });
 
-      if (error) {
-        if (error.message.includes('duplicate')) {
+      if (assignmentError) {
+        if (assignmentError.message.includes('duplicate')) {
           Alert.alert('Info', 'Denne øvelse er allerede tildelt denne spiller');
+          setProcessing(false);
+          return;
         } else {
-          throw error;
+          throw assignmentError;
         }
-      } else {
-        Alert.alert('Succes', 'Øvelse tildelt spiller');
-        await fetchExercises();
       }
+
+      console.log('✅ Exercise assignment created');
+
+      // 2. Create task template for the player
+      console.log('🔄 Creating task template for player...');
+      
+      const { data: taskTemplate, error: taskTemplateError } = await supabase
+        .from('task_templates')
+        .insert({
+          user_id: user.id, // Trainer is the creator
+          player_id: playerId, // But it's assigned to the player
+          title: selectedExercise.title,
+          description: selectedExercise.description,
+          reminder_minutes: null,
+        })
+        .select()
+        .single();
+
+      if (taskTemplateError) {
+        console.error('❌ Error creating task template:', taskTemplateError);
+        throw taskTemplateError;
+      }
+
+      console.log('✅ Task template created:', taskTemplate.id);
+
+      // 3. Create task template subtasks if exercise has subtasks
+      if (selectedExercise.subtasks.length > 0) {
+        console.log(`🔄 Creating ${selectedExercise.subtasks.length} task template subtasks...`);
+        
+        const subtasksToInsert = selectedExercise.subtasks.map(subtask => ({
+          task_template_id: taskTemplate.id,
+          title: subtask.title,
+          sort_order: subtask.sort_order,
+        }));
+
+        const { error: subtasksError } = await supabase
+          .from('task_template_subtasks')
+          .insert(subtasksToInsert);
+
+        if (subtasksError) {
+          console.error('❌ Error creating task template subtasks:', subtasksError);
+          // Don't throw - task template was created successfully
+        } else {
+          console.log('✅ Task template subtasks created');
+        }
+      }
+
+      Alert.alert(
+        'Succes', 
+        `Øvelse "${selectedExercise.title}" er nu tildelt spilleren og vises i deres opgaveskabeloner`
+      );
+      
+      await fetchExercises();
+      setShowAssignModal(false);
     } catch (error: any) {
       console.error('Error assigning exercise:', error);
       Alert.alert('Fejl', 'Kunne ikke tildele øvelse: ' + error.message);
@@ -364,7 +425,15 @@ export default function LibraryScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { error } = await supabase
+      console.log('🔄 Assigning exercise to team:', {
+        exerciseId: selectedExercise.id,
+        exerciseTitle: selectedExercise.title,
+        teamId,
+        trainerId: user.id,
+      });
+
+      // 1. Create exercise assignment
+      const { error: assignmentError } = await supabase
         .from('exercise_assignments')
         .insert({
           exercise_id: selectedExercise.id,
@@ -373,16 +442,69 @@ export default function LibraryScreen() {
           team_id: teamId,
         });
 
-      if (error) {
-        if (error.message.includes('duplicate')) {
+      if (assignmentError) {
+        if (assignmentError.message.includes('duplicate')) {
           Alert.alert('Info', 'Denne øvelse er allerede tildelt dette team');
+          setProcessing(false);
+          return;
         } else {
-          throw error;
+          throw assignmentError;
         }
-      } else {
-        Alert.alert('Succes', 'Øvelse tildelt team');
-        await fetchExercises();
       }
+
+      console.log('✅ Exercise assignment created');
+
+      // 2. Create task template for the team
+      console.log('🔄 Creating task template for team...');
+      
+      const { data: taskTemplate, error: taskTemplateError } = await supabase
+        .from('task_templates')
+        .insert({
+          user_id: user.id, // Trainer is the creator
+          team_id: teamId, // But it's assigned to the team
+          title: selectedExercise.title,
+          description: selectedExercise.description,
+          reminder_minutes: null,
+        })
+        .select()
+        .single();
+
+      if (taskTemplateError) {
+        console.error('❌ Error creating task template:', taskTemplateError);
+        throw taskTemplateError;
+      }
+
+      console.log('✅ Task template created:', taskTemplate.id);
+
+      // 3. Create task template subtasks if exercise has subtasks
+      if (selectedExercise.subtasks.length > 0) {
+        console.log(`🔄 Creating ${selectedExercise.subtasks.length} task template subtasks...`);
+        
+        const subtasksToInsert = selectedExercise.subtasks.map(subtask => ({
+          task_template_id: taskTemplate.id,
+          title: subtask.title,
+          sort_order: subtask.sort_order,
+        }));
+
+        const { error: subtasksError } = await supabase
+          .from('task_template_subtasks')
+          .insert(subtasksToInsert);
+
+        if (subtasksError) {
+          console.error('❌ Error creating task template subtasks:', subtasksError);
+          // Don't throw - task template was created successfully
+        } else {
+          console.log('✅ Task template subtasks created');
+        }
+      }
+
+      Alert.alert(
+        'Succes', 
+        `Øvelse "${selectedExercise.title}" er nu tildelt teamet og vises i deres opgaveskabeloner`
+      );
+      
+      await fetchExercises();
+      setShowAssignModal(false);
     } catch (error: any) {
       console.error('Error assigning exercise:', error);
       Alert.alert('Fejl', 'Kunne ikke tildele øvelse: ' + error.message);
