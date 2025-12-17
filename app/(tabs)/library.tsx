@@ -18,6 +18,8 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
+import { useUserRole } from '@/hooks/useUserRole';
+import { WebView } from 'react-native-webview';
 
 interface Exercise {
   id: string;
@@ -50,13 +52,17 @@ interface ExerciseAssignment {
 
 export default function LibraryScreen() {
   const { teams, players } = useTeamPlayer();
+  const { isAdmin } = useUserRole();
   const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [assignedExercises, setAssignedExercises] = useState<Exercise[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
+  const [showVideoModal, setShowVideoModal] = useState(false);
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
   
   // Form state
   const [title, setTitle] = useState('');
@@ -82,43 +88,80 @@ export default function LibraryScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Fetch exercises
-      const { data: exercisesData, error: exercisesError } = await supabase
-        .from('exercise_library')
-        .select('*')
-        .eq('trainer_id', user.id)
-        .order('created_at', { ascending: false });
+      if (isAdmin) {
+        // Trainers see their own exercises
+        const { data: exercisesData, error: exercisesError } = await supabase
+          .from('exercise_library')
+          .select('*')
+          .eq('trainer_id', user.id)
+          .order('created_at', { ascending: false });
 
-      if (exercisesError) throw exercisesError;
+        if (exercisesError) throw exercisesError;
 
-      // Fetch subtasks for all exercises
-      const exerciseIds = exercisesData?.map(e => e.id) || [];
-      const { data: subtasksData, error: subtasksError } = await supabase
-        .from('exercise_subtasks')
-        .select('*')
-        .in('exercise_id', exerciseIds)
-        .order('sort_order', { ascending: true });
+        // Fetch subtasks for all exercises
+        const exerciseIds = exercisesData?.map(e => e.id) || [];
+        const { data: subtasksData, error: subtasksError } = await supabase
+          .from('exercise_subtasks')
+          .select('*')
+          .in('exercise_id', exerciseIds)
+          .order('sort_order', { ascending: true });
 
-      if (subtasksError) throw subtasksError;
+        if (subtasksError) throw subtasksError;
 
-      // Fetch assignments
-      const { data: assignmentsData, error: assignmentsError } = await supabase
-        .from('exercise_assignments')
-        .select('*')
-        .in('exercise_id', exerciseIds);
+        // Fetch assignments
+        const { data: assignmentsData, error: assignmentsError } = await supabase
+          .from('exercise_assignments')
+          .select('*')
+          .in('exercise_id', exerciseIds);
 
-      if (assignmentsError) throw assignmentsError;
+        if (assignmentsError) throw assignmentsError;
 
-      // Combine data
-      const exercisesWithDetails: Exercise[] = (exercisesData || []).map(exercise => ({
-        ...exercise,
-        created_at: new Date(exercise.created_at),
-        updated_at: new Date(exercise.updated_at),
-        subtasks: (subtasksData || []).filter(s => s.exercise_id === exercise.id),
-        assignments: (assignmentsData || []).filter(a => a.exercise_id === exercise.id),
-      }));
+        // Combine data
+        const exercisesWithDetails: Exercise[] = (exercisesData || []).map(exercise => ({
+          ...exercise,
+          created_at: new Date(exercise.created_at),
+          updated_at: new Date(exercise.updated_at),
+          subtasks: (subtasksData || []).filter(s => s.exercise_id === exercise.id),
+          assignments: (assignmentsData || []).filter(a => a.exercise_id === exercise.id),
+        }));
 
-      setExercises(exercisesWithDetails);
+        setExercises(exercisesWithDetails);
+      } else {
+        // Players see exercises assigned to them
+        const { data: assignmentsData, error: assignmentsError } = await supabase
+          .from('exercise_assignments')
+          .select(`
+            *,
+            exercise:exercise_library(*)
+          `)
+          .eq('player_id', user.id);
+
+        if (assignmentsError) throw assignmentsError;
+
+        const exerciseIds = assignmentsData?.map(a => a.exercise_id) || [];
+        
+        // Fetch subtasks
+        const { data: subtasksData, error: subtasksError } = await supabase
+          .from('exercise_subtasks')
+          .select('*')
+          .in('exercise_id', exerciseIds)
+          .order('sort_order', { ascending: true });
+
+        if (subtasksError) throw subtasksError;
+
+        // Combine data
+        const assignedExercisesWithDetails: Exercise[] = (assignmentsData || [])
+          .filter(a => a.exercise)
+          .map(assignment => ({
+            ...assignment.exercise,
+            created_at: new Date(assignment.exercise.created_at),
+            updated_at: new Date(assignment.exercise.updated_at),
+            subtasks: (subtasksData || []).filter(s => s.exercise_id === assignment.exercise.id),
+            assignments: [assignment],
+          }));
+
+        setAssignedExercises(assignedExercisesWithDetails);
+      }
     } catch (error) {
       console.error('Error fetching exercises:', error);
       Alert.alert('Fejl', 'Kunne ikke hente øvelser');
@@ -336,7 +379,7 @@ export default function LibraryScreen() {
         trainerId: user.id,
       });
 
-      // 1. Create exercise assignment
+      // Create exercise assignment
       const { error: assignmentError } = await supabase
         .from('exercise_assignments')
         .insert({
@@ -358,53 +401,9 @@ export default function LibraryScreen() {
 
       console.log('✅ Exercise assignment created');
 
-      // 2. Create task template for the player
-      console.log('🔄 Creating task template for player...');
-      
-      const { data: taskTemplate, error: taskTemplateError } = await supabase
-        .from('task_templates')
-        .insert({
-          user_id: user.id, // Trainer is the creator
-          player_id: playerId, // But it's assigned to the player
-          title: selectedExercise.title,
-          description: selectedExercise.description,
-          reminder_minutes: null,
-        })
-        .select()
-        .single();
-
-      if (taskTemplateError) {
-        console.error('❌ Error creating task template:', taskTemplateError);
-        throw taskTemplateError;
-      }
-
-      console.log('✅ Task template created:', taskTemplate.id);
-
-      // 3. Create task template subtasks if exercise has subtasks
-      if (selectedExercise.subtasks.length > 0) {
-        console.log(`🔄 Creating ${selectedExercise.subtasks.length} task template subtasks...`);
-        
-        const subtasksToInsert = selectedExercise.subtasks.map(subtask => ({
-          task_template_id: taskTemplate.id,
-          title: subtask.title,
-          sort_order: subtask.sort_order,
-        }));
-
-        const { error: subtasksError } = await supabase
-          .from('task_template_subtasks')
-          .insert(subtasksToInsert);
-
-        if (subtasksError) {
-          console.error('❌ Error creating task template subtasks:', subtasksError);
-          // Don't throw - task template was created successfully
-        } else {
-          console.log('✅ Task template subtasks created');
-        }
-      }
-
       Alert.alert(
         'Succes', 
-        `Øvelse "${selectedExercise.title}" er nu tildelt spilleren og vises i deres opgaveskabeloner`
+        `Øvelse "${selectedExercise.title}" er nu tildelt spilleren`
       );
       
       await fetchExercises();
@@ -432,7 +431,7 @@ export default function LibraryScreen() {
         trainerId: user.id,
       });
 
-      // 1. Create exercise assignment
+      // Create exercise assignment
       const { error: assignmentError } = await supabase
         .from('exercise_assignments')
         .insert({
@@ -454,16 +453,38 @@ export default function LibraryScreen() {
 
       console.log('✅ Exercise assignment created');
 
-      // 2. Create task template for the team
-      console.log('🔄 Creating task template for team...');
+      Alert.alert(
+        'Succes', 
+        `Øvelse "${selectedExercise.title}" er nu tildelt teamet`
+      );
       
+      await fetchExercises();
+      setShowAssignModal(false);
+    } catch (error: any) {
+      console.error('Error assigning exercise:', error);
+      Alert.alert('Fejl', 'Kunne ikke tildele øvelse: ' + error.message);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleCopyToTasks = async (exercise: Exercise) => {
+    setProcessing(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      console.log('🔄 Copying exercise to task template:', exercise.title);
+
+      // Create task template from exercise
       const { data: taskTemplate, error: taskTemplateError } = await supabase
         .from('task_templates')
         .insert({
-          user_id: user.id, // Trainer is the creator
-          team_id: teamId, // But it's assigned to the team
-          title: selectedExercise.title,
-          description: selectedExercise.description,
+          user_id: user.id,
+          player_id: user.id, // Player owns this task template
+          title: exercise.title,
+          description: exercise.description,
+          video_url: exercise.video_url,
           reminder_minutes: null,
         })
         .select()
@@ -476,11 +497,11 @@ export default function LibraryScreen() {
 
       console.log('✅ Task template created:', taskTemplate.id);
 
-      // 3. Create task template subtasks if exercise has subtasks
-      if (selectedExercise.subtasks.length > 0) {
-        console.log(`🔄 Creating ${selectedExercise.subtasks.length} task template subtasks...`);
+      // Copy subtasks if exercise has them
+      if (exercise.subtasks.length > 0) {
+        console.log(`🔄 Copying ${exercise.subtasks.length} subtasks...`);
         
-        const subtasksToInsert = selectedExercise.subtasks.map(subtask => ({
+        const subtasksToInsert = exercise.subtasks.map(subtask => ({
           task_template_id: taskTemplate.id,
           title: subtask.title,
           sort_order: subtask.sort_order,
@@ -491,26 +512,37 @@ export default function LibraryScreen() {
           .insert(subtasksToInsert);
 
         if (subtasksError) {
-          console.error('❌ Error creating task template subtasks:', subtasksError);
-          // Don't throw - task template was created successfully
+          console.error('❌ Error copying subtasks:', subtasksError);
         } else {
-          console.log('✅ Task template subtasks created');
+          console.log('✅ Subtasks copied');
         }
       }
 
       Alert.alert(
         'Succes', 
-        `Øvelse "${selectedExercise.title}" er nu tildelt teamet og vises i deres opgaveskabeloner`
+        `Øvelse "${exercise.title}" er nu kopieret til dine opgaveskabeloner`
       );
-      
-      await fetchExercises();
-      setShowAssignModal(false);
     } catch (error: any) {
-      console.error('Error assigning exercise:', error);
-      Alert.alert('Fejl', 'Kunne ikke tildele øvelse: ' + error.message);
+      console.error('Error copying exercise to tasks:', error);
+      Alert.alert('Fejl', 'Kunne ikke kopiere øvelse: ' + error.message);
     } finally {
       setProcessing(false);
     }
+  };
+
+  const openVideoModal = (url: string) => {
+    // Convert YouTube URLs to embed format
+    let embedUrl = url;
+    if (url.includes('youtube.com/watch?v=')) {
+      const videoId = url.split('v=')[1]?.split('&')[0];
+      embedUrl = `https://www.youtube.com/embed/${videoId}`;
+    } else if (url.includes('youtu.be/')) {
+      const videoId = url.split('youtu.be/')[1]?.split('?')[0];
+      embedUrl = `https://www.youtube.com/embed/${videoId}`;
+    }
+    
+    setSelectedVideoUrl(embedUrl);
+    setShowVideoModal(true);
   };
 
   const addSubtask = () => {
@@ -529,6 +561,133 @@ export default function LibraryScreen() {
     }
   };
 
+  const renderExerciseCard = (exercise: Exercise, isPlayerView: boolean = false) => (
+    <View key={exercise.id} style={[styles.exerciseCard, { backgroundColor: cardBgColor }]}>
+      <View style={styles.exerciseHeader}>
+        <View style={styles.exerciseHeaderLeft}>
+          <IconSymbol
+            ios_icon_name="book.fill"
+            android_material_icon_name="menu_book"
+            size={24}
+            color={colors.primary}
+          />
+          <View style={styles.exerciseTitleContainer}>
+            <Text style={[styles.exerciseTitle, { color: textColor }]}>
+              {exercise.title}
+            </Text>
+            {!isPlayerView && exercise.assignments.length > 0 && (
+              <Text style={[styles.assignmentCount, { color: textSecondaryColor }]}>
+                Tildelt til {exercise.assignments.length} spiller{exercise.assignments.length !== 1 ? 'e' : ''}/team
+              </Text>
+            )}
+          </View>
+        </View>
+        <View style={styles.exerciseActions}>
+          {isPlayerView ? (
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: colors.primary }]}
+              onPress={() => handleCopyToTasks(exercise)}
+              disabled={processing}
+            >
+              <IconSymbol
+                ios_icon_name="doc.on.doc"
+                android_material_icon_name="content_copy"
+                size={20}
+                color="#fff"
+              />
+              <Text style={styles.copyButtonText}>Kopier til opgaver</Text>
+            </TouchableOpacity>
+          ) : (
+            <>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => openAssignModal(exercise)}
+                disabled={processing}
+              >
+                <IconSymbol
+                  ios_icon_name="person.badge.plus"
+                  android_material_icon_name="person_add"
+                  size={20}
+                  color={colors.secondary}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => handleDuplicateExercise(exercise)}
+                disabled={processing}
+              >
+                <IconSymbol
+                  ios_icon_name="doc.on.doc"
+                  android_material_icon_name="content_copy"
+                  size={20}
+                  color={colors.secondary}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => openEditModal(exercise)}
+                disabled={processing}
+              >
+                <IconSymbol
+                  ios_icon_name="pencil"
+                  android_material_icon_name="edit"
+                  size={20}
+                  color={colors.accent}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => handleDeleteExercise(exercise)}
+                disabled={processing}
+              >
+                <IconSymbol
+                  ios_icon_name="trash"
+                  android_material_icon_name="delete"
+                  size={20}
+                  color={colors.error}
+                />
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      </View>
+
+      {exercise.description && (
+        <Text style={[styles.exerciseDescription, { color: textSecondaryColor }]}>
+          {exercise.description}
+        </Text>
+      )}
+
+      {exercise.video_url && (
+        <TouchableOpacity 
+          style={styles.videoIndicator}
+          onPress={() => openVideoModal(exercise.video_url!)}
+        >
+          <IconSymbol
+            ios_icon_name="play.rectangle.fill"
+            android_material_icon_name="play_circle"
+            size={16}
+            color={colors.primary}
+          />
+          <Text style={[styles.videoText, { color: colors.primary }]}>Afspil video</Text>
+        </TouchableOpacity>
+      )}
+
+      {exercise.subtasks.length > 0 && (
+        <View style={styles.subtasksContainer}>
+          <Text style={[styles.subtasksTitle, { color: textColor }]}>Delopgaver:</Text>
+          {exercise.subtasks.map((subtask, index) => (
+            <View key={subtask.id} style={styles.subtaskItem}>
+              <Text style={[styles.subtaskText, { color: textSecondaryColor }]}>
+                {index + 1}. {subtask.title}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+
   if (loading) {
     return (
       <View style={[styles.container, { backgroundColor: bgColor }]}>
@@ -544,24 +703,31 @@ export default function LibraryScreen() {
     <View style={[styles.container, { backgroundColor: bgColor }]}>
       <View style={styles.header}>
         <View>
-          <Text style={[styles.headerTitle, { color: textColor }]}>Øvelsesbibliotek</Text>
+          <Text style={[styles.headerTitle, { color: textColor }]}>
+            {isAdmin ? 'Øvelsesbibliotek' : 'Bibliotek'}
+          </Text>
           <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
-            {exercises.length} øvelser
+            {isAdmin 
+              ? `${exercises.length} øvelser` 
+              : `${assignedExercises.length} tildelte øvelser`
+            }
           </Text>
         </View>
-        <TouchableOpacity
-          style={[styles.createButton, { backgroundColor: colors.primary }]}
-          onPress={openCreateModal}
-          activeOpacity={0.7}
-        >
-          <IconSymbol
-            ios_icon_name="plus.circle.fill"
-            android_material_icon_name="add_circle"
-            size={24}
-            color="#fff"
-          />
-          <Text style={styles.createButtonText}>Ny øvelse</Text>
-        </TouchableOpacity>
+        {isAdmin && (
+          <TouchableOpacity
+            style={[styles.createButton, { backgroundColor: colors.primary }]}
+            onPress={openCreateModal}
+            activeOpacity={0.7}
+          >
+            <IconSymbol
+              ios_icon_name="plus.circle.fill"
+              android_material_icon_name="add_circle"
+              size={24}
+              color="#fff"
+            />
+            <Text style={styles.createButtonText}>Ny øvelse</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <ScrollView
@@ -569,125 +735,57 @@ export default function LibraryScreen() {
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
-        {exercises.length === 0 ? (
-          <View style={[styles.emptyState, { backgroundColor: cardBgColor }]}>
-            <IconSymbol
-              ios_icon_name="book.fill"
-              android_material_icon_name="menu_book"
-              size={64}
-              color={textSecondaryColor}
-            />
-            <Text style={[styles.emptyTitle, { color: textColor }]}>Ingen øvelser endnu</Text>
-            <Text style={[styles.emptyText, { color: textSecondaryColor }]}>
-              Opret din første øvelse for at komme i gang
-            </Text>
-          </View>
-        ) : (
-          exercises.map((exercise) => (
-            <View key={exercise.id} style={[styles.exerciseCard, { backgroundColor: cardBgColor }]}>
-              <View style={styles.exerciseHeader}>
-                <View style={styles.exerciseHeaderLeft}>
-                  <IconSymbol
-                    ios_icon_name="book.fill"
-                    android_material_icon_name="menu_book"
-                    size={24}
-                    color={colors.primary}
-                  />
-                  <View style={styles.exerciseTitleContainer}>
-                    <Text style={[styles.exerciseTitle, { color: textColor }]}>
-                      {exercise.title}
-                    </Text>
-                    {exercise.assignments.length > 0 && (
-                      <Text style={[styles.assignmentCount, { color: textSecondaryColor }]}>
-                        Tildelt til {exercise.assignments.length} spiller{exercise.assignments.length !== 1 ? 'e' : ''}/team
-                      </Text>
-                    )}
-                  </View>
-                </View>
-                <View style={styles.exerciseActions}>
-                  <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={() => openAssignModal(exercise)}
-                    disabled={processing}
-                  >
-                    <IconSymbol
-                      ios_icon_name="person.badge.plus"
-                      android_material_icon_name="person_add"
-                      size={20}
-                      color={colors.secondary}
-                    />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={() => handleDuplicateExercise(exercise)}
-                    disabled={processing}
-                  >
-                    <IconSymbol
-                      ios_icon_name="doc.on.doc"
-                      android_material_icon_name="content_copy"
-                      size={20}
-                      color={colors.secondary}
-                    />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={() => openEditModal(exercise)}
-                    disabled={processing}
-                  >
-                    <IconSymbol
-                      ios_icon_name="pencil"
-                      android_material_icon_name="edit"
-                      size={20}
-                      color={colors.accent}
-                    />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={() => handleDeleteExercise(exercise)}
-                    disabled={processing}
-                  >
-                    <IconSymbol
-                      ios_icon_name="trash"
-                      android_material_icon_name="delete"
-                      size={20}
-                      color={colors.error}
-                    />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {exercise.description && (
-                <Text style={[styles.exerciseDescription, { color: textSecondaryColor }]}>
-                  {exercise.description}
-                </Text>
-              )}
-
-              {exercise.video_url && (
-                <View style={styles.videoIndicator}>
-                  <IconSymbol
-                    ios_icon_name="play.rectangle.fill"
-                    android_material_icon_name="play_circle"
-                    size={16}
-                    color={colors.primary}
-                  />
-                  <Text style={[styles.videoText, { color: colors.primary }]}>Video tilgængelig</Text>
-                </View>
-              )}
-
-              {exercise.subtasks.length > 0 && (
-                <View style={styles.subtasksContainer}>
-                  <Text style={[styles.subtasksTitle, { color: textColor }]}>Delopgaver:</Text>
-                  {exercise.subtasks.map((subtask, index) => (
-                    <View key={subtask.id} style={styles.subtaskItem}>
-                      <Text style={[styles.subtaskText, { color: textSecondaryColor }]}>
-                        {index + 1}. {subtask.title}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              )}
+        {isAdmin ? (
+          // Trainer view
+          exercises.length === 0 ? (
+            <View style={[styles.emptyState, { backgroundColor: cardBgColor }]}>
+              <IconSymbol
+                ios_icon_name="book.fill"
+                android_material_icon_name="menu_book"
+                size={64}
+                color={textSecondaryColor}
+              />
+              <Text style={[styles.emptyTitle, { color: textColor }]}>Ingen øvelser endnu</Text>
+              <Text style={[styles.emptyText, { color: textSecondaryColor }]}>
+                Opret din første øvelse for at komme i gang
+              </Text>
             </View>
-          ))
+          ) : (
+            exercises.map((exercise) => renderExerciseCard(exercise, false))
+          )
+        ) : (
+          // Player view
+          <>
+            {assignedExercises.length === 0 ? (
+              <View style={[styles.emptyState, { backgroundColor: cardBgColor }]}>
+                <IconSymbol
+                  ios_icon_name="book.fill"
+                  android_material_icon_name="menu_book"
+                  size={64}
+                  color={textSecondaryColor}
+                />
+                <Text style={[styles.emptyTitle, { color: textColor }]}>Ingen øvelser endnu</Text>
+                <Text style={[styles.emptyText, { color: textSecondaryColor }]}>
+                  Din træner har ikke tildelt dig nogen øvelser endnu
+                </Text>
+              </View>
+            ) : (
+              <>
+                <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
+                  <IconSymbol
+                    ios_icon_name="info.circle"
+                    android_material_icon_name="info"
+                    size={20}
+                    color={colors.secondary}
+                  />
+                  <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
+                    Klik på &quot;Kopier til opgaver&quot; for at tilføje en øvelse til dine opgaveskabeloner
+                  </Text>
+                </View>
+                {assignedExercises.map((exercise) => renderExerciseCard(exercise, true))}
+              </>
+            )}
+          </>
         )}
 
         <View style={{ height: 100 }} />
@@ -917,6 +1015,40 @@ export default function LibraryScreen() {
           </ScrollView>
         </View>
       </Modal>
+
+      {/* Video Modal */}
+      <Modal
+        visible={showVideoModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowVideoModal(false)}
+      >
+        <View style={[styles.modalContainer, { backgroundColor: bgColor }]}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setShowVideoModal(false)}>
+              <IconSymbol
+                ios_icon_name="xmark"
+                android_material_icon_name="close"
+                size={24}
+                color={textColor}
+              />
+            </TouchableOpacity>
+            <Text style={[styles.modalTitle, { color: textColor }]}>Video</Text>
+            <View style={{ width: 24 }} />
+          </View>
+
+          <View style={styles.videoContainer}>
+            {selectedVideoUrl && (
+              <WebView
+                source={{ uri: selectedVideoUrl }}
+                style={styles.webView}
+                allowsFullscreenVideo
+                mediaPlaybackRequiresUserAction={false}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -968,6 +1100,19 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     paddingHorizontal: 20,
+  },
+  infoBox: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 16,
+    borderRadius: 12,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
   },
   emptyState: {
     borderRadius: 20,
@@ -1022,6 +1167,14 @@ const styles = StyleSheet.create({
     padding: 8,
     borderRadius: 8,
     backgroundColor: colors.highlight,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  copyButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
   },
   exerciseDescription: {
     fontSize: 15,
@@ -1195,5 +1348,12 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     fontWeight: '600',
+  },
+  videoContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  webView: {
+    flex: 1,
   },
 });

@@ -7,6 +7,8 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { colors } from '@/styles/commonStyles';
 import { Task } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
+import { WebView } from 'react-native-webview';
+import { supabase } from '@/app/integrations/supabase/client';
 
 export default function TasksScreen() {
   const { tasks, categories, addTask, updateTask, deleteTask, duplicateTask } = useFootball();
@@ -17,6 +19,10 @@ export default function TasksScreen() {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [showVideoModal, setShowVideoModal] = useState(false);
+  const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
+  const [videoUrl, setVideoUrl] = useState('');
+  const [subtasks, setSubtasks] = useState<string[]>(['']);
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
@@ -34,9 +40,36 @@ export default function TasksScreen() {
     }, 1000);
   }, []);
 
-  const openTaskModal = (task: Task | null, creating: boolean = false) => {
+  const openTaskModal = async (task: Task | null, creating: boolean = false) => {
     setSelectedTask(task);
     setIsCreating(creating);
+    setVideoUrl(task?.videoUrl || '');
+    
+    // Load subtasks from database if editing existing task
+    if (task && !creating) {
+      try {
+        const { data: subtasksData, error } = await supabase
+          .from('task_template_subtasks')
+          .select('*')
+          .eq('task_template_id', task.id)
+          .order('sort_order', { ascending: true });
+
+        if (error) {
+          console.error('Error loading subtasks:', error);
+          setSubtasks(['']);
+        } else if (subtasksData && subtasksData.length > 0) {
+          setSubtasks(subtasksData.map(s => s.title));
+        } else {
+          setSubtasks(['']);
+        }
+      } catch (error) {
+        console.error('Error loading subtasks:', error);
+        setSubtasks(['']);
+      }
+    } else {
+      setSubtasks(['']);
+    }
+    
     setIsModalVisible(true);
   };
 
@@ -44,14 +77,50 @@ export default function TasksScreen() {
     setSelectedTask(null);
     setIsCreating(false);
     setIsModalVisible(false);
+    setVideoUrl('');
+    setSubtasks(['']);
   };
 
-  const handleSaveTask = () => {
+  const handleSaveTask = async () => {
     if (selectedTask) {
-      if (isCreating) {
-        addTask(selectedTask);
-      } else {
-        updateTask(selectedTask.id, selectedTask);
+      const taskToSave = {
+        ...selectedTask,
+        videoUrl: videoUrl || undefined,
+      };
+
+      try {
+        if (isCreating) {
+          // Create new task template
+          await addTask(taskToSave);
+        } else {
+          // Update existing task template
+          await updateTask(selectedTask.id, taskToSave);
+        }
+
+        // Save subtasks
+        if (!isCreating && selectedTask.id) {
+          // Delete existing subtasks
+          await supabase
+            .from('task_template_subtasks')
+            .delete()
+            .eq('task_template_id', selectedTask.id);
+
+          // Insert new subtasks
+          const validSubtasks = subtasks.filter(s => s.trim());
+          if (validSubtasks.length > 0) {
+            const subtasksToInsert = validSubtasks.map((subtask, index) => ({
+              task_template_id: selectedTask.id,
+              title: subtask,
+              sort_order: index,
+            }));
+
+            await supabase
+              .from('task_template_subtasks')
+              .insert(subtasksToInsert);
+          }
+        }
+      } catch (error) {
+        console.error('Error saving task:', error);
       }
     }
     closeTaskModal();
@@ -81,6 +150,37 @@ export default function TasksScreen() {
       .map(id => categories.find(c => c.id === id)?.name.toLowerCase())
       .filter(Boolean)
       .join(', ');
+  };
+
+  const openVideoModal = (url: string) => {
+    // Convert YouTube URLs to embed format
+    let embedUrl = url;
+    if (url.includes('youtube.com/watch?v=')) {
+      const videoId = url.split('v=')[1]?.split('&')[0];
+      embedUrl = `https://www.youtube.com/embed/${videoId}`;
+    } else if (url.includes('youtu.be/')) {
+      const videoId = url.split('youtu.be/')[1]?.split('?')[0];
+      embedUrl = `https://www.youtube.com/embed/${videoId}`;
+    }
+    
+    setSelectedVideoUrl(embedUrl);
+    setShowVideoModal(true);
+  };
+
+  const addSubtask = () => {
+    setSubtasks([...subtasks, '']);
+  };
+
+  const updateSubtask = (index: number, value: string) => {
+    const newSubtasks = [...subtasks];
+    newSubtasks[index] = value;
+    setSubtasks(newSubtasks);
+  };
+
+  const removeSubtask = (index: number) => {
+    if (subtasks.length > 1) {
+      setSubtasks(subtasks.filter((_, i) => i !== index));
+    }
   };
 
   const bgColor = isDark ? '#1a1a1a' : colors.background;
@@ -158,6 +258,7 @@ export default function TasksScreen() {
                 isTemplate: true,
                 categoryIds: [],
                 subtasks: [],
+                videoUrl: undefined,
               }, true)}
             >
               <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add_circle" size={28} color={colors.primary} />
@@ -195,6 +296,21 @@ export default function TasksScreen() {
                   </TouchableOpacity>
                 </View>
               </View>
+
+              {task.videoUrl && (
+                <TouchableOpacity 
+                  style={styles.videoIndicator}
+                  onPress={() => openVideoModal(task.videoUrl!)}
+                >
+                  <IconSymbol
+                    ios_icon_name="play.rectangle.fill"
+                    android_material_icon_name="play_circle"
+                    size={16}
+                    color={colors.primary}
+                  />
+                  <Text style={[styles.videoText, { color: colors.primary }]}>Afspil video</Text>
+                </TouchableOpacity>
+              )}
 
               {task.reminder && (
                 <View style={styles.reminderBadge}>
@@ -252,6 +368,59 @@ export default function TasksScreen() {
                 numberOfLines={4}
               />
 
+              <Text style={[styles.label, { color: textColor }]}>Video URL</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+                value={videoUrl}
+                onChangeText={setVideoUrl}
+                placeholder="https://youtube.com/..."
+                placeholderTextColor={textSecondaryColor}
+                autoCapitalize="none"
+              />
+
+              <View style={styles.subtasksSection}>
+                <View style={styles.subtasksHeader}>
+                  <Text style={[styles.label, { color: textColor }]}>Delopgaver</Text>
+                  <TouchableOpacity
+                    style={[styles.addSubtaskButton, { backgroundColor: colors.primary }]}
+                    onPress={addSubtask}
+                  >
+                    <IconSymbol
+                      ios_icon_name="plus"
+                      android_material_icon_name="add"
+                      size={16}
+                      color="#fff"
+                    />
+                    <Text style={styles.addSubtaskText}>Tilføj</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {subtasks.map((subtask, index) => (
+                  <View key={index} style={styles.subtaskInputRow}>
+                    <TextInput
+                      style={[styles.subtaskInput, { backgroundColor: bgColor, color: textColor }]}
+                      value={subtask}
+                      onChangeText={(value) => updateSubtask(index, value)}
+                      placeholder={`Delopgave ${index + 1}`}
+                      placeholderTextColor={textSecondaryColor}
+                    />
+                    {subtasks.length > 1 && (
+                      <TouchableOpacity
+                        style={styles.removeSubtaskButton}
+                        onPress={() => removeSubtask(index)}
+                      >
+                        <IconSymbol
+                          ios_icon_name="minus.circle"
+                          android_material_icon_name="remove_circle"
+                          size={24}
+                          color={colors.error}
+                        />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))}
+              </View>
+
               <Text style={[styles.label, { color: textColor }]}>Påmindelse (minutter før)</Text>
               <TextInput
                 style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
@@ -305,6 +474,40 @@ export default function TasksScreen() {
             </View>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Video Modal */}
+      <Modal
+        visible={showVideoModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowVideoModal(false)}
+      >
+        <View style={[styles.modalContainer, { backgroundColor: bgColor }]}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setShowVideoModal(false)}>
+              <IconSymbol
+                ios_icon_name="xmark"
+                android_material_icon_name="close"
+                size={24}
+                color={textColor}
+              />
+            </TouchableOpacity>
+            <Text style={[styles.modalTitle, { color: textColor }]}>Video</Text>
+            <View style={{ width: 24 }} />
+          </View>
+
+          <View style={styles.videoContainer}>
+            {selectedVideoUrl && (
+              <WebView
+                source={{ uri: selectedVideoUrl }}
+                style={styles.webView}
+                allowsFullscreenVideo
+                mediaPlaybackRequiresUserAction={false}
+              />
+            )}
+          </View>
+        </View>
       </Modal>
     </View>
   );
@@ -451,6 +654,16 @@ const styles = StyleSheet.create({
   actionButton: {
     padding: 4,
   },
+  videoIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  videoText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
   reminderBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -519,6 +732,43 @@ const styles = StyleSheet.create({
     height: 100,
     textAlignVertical: 'top',
   },
+  subtasksSection: {
+    marginBottom: 16,
+  },
+  subtasksHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  addSubtaskButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  addSubtaskText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  subtaskInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  subtaskInput: {
+    flex: 1,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 15,
+  },
+  removeSubtaskButton: {
+    padding: 4,
+  },
   categoriesGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -560,5 +810,15 @@ const styles = StyleSheet.create({
   modalButtonText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  modalContainer: {
+    flex: 1,
+  },
+  videoContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  webView: {
+    flex: 1,
   },
 });

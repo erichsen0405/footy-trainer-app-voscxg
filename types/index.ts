@@ -46,6 +46,7 @@ export interface Task {
   categoryIds: string[];
   reminder?: number;
   subtasks: Subtask[];
+  videoUrl?: string;
 }
 
 export interface Subtask {

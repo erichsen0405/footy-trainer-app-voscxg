@@ -259,6 +259,7 @@ export function useFootballData() {
           categoryIds: template.task_template_categories?.map((ttc: any) => ttc.category_id) || [],
           reminder: template.reminder_minutes || undefined,
           subtasks: [],
+          videoUrl: template.video_url || undefined,
         }));
         console.log('Loaded task templates:', loadedTasks.length);
         setTasks(loadedTasks);
@@ -1278,6 +1279,7 @@ export function useFootballData() {
           title: task.title,
           description: task.description,
           reminder_minutes: task.reminder,
+          video_url: task.videoUrl || null,
           player_id,
           team_id,
         })
@@ -1336,6 +1338,7 @@ export function useFootballData() {
       if (updates.title !== undefined) updateData.title = updates.title;
       if (updates.description !== undefined) updateData.description = updates.description;
       if (updates.reminder !== undefined) updateData.reminder_minutes = updates.reminder;
+      if (updates.videoUrl !== undefined) updateData.video_url = updates.videoUrl || null;
       updateData.updated_at = new Date().toISOString();
 
       const { error: templateError } = await supabase
