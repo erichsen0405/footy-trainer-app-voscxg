@@ -28,7 +28,6 @@ export default function SubscriptionManager({
   const [creatingPlanId, setCreatingPlanId] = useState<string | null>(null);
   const [showPlans, setShowPlans] = useState(isSignupFlow); // Collapsed by default unless in signup flow
   const [retryCount, setRetryCount] = useState(0);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [showDiagnostic, setShowDiagnostic] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0); // Force re-render key
   const [isOrangeBoxExpanded, setIsOrangeBoxExpanded] = useState(false); // Collapsible orange box
@@ -69,14 +68,6 @@ export default function SubscriptionManager({
       ? subscriptionPlans.filter(plan => plan.max_players <= 1) // Player plans
       : subscriptionPlans.filter(plan => plan.max_players > 1)  // Trainer plans
     : subscriptionPlans;
-
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    console.log('[SubscriptionManager.web] ========== MANUAL REFRESH TRIGGERED ==========');
-    await refreshSubscription();
-    setRefreshKey(prev => prev + 1); // Force re-render
-    setIsRefreshing(false);
-  };
 
   const handleSelectPlan = async (planId: string, planName: string, maxPlayers: number) => {
     if (isSignupFlow && onPlanSelected) {
@@ -277,53 +268,13 @@ export default function SubscriptionManager({
 
   return (
     <View style={styles.container} key={refreshKey}>
-      {/* Header */}
-      {!isSignupFlow && (
+      {/* Header - Only show when user doesn't have a subscription */}
+      {!isSignupFlow && !subscriptionStatus?.hasSubscription && (
         <View style={styles.header}>
           <Text style={[styles.headerTitle, { color: textColor }]}>Vælg din plan</Text>
           <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
             Start med 14 dages gratis prøveperiode
           </Text>
-          
-          {/* Action Buttons */}
-          <View style={styles.actionButtons}>
-            <TouchableOpacity
-              style={[styles.refreshButton, { backgroundColor: cardBgColor }]}
-              onPress={handleRefresh}
-              disabled={isRefreshing}
-            >
-              {isRefreshing ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <>
-                  <IconSymbol
-                    ios_icon_name="arrow.clockwise"
-                    android_material_icon_name="refresh"
-                    size={20}
-                    color={colors.primary}
-                  />
-                  <Text style={[styles.refreshButtonText, { color: colors.primary }]}>
-                    Opdater status
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.diagnosticButton, { backgroundColor: cardBgColor }]}
-              onPress={() => setShowDiagnostic(true)}
-            >
-              <IconSymbol
-                ios_icon_name="stethoscope"
-                android_material_icon_name="bug_report"
-                size={20}
-                color={colors.secondary}
-              />
-              <Text style={[styles.diagnosticButtonText, { color: colors.secondary }]}>
-                Diagnostik
-              </Text>
-            </TouchableOpacity>
-          </View>
         </View>
       )}
 
@@ -416,72 +367,6 @@ export default function SubscriptionManager({
             />
           </View>
         </TouchableOpacity>
-      )}
-
-      {/* Subscription Details (when not showing plans) - Moved before "Se tilgængelige abonnementer" */}
-      {!isSignupFlow && subscriptionStatus?.hasSubscription && !showPlans && (
-        <View style={styles.subscriptionDetailsContainer}>
-          <View style={[styles.detailCard, { backgroundColor: cardBgColor }]}>
-            <View style={styles.detailHeader}>
-              <IconSymbol
-                ios_icon_name="person.3.fill"
-                android_material_icon_name="group"
-                size={24}
-                color={colors.primary}
-              />
-              <Text style={[styles.detailTitle, { color: textColor }]}>Spillere</Text>
-            </View>
-            <Text style={[styles.detailValue, { color: textColor }]}>
-              {subscriptionStatus.currentPlayers} / {subscriptionStatus.maxPlayers}
-            </Text>
-          </View>
-
-          {subscriptionStatus.status === 'trial' && (
-            <View style={[styles.detailCard, { backgroundColor: cardBgColor }]}>
-              <View style={styles.detailHeader}>
-                <IconSymbol
-                  ios_icon_name="calendar"
-                  android_material_icon_name="event"
-                  size={24}
-                  color={colors.primary}
-                />
-                <Text style={[styles.detailTitle, { color: textColor }]}>Prøveperiode</Text>
-              </View>
-              <Text style={[styles.detailValue, { color: textColor }]}>
-                {getDaysRemaining(subscriptionStatus.trialEnd)} dage tilbage
-              </Text>
-            </View>
-          )}
-
-          <View style={[styles.detailCard, { backgroundColor: cardBgColor }]}>
-            <View style={styles.detailHeader}>
-              <IconSymbol
-                ios_icon_name="clock"
-                android_material_icon_name="schedule"
-                size={24}
-                color={colors.primary}
-              />
-              <Text style={[styles.detailTitle, { color: textColor }]}>Udløber</Text>
-            </View>
-            <Text style={[styles.detailValue, { color: textColor, fontSize: 14 }]}>
-              {formatDate(subscriptionStatus.status === 'trial' ? subscriptionStatus.trialEnd : subscriptionStatus.currentPeriodEnd)}
-            </Text>
-          </View>
-
-          {subscriptionStatus.status === 'trial' && (
-            <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
-              <IconSymbol
-                ios_icon_name="info.circle.fill"
-                android_material_icon_name="info"
-                size={24}
-                color={colors.secondary}
-              />
-              <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
-                Din prøveperiode udløber om {getDaysRemaining(subscriptionStatus.trialEnd)} dage. Efter prøveperioden skal du tilføje betalingsoplysninger for at fortsætte.
-              </Text>
-            </View>
-          )}
-        </View>
       )}
 
       {/* Collapsible Plans Section - Moved to bottom */}
@@ -711,24 +596,6 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 16,
     textAlign: 'center',
-    marginBottom: 16,
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 8,
-  },
-  refreshButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  refreshButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
   },
   diagnosticButton: {
     flexDirection: 'row',
@@ -737,6 +604,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 8,
+    marginBottom: 16,
   },
   diagnosticButtonText: {
     fontSize: 14,
@@ -941,28 +809,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
-  },
-  subscriptionDetailsContainer: {
-    gap: 16,
-    marginBottom: 20,
-  },
-  detailCard: {
-    borderRadius: 12,
-    padding: 20,
-  },
-  detailHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 12,
-  },
-  detailTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  detailValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
   },
   infoBox: {
     flexDirection: 'row',

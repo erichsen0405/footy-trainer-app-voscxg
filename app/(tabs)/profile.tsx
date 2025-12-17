@@ -687,15 +687,6 @@ export default function ProfileScreen() {
                     {user.email}
                   </Text>
                   <View style={styles.badgesRow}>
-                    {userRole && (
-                      <View style={[styles.roleBadge, { 
-                        backgroundColor: isTrainer ? colors.primary : '#FF9500' 
-                      }]}>
-                        <Text style={styles.roleText}>
-                          {isTrainer ? 'Træner' : 'Spiller'}
-                        </Text>
-                      </View>
-                    )}
                     {subscriptionStatus?.hasSubscription && (
                       <View style={[styles.planBadge, { 
                         backgroundColor: getPlanColor(subscriptionStatus.planName) 
@@ -1135,17 +1126,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     flexWrap: 'wrap',
-  },
-  roleBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  roleText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#fff',
   },
   planBadge: {
     flexDirection: 'row',
