@@ -31,6 +31,7 @@ export default function SubscriptionManager({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showDiagnostic, setShowDiagnostic] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0); // Force re-render key
+  const [isOrangeBoxExpanded, setIsOrangeBoxExpanded] = useState(false); // Collapsible orange box
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
@@ -45,20 +46,6 @@ export default function SubscriptionManager({
       refreshSubscription();
     }
   }, [isSignupFlow]);
-
-  // Force refresh every 5 seconds if no subscription is detected (for debugging)
-  useEffect(() => {
-    if (!isSignupFlow && !subscriptionStatus?.hasSubscription && !loading) {
-      console.log('[SubscriptionManager.web] No subscription detected, setting up auto-refresh...');
-      const interval = setInterval(() => {
-        console.log('[SubscriptionManager.web] Auto-refreshing subscription status...');
-        refreshSubscription();
-        setRefreshKey(prev => prev + 1); // Force re-render
-      }, 5000);
-
-      return () => clearInterval(interval);
-    }
-  }, [isSignupFlow, subscriptionStatus?.hasSubscription, loading]);
 
   // Log subscription status changes for debugging
   useEffect(() => {
@@ -340,9 +327,13 @@ export default function SubscriptionManager({
         </View>
       )}
 
-      {/* Current Plan Display */}
+      {/* Current Plan Display - Collapsible Orange Box */}
       {!isSignupFlow && subscriptionStatus?.hasSubscription && (
-        <View style={[styles.currentPlanBanner, { backgroundColor: getPlanColor(subscriptionStatus.planName) }]}>
+        <TouchableOpacity
+          style={[styles.currentPlanBanner, { backgroundColor: getPlanColor(subscriptionStatus.planName) }]}
+          onPress={() => setIsOrangeBoxExpanded(!isOrangeBoxExpanded)}
+          activeOpacity={0.8}
+        >
           <View style={styles.currentPlanContent}>
             <IconSymbol
               ios_icon_name={getPlanIcon(subscriptionStatus.planName)}
@@ -360,10 +351,140 @@ export default function SubscriptionManager({
               </Text>
             </View>
           </View>
+          
+          {/* Collapsible Content */}
+          {isOrangeBoxExpanded && (
+            <View style={styles.orangeBoxExpandedContent}>
+              <View style={styles.orangeBoxDivider} />
+              
+              <View style={styles.orangeBoxDetailRow}>
+                <View style={styles.orangeBoxDetailItem}>
+                  <IconSymbol
+                    ios_icon_name="person.3.fill"
+                    android_material_icon_name="group"
+                    size={20}
+                    color="#fff"
+                  />
+                  <Text style={styles.orangeBoxDetailLabel}>Spillere</Text>
+                </View>
+                <Text style={styles.orangeBoxDetailValue}>
+                  {subscriptionStatus.currentPlayers} / {subscriptionStatus.maxPlayers}
+                </Text>
+              </View>
+
+              {subscriptionStatus.status === 'trial' && (
+                <View style={styles.orangeBoxDetailRow}>
+                  <View style={styles.orangeBoxDetailItem}>
+                    <IconSymbol
+                      ios_icon_name="calendar"
+                      android_material_icon_name="event"
+                      size={20}
+                      color="#fff"
+                    />
+                    <Text style={styles.orangeBoxDetailLabel}>Prøveperiode</Text>
+                  </View>
+                  <Text style={styles.orangeBoxDetailValue}>
+                    {getDaysRemaining(subscriptionStatus.trialEnd)} dage tilbage
+                  </Text>
+                </View>
+              )}
+
+              <View style={styles.orangeBoxDetailRow}>
+                <View style={styles.orangeBoxDetailItem}>
+                  <IconSymbol
+                    ios_icon_name="clock"
+                    android_material_icon_name="schedule"
+                    size={20}
+                    color="#fff"
+                  />
+                  <Text style={styles.orangeBoxDetailLabel}>Udløber</Text>
+                </View>
+                <Text style={[styles.orangeBoxDetailValue, { fontSize: 13 }]}>
+                  {formatDate(subscriptionStatus.status === 'trial' ? subscriptionStatus.trialEnd : subscriptionStatus.currentPeriodEnd)}
+                </Text>
+              </View>
+            </View>
+          )}
+          
+          {/* Expand/Collapse Indicator */}
+          <View style={styles.expandIndicator}>
+            <IconSymbol
+              ios_icon_name={isOrangeBoxExpanded ? 'chevron.up' : 'chevron.down'}
+              android_material_icon_name={isOrangeBoxExpanded ? 'expand_less' : 'expand_more'}
+              size={20}
+              color="#fff"
+            />
+          </View>
+        </TouchableOpacity>
+      )}
+
+      {/* Subscription Details (when not showing plans) - Moved before "Se tilgængelige abonnementer" */}
+      {!isSignupFlow && subscriptionStatus?.hasSubscription && !showPlans && (
+        <View style={styles.subscriptionDetailsContainer}>
+          <View style={[styles.detailCard, { backgroundColor: cardBgColor }]}>
+            <View style={styles.detailHeader}>
+              <IconSymbol
+                ios_icon_name="person.3.fill"
+                android_material_icon_name="group"
+                size={24}
+                color={colors.primary}
+              />
+              <Text style={[styles.detailTitle, { color: textColor }]}>Spillere</Text>
+            </View>
+            <Text style={[styles.detailValue, { color: textColor }]}>
+              {subscriptionStatus.currentPlayers} / {subscriptionStatus.maxPlayers}
+            </Text>
+          </View>
+
+          {subscriptionStatus.status === 'trial' && (
+            <View style={[styles.detailCard, { backgroundColor: cardBgColor }]}>
+              <View style={styles.detailHeader}>
+                <IconSymbol
+                  ios_icon_name="calendar"
+                  android_material_icon_name="event"
+                  size={24}
+                  color={colors.primary}
+                />
+                <Text style={[styles.detailTitle, { color: textColor }]}>Prøveperiode</Text>
+              </View>
+              <Text style={[styles.detailValue, { color: textColor }]}>
+                {getDaysRemaining(subscriptionStatus.trialEnd)} dage tilbage
+              </Text>
+            </View>
+          )}
+
+          <View style={[styles.detailCard, { backgroundColor: cardBgColor }]}>
+            <View style={styles.detailHeader}>
+              <IconSymbol
+                ios_icon_name="clock"
+                android_material_icon_name="schedule"
+                size={24}
+                color={colors.primary}
+              />
+              <Text style={[styles.detailTitle, { color: textColor }]}>Udløber</Text>
+            </View>
+            <Text style={[styles.detailValue, { color: textColor, fontSize: 14 }]}>
+              {formatDate(subscriptionStatus.status === 'trial' ? subscriptionStatus.trialEnd : subscriptionStatus.currentPeriodEnd)}
+            </Text>
+          </View>
+
+          {subscriptionStatus.status === 'trial' && (
+            <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
+              <IconSymbol
+                ios_icon_name="info.circle.fill"
+                android_material_icon_name="info"
+                size={24}
+                color={colors.secondary}
+              />
+              <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
+                Din prøveperiode udløber om {getDaysRemaining(subscriptionStatus.trialEnd)} dage. Efter prøveperioden skal du tilføje betalingsoplysninger for at fortsætte.
+              </Text>
+            </View>
+          )}
         </View>
       )}
 
-      {/* Collapsible Plans Section */}
+      {/* Collapsible Plans Section - Moved to bottom */}
       {!isSignupFlow && (
         <TouchableOpacity
           style={[styles.expandButton, { backgroundColor: cardBgColor }]}
@@ -560,72 +681,6 @@ export default function SubscriptionManager({
           </Text>
         </View>
       )}
-
-      {/* Subscription Details (when not showing plans) */}
-      {!isSignupFlow && subscriptionStatus?.hasSubscription && !showPlans && (
-        <View style={styles.subscriptionDetailsContainer}>
-          <View style={[styles.detailCard, { backgroundColor: cardBgColor }]}>
-            <View style={styles.detailHeader}>
-              <IconSymbol
-                ios_icon_name="person.3.fill"
-                android_material_icon_name="group"
-                size={24}
-                color={colors.primary}
-              />
-              <Text style={[styles.detailTitle, { color: textColor }]}>Spillere</Text>
-            </View>
-            <Text style={[styles.detailValue, { color: textColor }]}>
-              {subscriptionStatus.currentPlayers} / {subscriptionStatus.maxPlayers}
-            </Text>
-          </View>
-
-          {subscriptionStatus.status === 'trial' && (
-            <View style={[styles.detailCard, { backgroundColor: cardBgColor }]}>
-              <View style={styles.detailHeader}>
-                <IconSymbol
-                  ios_icon_name="calendar"
-                  android_material_icon_name="event"
-                  size={24}
-                  color={colors.primary}
-                />
-                <Text style={[styles.detailTitle, { color: textColor }]}>Prøveperiode</Text>
-              </View>
-              <Text style={[styles.detailValue, { color: textColor }]}>
-                {getDaysRemaining(subscriptionStatus.trialEnd)} dage tilbage
-              </Text>
-            </View>
-          )}
-
-          <View style={[styles.detailCard, { backgroundColor: cardBgColor }]}>
-            <View style={styles.detailHeader}>
-              <IconSymbol
-                ios_icon_name="clock"
-                android_material_icon_name="schedule"
-                size={24}
-                color={colors.primary}
-              />
-              <Text style={[styles.detailTitle, { color: textColor }]}>Udløber</Text>
-            </View>
-            <Text style={[styles.detailValue, { color: textColor, fontSize: 14 }]}>
-              {formatDate(subscriptionStatus.status === 'trial' ? subscriptionStatus.trialEnd : subscriptionStatus.currentPeriodEnd)}
-            </Text>
-          </View>
-
-          {subscriptionStatus.status === 'trial' && (
-            <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
-              <IconSymbol
-                ios_icon_name="info.circle.fill"
-                android_material_icon_name="info"
-                size={24}
-                color={colors.secondary}
-              />
-              <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
-                Din prøveperiode udløber om {getDaysRemaining(subscriptionStatus.trialEnd)} dage. Efter prøveperioden skal du tilføje betalingsoplysninger for at fortsætte.
-              </Text>
-            </View>
-          )}
-        </View>
-      )}
     </View>
   );
 }
@@ -721,6 +776,39 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#fff',
+  },
+  orangeBoxExpandedContent: {
+    marginTop: 16,
+  },
+  orangeBoxDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    marginBottom: 16,
+  },
+  orangeBoxDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  orangeBoxDetailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  orangeBoxDetailLabel: {
+    fontSize: 15,
+    color: '#fff',
+    opacity: 0.9,
+  },
+  orangeBoxDetailValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  expandIndicator: {
+    alignItems: 'center',
+    marginTop: 12,
   },
   expandButton: {
     flexDirection: 'row',
@@ -856,6 +944,7 @@ const styles = StyleSheet.create({
   },
   subscriptionDetailsContainer: {
     gap: 16,
+    marginBottom: 20,
   },
   detailCard: {
     borderRadius: 12,
