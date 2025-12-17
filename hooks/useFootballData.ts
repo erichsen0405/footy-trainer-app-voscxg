@@ -164,13 +164,13 @@ export function useFootballData() {
       // Filter based on user role and selected context
       if (userRole === 'trainer' || userRole === 'admin') {
         if (selectedContext.type === 'player' && selectedContext.id) {
-          // Show categories for the selected player
-          console.log('Loading categories for selected player:', selectedContext.id);
-          query = query.or(`user_id.eq.${userId},player_id.eq.${selectedContext.id}`);
+          // CRITICAL FIX: Show ONLY categories for the selected player
+          console.log('Loading categories ONLY for selected player:', selectedContext.id);
+          query = query.eq('player_id', selectedContext.id);
         } else if (selectedContext.type === 'team' && selectedContext.id) {
-          // Show categories for the selected team
-          console.log('Loading categories for selected team:', selectedContext.id);
-          query = query.or(`user_id.eq.${userId},team_id.eq.${selectedContext.id}`);
+          // CRITICAL FIX: Show ONLY categories for the selected team
+          console.log('Loading categories ONLY for selected team:', selectedContext.id);
+          query = query.eq('team_id', selectedContext.id);
         } else {
           // No selection - show only trainer's own categories
           query = query.eq('user_id', userId);
@@ -226,13 +226,13 @@ export function useFootballData() {
       // Filter based on user role and selected context
       if (userRole === 'trainer' || userRole === 'admin') {
         if (selectedContext.type === 'player' && selectedContext.id) {
-          // Show task templates for the selected player
-          console.log('Loading task templates for selected player:', selectedContext.id);
-          query = query.or(`user_id.eq.${userId},player_id.eq.${selectedContext.id}`);
+          // CRITICAL FIX: Show ONLY task templates for the selected player
+          console.log('Loading task templates ONLY for selected player:', selectedContext.id);
+          query = query.eq('player_id', selectedContext.id);
         } else if (selectedContext.type === 'team' && selectedContext.id) {
-          // Show task templates for the selected team (common to all team members)
-          console.log('Loading task templates for selected team:', selectedContext.id);
-          query = query.or(`user_id.eq.${userId},team_id.eq.${selectedContext.id}`);
+          // CRITICAL FIX: Show ONLY task templates for the selected team
+          console.log('Loading task templates ONLY for selected team:', selectedContext.id);
+          query = query.eq('team_id', selectedContext.id);
         } else {
           // No selection - show only trainer's own task templates
           query = query.eq('user_id', userId);
@@ -283,13 +283,13 @@ export function useFootballData() {
       // Filter based on user role and selected context
       if (userRole === 'trainer' || userRole === 'admin') {
         if (selectedContext.type === 'player' && selectedContext.id) {
-          // Show calendars for the selected player
-          console.log('Loading calendars for selected player:', selectedContext.id);
-          query = query.or(`user_id.eq.${userId},player_id.eq.${selectedContext.id}`);
+          // CRITICAL FIX: Show ONLY calendars for the selected player
+          console.log('Loading calendars ONLY for selected player:', selectedContext.id);
+          query = query.eq('player_id', selectedContext.id);
         } else if (selectedContext.type === 'team' && selectedContext.id) {
-          // Show calendars for the selected team
-          console.log('Loading calendars for selected team:', selectedContext.id);
-          query = query.or(`user_id.eq.${userId},team_id.eq.${selectedContext.id}`);
+          // CRITICAL FIX: Show ONLY calendars for the selected team
+          console.log('Loading calendars ONLY for selected team:', selectedContext.id);
+          query = query.eq('team_id', selectedContext.id);
         } else {
           // No selection - show only trainer's own calendars
           query = query.eq('user_id', userId);
@@ -356,13 +356,13 @@ export function useFootballData() {
       // Filter based on user role and selected context
       if (userRole === 'trainer' || userRole === 'admin') {
         if (selectedContext.type === 'player' && selectedContext.id) {
-          // Show activities for the selected player
-          console.log('Loading activities for selected player:', selectedContext.id);
-          internalQuery = internalQuery.or(`user_id.eq.${userId},player_id.eq.${selectedContext.id}`);
+          // CRITICAL FIX: Show ONLY activities for the selected player
+          console.log('Loading activities ONLY for selected player:', selectedContext.id);
+          internalQuery = internalQuery.eq('player_id', selectedContext.id);
         } else if (selectedContext.type === 'team' && selectedContext.id) {
-          // Show activities for the selected team (common to all team members)
-          console.log('Loading activities for selected team:', selectedContext.id);
-          internalQuery = internalQuery.or(`user_id.eq.${userId},team_id.eq.${selectedContext.id}`);
+          // CRITICAL FIX: Show ONLY activities for the selected team
+          console.log('Loading activities ONLY for selected team:', selectedContext.id);
+          internalQuery = internalQuery.eq('team_id', selectedContext.id);
         } else {
           // No selection - show only trainer's own activities
           internalQuery = internalQuery.eq('user_id', userId);
@@ -416,13 +416,13 @@ export function useFootballData() {
       // Filter based on user role and selected context
       if (userRole === 'trainer' || userRole === 'admin') {
         if (selectedContext.type === 'player' && selectedContext.id) {
-          // Show external events for the selected player
-          console.log('Loading external events for selected player:', selectedContext.id);
-          externalQuery = externalQuery.or(`events_local_meta.user_id.eq.${userId},events_local_meta.player_id.eq.${selectedContext.id}`);
+          // CRITICAL FIX: Show ONLY external events for the selected player
+          console.log('Loading external events ONLY for selected player:', selectedContext.id);
+          externalQuery = externalQuery.eq('events_local_meta.player_id', selectedContext.id);
         } else if (selectedContext.type === 'team' && selectedContext.id) {
-          // Show external events for the selected team
-          console.log('Loading external events for selected team:', selectedContext.id);
-          externalQuery = externalQuery.or(`events_local_meta.user_id.eq.${userId},events_local_meta.team_id.eq.${selectedContext.id}`);
+          // CRITICAL FIX: Show ONLY external events for the selected team
+          console.log('Loading external events ONLY for selected team:', selectedContext.id);
+          externalQuery = externalQuery.eq('events_local_meta.team_id', selectedContext.id);
         } else {
           // No selection - show only trainer's own external events
           externalQuery = externalQuery.eq('events_local_meta.user_id', userId);
