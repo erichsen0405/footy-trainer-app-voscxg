@@ -23,140 +23,134 @@ interface CreatePlayerModalProps {
   onPlayerCreated: () => void;
 }
 
+interface SearchResult {
+  id: string;
+  email: string;
+  full_name: string | null;
+}
+
 export default function CreatePlayerModal({
   visible,
   onClose,
   onPlayerCreated,
 }: CreatePlayerModalProps) {
-  const [playerName, setPlayerName] = useState('');
-  const [playerEmail, setPlayerEmail] = useState('');
-  const [playerPhone, setPlayerPhone] = useState('');
+  const [searchEmail, setSearchEmail] = useState('');
   const [loading, setLoading] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [searchResult, setSearchResult] = useState<SearchResult | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
 
   const resetForm = () => {
-    setPlayerName('');
-    setPlayerEmail('');
-    setPlayerPhone('');
+    setSearchEmail('');
+    setSearchResult(null);
   };
 
-  const handleCreatePlayer = async () => {
+  const handleSearch = async () => {
     // Validation
-    if (!playerName.trim()) {
-      Alert.alert('Fejl', 'Indtast venligst spillerens navn');
-      return;
-    }
-
-    if (!playerEmail.trim()) {
-      Alert.alert('Fejl', 'Indtast venligst spillerens email');
+    if (!searchEmail.trim()) {
+      Alert.alert('Fejl', 'Indtast venligst en email-adresse');
       return;
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(playerEmail)) {
+    if (!emailRegex.test(searchEmail)) {
       Alert.alert('Fejl', 'Indtast venligst en gyldig email-adresse');
+      return;
+    }
+
+    setSearching(true);
+    setSearchResult(null);
+
+    try {
+      console.log('Searching for user with email:', searchEmail);
+
+      // Search for user by email using the Edge Function
+      const { data, error } = await supabase.functions.invoke('create-player', {
+        body: {
+          action: 'search',
+          email: searchEmail.trim().toLowerCase(),
+        },
+      });
+
+      console.log('Search response:', { data, error });
+
+      if (error) {
+        console.error('Search error:', error);
+        throw new Error('Kunne ikke søge efter bruger. Prøv igen.');
+      }
+
+      if (!data || !data.success) {
+        const errorMessage = data?.error || 'Kunne ikke søge efter bruger';
+        throw new Error(errorMessage);
+      }
+
+      if (!data.user) {
+        Alert.alert(
+          'Ingen bruger fundet',
+          `Der blev ikke fundet nogen bruger med email: ${searchEmail}\n\nBrugeren skal først oprette en konto i appen, før du kan tilføje dem som spiller.`,
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      // User found
+      setSearchResult({
+        id: data.user.id,
+        email: data.user.email,
+        full_name: data.user.full_name,
+      });
+
+    } catch (error: any) {
+      console.error('Error searching for user:', error);
+      Alert.alert('Fejl', error.message || 'Der opstod en fejl ved søgning efter bruger');
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleAddPlayer = async () => {
+    if (!searchResult) {
+      Alert.alert('Fejl', 'Ingen bruger valgt');
       return;
     }
 
     setLoading(true);
 
     try {
-      // Get current admin user
-      const { data: { user: adminUser }, error: adminError } = await supabase.auth.getUser();
-      
-      if (adminError || !adminUser) {
-        console.error('Admin user error:', adminError);
-        throw new Error('Kunne ikke hente admin bruger. Log venligst ind igen.');
-      }
+      console.log('Adding player:', searchResult.id);
 
-      console.log('Creating player invitation for:', playerEmail);
-      console.log('Admin user ID:', adminUser.id);
-
-      const requestPayload = {
-        email: playerEmail,
-        fullName: playerName,
-        phoneNumber: playerPhone || null,
-      };
-
-      console.log('Request payload:', requestPayload);
-
-      // Call the Edge Function to create the player
+      // Add the player using the Edge Function
       const { data, error } = await supabase.functions.invoke('create-player', {
-        body: requestPayload,
+        body: {
+          action: 'add',
+          playerId: searchResult.id,
+        },
       });
 
-      console.log('Edge function response:', { data, error });
+      console.log('Add player response:', { data, error });
 
       if (error) {
-        console.error('Edge function error:', error);
-        console.error('Error name:', error.name);
-        console.error('Error message:', error.message);
-        console.error('Error context:', error.context);
-        
-        // Try to extract error message from context if it's a Response object
-        let errorMessage = 'Kunne ikke oprette spillerprofil';
-        
-        if (error.context && error.context instanceof Response) {
-          try {
-            // Clone the response so we can read it
-            const clonedResponse = error.context.clone();
-            const errorBody = await clonedResponse.json();
-            console.log('Error response body:', errorBody);
-            if (errorBody.error) {
-              errorMessage = errorBody.error;
-            }
-          } catch (e) {
-            console.error('Could not parse error response:', e);
-            try {
-              const clonedResponse = error.context.clone();
-              const errorText = await clonedResponse.text();
-              console.log('Error response text:', errorText);
-              if (errorText) {
-                errorMessage = errorText;
-              }
-            } catch (e2) {
-              console.error('Could not read error response text:', e2);
-            }
-          }
-        } else if (error.message) {
-          errorMessage = error.message;
-        }
-        
-        // Provide more specific error messages
-        if (errorMessage.includes('Only admins')) {
-          throw new Error('Du har ikke admin rettigheder til at oprette spillere.');
-        } else if (errorMessage.includes('already registered') || errorMessage.includes('already exists')) {
-          throw new Error('Denne email er allerede registreret i systemet.');
-        } else if (errorMessage.includes('Unauthorized') || errorMessage.includes('No authorization')) {
-          throw new Error('Din session er udløbet. Log venligst ind igen.');
-        } else {
-          throw new Error(errorMessage);
-        }
+        console.error('Add player error:', error);
+        throw new Error('Kunne ikke tilføje spiller. Prøv igen.');
       }
 
       if (!data || !data.success) {
-        console.error('Edge function returned error:', data);
-        const errorMessage = data?.error || 'Kunne ikke oprette spillerprofil';
-        const errorCode = data?.errorCode || '';
-        const userRole = data?.userRole || '';
+        const errorMessage = data?.error || 'Kunne ikke tilføje spiller';
         
-        let detailedMessage = errorMessage;
-        if (userRole && userRole !== 'admin') {
-          detailedMessage = `Du har ikke admin rettigheder (din rolle: ${userRole})`;
-        }
-        if (errorCode) {
-          detailedMessage += `\n\nFejlkode: ${errorCode}`;
+        // Check for specific error cases
+        if (errorMessage.includes('already linked') || errorMessage.includes('already exists')) {
+          throw new Error('Denne spiller er allerede tilknyttet din profil.');
         }
         
-        throw new Error(detailedMessage);
+        throw new Error(errorMessage);
       }
 
-      console.log('Player created successfully:', data.playerId);
+      console.log('Player added successfully');
 
       // Show success message
       setShowSuccess(true);
 
-      // Wait 2 seconds, then close modal and navigate back
+      // Wait 2 seconds, then close modal
       setTimeout(() => {
         setShowSuccess(false);
         resetForm();
@@ -165,27 +159,8 @@ export default function CreatePlayerModal({
       }, 2000);
 
     } catch (error: any) {
-      console.error('Error creating player:', error);
-      console.error('Error stack:', error.stack);
-      
-      // Provide more detailed error message
-      let errorMessage = 'Der opstod en fejl ved oprettelse af spillerprofil';
-      if (error.message) {
-        errorMessage = error.message;
-      }
-      
-      let helpText = '\n\nTjek venligst:\n';
-      if (errorMessage.includes('admin')) {
-        helpText += '- At du er logget ind som admin\n- At din admin rolle er korrekt sat op';
-      } else if (errorMessage.includes('email')) {
-        helpText += '- At emailen ikke allerede er i brug\n- At emailen er korrekt formateret';
-      } else if (errorMessage.includes('session') || errorMessage.includes('Unauthorized')) {
-        helpText += '- At du er logget ind\n- Prøv at logge ud og ind igen';
-      } else {
-        helpText += '- At du har internetforbindelse\n- At alle felter er udfyldt korrekt\n- Prøv igen om et øjeblik';
-      }
-      
-      Alert.alert('Fejl', errorMessage + helpText);
+      console.error('Error adding player:', error);
+      Alert.alert('Fejl', error.message || 'Der opstod en fejl ved tilføjelse af spiller');
     } finally {
       setLoading(false);
     }
@@ -214,9 +189,9 @@ export default function CreatePlayerModal({
                 color="#fff"
               />
             </View>
-            <Text style={styles.successTitle}>Invitation sendt! 🎉</Text>
+            <Text style={styles.successTitle}>Spiller tilføjet! 🎉</Text>
             <Text style={styles.successMessage}>
-              Spillerprofil for {playerName} er oprettet.
+              {searchResult?.full_name || searchResult?.email} er nu tilknyttet din profil.
             </Text>
             <View style={styles.successDetails}>
               <View style={styles.successDetailRow}>
@@ -226,25 +201,14 @@ export default function CreatePlayerModal({
                   size={20}
                   color={colors.primary}
                 />
-                <Text style={styles.successDetailText}>{playerEmail}</Text>
-              </View>
-              <View style={styles.successInfoBox}>
-                <IconSymbol
-                  ios_icon_name="info.circle.fill"
-                  android_material_icon_name="info"
-                  size={20}
-                  color={colors.secondary}
-                />
-                <Text style={styles.successInfoText}>
-                  Spilleren har modtaget en email med et link til at oprette sin adgangskode.
-                </Text>
+                <Text style={styles.successDetailText}>{searchResult?.email}</Text>
               </View>
             </View>
             <ActivityIndicator size="small" color={colors.primary} style={styles.successLoader} />
-            <Text style={styles.successRedirectText}>Returnerer til profilskærmen...</Text>
+            <Text style={styles.successRedirectText}>Returnerer til træner-siden...</Text>
           </View>
         ) : (
-          // Create Player Form
+          // Search and Add Player Form
           <>
             <View style={styles.header}>
               <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -255,7 +219,7 @@ export default function CreatePlayerModal({
                   color={colors.text}
                 />
               </TouchableOpacity>
-              <Text style={styles.headerTitle}>Opret Spillerprofil</Text>
+              <Text style={styles.headerTitle}>Tilføj Spiller</Text>
               <View style={styles.placeholder} />
             </View>
 
@@ -277,45 +241,88 @@ export default function CreatePlayerModal({
               </View>
 
               <Text style={styles.description}>
-                Opret en ny spillerprofil. Spilleren vil modtage en email med et link til at oprette sin egen adgangskode.
+                Søg efter en eksisterende bruger ved at indtaste deres email-adresse. 
+                Brugeren skal allerede have oprettet en konto i appen.
               </Text>
 
               <View style={styles.form}>
-                <Text style={styles.label}>Spillerens navn *</Text>
-                <TextInput
-                  style={styles.input}
-                  value={playerName}
-                  onChangeText={setPlayerName}
-                  placeholder="F.eks. Anders Hansen"
-                  placeholderTextColor={colors.textSecondary}
-                  editable={!loading}
-                  autoCorrect={false}
-                />
-
                 <Text style={styles.label}>Email *</Text>
-                <TextInput
-                  style={styles.input}
-                  value={playerEmail}
-                  onChangeText={setPlayerEmail}
-                  placeholder="spiller@email.dk"
-                  placeholderTextColor={colors.textSecondary}
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                  editable={!loading}
-                  autoCorrect={false}
-                />
+                <View style={styles.searchContainer}>
+                  <TextInput
+                    style={styles.searchInput}
+                    value={searchEmail}
+                    onChangeText={setSearchEmail}
+                    placeholder="spiller@email.dk"
+                    placeholderTextColor={colors.textSecondary}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                    editable={!searching && !loading}
+                    autoCorrect={false}
+                    onSubmitEditing={handleSearch}
+                  />
+                  <TouchableOpacity
+                    style={[
+                      styles.searchButton,
+                      { backgroundColor: colors.primary },
+                      (searching || loading) && { opacity: 0.6 },
+                    ]}
+                    onPress={handleSearch}
+                    disabled={searching || loading}
+                  >
+                    {searching ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <IconSymbol
+                        ios_icon_name="magnifyingglass"
+                        android_material_icon_name="search"
+                        size={20}
+                        color="#fff"
+                      />
+                    )}
+                  </TouchableOpacity>
+                </View>
 
-                <Text style={styles.label}>Telefonnummer</Text>
-                <TextInput
-                  style={styles.input}
-                  value={playerPhone}
-                  onChangeText={setPlayerPhone}
-                  placeholder="+45 12 34 56 78"
-                  placeholderTextColor={colors.textSecondary}
-                  keyboardType="phone-pad"
-                  editable={!loading}
-                  autoCorrect={false}
-                />
+                {searchResult && (
+                  <View style={styles.resultCard}>
+                    <View style={styles.resultHeader}>
+                      <IconSymbol
+                        ios_icon_name="person.circle.fill"
+                        android_material_icon_name="account_circle"
+                        size={48}
+                        color={colors.primary}
+                      />
+                      <View style={styles.resultInfo}>
+                        <Text style={styles.resultName}>
+                          {searchResult.full_name || 'Ingen navn'}
+                        </Text>
+                        <Text style={styles.resultEmail}>{searchResult.email}</Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      style={[
+                        styles.addPlayerButton,
+                        { backgroundColor: colors.primary },
+                        loading && { opacity: 0.6 },
+                      ]}
+                      onPress={handleAddPlayer}
+                      disabled={loading}
+                    >
+                      {loading ? (
+                        <ActivityIndicator color="#fff" size="small" />
+                      ) : (
+                        <>
+                          <IconSymbol
+                            ios_icon_name="plus.circle.fill"
+                            android_material_icon_name="add_circle"
+                            size={20}
+                            color="#fff"
+                          />
+                          <Text style={styles.addPlayerButtonText}>Tilføj spiller</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                )}
 
                 <View style={styles.infoBox}>
                   <IconSymbol
@@ -327,10 +334,10 @@ export default function CreatePlayerModal({
                   <View style={styles.infoTextContainer}>
                     <Text style={styles.infoTitle}>Sådan fungerer det:</Text>
                     <Text style={styles.infoText}>
-                      1. Du opretter spillerprofilen med navn og email{'\n'}
-                      2. Spilleren modtager en email med et link{'\n'}
-                      3. Spilleren klikker på linket og opretter sin egen adgangskode{'\n'}
-                      4. Spilleren kan nu logge ind i appen
+                      1. Indtast spillerens email-adresse{'\n'}
+                      2. Klik på søg-knappen{'\n'}
+                      3. Hvis brugeren findes, kan du tilføje dem som spiller{'\n'}
+                      4. Spilleren vil nu være tilknyttet din træner-profil
                     </Text>
                   </View>
                 </View>
@@ -343,7 +350,8 @@ export default function CreatePlayerModal({
                     color={colors.primary}
                   />
                   <Text style={styles.infoText}>
-                    Spilleren vil kun have adgang til Hjem, Performance og Profil menuer.
+                    Når du tilføjer en spiller, kan du oprette aktiviteter og opgaver for dem. 
+                    Spilleren vil kunne se disse i deres Hjem og Opgaver sider.
                   </Text>
                 </View>
               </View>
@@ -356,25 +364,9 @@ export default function CreatePlayerModal({
               <TouchableOpacity
                 style={[styles.cancelButton]}
                 onPress={onClose}
-                disabled={loading}
+                disabled={loading || searching}
               >
-                <Text style={styles.cancelButtonText}>Annuller</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.createButton,
-                  { backgroundColor: colors.primary },
-                  loading && { opacity: 0.6 },
-                ]}
-                onPress={handleCreatePlayer}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text style={styles.createButtonText}>Send Invitation</Text>
-                )}
+                <Text style={styles.cancelButtonText}>Luk</Text>
               </TouchableOpacity>
             </View>
           </>
@@ -445,15 +437,67 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginTop: 8,
   },
-  input: {
+  searchContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 24,
+  },
+  searchInput: {
+    flex: 1,
     backgroundColor: colors.card,
     borderRadius: 12,
     padding: 16,
     fontSize: 16,
     color: colors.text,
-    marginBottom: 12,
     borderWidth: 1,
     borderColor: colors.highlight,
+  },
+  searchButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resultCard: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 24,
+    borderWidth: 2,
+    borderColor: colors.primary,
+  },
+  resultHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    marginBottom: 20,
+  },
+  resultInfo: {
+    flex: 1,
+  },
+  resultName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  resultEmail: {
+    fontSize: 15,
+    color: colors.textSecondary,
+  },
+  addPlayerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  addPlayerButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
   infoBox: {
     flexDirection: 'row',
@@ -498,17 +542,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
-  },
-  createButton: {
-    flex: 1,
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  createButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
   },
   // Success Screen Styles
   successContainer: {
@@ -556,19 +589,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
     fontWeight: '500',
-  },
-  successInfoBox: {
-    flexDirection: 'row',
-    gap: 12,
-    padding: 16,
-    backgroundColor: colors.highlight,
-    borderRadius: 12,
-  },
-  successInfoText: {
-    flex: 1,
-    fontSize: 14,
-    color: colors.textSecondary,
-    lineHeight: 20,
   },
   successLoader: {
     marginTop: 40,

@@ -56,23 +56,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { email, fullName, phoneNumber } = requestBody;
-
-    if (!email || !fullName) {
-      console.error('Missing required fields:', { email: !!email, fullName: !!fullName });
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: 'Email and full name are required',
-        }),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400,
-        }
-      );
-    }
-
-    console.log('Creating player account for:', email);
+    const { action, email, playerId } = requestBody;
 
     // Get environment variables
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -170,7 +154,7 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({
           success: false,
-          error: 'Only admins can create player accounts',
+          error: 'Only admins can manage players',
           userRole: roleData?.role || 'none',
         }),
         {
@@ -180,10 +164,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log('User is admin, proceeding with player creation');
+    console.log('User is admin, proceeding with action:', action);
 
     // Create a Supabase admin client with service role
-    // This client bypasses RLS policies
     const supabaseAdmin = createClient(
       supabaseUrl,
       supabaseServiceKey,
@@ -195,18 +178,14 @@ Deno.serve(async (req) => {
       }
     );
 
-    // Check if user already exists
-    console.log('Checking if user already exists...');
-    const { data: existingUser, error: existingUserError } = await supabaseAdmin.auth.admin.listUsers();
-    
-    if (!existingUserError && existingUser) {
-      const userExists = existingUser.users.find(u => u.email === email);
-      if (userExists) {
-        console.error('User already exists:', email);
+    // Handle different actions
+    if (action === 'search') {
+      // Search for user by email
+      if (!email) {
         return new Response(
           JSON.stringify({
             success: false,
-            error: 'A user with this email already exists',
+            error: 'Email is required for search',
           }),
           {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -214,31 +193,146 @@ Deno.serve(async (req) => {
           }
         );
       }
-    }
 
-    console.log('Inviting user via email...');
-    
-    // Use inviteUserByEmail instead of createUser
-    // This will send an invitation email to the user
-    // The redirectTo URL should point to the update-password screen in your app
-    const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-      email,
-      {
-        data: {
-          full_name: fullName,
-          phone_number: phoneNumber && phoneNumber.trim() ? phoneNumber : null,
-        },
-        // This is where the user will be redirected after clicking the invitation link
-        redirectTo: 'https://natively.dev/update-password',
+      console.log('Searching for user with email:', email);
+
+      // Search in auth.users
+      const { data: users, error: searchError } = await supabaseAdmin.auth.admin.listUsers();
+      
+      if (searchError) {
+        console.error('Search error:', searchError);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: `Failed to search for user: ${searchError.message}`,
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 500,
+          }
+        );
       }
-    );
 
-    if (inviteError) {
-      console.error('Invite error:', inviteError);
+      // Find user with matching email
+      const foundUser = users.users.find(u => u.email?.toLowerCase() === email.toLowerCase());
+
+      if (!foundUser) {
+        console.log('No user found with email:', email);
+        return new Response(
+          JSON.stringify({
+            success: true,
+            user: null,
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200,
+          }
+        );
+      }
+
+      console.log('User found:', foundUser.id);
+
+      // Get user profile for full name
+      const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('full_name')
+        .eq('user_id', foundUser.id)
+        .maybeSingle();
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          user: {
+            id: foundUser.id,
+            email: foundUser.email,
+            full_name: profile?.full_name || foundUser.user_metadata?.full_name || null,
+          },
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        }
+      );
+
+    } else if (action === 'add') {
+      // Add existing user as player
+      if (!playerId) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Player ID is required',
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 400,
+          }
+        );
+      }
+
+      console.log('Adding player:', playerId);
+
+      // Check if relationship already exists
+      const { data: existingRelationship } = await supabaseAdmin
+        .from('admin_player_relationships')
+        .select('id')
+        .eq('admin_id', user.id)
+        .eq('player_id', playerId)
+        .maybeSingle();
+
+      if (existingRelationship) {
+        console.log('Relationship already exists');
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'This player is already linked to your profile',
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 400,
+          }
+        );
+      }
+
+      // Create admin-player relationship using RPC function
+      console.log('Creating admin-player relationship using RPC...');
+      const { data: relationshipData, error: relationshipError } = await supabaseAdmin.rpc('create_admin_player_relationship', {
+        p_admin_id: user.id,
+        p_player_id: playerId,
+      });
+
+      if (relationshipError) {
+        console.error('Relationship creation error:', relationshipError);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: `Failed to create admin-player relationship: ${relationshipError.message}`,
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 500,
+          }
+        );
+      }
+
+      console.log('Admin-player relationship created successfully');
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'Player added successfully',
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        }
+      );
+
+    } else {
+      // Invalid action
       return new Response(
         JSON.stringify({
           success: false,
-          error: `Failed to invite user: ${inviteError.message}`,
+          error: `Invalid action: ${action}. Expected 'search' or 'add'`,
         }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -247,100 +341,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!inviteData.user) {
-      console.error('No user data returned from invite');
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: 'No user data returned from invite',
-        }),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 500,
-        }
-      );
-    }
-
-    const playerId = inviteData.user.id;
-    console.log('Player invitation sent, user ID:', playerId);
-
-    // Create profile for the player using RPC function
-    console.log('Creating profile using RPC...');
-    const { data: profileData, error: profileError } = await supabaseAdmin.rpc('create_player_profile', {
-      p_user_id: playerId,
-      p_full_name: fullName,
-      p_phone_number: phoneNumber && phoneNumber.trim() ? phoneNumber : null,
-    });
-
-    if (profileError) {
-      console.error('Profile creation error:', profileError);
-      console.error('Profile error details:', JSON.stringify(profileError, null, 2));
-      // Continue anyway - profile is not critical
-      console.log('Continuing despite profile error...');
-    } else {
-      console.log('Profile created successfully');
-    }
-
-    // Set user role as player using RPC function
-    console.log('Assigning player role using RPC...');
-    const { data: roleInsertData, error: roleInsertError } = await supabaseAdmin.rpc('create_player_role', {
-      p_user_id: playerId,
-    });
-
-    if (roleInsertError) {
-      console.error('Role assignment error:', roleInsertError);
-      console.error('Role error details:', JSON.stringify(roleInsertError, null, 2));
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: `Failed to assign player role: ${roleInsertError.message}`,
-        }),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 500,
-        }
-      );
-    }
-
-    console.log('Player role assigned successfully');
-
-    // Create admin-player relationship using RPC function
-    console.log('Creating admin-player relationship using RPC...');
-    const { data: relationshipData, error: relationshipError } = await supabaseAdmin.rpc('create_admin_player_relationship', {
-      p_admin_id: user.id,
-      p_player_id: playerId,
-    });
-
-    if (relationshipError) {
-      console.error('Relationship creation error:', relationshipError);
-      console.error('Relationship error details:', JSON.stringify(relationshipError, null, 2));
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: `Failed to create admin-player relationship: ${relationshipError.message}`,
-        }),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 500,
-        }
-      );
-    }
-
-    console.log('Admin-player relationship created successfully');
-    console.log('=== Create Player Function Completed Successfully ===');
-    console.log('Invitation email has been sent to:', email);
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        playerId,
-        message: 'Player invitation sent successfully. The user will receive an email with instructions to set up their account.',
-      }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200,
-      }
-    );
   } catch (error) {
     console.error('=== Error in create-player function ===');
     console.error('Error type:', error.constructor.name);
