@@ -14,19 +14,8 @@ serve(async (req) => {
   }
 
   try {
-    console.log('[get-subscription-status] Request received');
+    console.log('[get-subscription-status] ========== REQUEST RECEIVED ==========');
     
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
-
     // Get the authorization header from the request
     const authHeader = req.headers.get('Authorization');
     console.log('[get-subscription-status] Auth header present:', !!authHeader);
@@ -36,12 +25,42 @@ serve(async (req) => {
       throw new Error('No authorization header');
     }
 
+    // Create Supabase client with service role key for admin access
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      }
+    );
+
+    // Create a client with the user's token for authentication
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+        global: {
+          headers: {
+            Authorization: authHeader,
+          },
+        },
+      }
+    );
+
     // Get the user from the auth header
     const token = authHeader.replace('Bearer ', '');
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
 
     console.log('[get-subscription-status] User lookup:', {
       userId: user?.id,
+      email: user?.email,
       error: userError?.message,
     });
 
@@ -50,10 +69,12 @@ serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
-    console.log('[get-subscription-status] Getting subscription for user:', user.id);
+    console.log('[get-subscription-status] ========== QUERYING SUBSCRIPTION ==========');
+    console.log('[get-subscription-status] User ID:', user.id);
+    console.log('[get-subscription-status] User email:', user.email);
 
-    // Get the user's subscription - use maybeSingle() instead of single() to avoid errors
-    const { data: subscription, error: subError } = await supabaseClient
+    // Use admin client to query subscriptions (bypasses RLS)
+    const { data: subscription, error: subError } = await supabaseAdmin
       .from('subscriptions')
       .select(`
         *,
@@ -65,12 +86,17 @@ serve(async (req) => {
       .eq('admin_id', user.id)
       .maybeSingle();
 
-    console.log('[get-subscription-status] Subscription query result:', {
-      found: !!subscription,
-      error: subError?.message,
-      subscriptionId: subscription?.id,
-      planName: subscription?.subscription_plans?.name,
-    });
+    console.log('[get-subscription-status] ========== SUBSCRIPTION QUERY RESULT ==========');
+    console.log('[get-subscription-status] Found subscription:', !!subscription);
+    console.log('[get-subscription-status] Error:', subError?.message);
+    
+    if (subscription) {
+      console.log('[get-subscription-status] Subscription ID:', subscription.id);
+      console.log('[get-subscription-status] Plan ID:', subscription.plan_id);
+      console.log('[get-subscription-status] Status:', subscription.status);
+      console.log('[get-subscription-status] Plan name:', subscription.subscription_plans?.name);
+      console.log('[get-subscription-status] Max players:', subscription.subscription_plans?.max_players);
+    }
 
     if (subError) {
       console.error('[get-subscription-status] Error fetching subscription:', subError);
@@ -78,7 +104,7 @@ serve(async (req) => {
     }
 
     if (!subscription) {
-      console.log('[get-subscription-status] No subscription found for user');
+      console.log('[get-subscription-status] ========== NO SUBSCRIPTION FOUND ==========');
       return new Response(
         JSON.stringify({
           hasSubscription: false,
@@ -96,8 +122,8 @@ serve(async (req) => {
       );
     }
 
-    // Count current players
-    const { count: playerCount, error: countError } = await supabaseClient
+    // Count current players using admin client
+    const { count: playerCount, error: countError } = await supabaseAdmin
       .from('admin_player_relationships')
       .select('*', { count: 'exact', head: true })
       .eq('admin_id', user.id);
@@ -117,7 +143,8 @@ serve(async (req) => {
       currentPeriodEnd: subscription.current_period_end,
     };
 
-    console.log('[get-subscription-status] Returning subscription status:', response);
+    console.log('[get-subscription-status] ========== RETURNING RESPONSE ==========');
+    console.log('[get-subscription-status] Response:', JSON.stringify(response, null, 2));
 
     return new Response(
       JSON.stringify(response),
@@ -127,7 +154,9 @@ serve(async (req) => {
       }
     );
   } catch (error) {
+    console.error('[get-subscription-status] ========== ERROR ==========');
     console.error('[get-subscription-status] Error:', error);
+    console.error('[get-subscription-status] Error message:', error instanceof Error ? error.message : 'Unknown error');
     console.error('[get-subscription-status] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     
     return new Response(
