@@ -2,12 +2,16 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, useColorScheme, KeyboardAvoidingView, Platform, RefreshControl } from 'react-native';
 import { useFootball } from '@/contexts/FootballContext';
+import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
+import { useUserRole } from '@/hooks/useUserRole';
 import { colors } from '@/styles/commonStyles';
 import { Task } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
 
 export default function TasksScreen() {
   const { tasks, categories, addTask, updateTask, deleteTask, duplicateTask } = useFootball();
+  const { selectedContext } = useTeamPlayer();
+  const { isAdmin } = useUserRole();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
@@ -93,6 +97,36 @@ export default function TasksScreen() {
         </Text>
       </View>
 
+      {/* Context Info for Trainers */}
+      {isAdmin && selectedContext.type && (
+        <View style={[styles.contextInfo, { backgroundColor: colors.highlight }]}>
+          <IconSymbol
+            ios_icon_name={selectedContext.type === 'player' ? 'person.fill' : 'person.3.fill'}
+            android_material_icon_name={selectedContext.type === 'player' ? 'person' : 'groups'}
+            size={20}
+            color={colors.primary}
+          />
+          <Text style={[styles.contextText, { color: textColor }]}>
+            Viser opgaver for: <Text style={{ fontWeight: '600' }}>{selectedContext.name}</Text>
+          </Text>
+        </View>
+      )}
+
+      {/* Info for Players */}
+      {!isAdmin && (
+        <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
+          <IconSymbol
+            ios_icon_name="info.circle"
+            android_material_icon_name="info"
+            size={20}
+            color={colors.secondary}
+          />
+          <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
+            Her ser du dine egne opgaveskabeloner samt opgaver som din træner har tildelt dig
+          </Text>
+        </View>
+      )}
+
       <View style={styles.searchContainer}>
         <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={20} color={textSecondaryColor} />
         <TextInput
@@ -132,7 +166,9 @@ export default function TasksScreen() {
           </View>
           
           <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
-            Rediger skabeloner her for at opdatere alle relaterede opgaver
+            {isAdmin && selectedContext.type 
+              ? `Opgaveskabeloner for ${selectedContext.name}. Disse vil automatisk blive tilføjet til relevante aktiviteter.`
+              : 'Rediger skabeloner her for at opdatere alle relaterede opgaver'}
           </Text>
 
           {filteredTemplateTasks.map((task) => (
@@ -291,6 +327,34 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 16,
   },
+  contextInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 12,
+  },
+  contextText: {
+    fontSize: 15,
+    flex: 1,
+  },
+  infoBox: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 12,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+  },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -331,6 +395,7 @@ const styles = StyleSheet.create({
   sectionDescription: {
     fontSize: 14,
     marginBottom: 12,
+    lineHeight: 20,
   },
   addButton: {
     flexDirection: 'row',

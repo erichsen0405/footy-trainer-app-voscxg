@@ -9,6 +9,7 @@ import {
 import { refreshNotificationQueue, forceRefreshNotificationQueue } from '@/utils/notificationScheduler';
 import { startOfWeek, endOfWeek } from 'date-fns';
 import { AppState, AppStateStatus, Platform } from 'react-native';
+import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 
 function getWeekNumber(date: Date): number {
   const d = new Date(date.getTime());
@@ -81,16 +82,34 @@ export function useFootballData() {
   const [trophies, setTrophies] = useState<Trophy[]>([]);
   const [externalCalendars, setExternalCalendars] = useState<ExternalCalendar[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<'admin' | 'trainer' | 'player' | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
 
-  // Get current user
+  // Get selected context from TeamPlayerContext
+  const { selectedContext } = useTeamPlayer();
+
+  // Get current user and role
   useEffect(() => {
     const getCurrentUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       console.log('Current user:', user?.id);
       setUserId(user?.id || null);
+
+      if (user) {
+        // Get user role
+        const { data: roleData } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (roleData) {
+          console.log('User role:', roleData.role);
+          setUserRole(roleData.role as 'admin' | 'trainer' | 'player');
+        }
+      }
     };
     getCurrentUser();
   }, []);
@@ -126,7 +145,7 @@ export function useFootballData() {
     };
   }, []);
 
-  // Load categories from Supabase
+  // Load categories from Supabase with filtering based on selected context
   useEffect(() => {
     if (!userId) {
       setIsLoading(false);
@@ -135,11 +154,33 @@ export function useFootballData() {
 
     const loadCategories = async () => {
       console.log('🔄 Loading categories for user:', userId);
-      const { data, error } = await supabase
+      console.log('Selected context:', selectedContext);
+
+      let query = supabase
         .from('activity_categories')
         .select('*')
-        .eq('user_id', userId)
         .order('name', { ascending: true });
+
+      // Filter based on user role and selected context
+      if (userRole === 'trainer' || userRole === 'admin') {
+        if (selectedContext.type === 'player' && selectedContext.id) {
+          // Show categories for the selected player
+          console.log('Loading categories for selected player:', selectedContext.id);
+          query = query.or(`user_id.eq.${userId},player_id.eq.${selectedContext.id}`);
+        } else if (selectedContext.type === 'team' && selectedContext.id) {
+          // Show categories for the selected team
+          console.log('Loading categories for selected team:', selectedContext.id);
+          query = query.or(`user_id.eq.${userId},team_id.eq.${selectedContext.id}`);
+        } else {
+          // No selection - show only trainer's own categories
+          query = query.eq('user_id', userId);
+        }
+      } else {
+        // Player - show own categories and those assigned to them
+        query = query.or(`user_id.eq.${userId},player_id.eq.${userId}`);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         console.error('❌ Error loading categories:', error);
@@ -163,25 +204,45 @@ export function useFootballData() {
     };
 
     loadCategories();
-  }, [userId, refreshTrigger]);
+  }, [userId, userRole, selectedContext, refreshTrigger]);
 
-  // Load task templates from Supabase
+  // Load task templates from Supabase with filtering based on selected context
   useEffect(() => {
     if (!userId) return;
 
     const loadTasks = async () => {
       console.log('Loading task templates for user:', userId);
+      console.log('Selected context:', selectedContext);
       
-      // Load task templates with their categories
-      const { data, error } = await supabase
+      let query = supabase
         .from('task_templates')
         .select(`
           *,
           task_template_categories(
             category_id
           )
-        `)
-        .eq('user_id', userId);
+        `);
+
+      // Filter based on user role and selected context
+      if (userRole === 'trainer' || userRole === 'admin') {
+        if (selectedContext.type === 'player' && selectedContext.id) {
+          // Show task templates for the selected player
+          console.log('Loading task templates for selected player:', selectedContext.id);
+          query = query.or(`user_id.eq.${userId},player_id.eq.${selectedContext.id}`);
+        } else if (selectedContext.type === 'team' && selectedContext.id) {
+          // Show task templates for the selected team (common to all team members)
+          console.log('Loading task templates for selected team:', selectedContext.id);
+          query = query.or(`user_id.eq.${userId},team_id.eq.${selectedContext.id}`);
+        } else {
+          // No selection - show only trainer's own task templates
+          query = query.eq('user_id', userId);
+        }
+      } else {
+        // Player - show own task templates and those assigned to them
+        query = query.or(`user_id.eq.${userId},player_id.eq.${userId}`);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         console.error('Error loading task templates:', error);
@@ -205,18 +266,40 @@ export function useFootballData() {
     };
 
     loadTasks();
-  }, [userId, refreshTrigger]);
+  }, [userId, userRole, selectedContext, refreshTrigger]);
 
-  // Load external calendars from Supabase
+  // Load external calendars from Supabase with filtering based on selected context
   useEffect(() => {
     if (!userId) return;
 
     const loadExternalCalendars = async () => {
       console.log('Loading external calendars for user:', userId);
-      const { data, error } = await supabase
+      console.log('Selected context:', selectedContext);
+
+      let query = supabase
         .from('external_calendars')
-        .select('*')
-        .eq('user_id', userId);
+        .select('*');
+
+      // Filter based on user role and selected context
+      if (userRole === 'trainer' || userRole === 'admin') {
+        if (selectedContext.type === 'player' && selectedContext.id) {
+          // Show calendars for the selected player
+          console.log('Loading calendars for selected player:', selectedContext.id);
+          query = query.or(`user_id.eq.${userId},player_id.eq.${selectedContext.id}`);
+        } else if (selectedContext.type === 'team' && selectedContext.id) {
+          // Show calendars for the selected team
+          console.log('Loading calendars for selected team:', selectedContext.id);
+          query = query.or(`user_id.eq.${userId},team_id.eq.${selectedContext.id}`);
+        } else {
+          // No selection - show only trainer's own calendars
+          query = query.eq('user_id', userId);
+        }
+      } else {
+        // Player - show own calendars and those assigned to them
+        query = query.or(`user_id.eq.${userId},player_id.eq.${userId}`);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         console.error('Error loading external calendars:', error);
@@ -238,9 +321,10 @@ export function useFootballData() {
     };
 
     loadExternalCalendars();
-  }, [userId, refreshTrigger]);
+  }, [userId, userRole, selectedContext, refreshTrigger]);
 
   // Load ALL activities (internal + external with NEW ARCHITECTURE) WITH TASKS
+  // Filtered based on selected context
   useEffect(() => {
     if (!userId) {
       setIsLoading(false);
@@ -249,9 +333,10 @@ export function useFootballData() {
 
     const loadActivities = async () => {
       console.log('🔄 Loading activities for user (NEW ARCHITECTURE):', userId);
+      console.log('Selected context:', selectedContext);
       
-      // Load internal activities (non-external)
-      const { data: internalData, error: internalError } = await supabase
+      // Build query for internal activities
+      let internalQuery = supabase
         .from('activities')
         .select(`
           *,
@@ -265,16 +350,36 @@ export function useFootballData() {
             task_template_id
           )
         `)
-        .eq('user_id', userId)
         .eq('is_external', false)
         .order('activity_date', { ascending: true });
+
+      // Filter based on user role and selected context
+      if (userRole === 'trainer' || userRole === 'admin') {
+        if (selectedContext.type === 'player' && selectedContext.id) {
+          // Show activities for the selected player
+          console.log('Loading activities for selected player:', selectedContext.id);
+          internalQuery = internalQuery.or(`user_id.eq.${userId},player_id.eq.${selectedContext.id}`);
+        } else if (selectedContext.type === 'team' && selectedContext.id) {
+          // Show activities for the selected team (common to all team members)
+          console.log('Loading activities for selected team:', selectedContext.id);
+          internalQuery = internalQuery.or(`user_id.eq.${userId},team_id.eq.${selectedContext.id}`);
+        } else {
+          // No selection - show only trainer's own activities
+          internalQuery = internalQuery.eq('user_id', userId);
+        }
+      } else {
+        // Player - show own activities and those assigned to them
+        internalQuery = internalQuery.or(`user_id.eq.${userId},player_id.eq.${userId}`);
+      }
+
+      const { data: internalData, error: internalError } = await internalQuery;
 
       if (internalError) {
         console.error('❌ Error loading internal activities:', internalError);
       }
 
-      // Load external activities using NEW ARCHITECTURE WITH TASKS
-      const { data: externalData, error: externalError } = await supabase
+      // Build query for external activities
+      let externalQuery = supabase
         .from('events_external')
         .select(`
           id,
@@ -294,6 +399,8 @@ export function useFootballData() {
             category_id,
             manually_set_category,
             category_updated_at,
+            player_id,
+            team_id,
             activity_categories(*),
             external_event_tasks(
               id,
@@ -304,8 +411,28 @@ export function useFootballData() {
               task_template_id
             )
           )
-        `)
-        .eq('events_local_meta.user_id', userId);
+        `);
+
+      // Filter based on user role and selected context
+      if (userRole === 'trainer' || userRole === 'admin') {
+        if (selectedContext.type === 'player' && selectedContext.id) {
+          // Show external events for the selected player
+          console.log('Loading external events for selected player:', selectedContext.id);
+          externalQuery = externalQuery.or(`events_local_meta.user_id.eq.${userId},events_local_meta.player_id.eq.${selectedContext.id}`);
+        } else if (selectedContext.type === 'team' && selectedContext.id) {
+          // Show external events for the selected team
+          console.log('Loading external events for selected team:', selectedContext.id);
+          externalQuery = externalQuery.or(`events_local_meta.user_id.eq.${userId},events_local_meta.team_id.eq.${selectedContext.id}`);
+        } else {
+          // No selection - show only trainer's own external events
+          externalQuery = externalQuery.eq('events_local_meta.user_id', userId);
+        }
+      } else {
+        // Player - show own external events and those assigned to them
+        externalQuery = externalQuery.or(`events_local_meta.user_id.eq.${userId},events_local_meta.player_id.eq.${userId}`);
+      }
+
+      const { data: externalData, error: externalError } = await externalQuery;
 
       if (externalError) {
         console.error('❌ Error loading external activities:', externalError);
@@ -434,7 +561,7 @@ export function useFootballData() {
     };
 
     loadActivities();
-  }, [userId, categories, refreshTrigger, notificationsEnabled]);
+  }, [userId, userRole, selectedContext, categories, refreshTrigger, notificationsEnabled]);
 
   // Load trophies from database
   useEffect(() => {
@@ -562,8 +689,23 @@ export function useFootballData() {
     }
 
     console.log('Creating activity:', activityData);
+    console.log('Selected context:', selectedContext);
 
     try {
+      // Determine player_id and team_id based on selected context
+      let player_id = null;
+      let team_id = null;
+
+      if (userRole === 'trainer' || userRole === 'admin') {
+        if (selectedContext.type === 'player' && selectedContext.id) {
+          player_id = selectedContext.id;
+          console.log('Creating activity for player:', player_id);
+        } else if (selectedContext.type === 'team' && selectedContext.id) {
+          team_id = selectedContext.id;
+          console.log('Creating activity for team:', team_id);
+        }
+      }
+
       if (activityData.isRecurring) {
         // Create activity series
         const { data: seriesData, error: seriesError } = await supabase
@@ -578,6 +720,8 @@ export function useFootballData() {
             start_date: activityData.date.toISOString().split('T')[0],
             end_date: activityData.endDate ? activityData.endDate.toISOString().split('T')[0] : null,
             activity_time: activityData.time,
+            player_id,
+            team_id,
           })
           .select()
           .single();
@@ -610,6 +754,8 @@ export function useFootballData() {
           series_id: seriesData.id,
           series_instance_date: date.toISOString().split('T')[0],
           is_external: false,
+          player_id,
+          team_id,
         }));
 
         const { error: activitiesError } = await supabase
@@ -634,6 +780,8 @@ export function useFootballData() {
             location: activityData.location,
             category_id: activityData.categoryId,
             is_external: false,
+            player_id,
+            team_id,
           });
 
         if (error) {
@@ -1021,6 +1169,18 @@ export function useFootballData() {
       console.log(`📍 Location: ${activity.location}`);
       console.log(`🏷️ Category: ${activity.category.name} (${activity.category.id})`);
 
+      // Determine player_id and team_id based on selected context
+      let player_id = null;
+      let team_id = null;
+
+      if (userRole === 'trainer' || userRole === 'admin') {
+        if (selectedContext.type === 'player' && selectedContext.id) {
+          player_id = selectedContext.id;
+        } else if (selectedContext.type === 'team' && selectedContext.id) {
+          team_id = selectedContext.id;
+        }
+      }
+
       // Insert the duplicate activity
       const { data: newActivity, error: activityError } = await supabase
         .from('activities')
@@ -1032,6 +1192,8 @@ export function useFootballData() {
           location: activity.location,
           category_id: activity.category.id,
           is_external: false,
+          player_id,
+          team_id,
           // Don't copy series_id - this is a standalone duplicate
         })
         .select()
@@ -1091,8 +1253,23 @@ export function useFootballData() {
     }
 
     console.log('Creating task template:', task);
+    console.log('Selected context:', selectedContext);
 
     try {
+      // Determine player_id and team_id based on selected context
+      let player_id = null;
+      let team_id = null;
+
+      if (userRole === 'trainer' || userRole === 'admin') {
+        if (selectedContext.type === 'player' && selectedContext.id) {
+          player_id = selectedContext.id;
+          console.log('Creating task template for player:', player_id);
+        } else if (selectedContext.type === 'team' && selectedContext.id) {
+          team_id = selectedContext.id;
+          console.log('Creating task template for team:', team_id);
+        }
+      }
+
       // Insert the task template
       const { data: templateData, error: templateError } = await supabase
         .from('task_templates')
@@ -1101,6 +1278,8 @@ export function useFootballData() {
           title: task.title,
           description: task.description,
           reminder_minutes: task.reminder,
+          player_id,
+          team_id,
         })
         .select()
         .single();
@@ -1470,6 +1649,7 @@ export function useFootballData() {
     console.log('Adding external calendar to Supabase:', calendar.name);
     console.log('User ID:', userId);
     console.log('Calendar URL:', calendar.icsUrl);
+    console.log('Selected context:', selectedContext);
 
     try {
       // First, verify the user session
@@ -1482,6 +1662,20 @@ export function useFootballData() {
       console.log('Session verified, user:', session.user.id);
       console.log('Inserting calendar into database...');
 
+      // Determine player_id and team_id based on selected context
+      let player_id = null;
+      let team_id = null;
+
+      if (userRole === 'trainer' || userRole === 'admin') {
+        if (selectedContext.type === 'player' && selectedContext.id) {
+          player_id = selectedContext.id;
+          console.log('Creating calendar for player:', player_id);
+        } else if (selectedContext.type === 'team' && selectedContext.id) {
+          team_id = selectedContext.id;
+          console.log('Creating calendar for team:', team_id);
+        }
+      }
+
       // Insert the calendar
       const { data, error } = await supabase
         .from('external_calendars')
@@ -1490,6 +1684,8 @@ export function useFootballData() {
           name: calendar.name,
           ics_url: calendar.icsUrl,
           enabled: calendar.enabled !== undefined ? calendar.enabled : true,
+          player_id,
+          team_id,
         })
         .select()
         .single();
@@ -1656,6 +1852,18 @@ export function useFootballData() {
     const activityDate = new Date(externalActivity.date);
     const dateStr = activityDate.toISOString().split('T')[0];
 
+    // Determine player_id and team_id based on selected context
+    let player_id = null;
+    let team_id = null;
+
+    if (userRole === 'trainer' || userRole === 'admin') {
+      if (selectedContext.type === 'player' && selectedContext.id) {
+        player_id = selectedContext.id;
+      } else if (selectedContext.type === 'team' && selectedContext.id) {
+        team_id = selectedContext.id;
+      }
+    }
+
     const { data, error } = await supabase
       .from('activities')
       .insert({
@@ -1666,6 +1874,8 @@ export function useFootballData() {
         location: externalActivity.location,
         category_id: category.id,
         is_external: false,
+        player_id,
+        team_id,
       })
       .select()
       .single();
