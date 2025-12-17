@@ -44,6 +44,10 @@ export default function ProfileScreen() {
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
   
+  // Collapsible sections
+  const [isCalendarSyncExpanded, setIsCalendarSyncExpanded] = useState(false);
+  const [isSubscriptionExpanded, setIsSubscriptionExpanded] = useState(false);
+  
   // Debug state
   const [debugInfo, setDebugInfo] = useState<string[]>([]);
   
@@ -821,9 +825,13 @@ export default function ProfileScreen() {
               </View>
             )}
 
-            {/* Calendar Sync Section - Available for all users */}
+            {/* Calendar Sync Section - Collapsible - Available for all users */}
             <View style={[styles.card, { backgroundColor: cardBgColor }]}>
-              <View style={styles.sectionHeader}>
+              <TouchableOpacity
+                style={styles.collapsibleHeader}
+                onPress={() => setIsCalendarSyncExpanded(!isCalendarSyncExpanded)}
+                activeOpacity={0.7}
+              >
                 <View style={styles.sectionTitleContainer}>
                   <IconSymbol
                     ios_icon_name="calendar.badge.plus"
@@ -833,16 +841,31 @@ export default function ProfileScreen() {
                   />
                   <Text style={[styles.sectionTitle, { color: textColor }]}>Kalender Synkronisering</Text>
                 </View>
-              </View>
-              <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
-                Tilknyt eksterne kalendere (iCal/webcal) for automatisk at importere aktiviteter
-              </Text>
-              <ExternalCalendarManager />
+                <IconSymbol
+                  ios_icon_name={isCalendarSyncExpanded ? 'chevron.up' : 'chevron.down'}
+                  android_material_icon_name={isCalendarSyncExpanded ? 'expand_less' : 'expand_more'}
+                  size={24}
+                  color={textSecondaryColor}
+                />
+              </TouchableOpacity>
+              
+              {isCalendarSyncExpanded && (
+                <>
+                  <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
+                    Tilknyt eksterne kalendere (iCal/webcal) for automatisk at importere aktiviteter
+                  </Text>
+                  <ExternalCalendarManager />
+                </>
+              )}
             </View>
 
-            {/* Subscription Section - Available for all users */}
+            {/* Subscription Section - Collapsible - Available for all users */}
             <View style={[styles.card, { backgroundColor: cardBgColor }]}>
-              <View style={styles.sectionHeader}>
+              <TouchableOpacity
+                style={styles.collapsibleHeader}
+                onPress={() => setIsSubscriptionExpanded(!isSubscriptionExpanded)}
+                activeOpacity={0.7}
+              >
                 <View style={styles.sectionTitleContainer}>
                   <IconSymbol
                     ios_icon_name="creditcard.fill"
@@ -852,11 +875,22 @@ export default function ProfileScreen() {
                   />
                   <Text style={[styles.sectionTitle, { color: textColor }]}>Abonnement</Text>
                 </View>
-              </View>
-              <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
-                Administrer dit abonnement
-              </Text>
-              <SubscriptionManager />
+                <IconSymbol
+                  ios_icon_name={isSubscriptionExpanded ? 'chevron.up' : 'chevron.down'}
+                  android_material_icon_name={isSubscriptionExpanded ? 'expand_less' : 'expand_more'}
+                  size={24}
+                  color={textSecondaryColor}
+                />
+              </TouchableOpacity>
+              
+              {isSubscriptionExpanded && (
+                <>
+                  <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
+                    Administrer dit abonnement
+                  </Text>
+                  <SubscriptionManager />
+                </>
+              )}
             </View>
 
             <TouchableOpacity
@@ -1133,6 +1167,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
+  collapsibleHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 0,
+  },
   sectionTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1145,6 +1185,7 @@ const styles = StyleSheet.create({
   sectionDescription: {
     fontSize: 15,
     lineHeight: 22,
+    marginTop: 16,
     marginBottom: 20,
   },
   profileInfo: {
