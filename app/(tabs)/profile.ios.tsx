@@ -664,17 +664,9 @@ export default function ProfileScreen() {
               <Text style={[styles.email, { color: theme.dark ? '#98989D' : '#666' }]}>
                 {user.email}
               </Text>
-              <View style={styles.badgesRow}>
-                {userRole && (
-                  <View style={[styles.roleBadge, { 
-                    backgroundColor: (userRole === 'admin' || userRole === 'trainer') ? theme.colors.primary : '#FF9500' 
-                  }]}>
-                    <Text style={styles.roleText}>
-                      {(userRole === 'admin' || userRole === 'trainer') ? 'Træner' : 'Spiller'}
-                    </Text>
-                  </View>
-                )}
-                {subscriptionStatus?.hasSubscription && (
+              {/* Only show subscription badge, not role badge */}
+              {subscriptionStatus?.hasSubscription && (
+                <View style={styles.badgesRow}>
                   <View style={[styles.planBadge, { 
                     backgroundColor: getPlanColor(subscriptionStatus.planName) 
                   }]}>
@@ -688,8 +680,8 @@ export default function ProfileScreen() {
                       {subscriptionStatus.planName}
                     </Text>
                   </View>
-                )}
-              </View>
+                </View>
+              )}
             </GlassView>
 
             {/* Profile Info Section */}
@@ -1135,16 +1127,6 @@ const styles = StyleSheet.create({
     gap: 8,
     flexWrap: 'wrap',
     marginTop: 8,
-  },
-  roleBadge: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  roleText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
   },
   planBadge: {
     flexDirection: 'row',

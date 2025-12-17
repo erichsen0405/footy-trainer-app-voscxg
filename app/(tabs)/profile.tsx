@@ -686,8 +686,9 @@ export default function ProfileScreen() {
                   <Text style={[styles.userEmail, { color: textSecondaryColor }]}>
                     {user.email}
                   </Text>
-                  <View style={styles.badgesRow}>
-                    {subscriptionStatus?.hasSubscription && (
+                  {/* Only show subscription badge, not role badge */}
+                  {subscriptionStatus?.hasSubscription && (
+                    <View style={styles.badgesRow}>
                       <View style={[styles.planBadge, { 
                         backgroundColor: getPlanColor(subscriptionStatus.planName) 
                       }]}>
@@ -701,8 +702,8 @@ export default function ProfileScreen() {
                           {subscriptionStatus.planName}
                         </Text>
                       </View>
-                    )}
-                  </View>
+                    </View>
+                  )}
                 </View>
               </View>
             </View>
