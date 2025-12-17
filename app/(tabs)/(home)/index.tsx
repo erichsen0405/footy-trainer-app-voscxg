@@ -244,8 +244,8 @@ export default function HomeScreen() {
     >
       <View style={styles.header}>
         <View style={[styles.headerCard, { backgroundColor: colors.primary }]}>
-          <Text style={styles.headerTitle}>Min fodboldapp ⚽</Text>
-          <Text style={styles.headerSubtitle}>Hold styr på alt!</Text>
+          <Text style={styles.headerTitle}>Football coach ⚽</Text>
+          <Text style={styles.headerSubtitle}>Nå dine mål med målrettet træning</Text>
         </View>
       </View>
 
