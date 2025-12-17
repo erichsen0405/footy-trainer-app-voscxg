@@ -555,6 +555,10 @@ export default function HomeScreen() {
         onClose={() => setIsCreateModalVisible(false)}
         onCreateActivity={handleCreateActivity}
         categories={categories}
+        onRefreshCategories={() => {
+          // Trigger a refresh of the data
+          onRefresh();
+        }}
       />
 
       <ContextConfirmationDialog
