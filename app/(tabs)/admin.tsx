@@ -17,7 +17,6 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { useRouter } from 'expo-router';
 import CreatePlayerModal from '@/components/CreatePlayerModal';
 import PlayersList from '@/components/PlayersList';
-import ExternalCalendarManager from '@/components/ExternalCalendarManager';
 import SubscriptionManager from '@/components/SubscriptionManager';
 import TeamManagement from '@/components/TeamManagement';
 import TeamPlayerSelector from '@/components/TeamPlayerSelector';
@@ -206,25 +205,6 @@ export default function AdminScreen() {
           />
         </View>
 
-        {/* External Calendars Section */}
-        <View style={[styles.section, { backgroundColor: cardBgColor }]}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleContainer}>
-              <IconSymbol
-                ios_icon_name="calendar.badge.plus"
-                android_material_icon_name="event"
-                size={28}
-                color={colors.primary}
-              />
-              <Text style={[styles.sectionTitle, { color: textColor }]}>Eksterne Kalendere</Text>
-            </View>
-          </View>
-          <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
-            Tilknyt eksterne kalendere (iCal/webcal) for automatisk at importere aktiviteter
-          </Text>
-          <ExternalCalendarManager />
-        </View>
-
         {/* Info Section */}
         <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
           <IconSymbol
@@ -234,8 +214,10 @@ export default function AdminScreen() {
             color={colors.secondary}
           />
           <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
-            Som admin har du adgang til at administrere abonnement, teams, spillere og eksterne kalendere. 
+            Som admin har du adgang til at administrere abonnement, teams og spillere. 
             Husk at vælge en spiller eller et team før du administrerer aktiviteter.
+            {'\n\n'}
+            For at tilføje eksterne kalendere, gå til din Profil-side.
           </Text>
         </View>
 

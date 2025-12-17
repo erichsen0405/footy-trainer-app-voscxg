@@ -79,6 +79,7 @@ export default function ExternalCalendarManager() {
         return;
       }
 
+      // Only fetch calendars for the current logged-in user
       const { data, error } = await supabase
         .from('external_calendars')
         .select('*')
@@ -164,6 +165,7 @@ export default function ExternalCalendarManager() {
         throw new Error('Ikke logget ind');
       }
 
+      // Only add calendar for the current user - no team_id or player_id
       const { data, error } = await supabase
         .from('external_calendars')
         .insert({
@@ -184,7 +186,7 @@ export default function ExternalCalendarManager() {
 
       Alert.alert(
         'Succes',
-        'Kalender tilføjet! Klik på "Synkroniser" for at importere aktiviteter. Aktiviteter tildeles automatisk kategorier baseret på deres navne, eller "Ukendt" hvis ingen match findes. Manuelt tildelte kategorier bevares ved efterfølgende synkroniseringer.'
+        'Kalender tilføjet til din profil! Klik på "Synkroniser" for at importere aktiviteter. Aktiviteter tildeles automatisk kategorier baseret på deres navne, eller "Ukendt" hvis ingen match findes. Manuelt tildelte kategorier bevares ved efterfølgende synkroniseringer.'
       );
 
       setNewCalendarName('');
@@ -655,7 +657,7 @@ export default function ExternalCalendarManager() {
               color={colors.success}
             />
             <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
-              Kalenderen vil automatisk synkronisere hver time og tildele kategorier baseret på aktiviteternes navne og nøgleord. Aktiviteter uden match tildeles &quot;Ukendt&quot;. Manuelt tildelte kategorier bevares ved efterfølgende synkroniseringer.
+              Kalenderen tilføjes til din egen profil og vil automatisk synkronisere hver time. Aktiviteter tildeles kategorier baseret på deres navne og nøgleord. Manuelt tildelte kategorier bevares ved efterfølgende synkroniseringer.
             </Text>
           </View>
         </View>
@@ -671,7 +673,7 @@ export default function ExternalCalendarManager() {
           />
           <Text style={[styles.emptyTitle, { color: textColor }]}>Ingen eksterne kalendere</Text>
           <Text style={[styles.emptyText, { color: textSecondaryColor }]}>
-            Tilføj en ekstern kalender for at importere aktiviteter automatisk med intelligent kategori-tildeling. Aktiviteter uden match tildeles &quot;Ukendt&quot;. Manuelt tildelte kategorier bevares ved synkronisering.
+            Tilføj en ekstern kalender til din profil for at importere aktiviteter automatisk med intelligent kategori-tildeling. Aktiviteter uden match tildeles &quot;Ukendt&quot;. Manuelt tildelte kategorier bevares ved synkronisering.
           </Text>
         </View>
       ) : (

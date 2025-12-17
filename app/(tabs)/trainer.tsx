@@ -196,6 +196,8 @@ export default function TrainerScreen() {
           <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
             Som træner har du adgang til at administrere teams, spillere og øvelsesbiblioteket. 
             Husk at vælge en spiller eller et team før du administrerer aktiviteter.
+            {'\n\n'}
+            For at tilføje eksterne kalendere, gå til din Profil-side.
           </Text>
         </View>
 
