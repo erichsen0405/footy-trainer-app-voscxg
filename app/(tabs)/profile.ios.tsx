@@ -6,9 +6,6 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { GlassView } from 'expo-glass-effect';
 import { useTheme } from '@react-navigation/native';
 import { supabase } from '@/app/integrations/supabase/client';
-import CreatePlayerModal from '@/components/CreatePlayerModal';
-import PlayersList from '@/components/PlayersList';
-import TeamManagement from '@/components/TeamManagement';
 import ExternalCalendarManager from '@/components/ExternalCalendarManager';
 import SubscriptionManager from '@/components/SubscriptionManager';
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -35,8 +32,6 @@ export default function ProfileScreen() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
-  const [showCreatePlayerModal, setShowCreatePlayerModal] = useState(false);
-  const [playersRefreshTrigger, setPlayersRefreshTrigger] = useState(0);
   
   // New onboarding flow states
   const [needsRoleSelection, setNeedsRoleSelection] = useState(false);
@@ -47,6 +42,10 @@ export default function ProfileScreen() {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
+  
+  // Collapsible sections
+  const [isCalendarSyncExpanded, setIsCalendarSyncExpanded] = useState(false);
+  const [isSubscriptionExpanded, setIsSubscriptionExpanded] = useState(false);
   
   // Debug state
   const [debugInfo, setDebugInfo] = useState<string[]>([]);
@@ -826,94 +825,73 @@ export default function ProfileScreen() {
               </GlassView>
             )}
 
-            {/* Calendar Sync Section */}
+            {/* Calendar Sync Section - Collapsible - Available for all users */}
             <GlassView style={styles.section} glassEffectStyle="regular">
-              <View style={styles.sectionHeader}>
+              <TouchableOpacity
+                style={styles.collapsibleHeader}
+                onPress={() => setIsCalendarSyncExpanded(!isCalendarSyncExpanded)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.sectionTitleContainer}>
+                  <IconSymbol
+                    ios_icon_name="calendar.badge.plus"
+                    android_material_icon_name="event"
+                    size={28}
+                    color={theme.colors.primary}
+                  />
+                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Kalender Synkronisering</Text>
+                </View>
                 <IconSymbol
-                  ios_icon_name="calendar.badge.plus"
-                  android_material_icon_name="event"
-                  size={28}
-                  color={theme.colors.primary}
+                  ios_icon_name={isCalendarSyncExpanded ? 'chevron.up' : 'chevron.down'}
+                  android_material_icon_name={isCalendarSyncExpanded ? 'expand_less' : 'expand_more'}
+                  size={24}
+                  color={theme.dark ? '#98989D' : '#666'}
                 />
-                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-                  Kalender Synkronisering
-                </Text>
-              </View>
-              <Text style={[styles.sectionDescription, { color: theme.dark ? '#98989D' : '#666' }]}>
-                Tilknyt eksterne kalendere (iCal/webcal) for automatisk at importere aktiviteter
-              </Text>
-              <ExternalCalendarManager />
+              </TouchableOpacity>
+              
+              {isCalendarSyncExpanded && (
+                <>
+                  <Text style={[styles.sectionDescription, { color: theme.dark ? '#98989D' : '#666' }]}>
+                    Tilknyt eksterne kalendere (iCal/webcal) for automatisk at importere aktiviteter
+                  </Text>
+                  <ExternalCalendarManager />
+                </>
+              )}
             </GlassView>
 
-            {/* Subscription Section */}
+            {/* Subscription Section - Collapsible - Available for all users */}
             <GlassView style={styles.section} glassEffectStyle="regular">
-              <View style={styles.sectionHeader}>
+              <TouchableOpacity
+                style={styles.collapsibleHeader}
+                onPress={() => setIsSubscriptionExpanded(!isSubscriptionExpanded)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.sectionTitleContainer}>
+                  <IconSymbol
+                    ios_icon_name="creditcard.fill"
+                    android_material_icon_name="payment"
+                    size={28}
+                    color={theme.colors.primary}
+                  />
+                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Abonnement</Text>
+                </View>
                 <IconSymbol
-                  ios_icon_name="creditcard.fill"
-                  android_material_icon_name="payment"
-                  size={28}
-                  color={theme.colors.primary}
+                  ios_icon_name={isSubscriptionExpanded ? 'chevron.up' : 'chevron.down'}
+                  android_material_icon_name={isSubscriptionExpanded ? 'expand_less' : 'expand_more'}
+                  size={24}
+                  color={theme.dark ? '#98989D' : '#666'}
                 />
-                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-                  Abonnement
-                </Text>
-              </View>
-              <Text style={[styles.sectionDescription, { color: theme.dark ? '#98989D' : '#666' }]}>
-                Administrer dit abonnement
-              </Text>
-              <SubscriptionManager />
+              </TouchableOpacity>
+              
+              {isSubscriptionExpanded && (
+                <>
+                  <Text style={[styles.sectionDescription, { color: theme.dark ? '#98989D' : '#666' }]}>
+                    Administrer dit abonnement
+                  </Text>
+                  <SubscriptionManager />
+                </>
+              )}
             </GlassView>
-
-            {/* Player Management Section for Trainers */}
-            {(userRole === 'admin' || userRole === 'trainer') && (
-              <GlassView style={styles.playerManagementSection} glassEffectStyle="regular">
-                <View style={styles.playerManagementHeader}>
-                  <IconSymbol 
-                    ios_icon_name="person.2.fill" 
-                    android_material_icon_name="group" 
-                    size={28} 
-                    color={theme.colors.primary} 
-                  />
-                  <View style={styles.playerManagementTitleContainer}>
-                    <Text style={[styles.playerManagementTitle, { color: theme.colors.text }]}>
-                      Spillerstyring
-                    </Text>
-                    <Text style={[styles.playerManagementSubtitle, { color: theme.dark ? '#98989D' : '#666' }]}>
-                      Administrer dine spillerprofiler
-                    </Text>
-                  </View>
-                </View>
-
-                <PlayersList 
-                  onCreatePlayer={() => setShowCreatePlayerModal(true)}
-                  refreshTrigger={playersRefreshTrigger}
-                />
-              </GlassView>
-            )}
-
-            {/* Team Management Section for Trainers */}
-            {(userRole === 'admin' || userRole === 'trainer') && (
-              <GlassView style={styles.teamManagementSection} glassEffectStyle="regular">
-                <View style={styles.teamManagementHeader}>
-                  <IconSymbol 
-                    ios_icon_name="person.3.fill" 
-                    android_material_icon_name="groups" 
-                    size={28} 
-                    color={theme.colors.primary} 
-                  />
-                  <View style={styles.teamManagementTitleContainer}>
-                    <Text style={[styles.teamManagementTitle, { color: theme.colors.text }]}>
-                      Teamstyring
-                    </Text>
-                    <Text style={[styles.teamManagementSubtitle, { color: theme.dark ? '#98989D' : '#666' }]}>
-                      Opret og administrer teams
-                    </Text>
-                  </View>
-                </View>
-
-                <TeamManagement />
-              </GlassView>
-            )}
 
             <TouchableOpacity
               style={[styles.signOutButton, { backgroundColor: '#ff3b30' }]}
@@ -1088,14 +1066,6 @@ export default function ProfileScreen() {
           </GlassView>
         )}
       </ScrollView>
-
-      <CreatePlayerModal
-        visible={showCreatePlayerModal}
-        onClose={() => setShowCreatePlayerModal(false)}
-        onPlayerCreated={() => {
-          setPlayersRefreshTrigger(prev => prev + 1);
-        }}
-      />
     </SafeAreaView>
   );
 }
@@ -1177,6 +1147,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
+  collapsibleHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 0,
+  },
+  sectionTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
   sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
@@ -1184,6 +1165,7 @@ const styles = StyleSheet.create({
   sectionDescription: {
     fontSize: 15,
     lineHeight: 22,
+    marginTop: 16,
     marginBottom: 20,
   },
   profileInfo: {
@@ -1230,50 +1212,6 @@ const styles = StyleSheet.create({
   buttonText: {
     fontSize: 16,
     fontWeight: '600',
-  },
-  playerManagementSection: {
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 16,
-  },
-  playerManagementHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    marginBottom: 16,
-  },
-  playerManagementTitleContainer: {
-    flex: 1,
-  },
-  playerManagementTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  playerManagementSubtitle: {
-    fontSize: 15,
-  },
-  teamManagementSection: {
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 16,
-  },
-  teamManagementHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    marginBottom: 16,
-  },
-  teamManagementTitleContainer: {
-    flex: 1,
-  },
-  teamManagementTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  teamManagementSubtitle: {
-    fontSize: 15,
   },
   signOutButton: {
     borderRadius: 12,
