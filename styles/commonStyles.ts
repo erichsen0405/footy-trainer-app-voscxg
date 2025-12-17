@@ -18,6 +18,7 @@ const lightColors = {
   gold: '#FFD700',
   silver: '#C0C0C0',
   bronze: '#CD7F32',
+  contextWarning: '#F5E6D3', // Dusty yellow for context indication
 };
 
 // Dark mode colors
@@ -37,6 +38,7 @@ const darkColors = {
   gold: '#FFD700',
   silver: '#C0C0C0',
   bronze: '#CD7F32',
+  contextWarning: '#4A3F2F', // Dusty yellow for dark mode
 };
 
 // Export a function to get colors based on color scheme

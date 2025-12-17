@@ -1,10 +1,10 @@
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, useColorScheme } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFootball } from '@/contexts/FootballContext';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
-import { colors } from '@/styles/commonStyles';
+import { colors, getColors } from '@/styles/commonStyles';
 import { Activity } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
 import { getWeek, startOfWeek, endOfWeek, subWeeks } from 'date-fns';
@@ -17,6 +17,8 @@ export default function HomeScreen() {
   const { currentWeekStats, todayActivities, activities, categories, toggleTaskCompletion, createActivity, externalCalendars, fetchExternalCalendarEvents } = useFootball();
   const { selectedContext } = useTeamPlayer();
   const router = useRouter();
+  const colorScheme = useColorScheme();
+  const themeColors = getColors(colorScheme);
   const [refreshing, setRefreshing] = useState(false);
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -285,9 +287,13 @@ export default function HomeScreen() {
     return a[1].sortDate.getTime() - b[1].sortDate.getTime();
   });
 
+  // Determine if we're in context management mode
+  const isManagingContext = isAdmin && selectedContext.type;
+  const containerBgColor = isManagingContext ? themeColors.contextWarning : themeColors.background;
+
   return (
     <ScrollView 
-      style={styles.container} 
+      style={[styles.container, { backgroundColor: containerBgColor }]} 
       contentContainerStyle={styles.contentContainer}
       refreshControl={
         <RefreshControl
@@ -305,21 +311,24 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {/* Context Banner for Trainers/Admins */}
-      {isAdmin && selectedContext.type && (
-        <View style={[styles.contextBanner, { backgroundColor: colors.warning }]}>
+      {/* Enhanced Context Banner for Trainers/Admins */}
+      {isManagingContext && (
+        <View style={[styles.contextBanner, { backgroundColor: '#D4A574' }]}>
           <IconSymbol
             ios_icon_name="exclamationmark.triangle.fill"
             android_material_icon_name="warning"
-            size={24}
+            size={28}
             color="#fff"
           />
           <View style={styles.contextBannerText}>
             <Text style={styles.contextBannerTitle}>
-              Du administrerer data for {selectedContext.type === 'player' ? 'spiller' : 'team'}
+              ⚠️ DU ADMINISTRERER DATA FOR {selectedContext.type === 'player' ? 'SPILLER' : 'TEAM'}
             </Text>
             <Text style={styles.contextBannerSubtitle}>
               {selectedContext.name}
+            </Text>
+            <Text style={styles.contextBannerInfo}>
+              Alle ændringer påvirker denne {selectedContext.type === 'player' ? 'spillers' : 'teams'} data
             </Text>
           </View>
         </View>
@@ -363,11 +372,11 @@ export default function HomeScreen() {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>I dag</Text>
+        <Text style={[styles.sectionTitle, { color: themeColors.text }]}>I dag</Text>
         
         {todayActivities.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>Ingen aktiviteter i dag</Text>
+          <View style={[styles.emptyCard, { backgroundColor: themeColors.card }]}>
+            <Text style={[styles.emptyText, { color: themeColors.textSecondary }]}>Ingen aktiviteter i dag</Text>
           </View>
         ) : (
           todayActivities.map((activity) => (
@@ -446,7 +455,7 @@ export default function HomeScreen() {
 
       <View style={styles.section}>
         <View style={styles.upcomingHeader}>
-          <Text style={styles.sectionTitle}>Kommende aktiviteter</Text>
+          <Text style={[styles.sectionTitle, { color: themeColors.text }]}>Kommende aktiviteter</Text>
           <TouchableOpacity
             style={styles.loadPreviousButton}
             onPress={handleLoadPreviousWeek}
@@ -456,26 +465,26 @@ export default function HomeScreen() {
               ios_icon_name="chevron.up" 
               android_material_icon_name="expand_less" 
               size={16} 
-              color={colors.textSecondary} 
+              color={themeColors.textSecondary} 
             />
-            <Text style={styles.loadPreviousText}>
+            <Text style={[styles.loadPreviousText, { color: themeColors.textSecondary }]}>
               Tidligere
             </Text>
           </TouchableOpacity>
         </View>
         
         {sortedWeeks.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>Ingen kommende aktiviteter</Text>
+          <View style={[styles.emptyCard, { backgroundColor: themeColors.card }]}>
+            <Text style={[styles.emptyText, { color: themeColors.textSecondary }]}>Ingen kommende aktiviteter</Text>
           </View>
         ) : (
           <React.Fragment>
             {sortedWeeks.map(([week, data], weekIndex) => (
               <View key={`week-${week}-${weekIndex}`} style={styles.weekSection}>
-                <Text style={styles.weekTitle}>
+                <Text style={[styles.weekTitle, { color: themeColors.text }]}>
                   {week}
                 </Text>
-                <Text style={styles.weekDates}>
+                <Text style={[styles.weekDates, { color: themeColors.textSecondary }]}>
                   {data.dateRange}
                 </Text>
                 
@@ -564,7 +573,6 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   contentContainer: {
     paddingTop: 60,
@@ -671,7 +679,6 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: 'bold',
     marginBottom: 12,
-    color: colors.text,
   },
   upcomingHeader: {
     flexDirection: 'row',
@@ -689,17 +696,14 @@ const styles = StyleSheet.create({
   loadPreviousText: {
     fontSize: 14,
     fontWeight: '500',
-    color: colors.textSecondary,
   },
   emptyCard: {
     borderRadius: 16,
     padding: 32,
     alignItems: 'center',
-    backgroundColor: colors.card,
   },
   emptyText: {
     fontSize: 16,
-    color: colors.textSecondary,
   },
   activityCard: {
     borderRadius: 16,
@@ -829,12 +833,10 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 4,
-    color: colors.text,
   },
   weekDates: {
     fontSize: 14,
     marginBottom: 12,
-    color: colors.textSecondary,
   },
   upcomingActivityCard: {
     borderRadius: 12,
@@ -872,24 +874,33 @@ const styles = StyleSheet.create({
   contextBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    padding: 16,
-    marginHorizontal: 16,
+    gap: 16,
+    padding: 20,
     marginBottom: 20,
-    borderRadius: 12,
+    borderRadius: 16,
+    borderWidth: 3,
+    borderColor: '#B8860B',
   },
   contextBannerText: {
     flex: 1,
   },
   contextBannerTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: 2,
-  },
-  contextBannerSubtitle: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#fff',
+    marginBottom: 4,
+    letterSpacing: 0.5,
+  },
+  contextBannerSubtitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  contextBannerInfo: {
+    fontSize: 13,
+    color: '#fff',
+    opacity: 0.95,
+    fontStyle: 'italic',
   },
 });

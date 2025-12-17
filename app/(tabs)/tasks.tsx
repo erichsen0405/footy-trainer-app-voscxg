@@ -4,7 +4,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal,
 import { useFootball } from '@/contexts/FootballContext';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import { useUserRole } from '@/hooks/useUserRole';
-import { colors } from '@/styles/commonStyles';
+import { colors, getColors } from '@/styles/commonStyles';
 import { Task } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
 import { WebView } from 'react-native-webview';
@@ -26,6 +26,7 @@ export default function TasksScreen() {
   const [subtasks, setSubtasks] = useState<string[]>(['']);
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const themeColors = getColors(colorScheme);
   
   // Confirmation dialog state
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -246,8 +247,12 @@ export default function TasksScreen() {
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
 
+  // Determine if we're in context management mode
+  const isManagingContext = isAdmin && selectedContext.type;
+  const containerBgColor = isManagingContext ? themeColors.contextWarning : bgColor;
+
   return (
-    <View style={[styles.container, { backgroundColor: bgColor }]}>
+    <View style={[styles.container, { backgroundColor: containerBgColor }]}>
       <View style={styles.header}>
         <Text style={[styles.headerTitle, { color: textColor }]}>Opgaver</Text>
         <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
@@ -255,21 +260,24 @@ export default function TasksScreen() {
         </Text>
       </View>
 
-      {/* Context Banner for Trainers/Admins */}
-      {isAdmin && selectedContext.type && (
-        <View style={[styles.contextBanner, { backgroundColor: colors.warning }]}>
+      {/* Enhanced Context Banner for Trainers/Admins */}
+      {isManagingContext && (
+        <View style={[styles.contextBanner, { backgroundColor: '#D4A574' }]}>
           <IconSymbol
             ios_icon_name="exclamationmark.triangle.fill"
             android_material_icon_name="warning"
-            size={24}
+            size={28}
             color="#fff"
           />
           <View style={styles.contextBannerText}>
             <Text style={styles.contextBannerTitle}>
-              Du administrerer opgaver for {selectedContext.type === 'player' ? 'spiller' : 'team'}
+              ⚠️ DU ADMINISTRERER OPGAVER FOR {selectedContext.type === 'player' ? 'SPILLER' : 'TEAM'}
             </Text>
             <Text style={styles.contextBannerSubtitle}>
               {selectedContext.name}
+            </Text>
+            <Text style={styles.contextBannerInfo}>
+              Alle ændringer påvirker denne {selectedContext.type === 'player' ? 'spillers' : 'teams'} opgaver
             </Text>
           </View>
         </View>
@@ -606,26 +614,36 @@ const styles = StyleSheet.create({
   contextBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    gap: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 20,
     marginHorizontal: 16,
     marginBottom: 12,
-    borderRadius: 12,
+    borderRadius: 16,
+    borderWidth: 3,
+    borderColor: '#B8860B',
   },
   contextBannerText: {
     flex: 1,
   },
   contextBannerTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: 2,
-  },
-  contextBannerSubtitle: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#fff',
+    marginBottom: 4,
+    letterSpacing: 0.5,
+  },
+  contextBannerSubtitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  contextBannerInfo: {
+    fontSize: 13,
+    color: '#fff',
+    opacity: 0.95,
+    fontStyle: 'italic',
   },
   infoBox: {
     flexDirection: 'row',

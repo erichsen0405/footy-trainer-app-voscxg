@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useColorScheme, Modal, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFootball } from '@/contexts/FootballContext';
-import { colors } from '@/styles/commonStyles';
+import { colors, getColors } from '@/styles/commonStyles';
 import { Activity, Task } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
 import { getWeek, subWeeks, startOfWeek } from 'date-fns';
@@ -18,6 +18,7 @@ export default function HomeScreen() {
   const { selectedContext } = useTeamPlayer();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const themeColors = getColors(colorScheme);
 
   const [selectedTask, setSelectedTask] = useState<{ task: Task; activityId: string; activityTitle: string } | null>(null);
   const [isTaskModalVisible, setIsTaskModalVisible] = useState(false);
@@ -315,10 +316,14 @@ export default function HomeScreen() {
   const currentWeek = getWeek(new Date());
   const currentYear = new Date().getFullYear();
 
+  // Determine if we're in context management mode
+  const isManagingContext = isAdmin && selectedContext.type;
+  const containerBgColor = isManagingContext ? themeColors.contextWarning : bgColor;
+
   return (
     <View style={{ flex: 1 }}>
       <ScrollView 
-        style={[styles.container, { backgroundColor: bgColor }]} 
+        style={[styles.container, { backgroundColor: containerBgColor }]} 
         contentContainerStyle={styles.contentContainer}
         refreshControl={
           <RefreshControl
@@ -336,21 +341,24 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Context Banner for Trainers/Admins */}
-        {isAdmin && selectedContext.type && (
-          <View style={[styles.contextBanner, { backgroundColor: colors.warning }]}>
+        {/* Enhanced Context Banner for Trainers/Admins */}
+        {isManagingContext && (
+          <View style={[styles.contextBanner, { backgroundColor: '#D4A574' }]}>
             <IconSymbol
               ios_icon_name="exclamationmark.triangle.fill"
               android_material_icon_name="warning"
-              size={24}
+              size={28}
               color="#fff"
             />
             <View style={styles.contextBannerText}>
               <Text style={styles.contextBannerTitle}>
-                Du administrerer data for {selectedContext.type === 'player' ? 'spiller' : 'team'}
+                ⚠️ DU ADMINISTRERER DATA FOR {selectedContext.type === 'player' ? 'SPILLER' : 'TEAM'}
               </Text>
               <Text style={styles.contextBannerSubtitle}>
                 {selectedContext.name}
+              </Text>
+              <Text style={styles.contextBannerInfo}>
+                Alle ændringer påvirker denne {selectedContext.type === 'player' ? 'spillers' : 'teams'} data
               </Text>
             </View>
           </View>
@@ -1052,23 +1060,33 @@ const styles = StyleSheet.create({
   contextBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    padding: 16,
+    gap: 16,
+    padding: 20,
     marginBottom: 20,
-    borderRadius: 12,
+    borderRadius: 16,
+    borderWidth: 3,
+    borderColor: '#B8860B',
   },
   contextBannerText: {
     flex: 1,
   },
   contextBannerTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: 2,
-  },
-  contextBannerSubtitle: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#fff',
+    marginBottom: 4,
+    letterSpacing: 0.5,
+  },
+  contextBannerSubtitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  contextBannerInfo: {
+    fontSize: 13,
+    color: '#fff',
+    opacity: 0.95,
+    fontStyle: 'italic',
   },
 });
