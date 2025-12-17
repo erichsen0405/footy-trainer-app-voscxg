@@ -8,6 +8,7 @@ import { useTheme } from '@react-navigation/native';
 import { supabase } from '@/app/integrations/supabase/client';
 import CreatePlayerModal from '@/components/CreatePlayerModal';
 import PlayersList from '@/components/PlayersList';
+import TeamManagement from '@/components/TeamManagement';
 import ExternalCalendarManager from '@/components/ExternalCalendarManager';
 import SubscriptionManager from '@/components/SubscriptionManager';
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -890,6 +891,30 @@ export default function ProfileScreen() {
               </GlassView>
             )}
 
+            {/* Team Management Section for Trainers */}
+            {(userRole === 'admin' || userRole === 'trainer') && (
+              <GlassView style={styles.teamManagementSection} glassEffectStyle="regular">
+                <View style={styles.teamManagementHeader}>
+                  <IconSymbol 
+                    ios_icon_name="person.3.fill" 
+                    android_material_icon_name="groups" 
+                    size={28} 
+                    color={theme.colors.primary} 
+                  />
+                  <View style={styles.teamManagementTitleContainer}>
+                    <Text style={[styles.teamManagementTitle, { color: theme.colors.text }]}>
+                      Teamstyring
+                    </Text>
+                    <Text style={[styles.teamManagementSubtitle, { color: theme.dark ? '#98989D' : '#666' }]}>
+                      Opret og administrer teams
+                    </Text>
+                  </View>
+                </View>
+
+                <TeamManagement />
+              </GlassView>
+            )}
+
             <TouchableOpacity
               style={[styles.signOutButton, { backgroundColor: '#ff3b30' }]}
               onPress={handleSignOut}
@@ -1226,6 +1251,28 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   playerManagementSubtitle: {
+    fontSize: 15,
+  },
+  teamManagementSection: {
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 16,
+  },
+  teamManagementHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginBottom: 16,
+  },
+  teamManagementTitleContainer: {
+    flex: 1,
+  },
+  teamManagementTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  teamManagementSubtitle: {
     fontSize: 15,
   },
   signOutButton: {

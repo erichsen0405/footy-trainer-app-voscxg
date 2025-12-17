@@ -6,6 +6,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 import CreatePlayerModal from '@/components/CreatePlayerModal';
 import PlayersList from '@/components/PlayersList';
+import TeamManagement from '@/components/TeamManagement';
 import ExternalCalendarManager from '@/components/ExternalCalendarManager';
 import SubscriptionManager from '@/components/SubscriptionManager';
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -880,6 +881,51 @@ export default function ProfileScreen() {
               </Text>
               <SubscriptionManager />
             </View>
+
+            {/* Player Management Section - Only for trainers/admins */}
+            {isTrainer && (
+              <View style={[styles.card, { backgroundColor: cardBgColor }]}>
+                <View style={styles.sectionHeader}>
+                  <View style={styles.sectionTitleContainer}>
+                    <IconSymbol
+                      ios_icon_name="person.2.fill"
+                      android_material_icon_name="group"
+                      size={28}
+                      color={colors.primary}
+                    />
+                    <Text style={[styles.sectionTitle, { color: textColor }]}>Spillerstyring</Text>
+                  </View>
+                </View>
+                <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
+                  Administrer dine spillerprofiler
+                </Text>
+                <PlayersList 
+                  onCreatePlayer={() => setShowCreatePlayerModal(true)}
+                  refreshTrigger={playersRefreshTrigger}
+                />
+              </View>
+            )}
+
+            {/* Team Management Section - Only for trainers/admins */}
+            {isTrainer && (
+              <View style={[styles.card, { backgroundColor: cardBgColor }]}>
+                <View style={styles.sectionHeader}>
+                  <View style={styles.sectionTitleContainer}>
+                    <IconSymbol
+                      ios_icon_name="person.3.fill"
+                      android_material_icon_name="groups"
+                      size={28}
+                      color={colors.primary}
+                    />
+                    <Text style={[styles.sectionTitle, { color: textColor }]}>Teamstyring</Text>
+                  </View>
+                </View>
+                <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
+                  Opret og administrer teams
+                </Text>
+                <TeamManagement />
+              </View>
+            )}
 
             <TouchableOpacity
               style={[styles.signOutButton, { backgroundColor: colors.error }]}
