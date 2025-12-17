@@ -379,64 +379,79 @@ export function useFootballData() {
         console.error('❌ Error loading internal activities:', internalError);
       }
 
-      // Build query for external activities
-      let externalQuery = supabase
-        .from('events_external')
-        .select(`
-          id,
-          title,
-          description,
-          location,
-          start_date,
-          start_time,
-          end_date,
-          end_time,
-          is_all_day,
-          provider_event_uid,
-          provider_calendar_id,
-          events_local_meta!inner(
-            id,
-            user_id,
-            category_id,
-            manually_set_category,
-            category_updated_at,
-            player_id,
-            team_id,
-            activity_categories(*),
-            external_event_tasks(
+      // CRITICAL FIX: Build query for external activities with proper filtering
+      // First, get the local metadata IDs that match our filter criteria
+      let metaQuery = supabase
+        .from('events_local_meta')
+        .select('id, external_event_id, category_id, manually_set_category, category_updated_at');
+
+      // Apply the same filtering logic for external events
+      if (userRole === 'trainer' || userRole === 'admin') {
+        if (selectedContext.type === 'player' && selectedContext.id) {
+          console.log('Loading external events ONLY for selected player:', selectedContext.id);
+          metaQuery = metaQuery.eq('player_id', selectedContext.id);
+        } else if (selectedContext.type === 'team' && selectedContext.id) {
+          console.log('Loading external events ONLY for selected team:', selectedContext.id);
+          metaQuery = metaQuery.eq('team_id', selectedContext.id);
+        } else {
+          metaQuery = metaQuery.eq('user_id', userId);
+        }
+      } else {
+        // CRITICAL FIX: For players, use proper OR filtering
+        console.log('🔍 Loading external events for player with OR filter');
+        metaQuery = metaQuery.or(`user_id.eq.${userId},player_id.eq.${userId}`);
+      }
+
+      const { data: metaData, error: metaError } = await metaQuery;
+
+      if (metaError) {
+        console.error('❌ Error loading external event metadata:', metaError);
+      }
+
+      let externalData: any[] = [];
+
+      if (metaData && metaData.length > 0) {
+        console.log(`✅ Found ${metaData.length} external event metadata entries`);
+        
+        // Get the external event IDs
+        const externalEventIds = metaData.map(m => m.external_event_id).filter(Boolean);
+        
+        if (externalEventIds.length > 0) {
+          // Now fetch the external events
+          const { data: eventsData, error: eventsError } = await supabase
+            .from('events_external')
+            .select(`
               id,
               title,
               description,
-              completed,
-              reminder_minutes,
-              task_template_id
-            )
-          )
-        `);
+              location,
+              start_date,
+              start_time,
+              end_date,
+              end_time,
+              is_all_day,
+              provider_event_uid,
+              provider_calendar_id
+            `)
+            .in('id', externalEventIds);
 
-      // Filter based on user role and selected context
-      if (userRole === 'trainer' || userRole === 'admin') {
-        if (selectedContext.type === 'player' && selectedContext.id) {
-          // CRITICAL FIX: Show ONLY external events for the selected player
-          console.log('Loading external events ONLY for selected player:', selectedContext.id);
-          externalQuery = externalQuery.eq('events_local_meta.player_id', selectedContext.id);
-        } else if (selectedContext.type === 'team' && selectedContext.id) {
-          // CRITICAL FIX: Show ONLY external events for the selected team
-          console.log('Loading external events ONLY for selected team:', selectedContext.id);
-          externalQuery = externalQuery.eq('events_local_meta.team_id', selectedContext.id);
-        } else {
-          // No selection - show only trainer's own external events
-          externalQuery = externalQuery.eq('events_local_meta.user_id', userId);
+          if (eventsError) {
+            console.error('❌ Error loading external events:', eventsError);
+          } else if (eventsData) {
+            console.log(`✅ Loaded ${eventsData.length} external events`);
+            
+            // Combine the data
+            externalData = eventsData.map(event => {
+              const meta = metaData.find(m => m.external_event_id === event.id);
+              return {
+                ...event,
+                events_local_meta: meta,
+              };
+            });
+          }
         }
       } else {
-        // Player - show own external events and those assigned to them
-        externalQuery = externalQuery.or(`events_local_meta.user_id.eq.${userId},events_local_meta.player_id.eq.${userId}`);
-      }
-
-      const { data: externalData, error: externalError } = await externalQuery;
-
-      if (externalError) {
-        console.error('❌ Error loading external activities:', externalError);
+        console.log('⚠️ No external event metadata found for user');
       }
 
       const loadedActivities: Activity[] = [];
@@ -484,49 +499,80 @@ export function useFootballData() {
       }
 
       // Process external activities (NEW ARCHITECTURE WITH TASKS)
-      if (externalData) {
-        console.log(`✅ Loaded ${externalData.length} external activities (NEW ARCHITECTURE)`);
+      if (externalData && externalData.length > 0) {
+        console.log(`✅ Processing ${externalData.length} external activities (NEW ARCHITECTURE)`);
+        
+        // Get all category IDs and fetch them
+        const categoryIds = externalData
+          .map(e => e.events_local_meta?.category_id)
+          .filter(Boolean);
+        
+        let categoryMap: { [key: string]: ActivityCategory } = {};
+        
+        if (categoryIds.length > 0) {
+          const { data: categoriesData } = await supabase
+            .from('activity_categories')
+            .select('*')
+            .in('id', categoryIds);
+          
+          if (categoriesData) {
+            categoriesData.forEach(cat => {
+              categoryMap[cat.id] = {
+                id: cat.id,
+                name: cat.name,
+                color: cat.color,
+                emoji: cat.emoji,
+              };
+            });
+          }
+        }
+        
+        // Get all external event tasks
+        const metaIds = externalData
+          .map(e => e.events_local_meta?.id)
+          .filter(Boolean);
+        
+        let tasksMap: { [key: string]: Task[] } = {};
+        
+        if (metaIds.length > 0) {
+          const { data: tasksData } = await supabase
+            .from('external_event_tasks')
+            .select('*')
+            .in('local_meta_id', metaIds);
+          
+          if (tasksData) {
+            tasksData.forEach(task => {
+              if (!tasksMap[task.local_meta_id]) {
+                tasksMap[task.local_meta_id] = [];
+              }
+              tasksMap[task.local_meta_id].push({
+                id: task.id,
+                title: task.title,
+                description: task.description || '',
+                completed: task.completed || false,
+                isTemplate: false,
+                categoryIds: [],
+                reminder: task.reminder_minutes || undefined,
+                subtasks: [],
+              });
+            });
+          }
+        }
         
         externalData.forEach((extEvent: any) => {
-          // CRITICAL FIX: Handle events_local_meta as an array (due to !inner join)
-          const localMetaArray = extEvent.events_local_meta;
-          
-          // If it's an array, take the first element; otherwise use it directly
-          const localMeta = Array.isArray(localMetaArray) && localMetaArray.length > 0
-            ? localMetaArray[0]
-            : (Array.isArray(localMetaArray) ? null : localMetaArray);
+          const localMeta = extEvent.events_local_meta;
 
           if (!localMeta) {
             console.warn('⚠️ External event without local metadata:', extEvent.id);
             return;
           }
 
-          const category = localMeta.activity_categories ? {
-            id: localMeta.activity_categories.id,
-            name: localMeta.activity_categories.name,
-            color: localMeta.activity_categories.color,
-            emoji: localMeta.activity_categories.emoji,
-          } : categories[0];
-
+          const category = categoryMap[localMeta.category_id] || categories[0];
           const activityDate = new Date(extEvent.start_date);
-          
-          // CRITICAL FIX: Process external event tasks (handle both array and null)
-          const externalTasksRaw = localMeta.external_event_tasks;
-          const externalTasks: Task[] = (Array.isArray(externalTasksRaw) ? externalTasksRaw : [])
-            .filter((eet: any) => eet && eet.id && eet.title)
-            .map((eet: any) => ({
-              id: eet.id,
-              title: eet.title,
-              description: eet.description || '',
-              completed: eet.completed || false,
-              isTemplate: false,
-              categoryIds: [],
-              reminder: eet.reminder_minutes || undefined,
-              subtasks: [],
-            }));
+          const externalTasks = tasksMap[localMeta.id] || [];
           
           const manuallySet = localMeta.manually_set_category ? '✅ MANUAL' : '❌ AUTO';
-          console.log(`📅 External activity "${extEvent.title}" -> Category: ${category.name} (${category.emoji}) [${manuallySet}] - ${externalTasks.length} tasks`);
+          console.log(`📅 External activity "${extEvent.title}" -> Category: ${category?.name} (${category?.emoji}) [${manuallySet}] - ${externalTasks.length} tasks`);
 
           loadedActivities.push({
             id: localMeta.id, // Use local metadata ID as the activity ID
