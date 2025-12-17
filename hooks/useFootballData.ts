@@ -383,7 +383,7 @@ export function useFootballData() {
       // First, get the local metadata IDs that match our filter criteria
       let metaQuery = supabase
         .from('events_local_meta')
-        .select('id, external_event_id, category_id, manually_set_category, category_updated_at');
+        .select('id, external_event_id, category_id, manually_set_category, category_updated_at, user_id, player_id, team_id');
 
       // Apply the same filtering logic for external events
       if (userRole === 'trainer' || userRole === 'admin') {
@@ -413,8 +413,38 @@ export function useFootballData() {
       if (metaData && metaData.length > 0) {
         console.log(`✅ Found ${metaData.length} external event metadata entries`);
         
+        // CRITICAL FIX: Deduplicate metadata by external_event_id
+        // If multiple metadata entries exist for the same external event (e.g., one for trainer, one for player),
+        // prioritize the one that matches the current context
+        const deduplicatedMeta = new Map<number, any>();
+        
+        for (const meta of metaData) {
+          const eventId = meta.external_event_id;
+          
+          if (!deduplicatedMeta.has(eventId)) {
+            // First entry for this event
+            deduplicatedMeta.set(eventId, meta);
+          } else {
+            // Duplicate found - prioritize based on context
+            const existing = deduplicatedMeta.get(eventId);
+            
+            // Priority: player_id match > team_id match > user_id match
+            if (meta.player_id === userId) {
+              // Current user is the player - highest priority
+              deduplicatedMeta.set(eventId, meta);
+            } else if (existing.player_id !== userId && meta.team_id) {
+              // Team match is better than user_id match
+              deduplicatedMeta.set(eventId, meta);
+            }
+            // Otherwise keep the existing one
+          }
+        }
+        
+        const uniqueMetaData = Array.from(deduplicatedMeta.values());
+        console.log(`✅ Deduplicated to ${uniqueMetaData.length} unique external events`);
+        
         // Get the external event IDs
-        const externalEventIds = metaData.map(m => m.external_event_id).filter(Boolean);
+        const externalEventIds = uniqueMetaData.map(m => m.external_event_id).filter(Boolean);
         
         if (externalEventIds.length > 0) {
           // Now fetch the external events
@@ -442,7 +472,7 @@ export function useFootballData() {
             
             // Combine the data
             externalData = eventsData.map(event => {
-              const meta = metaData.find(m => m.external_event_id === event.id);
+              const meta = uniqueMetaData.find(m => m.external_event_id === event.id);
               return {
                 ...event,
                 events_local_meta: meta,
