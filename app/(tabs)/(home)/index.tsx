@@ -40,7 +40,7 @@ export default function HomeScreen() {
           .single();
 
         if (!error && data) {
-          setIsAdmin(data.role === 'admin');
+          setIsAdmin(data.role === 'admin' || data.role === 'trainer');
         }
       }
     };
@@ -325,16 +325,15 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {isAdmin && (
-        <TouchableOpacity
-          style={[styles.createButton, { backgroundColor: colors.secondary }]}
-          onPress={() => setIsCreateModalVisible(true)}
-          activeOpacity={0.7}
-        >
-          <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add_circle" size={24} color="#fff" />
-          <Text style={styles.createButtonText}>Opret aktivitet</Text>
-        </TouchableOpacity>
-      )}
+      {/* Create Activity Button - Now available for ALL users */}
+      <TouchableOpacity
+        style={[styles.createButton, { backgroundColor: colors.secondary }]}
+        onPress={() => setIsCreateModalVisible(true)}
+        activeOpacity={0.7}
+      >
+        <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add_circle" size={24} color="#fff" />
+        <Text style={styles.createButtonText}>Opret aktivitet</Text>
+      </TouchableOpacity>
 
       <View style={[styles.statsCard, { backgroundColor: getProgressColor(currentWeekStats.percentage) }]}>
         <View style={styles.statsHeader}>

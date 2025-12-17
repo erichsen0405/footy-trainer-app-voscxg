@@ -9,10 +9,13 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { getWeek, subWeeks, startOfWeek } from 'date-fns';
 import CreateActivityModal, { ActivityCreationData } from '@/components/CreateActivityModal';
 import { supabase } from '@/app/integrations/supabase/client';
+import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
+import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 
 export default function HomeScreen() {
   const router = useRouter();
   const { currentWeekStats, todayActivities, activities, categories, toggleTaskCompletion, createActivity, externalCalendars, fetchExternalCalendarEvents } = useFootball();
+  const { selectedContext } = useTeamPlayer();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
@@ -22,6 +25,13 @@ export default function HomeScreen() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [weeksToLoad, setWeeksToLoad] = useState(0);
+  
+  // Confirmation dialog state
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [pendingAction, setPendingAction] = useState<{
+    type: 'create' | 'complete';
+    data?: any;
+  } | null>(null);
 
   useEffect(() => {
     const checkAdminStatus = async () => {
@@ -34,7 +44,7 @@ export default function HomeScreen() {
           .single();
 
         if (!error && data) {
-          setIsAdmin(data.role === 'admin');
+          setIsAdmin(data.role === 'admin' || data.role === 'trainer');
         }
       }
     };
@@ -150,6 +160,20 @@ export default function HomeScreen() {
     
     console.log('⚡ FAST: Toggling task completion with optimistic update');
     
+    // Check if we need confirmation (trainer/admin managing player/team data)
+    if (isAdmin && selectedContext.type) {
+      setIsTaskModalVisible(false);
+      setPendingAction({
+        type: 'complete',
+        data: { activityId: selectedTask.activityId, taskId: selectedTask.task.id },
+      });
+      setShowConfirmDialog(true);
+      setTimeout(() => {
+        setSelectedTask(null);
+      }, 300);
+      return;
+    }
+    
     // Close modal immediately for instant feedback
     setIsTaskModalVisible(false);
     
@@ -165,11 +189,47 @@ export default function HomeScreen() {
         setSelectedTask(null);
       }, 300);
     }
-  }, [selectedTask, toggleTaskCompletion]);
+  }, [selectedTask, toggleTaskCompletion, isAdmin, selectedContext]);
+
+  const handleConfirmAction = async () => {
+    setShowConfirmDialog(false);
+    
+    if (!pendingAction) return;
+    
+    try {
+      if (pendingAction.type === 'create') {
+        await createActivity(pendingAction.data);
+        setIsCreateModalVisible(false);
+      } else if (pendingAction.type === 'complete') {
+        const { activityId, taskId } = pendingAction.data;
+        await toggleTaskCompletion(activityId, taskId);
+      }
+    } catch (error) {
+      console.error('Error executing action:', error);
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const handleCancelAction = () => {
+    setShowConfirmDialog(false);
+    setPendingAction(null);
+  };
 
   const handleCreateActivity = async (activityData: ActivityCreationData) => {
+    // Check if we need confirmation (trainer/admin managing player/team data)
+    if (isAdmin && selectedContext.type) {
+      setPendingAction({
+        type: 'create',
+        data: activityData,
+      });
+      setShowConfirmDialog(true);
+      return;
+    }
+    
     try {
       await createActivity(activityData);
+      setIsCreateModalVisible(false);
     } catch (error) {
       console.error('Error creating activity:', error);
       throw error;
@@ -276,16 +336,35 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {isAdmin && (
-          <TouchableOpacity
-            style={[styles.createButton, { backgroundColor: colors.secondary }]}
-            onPress={() => setIsCreateModalVisible(true)}
-            activeOpacity={0.7}
-          >
-            <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add_circle" size={24} color="#fff" />
-            <Text style={styles.createButtonText}>Opret aktivitet</Text>
-          </TouchableOpacity>
+        {/* Context Banner for Trainers/Admins */}
+        {isAdmin && selectedContext.type && (
+          <View style={[styles.contextBanner, { backgroundColor: colors.warning }]}>
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle.fill"
+              android_material_icon_name="warning"
+              size={24}
+              color="#fff"
+            />
+            <View style={styles.contextBannerText}>
+              <Text style={styles.contextBannerTitle}>
+                Du administrerer data for {selectedContext.type === 'player' ? 'spiller' : 'team'}
+              </Text>
+              <Text style={styles.contextBannerSubtitle}>
+                {selectedContext.name}
+              </Text>
+            </View>
+          </View>
         )}
+
+        {/* Create Activity Button - Now available for ALL users */}
+        <TouchableOpacity
+          style={[styles.createButton, { backgroundColor: colors.secondary }]}
+          onPress={() => setIsCreateModalVisible(true)}
+          activeOpacity={0.7}
+        >
+          <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add_circle" size={24} color="#fff" />
+          <Text style={styles.createButtonText}>Opret aktivitet</Text>
+        </TouchableOpacity>
 
         <View style={[styles.statsCard, { backgroundColor: getProgressColor(currentWeekStats.percentage) }]}>
           <View style={styles.statsHeader}>
@@ -584,6 +663,16 @@ export default function HomeScreen() {
         onClose={() => setIsCreateModalVisible(false)}
         onCreateActivity={handleCreateActivity}
         categories={categories}
+      />
+
+      <ContextConfirmationDialog
+        visible={showConfirmDialog}
+        contextType={selectedContext.type}
+        contextName={selectedContext.name}
+        actionType={pendingAction?.type === 'create' ? 'create' : 'complete'}
+        itemType={pendingAction?.type === 'create' ? 'activity' : 'task'}
+        onConfirm={handleConfirmAction}
+        onCancel={handleCancelAction}
       />
     </View>
   );
@@ -958,6 +1047,28 @@ const styles = StyleSheet.create({
   completeButtonText: {
     fontSize: 18,
     fontWeight: '600',
+    color: '#fff',
+  },
+  contextBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    marginBottom: 20,
+    borderRadius: 12,
+  },
+  contextBannerText: {
+    flex: 1,
+  },
+  contextBannerTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 2,
+  },
+  contextBannerSubtitle: {
+    fontSize: 17,
+    fontWeight: 'bold',
     color: '#fff',
   },
 });
