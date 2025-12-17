@@ -124,7 +124,7 @@ export default function TrainerScreen() {
                 size={28}
                 color={colors.primary}
               />
-              <Text style={[styles.sectionTitle, { color: textColor }]}>Aktiv kontekst</Text>
+              <Text style={[styles.sectionTitle, { color: textColor }]}>Administrer data for</Text>
             </View>
           </View>
           <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
