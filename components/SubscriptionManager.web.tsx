@@ -30,6 +30,7 @@ export default function SubscriptionManager({
   const [retryCount, setRetryCount] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showDiagnostic, setShowDiagnostic] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0); // Force re-render key
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
@@ -45,9 +46,24 @@ export default function SubscriptionManager({
     }
   }, [isSignupFlow]);
 
+  // Force refresh every 5 seconds if no subscription is detected (for debugging)
+  useEffect(() => {
+    if (!isSignupFlow && !subscriptionStatus?.hasSubscription && !loading) {
+      console.log('[SubscriptionManager.web] No subscription detected, setting up auto-refresh...');
+      const interval = setInterval(() => {
+        console.log('[SubscriptionManager.web] Auto-refreshing subscription status...');
+        refreshSubscription();
+        setRefreshKey(prev => prev + 1); // Force re-render
+      }, 5000);
+
+      return () => clearInterval(interval);
+    }
+  }, [isSignupFlow, subscriptionStatus?.hasSubscription, loading]);
+
   // Log subscription status changes for debugging
   useEffect(() => {
     console.log('[SubscriptionManager.web] ========== SUBSCRIPTION STATUS UPDATED ==========');
+    console.log('[SubscriptionManager.web] Refresh key:', refreshKey);
     console.log('[SubscriptionManager.web] Has subscription:', subscriptionStatus?.hasSubscription);
     console.log('[SubscriptionManager.web] Plan name:', subscriptionStatus?.planName);
     console.log('[SubscriptionManager.web] Status:', subscriptionStatus?.status);
@@ -58,7 +74,7 @@ export default function SubscriptionManager({
       console.log('[SubscriptionManager.web] User has subscription, hiding plans');
       setShowPlans(false);
     }
-  }, [subscriptionStatus, isSignupFlow]);
+  }, [subscriptionStatus, isSignupFlow, refreshKey]);
 
   // Filter plans based on role in signup flow
   const filteredPlans = isSignupFlow && selectedRole
@@ -71,6 +87,7 @@ export default function SubscriptionManager({
     setIsRefreshing(true);
     console.log('[SubscriptionManager.web] ========== MANUAL REFRESH TRIGGERED ==========');
     await refreshSubscription();
+    setRefreshKey(prev => prev + 1); // Force re-render
     setIsRefreshing(false);
   };
 
@@ -109,6 +126,7 @@ export default function SubscriptionManager({
         // Force another refresh to ensure UI is updated
         console.log('[SubscriptionManager.web] Forcing final refresh after successful creation...');
         await refreshSubscription();
+        setRefreshKey(prev => prev + 1); // Force re-render
       } else if (result.alreadyHasSubscription) {
         // User already has a subscription - hide plans and show current subscription
         console.log('[SubscriptionManager.web] ========== USER ALREADY HAS SUBSCRIPTION ==========');
@@ -118,11 +136,13 @@ export default function SubscriptionManager({
         // Force multiple refreshes to ensure UI is updated
         console.log('[SubscriptionManager.web] Forcing subscription refresh (attempt 1)...');
         await refreshSubscription();
+        setRefreshKey(prev => prev + 1);
         
         await new Promise(resolve => setTimeout(resolve, 500));
         
         console.log('[SubscriptionManager.web] Forcing subscription refresh (attempt 2)...');
         await refreshSubscription();
+        setRefreshKey(prev => prev + 1);
         
         // Show a friendly message
         window.alert('Du har allerede et abonnement\n\nDit nuværende abonnement vises nu.');
@@ -269,7 +289,7 @@ export default function SubscriptionManager({
   }
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} key={refreshKey}>
       {/* Header */}
       {!isSignupFlow && (
         <View style={styles.header}>

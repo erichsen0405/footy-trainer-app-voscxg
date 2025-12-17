@@ -58,10 +58,10 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       console.log('[SubscriptionContext] ========== FETCHING SUBSCRIPTION STATUS ==========');
       setLoading(true);
       
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
       
-      if (!user) {
-        console.log('[SubscriptionContext] No user found');
+      if (userError || !user) {
+        console.log('[SubscriptionContext] No user found:', userError);
         const emptyStatus: SubscriptionStatus = {
           hasSubscription: false,
           status: null,
@@ -77,36 +77,65 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       }
 
       console.log('[SubscriptionContext] User found:', user.email, user.id);
-      console.log('[SubscriptionContext] Calling get-subscription-status Edge Function...');
       
-      const { data, error } = await supabase.functions.invoke('get-subscription-status');
+      // Get the current session for the access token
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        console.error('[SubscriptionContext] No valid session:', sessionError);
+        const emptyStatus: SubscriptionStatus = {
+          hasSubscription: false,
+          status: null,
+          planName: null,
+          maxPlayers: 0,
+          currentPlayers: 0,
+          trialEnd: null,
+          currentPeriodEnd: null,
+        };
+        setSubscriptionStatus(emptyStatus);
+        return;
+      }
+
+      console.log('[SubscriptionContext] Session verified, calling Edge Function with direct fetch...');
+      
+      // Use direct fetch to ensure proper headers and body handling
+      const supabaseUrl = 'https://lhpczofddvwcyrgotzha.supabase.co';
+      const functionUrl = `${supabaseUrl}/functions/v1/get-subscription-status`;
+
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxocGN6b2ZkZHZ3Y3lyZ290emhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQxNTgzMjQsImV4cCI6MjA3OTczNDMyNH0.5oWZ_G5ryy_ae77CG8YMeEDEyAJkSS7Jv4cFZy-G7qA',
+        },
+      });
+
+      console.log('[SubscriptionContext] Response status:', response.status);
+
+      if (!response.ok) {
+        console.error('[SubscriptionContext] Error response:', response.status, response.statusText);
+        const emptyStatus: SubscriptionStatus = {
+          hasSubscription: false,
+          status: null,
+          planName: null,
+          maxPlayers: 0,
+          currentPlayers: 0,
+          trialEnd: null,
+          currentPeriodEnd: null,
+        };
+        setSubscriptionStatus(emptyStatus);
+        return;
+      }
+
+      const data = await response.json();
 
       console.log('[SubscriptionContext] ========== EDGE FUNCTION RESPONSE ==========');
-      console.log('[SubscriptionContext] Error:', error);
-      console.log('[SubscriptionContext] Data:', JSON.stringify(data, null, 2));
+      console.log('[SubscriptionContext] Raw response:', JSON.stringify(data, null, 2));
       console.log('[SubscriptionContext] Data type:', typeof data);
       console.log('[SubscriptionContext] Has subscription:', data?.hasSubscription);
       console.log('[SubscriptionContext] Plan name:', data?.planName);
       console.log('[SubscriptionContext] Status:', data?.status);
-
-      if (error) {
-        console.error('[SubscriptionContext] Error from Edge Function:', error);
-        // Even if there's an error, try to use the data if it exists
-        if (!data) {
-          const emptyStatus: SubscriptionStatus = {
-            hasSubscription: false,
-            status: null,
-            planName: null,
-            maxPlayers: 0,
-            currentPlayers: 0,
-            trialEnd: null,
-            currentPeriodEnd: null,
-          };
-          setSubscriptionStatus(emptyStatus);
-          console.log('[SubscriptionContext] Set empty subscription status due to error');
-          return;
-        }
-      }
 
       // Ensure we have a valid subscription status object
       const statusData: SubscriptionStatus = {
@@ -136,6 +165,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('[SubscriptionContext] ========== UNEXPECTED ERROR ==========');
       console.error('[SubscriptionContext] Error in fetchSubscriptionStatus:', error);
+      console.error('[SubscriptionContext] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
       const emptyStatus: SubscriptionStatus = {
         hasSubscription: false,
         status: null,
