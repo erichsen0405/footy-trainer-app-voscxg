@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
+import { supabase } from '@/app/integrations/supabase/client';
 
 export default function TeamPlayerSelector() {
   const {
@@ -23,6 +24,36 @@ export default function TeamPlayerSelector() {
   } = useTeamPlayer();
 
   const [showModal, setShowModal] = useState(false);
+  const [trainerProfile, setTrainerProfile] = useState<{ id: string; name: string } | null>(null);
+
+  // Fetch trainer's own profile
+  useEffect(() => {
+    const fetchTrainerProfile = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('user_id, full_name')
+        .eq('user_id', user.id)
+        .single();
+
+      if (profile) {
+        setTrainerProfile({
+          id: profile.user_id,
+          name: profile.full_name || user.email?.split('@')[0] || 'Min profil',
+        });
+      } else {
+        // Fallback if no profile exists
+        setTrainerProfile({
+          id: user.id,
+          name: user.email?.split('@')[0] || 'Min profil',
+        });
+      }
+    };
+
+    fetchTrainerProfile();
+  }, []);
 
   const handleSelectPlayer = async (playerId: string, playerName: string) => {
     await setSelectedContext({
@@ -42,9 +73,20 @@ export default function TeamPlayerSelector() {
     setShowModal(false);
   };
 
+  const handleSelectOwnProfile = async () => {
+    if (!trainerProfile) return;
+    
+    await setSelectedContext({
+      type: null,
+      id: null,
+      name: null,
+    });
+    setShowModal(false);
+  };
+
   const getDisplayText = () => {
     if (!selectedContext.type || !selectedContext.name) {
-      return 'Vælg spiller eller team';
+      return trainerProfile?.name || 'Min profil';
     }
     return selectedContext.name;
   };
@@ -52,8 +94,8 @@ export default function TeamPlayerSelector() {
   const getIcon = () => {
     if (!selectedContext.type) {
       return {
-        ios: 'person.crop.circle.badge.questionmark',
-        android: 'help',
+        ios: 'person.crop.circle',
+        android: 'account_circle',
       };
     }
     if (selectedContext.type === 'player') {
@@ -75,7 +117,7 @@ export default function TeamPlayerSelector() {
       <TouchableOpacity
         style={[
           styles.selectorButton,
-          !selectedContext.type && styles.selectorButtonEmpty,
+          !selectedContext.type && styles.selectorButtonOwn,
         ]}
         onPress={() => setShowModal(true)}
         activeOpacity={0.7}
@@ -83,7 +125,7 @@ export default function TeamPlayerSelector() {
         <View style={styles.selectorContent}>
           <View style={[
             styles.iconCircle,
-            { backgroundColor: selectedContext.type ? colors.primary : colors.textSecondary },
+            { backgroundColor: selectedContext.type ? colors.primary : colors.secondary },
           ]}>
             <IconSymbol
               ios_icon_name={icon.ios}
@@ -96,7 +138,7 @@ export default function TeamPlayerSelector() {
             <Text style={styles.label}>Administrer for:</Text>
             <Text style={[
               styles.selectedText,
-              !selectedContext.type && styles.placeholderText,
+              !selectedContext.type && styles.ownProfileText,
             ]}>
               {getDisplayText()}
             </Text>
@@ -109,20 +151,6 @@ export default function TeamPlayerSelector() {
           color={colors.textSecondary}
         />
       </TouchableOpacity>
-
-      {!selectedContext.type && (
-        <View style={styles.warningBox}>
-          <IconSymbol
-            ios_icon_name="exclamationmark.triangle.fill"
-            android_material_icon_name="warning"
-            size={20}
-            color={colors.warning}
-          />
-          <Text style={styles.warningText}>
-            Vælg en spiller eller et team for at administrere aktiviteter
-          </Text>
-        </View>
-      )}
 
       <Modal
         visible={showModal}
@@ -140,11 +168,51 @@ export default function TeamPlayerSelector() {
                 color={colors.text}
               />
             </TouchableOpacity>
-            <Text style={styles.modalTitle}>Vælg spiller eller team</Text>
+            <Text style={styles.modalTitle}>Vælg profil</Text>
             <View style={{ width: 24 }} />
           </View>
 
           <ScrollView style={styles.modalContent}>
+            {/* Own Profile Section */}
+            {trainerProfile && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Min profil</Text>
+                <TouchableOpacity
+                  style={[
+                    styles.optionCard,
+                    !selectedContext.type && styles.selectedCard,
+                  ]}
+                  onPress={handleSelectOwnProfile}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.optionIcon}>
+                    <IconSymbol
+                      ios_icon_name="person.crop.circle"
+                      android_material_icon_name="account_circle"
+                      size={28}
+                      color={
+                        !selectedContext.type
+                          ? colors.secondary
+                          : colors.textSecondary
+                      }
+                    />
+                  </View>
+                  <View style={styles.optionInfo}>
+                    <Text style={styles.optionName}>{trainerProfile.name}</Text>
+                    <Text style={styles.optionDetail}>Administrer dine egne data</Text>
+                  </View>
+                  {!selectedContext.type && (
+                    <IconSymbol
+                      ios_icon_name="checkmark.circle.fill"
+                      android_material_icon_name="check_circle"
+                      size={24}
+                      color={colors.secondary}
+                    />
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+
             {/* Players Section */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Spillere ({players.length})</Text>
@@ -271,9 +339,8 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.primary,
   },
-  selectorButtonEmpty: {
-    borderColor: colors.warning,
-    borderStyle: 'dashed',
+  selectorButtonOwn: {
+    borderColor: colors.secondary,
   },
   selectorContent: {
     flexDirection: 'row',
@@ -301,23 +368,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
   },
-  placeholderText: {
-    color: colors.textSecondary,
-    fontStyle: 'italic',
-  },
-  warningBox: {
-    flexDirection: 'row',
-    gap: 12,
-    padding: 16,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255, 149, 0, 0.1)',
-    marginTop: 12,
-  },
-  warningText: {
-    flex: 1,
-    fontSize: 14,
-    color: colors.warning,
-    lineHeight: 20,
+  ownProfileText: {
+    color: colors.secondary,
   },
   modalContainer: {
     flex: 1,

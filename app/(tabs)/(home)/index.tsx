@@ -3,21 +3,31 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFootball } from '@/contexts/FootballContext';
+import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import { colors } from '@/styles/commonStyles';
 import { Activity } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
 import { getWeek, startOfWeek, endOfWeek, subWeeks } from 'date-fns';
 import { requestNotificationPermissions } from '@/utils/notificationService';
 import CreateActivityModal, { ActivityCreationData } from '@/components/CreateActivityModal';
+import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { supabase } from '@/app/integrations/supabase/client';
 
 export default function HomeScreen() {
   const { currentWeekStats, todayActivities, activities, categories, toggleTaskCompletion, createActivity, externalCalendars, fetchExternalCalendarEvents } = useFootball();
+  const { selectedContext } = useTeamPlayer();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [weeksToLoad, setWeeksToLoad] = useState(0);
+  
+  // Confirmation dialog state
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [pendingAction, setPendingAction] = useState<{
+    type: 'create' | 'complete';
+    data?: any;
+  } | null>(null);
 
   useEffect(() => {
     const checkAdminStatus = async () => {
@@ -196,6 +206,16 @@ export default function HomeScreen() {
     
     console.log('⚡ INSTANT: Toggling task completion');
     
+    // Check if we need confirmation (trainer/admin managing player/team data)
+    if (isAdmin && selectedContext.type) {
+      setPendingAction({
+        type: 'complete',
+        data: { activityId, taskId },
+      });
+      setShowConfirmDialog(true);
+      return;
+    }
+    
     // Call toggle immediately - optimistic update happens inside
     try {
       await toggleTaskCompletion(activityId, taskId);
@@ -204,14 +224,50 @@ export default function HomeScreen() {
     }
   };
 
+  const handleConfirmAction = async () => {
+    setShowConfirmDialog(false);
+    
+    if (!pendingAction) return;
+    
+    try {
+      if (pendingAction.type === 'create') {
+        await createActivity(pendingAction.data);
+        setIsCreateModalVisible(false);
+      } else if (pendingAction.type === 'complete') {
+        const { activityId, taskId } = pendingAction.data;
+        await toggleTaskCompletion(activityId, taskId);
+      }
+    } catch (error) {
+      console.error('Error executing action:', error);
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const handleCancelAction = () => {
+    setShowConfirmDialog(false);
+    setPendingAction(null);
+  };
+
   const handleHistoryPress = () => {
     console.log('Navigating to performance page');
     router.push('/(tabs)/performance');
   };
 
   const handleCreateActivity = async (activityData: ActivityCreationData) => {
+    // Check if we need confirmation (trainer/admin managing player/team data)
+    if (isAdmin && selectedContext.type) {
+      setPendingAction({
+        type: 'create',
+        data: activityData,
+      });
+      setShowConfirmDialog(true);
+      return;
+    }
+    
     try {
       await createActivity(activityData);
+      setIsCreateModalVisible(false);
     } catch (error) {
       console.error('Error creating activity:', error);
       throw error;
@@ -248,6 +304,26 @@ export default function HomeScreen() {
           <Text style={styles.headerSubtitle}>Nå dine mål med målrettet træning</Text>
         </View>
       </View>
+
+      {/* Context Banner for Trainers/Admins */}
+      {isAdmin && selectedContext.type && (
+        <View style={[styles.contextBanner, { backgroundColor: colors.warning }]}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle.fill"
+            android_material_icon_name="warning"
+            size={24}
+            color="#fff"
+          />
+          <View style={styles.contextBannerText}>
+            <Text style={styles.contextBannerTitle}>
+              Du administrerer data for {selectedContext.type === 'player' ? 'spiller' : 'team'}
+            </Text>
+            <Text style={styles.contextBannerSubtitle}>
+              {selectedContext.name}
+            </Text>
+          </View>
+        </View>
+      )}
 
       {isAdmin && (
         <TouchableOpacity
@@ -471,6 +547,16 @@ export default function HomeScreen() {
         onClose={() => setIsCreateModalVisible(false)}
         onCreateActivity={handleCreateActivity}
         categories={categories}
+      />
+
+      <ContextConfirmationDialog
+        visible={showConfirmDialog}
+        contextType={selectedContext.type}
+        contextName={selectedContext.name}
+        actionType={pendingAction?.type === 'create' ? 'create' : 'complete'}
+        itemType={pendingAction?.type === 'create' ? 'activity' : 'task'}
+        onConfirm={handleConfirmAction}
+        onCancel={handleCancelAction}
       />
     </ScrollView>
   );
@@ -783,5 +869,28 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#fff',
     opacity: 0.9,
+  },
+  contextBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    marginHorizontal: 16,
+    marginBottom: 20,
+    borderRadius: 12,
+  },
+  contextBannerText: {
+    flex: 1,
+  },
+  contextBannerTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 2,
+  },
+  contextBannerSubtitle: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: '#fff',
   },
 });

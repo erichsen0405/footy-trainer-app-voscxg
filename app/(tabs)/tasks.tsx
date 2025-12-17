@@ -8,6 +8,7 @@ import { colors } from '@/styles/commonStyles';
 import { Task } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
 import { WebView } from 'react-native-webview';
+import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { supabase } from '@/app/integrations/supabase/client';
 
 export default function TasksScreen() {
@@ -25,6 +26,13 @@ export default function TasksScreen() {
   const [subtasks, setSubtasks] = useState<string[]>(['']);
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  
+  // Confirmation dialog state
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [pendingAction, setPendingAction] = useState<{
+    type: 'create' | 'edit' | 'delete';
+    data?: any;
+  } | null>(null);
 
   const templateTasks = tasks.filter(task => task.isTemplate);
 
@@ -82,6 +90,22 @@ export default function TasksScreen() {
   };
 
   const handleSaveTask = async () => {
+    if (!selectedTask) return;
+    
+    // Check if we need confirmation (trainer/admin managing player/team data)
+    if (isAdmin && selectedContext.type) {
+      setPendingAction({
+        type: isCreating ? 'create' : 'edit',
+        data: { task: selectedTask, videoUrl, subtasks, isCreating },
+      });
+      setShowConfirmDialog(true);
+      return;
+    }
+    
+    await executeSaveTask();
+  };
+
+  const executeSaveTask = async () => {
     if (selectedTask) {
       const taskToSave = {
         ...selectedTask,
@@ -127,8 +151,42 @@ export default function TasksScreen() {
   };
 
   const handleDeleteTask = (taskId: string) => {
+    // Check if we need confirmation (trainer/admin managing player/team data)
+    if (isAdmin && selectedContext.type) {
+      setPendingAction({
+        type: 'delete',
+        data: { taskId },
+      });
+      setShowConfirmDialog(true);
+      return;
+    }
+    
     deleteTask(taskId);
     closeTaskModal();
+  };
+
+  const handleConfirmAction = async () => {
+    setShowConfirmDialog(false);
+    
+    if (!pendingAction) return;
+    
+    try {
+      if (pendingAction.type === 'create' || pendingAction.type === 'edit') {
+        await executeSaveTask();
+      } else if (pendingAction.type === 'delete') {
+        await deleteTask(pendingAction.data.taskId);
+        closeTaskModal();
+      }
+    } catch (error) {
+      console.error('Error executing action:', error);
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const handleCancelAction = () => {
+    setShowConfirmDialog(false);
+    setPendingAction(null);
   };
 
   const handleDuplicateTask = (taskId: string) => {
@@ -197,18 +255,23 @@ export default function TasksScreen() {
         </Text>
       </View>
 
-      {/* Context Info for Trainers */}
+      {/* Context Banner for Trainers/Admins */}
       {isAdmin && selectedContext.type && (
-        <View style={[styles.contextInfo, { backgroundColor: colors.highlight }]}>
+        <View style={[styles.contextBanner, { backgroundColor: colors.warning }]}>
           <IconSymbol
-            ios_icon_name={selectedContext.type === 'player' ? 'person.fill' : 'person.3.fill'}
-            android_material_icon_name={selectedContext.type === 'player' ? 'person' : 'groups'}
-            size={20}
-            color={colors.primary}
+            ios_icon_name="exclamationmark.triangle.fill"
+            android_material_icon_name="warning"
+            size={24}
+            color="#fff"
           />
-          <Text style={[styles.contextText, { color: textColor }]}>
-            Viser opgaver for: <Text style={{ fontWeight: '600' }}>{selectedContext.name}</Text>
-          </Text>
+          <View style={styles.contextBannerText}>
+            <Text style={styles.contextBannerTitle}>
+              Du administrerer opgaver for {selectedContext.type === 'player' ? 'spiller' : 'team'}
+            </Text>
+            <Text style={styles.contextBannerSubtitle}>
+              {selectedContext.name}
+            </Text>
+          </View>
         </View>
       )}
 
@@ -509,6 +572,16 @@ export default function TasksScreen() {
           </View>
         </View>
       </Modal>
+
+      <ContextConfirmationDialog
+        visible={showConfirmDialog}
+        contextType={selectedContext.type}
+        contextName={selectedContext.name}
+        actionType={pendingAction?.type || 'edit'}
+        itemType="opgave"
+        onConfirm={handleConfirmAction}
+        onCancel={handleCancelAction}
+      />
     </View>
   );
 }
@@ -530,7 +603,7 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 16,
   },
-  contextInfo: {
+  contextBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -540,9 +613,19 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderRadius: 12,
   },
-  contextText: {
-    fontSize: 15,
+  contextBannerText: {
     flex: 1,
+  },
+  contextBannerTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 2,
+  },
+  contextBannerSubtitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
   },
   infoBox: {
     flexDirection: 'row',
