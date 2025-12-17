@@ -122,23 +122,38 @@ serve(async (req) => {
       );
     }
 
-    // Count current players using admin client
-    const { count: playerCount, error: countError } = await supabaseAdmin
-      .from('admin_player_relationships')
-      .select('*', { count: 'exact', head: true })
-      .eq('admin_id', user.id);
+    // Determine current player count based on plan type
+    let playerCount = 0;
+    
+    // Check if this is a "Spiller" plan (max_players = 1)
+    const isPlayerPlan = subscription.subscription_plans.max_players === 1;
+    
+    if (isPlayerPlan) {
+      // For "Spiller" plan, the user themselves is the one player
+      // So currentPlayers is always 1 (the logged-in user)
+      playerCount = 1;
+      console.log('[get-subscription-status] Player plan detected - user is the player, count = 1');
+    } else {
+      // For trainer plans, count players from admin_player_relationships
+      const { count, error: countError } = await supabaseAdmin
+        .from('admin_player_relationships')
+        .select('*', { count: 'exact', head: true })
+        .eq('admin_id', user.id);
 
-    console.log('[get-subscription-status] Player count:', {
-      count: playerCount,
-      error: countError?.message,
-    });
+      console.log('[get-subscription-status] Trainer plan - Player count from relationships:', {
+        count: count,
+        error: countError?.message,
+      });
+      
+      playerCount = count || 0;
+    }
 
     const response = {
       hasSubscription: true,
       status: subscription.status,
       planName: subscription.subscription_plans.name,
       maxPlayers: subscription.subscription_plans.max_players,
-      currentPlayers: playerCount || 0,
+      currentPlayers: playerCount,
       trialEnd: subscription.trial_end,
       currentPeriodEnd: subscription.current_period_end,
     };
