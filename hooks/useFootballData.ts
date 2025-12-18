@@ -239,7 +239,8 @@ export function useFootballData() {
         }
       } else {
         // Player - show own task templates and those assigned to them
-        query = query.or(`user_id.eq.${userId},player_id.eq.${userId}`);
+        // RLS policy will handle this automatically
+        console.log('Loading task templates for player (RLS will filter)');
       }
 
       const { data, error } = await query;
@@ -269,36 +270,26 @@ export function useFootballData() {
     loadTasks();
   }, [userId, userRole, selectedContext, refreshTrigger]);
 
-  // Load external calendars from Supabase with filtering based on selected context
+  // Load external calendars from Supabase
+  // CRITICAL FIX: External calendars are ONLY owned by users (no player_id or team_id)
+  // Players can only see their own calendars
   useEffect(() => {
     if (!userId) return;
 
     const loadExternalCalendars = async () => {
       console.log('Loading external calendars for user:', userId);
+      console.log('User role:', userRole);
       console.log('Selected context:', selectedContext);
 
+      // CRITICAL FIX: External calendars table does NOT have player_id or team_id columns
+      // Each user (whether admin, trainer, or player) has their own calendars
+      // Admins/trainers managing player/team data should NOT see player calendars
       let query = supabase
         .from('external_calendars')
         .select('*');
 
-      // Filter based on user role and selected context
-      if (userRole === 'trainer' || userRole === 'admin') {
-        if (selectedContext.type === 'player' && selectedContext.id) {
-          // CRITICAL FIX: Show ONLY calendars for the selected player
-          console.log('Loading calendars ONLY for selected player:', selectedContext.id);
-          query = query.eq('player_id', selectedContext.id);
-        } else if (selectedContext.type === 'team' && selectedContext.id) {
-          // CRITICAL FIX: Show ONLY calendars for the selected team
-          console.log('Loading calendars ONLY for selected team:', selectedContext.id);
-          query = query.eq('team_id', selectedContext.id);
-        } else {
-          // No selection - show only trainer's own calendars
-          query = query.eq('user_id', userId);
-        }
-      } else {
-        // Player - show own calendars and those assigned to them
-        query = query.or(`user_id.eq.${userId},player_id.eq.${userId}`);
-      }
+      // ALWAYS filter by user_id - external calendars are personal to each user
+      query = query.eq('user_id', userId);
 
       const { data, error } = await query;
 
@@ -380,12 +371,12 @@ export function useFootballData() {
       }
 
       // CRITICAL FIX: Build query for external activities with proper filtering
-      // First, get the local metadata IDs that match our filter criteria
+      // The RLS policy on events_local_meta now handles player_id and team_id filtering
       let metaQuery = supabase
         .from('events_local_meta')
         .select('id, external_event_id, category_id, manually_set_category, category_updated_at, user_id, player_id, team_id');
 
-      // Apply the same filtering logic for external events
+      // Apply filtering based on context
       if (userRole === 'trainer' || userRole === 'admin') {
         if (selectedContext.type === 'player' && selectedContext.id) {
           console.log('Loading external events ONLY for selected player:', selectedContext.id);
@@ -397,9 +388,10 @@ export function useFootballData() {
           metaQuery = metaQuery.eq('user_id', userId);
         }
       } else {
-        // CRITICAL FIX: For players, use proper OR filtering
-        console.log('🔍 Loading external events for player with OR filter');
-        metaQuery = metaQuery.or(`user_id.eq.${userId},player_id.eq.${userId}`);
+        // CRITICAL FIX: For players, the RLS policy will automatically filter
+        // to show events where user_id = userId OR player_id = userId OR team_id IN (their teams)
+        console.log('🔍 Loading external events for player (RLS will filter)');
+        // No additional filter needed - RLS handles it
       }
 
       const { data: metaData, error: metaError } = await metaQuery;
@@ -1728,7 +1720,6 @@ export function useFootballData() {
     console.log('Adding external calendar to Supabase:', calendar.name);
     console.log('User ID:', userId);
     console.log('Calendar URL:', calendar.icsUrl);
-    console.log('Selected context:', selectedContext);
 
     try {
       // First, verify the user session
@@ -1741,21 +1732,8 @@ export function useFootballData() {
       console.log('Session verified, user:', session.user.id);
       console.log('Inserting calendar into database...');
 
-      // Determine player_id and team_id based on selected context
-      let player_id = null;
-      let team_id = null;
-
-      if (userRole === 'trainer' || userRole === 'admin') {
-        if (selectedContext.type === 'player' && selectedContext.id) {
-          player_id = selectedContext.id;
-          console.log('Creating calendar for player:', player_id);
-        } else if (selectedContext.type === 'team' && selectedContext.id) {
-          team_id = selectedContext.id;
-          console.log('Creating calendar for team:', team_id);
-        }
-      }
-
-      // Insert the calendar
+      // CRITICAL FIX: External calendars are ALWAYS owned by the logged-in user
+      // No player_id or team_id - each user has their own calendars
       const { data, error } = await supabase
         .from('external_calendars')
         .insert({
@@ -1763,8 +1741,6 @@ export function useFootballData() {
           name: calendar.name,
           ics_url: calendar.icsUrl,
           enabled: calendar.enabled !== undefined ? calendar.enabled : true,
-          player_id,
-          team_id,
         })
         .select()
         .single();
