@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -20,6 +20,7 @@ import { supabase } from '@/app/integrations/supabase/client';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { WebView } from 'react-native-webview';
+import { useFocusEffect } from '@react-navigation/native';
 
 interface Exercise {
   id: string;
@@ -85,50 +86,8 @@ export default function LibraryScreen() {
   const isManagingContext = isAdmin && selectedContext.type;
   const containerBgColor = isManagingContext ? themeColors.contextWarning : bgColor;
 
-  // CRITICAL FIX: Combine user fetching and exercise fetching into a single effect
-  // This ensures data loads immediately on mount
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadData = async () => {
-      console.log('🔄 Library: Starting data load...');
-      
-      try {
-        // Get current user
-        const { data: { user } } = await supabase.auth.getUser();
-        
-        if (!user) {
-          console.log('❌ Library: No user found');
-          if (isMounted) {
-            setLoading(false);
-          }
-          return;
-        }
-
-        console.log('✅ Library: User found:', user.id);
-        
-        if (isMounted) {
-          setCurrentUserId(user.id);
-        }
-
-        // Immediately fetch exercises
-        await fetchExercisesForUser(user.id);
-      } catch (error) {
-        console.error('❌ Library: Error loading data:', error);
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    loadData();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [selectedContext]); // Re-fetch when context changes
-
-  const fetchExercisesForUser = async (userId: string) => {
+  // CRITICAL FIX: Memoize the fetch function to prevent recreation on every render
+  const fetchExercisesForUser = useCallback(async (userId: string) => {
     console.log('🔄 Library: Fetching exercises for user:', userId);
     console.log('📋 Library: Selected context:', selectedContext);
 
@@ -305,7 +264,66 @@ export default function LibraryScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [isAdmin, selectedContext]);
+
+  // CRITICAL FIX: Get user ID immediately on mount
+  useEffect(() => {
+    let isMounted = true;
+
+    const getCurrentUser = async () => {
+      console.log('🔄 Library: Getting current user...');
+      
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (!user) {
+          console.log('❌ Library: No user found');
+          if (isMounted) {
+            setLoading(false);
+          }
+          return;
+        }
+
+        console.log('✅ Library: User found:', user.id);
+        
+        if (isMounted) {
+          setCurrentUserId(user.id);
+        }
+      } catch (error) {
+        console.error('❌ Library: Error getting user:', error);
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    getCurrentUser();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // CRITICAL FIX: Fetch exercises immediately when user ID is available
+  useEffect(() => {
+    if (!currentUserId) {
+      console.log('⚠️ Library: No user ID yet, waiting...');
+      return;
+    }
+
+    console.log('🔄 Library: User ID available, fetching exercises...');
+    fetchExercisesForUser(currentUserId);
+  }, [currentUserId, selectedContext, fetchExercisesForUser]);
+
+  // CRITICAL FIX: Also refresh when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      console.log('🔄 Library: Screen focused, refreshing data...');
+      if (currentUserId) {
+        fetchExercisesForUser(currentUserId);
+      }
+    }, [currentUserId, fetchExercisesForUser])
+  );
 
   const fetchExercises = async () => {
     if (!currentUserId) {
