@@ -44,8 +44,8 @@ export default function ProfileScreen() {
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
   
-  // Collapsible sections
-  const [isCalendarSyncExpanded, setIsCalendarSyncExpanded] = useState(false);
+  // Collapsible sections - Calendar Sync now expanded by default
+  const [isCalendarSyncExpanded, setIsCalendarSyncExpanded] = useState(true);
   const [isSubscriptionExpanded, setIsSubscriptionExpanded] = useState(false);
   
   // Delete external activities state
