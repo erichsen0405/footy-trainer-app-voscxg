@@ -330,6 +330,7 @@ export function useFootballData() {
     const loadActivities = async () => {
       console.log('🔄 Loading activities for user (NEW ARCHITECTURE):', userId);
       console.log('Selected context:', selectedContext);
+      console.log('User role:', userRole);
       
       // Build query for internal activities
       let internalQuery = supabase
@@ -377,21 +378,32 @@ export function useFootballData() {
 
       // CRITICAL FIX: Build query for external activities with proper filtering
       // When managing a player's data, we need to show THEIR external events
+      console.log('🔍 Building query for external events metadata...');
+      
       let metaQuery = supabase
         .from('events_local_meta')
         .select('id, external_event_id, category_id, manually_set_category, category_updated_at, user_id, player_id, team_id');
 
-      // Apply filtering based on context
+      // CRITICAL FIX: Apply filtering based on context
+      // The RLS policy "Admins can view their players external events" should handle this,
+      // but we need to ensure we're querying the right data
       if (userRole === 'trainer' || userRole === 'admin') {
         if (selectedContext.type === 'player' && selectedContext.id) {
           // CRITICAL FIX: Show external events for the selected player
           // Player's own external events have user_id = player_id (not player_id field)
           console.log('🔍 Loading external events for selected player:', selectedContext.id);
+          console.log('   Admin user ID:', userId);
+          console.log('   Player user ID:', selectedContext.id);
+          
+          // Query by user_id = selected player's ID
+          // The RLS policy will allow this because of the admin-player relationship
           metaQuery = metaQuery.eq('user_id', selectedContext.id);
         } else if (selectedContext.type === 'team' && selectedContext.id) {
           console.log('Loading external events ONLY for selected team:', selectedContext.id);
           metaQuery = metaQuery.eq('team_id', selectedContext.id);
         } else {
+          // No selection - show only trainer's own external events
+          console.log('Loading external events for trainer (no context selected)');
           metaQuery = metaQuery.eq('user_id', userId);
         }
       } else {
@@ -401,10 +413,17 @@ export function useFootballData() {
         // No additional filter needed - RLS handles it
       }
 
+      console.log('📤 Executing external events metadata query...');
       const { data: metaData, error: metaError } = await metaQuery;
 
       if (metaError) {
         console.error('❌ Error loading external event metadata:', metaError);
+        console.error('   Error details:', JSON.stringify(metaError, null, 2));
+      } else {
+        console.log(`✅ Loaded ${metaData?.length || 0} external event metadata entries`);
+        if (metaData && metaData.length > 0) {
+          console.log('   Sample metadata:', JSON.stringify(metaData[0], null, 2));
+        }
       }
 
       let externalData: any[] = [];
@@ -467,6 +486,8 @@ export function useFootballData() {
         const externalEventIds = deduplicatedMeta.map(m => m.external_event_id).filter(Boolean);
         
         if (externalEventIds.length > 0) {
+          console.log(`📤 Fetching ${externalEventIds.length} external events...`);
+          
           // Now fetch the external events
           const { data: eventsData, error: eventsError } = await supabase
             .from('events_external')
@@ -488,6 +509,7 @@ export function useFootballData() {
 
           if (eventsError) {
             console.error('❌ Error loading external events:', eventsError);
+            console.error('   Error details:', JSON.stringify(eventsError, null, 2));
           } else if (eventsData) {
             console.log(`✅ Loaded ${eventsData.length} external events`);
             
@@ -499,10 +521,12 @@ export function useFootballData() {
                 events_local_meta: meta,
               };
             });
+            
+            console.log(`✅ Combined ${externalData.length} external events with metadata`);
           }
         }
       } else {
-        console.log('⚠️ No external event metadata found for user');
+        console.log('⚠️ No external event metadata found');
       }
 
       const loadedActivities: Activity[] = [];
@@ -561,12 +585,17 @@ export function useFootballData() {
         let categoryMap: { [key: string]: ActivityCategory } = {};
         
         if (categoryIds.length > 0) {
-          const { data: categoriesData } = await supabase
+          console.log(`📤 Fetching ${categoryIds.length} categories for external events...`);
+          
+          const { data: categoriesData, error: categoriesError } = await supabase
             .from('activity_categories')
             .select('*')
             .in('id', categoryIds);
           
-          if (categoriesData) {
+          if (categoriesError) {
+            console.error('❌ Error loading categories for external events:', categoriesError);
+          } else if (categoriesData) {
+            console.log(`✅ Loaded ${categoriesData.length} categories for external events`);
             categoriesData.forEach(cat => {
               categoryMap[cat.id] = {
                 id: cat.id,
@@ -586,12 +615,17 @@ export function useFootballData() {
         let tasksMap: { [key: string]: Task[] } = {};
         
         if (metaIds.length > 0) {
-          const { data: tasksData } = await supabase
+          console.log(`📤 Fetching tasks for ${metaIds.length} external events...`);
+          
+          const { data: tasksData, error: tasksError } = await supabase
             .from('external_event_tasks')
             .select('*')
             .in('local_meta_id', metaIds);
           
-          if (tasksData) {
+          if (tasksError) {
+            console.error('❌ Error loading tasks for external events:', tasksError);
+          } else if (tasksData) {
+            console.log(`✅ Loaded ${tasksData.length} tasks for external events`);
             tasksData.forEach(task => {
               if (!tasksMap[task.local_meta_id]) {
                 tasksMap[task.local_meta_id] = [];
