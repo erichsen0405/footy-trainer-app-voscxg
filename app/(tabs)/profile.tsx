@@ -65,6 +65,8 @@ export default function ProfileScreen() {
       setUser(user);
       
       if (user) {
+        // Refresh subscription status immediately when user is detected
+        await refreshSubscription();
         await checkUserOnboarding(user.id);
       }
     };
@@ -75,6 +77,8 @@ export default function ProfileScreen() {
       setUser(session?.user || null);
       
       if (session?.user) {
+        // Refresh subscription status immediately on auth state change
+        await refreshSubscription();
         await checkUserOnboarding(session.user.id);
       } else {
         setUserRole(null);
