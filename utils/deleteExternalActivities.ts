@@ -159,3 +159,99 @@ export async function deleteExternalActivitiesForCalendar(calendarId: string): P
     };
   }
 }
+
+/**
+ * Delete all external activities for a specific user by email (admin function)
+ * This should only be used by administrators for cleanup purposes
+ * @param userEmail - The email of the user whose external activities should be deleted
+ * @returns Object with success status and count of deleted activities
+ */
+export async function deleteExternalActivitiesForUserByEmail(userEmail: string): Promise<{
+  success: boolean;
+  count: number;
+  error?: string;
+  userId?: string;
+}> {
+  try {
+    console.log('🗑️ Admin function: Deleting external activities for user email:', userEmail);
+
+    // This is an admin function - it requires direct database access
+    // First, find the user by email
+    const { data: userData, error: userError } = await supabase
+      .from('profiles')
+      .select('user_id')
+      .eq('email', userEmail)
+      .single();
+
+    if (userError || !userData) {
+      console.error('❌ Error finding user:', userError);
+      return {
+        success: false,
+        count: 0,
+        error: 'User not found',
+      };
+    }
+
+    const userId = userData.user_id;
+    console.log('Found user ID:', userId);
+
+    // Count external activities
+    const { count: activityCount, error: countError } = await supabase
+      .from('activities')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('is_external', true);
+
+    if (countError) {
+      console.error('❌ Error counting external activities:', countError);
+      return {
+        success: false,
+        count: 0,
+        error: countError.message,
+        userId,
+      };
+    }
+
+    console.log(`📊 Found ${activityCount || 0} external activities to delete`);
+
+    if (!activityCount || activityCount === 0) {
+      return {
+        success: true,
+        count: 0,
+        userId,
+      };
+    }
+
+    // Delete all external activities
+    const { error: deleteError } = await supabase
+      .from('activities')
+      .delete()
+      .eq('user_id', userId)
+      .eq('is_external', true);
+
+    if (deleteError) {
+      console.error('❌ Error deleting external activities:', deleteError);
+      return {
+        success: false,
+        count: 0,
+        error: deleteError.message,
+        userId,
+      };
+    }
+
+    console.log(`✅ Successfully deleted ${activityCount} external activities for user ${userEmail}`);
+
+    return {
+      success: true,
+      count: activityCount,
+      userId,
+    };
+  } catch (error: any) {
+    console.error('❌ Failed to delete external activities:', error);
+    return {
+      success: false,
+      count: 0,
+      error: error.message || 'Unknown error',
+    };
+  }
+}
