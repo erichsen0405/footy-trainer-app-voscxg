@@ -488,7 +488,42 @@ export function useFootballData() {
         if (externalEventIds.length > 0) {
           console.log(`📤 Fetching ${externalEventIds.length} external events...`);
           
-          // Now fetch the external events
+          // CRITICAL FIX: Get the calendar IDs that the user has access to
+          // This helps the RLS policy verify access
+          let calendarIds: string[] = [];
+          
+          if (userRole === 'trainer' || userRole === 'admin') {
+            if (selectedContext.type === 'player' && selectedContext.id) {
+              // Get calendars for the selected player
+              const { data: playerCalendars } = await supabase
+                .from('external_calendars')
+                .select('id')
+                .eq('user_id', selectedContext.id);
+              
+              calendarIds = playerCalendars?.map(c => c.id) || [];
+              console.log(`   Found ${calendarIds.length} calendars for player ${selectedContext.id}`);
+            } else {
+              // Get trainer's own calendars
+              const { data: trainerCalendars } = await supabase
+                .from('external_calendars')
+                .select('id')
+                .eq('user_id', userId);
+              
+              calendarIds = trainerCalendars?.map(c => c.id) || [];
+              console.log(`   Found ${calendarIds.length} calendars for trainer ${userId}`);
+            }
+          } else {
+            // Get player's own calendars
+            const { data: playerCalendars } = await supabase
+              .from('external_calendars')
+              .select('id')
+              .eq('user_id', userId);
+            
+            calendarIds = playerCalendars?.map(c => c.id) || [];
+            console.log(`   Found ${calendarIds.length} calendars for player ${userId}`);
+          }
+          
+          // Now fetch the external events with both filters to help RLS
           const { data: eventsData, error: eventsError } = await supabase
             .from('events_external')
             .select(`
@@ -505,7 +540,8 @@ export function useFootballData() {
               provider_calendar_id
             `)
             .in('id', externalEventIds)
-            .eq('deleted', false); // CRITICAL FIX: Only show non-deleted events
+            .in('provider_calendar_id', calendarIds)
+            .eq('deleted', false);
 
           if (eventsError) {
             console.error('❌ Error loading external events:', eventsError);

@@ -576,7 +576,7 @@ export default function ExternalCalendarManager() {
             Automatiske kategori-tildelinger
           </Text>
           <Text style={[styles.mappingsSubtitle, { color: textSecondaryColor }]}>
-            Disse kategorier tildeles automatisk baseret på aktiviteternes navne og nøgleord. Aktiviteter uden match tildeles &quot;Ukendt&quot;. Manuelt tildelte kategorier bevares ved synkronisering.
+            Disse kategorier tildeles automatisk baseret på aktiviteternes navne og nøgleord. Aktiviteter uden match tildeles Ukendt. Manuelt tildelte kategorier bevares ved synkronisering.
           </Text>
           {categoryMappings.map((mapping, index) => (
             <View key={index} style={[styles.mappingItem, { borderBottomColor: isDark ? '#444' : '#e0e0e0' }]}>
@@ -701,7 +701,7 @@ export default function ExternalCalendarManager() {
           />
           <Text style={[styles.emptyTitle, { color: textColor }]}>Ingen eksterne kalendere</Text>
           <Text style={[styles.emptyText, { color: textSecondaryColor }]}>
-            Tilføj en ekstern kalender til din profil for at importere aktiviteter automatisk med intelligent kategori-tildeling. Aktiviteter uden match tildeles &quot;Ukendt&quot;. Manuelt tildelte kategorier bevares ved synkronisering.
+            Tilføj en ekstern kalender til din profil for at importere aktiviteter automatisk med intelligent kategori-tildeling. Aktiviteter uden match tildeles Ukendt. Manuelt tildelte kategorier bevares ved synkronisering.
           </Text>
         </View>
       ) : (
@@ -733,7 +733,8 @@ export default function ExternalCalendarManager() {
                     </Text>
                     {calendar.last_fetched && (
                       <Text style={[styles.calendarStat, { color: textSecondaryColor }]}>
-                        • Sidst synkroniseret: {new Date(calendar.last_fetched).toLocaleDateString('da-DK')}
+                        {' • Sidst synkroniseret: '}
+                        {new Date(calendar.last_fetched).toLocaleDateString('da-DK')}
                       </Text>
                     )}
                   </View>
