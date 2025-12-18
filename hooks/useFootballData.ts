@@ -405,38 +405,59 @@ export function useFootballData() {
       if (metaData && metaData.length > 0) {
         console.log(`✅ Found ${metaData.length} external event metadata entries`);
         
-        // CRITICAL FIX: Deduplicate metadata by external_event_id
-        // If multiple metadata entries exist for the same external event (e.g., one for trainer, one for player),
-        // prioritize the one that matches the current context
-        const deduplicatedMeta = new Map<number, any>();
+        // CRITICAL FIX: Enhanced deduplication by external_event_id
+        // Group metadata by external_event_id and prioritize based on context
+        const metaByEventId = new Map<string, any[]>();
         
         for (const meta of metaData) {
           const eventId = meta.external_event_id;
-          
-          if (!deduplicatedMeta.has(eventId)) {
-            // First entry for this event
-            deduplicatedMeta.set(eventId, meta);
+          if (!metaByEventId.has(eventId)) {
+            metaByEventId.set(eventId, []);
+          }
+          metaByEventId.get(eventId)!.push(meta);
+        }
+        
+        // For each external event, select the best metadata entry
+        const deduplicatedMeta: any[] = [];
+        
+        for (const [eventId, metas] of metaByEventId.entries()) {
+          if (metas.length === 1) {
+            // Only one metadata entry - use it
+            deduplicatedMeta.push(metas[0]);
           } else {
-            // Duplicate found - prioritize based on context
-            const existing = deduplicatedMeta.get(eventId);
+            // Multiple metadata entries - prioritize based on context
+            console.log(`⚠️ Found ${metas.length} metadata entries for event ${eventId}, deduplicating...`);
             
             // Priority: player_id match > team_id match > user_id match
-            if (meta.player_id === userId) {
-              // Current user is the player - highest priority
-              deduplicatedMeta.set(eventId, meta);
-            } else if (existing.player_id !== userId && meta.team_id) {
-              // Team match is better than user_id match
-              deduplicatedMeta.set(eventId, meta);
+            let bestMeta = metas[0];
+            
+            for (const meta of metas) {
+              // Highest priority: player_id matches current user
+              if (meta.player_id === userId) {
+                bestMeta = meta;
+                break;
+              }
+              
+              // Medium priority: team_id is set (better than just user_id)
+              if (meta.team_id && !bestMeta.team_id) {
+                bestMeta = meta;
+              }
+              
+              // Lowest priority: user_id matches (default)
+              if (meta.user_id === userId && !bestMeta.player_id && !bestMeta.team_id) {
+                bestMeta = meta;
+              }
             }
-            // Otherwise keep the existing one
+            
+            deduplicatedMeta.push(bestMeta);
+            console.log(`   ✅ Selected metadata ${bestMeta.id} (player_id: ${bestMeta.player_id}, team_id: ${bestMeta.team_id}, user_id: ${bestMeta.user_id})`);
           }
         }
         
-        const uniqueMetaData = Array.from(deduplicatedMeta.values());
-        console.log(`✅ Deduplicated to ${uniqueMetaData.length} unique external events`);
+        console.log(`✅ Deduplicated to ${deduplicatedMeta.length} unique external events`);
         
         // Get the external event IDs
-        const externalEventIds = uniqueMetaData.map(m => m.external_event_id).filter(Boolean);
+        const externalEventIds = deduplicatedMeta.map(m => m.external_event_id).filter(Boolean);
         
         if (externalEventIds.length > 0) {
           // Now fetch the external events
@@ -455,7 +476,8 @@ export function useFootballData() {
               provider_event_uid,
               provider_calendar_id
             `)
-            .in('id', externalEventIds);
+            .in('id', externalEventIds)
+            .eq('deleted', false); // CRITICAL FIX: Only show non-deleted events
 
           if (eventsError) {
             console.error('❌ Error loading external events:', eventsError);
@@ -464,7 +486,7 @@ export function useFootballData() {
             
             // Combine the data
             externalData = eventsData.map(event => {
-              const meta = uniqueMetaData.find(m => m.external_event_id === event.id);
+              const meta = deduplicatedMeta.find(m => m.external_event_id === event.id);
               return {
                 ...event,
                 events_local_meta: meta,
@@ -2005,7 +2027,7 @@ export function useFootballData() {
       console.log('Supabase URL:', supabase.supabaseUrl);
 
       // Call the Edge Function to sync the calendar
-      const { data, error } = await supabase.functions.invoke('sync-external-calendar', {
+      const { data, error } = await supabase.functions.invoke('sync-external-calendar-v4', {
         body: { calendarId: calendar.id }
       });
 
