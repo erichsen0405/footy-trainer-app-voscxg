@@ -275,13 +275,15 @@ export function useFootballData() {
   // Load external calendars from Supabase
   // CRITICAL FIX: External calendars are ONLY owned by users (no player_id or team_id)
   // Players can only see their own calendars
+  // Admins can see their players' calendars through RLS policy
   useEffect(() => {
     if (!userId) return;
 
     const loadExternalCalendars = async () => {
-      console.log('Loading external calendars for user:', userId);
-      console.log('User role:', userRole);
-      console.log('Selected context:', selectedContext);
+      console.log('🔄 Loading external calendars...');
+      console.log('   Current user ID:', userId);
+      console.log('   User role:', userRole);
+      console.log('   Selected context:', selectedContext);
 
       // CRITICAL FIX: When managing a player's data, show THEIR calendars, not the trainer's
       let targetUserId = userId;
@@ -289,7 +291,9 @@ export function useFootballData() {
       if ((userRole === 'trainer' || userRole === 'admin') && selectedContext.type === 'player' && selectedContext.id) {
         // Show the player's calendars
         targetUserId = selectedContext.id;
-        console.log('🔄 Loading calendars for managed player:', targetUserId);
+        console.log('   🎯 Loading calendars for managed player:', targetUserId);
+      } else {
+        console.log('   🎯 Loading calendars for current user:', targetUserId);
       }
 
       const { data, error } = await supabase
@@ -298,7 +302,8 @@ export function useFootballData() {
         .eq('user_id', targetUserId);
 
       if (error) {
-        console.error('Error loading external calendars:', error);
+        console.error('❌ Error loading external calendars:', error);
+        console.error('   Error details:', JSON.stringify(error, null, 2));
         return;
       }
 
@@ -311,8 +316,16 @@ export function useFootballData() {
           lastFetched: cal.last_fetched ? new Date(cal.last_fetched) : undefined,
           eventCount: cal.event_count || 0,
         }));
-        console.log('Loaded external calendars:', loadedCalendars.length);
+        console.log(`✅ Loaded ${loadedCalendars.length} external calendar(s) for user ${targetUserId}`);
+        if (loadedCalendars.length > 0) {
+          loadedCalendars.forEach(cal => {
+            console.log(`   📅 Calendar: "${cal.name}" (enabled: ${cal.enabled}, events: ${cal.eventCount})`);
+          });
+        }
         setExternalCalendars(loadedCalendars);
+      } else {
+        console.log('⚠️ No external calendars found for user:', targetUserId);
+        setExternalCalendars([]);
       }
     };
 
