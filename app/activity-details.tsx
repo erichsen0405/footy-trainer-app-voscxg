@@ -24,6 +24,7 @@ import EditSeriesDialog from '@/components/EditSeriesDialog';
 import DeleteActivityDialog from '@/components/DeleteActivityDialog';
 import { useUserRole } from '@/hooks/useUserRole';
 import { CreateActivityTaskModal } from '@/components/CreateActivityTaskModal';
+import { deleteSingleExternalActivity } from '@/utils/deleteExternalActivities';
 
 const DAYS_OF_WEEK = [
   { label: 'Søn', value: 0 },
@@ -393,13 +394,49 @@ export default function ActivityDetailsScreen() {
 
   const handleDeleteClick = () => {
     if (activity?.isExternal) {
+      // For external activities, show a confirmation dialog
       Alert.alert(
-        'Kan ikke slette',
-        'Denne aktivitet er fra en ekstern kalender og kan ikke slettes fra appen. Slet den i den eksterne kalender i stedet.'
+        'Slet ekstern aktivitet',
+        `Er du sikker på at du vil slette "${activity.title}"?\n\nDenne aktivitet er fra en ekstern kalender. Hvis du sletter den her, vil den blive importeret igen ved næste synkronisering, medmindre du sletter den i den eksterne kalender eller fjerner kalenderen fra din profil.`,
+        [
+          { text: 'Annuller', style: 'cancel' },
+          {
+            text: 'Slet',
+            style: 'destructive',
+            onPress: handleDeleteExternalActivity,
+          }
+        ]
       );
       return;
     }
     setShowDeleteDialog(true);
+  };
+
+  const handleDeleteExternalActivity = async () => {
+    if (!activity) return;
+
+    setIsDeleting(true);
+    try {
+      const result = await deleteSingleExternalActivity(activity.id);
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Kunne ikke slette aktiviteten');
+      }
+
+      console.log('✅ External activity deleted successfully, navigating to home screen');
+      
+      // Navigate to home screen immediately
+      router.replace('/(tabs)/(home)');
+      
+      // Show success message after navigation
+      setTimeout(() => {
+        Alert.alert('Slettet', 'Den eksterne aktivitet er blevet slettet fra din app');
+      }, 300);
+    } catch (error: any) {
+      console.error('❌ Error deleting external activity:', error);
+      Alert.alert('Fejl', `Kunne ikke slette aktiviteten: ${error?.message || 'Ukendt fejl'}`);
+      setIsDeleting(false);
+    }
   };
 
   const handleDeleteSingle = async () => {
@@ -1238,31 +1275,29 @@ export default function ActivityDetailsScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Delete Button */}
-            {!activity.isExternal && (
-              <TouchableOpacity
-                style={[styles.deleteButton, { backgroundColor: isDark ? '#3a1a1a' : '#ffe5e5' }]}
-                onPress={handleDeleteClick}
-                activeOpacity={0.7}
-                disabled={isDeleting}
-              >
-                {isDeleting ? (
-                  <ActivityIndicator size="small" color={colors.error} />
-                ) : (
-                  <React.Fragment>
-                    <IconSymbol
-                      ios_icon_name="trash"
-                      android_material_icon_name="delete"
-                      size={24}
-                      color={colors.error}
-                    />
-                    <Text style={[styles.deleteButtonText, { color: colors.error }]}>
-                      Slet aktivitet
-                    </Text>
-                  </React.Fragment>
-                )}
-              </TouchableOpacity>
-            )}
+            {/* Delete Button - Available for all activities when editing */}
+            <TouchableOpacity
+              style={[styles.deleteButton, { backgroundColor: isDark ? '#3a1a1a' : '#ffe5e5' }]}
+              onPress={handleDeleteClick}
+              activeOpacity={0.7}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <ActivityIndicator size="small" color={colors.error} />
+              ) : (
+                <React.Fragment>
+                  <IconSymbol
+                    ios_icon_name="trash"
+                    android_material_icon_name="delete"
+                    size={24}
+                    color={colors.error}
+                  />
+                  <Text style={[styles.deleteButtonText, { color: colors.error }]}>
+                    Slet aktivitet
+                  </Text>
+                </React.Fragment>
+              )}
+            </TouchableOpacity>
           </React.Fragment>
         )}
 

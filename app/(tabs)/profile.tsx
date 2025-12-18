@@ -7,6 +7,7 @@ import { supabase } from '@/app/integrations/supabase/client';
 import ExternalCalendarManager from '@/components/ExternalCalendarManager';
 import SubscriptionManager from '@/components/SubscriptionManager';
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import { deleteAllExternalActivities } from '@/utils/deleteExternalActivities';
 
 interface UserProfile {
   full_name: string;
@@ -43,6 +44,9 @@ export default function ProfileScreen() {
   // Collapsible sections
   const [isCalendarSyncExpanded, setIsCalendarSyncExpanded] = useState(false);
   const [isSubscriptionExpanded, setIsSubscriptionExpanded] = useState(false);
+  
+  // Delete external activities state
+  const [isDeletingExternalActivities, setIsDeletingExternalActivities] = useState(false);
   
   // Debug state
   const [debugInfo, setDebugInfo] = useState<string[]>([]);
@@ -488,6 +492,44 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleDeleteAllExternalActivities = async () => {
+    Alert.alert(
+      'Slet alle eksterne aktiviteter',
+      'Er du sikker på at du vil slette ALLE dine eksterne aktiviteter?\n\nDette vil slette alle aktiviteter importeret fra eksterne kalendere. Aktiviteterne vil blive importeret igen ved næste synkronisering, medmindre du fjerner kalenderne fra din profil.\n\n⚠️ Denne handling kan ikke fortrydes!',
+      [
+        { text: 'Annuller', style: 'cancel' },
+        {
+          text: 'Slet alle',
+          style: 'destructive',
+          onPress: async () => {
+            setIsDeletingExternalActivities(true);
+            try {
+              const result = await deleteAllExternalActivities();
+              
+              if (!result.success) {
+                throw new Error(result.error || 'Kunne ikke slette aktiviteter');
+              }
+
+              if (result.count === 0) {
+                Alert.alert('Ingen aktiviteter', 'Du har ingen eksterne aktiviteter at slette');
+              } else {
+                Alert.alert(
+                  'Slettet',
+                  `${result.count} eksterne aktivitet${result.count === 1 ? '' : 'er'} er blevet slettet fra din app`
+                );
+              }
+            } catch (error: any) {
+              console.error('Error deleting external activities:', error);
+              Alert.alert('Fejl', error.message || 'Kunne ikke slette eksterne aktiviteter');
+            } finally {
+              setIsDeletingExternalActivities(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const getPlanColor = (planName: string | null) => {
     if (!planName) return colors.primary;
     
@@ -877,6 +919,30 @@ export default function ProfileScreen() {
                     Tilknyt eksterne kalendere (iCal/webcal) for automatisk at importere aktiviteter
                   </Text>
                   <ExternalCalendarManager />
+                  
+                  {/* Delete All External Activities Button */}
+                  <TouchableOpacity
+                    style={[styles.deleteExternalButton, { backgroundColor: isDark ? '#3a1a1a' : '#ffe5e5' }]}
+                    onPress={handleDeleteAllExternalActivities}
+                    activeOpacity={0.7}
+                    disabled={isDeletingExternalActivities}
+                  >
+                    {isDeletingExternalActivities ? (
+                      <ActivityIndicator size="small" color={colors.error} />
+                    ) : (
+                      <React.Fragment>
+                        <IconSymbol
+                          ios_icon_name="trash.fill"
+                          android_material_icon_name="delete"
+                          size={24}
+                          color={colors.error}
+                        />
+                        <Text style={[styles.deleteExternalButtonText, { color: colors.error }]}>
+                          Slet alle eksterne aktiviteter
+                        </Text>
+                      </React.Fragment>
+                    )}
+                  </TouchableOpacity>
                 </>
               )}
             </View>
@@ -1391,5 +1457,18 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 16,
+  },
+  deleteExternalButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 16,
+    borderRadius: 14,
+    marginTop: 20,
+  },
+  deleteExternalButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
