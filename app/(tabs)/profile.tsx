@@ -41,8 +41,8 @@ export default function ProfileScreen() {
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
   
-  // Collapsible sections - Calendar Sync now expanded by default
-  const [isCalendarSyncExpanded, setIsCalendarSyncExpanded] = useState(true);
+  // Collapsible sections - Calendar Sync now collapsed by default
+  const [isCalendarSyncExpanded, setIsCalendarSyncExpanded] = useState(false);
   const [isSubscriptionExpanded, setIsSubscriptionExpanded] = useState(false);
   
   // Delete external activities state
@@ -889,7 +889,7 @@ export default function ProfileScreen() {
               </View>
             )}
 
-            {/* Calendar Sync Section - Collapsible - Available for all users - NOW EXPANDED BY DEFAULT */}
+            {/* Calendar Sync Section - Collapsible - Available for all users - NOW COLLAPSED BY DEFAULT */}
             <View style={[styles.card, { backgroundColor: cardBgColor }]}>
               <TouchableOpacity
                 style={styles.collapsibleHeader}
