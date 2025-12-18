@@ -85,22 +85,52 @@ export default function LibraryScreen() {
   const isManagingContext = isAdmin && selectedContext.type;
   const containerBgColor = isManagingContext ? themeColors.contextWarning : bgColor;
 
+  // CRITICAL FIX: Combine user fetching and exercise fetching into a single effect
+  // This ensures data loads immediately on mount
   useEffect(() => {
-    const getCurrentUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setCurrentUserId(user?.id || null);
+    let isMounted = true;
+
+    const loadData = async () => {
+      console.log('🔄 Library: Starting data load...');
+      
+      try {
+        // Get current user
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (!user) {
+          console.log('❌ Library: No user found');
+          if (isMounted) {
+            setLoading(false);
+          }
+          return;
+        }
+
+        console.log('✅ Library: User found:', user.id);
+        
+        if (isMounted) {
+          setCurrentUserId(user.id);
+        }
+
+        // Immediately fetch exercises
+        await fetchExercisesForUser(user.id);
+      } catch (error) {
+        console.error('❌ Library: Error loading data:', error);
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
     };
-    getCurrentUser();
-  }, []);
 
-  useEffect(() => {
-    if (currentUserId) {
-      fetchExercises();
-    }
-  }, [currentUserId, selectedContext]);
+    loadData();
 
-  const fetchExercises = async () => {
-    if (!currentUserId) return;
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedContext]); // Re-fetch when context changes
+
+  const fetchExercisesForUser = async (userId: string) => {
+    console.log('🔄 Library: Fetching exercises for user:', userId);
+    console.log('📋 Library: Selected context:', selectedContext);
 
     try {
       setLoading(true);
@@ -142,10 +172,10 @@ export default function LibraryScreen() {
               updated_at: new Date(assignment.exercise.updated_at),
               subtasks: (subtasksData || []).filter(s => s.exercise_id === assignment.exercise.id),
               assignments: [assignment],
-              isAssignedByCurrentTrainer: assignment.trainer_id === currentUserId,
+              isAssignedByCurrentTrainer: assignment.trainer_id === userId,
             }));
 
-          console.log('Loaded exercises for player:', exercisesWithDetails.length);
+          console.log('✅ Library: Loaded exercises for player:', exercisesWithDetails.length);
           setExercises(exercisesWithDetails);
           
         } else if (selectedContext.type === 'team' && selectedContext.id) {
@@ -159,7 +189,7 @@ export default function LibraryScreen() {
               exercise:exercise_library(*)
             `)
             .eq('team_id', selectedContext.id)
-            .eq('trainer_id', currentUserId);
+            .eq('trainer_id', userId);
 
           if (assignmentsError) throw assignmentsError;
 
@@ -186,7 +216,7 @@ export default function LibraryScreen() {
               isAssignedByCurrentTrainer: true,
             }));
 
-          console.log('Loaded exercises for team:', exercisesWithDetails.length);
+          console.log('✅ Library: Loaded exercises for team:', exercisesWithDetails.length);
           setExercises(exercisesWithDetails);
           
         } else {
@@ -196,7 +226,7 @@ export default function LibraryScreen() {
           const { data: exercisesData, error: exercisesError } = await supabase
             .from('exercise_library')
             .select('*')
-            .eq('trainer_id', currentUserId)
+            .eq('trainer_id', userId)
             .order('created_at', { ascending: false });
 
           if (exercisesError) throw exercisesError;
@@ -229,6 +259,7 @@ export default function LibraryScreen() {
             isAssignedByCurrentTrainer: true,
           }));
 
+          console.log('✅ Library: Loaded trainer exercises:', exercisesWithDetails.length);
           setExercises(exercisesWithDetails);
         }
       } else {
@@ -239,7 +270,7 @@ export default function LibraryScreen() {
             *,
             exercise:exercise_library(*)
           `)
-          .eq('player_id', currentUserId);
+          .eq('player_id', userId);
 
         if (assignmentsError) throw assignmentsError;
 
@@ -265,14 +296,23 @@ export default function LibraryScreen() {
             assignments: [assignment],
           }));
 
+        console.log('✅ Library: Loaded assigned exercises for player:', assignedExercisesWithDetails.length);
         setAssignedExercises(assignedExercisesWithDetails);
       }
     } catch (error) {
-      console.error('Error fetching exercises:', error);
+      console.error('❌ Library: Error fetching exercises:', error);
       Alert.alert('Fejl', 'Kunne ikke hente øvelser');
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchExercises = async () => {
+    if (!currentUserId) {
+      console.log('⚠️ Library: No user ID, skipping fetch');
+      return;
+    }
+    await fetchExercisesForUser(currentUserId);
   };
 
   const openCreateModal = () => {
