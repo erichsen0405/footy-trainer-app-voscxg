@@ -12,6 +12,7 @@ import {
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { supabase } from '@/app/integrations/supabase/client';
+import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 
 interface Player {
   id: string;
@@ -29,6 +30,7 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingPlayerId, setDeletingPlayerId] = useState<string | null>(null);
+  const { refreshPlayers } = useTeamPlayer();
 
   const fetchPlayers = async () => {
     try {
@@ -89,6 +91,9 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
 
       console.log('Players data:', playersData);
       setPlayers(playersData);
+      
+      // CRITICAL FIX: Also refresh the TeamPlayerContext to ensure selector is updated
+      await refreshPlayers();
     } catch (error) {
       console.error('Error in fetchPlayers:', error);
     } finally {

@@ -14,7 +14,7 @@ import {
   Platform,
   KeyboardAvoidingView,
 } from 'react-native';
-import { colors } from '@/styles/commonStyles';
+import { colors, getColors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
@@ -31,6 +31,7 @@ interface Exercise {
   updated_at: Date;
   subtasks: ExerciseSubtask[];
   assignments: ExerciseAssignment[];
+  isAssignedByCurrentTrainer?: boolean;
 }
 
 interface ExerciseSubtask {
@@ -51,7 +52,7 @@ interface ExerciseAssignment {
 }
 
 export default function LibraryScreen() {
-  const { teams, players } = useTeamPlayer();
+  const { teams, players, selectedContext } = useTeamPlayer();
   const { isAdmin } = useUserRole();
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [assignedExercises, setAssignedExercises] = useState<Exercise[]>([]);
@@ -63,6 +64,7 @@ export default function LibraryScreen() {
   const [isCreating, setIsCreating] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   
   // Form state
   const [title, setTitle] = useState('');
@@ -72,69 +74,172 @@ export default function LibraryScreen() {
   
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const themeColors = getColors(colorScheme);
   
   const bgColor = isDark ? '#1a1a1a' : colors.background;
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
 
+  // Determine if we're in context management mode
+  const isManagingContext = isAdmin && selectedContext.type;
+  const containerBgColor = isManagingContext ? themeColors.contextWarning : bgColor;
+
   useEffect(() => {
-    fetchExercises();
+    const getCurrentUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setCurrentUserId(user?.id || null);
+    };
+    getCurrentUser();
   }, []);
 
+  useEffect(() => {
+    if (currentUserId) {
+      fetchExercises();
+    }
+  }, [currentUserId, selectedContext]);
+
   const fetchExercises = async () => {
+    if (!currentUserId) return;
+
     try {
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
 
       if (isAdmin) {
-        // Trainers see their own exercises
-        const { data: exercisesData, error: exercisesError } = await supabase
-          .from('exercise_library')
-          .select('*')
-          .eq('trainer_id', user.id)
-          .order('created_at', { ascending: false });
+        // TRAINERS: Fetch exercises based on selected context
+        if (selectedContext.type === 'player' && selectedContext.id) {
+          // Managing player: Show ALL player's exercises
+          console.log('Fetching ALL exercises for player:', selectedContext.id);
+          
+          // Get all assignments for this player
+          const { data: assignmentsData, error: assignmentsError } = await supabase
+            .from('exercise_assignments')
+            .select(`
+              *,
+              exercise:exercise_library(*)
+            `)
+            .eq('player_id', selectedContext.id);
 
-        if (exercisesError) throw exercisesError;
+          if (assignmentsError) throw assignmentsError;
 
-        // Fetch subtasks for all exercises
-        const exerciseIds = exercisesData?.map(e => e.id) || [];
-        const { data: subtasksData, error: subtasksError } = await supabase
-          .from('exercise_subtasks')
-          .select('*')
-          .in('exercise_id', exerciseIds)
-          .order('sort_order', { ascending: true });
+          const exerciseIds = assignmentsData?.map(a => a.exercise_id) || [];
+          
+          // Fetch subtasks
+          const { data: subtasksData, error: subtasksError } = await supabase
+            .from('exercise_subtasks')
+            .select('*')
+            .in('exercise_id', exerciseIds)
+            .order('sort_order', { ascending: true });
 
-        if (subtasksError) throw subtasksError;
+          if (subtasksError) throw subtasksError;
 
-        // Fetch assignments
-        const { data: assignmentsData, error: assignmentsError } = await supabase
-          .from('exercise_assignments')
-          .select('*')
-          .in('exercise_id', exerciseIds);
+          // Combine data and mark which exercises are assigned by current trainer
+          const exercisesWithDetails: Exercise[] = (assignmentsData || [])
+            .filter(a => a.exercise)
+            .map(assignment => ({
+              ...assignment.exercise,
+              created_at: new Date(assignment.exercise.created_at),
+              updated_at: new Date(assignment.exercise.updated_at),
+              subtasks: (subtasksData || []).filter(s => s.exercise_id === assignment.exercise.id),
+              assignments: [assignment],
+              isAssignedByCurrentTrainer: assignment.trainer_id === currentUserId,
+            }));
 
-        if (assignmentsError) throw assignmentsError;
+          console.log('Loaded exercises for player:', exercisesWithDetails.length);
+          setExercises(exercisesWithDetails);
+          
+        } else if (selectedContext.type === 'team' && selectedContext.id) {
+          // Managing team: Show ONLY exercises assigned to team by current trainer
+          console.log('Fetching exercises assigned to team by current trainer:', selectedContext.id);
+          
+          const { data: assignmentsData, error: assignmentsError } = await supabase
+            .from('exercise_assignments')
+            .select(`
+              *,
+              exercise:exercise_library(*)
+            `)
+            .eq('team_id', selectedContext.id)
+            .eq('trainer_id', currentUserId);
 
-        // Combine data
-        const exercisesWithDetails: Exercise[] = (exercisesData || []).map(exercise => ({
-          ...exercise,
-          created_at: new Date(exercise.created_at),
-          updated_at: new Date(exercise.updated_at),
-          subtasks: (subtasksData || []).filter(s => s.exercise_id === exercise.id),
-          assignments: (assignmentsData || []).filter(a => a.exercise_id === exercise.id),
-        }));
+          if (assignmentsError) throw assignmentsError;
 
-        setExercises(exercisesWithDetails);
+          const exerciseIds = assignmentsData?.map(a => a.exercise_id) || [];
+          
+          // Fetch subtasks
+          const { data: subtasksData, error: subtasksError } = await supabase
+            .from('exercise_subtasks')
+            .select('*')
+            .in('exercise_id', exerciseIds)
+            .order('sort_order', { ascending: true });
+
+          if (subtasksError) throw subtasksError;
+
+          // Combine data
+          const exercisesWithDetails: Exercise[] = (assignmentsData || [])
+            .filter(a => a.exercise)
+            .map(assignment => ({
+              ...assignment.exercise,
+              created_at: new Date(assignment.exercise.created_at),
+              updated_at: new Date(assignment.exercise.updated_at),
+              subtasks: (subtasksData || []).filter(s => s.exercise_id === assignment.exercise.id),
+              assignments: [assignment],
+              isAssignedByCurrentTrainer: true,
+            }));
+
+          console.log('Loaded exercises for team:', exercisesWithDetails.length);
+          setExercises(exercisesWithDetails);
+          
+        } else {
+          // No context: Show trainer's own exercises
+          console.log('Fetching trainer own exercises');
+          
+          const { data: exercisesData, error: exercisesError } = await supabase
+            .from('exercise_library')
+            .select('*')
+            .eq('trainer_id', currentUserId)
+            .order('created_at', { ascending: false });
+
+          if (exercisesError) throw exercisesError;
+
+          // Fetch subtasks for all exercises
+          const exerciseIds = exercisesData?.map(e => e.id) || [];
+          const { data: subtasksData, error: subtasksError } = await supabase
+            .from('exercise_subtasks')
+            .select('*')
+            .in('exercise_id', exerciseIds)
+            .order('sort_order', { ascending: true });
+
+          if (subtasksError) throw subtasksError;
+
+          // Fetch assignments
+          const { data: assignmentsData, error: assignmentsError } = await supabase
+            .from('exercise_assignments')
+            .select('*')
+            .in('exercise_id', exerciseIds);
+
+          if (assignmentsError) throw assignmentsError;
+
+          // Combine data
+          const exercisesWithDetails: Exercise[] = (exercisesData || []).map(exercise => ({
+            ...exercise,
+            created_at: new Date(exercise.created_at),
+            updated_at: new Date(exercise.updated_at),
+            subtasks: (subtasksData || []).filter(s => s.exercise_id === exercise.id),
+            assignments: (assignmentsData || []).filter(a => a.exercise_id === exercise.id),
+            isAssignedByCurrentTrainer: true,
+          }));
+
+          setExercises(exercisesWithDetails);
+        }
       } else {
-        // Players see exercises assigned to them
+        // PLAYERS: See exercises assigned to them
         const { data: assignmentsData, error: assignmentsError } = await supabase
           .from('exercise_assignments')
           .select(`
             *,
             exercise:exercise_library(*)
           `)
-          .eq('player_id', user.id);
+          .eq('player_id', currentUserId);
 
         if (assignmentsError) throw assignmentsError;
 
@@ -181,6 +286,15 @@ export default function LibraryScreen() {
   };
 
   const openEditModal = (exercise: Exercise) => {
+    // Check if trainer can edit this exercise
+    if (isManagingContext && !exercise.isAssignedByCurrentTrainer) {
+      Alert.alert(
+        'Ikke tilladt',
+        'Du kan ikke redigere øvelser som ikke er tildelt af dig selv.'
+      );
+      return;
+    }
+    
     setSelectedExercise(exercise);
     setIsCreating(false);
     setTitle(exercise.title);
@@ -198,15 +312,14 @@ export default function LibraryScreen() {
 
     setProcessing(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      if (!currentUserId) throw new Error('Not authenticated');
 
       if (isCreating) {
         // Create new exercise
         const { data: newExercise, error: exerciseError } = await supabase
           .from('exercise_library')
           .insert({
-            trainer_id: user.id,
+            trainer_id: currentUserId,
             title,
             description: description || null,
             video_url: videoUrl || null,
@@ -285,6 +398,15 @@ export default function LibraryScreen() {
   };
 
   const handleDeleteExercise = (exercise: Exercise) => {
+    // Check if trainer can delete this exercise
+    if (isManagingContext && !exercise.isAssignedByCurrentTrainer) {
+      Alert.alert(
+        'Ikke tilladt',
+        'Du kan ikke slette øvelser som ikke er tildelt af dig selv.'
+      );
+      return;
+    }
+    
     Alert.alert(
       'Slet øvelse',
       `Er du sikker på at du vil slette "${exercise.title}"?\n\nDette vil også fjerne alle tildelinger af denne øvelse.`,
@@ -317,14 +439,13 @@ export default function LibraryScreen() {
   const handleDuplicateExercise = async (exercise: Exercise) => {
     setProcessing(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      if (!currentUserId) throw new Error('Not authenticated');
 
       // Create duplicate exercise
       const { data: newExercise, error: exerciseError } = await supabase
         .from('exercise_library')
         .insert({
-          trainer_id: user.id,
+          trainer_id: currentUserId,
           title: `${exercise.title} (kopi)`,
           description: exercise.description,
           video_url: exercise.video_url,
@@ -365,18 +486,15 @@ export default function LibraryScreen() {
   };
 
   const handleAssignToPlayer = async (playerId: string) => {
-    if (!selectedExercise) return;
+    if (!selectedExercise || !currentUserId) return;
 
     setProcessing(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
       console.log('🔄 Assigning exercise to player:', {
         exerciseId: selectedExercise.id,
         exerciseTitle: selectedExercise.title,
         playerId,
-        trainerId: user.id,
+        trainerId: currentUserId,
       });
 
       // Create exercise assignment
@@ -384,7 +502,7 @@ export default function LibraryScreen() {
         .from('exercise_assignments')
         .insert({
           exercise_id: selectedExercise.id,
-          trainer_id: user.id,
+          trainer_id: currentUserId,
           player_id: playerId,
           team_id: null,
         });
@@ -417,18 +535,15 @@ export default function LibraryScreen() {
   };
 
   const handleAssignToTeam = async (teamId: string) => {
-    if (!selectedExercise) return;
+    if (!selectedExercise || !currentUserId) return;
 
     setProcessing(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
       console.log('🔄 Assigning exercise to team:', {
         exerciseId: selectedExercise.id,
         exerciseTitle: selectedExercise.title,
         teamId,
-        trainerId: user.id,
+        trainerId: currentUserId,
       });
 
       // Create exercise assignment
@@ -436,7 +551,7 @@ export default function LibraryScreen() {
         .from('exercise_assignments')
         .insert({
           exercise_id: selectedExercise.id,
-          trainer_id: user.id,
+          trainer_id: currentUserId,
           player_id: null,
           team_id: teamId,
         });
@@ -471,8 +586,7 @@ export default function LibraryScreen() {
   const handleCopyToTasks = async (exercise: Exercise) => {
     setProcessing(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      if (!currentUserId) throw new Error('Not authenticated');
 
       console.log('🔄 Copying exercise to task template:', exercise.title);
 
@@ -480,8 +594,8 @@ export default function LibraryScreen() {
       const { data: taskTemplate, error: taskTemplateError } = await supabase
         .from('task_templates')
         .insert({
-          user_id: user.id,
-          player_id: user.id, // Player owns this task template
+          user_id: currentUserId,
+          player_id: currentUserId, // Player owns this task template
           title: exercise.title,
           description: exercise.description,
           video_url: exercise.video_url,
@@ -561,136 +675,159 @@ export default function LibraryScreen() {
     }
   };
 
-  const renderExerciseCard = (exercise: Exercise, isPlayerView: boolean = false) => (
-    <View key={exercise.id} style={[styles.exerciseCard, { backgroundColor: cardBgColor }]}>
-      <View style={styles.exerciseHeader}>
-        <View style={styles.exerciseHeaderLeft}>
-          <IconSymbol
-            ios_icon_name="book.fill"
-            android_material_icon_name="menu_book"
-            size={24}
-            color={colors.primary}
-          />
-          <View style={styles.exerciseTitleContainer}>
-            <Text style={[styles.exerciseTitle, { color: textColor }]}>
-              {exercise.title}
-            </Text>
-            {!isPlayerView && exercise.assignments.length > 0 && (
-              <Text style={[styles.assignmentCount, { color: textSecondaryColor }]}>
-                Tildelt til {exercise.assignments.length} spiller{exercise.assignments.length !== 1 ? 'e' : ''}/team
+  const renderExerciseCard = (exercise: Exercise, isPlayerView: boolean = false) => {
+    const isDisabled = isManagingContext && !exercise.isAssignedByCurrentTrainer;
+    const cardOpacity = isDisabled ? 0.5 : 1;
+    
+    return (
+      <View 
+        key={exercise.id} 
+        style={[
+          styles.exerciseCard, 
+          { 
+            backgroundColor: cardBgColor,
+            opacity: cardOpacity,
+          }
+        ]}
+      >
+        <View style={styles.exerciseHeader}>
+          <View style={styles.exerciseHeaderLeft}>
+            <IconSymbol
+              ios_icon_name="book.fill"
+              android_material_icon_name="menu_book"
+              size={24}
+              color={isDisabled ? textSecondaryColor : colors.primary}
+            />
+            <View style={styles.exerciseTitleContainer}>
+              <Text style={[styles.exerciseTitle, { color: textColor }]}>
+                {exercise.title}
               </Text>
-            )}
+              {!isPlayerView && exercise.assignments.length > 0 && (
+                <Text style={[styles.assignmentCount, { color: textSecondaryColor }]}>
+                  Tildelt til {exercise.assignments.length} spiller{exercise.assignments.length !== 1 ? 'e' : ''}/team
+                </Text>
+              )}
+              {isDisabled && (
+                <Text style={[styles.disabledBadge, { color: textSecondaryColor }]}>
+                  ⚠️ Ikke tildelt af dig
+                </Text>
+              )}
+            </View>
           </View>
-        </View>
-        <View style={styles.exerciseActions}>
-          {isPlayerView ? (
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: colors.primary }]}
-              onPress={() => handleCopyToTasks(exercise)}
-              disabled={processing}
-            >
-              <IconSymbol
-                ios_icon_name="doc.on.doc"
-                android_material_icon_name="content_copy"
-                size={20}
-                color="#fff"
-              />
-              <Text style={styles.copyButtonText}>Kopier til opgaver</Text>
-            </TouchableOpacity>
-          ) : (
-            <>
+          <View style={styles.exerciseActions}>
+            {isPlayerView ? (
               <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => openAssignModal(exercise)}
-                disabled={processing}
-              >
-                <IconSymbol
-                  ios_icon_name="person.badge.plus"
-                  android_material_icon_name="person_add"
-                  size={20}
-                  color={colors.secondary}
-                />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => handleDuplicateExercise(exercise)}
+                style={[styles.actionButton, { backgroundColor: colors.primary }]}
+                onPress={() => handleCopyToTasks(exercise)}
                 disabled={processing}
               >
                 <IconSymbol
                   ios_icon_name="doc.on.doc"
                   android_material_icon_name="content_copy"
                   size={20}
-                  color={colors.secondary}
+                  color="#fff"
                 />
+                <Text style={styles.copyButtonText}>Kopier til opgaver</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => openEditModal(exercise)}
-                disabled={processing}
-              >
-                <IconSymbol
-                  ios_icon_name="pencil"
-                  android_material_icon_name="edit"
-                  size={20}
-                  color={colors.accent}
-                />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => handleDeleteExercise(exercise)}
-                disabled={processing}
-              >
-                <IconSymbol
-                  ios_icon_name="trash"
-                  android_material_icon_name="delete"
-                  size={20}
-                  color={colors.error}
-                />
-              </TouchableOpacity>
-            </>
-          )}
+            ) : (
+              <>
+                {!isDisabled && (
+                  <>
+                    <TouchableOpacity
+                      style={styles.actionButton}
+                      onPress={() => openAssignModal(exercise)}
+                      disabled={processing}
+                    >
+                      <IconSymbol
+                        ios_icon_name="person.badge.plus"
+                        android_material_icon_name="person_add"
+                        size={20}
+                        color={colors.secondary}
+                      />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.actionButton}
+                      onPress={() => handleDuplicateExercise(exercise)}
+                      disabled={processing}
+                    >
+                      <IconSymbol
+                        ios_icon_name="doc.on.doc"
+                        android_material_icon_name="content_copy"
+                        size={20}
+                        color={colors.secondary}
+                      />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.actionButton}
+                      onPress={() => openEditModal(exercise)}
+                      disabled={processing}
+                    >
+                      <IconSymbol
+                        ios_icon_name="pencil"
+                        android_material_icon_name="edit"
+                        size={20}
+                        color={colors.accent}
+                      />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.actionButton}
+                      onPress={() => handleDeleteExercise(exercise)}
+                      disabled={processing}
+                    >
+                      <IconSymbol
+                        ios_icon_name="trash"
+                        android_material_icon_name="delete"
+                        size={20}
+                        color={colors.error}
+                      />
+                    </TouchableOpacity>
+                  </>
+                )}
+              </>
+            )}
+          </View>
         </View>
+
+        {exercise.description && (
+          <Text style={[styles.exerciseDescription, { color: textSecondaryColor }]}>
+            {exercise.description}
+          </Text>
+        )}
+
+        {exercise.video_url && !isDisabled && (
+          <TouchableOpacity 
+            style={styles.videoIndicator}
+            onPress={() => openVideoModal(exercise.video_url!)}
+          >
+            <IconSymbol
+              ios_icon_name="play.rectangle.fill"
+              android_material_icon_name="play_circle"
+              size={16}
+              color={colors.primary}
+            />
+            <Text style={[styles.videoText, { color: colors.primary }]}>Afspil video</Text>
+          </TouchableOpacity>
+        )}
+
+        {exercise.subtasks.length > 0 && (
+          <View style={styles.subtasksContainer}>
+            <Text style={[styles.subtasksTitle, { color: textColor }]}>Delopgaver:</Text>
+            {exercise.subtasks.map((subtask, index) => (
+              <View key={subtask.id} style={styles.subtaskItem}>
+                <Text style={[styles.subtaskText, { color: textSecondaryColor }]}>
+                  {index + 1}. {subtask.title}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
       </View>
-
-      {exercise.description && (
-        <Text style={[styles.exerciseDescription, { color: textSecondaryColor }]}>
-          {exercise.description}
-        </Text>
-      )}
-
-      {exercise.video_url && (
-        <TouchableOpacity 
-          style={styles.videoIndicator}
-          onPress={() => openVideoModal(exercise.video_url!)}
-        >
-          <IconSymbol
-            ios_icon_name="play.rectangle.fill"
-            android_material_icon_name="play_circle"
-            size={16}
-            color={colors.primary}
-          />
-          <Text style={[styles.videoText, { color: colors.primary }]}>Afspil video</Text>
-        </TouchableOpacity>
-      )}
-
-      {exercise.subtasks.length > 0 && (
-        <View style={styles.subtasksContainer}>
-          <Text style={[styles.subtasksTitle, { color: textColor }]}>Delopgaver:</Text>
-          {exercise.subtasks.map((subtask, index) => (
-            <View key={subtask.id} style={styles.subtaskItem}>
-              <Text style={[styles.subtaskText, { color: textSecondaryColor }]}>
-                {index + 1}. {subtask.title}
-              </Text>
-            </View>
-          ))}
-        </View>
-      )}
-    </View>
-  );
+    );
+  };
 
   if (loading) {
     return (
-      <View style={[styles.container, { backgroundColor: bgColor }]}>
+      <View style={[styles.container, { backgroundColor: containerBgColor }]}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={[styles.loadingText, { color: textColor }]}>Indlæser bibliotek...</Text>
@@ -700,7 +837,7 @@ export default function LibraryScreen() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: bgColor }]}>
+    <View style={[styles.container, { backgroundColor: containerBgColor }]}>
       <View style={styles.header}>
         <View>
           <Text style={[styles.headerTitle, { color: textColor }]}>
@@ -713,7 +850,7 @@ export default function LibraryScreen() {
             }
           </Text>
         </View>
-        {isAdmin && (
+        {isAdmin && !isManagingContext && (
           <TouchableOpacity
             style={[styles.createButton, { backgroundColor: colors.primary }]}
             onPress={openCreateModal}
@@ -729,6 +866,32 @@ export default function LibraryScreen() {
           </TouchableOpacity>
         )}
       </View>
+
+      {/* Enhanced Context Banner for Trainers/Admins */}
+      {isManagingContext && (
+        <View style={[styles.contextBanner, { backgroundColor: '#D4A574' }]}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle.fill"
+            android_material_icon_name="warning"
+            size={28}
+            color="#fff"
+          />
+          <View style={styles.contextBannerText}>
+            <Text style={styles.contextBannerTitle}>
+              ⚠️ DU SER BIBLIOTEK FOR {selectedContext.type === 'player' ? 'SPILLER' : 'TEAM'}
+            </Text>
+            <Text style={styles.contextBannerSubtitle}>
+              {selectedContext.name}
+            </Text>
+            <Text style={styles.contextBannerInfo}>
+              {selectedContext.type === 'player' 
+                ? 'Nedtonede øvelser er ikke tildelt af dig. Du kan kun åbne og redigere øvelser du selv har tildelt.'
+                : 'Du ser kun øvelser du har tildelt til dette team.'
+              }
+            </Text>
+          </View>
+        </View>
+      )}
 
       <ScrollView
         style={styles.content}
@@ -747,7 +910,10 @@ export default function LibraryScreen() {
               />
               <Text style={[styles.emptyTitle, { color: textColor }]}>Ingen øvelser endnu</Text>
               <Text style={[styles.emptyText, { color: textSecondaryColor }]}>
-                Opret din første øvelse for at komme i gang
+                {isManagingContext 
+                  ? `Ingen øvelser ${selectedContext.type === 'player' ? 'tildelt denne spiller' : 'tildelt dette team'}`
+                  : 'Opret din første øvelse for at komme i gang'
+                }
               </Text>
             </View>
           ) : (
@@ -1095,6 +1261,40 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
   },
+  contextBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    marginHorizontal: 20,
+    marginBottom: 12,
+    borderRadius: 16,
+    borderWidth: 3,
+    borderColor: '#B8860B',
+  },
+  contextBannerText: {
+    flex: 1,
+  },
+  contextBannerTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 4,
+    letterSpacing: 0.5,
+  },
+  contextBannerSubtitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  contextBannerInfo: {
+    fontSize: 13,
+    color: '#fff',
+    opacity: 0.95,
+    fontStyle: 'italic',
+  },
   content: {
     flex: 1,
   },
@@ -1158,6 +1358,11 @@ const styles = StyleSheet.create({
   },
   assignmentCount: {
     fontSize: 14,
+  },
+  disabledBadge: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginTop: 4,
   },
   exerciseActions: {
     flexDirection: 'row',
