@@ -164,9 +164,10 @@ export function useFootballData() {
       // Filter based on user role and selected context
       if (userRole === 'trainer' || userRole === 'admin') {
         if (selectedContext.type === 'player' && selectedContext.id) {
-          // CRITICAL FIX: Show ONLY categories for the selected player
-          console.log('Loading categories ONLY for selected player:', selectedContext.id);
-          query = query.eq('player_id', selectedContext.id);
+          // CRITICAL FIX: Show categories for the selected player
+          // Player's own categories have user_id = player_id
+          console.log('Loading categories for selected player:', selectedContext.id);
+          query = query.eq('user_id', selectedContext.id);
         } else if (selectedContext.type === 'team' && selectedContext.id) {
           // CRITICAL FIX: Show ONLY categories for the selected team
           console.log('Loading categories ONLY for selected team:', selectedContext.id);
@@ -226,9 +227,10 @@ export function useFootballData() {
       // Filter based on user role and selected context
       if (userRole === 'trainer' || userRole === 'admin') {
         if (selectedContext.type === 'player' && selectedContext.id) {
-          // CRITICAL FIX: Show ONLY task templates for the selected player
-          console.log('Loading task templates ONLY for selected player:', selectedContext.id);
-          query = query.eq('player_id', selectedContext.id);
+          // CRITICAL FIX: Show task templates for the selected player
+          // Player's own task templates have user_id = player_id
+          console.log('Loading task templates for selected player:', selectedContext.id);
+          query = query.eq('user_id', selectedContext.id);
         } else if (selectedContext.type === 'team' && selectedContext.id) {
           // CRITICAL FIX: Show ONLY task templates for the selected team
           console.log('Loading task templates ONLY for selected team:', selectedContext.id);
@@ -281,17 +283,19 @@ export function useFootballData() {
       console.log('User role:', userRole);
       console.log('Selected context:', selectedContext);
 
-      // CRITICAL FIX: External calendars table does NOT have player_id or team_id columns
-      // Each user (whether admin, trainer, or player) has their own calendars
-      // Admins/trainers managing player/team data should NOT see player calendars
-      let query = supabase
+      // CRITICAL FIX: When managing a player's data, show THEIR calendars, not the trainer's
+      let targetUserId = userId;
+      
+      if ((userRole === 'trainer' || userRole === 'admin') && selectedContext.type === 'player' && selectedContext.id) {
+        // Show the player's calendars
+        targetUserId = selectedContext.id;
+        console.log('🔄 Loading calendars for managed player:', targetUserId);
+      }
+
+      const { data, error } = await supabase
         .from('external_calendars')
-        .select('*');
-
-      // ALWAYS filter by user_id - external calendars are personal to each user
-      query = query.eq('user_id', userId);
-
-      const { data, error } = await query;
+        .select('*')
+        .eq('user_id', targetUserId);
 
       if (error) {
         console.error('Error loading external calendars:', error);
@@ -348,9 +352,10 @@ export function useFootballData() {
       // Filter based on user role and selected context
       if (userRole === 'trainer' || userRole === 'admin') {
         if (selectedContext.type === 'player' && selectedContext.id) {
-          // CRITICAL FIX: Show ONLY activities for the selected player
-          console.log('Loading activities ONLY for selected player:', selectedContext.id);
-          internalQuery = internalQuery.eq('player_id', selectedContext.id);
+          // CRITICAL FIX: Show activities for the selected player
+          // Player's own activities have user_id = player_id
+          console.log('Loading activities for selected player:', selectedContext.id);
+          internalQuery = internalQuery.eq('user_id', selectedContext.id);
         } else if (selectedContext.type === 'team' && selectedContext.id) {
           // CRITICAL FIX: Show ONLY activities for the selected team
           console.log('Loading activities ONLY for selected team:', selectedContext.id);
@@ -371,7 +376,7 @@ export function useFootballData() {
       }
 
       // CRITICAL FIX: Build query for external activities with proper filtering
-      // The RLS policy on events_local_meta now handles player_id and team_id filtering
+      // When managing a player's data, we need to show THEIR external events
       let metaQuery = supabase
         .from('events_local_meta')
         .select('id, external_event_id, category_id, manually_set_category, category_updated_at, user_id, player_id, team_id');
@@ -379,8 +384,10 @@ export function useFootballData() {
       // Apply filtering based on context
       if (userRole === 'trainer' || userRole === 'admin') {
         if (selectedContext.type === 'player' && selectedContext.id) {
-          console.log('Loading external events ONLY for selected player:', selectedContext.id);
-          metaQuery = metaQuery.eq('player_id', selectedContext.id);
+          // CRITICAL FIX: Show external events for the selected player
+          // Player's own external events have user_id = player_id (not player_id field)
+          console.log('🔍 Loading external events for selected player:', selectedContext.id);
+          metaQuery = metaQuery.eq('user_id', selectedContext.id);
         } else if (selectedContext.type === 'team' && selectedContext.id) {
           console.log('Loading external events ONLY for selected team:', selectedContext.id);
           metaQuery = metaQuery.eq('team_id', selectedContext.id);
@@ -961,8 +968,7 @@ export function useFootballData() {
         const { error: updateError } = await supabase
           .from('events_local_meta')
           .update(updateData)
-          .eq('id', activityId)
-          .eq('user_id', userId);
+          .eq('id', activityId);
 
         if (updateError) {
           console.error('❌ Error updating local metadata:', updateError);
@@ -1015,8 +1021,7 @@ export function useFootballData() {
         const { error: updateError } = await supabase
           .from('activities')
           .update(updateData)
-          .eq('id', activityId)
-          .eq('user_id', userId);
+          .eq('id', activityId);
 
         if (updateError) {
           console.error('❌ Error updating activity:', updateError);
