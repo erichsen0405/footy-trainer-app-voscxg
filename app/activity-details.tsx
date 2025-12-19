@@ -25,6 +25,7 @@ import DeleteActivityDialog from '@/components/DeleteActivityDialog';
 import { useUserRole } from '@/hooks/useUserRole';
 import { CreateActivityTaskModal } from '@/components/CreateActivityTaskModal';
 import { deleteSingleExternalActivity } from '@/utils/deleteExternalActivities';
+import { TaskDescriptionRenderer } from '@/components/TaskDescriptionRenderer';
 
 const DAYS_OF_WEEK = [
   { label: 'Søn', value: 0 },
@@ -1197,9 +1198,10 @@ export default function ActivityDetailsScreen() {
                         {task.title}
                       </Text>
                       {task.description && (
-                        <Text style={[styles.taskDescription, { color: textSecondaryColor }]}>
-                          {task.description}
-                        </Text>
+                        <TaskDescriptionRenderer 
+                          description={task.description}
+                          textColor={textSecondaryColor}
+                        />
                       )}
                     </View>
                   </TouchableOpacity>
@@ -1696,9 +1698,6 @@ const styles = StyleSheet.create({
   taskCompleted: {
     textDecorationLine: 'line-through',
     opacity: 0.6,
-  },
-  taskDescription: {
-    fontSize: 14,
   },
   taskDeleteButton: {
     padding: 10,
