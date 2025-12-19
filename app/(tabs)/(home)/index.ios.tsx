@@ -14,6 +14,7 @@ import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { LinearGradient } from 'expo-linear-gradient';
 import { VideoPlayer } from '@/components/VideoPlayer';
 import { isValidVideoUrl } from '@/utils/videoUrlParser';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -24,6 +25,7 @@ export default function HomeScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const themeColors = getColors(colorScheme);
+  const insets = useSafeAreaInsets();
 
   const [selectedTask, setSelectedTask] = useState<{ task: Task; activityId: string; activityTitle: string } | null>(null);
   const [isTaskModalVisible, setIsTaskModalVisible] = useState(false);
@@ -330,7 +332,7 @@ export default function HomeScreen() {
     <View style={{ flex: 1 }}>
       <ScrollView 
         style={[styles.container, { backgroundColor: containerBgColor }]} 
-        contentContainerStyle={styles.contentContainer}
+        contentContainerStyle={[styles.contentContainer, { paddingTop: 0 }]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -340,13 +342,13 @@ export default function HomeScreen() {
           />
         }
       >
-        {/* Premium Header with Gradient */}
-        <View style={styles.headerContainer}>
+        {/* Premium Header with Gradient - Now scrolls with content */}
+        <View style={[styles.headerContainer, { marginTop: 0 }]}>
           <LinearGradient
             colors={['#1a1a2e', '#16213e', '#0f3460']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={styles.headerGradient}
+            style={[styles.headerGradient, { paddingTop: insets.top + 60 }]}
           >
             <View style={styles.headerContent}>
               <View style={styles.headerTop}>
@@ -792,18 +794,15 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   contentContainer: {
-    paddingTop: 60,
     paddingHorizontal: 16,
   },
   
   // Premium Header Styles
   headerContainer: {
     marginHorizontal: -16,
-    marginTop: -60,
     marginBottom: 24,
   },
   headerGradient: {
-    paddingTop: 60,
     paddingBottom: 32,
     paddingHorizontal: 24,
   },
