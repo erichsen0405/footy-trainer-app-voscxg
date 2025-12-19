@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import { useFootball } from '@/contexts/FootballContext';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import { colors, getColors } from '@/styles/commonStyles';
-import { Activity } from '@/types';
+import { Activity, Task } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
 import { getWeek, startOfWeek, endOfWeek, subWeeks } from 'date-fns';
 import { requestNotificationPermissions } from '@/utils/notificationService';
@@ -13,6 +13,8 @@ import CreateActivityModal, { ActivityCreationData } from '@/components/CreateAc
 import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { supabase } from '@/app/integrations/supabase/client';
 import { LinearGradient } from 'expo-linear-gradient';
+import { VideoModal } from '@/components/VideoPlayer';
+import { isValidVideoUrl } from '@/utils/videoUrlParser';
 
 export default function HomeScreen() {
   const { currentWeekStats, todayActivities, activities, categories, toggleTaskCompletion, createActivity, externalCalendars, fetchExternalCalendarEvents } = useFootball();
@@ -24,6 +26,11 @@ export default function HomeScreen() {
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [weeksToLoad, setWeeksToLoad] = useState(0);
+  
+  // Video modal state
+  const [videoModalVisible, setVideoModalVisible] = useState(false);
+  const [selectedVideoUrl, setSelectedVideoUrl] = useState('');
+  const [selectedVideoTitle, setSelectedVideoTitle] = useState('');
   
   // Confirmation dialog state
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -203,9 +210,20 @@ export default function HomeScreen() {
     router.push(`/activity-details?id=${activityId}`);
   };
 
-  const handleTaskToggle = async (activityId: string, taskId: string, e: any) => {
+  const handleTaskToggle = async (activityId: string, taskId: string, task: Task, e: any) => {
     // CRITICAL: Stop event propagation to prevent opening activity details
     e.stopPropagation();
+    
+    console.log('⚡ Task clicked:', task.title);
+    
+    // Check if task has a video URL
+    if (task.videoUrl && isValidVideoUrl(task.videoUrl)) {
+      console.log('📹 Task has video, opening video modal');
+      setSelectedVideoUrl(task.videoUrl);
+      setSelectedVideoTitle(task.title);
+      setVideoModalVisible(true);
+      return;
+    }
     
     console.log('⚡ INSTANT: Toggling task completion');
     
@@ -484,7 +502,7 @@ export default function HomeScreen() {
                         <TouchableOpacity
                           key={task.id}
                           style={styles.taskItemPremium}
-                          onPress={(e) => handleTaskToggle(activity.id, task.id, e)}
+                          onPress={(e) => handleTaskToggle(activity.id, task.id, task, e)}
                           activeOpacity={0.7}
                         >
                           <View style={[styles.checkboxPremium, task.completed && styles.checkboxCheckedPremium]}>
@@ -496,12 +514,20 @@ export default function HomeScreen() {
                             <Text style={[styles.taskTextPremium, task.completed && styles.taskTextCompletedPremium]}>
                               {task.title}
                             </Text>
-                            {task.reminder && (
-                              <View style={styles.reminderBadgePremium}>
-                                <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={10} color="#fff" />
-                                <Text style={styles.reminderTextPremium}>{task.reminder}m</Text>
-                              </View>
-                            )}
+                            <View style={styles.taskBadgesContainer}>
+                              {task.reminder && (
+                                <View style={styles.reminderBadgePremium}>
+                                  <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={10} color="#fff" />
+                                  <Text style={styles.reminderTextPremium}>{task.reminder}m</Text>
+                                </View>
+                              )}
+                              {task.videoUrl && isValidVideoUrl(task.videoUrl) && (
+                                <View style={styles.videoBadgePremium}>
+                                  <IconSymbol ios_icon_name="play.circle.fill" android_material_icon_name="play_circle" size={10} color="#fff" />
+                                  <Text style={styles.videoBadgeTextPremium}>Video</Text>
+                                </View>
+                              )}
+                            </View>
                           </View>
                         </TouchableOpacity>
                       ))}
@@ -645,6 +671,17 @@ export default function HomeScreen() {
         itemType={pendingAction?.type === 'create' ? 'activity' : 'task'}
         onConfirm={handleConfirmAction}
         onCancel={handleCancelAction}
+      />
+
+      <VideoModal
+        visible={videoModalVisible}
+        videoUrl={selectedVideoUrl}
+        onClose={() => {
+          setVideoModalVisible(false);
+          setSelectedVideoUrl('');
+          setSelectedVideoTitle('');
+        }}
+        title={selectedVideoTitle}
       />
     </ScrollView>
   );
@@ -1001,6 +1038,11 @@ const styles = StyleSheet.create({
     textDecorationLine: 'line-through',
     opacity: 0.6,
   },
+  taskBadgesContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   reminderBadgePremium: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1011,6 +1053,20 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   reminderTextPremium: {
+    fontSize: 11,
+    color: '#fff',
+    fontWeight: '700',
+  },
+  videoBadgePremium: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255, 0, 0, 0.8)',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  videoBadgeTextPremium: {
     fontSize: 11,
     color: '#fff',
     fontWeight: '700',

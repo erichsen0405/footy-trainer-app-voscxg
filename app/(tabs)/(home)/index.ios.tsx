@@ -12,6 +12,8 @@ import { supabase } from '@/app/integrations/supabase/client';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { LinearGradient } from 'expo-linear-gradient';
+import { VideoModal } from '@/components/VideoPlayer';
+import { isValidVideoUrl } from '@/utils/videoUrlParser';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -27,6 +29,11 @@ export default function HomeScreen() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [weeksToLoad, setWeeksToLoad] = useState(0);
+  
+  // Video modal state
+  const [videoModalVisible, setVideoModalVisible] = useState(false);
+  const [selectedVideoUrl, setSelectedVideoUrl] = useState('');
+  const [selectedVideoTitle, setSelectedVideoTitle] = useState('');
   
   // Confirmation dialog state
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -151,6 +158,17 @@ export default function HomeScreen() {
 
   // PERFORMANCE FIX: Use useCallback to prevent re-creating this function on every render
   const handleTaskPress = useCallback((task: Task, activityId: string, activityTitle: string) => {
+    console.log('⚡ Task clicked:', task.title);
+    
+    // Check if task has a video URL
+    if (task.videoUrl && isValidVideoUrl(task.videoUrl)) {
+      console.log('📹 Task has video, opening video modal');
+      setSelectedVideoUrl(task.videoUrl);
+      setSelectedVideoTitle(task.title);
+      setVideoModalVisible(true);
+      return;
+    }
+    
     console.log('⚡ FAST: Opening task modal for:', task.title);
     setSelectedTask({ task, activityId, activityTitle });
     setIsTaskModalVisible(true);
@@ -759,6 +777,17 @@ export default function HomeScreen() {
         onConfirm={handleConfirmAction}
         onCancel={handleCancelAction}
       />
+
+      <VideoModal
+        visible={videoModalVisible}
+        videoUrl={selectedVideoUrl}
+        onClose={() => {
+          setVideoModalVisible(false);
+          setSelectedVideoUrl('');
+          setSelectedVideoTitle('');
+        }}
+        title={selectedVideoTitle}
+      />
     </View>
   );
 }
@@ -1132,6 +1161,25 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   reminderTextPremium: {
+    fontSize: 11,
+    color: '#fff',
+    fontWeight: '700',
+  },
+  taskBadgesContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  videoBadgePremium: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255, 0, 0, 0.8)',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  videoBadgeTextPremium: {
     fontSize: 11,
     color: '#fff',
     fontWeight: '700',
