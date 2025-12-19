@@ -161,11 +161,11 @@ export default function HomeScreen() {
     setIsTaskModalVisible(true);
   }, []);
 
-  // PERFORMANCE FIX: Use useCallback and optimistic update for instant UI feedback
+  // CRITICAL FIX: Optimistic update - close modal immediately and update in background
   const handleToggleTaskCompletion = useCallback(async () => {
     if (!selectedTask) return;
     
-    console.log('⚡ FAST: Toggling task completion with optimistic update');
+    console.log('⚡ INSTANT: Toggling task completion with optimistic update');
     
     // Check if we need confirmation (trainer/admin managing player/team data)
     if (isAdmin && selectedContext.type) {
@@ -181,20 +181,23 @@ export default function HomeScreen() {
       return;
     }
     
-    // Close modal immediately for instant feedback
+    // CRITICAL FIX: Close modal IMMEDIATELY for instant feedback
+    console.log('⚡ INSTANT: Closing modal immediately');
     setIsTaskModalVisible(false);
     
-    // Update task in background
+    // Clear selected task after a short delay to allow modal animation to complete
+    setTimeout(() => {
+      setSelectedTask(null);
+    }, 300);
+    
+    // Update task in background (optimistic update happens in toggleTaskCompletion)
     try {
+      console.log('🔄 BACKGROUND: Updating task completion in database');
       await toggleTaskCompletion(selectedTask.activityId, selectedTask.task.id);
-      console.log('✅ Task completion toggled successfully');
+      console.log('✅ BACKGROUND: Task completion toggled successfully');
     } catch (error) {
-      console.error('❌ Error toggling task completion:', error);
-    } finally {
-      // Clear selected task after a short delay to allow modal animation to complete
-      setTimeout(() => {
-        setSelectedTask(null);
-      }, 300);
+      console.error('❌ BACKGROUND: Error toggling task completion:', error);
+      // Note: The optimistic update in toggleTaskCompletion will rollback on error
     }
   }, [selectedTask, toggleTaskCompletion, isAdmin, selectedContext]);
 
@@ -739,6 +742,7 @@ export default function HomeScreen() {
                   </View>
                 )}
 
+                {/* CRITICAL FIX: Button triggers optimistic update - closes modal immediately */}
                 <TouchableOpacity
                   style={[
                     styles.completeButton,

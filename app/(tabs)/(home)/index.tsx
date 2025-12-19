@@ -210,22 +210,12 @@ export default function HomeScreen() {
     router.push(`/activity-details?id=${activityId}`);
   };
 
-  const handleTaskToggle = async (activityId: string, taskId: string, task: Task, e: any) => {
+  // CRITICAL FIX: Separate handlers for circle click (toggle) and bar click (open details)
+  const handleCircleClick = async (activityId: string, taskId: string, e: any) => {
     // CRITICAL: Stop event propagation to prevent opening activity details
     e.stopPropagation();
     
-    console.log('⚡ Task clicked:', task.title);
-    
-    // Check if task has a video URL
-    if (task.videoUrl && isValidVideoUrl(task.videoUrl)) {
-      console.log('📹 Task has video, opening video modal');
-      setSelectedVideoUrl(task.videoUrl);
-      setSelectedVideoTitle(task.title);
-      setVideoModalVisible(true);
-      return;
-    }
-    
-    console.log('⚡ INSTANT: Toggling task completion');
+    console.log('⚡ INSTANT: Circle clicked - toggling task completion');
     
     // Check if we need confirmation (trainer/admin managing player/team data)
     if (isAdmin && selectedContext.type) {
@@ -240,9 +230,30 @@ export default function HomeScreen() {
     // Call toggle immediately - optimistic update happens inside
     try {
       await toggleTaskCompletion(activityId, taskId);
+      console.log('✅ Task completion toggled');
     } catch (error) {
       console.error('Error toggling task:', error);
     }
+  };
+
+  const handleTaskBarClick = (activityId: string, taskId: string, task: Task, e: any) => {
+    // CRITICAL: Stop event propagation to prevent opening activity details
+    e.stopPropagation();
+    
+    console.log('⚡ Task bar clicked:', task.title);
+    
+    // Check if task has a video URL - if so, open video modal
+    if (task.videoUrl && isValidVideoUrl(task.videoUrl)) {
+      console.log('📹 Task has video, opening video modal');
+      setSelectedVideoUrl(task.videoUrl);
+      setSelectedVideoTitle(task.title);
+      setVideoModalVisible(true);
+      return;
+    }
+    
+    // Otherwise, open the activity details
+    console.log('⚡ Opening activity details');
+    handleActivityPress(activityId);
   };
 
   const handleConfirmAction = async () => {
@@ -499,18 +510,27 @@ export default function HomeScreen() {
                       <View style={styles.tasksDivider} />
                       <Text style={styles.tasksTitlePremium}>OPGAVER</Text>
                       {activity.tasks.map((task) => (
-                        <TouchableOpacity
+                        <View
                           key={task.id}
                           style={styles.taskItemPremium}
-                          onPress={(e) => handleTaskToggle(activity.id, task.id, task, e)}
-                          activeOpacity={0.7}
                         >
-                          <View style={[styles.checkboxPremium, task.completed && styles.checkboxCheckedPremium]}>
+                          {/* CRITICAL FIX: Circle is clickable for toggling completion */}
+                          <TouchableOpacity
+                            onPress={(e) => handleCircleClick(activity.id, task.id, e)}
+                            activeOpacity={0.7}
+                            style={[styles.checkboxPremium, task.completed && styles.checkboxCheckedPremium]}
+                          >
                             {task.completed && (
                               <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={14} color="#000" />
                             )}
-                          </View>
-                          <View style={styles.taskContentPremium}>
+                          </TouchableOpacity>
+                          
+                          {/* CRITICAL FIX: Bar is clickable for opening task details */}
+                          <TouchableOpacity
+                            onPress={(e) => handleTaskBarClick(activity.id, task.id, task, e)}
+                            activeOpacity={0.7}
+                            style={styles.taskContentPremium}
+                          >
                             <Text style={[styles.taskTextPremium, task.completed && styles.taskTextCompletedPremium]}>
                               {task.title}
                             </Text>
@@ -528,8 +548,8 @@ export default function HomeScreen() {
                                 </View>
                               )}
                             </View>
-                          </View>
-                        </TouchableOpacity>
+                          </TouchableOpacity>
+                        </View>
                       ))}
                     </View>
                   )}
