@@ -97,9 +97,18 @@ export function VideoPlayer({ videoUrl, onClose }: VideoPlayerProps) {
   };
 
   // Generate proper embed URL with parameters
+  // CRITICAL FIX: Added enablejsapi=1 and origin parameter for iOS WebView compatibility
   const getEmbedUrlWithParams = () => {
     if (videoInfo.platform === 'youtube') {
-      return `${videoInfo.embedUrl}?playsinline=1&autoplay=0&rel=0&modestbranding=1&fs=1&controls=1`;
+      // YouTube requires these specific parameters to work in iOS WebView:
+      // - playsinline=1: Allows inline playback
+      // - autoplay=0: Don't autoplay
+      // - rel=0: Don't show related videos
+      // - modestbranding=1: Minimal YouTube branding
+      // - controls=1: Show player controls
+      // - enablejsapi=1: Enable JavaScript API (REQUIRED for iOS)
+      // - origin=https://www.youtube.com: Identify origin (REQUIRED for iOS to avoid 502)
+      return `${videoInfo.embedUrl}?playsinline=1&autoplay=0&rel=0&modestbranding=1&controls=1&enablejsapi=1&origin=https://www.youtube.com`;
     } else if (videoInfo.platform === 'vimeo') {
       return `${videoInfo.embedUrl}?playsinline=1&autoplay=0`;
     }
@@ -195,7 +204,7 @@ export function VideoPlayer({ videoUrl, onClose }: VideoPlayerProps) {
         onHttpError={(syntheticEvent) => {
           const { nativeEvent } = syntheticEvent;
           console.error('WebView HTTP error:', nativeEvent);
-          if (nativeEvent.statusCode === 403 || nativeEvent.statusCode === 404) {
+          if (nativeEvent.statusCode === 403 || nativeEvent.statusCode === 404 || nativeEvent.statusCode === 502) {
             setWebViewError(true);
           }
         }}
