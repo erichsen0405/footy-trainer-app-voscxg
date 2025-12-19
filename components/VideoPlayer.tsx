@@ -187,12 +187,13 @@ export function VideoPlayer({ videoUrl, onClose }: VideoPlayerProps) {
       <WebView
         source={{ uri: embedUrlWithParams }}
         style={styles.webView}
-        javaScriptEnabled={true}
-        domStorageEnabled={true}
-        allowsInlineMediaPlayback={true}
+        javaScriptEnabled
+        domStorageEnabled
+        allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}
-        allowsFullscreenVideo={true}
+        allowsFullscreenVideo
         originWhitelist={['*']}
+        userAgent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile Safari/604.1"
         startInLoadingState={true}
         scalesPageToFit={true}
         mixedContentMode="always"
