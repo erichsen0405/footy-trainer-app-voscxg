@@ -14,6 +14,7 @@ import {
   Platform,
   KeyboardAvoidingView,
   Image,
+  Linking,
 } from 'react-native';
 import { colors, getColors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -93,6 +94,7 @@ export default function LibraryScreen() {
   const [processing, setProcessing] = useState(false);
   const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [webViewError, setWebViewError] = useState(false);
   
   // Form state
   const [title, setTitle] = useState('');
@@ -746,11 +748,24 @@ export default function LibraryScreen() {
       return;
     }
     
-    // Use embed URL with proper parameters for mobile playback
-    const embedUrl = `https://www.youtube.com/embed/${videoId}?playsinline=1&autoplay=0&rel=0&modestbranding=1`;
-    
-    setSelectedVideoUrl(embedUrl);
+    setWebViewError(false);
+    setSelectedVideoUrl(url);
     setShowVideoModal(true);
+  };
+
+  const openVideoInYouTube = (url: string) => {
+    const videoId = getYouTubeVideoId(url);
+    if (!videoId) {
+      Alert.alert('Fejl', 'Ugyldig YouTube URL');
+      return;
+    }
+    
+    // Open in YouTube app or browser
+    const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    Linking.openURL(youtubeUrl).catch(err => {
+      console.error('Error opening YouTube:', err);
+      Alert.alert('Fejl', 'Kunne ikke åbne YouTube');
+    });
   };
 
   const addSubtask = () => {
@@ -889,27 +904,54 @@ export default function LibraryScreen() {
         )}
 
         {exercise.video_url && !isDisabled && (
-          <TouchableOpacity 
-            style={styles.videoPreviewContainer}
-            onPress={() => openVideoModal(exercise.video_url!)}
-          >
-            <Image
-              source={{ uri: getYouTubeThumbnail(exercise.video_url) || '' }}
-              style={styles.videoThumbnail}
-              resizeMode="cover"
-            />
-            <View style={styles.playButtonOverlay}>
-              <View style={styles.playButton}>
+          <View style={styles.videoPreviewContainer}>
+            <TouchableOpacity 
+              style={styles.videoThumbnailContainer}
+              onPress={() => openVideoModal(exercise.video_url!)}
+            >
+              <Image
+                source={{ uri: getYouTubeThumbnail(exercise.video_url) || '' }}
+                style={styles.videoThumbnail}
+                resizeMode="cover"
+              />
+              <View style={styles.playButtonOverlay}>
+                <View style={styles.playButton}>
+                  <IconSymbol
+                    ios_icon_name="play.fill"
+                    android_material_icon_name="play_arrow"
+                    size={32}
+                    color="#fff"
+                  />
+                </View>
+              </View>
+            </TouchableOpacity>
+            <View style={styles.videoActions}>
+              <TouchableOpacity 
+                style={[styles.videoActionButton, { backgroundColor: colors.primary }]}
+                onPress={() => openVideoModal(exercise.video_url!)}
+              >
                 <IconSymbol
-                  ios_icon_name="play.fill"
-                  android_material_icon_name="play_arrow"
-                  size={32}
+                  ios_icon_name="play.circle.fill"
+                  android_material_icon_name="play_circle"
+                  size={20}
                   color="#fff"
                 />
-              </View>
+                <Text style={styles.videoActionText}>Afspil i app</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.videoActionButton, { backgroundColor: '#FF0000' }]}
+                onPress={() => openVideoInYouTube(exercise.video_url!)}
+              >
+                <IconSymbol
+                  ios_icon_name="arrow.up.right.square.fill"
+                  android_material_icon_name="open_in_new"
+                  size={20}
+                  color="#fff"
+                />
+                <Text style={styles.videoActionText}>Åbn i YouTube</Text>
+              </TouchableOpacity>
             </View>
-            <Text style={[styles.videoText, { color: colors.primary }]}>Afspil video</Text>
-          </TouchableOpacity>
+          </View>
         )}
 
         {exercise.subtasks.length > 0 && (
@@ -1310,7 +1352,7 @@ export default function LibraryScreen() {
         onRequestClose={() => setShowVideoModal(false)}
       >
         <View style={[styles.videoModalContainer, { backgroundColor: '#000' }]}>
-          <View style={[styles.videoModalHeader, { backgroundColor: 'rgba(0,0,0,0.8)' }]}>
+          <View style={[styles.videoModalHeader, { backgroundColor: 'rgba(0,0,0,0.9)' }]}>
             <TouchableOpacity 
               onPress={() => setShowVideoModal(false)}
               style={styles.videoCloseButton}
@@ -1323,28 +1365,107 @@ export default function LibraryScreen() {
               />
             </TouchableOpacity>
             <Text style={[styles.videoModalTitle, { color: '#fff' }]}>Video</Text>
-            <View style={{ width: 32 }} />
+            <TouchableOpacity 
+              onPress={() => {
+                if (selectedVideoUrl) {
+                  openVideoInYouTube(selectedVideoUrl);
+                }
+              }}
+              style={styles.videoOpenButton}
+            >
+              <IconSymbol
+                ios_icon_name="arrow.up.right.square"
+                android_material_icon_name="open_in_new"
+                size={28}
+                color="#fff"
+              />
+            </TouchableOpacity>
           </View>
 
-          <View style={styles.videoContainer}>
-            {selectedVideoUrl && (
-              <WebView
-                source={{ 
-                  uri: selectedVideoUrl,
-                }}
-                style={styles.webView}
-                allowsFullscreenVideo={true}
-                allowsInlineMediaPlayback={true}
-                mediaPlaybackRequiresUserAction={false}
-                javaScriptEnabled={true}
-                domStorageEnabled={true}
-                startInLoadingState={true}
-                scalesPageToFit={true}
-                mixedContentMode="always"
-                originWhitelist={['*']}
+          {webViewError ? (
+            <View style={styles.errorContainer}>
+              <IconSymbol
+                ios_icon_name="exclamationmark.triangle.fill"
+                android_material_icon_name="error"
+                size={64}
+                color="#FF0000"
               />
-            )}
-          </View>
+              <Text style={styles.errorTitle}>Video kan ikke afspilles</Text>
+              <Text style={styles.errorText}>
+                Denne video kan ikke afspilles i appen på grund af YouTube&apos;s begrænsninger.
+              </Text>
+              <TouchableOpacity
+                style={styles.openYouTubeButton}
+                onPress={() => {
+                  if (selectedVideoUrl) {
+                    openVideoInYouTube(selectedVideoUrl);
+                  }
+                }}
+              >
+                <IconSymbol
+                  ios_icon_name="play.rectangle.fill"
+                  android_material_icon_name="play_arrow"
+                  size={24}
+                  color="#fff"
+                />
+                <Text style={styles.openYouTubeButtonText}>Åbn i YouTube</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.videoContainer}>
+              {selectedVideoUrl && (
+                <WebView
+                  source={{ 
+                    html: `
+                      <!DOCTYPE html>
+                      <html>
+                        <head>
+                          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+                          <style>
+                            * { margin: 0; padding: 0; }
+                            html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
+                            .video-container { position: relative; width: 100%; height: 100%; }
+                            iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
+                          </style>
+                        </head>
+                        <body>
+                          <div class="video-container">
+                            <iframe
+                              src="https://www.youtube.com/embed/${getYouTubeVideoId(selectedVideoUrl)}?autoplay=1&playsinline=1&rel=0&modestbranding=1&fs=1&controls=1"
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                              allowfullscreen
+                            ></iframe>
+                          </div>
+                        </body>
+                      </html>
+                    `
+                  }}
+                  style={styles.webView}
+                  allowsFullscreenVideo={true}
+                  allowsInlineMediaPlayback={true}
+                  mediaPlaybackRequiresUserAction={false}
+                  javaScriptEnabled={true}
+                  domStorageEnabled={true}
+                  startInLoadingState={true}
+                  scalesPageToFit={true}
+                  mixedContentMode="always"
+                  originWhitelist={['*']}
+                  onError={(syntheticEvent) => {
+                    const { nativeEvent } = syntheticEvent;
+                    console.error('WebView error:', nativeEvent);
+                    setWebViewError(true);
+                  }}
+                  onHttpError={(syntheticEvent) => {
+                    const { nativeEvent } = syntheticEvent;
+                    console.error('WebView HTTP error:', nativeEvent);
+                    if (nativeEvent.statusCode === 403 || nativeEvent.statusCode === 404) {
+                      setWebViewError(true);
+                    }
+                  }}
+                />
+              )}
+            </View>
+          )}
         </View>
       </Modal>
     </View>
@@ -1520,9 +1641,12 @@ const styles = StyleSheet.create({
   },
   videoPreviewContainer: {
     marginBottom: 12,
+  },
+  videoThumbnailContainer: {
     borderRadius: 12,
     overflow: 'hidden',
     position: 'relative',
+    marginBottom: 8,
   },
   videoThumbnail: {
     width: '100%',
@@ -1546,6 +1670,25 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,0,0,0.9)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  videoActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  videoActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  videoActionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
   },
   videoText: {
     fontSize: 14,
@@ -1744,6 +1887,9 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
   },
+  videoOpenButton: {
+    padding: 4,
+  },
   videoContainer: {
     flex: 1,
     backgroundColor: '#000',
@@ -1751,5 +1897,41 @@ const styles = StyleSheet.create({
   webView: {
     flex: 1,
     backgroundColor: '#000',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+    backgroundColor: '#000',
+  },
+  errorTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginTop: 24,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#ccc',
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 32,
+  },
+  openYouTubeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#FF0000',
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderRadius: 12,
+  },
+  openYouTubeButtonText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
   },
 });
