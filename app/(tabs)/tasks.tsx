@@ -7,9 +7,20 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { colors, getColors } from '@/styles/commonStyles';
 import { Task } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
-import { VideoThumbnail, VideoModal, VideoActionButtons, isValidVideoUrl } from '@/components/VideoPlayer';
+import { VideoThumbnail, VideoModal, VideoActionButtons } from '@/components/VideoPlayer';
 import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { supabase } from '@/app/integrations/supabase/client';
+
+// Local helper function to validate video URLs
+function isValidVideoUrl(url?: string): boolean {
+  if (!url) return false;
+
+  return (
+    url.includes("youtube.com") ||
+    url.includes("youtu.be") ||
+    url.includes("vimeo.com")
+  );
+}
 
 export default function TasksScreen() {
   const { tasks, categories, addTask, updateTask, deleteTask, duplicateTask, refreshData } = useFootball();
