@@ -12,7 +12,7 @@ import { supabase } from '@/app/integrations/supabase/client';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { LinearGradient } from 'expo-linear-gradient';
-import { VideoModal } from '@/components/VideoPlayer';
+import { VideoPlayer } from '@/components/VideoPlayer';
 import { isValidVideoUrl } from '@/utils/videoUrlParser';
 
 export default function HomeScreen() {
@@ -29,11 +29,6 @@ export default function HomeScreen() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [weeksToLoad, setWeeksToLoad] = useState(0);
-  
-  // Video modal state
-  const [videoModalVisible, setVideoModalVisible] = useState(false);
-  const [selectedVideoUrl, setSelectedVideoUrl] = useState('');
-  const [selectedVideoTitle, setSelectedVideoTitle] = useState('');
   
   // Confirmation dialog state
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -159,17 +154,7 @@ export default function HomeScreen() {
   // PERFORMANCE FIX: Use useCallback to prevent re-creating this function on every render
   const handleTaskPress = useCallback((task: Task, activityId: string, activityTitle: string) => {
     console.log('⚡ Task clicked:', task.title);
-    
-    // Check if task has a video URL
-    if (task.videoUrl && isValidVideoUrl(task.videoUrl)) {
-      console.log('📹 Task has video, opening video modal');
-      setSelectedVideoUrl(task.videoUrl);
-      setSelectedVideoTitle(task.title);
-      setVideoModalVisible(true);
-      return;
-    }
-    
-    console.log('⚡ FAST: Opening task modal for:', task.title);
+    console.log('⚡ Opening task modal for:', task.title);
     setSelectedTask({ task, activityId, activityTitle });
     setIsTaskModalVisible(true);
   }, []);
@@ -696,7 +681,7 @@ export default function HomeScreen() {
         <View style={{ height: 120 }} />
       </ScrollView>
 
-      {/* PERFORMANCE FIX: Simplified modal with minimal re-renders */}
+      {/* Task Details Modal with Embedded Video */}
       {isTaskModalVisible && selectedTask && (
         <Modal
           visible={true}
@@ -722,7 +707,7 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.modalBody}>
+              <ScrollView style={styles.modalBody}>
                 <Text style={[styles.taskModalActivity, { color: textSecondaryColor }]}>
                   {selectedTask.activityTitle}
                 </Text>
@@ -735,6 +720,15 @@ export default function HomeScreen() {
                   <Text style={[styles.taskModalDescription, { color: textSecondaryColor }]}>
                     {selectedTask.task.description}
                   </Text>
+                )}
+
+                {/* Embedded Video Player */}
+                {selectedTask.task.videoUrl && isValidVideoUrl(selectedTask.task.videoUrl) && (
+                  <View style={styles.videoContainer}>
+                    <View style={styles.videoPlayerWrapper}>
+                      <VideoPlayer videoUrl={selectedTask.task.videoUrl} />
+                    </View>
+                  </View>
                 )}
 
                 <TouchableOpacity
@@ -755,7 +749,7 @@ export default function HomeScreen() {
                     {selectedTask.task.completed ? 'Marker som ikke udført' : 'Marker som udført'}
                   </Text>
                 </TouchableOpacity>
-              </View>
+              </ScrollView>
             </View>
           </View>
         </Modal>
@@ -776,17 +770,6 @@ export default function HomeScreen() {
         itemType={pendingAction?.type === 'create' ? 'activity' : 'task'}
         onConfirm={handleConfirmAction}
         onCancel={handleCancelAction}
-      />
-
-      <VideoModal
-        visible={videoModalVisible}
-        videoUrl={selectedVideoUrl}
-        onClose={() => {
-          setVideoModalVisible(false);
-          setSelectedVideoUrl('');
-          setSelectedVideoTitle('');
-        }}
-        title={selectedVideoTitle}
       />
     </View>
   );
@@ -1278,7 +1261,7 @@ const styles = StyleSheet.create({
   modalContent: {
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: '70%',
+    maxHeight: '85%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1309,6 +1292,16 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     marginBottom: 24,
   },
+  videoContainer: {
+    marginBottom: 24,
+  },
+  videoPlayerWrapper: {
+    width: '100%',
+    height: 220,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+  },
   completeButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1316,6 +1309,7 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 16,
     borderRadius: 14,
+    marginTop: 8,
   },
   completeButtonText: {
     fontSize: 18,
