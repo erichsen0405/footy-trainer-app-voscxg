@@ -11,109 +11,31 @@ import {
   Alert,
   Image,
 } from 'react-native';
-import { WebView } from 'react-native-webview';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
+import { parseVideoUrl, isValidVideoUrl, getVideoThumbnail } from '@/utils/videoUrlParser';
+
+// Only import WebView on native platforms
+let WebView: any = null;
+if (Platform.OS === 'ios' || Platform.OS === 'android') {
+  WebView = require('react-native-webview').WebView;
+}
 
 interface VideoPlayerProps {
   videoUrl: string;
   onClose?: () => void;
 }
 
-interface VideoInfo {
-  platform: 'youtube' | 'vimeo' | 'unsupported';
-  videoId: string | null;
-  embedUrl: string | null;
-  thumbnailUrl: string | null;
-}
-
-/**
- * Parse video URL and extract platform, video ID, and generate embed URL
- */
-export function parseVideoUrl(url: string): VideoInfo {
-  if (!url || !url.trim()) {
-    return {
-      platform: 'unsupported',
-      videoId: null,
-      embedUrl: null,
-      thumbnailUrl: null,
-    };
-  }
-
-  const trimmedUrl = url.trim();
-
-  // YouTube detection patterns
-  const youtubePatterns = [
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
-    /youtube\.com\/shorts\/([^&\n?#]+)/,
-  ];
-
-  for (const pattern of youtubePatterns) {
-    const match = trimmedUrl.match(pattern);
-    if (match && match[1]) {
-      const videoId = match[1];
-      return {
-        platform: 'youtube',
-        videoId,
-        embedUrl: `https://www.youtube.com/embed/${videoId}`,
-        thumbnailUrl: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
-      };
-    }
-  }
-
-  // Vimeo detection patterns
-  const vimeoPatterns = [
-    /vimeo\.com\/(\d+)/,
-    /vimeo\.com\/video\/(\d+)/,
-    /player\.vimeo\.com\/video\/(\d+)/,
-  ];
-
-  for (const pattern of vimeoPatterns) {
-    const match = trimmedUrl.match(pattern);
-    if (match && match[1]) {
-      const videoId = match[1];
-      return {
-        platform: 'vimeo',
-        videoId,
-        embedUrl: `https://player.vimeo.com/video/${videoId}`,
-        thumbnailUrl: null, // Vimeo thumbnails require API call
-      };
-    }
-  }
-
-  return {
-    platform: 'unsupported',
-    videoId: null,
-    embedUrl: null,
-    thumbnailUrl: null,
-  };
-}
-
-/**
- * Get video thumbnail URL
- */
-export function getVideoThumbnail(url: string): string | null {
-  const videoInfo = parseVideoUrl(url);
-  return videoInfo.thumbnailUrl;
-}
-
-/**
- * Check if URL is a valid video URL
- */
-export function isValidVideoUrl(url: string): boolean {
-  const videoInfo = parseVideoUrl(url);
-  return videoInfo.platform !== 'unsupported' && videoInfo.videoId !== null;
-}
-
 /**
  * Video Player Component
- * Supports YouTube and Vimeo with inline playback
+ * Supports YouTube and Vimeo with inline playback on iOS and Android
  */
 export function VideoPlayer({ videoUrl, onClose }: VideoPlayerProps) {
   const [webViewError, setWebViewError] = useState(false);
   const videoInfo = parseVideoUrl(videoUrl);
 
-  if (videoInfo.platform === 'unsupported' || !videoInfo.embedUrl) {
+  // Check if URL is valid
+  if (!isValidVideoUrl(videoUrl)) {
     return (
       <View style={styles.errorContainer}>
         <IconSymbol
@@ -124,7 +46,31 @@ export function VideoPlayer({ videoUrl, onClose }: VideoPlayerProps) {
         />
         <Text style={styles.errorTitle}>Ugyldig video URL</Text>
         <Text style={styles.errorText}>
-          Kun YouTube og Vimeo links understøttes.
+          Kun YouTube og Vimeo links understøttes.{'\n'}
+          Sørg for at bruge et gyldigt video link.
+        </Text>
+        {onClose && (
+          <TouchableOpacity style={styles.closeErrorButton} onPress={onClose}>
+            <Text style={styles.closeErrorButtonText}>Luk</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  }
+
+  // Check if embed URL is available
+  if (!videoInfo.embedUrl) {
+    return (
+      <View style={styles.errorContainer}>
+        <IconSymbol
+          ios_icon_name="exclamationmark.triangle.fill"
+          android_material_icon_name="error"
+          size={64}
+          color="#FF0000"
+        />
+        <Text style={styles.errorTitle}>Kan ikke konvertere URL</Text>
+        <Text style={styles.errorText}>
+          Video URL&apos;en kunne ikke konverteres til et gyldigt embed format.
         </Text>
         {onClose && (
           <TouchableOpacity style={styles.closeErrorButton} onPress={onClose}>
@@ -150,59 +96,17 @@ export function VideoPlayer({ videoUrl, onClose }: VideoPlayerProps) {
     });
   };
 
-  const generateEmbedHTML = () => {
+  // Generate proper embed URL with parameters
+  const getEmbedUrlWithParams = () => {
     if (videoInfo.platform === 'youtube') {
-      return `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-            <style>
-              * { margin: 0; padding: 0; }
-              html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
-              .video-container { position: relative; width: 100%; height: 100%; }
-              iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
-            </style>
-          </head>
-          <body>
-            <div class="video-container">
-              <iframe
-                src="${videoInfo.embedUrl}?autoplay=1&playsinline=1&rel=0&modestbranding=1&fs=1&controls=1"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-                allowfullscreen
-              ></iframe>
-            </div>
-          </body>
-        </html>
-      `;
+      return `${videoInfo.embedUrl}?playsinline=1&autoplay=0&rel=0&modestbranding=1&fs=1&controls=1`;
     } else if (videoInfo.platform === 'vimeo') {
-      return `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-            <style>
-              * { margin: 0; padding: 0; }
-              html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
-              .video-container { position: relative; width: 100%; height: 100%; }
-              iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
-            </style>
-          </head>
-          <body>
-            <div class="video-container">
-              <iframe
-                src="${videoInfo.embedUrl}?autoplay=1&playsinline=1"
-                allow="autoplay; fullscreen; picture-in-picture"
-                allowfullscreen
-              ></iframe>
-            </div>
-          </body>
-        </html>
-      `;
+      return `${videoInfo.embedUrl}?playsinline=1&autoplay=0`;
     }
-    return '';
+    return videoInfo.embedUrl;
   };
 
+  // Show error if WebView failed to load
   if (webViewError) {
     return (
       <View style={styles.errorContainer}>
@@ -214,7 +118,8 @@ export function VideoPlayer({ videoUrl, onClose }: VideoPlayerProps) {
         />
         <Text style={styles.errorTitle}>Video kan ikke afspilles</Text>
         <Text style={styles.errorText}>
-          Denne video kan ikke afspilles i appen på grund af platformens begrænsninger.
+          Denne video kan ikke afspilles i appen.{'\n'}
+          Prøv at åbne den i {videoInfo.platform === 'youtube' ? 'YouTube' : 'Vimeo'} app&apos;en.
         </Text>
         <TouchableOpacity
           style={styles.openExternalButton}
@@ -234,23 +139,57 @@ export function VideoPlayer({ videoUrl, onClose }: VideoPlayerProps) {
     );
   }
 
+  // WebView is only available on iOS and Android
+  if (!WebView || Platform.OS === 'web') {
+    return (
+      <View style={styles.errorContainer}>
+        <IconSymbol
+          ios_icon_name="play.rectangle.fill"
+          android_material_icon_name="play_arrow"
+          size={64}
+          color={colors.primary}
+        />
+        <Text style={styles.errorTitle}>Video afspilning</Text>
+        <Text style={styles.errorText}>
+          Video afspilning i appen er kun tilgængelig på iOS og Android.
+        </Text>
+        <TouchableOpacity
+          style={styles.openExternalButton}
+          onPress={openInExternalApp}
+        >
+          <IconSymbol
+            ios_icon_name="arrow.up.right.square.fill"
+            android_material_icon_name="open_in_new"
+            size={24}
+            color="#fff"
+          />
+          <Text style={styles.openExternalButtonText}>
+            Åbn video
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const embedUrlWithParams = getEmbedUrlWithParams();
+
   return (
     <View style={styles.playerContainer}>
       <WebView
-        source={{ html: generateEmbedHTML() }}
+        source={{ uri: embedUrlWithParams }}
         style={styles.webView}
-        allowsFullscreenVideo={true}
-        allowsInlineMediaPlayback={true}
-        mediaPlaybackRequiresUserAction={false}
         javaScriptEnabled={true}
         domStorageEnabled={true}
+        allowsInlineMediaPlayback={true}
+        mediaPlaybackRequiresUserAction={false}
+        allowsFullscreenVideo={true}
+        originWhitelist={['*']}
         startInLoadingState={true}
         scalesPageToFit={true}
         mixedContentMode="always"
-        originWhitelist={['*']}
         onError={(syntheticEvent) => {
           const { nativeEvent } = syntheticEvent;
-          console.error('WebView error:', nativeEvent);
+          console.error('WebView error (153):', nativeEvent);
           setWebViewError(true);
         }}
         onHttpError={(syntheticEvent) => {
@@ -259,6 +198,9 @@ export function VideoPlayer({ videoUrl, onClose }: VideoPlayerProps) {
           if (nativeEvent.statusCode === 403 || nativeEvent.statusCode === 404) {
             setWebViewError(true);
           }
+        }}
+        onLoadEnd={() => {
+          console.log('Video loaded successfully:', embedUrlWithParams);
         }}
       />
     </View>
@@ -278,9 +220,11 @@ interface VideoThumbnailProps {
 export function VideoThumbnail({ videoUrl, onPress, style }: VideoThumbnailProps) {
   const videoInfo = parseVideoUrl(videoUrl);
 
-  if (videoInfo.platform === 'unsupported') {
+  if (!isValidVideoUrl(videoUrl)) {
     return null;
   }
+
+  const thumbnailUrl = getVideoThumbnail(videoUrl);
 
   return (
     <TouchableOpacity 
@@ -288,9 +232,9 @@ export function VideoThumbnail({ videoUrl, onPress, style }: VideoThumbnailProps
       onPress={onPress}
       activeOpacity={0.8}
     >
-      {videoInfo.thumbnailUrl ? (
+      {thumbnailUrl ? (
         <Image
-          source={{ uri: videoInfo.thumbnailUrl }}
+          source={{ uri: thumbnailUrl }}
           style={styles.thumbnail}
           resizeMode="cover"
         />
@@ -402,7 +346,7 @@ interface VideoActionButtonsProps {
 export function VideoActionButtons({ videoUrl, onPlayInApp }: VideoActionButtonsProps) {
   const videoInfo = parseVideoUrl(videoUrl);
 
-  if (videoInfo.platform === 'unsupported') {
+  if (!isValidVideoUrl(videoUrl)) {
     return null;
   }
 
