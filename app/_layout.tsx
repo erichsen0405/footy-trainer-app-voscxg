@@ -11,6 +11,7 @@ import { useColorScheme, View, Text, ActivityIndicator, Platform } from 'react-n
 import { FootballProvider } from '@/contexts/FootballContext';
 import { SubscriptionProvider } from '@/contexts/SubscriptionContext';
 import { TeamPlayerProvider } from '@/contexts/TeamPlayerContext';
+import { AppleIAPProvider } from '@/contexts/AppleIAPContext';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -84,74 +85,76 @@ function RootLayoutContent() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <SubscriptionProvider>
-        <TeamPlayerProvider>
-          <FootballProvider>
-            <Stack>
-              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              <Stack.Screen name="+not-found" />
-              <Stack.Screen 
-                name="activity-details" 
-                options={{ 
-                  presentation: 'modal',
-                  headerShown: false,
-                }} 
-              />
-              <Stack.Screen 
-                name="modal" 
-                options={{ 
-                  presentation: 'modal',
-                  headerShown: false,
-                }} 
-              />
-              <Stack.Screen 
-                name="formsheet" 
-                options={{ 
-                  presentation: 'formSheet',
-                  headerShown: false,
-                }} 
-              />
-              <Stack.Screen 
-                name="transparent-modal" 
-                options={{ 
-                  presentation: 'transparentModal',
-                  headerShown: false,
-                  animation: 'fade',
-                }} 
-              />
-              <Stack.Screen 
-                name="console-logs" 
-                options={{ 
-                  presentation: 'modal',
-                  headerShown: true,
-                  title: 'Console Logs',
-                }} 
-              />
-              <Stack.Screen 
-                name="notification-debug" 
-                options={{ 
-                  presentation: 'modal',
-                  headerShown: true,
-                  title: 'Notification Debug',
-                }} 
-              />
-              <Stack.Screen 
-                name="email-confirmed" 
-                options={{ 
-                  headerShown: false,
-                }} 
-              />
-              <Stack.Screen 
-                name="update-password" 
-                options={{ 
-                  headerShown: false,
-                }} 
-              />
-            </Stack>
-            <StatusBar style="auto" />
-          </FootballProvider>
-        </TeamPlayerProvider>
-      </SubscriptionProvider>
+      <AppleIAPProvider>
+        <SubscriptionProvider>
+          <TeamPlayerProvider>
+            <FootballProvider>
+              <Stack>
+                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                <Stack.Screen name="+not-found" />
+                <Stack.Screen 
+                  name="activity-details" 
+                  options={{ 
+                    presentation: 'modal',
+                    headerShown: false,
+                  }} 
+                />
+                <Stack.Screen 
+                  name="modal" 
+                  options={{ 
+                    presentation: 'modal',
+                    headerShown: false,
+                  }} 
+                />
+                <Stack.Screen 
+                  name="formsheet" 
+                  options={{ 
+                    presentation: 'formSheet',
+                    headerShown: false,
+                  }} 
+                />
+                <Stack.Screen 
+                  name="transparent-modal" 
+                  options={{ 
+                    presentation: 'transparentModal',
+                    headerShown: false,
+                    animation: 'fade',
+                  }} 
+                />
+                <Stack.Screen 
+                  name="console-logs" 
+                  options={{ 
+                    presentation: 'modal',
+                    headerShown: true,
+                    title: 'Console Logs',
+                  }} 
+                />
+                <Stack.Screen 
+                  name="notification-debug" 
+                  options={{ 
+                    presentation: 'modal',
+                    headerShown: true,
+                    title: 'Notification Debug',
+                  }} 
+                />
+                <Stack.Screen 
+                  name="email-confirmed" 
+                  options={{ 
+                    headerShown: false,
+                  }} 
+                />
+                <Stack.Screen 
+                  name="update-password" 
+                  options={{ 
+                    headerShown: false,
+                  }} 
+                />
+              </Stack>
+              <StatusBar style="auto" />
+            </FootballProvider>
+          </TeamPlayerProvider>
+        </SubscriptionProvider>
+      </AppleIAPProvider>
     </ThemeProvider>
   );
 }

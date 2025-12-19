@@ -1,4 +1,3 @@
-
 {
   "name": "Natively",
   "version": "1.0.0",
@@ -53,6 +52,7 @@
     "react-native-css-interop": "^0.1.22",
     "react-native-edge-to-edge": "^1.7.0",
     "react-native-gesture-handler": "^2.24.0",
+    "react-native-iap": "^14.6.2",
     "react-native-maps": "^1.20.1",
     "react-native-reanimated": "~4.1.0",
     "react-native-safe-area-context": "^5.4.0",
