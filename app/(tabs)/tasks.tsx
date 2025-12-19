@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, useColorScheme, KeyboardAvoidingView, Platform, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, useColorScheme, KeyboardAvoidingView, Platform, RefreshControl, Alert } from 'react-native';
 import { useFootball } from '@/contexts/FootballContext';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -24,6 +24,7 @@ export default function TasksScreen() {
   const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState('');
   const [subtasks, setSubtasks] = useState<string[]>(['']);
+  const [isSaving, setIsSaving] = useState(false);
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const themeColors = getColors(colorScheme);
@@ -88,6 +89,7 @@ export default function TasksScreen() {
     setIsModalVisible(false);
     setVideoUrl('');
     setSubtasks(['']);
+    setIsSaving(false);
   };
 
   const handleSaveTask = async () => {
@@ -107,48 +109,62 @@ export default function TasksScreen() {
   };
 
   const executeSaveTask = async () => {
-    if (selectedTask) {
+    if (!selectedTask) return;
+
+    setIsSaving(true);
+
+    try {
+      console.log('Updating task template:', selectedTask.id);
+      console.log('Video URL:', videoUrl);
+
       const taskToSave = {
         ...selectedTask,
-        videoUrl: videoUrl || undefined,
+        videoUrl: videoUrl.trim() || undefined,
       };
 
-      try {
-        if (isCreating) {
-          // Create new task template
-          await addTask(taskToSave);
-        } else {
-          // Update existing task template
-          await updateTask(selectedTask.id, taskToSave);
-        }
-
+      if (isCreating) {
+        // Create new task template
+        console.log('Creating new task template...');
+        await addTask(taskToSave);
+        Alert.alert('Succes', 'Opgaveskabelon oprettet');
+      } else {
+        // Update existing task template
+        console.log('Updating existing task template...');
+        await updateTask(selectedTask.id, taskToSave);
+        
         // Save subtasks
-        if (!isCreating && selectedTask.id) {
-          // Delete existing subtasks
+        console.log('Saving subtasks...');
+        // Delete existing subtasks
+        await supabase
+          .from('task_template_subtasks')
+          .delete()
+          .eq('task_template_id', selectedTask.id);
+
+        // Insert new subtasks
+        const validSubtasks = subtasks.filter(s => s.trim());
+        if (validSubtasks.length > 0) {
+          const subtasksToInsert = validSubtasks.map((subtask, index) => ({
+            task_template_id: selectedTask.id,
+            title: subtask,
+            sort_order: index,
+          }));
+
           await supabase
             .from('task_template_subtasks')
-            .delete()
-            .eq('task_template_id', selectedTask.id);
-
-          // Insert new subtasks
-          const validSubtasks = subtasks.filter(s => s.trim());
-          if (validSubtasks.length > 0) {
-            const subtasksToInsert = validSubtasks.map((subtask, index) => ({
-              task_template_id: selectedTask.id,
-              title: subtask,
-              sort_order: index,
-            }));
-
-            await supabase
-              .from('task_template_subtasks')
-              .insert(subtasksToInsert);
-          }
+            .insert(subtasksToInsert);
         }
-      } catch (error) {
-        console.error('Error saving task:', error);
+
+        Alert.alert('Succes', 'Opgaveskabelon opdateret');
       }
+
+      console.log('Task saved successfully');
+      closeTaskModal();
+    } catch (error: any) {
+      console.error('Error saving task:', error);
+      Alert.alert('Fejl', 'Kunne ikke gemme opgave: ' + (error.message || 'Ukendt fejl'));
+    } finally {
+      setIsSaving(false);
     }
-    closeTaskModal();
   };
 
   const handleDeleteTask = (taskId: string) => {
@@ -219,6 +235,9 @@ export default function TasksScreen() {
       embedUrl = `https://www.youtube.com/embed/${videoId}`;
     } else if (url.includes('youtu.be/')) {
       const videoId = url.split('youtu.be/')[1]?.split('?')[0];
+      embedUrl = `https://www.youtube.com/embed/${videoId}`;
+    } else if (url.includes('youtube.com/shorts/')) {
+      const videoId = url.split('shorts/')[1]?.split('?')[0];
       embedUrl = `https://www.youtube.com/embed/${videoId}`;
     }
     
@@ -413,7 +432,7 @@ export default function TasksScreen() {
               <Text style={[styles.modalTitle, { color: textColor }]}>
                 {isCreating ? 'Ny opgave' : 'Rediger opgave'}
               </Text>
-              <TouchableOpacity onPress={closeTaskModal}>
+              <TouchableOpacity onPress={closeTaskModal} disabled={isSaving}>
                 <IconSymbol ios_icon_name="xmark.circle.fill" android_material_icon_name="close" size={28} color={textSecondaryColor} />
               </TouchableOpacity>
             </View>
@@ -426,6 +445,7 @@ export default function TasksScreen() {
                 onChangeText={(text) => setSelectedTask(selectedTask ? { ...selectedTask, title: text } : null)}
                 placeholder="Opgavens titel"
                 placeholderTextColor={textSecondaryColor}
+                editable={!isSaving}
               />
 
               <Text style={[styles.label, { color: textColor }]}>Beskrivelse</Text>
@@ -437,6 +457,7 @@ export default function TasksScreen() {
                 placeholderTextColor={textSecondaryColor}
                 multiline
                 numberOfLines={4}
+                editable={!isSaving}
               />
 
               <Text style={[styles.label, { color: textColor }]}>Video URL</Text>
@@ -447,7 +468,13 @@ export default function TasksScreen() {
                 placeholder="https://youtube.com/..."
                 placeholderTextColor={textSecondaryColor}
                 autoCapitalize="none"
+                editable={!isSaving}
               />
+              {videoUrl.trim() && (
+                <Text style={[styles.helperText, { color: colors.secondary }]}>
+                  ✓ Video URL gemt
+                </Text>
+              )}
 
               <View style={styles.subtasksSection}>
                 <View style={styles.subtasksHeader}>
@@ -455,6 +482,7 @@ export default function TasksScreen() {
                   <TouchableOpacity
                     style={[styles.addSubtaskButton, { backgroundColor: colors.primary }]}
                     onPress={addSubtask}
+                    disabled={isSaving}
                   >
                     <IconSymbol
                       ios_icon_name="plus"
@@ -474,11 +502,13 @@ export default function TasksScreen() {
                       onChangeText={(value) => updateSubtask(index, value)}
                       placeholder={`Delopgave ${index + 1}`}
                       placeholderTextColor={textSecondaryColor}
+                      editable={!isSaving}
                     />
                     {subtasks.length > 1 && (
                       <TouchableOpacity
                         style={styles.removeSubtaskButton}
                         onPress={() => removeSubtask(index)}
+                        disabled={isSaving}
                       >
                         <IconSymbol
                           ios_icon_name="minus.circle"
@@ -500,6 +530,7 @@ export default function TasksScreen() {
                 placeholder="15"
                 placeholderTextColor={textSecondaryColor}
                 keyboardType="numeric"
+                editable={!isSaving}
               />
 
               <Text style={[styles.label, { color: textColor }]}>Aktivitetskategorier</Text>
@@ -516,6 +547,7 @@ export default function TasksScreen() {
                       },
                     ]}
                     onPress={() => toggleCategory(category.id)}
+                    disabled={isSaving}
                   >
                     <Text style={styles.categoryEmoji}>{category.emoji}</Text>
                     <Text style={[
@@ -533,14 +565,18 @@ export default function TasksScreen() {
               <TouchableOpacity
                 style={[styles.modalButton, styles.cancelButton, { backgroundColor: bgColor }]}
                 onPress={closeTaskModal}
+                disabled={isSaving}
               >
                 <Text style={[styles.modalButtonText, { color: textColor }]}>Annuller</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modalButton, styles.saveButton, { backgroundColor: colors.primary }]}
+                style={[styles.modalButton, styles.saveButton, { backgroundColor: colors.primary, opacity: isSaving ? 0.6 : 1 }]}
                 onPress={handleSaveTask}
+                disabled={isSaving}
               >
-                <Text style={[styles.modalButtonText, { color: '#fff' }]}>Gem</Text>
+                <Text style={[styles.modalButtonText, { color: '#fff' }]}>
+                  {isSaving ? 'Gemmer...' : 'Gem'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -832,6 +868,11 @@ const styles = StyleSheet.create({
   textArea: {
     height: 100,
     textAlignVertical: 'top',
+  },
+  helperText: {
+    fontSize: 14,
+    marginTop: -12,
+    marginBottom: 16,
   },
   subtasksSection: {
     marginBottom: 16,

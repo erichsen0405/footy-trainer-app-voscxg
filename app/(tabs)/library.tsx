@@ -372,6 +372,10 @@ export default function LibraryScreen() {
     try {
       if (!currentUserId) throw new Error('Not authenticated');
 
+      console.log('Saving exercise...');
+      console.log('Title:', title);
+      console.log('Video URL:', videoUrl);
+
       if (isCreating) {
         // Create new exercise
         const { data: newExercise, error: exerciseError } = await supabase
@@ -380,12 +384,14 @@ export default function LibraryScreen() {
             trainer_id: currentUserId,
             title,
             description: description || null,
-            video_url: videoUrl || null,
+            video_url: videoUrl.trim() || null,
           })
           .select()
           .single();
 
         if (exerciseError) throw exerciseError;
+
+        console.log('Exercise created:', newExercise.id);
 
         // Create subtasks
         const validSubtasks = subtasks.filter(s => s.trim());
@@ -406,17 +412,21 @@ export default function LibraryScreen() {
         Alert.alert('Succes', 'Øvelse oprettet');
       } else if (selectedExercise) {
         // Update existing exercise
+        console.log('Updating exercise:', selectedExercise.id);
+        
         const { error: updateError } = await supabase
           .from('exercise_library')
           .update({
             title,
             description: description || null,
-            video_url: videoUrl || null,
+            video_url: videoUrl.trim() || null,
             updated_at: new Date().toISOString(),
           })
           .eq('id', selectedExercise.id);
 
         if (updateError) throw updateError;
+
+        console.log('Exercise updated successfully');
 
         // Delete old subtasks
         const { error: deleteError } = await supabase
@@ -710,6 +720,9 @@ export default function LibraryScreen() {
       embedUrl = `https://www.youtube.com/embed/${videoId}`;
     } else if (url.includes('youtu.be/')) {
       const videoId = url.split('youtu.be/')[1]?.split('?')[0];
+      embedUrl = `https://www.youtube.com/embed/${videoId}`;
+    } else if (url.includes('youtube.com/shorts/')) {
+      const videoId = url.split('shorts/')[1]?.split('?')[0];
       embedUrl = `https://www.youtube.com/embed/${videoId}`;
     }
     
@@ -1020,14 +1033,14 @@ export default function LibraryScreen() {
         visible={showModal}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setShowModal(false)}
+        onRequestClose={() => !processing && setShowModal(false)}
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={[styles.modalContainer, { backgroundColor: bgColor }]}
         >
           <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowModal(false)}>
+            <TouchableOpacity onPress={() => !processing && setShowModal(false)} disabled={processing}>
               <IconSymbol
                 ios_icon_name="xmark"
                 android_material_icon_name="close"
@@ -1074,6 +1087,11 @@ export default function LibraryScreen() {
               editable={!processing}
               autoCapitalize="none"
             />
+            {videoUrl.trim() && (
+              <Text style={[styles.helperText, { color: colors.secondary }]}>
+                ✓ Video URL gemt
+              </Text>
+            )}
 
             <View style={styles.subtasksSection}>
               <View style={styles.subtasksHeader}>
@@ -1131,14 +1149,14 @@ export default function LibraryScreen() {
               <Text style={[styles.cancelButtonText, { color: textColor }]}>Annuller</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.saveButton, { backgroundColor: colors.primary }]}
+              style={[styles.saveButton, { backgroundColor: colors.primary, opacity: processing ? 0.6 : 1 }]}
               onPress={handleSaveExercise}
               disabled={processing}
             >
               {processing ? (
                 <ActivityIndicator color="#fff" size="small" />
               ) : (
-                <Text style={styles.saveButtonText}>Gem</Text>
+                <Text style={styles.saveButtonText}>{processing ? 'Gemmer...' : 'Gem'}</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -1507,6 +1525,11 @@ const styles = StyleSheet.create({
   textArea: {
     height: 100,
     textAlignVertical: 'top',
+  },
+  helperText: {
+    fontSize: 14,
+    marginTop: -8,
+    marginBottom: 12,
   },
   subtasksSection: {
     marginTop: 8,
