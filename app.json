@@ -1,66 +1,53 @@
+
 {
   "expo": {
-    "name": "Football coach",
-    "slug": "Football coach",
+    "name": "Football Training Tracker",
+    "slug": "football-training-tracker",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/58c4d2ff-1987-46af-803d-c0231fc33c42.png",
-    "userInterfaceStyle": "light",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/images/58c4d2ff-1987-46af-803d-c0231fc33c42.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#FF6347"
-    },
+    "icon": "./assets/images/final_quest_240x240.png",
+    "scheme": "natively",
+    "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.FootballCoach",
+      "bundleIdentifier": "dev.natively.footballtraining",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false,
-        "UIBackgroundModes": [
-          "remote-notification"
-        ]
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/58c4d2ff-1987-46af-803d-c0231fc33c42.png",
-        "backgroundColor": "#FF6347"
+        "foregroundImage": "./assets/images/final_quest_240x240.png",
+        "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true,
-      "package": "com.anonymous.FootballCoach",
-      "permissions": [
-        "android.permission.RECEIVE_BOOT_COMPLETED",
-        "android.permission.SCHEDULE_EXACT_ALARM",
-        "android.permission.POST_NOTIFICATIONS"
-      ]
+      "package": "dev.natively.footballtraining"
     },
     "web": {
-      "favicon": "./assets/images/58c4d2ff-1987-46af-803d-c0231fc33c42.png",
-      "bundler": "metro"
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/final_quest_240x240.png"
     },
     "plugins": [
-      "expo-font",
       "expo-router",
-      "expo-web-browser",
       [
         "expo-notifications",
         {
-          "icon": "./assets/images/58c4d2ff-1987-46af-803d-c0231fc33c42.png",
-          "color": "#FF6347",
-          "defaultChannel": "task-reminders",
-          "sounds": [],
-          "mode": "production"
+          "icon": "./assets/images/final_quest_240x240.png",
+          "color": "#ffffff",
+          "sounds": []
         }
       ]
     ],
-    "scheme": "football-coach",
     "experiments": {
       "typedRoutes": true
     },
     "extra": {
-      "router": {}
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "your-project-id"
+      }
     }
-  },
-  "scheme": "Football coach"
+  }
 }
