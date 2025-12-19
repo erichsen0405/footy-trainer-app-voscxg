@@ -1,12 +1,12 @@
 
 {
   "expo": {
-    "name": "Football Training Tracker",
-    "slug": "football-training-tracker",
+    "name": "Football coach",
+    "slug": "football-coach",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/final_quest_240x240.png",
-    "scheme": "natively",
+    "scheme": "footballcoach",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
