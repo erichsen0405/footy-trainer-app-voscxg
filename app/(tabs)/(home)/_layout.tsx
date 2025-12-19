@@ -8,17 +8,8 @@ export default function HomeLayout() {
       <Stack.Screen
         name="index"
         options={{
-          headerShown: Platform.OS === 'ios', // Show header on iOS with NativeTabs, hide on Android/Web
+          headerShown: false, // Hide header completely
           title: 'Home',
-          // Make header transparent
-          headerTransparent: true,
-          headerBlurEffect: 'systemMaterial', // iOS blur effect
-          headerStyle: {
-            backgroundColor: 'transparent',
-          },
-          headerTitleStyle: {
-            color: '#fff',
-          },
         }}
       />
     </Stack>

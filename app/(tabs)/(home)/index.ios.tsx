@@ -332,7 +332,7 @@ export default function HomeScreen() {
     <View style={{ flex: 1 }}>
       <ScrollView 
         style={[styles.container, { backgroundColor: containerBgColor }]} 
-        contentContainerStyle={[styles.contentContainer, { paddingTop: 0 }]}
+        contentContainerStyle={styles.contentContainer}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -342,13 +342,13 @@ export default function HomeScreen() {
           />
         }
       >
-        {/* Premium Header with Gradient - Now scrolls with content */}
-        <View style={[styles.headerContainer, { marginTop: 0 }]}>
+        {/* Premium Header with Gradient - Extends to top of screen */}
+        <View style={styles.headerContainer}>
           <LinearGradient
             colors={['#1a1a2e', '#16213e', '#0f3460']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={[styles.headerGradient, { paddingTop: insets.top + 60 }]}
+            style={[styles.headerGradient, { paddingTop: insets.top + 20 }]}
           >
             <View style={styles.headerContent}>
               <View style={styles.headerTop}>
@@ -797,9 +797,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   
-  // Premium Header Styles
+  // Premium Header Styles - Now extends to top
   headerContainer: {
     marginHorizontal: -16,
+    marginTop: 0,
     marginBottom: 24,
   },
   headerGradient: {
