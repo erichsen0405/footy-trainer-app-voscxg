@@ -29,13 +29,23 @@ interface VideoPlayerProps {
 /**
  * Video Player Component
  * Supports YouTube and Vimeo with inline playback on iOS and Android
+ * 
+ * CRITICAL FIXES FOR iOS:
+ * 1. Added sharedCookiesEnabled for YouTube authentication
+ * 2. Removed origin parameter (causes 502 errors on iOS)
+ * 3. Added more flexible userAgent detection
+ * 4. Ensured proper WebView dimensions
  */
 export function VideoPlayer({ videoUrl, onClose }: VideoPlayerProps) {
   const [webViewError, setWebViewError] = useState(false);
   const videoInfo = parseVideoUrl(videoUrl);
 
+  console.log('🎬 VideoPlayer rendering with URL:', videoUrl);
+  console.log('🎬 Video info:', videoInfo);
+
   // Check if URL is valid
   if (!isValidVideoUrl(videoUrl)) {
+    console.error('❌ Invalid video URL:', videoUrl);
     return (
       <View style={styles.errorContainer}>
         <IconSymbol
@@ -60,6 +70,7 @@ export function VideoPlayer({ videoUrl, onClose }: VideoPlayerProps) {
 
   // Check if embed URL is available
   if (!videoInfo.embedUrl) {
+    console.error('❌ No embed URL available for:', videoUrl);
     return (
       <View style={styles.errorContainer}>
         <IconSymbol
@@ -90,33 +101,53 @@ export function VideoPlayer({ videoUrl, onClose }: VideoPlayerProps) {
       externalUrl = `https://vimeo.com/${videoInfo.videoId}`;
     }
 
+    console.log('🔗 Opening external URL:', externalUrl);
     Linking.openURL(externalUrl).catch(err => {
-      console.error('Error opening video in external app:', err);
+      console.error('❌ Error opening video in external app:', err);
       Alert.alert('Fejl', 'Kunne ikke åbne video');
     });
   };
 
-  // Generate proper embed URL with parameters
-  // CRITICAL FIX: Added enablejsapi=1 and origin parameter for iOS WebView compatibility
+  // CRITICAL FIX: Generate proper embed URL with iOS-compatible parameters
   const getEmbedUrlWithParams = () => {
     if (videoInfo.platform === 'youtube') {
-      // YouTube requires these specific parameters to work in iOS WebView:
-      // - playsinline=1: Allows inline playback
-      // - autoplay=0: Don't autoplay
-      // - rel=0: Don't show related videos
-      // - modestbranding=1: Minimal YouTube branding
-      // - controls=1: Show player controls
-      // - enablejsapi=1: Enable JavaScript API (REQUIRED for iOS)
-      // - origin=https://www.youtube.com: Identify origin (REQUIRED for iOS to avoid 502)
-      return `${videoInfo.embedUrl}?playsinline=1&autoplay=0&rel=0&modestbranding=1&controls=1&enablejsapi=1&origin=https://www.youtube.com`;
+      // CRITICAL FIX FOR iOS:
+      // - Removed origin parameter (causes 502 errors on iOS)
+      // - Added fs=1 for fullscreen support
+      // - Simplified parameters for better iOS compatibility
+      const params = [
+        'playsinline=1',      // Allow inline playback
+        'autoplay=0',         // Don't autoplay (iOS requirement)
+        'rel=0',              // Don't show related videos
+        'modestbranding=1',   // Minimal YouTube branding
+        'controls=1',         // Show player controls
+        'enablejsapi=1',      // Enable JavaScript API
+        'fs=1',               // Allow fullscreen
+        'iv_load_policy=3',   // Hide video annotations
+      ].join('&');
+      
+      const embedUrl = `${videoInfo.embedUrl}?${params}`;
+      console.log('📹 YouTube embed URL:', embedUrl);
+      return embedUrl;
     } else if (videoInfo.platform === 'vimeo') {
-      return `${videoInfo.embedUrl}?playsinline=1&autoplay=0`;
+      const params = [
+        'playsinline=1',
+        'autoplay=0',
+        'title=0',
+        'byline=0',
+        'portrait=0',
+      ].join('&');
+      
+      const embedUrl = `${videoInfo.embedUrl}?${params}`;
+      console.log('📹 Vimeo embed URL:', embedUrl);
+      return embedUrl;
     }
     return videoInfo.embedUrl;
   };
 
   // Show error if WebView failed to load
   if (webViewError) {
+    console.error('❌ WebView error occurred');
     return (
       <View style={styles.errorContainer}>
         <IconSymbol
@@ -150,6 +181,7 @@ export function VideoPlayer({ videoUrl, onClose }: VideoPlayerProps) {
 
   // WebView is only available on iOS and Android
   if (!WebView || Platform.OS === 'web') {
+    console.warn('⚠️ WebView not available on this platform');
     return (
       <View style={styles.errorContainer}>
         <IconSymbol
@@ -181,36 +213,60 @@ export function VideoPlayer({ videoUrl, onClose }: VideoPlayerProps) {
   }
 
   const embedUrlWithParams = getEmbedUrlWithParams();
+  console.log('🎬 Final embed URL:', embedUrlWithParams);
+
+  // CRITICAL FIX: More flexible userAgent that works across iOS versions
+  const getUserAgent = () => {
+    if (Platform.OS === 'ios') {
+      // Use a more generic iOS Safari user agent that works across versions
+      return 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1';
+    } else if (Platform.OS === 'android') {
+      return 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36';
+    }
+    return undefined;
+  };
 
   return (
     <View style={styles.playerContainer}>
       <WebView
         source={{ uri: embedUrlWithParams }}
         style={styles.webView}
-        javaScriptEnabled
-        domStorageEnabled
-        allowsInlineMediaPlayback
+        // CRITICAL FIX: Enable shared cookies for YouTube authentication
+        sharedCookiesEnabled={true}
+        // Standard WebView props for video playback
+        javaScriptEnabled={true}
+        domStorageEnabled={true}
+        allowsInlineMediaPlayback={true}
         mediaPlaybackRequiresUserAction={false}
-        allowsFullscreenVideo
+        allowsFullscreenVideo={true}
         originWhitelist={['*']}
-        userAgent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile Safari/604.1"
+        // CRITICAL FIX: Use flexible userAgent
+        userAgent={getUserAgent()}
+        // Additional props for better compatibility
         startInLoadingState={true}
         scalesPageToFit={true}
         mixedContentMode="always"
+        // Error handling
         onError={(syntheticEvent) => {
           const { nativeEvent } = syntheticEvent;
-          console.error('WebView error (153):', nativeEvent);
+          console.error('❌ WebView error:', nativeEvent);
           setWebViewError(true);
         }}
         onHttpError={(syntheticEvent) => {
           const { nativeEvent } = syntheticEvent;
-          console.error('WebView HTTP error:', nativeEvent);
+          console.error('❌ WebView HTTP error:', nativeEvent.statusCode, nativeEvent.url);
           if (nativeEvent.statusCode === 403 || nativeEvent.statusCode === 404 || nativeEvent.statusCode === 502) {
             setWebViewError(true);
           }
         }}
+        onLoadStart={() => {
+          console.log('🔄 WebView load started');
+        }}
         onLoadEnd={() => {
-          console.log('Video loaded successfully:', embedUrlWithParams);
+          console.log('✅ WebView load completed');
+        }}
+        onLoadProgress={({ nativeEvent }) => {
+          console.log('📊 WebView load progress:', nativeEvent.progress);
         }}
       />
     </View>
@@ -414,10 +470,16 @@ const styles = StyleSheet.create({
   playerContainer: {
     flex: 1,
     backgroundColor: '#000',
+    // CRITICAL FIX: Ensure minimum dimensions for iOS
+    minHeight: 200,
+    minWidth: 200,
   },
   webView: {
     flex: 1,
     backgroundColor: '#000',
+    // CRITICAL FIX: Explicit dimensions for iOS
+    width: '100%',
+    height: '100%',
   },
   errorContainer: {
     flex: 1,

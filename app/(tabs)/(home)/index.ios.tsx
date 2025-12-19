@@ -159,6 +159,13 @@ export default function HomeScreen() {
   const handleTaskPress = useCallback((task: Task, activityId: string, activityTitle: string) => {
     console.log('⚡ Task clicked:', task.title);
     console.log('⚡ Opening task modal for:', task.title);
+    
+    // CRITICAL FIX: Log video URL for debugging
+    if (task.videoUrl) {
+      console.log('📹 Task has video URL:', task.videoUrl);
+      console.log('📹 Video URL is valid:', isValidVideoUrl(task.videoUrl));
+    }
+    
     setSelectedTask({ task, activityId, activityTitle });
     setIsTaskModalVisible(true);
   }, []);
