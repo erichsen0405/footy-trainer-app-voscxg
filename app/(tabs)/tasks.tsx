@@ -246,6 +246,24 @@ export default function TasksScreen() {
     setShowVideoModal(true);
   };
 
+  const handleDeleteVideo = () => {
+    Alert.alert(
+      'Slet video',
+      'Er du sikker på at du vil fjerne videoen fra denne opgave?',
+      [
+        { text: 'Annuller', style: 'cancel' },
+        {
+          text: 'Slet',
+          style: 'destructive',
+          onPress: () => {
+            setVideoUrl('');
+            Alert.alert('Video fjernet', 'Husk at gemme opgaven for at bekræfte ændringen');
+          },
+        },
+      ]
+    );
+  };
+
   const addSubtask = () => {
     setSubtasks([...subtasks, '']);
   };
@@ -461,33 +479,52 @@ export default function TasksScreen() {
                 editable={!isSaving}
               />
 
-              <Text style={[styles.label, { color: textColor }]}>Video URL (YouTube eller Vimeo)</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
-                value={videoUrl}
-                onChangeText={setVideoUrl}
-                placeholder="https://youtube.com/... eller https://vimeo.com/..."
-                placeholderTextColor={textSecondaryColor}
-                autoCapitalize="none"
-                editable={!isSaving}
-              />
-              {videoUrl.trim() && isValidVideoUrl(videoUrl) && (
-                <View style={styles.videoPreviewSmall}>
-                  <VideoThumbnail
-                    videoUrl={videoUrl}
-                    onPress={() => openVideoModal(videoUrl)}
-                    style={styles.videoThumbnailSmall}
-                  />
-                  <Text style={[styles.helperText, { color: colors.secondary }]}>
-                    ✓ Video URL gemt
-                  </Text>
+              <View style={styles.videoSection}>
+                <View style={styles.videoLabelRow}>
+                  <Text style={[styles.label, { color: textColor }]}>Video URL (YouTube eller Vimeo)</Text>
+                  {videoUrl.trim() && (
+                    <TouchableOpacity
+                      style={styles.deleteVideoButton}
+                      onPress={handleDeleteVideo}
+                      disabled={isSaving}
+                    >
+                      <IconSymbol
+                        ios_icon_name="trash.fill"
+                        android_material_icon_name="delete"
+                        size={18}
+                        color={colors.error}
+                      />
+                      <Text style={[styles.deleteVideoText, { color: colors.error }]}>Slet video</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
-              )}
-              {videoUrl.trim() && !isValidVideoUrl(videoUrl) && (
-                <Text style={[styles.helperText, { color: colors.error }]}>
-                  ⚠ Ugyldig video URL. Kun YouTube og Vimeo understøttes.
-                </Text>
-              )}
+                <TextInput
+                  style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+                  value={videoUrl}
+                  onChangeText={setVideoUrl}
+                  placeholder="https://youtube.com/... eller https://vimeo.com/..."
+                  placeholderTextColor={textSecondaryColor}
+                  autoCapitalize="none"
+                  editable={!isSaving}
+                />
+                {videoUrl.trim() && isValidVideoUrl(videoUrl) && (
+                  <View style={styles.videoPreviewSmall}>
+                    <VideoThumbnail
+                      videoUrl={videoUrl}
+                      onPress={() => openVideoModal(videoUrl)}
+                      style={styles.videoThumbnailSmall}
+                    />
+                    <Text style={[styles.helperText, { color: colors.secondary }]}>
+                      ✓ Video URL gemt
+                    </Text>
+                  </View>
+                )}
+                {videoUrl.trim() && !isValidVideoUrl(videoUrl) && (
+                  <Text style={[styles.helperText, { color: colors.error }]}>
+                    ⚠ Ugyldig video URL. Kun YouTube og Vimeo understøttes.
+                  </Text>
+                )}
+              </View>
 
               <View style={styles.subtasksSection}>
                 <View style={styles.subtasksHeader}>
@@ -772,6 +809,26 @@ const styles = StyleSheet.create({
   videoPreviewContainer: {
     marginBottom: 12,
     gap: 8,
+  },
+  videoSection: {
+    marginBottom: 16,
+  },
+  videoLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  deleteVideoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  deleteVideoText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   videoPreviewSmall: {
     marginTop: 8,

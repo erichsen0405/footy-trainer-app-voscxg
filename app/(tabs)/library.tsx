@@ -391,6 +391,24 @@ export default function LibraryScreen() {
     setShowModal(true);
   };
 
+  const handleDeleteVideo = () => {
+    Alert.alert(
+      'Slet video',
+      'Er du sikker på at du vil fjerne videoen fra denne øvelse?',
+      [
+        { text: 'Annuller', style: 'cancel' },
+        {
+          text: 'Slet',
+          style: 'destructive',
+          onPress: () => {
+            setVideoUrl('');
+            Alert.alert('Video fjernet', 'Husk at gemme øvelsen for at bekræfte ændringen');
+          },
+        },
+      ]
+    );
+  };
+
   const handleSaveExercise = async () => {
     if (!title.trim()) {
       Alert.alert('Fejl', 'Indtast venligst en titel');
@@ -1151,33 +1169,52 @@ export default function LibraryScreen() {
               editable={!processing}
             />
 
-            <Text style={[styles.label, { color: textColor }]}>Video URL</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: cardBgColor, color: textColor }]}
-              value={videoUrl}
-              onChangeText={setVideoUrl}
-              placeholder="https://youtube.com/..."
-              placeholderTextColor={textSecondaryColor}
-              editable={!processing}
-              autoCapitalize="none"
-            />
-            {videoUrl.trim() && getYouTubeVideoId(videoUrl) && (
-              <View style={styles.videoPreviewSmall}>
-                <Image
-                  source={{ uri: getYouTubeThumbnail(videoUrl) || '' }}
-                  style={styles.videoThumbnailSmall}
-                  resizeMode="cover"
-                />
-                <Text style={[styles.helperText, { color: colors.secondary }]}>
-                  ✓ Video URL gemt
-                </Text>
+            <View style={styles.videoSection}>
+              <View style={styles.videoLabelRow}>
+                <Text style={[styles.label, { color: textColor }]}>Video URL</Text>
+                {videoUrl.trim() && (
+                  <TouchableOpacity
+                    style={styles.deleteVideoButton}
+                    onPress={handleDeleteVideo}
+                    disabled={processing}
+                  >
+                    <IconSymbol
+                      ios_icon_name="trash.fill"
+                      android_material_icon_name="delete"
+                      size={18}
+                      color={colors.error}
+                    />
+                    <Text style={[styles.deleteVideoText, { color: colors.error }]}>Slet video</Text>
+                  </TouchableOpacity>
+                )}
               </View>
-            )}
-            {videoUrl.trim() && !getYouTubeVideoId(videoUrl) && (
-              <Text style={[styles.helperText, { color: colors.error }]}>
-                ⚠ Ugyldig YouTube URL
-              </Text>
-            )}
+              <TextInput
+                style={[styles.input, { backgroundColor: cardBgColor, color: textColor }]}
+                value={videoUrl}
+                onChangeText={setVideoUrl}
+                placeholder="https://youtube.com/..."
+                placeholderTextColor={textSecondaryColor}
+                editable={!processing}
+                autoCapitalize="none"
+              />
+              {videoUrl.trim() && getYouTubeVideoId(videoUrl) && (
+                <View style={styles.videoPreviewSmall}>
+                  <Image
+                    source={{ uri: getYouTubeThumbnail(videoUrl) || '' }}
+                    style={styles.videoThumbnailSmall}
+                    resizeMode="cover"
+                  />
+                  <Text style={[styles.helperText, { color: colors.secondary }]}>
+                    ✓ Video URL gemt
+                  </Text>
+                </View>
+              )}
+              {videoUrl.trim() && !getYouTubeVideoId(videoUrl) && (
+                <Text style={[styles.helperText, { color: colors.error }]}>
+                  ⚠ Ugyldig YouTube URL
+                </Text>
+              )}
+            </View>
 
             <View style={styles.subtasksSection}>
               <View style={styles.subtasksHeader}>
@@ -1695,6 +1732,26 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
     marginTop: 8,
+  },
+  videoSection: {
+    marginBottom: 16,
+  },
+  videoLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  deleteVideoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  deleteVideoText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   videoPreviewSmall: {
     marginTop: 8,
