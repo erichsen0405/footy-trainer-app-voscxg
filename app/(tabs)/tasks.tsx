@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, useColorScheme, KeyboardAvoidingView, Platform, RefreshControl, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, useColorScheme, KeyboardAvoidingView, Platform, RefreshControl, Alert, Image } from 'react-native';
 import { useFootball } from '@/contexts/FootballContext';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -10,6 +10,33 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { WebView } from 'react-native-webview';
 import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { supabase } from '@/app/integrations/supabase/client';
+
+// Helper function to extract YouTube video ID
+const getYouTubeVideoId = (url: string): string | null => {
+  if (!url) return null;
+  
+  // Handle different YouTube URL formats
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
+    /youtube\.com\/shorts\/([^&\n?#]+)/,
+  ];
+  
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+  
+  return null;
+};
+
+// Helper function to get YouTube thumbnail URL
+const getYouTubeThumbnail = (url: string): string | null => {
+  const videoId = getYouTubeVideoId(url);
+  if (!videoId) return null;
+  return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+};
 
 export default function TasksScreen() {
   const { tasks, categories, addTask, updateTask, deleteTask, duplicateTask } = useFootball();
@@ -228,18 +255,14 @@ export default function TasksScreen() {
   };
 
   const openVideoModal = (url: string) => {
-    // Convert YouTube URLs to embed format
-    let embedUrl = url;
-    if (url.includes('youtube.com/watch?v=')) {
-      const videoId = url.split('v=')[1]?.split('&')[0];
-      embedUrl = `https://www.youtube.com/embed/${videoId}`;
-    } else if (url.includes('youtu.be/')) {
-      const videoId = url.split('youtu.be/')[1]?.split('?')[0];
-      embedUrl = `https://www.youtube.com/embed/${videoId}`;
-    } else if (url.includes('youtube.com/shorts/')) {
-      const videoId = url.split('shorts/')[1]?.split('?')[0];
-      embedUrl = `https://www.youtube.com/embed/${videoId}`;
+    const videoId = getYouTubeVideoId(url);
+    if (!videoId) {
+      Alert.alert('Fejl', 'Ugyldig YouTube URL');
+      return;
     }
+    
+    // Use embed URL with proper parameters for mobile playback
+    const embedUrl = `https://www.youtube.com/embed/${videoId}?playsinline=1&autoplay=0&rel=0&modestbranding=1`;
     
     setSelectedVideoUrl(embedUrl);
     setShowVideoModal(true);
@@ -389,15 +412,24 @@ export default function TasksScreen() {
 
               {task.videoUrl && (
                 <TouchableOpacity 
-                  style={styles.videoIndicator}
+                  style={styles.videoPreviewContainer}
                   onPress={() => openVideoModal(task.videoUrl!)}
                 >
-                  <IconSymbol
-                    ios_icon_name="play.rectangle.fill"
-                    android_material_icon_name="play_circle"
-                    size={16}
-                    color={colors.primary}
+                  <Image
+                    source={{ uri: getYouTubeThumbnail(task.videoUrl) || '' }}
+                    style={styles.videoThumbnail}
+                    resizeMode="cover"
                   />
+                  <View style={styles.playButtonOverlay}>
+                    <View style={styles.playButton}>
+                      <IconSymbol
+                        ios_icon_name="play.fill"
+                        android_material_icon_name="play_arrow"
+                        size={32}
+                        color="#fff"
+                      />
+                    </View>
+                  </View>
                   <Text style={[styles.videoText, { color: colors.primary }]}>Afspil video</Text>
                 </TouchableOpacity>
               )}
@@ -470,9 +502,21 @@ export default function TasksScreen() {
                 autoCapitalize="none"
                 editable={!isSaving}
               />
-              {videoUrl.trim() && (
-                <Text style={[styles.helperText, { color: colors.secondary }]}>
-                  ✓ Video URL gemt
+              {videoUrl.trim() && getYouTubeVideoId(videoUrl) && (
+                <View style={styles.videoPreviewSmall}>
+                  <Image
+                    source={{ uri: getYouTubeThumbnail(videoUrl) || '' }}
+                    style={styles.videoThumbnailSmall}
+                    resizeMode="cover"
+                  />
+                  <Text style={[styles.helperText, { color: colors.secondary }]}>
+                    ✓ Video URL gemt
+                  </Text>
+                </View>
+              )}
+              {videoUrl.trim() && !getYouTubeVideoId(videoUrl) && (
+                <Text style={[styles.helperText, { color: colors.error }]}>
+                  ⚠ Ugyldig YouTube URL
                 </Text>
               )}
 
@@ -587,30 +631,42 @@ export default function TasksScreen() {
       <Modal
         visible={showVideoModal}
         animationType="slide"
-        presentationStyle="pageSheet"
+        presentationStyle="fullScreen"
         onRequestClose={() => setShowVideoModal(false)}
       >
-        <View style={[styles.modalContainer, { backgroundColor: bgColor }]}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowVideoModal(false)}>
+        <View style={[styles.videoModalContainer, { backgroundColor: '#000' }]}>
+          <View style={[styles.videoModalHeader, { backgroundColor: 'rgba(0,0,0,0.8)' }]}>
+            <TouchableOpacity 
+              onPress={() => setShowVideoModal(false)}
+              style={styles.videoCloseButton}
+            >
               <IconSymbol
-                ios_icon_name="xmark"
+                ios_icon_name="xmark.circle.fill"
                 android_material_icon_name="close"
-                size={24}
-                color={textColor}
+                size={32}
+                color="#fff"
               />
             </TouchableOpacity>
-            <Text style={[styles.modalTitle, { color: textColor }]}>Video</Text>
-            <View style={{ width: 24 }} />
+            <Text style={[styles.videoModalTitle, { color: '#fff' }]}>Video</Text>
+            <View style={{ width: 32 }} />
           </View>
 
           <View style={styles.videoContainer}>
             {selectedVideoUrl && (
               <WebView
-                source={{ uri: selectedVideoUrl }}
+                source={{ 
+                  uri: selectedVideoUrl,
+                }}
                 style={styles.webView}
-                allowsFullscreenVideo
+                allowsFullscreenVideo={true}
+                allowsInlineMediaPlayback={true}
                 mediaPlaybackRequiresUserAction={false}
+                javaScriptEnabled={true}
+                domStorageEnabled={true}
+                startInLoadingState={true}
+                scalesPageToFit={true}
+                mixedContentMode="always"
+                originWhitelist={['*']}
               />
             )}
           </View>
@@ -791,15 +847,51 @@ const styles = StyleSheet.create({
   actionButton: {
     padding: 4,
   },
-  videoIndicator: {
-    flexDirection: 'row',
+  videoPreviewContainer: {
+    marginBottom: 12,
+    borderRadius: 12,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  videoThumbnail: {
+    width: '100%',
+    height: 180,
+    backgroundColor: '#000',
+  },
+  playButtonOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 8,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  playButton: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(255,0,0,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   videoText: {
     fontSize: 14,
     fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  videoPreviewSmall: {
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  videoThumbnailSmall: {
+    width: '100%',
+    height: 120,
+    borderRadius: 8,
+    backgroundColor: '#000',
+    marginBottom: 8,
   },
   reminderBadge: {
     flexDirection: 'row',
@@ -871,8 +963,7 @@ const styles = StyleSheet.create({
   },
   helperText: {
     fontSize: 14,
-    marginTop: -12,
-    marginBottom: 16,
+    marginTop: 4,
   },
   subtasksSection: {
     marginBottom: 16,
@@ -953,8 +1044,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  modalContainer: {
+  videoModalContainer: {
     flex: 1,
+  },
+  videoModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: Platform.OS === 'android' ? 48 : 60,
+    paddingBottom: 16,
+    paddingHorizontal: 20,
+  },
+  videoCloseButton: {
+    padding: 4,
+  },
+  videoModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
   },
   videoContainer: {
     flex: 1,
@@ -962,5 +1068,6 @@ const styles = StyleSheet.create({
   },
   webView: {
     flex: 1,
+    backgroundColor: '#000',
   },
 });
