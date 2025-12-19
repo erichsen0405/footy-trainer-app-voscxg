@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useColorScheme, Modal, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useColorScheme, Modal, RefreshControl, Dimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFootball } from '@/contexts/FootballContext';
 import { colors, getColors } from '@/styles/commonStyles';
@@ -14,6 +14,8 @@ import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { LinearGradient } from 'expo-linear-gradient';
 import { VideoPlayer } from '@/components/VideoPlayer';
 import { isValidVideoUrl } from '@/utils/videoUrlParser';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -681,7 +683,7 @@ export default function HomeScreen() {
         <View style={{ height: 120 }} />
       </ScrollView>
 
-      {/* Task Details Modal with Embedded Video */}
+      {/* Task Details Modal with Embedded Video - FIXED FOR iOS */}
       {isTaskModalVisible && selectedTask && (
         <Modal
           visible={true}
@@ -707,7 +709,12 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               </View>
 
-              <ScrollView style={styles.modalBody}>
+              <ScrollView 
+                style={styles.modalBody}
+                contentContainerStyle={styles.modalBodyContent}
+                showsVerticalScrollIndicator={true}
+                bounces={true}
+              >
                 <Text style={[styles.taskModalActivity, { color: textSecondaryColor }]}>
                   {selectedTask.activityTitle}
                 </Text>
@@ -722,9 +729,10 @@ export default function HomeScreen() {
                   </Text>
                 )}
 
-                {/* Embedded Video Player */}
+                {/* CRITICAL FIX: Embedded Video Player with proper dimensions for iOS */}
                 {selectedTask.task.videoUrl && isValidVideoUrl(selectedTask.task.videoUrl) && (
                   <View style={styles.videoContainer}>
+                    <Text style={[styles.videoLabel, { color: textColor }]}>📹 Video</Text>
                     <View style={styles.videoPlayerWrapper}>
                       <VideoPlayer videoUrl={selectedTask.task.videoUrl} />
                     </View>
@@ -1252,7 +1260,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   
-  // Modal Styles
+  // Modal Styles - FIXED FOR iOS VIDEO DISPLAY
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
@@ -1261,7 +1269,8 @@ const styles = StyleSheet.create({
   modalContent: {
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: '85%',
+    maxHeight: '90%',
+    height: '90%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1276,7 +1285,11 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   modalBody: {
+    flex: 1,
+  },
+  modalBodyContent: {
     padding: 24,
+    paddingBottom: 40,
   },
   taskModalActivity: {
     fontSize: 14,
@@ -1295,9 +1308,14 @@ const styles = StyleSheet.create({
   videoContainer: {
     marginBottom: 24,
   },
+  videoLabel: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
   videoPlayerWrapper: {
-    width: '100%',
-    height: 220,
+    width: SCREEN_WIDTH - 48,
+    height: Math.round((SCREEN_WIDTH - 48) * 9 / 16),
     borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: '#000',
