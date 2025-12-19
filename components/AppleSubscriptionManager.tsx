@@ -65,7 +65,7 @@ export default function AppleSubscriptionManager({
   };
 
   const getPlanIcon = (productId: string) => {
-    if (productId.includes('player')) return 'star.fill';
+    if (productId.includes('spiller')) return 'star.fill';
     if (productId.includes('basic')) return 'star.fill';
     if (productId.includes('standard')) return 'star.leadinghalf.filled';
     if (productId.includes('premium')) return 'star.circle.fill';
@@ -73,14 +73,14 @@ export default function AppleSubscriptionManager({
   };
 
   const getPlanColor = (productId: string) => {
-    if (productId.includes('player') || productId.includes('basic')) return '#CD7F32'; // Bronze
+    if (productId.includes('spiller') || productId.includes('basic')) return '#CD7F32'; // Bronze
     if (productId.includes('standard')) return '#C0C0C0'; // Silver
     if (productId.includes('premium')) return '#FFD700'; // Gold
     return colors.primary;
   };
 
   const getPlanName = (product: any) => {
-    if (product.productId.includes('player')) return 'Spiller';
+    if (product.productId.includes('spiller')) return 'Spiller';
     if (product.productId.includes('basic')) return 'Træner Basis';
     if (product.productId.includes('standard')) return 'Træner Standard';
     if (product.productId.includes('premium')) return 'Træner Premium';

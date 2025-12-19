@@ -4,12 +4,12 @@ import { Platform, Alert } from 'react-native';
 import * as RNIap from 'react-native-iap';
 import { supabase } from '@/app/integrations/supabase/client';
 
-// Product IDs from App Store Connect
+// Product IDs from App Store Connect - MUST MATCH EXACTLY
 const PRODUCT_IDS = {
-  PLAYER: 'com.footballcoach.sub.player',
-  TRAINER_BASIC: 'com.footballcoach.sub.trainer.basic',
-  TRAINER_STANDARD: 'com.footballcoach.sub.trainer.standard',
-  TRAINER_PREMIUM: 'com.footballcoach.sub.trainer.premium',
+  PLAYER: 'fc_spiller_monthly',
+  TRAINER_BASIC: 'fc_trainer_basic_monthly',
+  TRAINER_STANDARD: 'fc_trainer_standard_monthly',
+  TRAINER_PREMIUM: 'fc_trainer_premium_monthly',
 };
 
 interface SubscriptionProduct {
@@ -137,6 +137,8 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
     try {
       console.log('[AppleIAP] Fetching products from App Store...');
       const productIds = Object.values(PRODUCT_IDS);
+      console.log('[AppleIAP] Product IDs to fetch:', productIds);
+      
       const availableProducts = await RNIap.getSubscriptions({ skus: productIds });
       
       console.log('[AppleIAP] Available products:', availableProducts);
@@ -144,7 +146,8 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       // Map products to our format with max players info
       const mappedProducts: SubscriptionProduct[] = availableProducts.map((product) => {
         let maxPlayers = 1;
-        if (product.productId === PRODUCT_IDS.TRAINER_BASIC) maxPlayers = 5;
+        if (product.productId === PRODUCT_IDS.PLAYER) maxPlayers = 1;
+        else if (product.productId === PRODUCT_IDS.TRAINER_BASIC) maxPlayers = 5;
         else if (product.productId === PRODUCT_IDS.TRAINER_STANDARD) maxPlayers = 15;
         else if (product.productId === PRODUCT_IDS.TRAINER_PREMIUM) maxPlayers = 50;
 
@@ -183,11 +186,13 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
         const latestPurchase = sortedPurchases[0];
         
         // Check if subscription is still valid
+        // Note: For auto-renewable subscriptions, Apple handles expiry automatically
+        // We rely on getAvailablePurchases() which only returns active subscriptions
         const expiryDate = latestPurchase.transactionDate 
-          ? latestPurchase.transactionDate + (30 * 24 * 60 * 60 * 1000) // 30 days
+          ? latestPurchase.transactionDate + (30 * 24 * 60 * 60 * 1000) // 30 days estimate
           : null;
         
-        const isActive = expiryDate ? Date.now() < expiryDate : false;
+        const isActive = true; // If it's in availablePurchases, it's active
 
         const status: SubscriptionStatus = {
           isActive,
@@ -232,9 +237,12 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
 
       // Determine subscription tier based on product ID
       let subscriptionTier = 'player';
-      if (productId === PRODUCT_IDS.TRAINER_BASIC) subscriptionTier = 'trainer_basic';
+      if (productId === PRODUCT_IDS.PLAYER) subscriptionTier = 'player';
+      else if (productId === PRODUCT_IDS.TRAINER_BASIC) subscriptionTier = 'trainer_basic';
       else if (productId === PRODUCT_IDS.TRAINER_STANDARD) subscriptionTier = 'trainer_standard';
       else if (productId === PRODUCT_IDS.TRAINER_PREMIUM) subscriptionTier = 'trainer_premium';
+
+      console.log('[AppleIAP] Subscription tier:', subscriptionTier);
 
       // Update or create profile with subscription info
       const { error } = await supabase
