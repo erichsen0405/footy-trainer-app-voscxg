@@ -1,7 +1,8 @@
+
 {
   "expo": {
-    "name": "Football coach",
-    "slug": "Football coach",
+    "name": "Football Coach",
+    "slug": "Football Coach",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/58c4d2ff-1987-46af-803d-c0231fc33c42.png",
@@ -62,5 +63,5 @@
       "router": {}
     }
   },
-  "scheme": "Football coach"
+  "scheme": "Football Coach"
 }
