@@ -39,7 +39,7 @@ const getYouTubeThumbnail = (url: string): string | null => {
 };
 
 export default function TasksScreen() {
-  const { tasks, categories, addTask, updateTask, deleteTask, duplicateTask } = useFootball();
+  const { tasks, categories, addTask, updateTask, deleteTask, duplicateTask, refreshData } = useFootball();
   const { selectedContext } = useTeamPlayer();
   const { isAdmin } = useUserRole();
   const [searchQuery, setSearchQuery] = useState('');
@@ -69,13 +69,20 @@ export default function TasksScreen() {
     task.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const onRefresh = React.useCallback(() => {
+  const onRefresh = React.useCallback(async () => {
+    console.log('Pull to refresh triggered on tasks screen');
     setRefreshing(true);
-    // Simulate refresh - in a real app, you would fetch data here
-    setTimeout(() => {
+    
+    try {
+      // Trigger data refresh from context
+      await refreshData();
+      console.log('Tasks data refreshed successfully');
+    } catch (error) {
+      console.error('Error refreshing tasks data:', error);
+    } finally {
       setRefreshing(false);
-    }, 1000);
-  }, []);
+    }
+  }, [refreshData]);
 
   const openTaskModal = async (task: Task | null, creating: boolean = false) => {
     setSelectedTask(task);
@@ -262,7 +269,7 @@ export default function TasksScreen() {
     }
     
     // Use embed URL with proper parameters for mobile playback
-    const embedUrl = `https://www.youtube.com/embed/${videoId}?playsinline=1&autoplay=0&rel=0&modestbranding=1`;
+    const embedUrl = `https://www.youtube.com/embed/${videoId}?playsinline=1&autoplay=1&rel=0&modestbranding=1&enablejsapi=1`;
     
     setSelectedVideoUrl(embedUrl);
     setShowVideoModal(true);
@@ -355,7 +362,12 @@ export default function TasksScreen() {
         style={styles.content} 
         contentContainerStyle={styles.contentContainer}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
         }
       >
         <View style={styles.section}>
@@ -667,6 +679,14 @@ export default function TasksScreen() {
                 scalesPageToFit={true}
                 mixedContentMode="always"
                 originWhitelist={['*']}
+                onError={(syntheticEvent) => {
+                  const { nativeEvent } = syntheticEvent;
+                  console.error('WebView error:', nativeEvent);
+                }}
+                onHttpError={(syntheticEvent) => {
+                  const { nativeEvent } = syntheticEvent;
+                  console.error('WebView HTTP error:', nativeEvent);
+                }}
               />
             )}
           </View>
