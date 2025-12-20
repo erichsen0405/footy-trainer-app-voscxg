@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
 import { colors } from '@/styles/commonStyles';
 import { useColorScheme, ActivityIndicator, View } from 'react-native';
@@ -45,6 +45,14 @@ export default function TabLayout() {
     };
   }, []); // Empty dependency array - only run once on mount
 
+  // Memoize colors to prevent render loop
+  const tabBarBackgroundColor = useMemo(() => isDark ? '#000000' : '#FFFFFF', [isDark]);
+  const selectedColor = useMemo(() => colors.primary, []);
+  const unselectedColor = useMemo(() => isDark ? '#8E8E93' : '#8E8E93', [isDark]);
+
+  // Memoize border color
+  const borderTopColor = useMemo(() => isDark ? '#38383A' : '#E5E5E5', [isDark]);
+
   if (loading || authLoading) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#000' : '#fff' }}>
@@ -55,10 +63,6 @@ export default function TabLayout() {
 
   // If user is not logged in, only show profile tab
   if (!user) {
-    const tabBarBackgroundColor = isDark ? '#000000' : '#FFFFFF';
-    const selectedColor = colors.primary;
-    const unselectedColor = isDark ? '#8E8E93' : '#8E8E93';
-    
     return (
       <NativeTabs 
         tintColor={selectedColor}
@@ -69,7 +73,7 @@ export default function TabLayout() {
         style={{
           backgroundColor: tabBarBackgroundColor,
           borderTopWidth: 0.5,
-          borderTopColor: isDark ? '#38383A' : '#E5E5E5',
+          borderTopColor: borderTopColor,
           opacity: 1,
           shadowOpacity: 0,
           elevation: 0,
@@ -78,7 +82,7 @@ export default function TabLayout() {
           tabBarStyle: {
             backgroundColor: tabBarBackgroundColor,
             borderTopWidth: 0.5,
-            borderTopColor: isDark ? '#38383A' : '#E5E5E5',
+            borderTopColor: borderTopColor,
             opacity: 1,
             shadowOpacity: 0,
             elevation: 0,
@@ -122,12 +126,6 @@ export default function TabLayout() {
   // Trainer sees: Home, Tasks, Library, Trainer, Profile (Performance removed)
   const isTrainer = userRole === 'admin' || userRole === 'trainer';
   
-  // CRITICAL FIX: Ensure proper colors for icons and labels
-  // Use high contrast colors that work on both light and dark backgrounds
-  const tabBarBackgroundColor = isDark ? '#000000' : '#FFFFFF';
-  const selectedColor = colors.primary; // Always use primary color for selected
-  const unselectedColor = isDark ? '#8E8E93' : '#8E8E93'; // iOS standard gray
-  
   return (
     <NativeTabs 
       tintColor={selectedColor}
@@ -138,7 +136,7 @@ export default function TabLayout() {
       style={{
         backgroundColor: tabBarBackgroundColor,
         borderTopWidth: 0.5,
-        borderTopColor: isDark ? '#38383A' : '#E5E5E5',
+        borderTopColor: borderTopColor,
         opacity: 1,
         shadowOpacity: 0,
         elevation: 0,
@@ -147,7 +145,7 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: tabBarBackgroundColor,
           borderTopWidth: 0.5,
-          borderTopColor: isDark ? '#38383A' : '#E5E5E5',
+          borderTopColor: borderTopColor,
           opacity: 1,
           shadowOpacity: 0,
           elevation: 0,
