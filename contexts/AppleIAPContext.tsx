@@ -1,8 +1,21 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Platform, Alert } from 'react-native';
-import * as RNIap from 'react-native-iap';
 import { supabase } from '@/app/integrations/supabase/client';
+
+// Dynamically import react-native-iap only on native platforms
+let RNIap: any = null;
+if (Platform.OS === 'ios' || Platform.OS === 'android') {
+  try {
+    RNIap = require('react-native-iap');
+  } catch (error) {
+    console.warn('[AppleIAP] ⚠️ react-native-iap not available in Expo Go.');
+    console.warn('[AppleIAP] 📱 To use In-App Purchases, build with EAS:');
+    console.warn('[AppleIAP] 1. Run: eas build --profile development --platform ios');
+    console.warn('[AppleIAP] 2. Install the development build on your device');
+    console.warn('[AppleIAP] 3. Run: expo start --dev-client');
+  }
+}
 
 // Product IDs from App Store Connect - MUST MATCH EXACTLY
 const PRODUCT_IDS = {
@@ -49,15 +62,20 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
 
   // Initialize IAP connection
   useEffect(() => {
-    if (Platform.OS === 'ios') {
+    if (Platform.OS === 'ios' && RNIap) {
       initializeIAP();
     } else {
       setLoading(false);
-      console.log('[AppleIAP] Not on iOS, skipping IAP initialization');
+      if (!RNIap && Platform.OS === 'ios') {
+        console.log('[AppleIAP] 📱 In-App Purchases require a development build.');
+        console.log('[AppleIAP] 🔧 Build with: eas build --profile development --platform ios');
+      } else if (Platform.OS !== 'ios') {
+        console.log('[AppleIAP] Not on iOS, skipping IAP initialization');
+      }
     }
 
     return () => {
-      if (Platform.OS === 'ios') {
+      if (Platform.OS === 'ios' && RNIap) {
         RNIap.endConnection();
       }
     };
@@ -65,7 +83,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
 
   // Set up purchase update listener
   useEffect(() => {
-    if (Platform.OS !== 'ios') return;
+    if (Platform.OS !== 'ios' || !RNIap) return;
 
     const purchaseUpdateSubscription = RNIap.purchaseUpdatedListener(
       async (purchase) => {
@@ -115,6 +133,12 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const initializeIAP = async () => {
+    if (!RNIap) {
+      console.log('[AppleIAP] react-native-iap not available');
+      setLoading(false);
+      return;
+    }
+    
     try {
       console.log('[AppleIAP] Initializing IAP connection...');
       await RNIap.initConnection();
@@ -134,6 +158,11 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
   };
 
   const fetchProducts = async () => {
+    if (!RNIap) {
+      console.log('[AppleIAP] react-native-iap not available');
+      return;
+    }
+    
     try {
       console.log('[AppleIAP] Fetching products from App Store...');
       const productIds = Object.values(PRODUCT_IDS);
@@ -144,7 +173,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       console.log('[AppleIAP] Available products:', availableProducts);
 
       // Map products to our format with max players info
-      const mappedProducts: SubscriptionProduct[] = availableProducts.map((product) => {
+      const mappedProducts: SubscriptionProduct[] = availableProducts.map((product: any) => {
         let maxPlayers = 1;
         if (product.productId === PRODUCT_IDS.PLAYER) maxPlayers = 1;
         else if (product.productId === PRODUCT_IDS.TRAINER_BASIC) maxPlayers = 5;
@@ -170,6 +199,17 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshSubscriptionStatus = async () => {
+    if (!RNIap) {
+      console.log('[AppleIAP] react-native-iap not available');
+      setSubscriptionStatus({
+        isActive: false,
+        productId: null,
+        expiryDate: null,
+        isInTrialPeriod: false,
+      });
+      return;
+    }
+    
     try {
       console.log('[AppleIAP] Refreshing subscription status...');
       
@@ -179,7 +219,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
 
       if (availablePurchases.length > 0) {
         // Find the most recent subscription
-        const sortedPurchases = availablePurchases.sort((a, b) => {
+        const sortedPurchases = availablePurchases.sort((a: any, b: any) => {
           return (b.transactionDate || 0) - (a.transactionDate || 0);
         });
 
@@ -275,6 +315,15 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    if (!RNIap) {
+      Alert.alert(
+        'Kræver Development Build',
+        'In-App Purchases virker ikke i Expo Go.\n\nByg appen med EAS:\n1. eas build --profile development --platform ios\n2. Installer build på din enhed\n3. expo start --dev-client',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     setPurchasing(true);
     try {
       console.log('[AppleIAP] Requesting subscription:', productId);
@@ -299,6 +348,15 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       Alert.alert(
         'Ikke tilgængelig',
         'Apple In-App Purchases er kun tilgængelige på iOS.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    if (!RNIap) {
+      Alert.alert(
+        'Kræver Development Build',
+        'In-App Purchases virker ikke i Expo Go.\n\nByg appen med EAS:\n1. eas build --profile development --platform ios\n2. Installer build på din enhed\n3. expo start --dev-client',
         [{ text: 'OK' }]
       );
       return;

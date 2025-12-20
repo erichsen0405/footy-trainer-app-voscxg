@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useColorScheme, Modal, RefreshControl, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useColorScheme, Modal, RefreshControl, Dimensions, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFootball } from '@/contexts/FootballContext';
 import { colors, getColors } from '@/styles/commonStyles';
@@ -18,9 +18,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-export default function HomeScreen() {
+// Wrapper component to handle context errors gracefully
+function HomeScreenContent() {
   const router = useRouter();
-  const { currentWeekStats, todayActivities, activities, categories, toggleTaskCompletion, createActivity, externalCalendars, fetchExternalCalendarEvents } = useFootball();
+  const footballContext = useFootball();
+  const { currentWeekStats, todayActivities, activities, categories, toggleTaskCompletion, createActivity, externalCalendars, fetchExternalCalendarEvents } = footballContext;
   const { selectedContext } = useTeamPlayer();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -155,12 +157,10 @@ export default function HomeScreen() {
     router.push(`/activity-details?id=${activityId}`);
   };
 
-  // PERFORMANCE FIX: Use useCallback to prevent re-creating this function on every render
   const handleTaskPress = useCallback((task: Task, activityId: string, activityTitle: string) => {
     console.log('⚡ Task clicked:', task.title);
     console.log('⚡ Opening task modal for:', task.title);
     
-    // CRITICAL FIX: Log video URL for debugging
     if (task.videoUrl) {
       console.log('📹 Task has video URL:', task.videoUrl);
       console.log('📹 Video URL is valid:', isValidVideoUrl(task.videoUrl));
@@ -170,7 +170,6 @@ export default function HomeScreen() {
     setIsTaskModalVisible(true);
   }, []);
 
-  // CRITICAL FIX: Optimistic update - close modal immediately and update in background
   const handleToggleTaskCompletion = useCallback(async () => {
     if (!selectedTask) return;
     
@@ -190,23 +189,19 @@ export default function HomeScreen() {
       return;
     }
     
-    // CRITICAL FIX: Close modal IMMEDIATELY for instant feedback
     console.log('⚡ INSTANT: Closing modal immediately');
     setIsTaskModalVisible(false);
     
-    // Clear selected task after a short delay to allow modal animation to complete
     setTimeout(() => {
       setSelectedTask(null);
     }, 300);
     
-    // Update task in background (optimistic update happens in toggleTaskCompletion)
     try {
       console.log('🔄 BACKGROUND: Updating task completion in database');
       await toggleTaskCompletion(selectedTask.activityId, selectedTask.task.id);
       console.log('✅ BACKGROUND: Task completion toggled successfully');
     } catch (error) {
       console.error('❌ BACKGROUND: Error toggling task completion:', error);
-      // Note: The optimistic update in toggleTaskCompletion will rollback on error
     }
   }, [selectedTask, toggleTaskCompletion, isAdmin, selectedContext]);
 
@@ -236,7 +231,6 @@ export default function HomeScreen() {
   };
 
   const handleCreateActivity = async (activityData: ActivityCreationData) => {
-    // Check if we need confirmation (trainer/admin managing player/team data)
     if (isAdmin && selectedContext.type) {
       setPendingAction({
         type: 'create',
@@ -294,20 +288,16 @@ export default function HomeScreen() {
     Object.keys(grouped).forEach(key => {
       const weekActivities = grouped[key].activities;
       if (weekActivities.length > 0) {
-        // Sort by date AND time
         weekActivities.sort((a, b) => {
           const dateA = new Date(a.date);
           const dateB = new Date(b.date);
           
-          // Parse time strings (format: "HH:MM" or "HH:MM:SS")
           const [hoursA, minutesA] = a.time.split(':').map(Number);
           const [hoursB, minutesB] = b.time.split(':').map(Number);
           
-          // Set the time on the date objects
           dateA.setHours(hoursA, minutesA, 0, 0);
           dateB.setHours(hoursB, minutesB, 0, 0);
           
-          // Compare the full date+time
           return dateA.getTime() - dateB.getTime();
         });
         
@@ -331,7 +321,6 @@ export default function HomeScreen() {
   const textColor = isDark ? '#fff' : '#1a1a1a';
   const textSecondaryColor = isDark ? '#999' : '#666';
 
-  // Determine if we're in context management mode
   const isManagingContext = isAdmin && selectedContext.type;
   const containerBgColor = isManagingContext ? themeColors.contextWarning : bgColor;
 
@@ -349,7 +338,6 @@ export default function HomeScreen() {
           />
         }
       >
-        {/* Premium Header with Gradient - Extends to top of screen */}
         <View style={styles.headerContainer}>
           <LinearGradient
             colors={['#1a1a2e', '#16213e', '#0f3460']}
@@ -373,7 +361,6 @@ export default function HomeScreen() {
           </LinearGradient>
         </View>
 
-        {/* Enhanced Context Banner for Trainers/Admins */}
         {isManagingContext && (
           <View style={[styles.contextBanner, { backgroundColor: '#D4A574' }]}>
             <IconSymbol
@@ -396,7 +383,6 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* Premium Stats Card */}
         <View style={styles.statsContainer}>
           <LinearGradient
             colors={[getProgressColor(currentWeekStats.percentage), '#000']}
@@ -463,7 +449,6 @@ export default function HomeScreen() {
           </LinearGradient>
         </View>
 
-        {/* Create Activity Button - Premium Style */}
         <TouchableOpacity
           style={styles.createButtonPremium}
           onPress={() => setIsCreateModalVisible(true)}
@@ -480,7 +465,6 @@ export default function HomeScreen() {
           </LinearGradient>
         </TouchableOpacity>
 
-        {/* Today's Activities Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleContainer}>
@@ -579,7 +563,6 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {/* Upcoming Activities Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleContainer}>
@@ -695,7 +678,6 @@ export default function HomeScreen() {
         <View style={{ height: 120 }} />
       </ScrollView>
 
-      {/* Task Details Modal with Embedded Video - FIXED FOR iOS */}
       {isTaskModalVisible && selectedTask && (
         <Modal
           visible={true}
@@ -741,7 +723,6 @@ export default function HomeScreen() {
                   </Text>
                 )}
 
-                {/* CRITICAL FIX: Embedded Video Player with proper dimensions for iOS */}
                 {selectedTask.task.videoUrl && isValidVideoUrl(selectedTask.task.videoUrl) && (
                   <View style={styles.videoContainer}>
                     <Text style={[styles.videoLabel, { color: textColor }]}>📹 Video</Text>
@@ -751,7 +732,6 @@ export default function HomeScreen() {
                   </View>
                 )}
 
-                {/* CRITICAL FIX: Button triggers optimistic update - closes modal immediately */}
                 <TouchableOpacity
                   style={[
                     styles.completeButton,
@@ -796,6 +776,26 @@ export default function HomeScreen() {
   );
 }
 
+// Main export with error boundary
+export default function HomeScreen() {
+  try {
+    return <HomeScreenContent />;
+  } catch (error) {
+    console.error('Error rendering HomeScreen:', error);
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: '#f8f9fa' }}>
+        <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: '#1a1a1a' }}>
+          Indlæser...
+        </Text>
+        <Text style={{ textAlign: 'center', color: '#666', marginBottom: 20 }}>
+          Appen initialiserer. Vent venligst.
+        </Text>
+        <ActivityIndicator size="large" color="#FF6347" />
+      </View>
+    );
+  }
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -804,7 +804,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   
-  // Premium Header Styles - Now extends to top
   headerContainer: {
     marginHorizontal: -16,
     marginTop: 0,
@@ -855,7 +854,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   
-  // Premium Stats Card
   statsContainer: {
     marginBottom: 20,
     borderRadius: 24,
@@ -950,7 +948,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   
-  // Premium Create Button
   createButtonPremium: {
     marginBottom: 24,
     borderRadius: 16,
@@ -972,7 +969,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   
-  // Section Styles
   section: {
     marginBottom: 32,
   },
@@ -1012,7 +1008,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   
-  // Empty State
   emptyCard: {
     borderRadius: 20,
     padding: 48,
@@ -1028,7 +1023,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   
-  // Premium Activity Cards
   activityCardPremium: {
     marginBottom: 16,
     borderRadius: 20,
@@ -1102,7 +1096,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   
-  // Premium Tasks Section
   tasksSectionPremium: {
     gap: 12,
   },
@@ -1167,27 +1160,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
   },
-  taskBadgesContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  videoBadgePremium: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(255, 0, 0, 0.8)',
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  videoBadgeTextPremium: {
-    fontSize: 11,
-    color: '#fff',
-    fontWeight: '700',
-  },
   
-  // Week Section Premium
   weekSectionPremium: {
     marginBottom: 24,
   },
@@ -1207,7 +1180,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   
-  // Upcoming Activity Cards Premium
   upcomingActivityCardPremium: {
     marginBottom: 12,
     borderRadius: 16,
@@ -1271,7 +1243,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   
-  // Modal Styles - FIXED FOR iOS VIDEO DISPLAY
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
@@ -1346,7 +1317,6 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   
-  // Context Banner
   contextBanner: {
     flexDirection: 'row',
     alignItems: 'center',
