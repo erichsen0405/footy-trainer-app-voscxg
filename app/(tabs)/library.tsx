@@ -36,6 +36,8 @@ interface Exercise {
   assignments: ExerciseAssignment[];
   isAssignedByCurrentTrainer?: boolean;
   trainer_name?: string;
+  is_system?: boolean;
+  category_path?: string;
 }
 
 interface ExerciseSubtask {
@@ -136,7 +138,7 @@ export default function LibraryScreen() {
   const { isAdmin } = useUserRole();
   const [personalExercises, setPersonalExercises] = useState<Exercise[]>([]);
   const [trainerFolders, setTrainerFolders] = useState<FolderItem[]>([]);
-  const [footballCoachFolders] = useState<FolderItem[]>(FOOTBALLCOACH_STRUCTURE);
+  const [footballCoachFolders, setFootballCoachFolders] = useState<FolderItem[]>(FOOTBALLCOACH_STRUCTURE);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['personal', 'trainers', 'footballcoach']));
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -180,6 +182,7 @@ export default function LibraryScreen() {
           .from('exercise_library')
           .select('*')
           .eq('trainer_id', userId)
+          .eq('is_system', false)
           .order('created_at', { ascending: false });
 
         if (exercisesError) throw exercisesError;
@@ -289,6 +292,55 @@ export default function LibraryScreen() {
         setTrainerFolders(folders);
         setPersonalExercises([]); // Players don't have personal exercises in this context
       }
+
+      // Fetch FootballCoach system exercises for all users
+      const { data: systemExercisesData, error: systemExercisesError } = await supabase
+        .from('exercise_library')
+        .select('*')
+        .eq('is_system', true)
+        .order('created_at', { ascending: true });
+
+      if (systemExercisesError) throw systemExercisesError;
+
+      const systemExerciseIds = systemExercisesData?.map(e => e.id) || [];
+      
+      // Fetch subtasks for system exercises
+      const { data: systemSubtasksData, error: systemSubtasksError } = await supabase
+        .from('exercise_subtasks')
+        .select('*')
+        .in('exercise_id', systemExerciseIds)
+        .order('sort_order', { ascending: true });
+
+      if (systemSubtasksError) throw systemSubtasksError;
+
+      // Group system exercises by category_path
+      const updatedFootballCoachFolders = FOOTBALLCOACH_STRUCTURE.map(mainFolder => {
+        const updatedSubfolders = mainFolder.subfolders?.map(subfolder => {
+          const categoryExercises = (systemExercisesData || [])
+            .filter(ex => ex.category_path === subfolder.id)
+            .map(exercise => ({
+              ...exercise,
+              created_at: new Date(exercise.created_at),
+              updated_at: new Date(exercise.updated_at),
+              subtasks: (systemSubtasksData || []).filter(s => s.exercise_id === exercise.id),
+              assignments: [],
+            }));
+
+          return {
+            ...subfolder,
+            exercises: categoryExercises,
+          };
+        });
+
+        return {
+          ...mainFolder,
+          subfolders: updatedSubfolders,
+        };
+      });
+
+      setFootballCoachFolders(updatedFootballCoachFolders);
+      console.log('✅ Library: Loaded FootballCoach exercises');
+
     } catch (error) {
       console.error('❌ Library: Error fetching library data:', error);
       Alert.alert('Fejl', 'Kunne ikke hente bibliotek');
@@ -775,6 +827,10 @@ export default function LibraryScreen() {
   };
 
   const renderExerciseCard = (exercise: Exercise, isReadOnly: boolean = false) => {
+    // System exercises are always read-only
+    const isSystemExercise = exercise.is_system === true;
+    const shouldBeReadOnly = isReadOnly || isSystemExercise;
+
     return (
       <View 
         key={exercise.id} 
@@ -800,7 +856,7 @@ export default function LibraryScreen() {
             </View>
           </View>
           <View style={styles.exerciseActions}>
-            {isReadOnly ? (
+            {shouldBeReadOnly ? (
               <TouchableOpacity
                 style={[styles.actionButton, { backgroundColor: colors.primary }]}
                 onPress={() => handleCopyToTasks(exercise)}
@@ -870,9 +926,24 @@ export default function LibraryScreen() {
         </View>
 
         {exercise.description && (
-          <Text style={[styles.exerciseDescription, { color: textSecondaryColor }]}>
-            {exercise.description}
-          </Text>
+          <View style={styles.descriptionContainer}>
+            {isSystemExercise ? (
+              // For system exercises, render focus points as bullet list
+              exercise.description.split('\n').map((line, index) => (
+                <View key={index} style={styles.focusPointItem}>
+                  <Text style={[styles.focusPointBullet, { color: colors.primary }]}>•</Text>
+                  <Text style={[styles.focusPointText, { color: textSecondaryColor }]}>
+                    {line.trim()}
+                  </Text>
+                </View>
+              ))
+            ) : (
+              // For regular exercises, render as normal text
+              <Text style={[styles.exerciseDescription, { color: textSecondaryColor }]}>
+                {exercise.description}
+              </Text>
+            )}
+          </View>
         )}
 
         {exercise.video_url && (
@@ -1677,6 +1748,26 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     marginBottom: 12,
+  },
+  descriptionContainer: {
+    marginBottom: 12,
+  },
+  focusPointItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+    paddingLeft: 4,
+  },
+  focusPointBullet: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginRight: 8,
+    marginTop: -2,
+  },
+  focusPointText: {
+    flex: 1,
+    fontSize: 15,
+    lineHeight: 22,
   },
   videoPreviewContainer: {
     marginBottom: 12,
