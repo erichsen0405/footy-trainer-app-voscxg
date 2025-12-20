@@ -105,7 +105,7 @@ const FOOTBALLCOACH_STRUCTURE: FolderItem[] = [
     androidIcon: 'groups',
     subfolders: [
       { id: 'holdtraening_faelles', name: 'Fælles (alle positioner)', type: 'category', icon: 'star.fill', androidIcon: 'star', exercises: [] },
-      { id: 'holdtraening_maalm and', name: 'Målmand', type: 'category', icon: 'hand.raised.fill', androidIcon: 'sports_soccer', exercises: [] },
+      { id: 'holdtraening_maalmand', name: 'Målmand', type: 'category', icon: 'hand.raised.fill', androidIcon: 'sports_soccer', exercises: [] },
       { id: 'holdtraening_back', name: 'Back', type: 'category', icon: 'shield.fill', androidIcon: 'shield', exercises: [] },
       { id: 'holdtraening_midterforsvarer', name: 'Midterforsvarer', type: 'category', icon: 'shield.lefthalf.filled', androidIcon: 'security', exercises: [] },
       { id: 'holdtraening_central_midtbane', name: 'Central midtbane', type: 'category', icon: 'circle.grid.cross.fill', androidIcon: 'grid_on', exercises: [] },
@@ -223,17 +223,21 @@ export default function LibraryScreen() {
         // PLAYERS: Fetch exercises assigned to them, grouped by trainer
         const { data: assignmentsData, error: assignmentsError } = await supabase
           .from('exercise_assignments')
-          .select(`
-            *,
-            exercise:exercise_library(*),
-            trainer:trainer_id(id)
-          `)
+          .select('*')
           .eq('player_id', userId);
 
         if (assignmentsError) throw assignmentsError;
 
         const exerciseIds = assignmentsData?.map(a => a.exercise_id) || [];
         
+        // Fetch exercises separately
+        const { data: exercisesData, error: exercisesError } = await supabase
+          .from('exercise_library')
+          .select('*')
+          .in('id', exerciseIds);
+
+        if (exercisesError) throw exercisesError;
+
         // Fetch subtasks
         const { data: subtasksData, error: subtasksError } = await supabase
           .from('exercise_subtasks')
@@ -256,7 +260,8 @@ export default function LibraryScreen() {
         const trainerMap = new Map<string, FolderItem>();
         
         (assignmentsData || []).forEach(assignment => {
-          if (!assignment.exercise) return;
+          const exercise = exercisesData?.find(e => e.id === assignment.exercise_id);
+          if (!exercise) return;
 
           const trainerId = assignment.trainer_id;
           const trainerProfile = trainersData?.find(t => t.user_id === trainerId);
@@ -275,16 +280,16 @@ export default function LibraryScreen() {
           }
 
           const folder = trainerMap.get(trainerId)!;
-          const exercise: Exercise = {
-            ...assignment.exercise,
-            created_at: new Date(assignment.exercise.created_at),
-            updated_at: new Date(assignment.exercise.updated_at),
-            subtasks: (subtasksData || []).filter(s => s.exercise_id === assignment.exercise.id),
+          const exerciseWithDetails: Exercise = {
+            ...exercise,
+            created_at: new Date(exercise.created_at),
+            updated_at: new Date(exercise.updated_at),
+            subtasks: (subtasksData || []).filter(s => s.exercise_id === exercise.id),
             assignments: [assignment],
             trainer_name: trainerName,
           };
 
-          folder.exercises!.push(exercise);
+          folder.exercises!.push(exerciseWithDetails);
         });
 
         const folders = Array.from(trainerMap.values());
@@ -929,8 +934,8 @@ export default function LibraryScreen() {
           <View style={styles.descriptionContainer}>
             {isSystemExercise ? (
               // For system exercises, render focus points as bullet list
-              exercise.description.split('\n').map((line, index) => (
-                <View key={index} style={styles.focusPointItem}>
+              exercise.description.split('\n').map((line, lineIndex) => (
+                <View key={`${exercise.id}-line-${lineIndex}`} style={styles.focusPointItem}>
                   <Text style={[styles.focusPointBullet, { color: colors.primary }]}>•</Text>
                   <Text style={[styles.focusPointText, { color: textSecondaryColor }]}>
                     {line.trim()}
