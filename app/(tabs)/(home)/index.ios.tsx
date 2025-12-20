@@ -12,8 +12,7 @@ import { supabase } from '@/app/integrations/supabase/client';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { LinearGradient } from 'expo-linear-gradient';
-import { VideoPlayer } from '@/components/VideoPlayer';
-import { isValidVideoUrl } from '@/utils/videoUrlParser';
+import { TaskDescriptionRenderer } from '@/components/TaskDescriptionRenderer';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -163,7 +162,9 @@ function HomeScreenContent() {
     
     if (task.videoUrl) {
       console.log('📹 Task has video URL:', task.videoUrl);
-      console.log('📹 Video URL is valid:', isValidVideoUrl(task.videoUrl));
+    }
+    if (task.description) {
+      console.log('📝 Task has description:', task.description.substring(0, 100));
     }
     
     setSelectedTask({ task, activityId, activityTitle });
@@ -718,17 +719,11 @@ function HomeScreenContent() {
                 </Text>
                 
                 {selectedTask.task.description && (
-                  <Text style={[styles.taskModalDescription, { color: textSecondaryColor }]}>
-                    {selectedTask.task.description}
-                  </Text>
-                )}
-
-                {selectedTask.task.videoUrl && isValidVideoUrl(selectedTask.task.videoUrl) && (
-                  <View style={styles.videoContainer}>
-                    <Text style={[styles.videoLabel, { color: textColor }]}>📹 Video</Text>
-                    <View style={styles.videoPlayerWrapper}>
-                      <VideoPlayer videoUrl={selectedTask.task.videoUrl} />
-                    </View>
+                  <View style={styles.taskDescriptionContainer}>
+                    <TaskDescriptionRenderer 
+                      description={selectedTask.task.description}
+                      textColor={textSecondaryColor}
+                    />
                   </View>
                 )}
 
@@ -1282,25 +1277,8 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 16,
   },
-  taskModalDescription: {
-    fontSize: 16,
-    lineHeight: 24,
+  taskDescriptionContainer: {
     marginBottom: 24,
-  },
-  videoContainer: {
-    marginBottom: 24,
-  },
-  videoLabel: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 12,
-  },
-  videoPlayerWrapper: {
-    width: SCREEN_WIDTH - 48,
-    height: Math.round((SCREEN_WIDTH - 48) * 9 / 16),
-    borderRadius: 12,
-    overflow: 'hidden',
-    backgroundColor: '#000',
   },
   completeButton: {
     flexDirection: 'row',
