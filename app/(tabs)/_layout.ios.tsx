@@ -53,6 +53,11 @@ export default function TabLayout() {
   // Memoize border color
   const borderTopColor = useMemo(() => isDark ? '#38383A' : '#E5E5E5', [isDark]);
 
+  // Memoize visibility flags to prevent render loop
+  const isLoggedIn = useMemo(() => !!user, [user]);
+  const isPlayer = useMemo(() => userRole === 'player', [userRole]);
+  const isTrainer = useMemo(() => userRole === 'admin' || userRole === 'trainer', [userRole]);
+
   if (loading || authLoading) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#000' : '#fff' }}>
@@ -61,71 +66,6 @@ export default function TabLayout() {
     );
   }
 
-  // If user is not logged in, only show profile tab
-  if (!user) {
-    return (
-      <NativeTabs 
-        tintColor={selectedColor}
-        barTintColor={tabBarBackgroundColor}
-        unselectedItemTintColor={unselectedColor}
-        translucent={false}
-        blurEffect={undefined}
-        style={{
-          backgroundColor: tabBarBackgroundColor,
-          borderTopWidth: 0.5,
-          borderTopColor: borderTopColor,
-          opacity: 1,
-          shadowOpacity: 0,
-          elevation: 0,
-        }}
-        screenOptions={{
-          tabBarStyle: {
-            backgroundColor: tabBarBackgroundColor,
-            borderTopWidth: 0.5,
-            borderTopColor: borderTopColor,
-            opacity: 1,
-            shadowOpacity: 0,
-            elevation: 0,
-          },
-          tabBarActiveTintColor: selectedColor,
-          tabBarInactiveTintColor: unselectedColor,
-          tabBarBackground: () => (
-            <View style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: tabBarBackgroundColor,
-              opacity: 1,
-            }} />
-          ),
-        }}
-      >
-        <NativeTabs.Trigger key="profile" name="profile">
-          <Icon 
-            sf={{ default: 'person', selected: 'person.fill' }}
-            color={selectedColor}
-          />
-          <Label 
-            style={{ 
-              fontSize: 10,
-              fontWeight: '500',
-              color: selectedColor,
-            }}
-          >
-            Profil
-          </Label>
-        </NativeTabs.Trigger>
-      </NativeTabs>
-    );
-  }
-
-  // Player only sees: Home, Tasks, Performance, Profile
-  const isPlayer = userRole === 'player';
-  // Trainer sees: Home, Tasks, Library, Trainer, Profile (Performance removed)
-  const isTrainer = userRole === 'admin' || userRole === 'trainer';
-  
   return (
     <NativeTabs 
       tintColor={selectedColor}
@@ -165,7 +105,12 @@ export default function TabLayout() {
         ),
       }}
     >
-      <NativeTabs.Trigger key="home" name="(home)">
+      {/* Home tab - visible to all logged-in users */}
+      <NativeTabs.Trigger 
+        key="home" 
+        name="(home)"
+        hidden={!isLoggedIn}
+      >
         <Icon 
           sf={{ default: 'house', selected: 'house.fill' }}
           color={selectedColor}
@@ -181,7 +126,12 @@ export default function TabLayout() {
         </Label>
       </NativeTabs.Trigger>
       
-      <NativeTabs.Trigger key="tasks" name="tasks">
+      {/* Tasks tab - visible to all logged-in users */}
+      <NativeTabs.Trigger 
+        key="tasks" 
+        name="tasks"
+        hidden={!isLoggedIn}
+      >
         <Icon 
           sf={{ default: 'checklist', selected: 'checklist' }}
           color={selectedColor}
@@ -197,61 +147,74 @@ export default function TabLayout() {
         </Label>
       </NativeTabs.Trigger>
       
-      {isPlayer && (
-        <NativeTabs.Trigger key="performance" name="performance">
-          <Icon 
-            sf={{ default: 'trophy', selected: 'trophy.fill' }}
-            color={selectedColor}
-          />
-          <Label 
-            style={{ 
-              fontSize: 10,
-              fontWeight: '500',
-              color: selectedColor,
-            }}
-          >
-            Performance
-          </Label>
-        </NativeTabs.Trigger>
-      )}
+      {/* Performance tab - visible only to players */}
+      <NativeTabs.Trigger 
+        key="performance" 
+        name="performance"
+        hidden={!isLoggedIn || !isPlayer}
+      >
+        <Icon 
+          sf={{ default: 'trophy', selected: 'trophy.fill' }}
+          color={selectedColor}
+        />
+        <Label 
+          style={{ 
+            fontSize: 10,
+            fontWeight: '500',
+            color: selectedColor,
+          }}
+        >
+          Performance
+        </Label>
+      </NativeTabs.Trigger>
       
-      {isTrainer && (
-        <NativeTabs.Trigger key="library" name="library">
-          <Icon 
-            sf={{ default: 'book', selected: 'book.fill' }}
-            color={selectedColor}
-          />
-          <Label 
-            style={{ 
-              fontSize: 10,
-              fontWeight: '500',
-              color: selectedColor,
-            }}
-          >
-            Bibliotek
-          </Label>
-        </NativeTabs.Trigger>
-      )}
+      {/* Library tab - visible only to trainers */}
+      <NativeTabs.Trigger 
+        key="library" 
+        name="library"
+        hidden={!isLoggedIn || !isTrainer}
+      >
+        <Icon 
+          sf={{ default: 'book', selected: 'book.fill' }}
+          color={selectedColor}
+        />
+        <Label 
+          style={{ 
+            fontSize: 10,
+            fontWeight: '500',
+            color: selectedColor,
+          }}
+        >
+          Bibliotek
+        </Label>
+      </NativeTabs.Trigger>
       
-      {isTrainer && (
-        <NativeTabs.Trigger key="trainer" name="trainer">
-          <Icon 
-            sf={{ default: 'person.3', selected: 'person.3.fill' }}
-            color={selectedColor}
-          />
-          <Label 
-            style={{ 
-              fontSize: 10,
-              fontWeight: '500',
-              color: selectedColor,
-            }}
-          >
-            Træner
-          </Label>
-        </NativeTabs.Trigger>
-      )}
+      {/* Trainer tab - visible only to trainers */}
+      <NativeTabs.Trigger 
+        key="trainer" 
+        name="trainer"
+        hidden={!isLoggedIn || !isTrainer}
+      >
+        <Icon 
+          sf={{ default: 'person.3', selected: 'person.3.fill' }}
+          color={selectedColor}
+        />
+        <Label 
+          style={{ 
+            fontSize: 10,
+            fontWeight: '500',
+            color: selectedColor,
+          }}
+        >
+          Træner
+        </Label>
+      </NativeTabs.Trigger>
         
-      <NativeTabs.Trigger key="profile" name="profile">
+      {/* Profile tab - visible to everyone */}
+      <NativeTabs.Trigger 
+        key="profile" 
+        name="profile"
+      >
         <Icon 
           sf={{ default: 'person', selected: 'person.fill' }}
           color={selectedColor}
