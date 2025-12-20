@@ -1,8 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, useColorScheme, Alert, Platform, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
+import { GlassView } from 'expo-glass-effect';
 import { supabase } from '@/app/integrations/supabase/client';
 import ExternalCalendarManager from '@/components/ExternalCalendarManager';
 import SubscriptionManager from '@/components/SubscriptionManager';
@@ -544,30 +546,33 @@ export default function ProfileScreen() {
     return colors.primary;
   };
 
-  const bgColor = isDark ? '#1a1a1a' : colors.background;
-  const cardBgColor = isDark ? '#2a2a2a' : colors.card;
-  const textColor = isDark ? '#e3e3e3' : colors.text;
-  const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
+  const bgColor = isDark ? (Platform.OS === 'ios' ? '#000' : '#1a1a1a') : (Platform.OS === 'ios' ? '#f8f9fa' : colors.background);
+  const cardBgColor = isDark ? (Platform.OS === 'ios' ? '#1a1a1a' : '#2a2a2a') : (Platform.OS === 'ios' ? '#fff' : colors.card);
+  const textColor = isDark ? (Platform.OS === 'ios' ? '#fff' : '#e3e3e3') : (Platform.OS === 'ios' ? '#1a1a1a' : colors.text);
+  const textSecondaryColor = isDark ? '#999' : (Platform.OS === 'ios' ? '#666' : colors.textSecondary);
 
-  const isTrainer = userRole === 'admin' || userRole === 'trainer';
+  // Platform-specific wrapper component
+  const CardWrapper = Platform.OS === 'ios' ? GlassView : View;
+  const cardWrapperProps = Platform.OS === 'ios' ? { glassEffectStyle: 'regular' as const } : {};
+
+  // Platform-specific container
+  const ContainerWrapper = Platform.OS === 'ios' ? SafeAreaView : View;
+  const containerEdges = Platform.OS === 'ios' ? ['top'] as const : undefined;
 
   // Show role selection if user is logged in but has no role
   if (user && needsRoleSelection) {
     return (
-      <View style={[styles.container, { backgroundColor: bgColor }]}>
-        <ScrollView 
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
+      <ContainerWrapper style={[styles.safeArea, { backgroundColor: bgColor }]} edges={containerEdges}>
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={[styles.contentContainer, Platform.OS !== 'ios' && { paddingTop: 60 }]}
         >
-          <View style={styles.header}>
-            <Text style={[styles.headerTitle, { color: textColor }]}>Vælg din rolle</Text>
-            <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
-              Vælg om du er spiller eller træner for at fortsætte
-            </Text>
-          </View>
+          <Text style={[styles.title, { color: textColor }]}>Vælg din rolle</Text>
+          <Text style={[styles.subtitle, { color: textSecondaryColor }]}>
+            Vælg om du er spiller eller træner for at fortsætte
+          </Text>
 
-          <View style={[styles.card, { backgroundColor: cardBgColor }]}>
+          <CardWrapper style={[styles.onboardingCard, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
             <Text style={[styles.onboardingTitle, { color: textColor }]}>
               Velkommen til din nye konto! 🎉
             </Text>
@@ -576,7 +581,7 @@ export default function ProfileScreen() {
             </Text>
 
             <TouchableOpacity
-              style={[styles.roleCard, { backgroundColor: bgColor }]}
+              style={[styles.roleCard, { backgroundColor: Platform.OS === 'ios' ? (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)') : bgColor }]}
               onPress={() => handleRoleSelection('player')}
               disabled={loading}
               activeOpacity={0.7}
@@ -594,7 +599,7 @@ export default function ProfileScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.roleCard, { backgroundColor: bgColor }]}
+              style={[styles.roleCard, { backgroundColor: Platform.OS === 'ios' ? (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)') : bgColor }]}
               onPress={() => handleRoleSelection('trainer')}
               disabled={loading}
               activeOpacity={0.7}
@@ -619,11 +624,11 @@ export default function ProfileScreen() {
                 </Text>
               </View>
             )}
-          </View>
+          </CardWrapper>
 
           {/* Debug Info */}
           {debugInfo.length > 0 && (
-            <View style={[styles.card, { backgroundColor: cardBgColor }]}>
+            <CardWrapper style={[styles.debugCard, { marginTop: 20 }, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
               <Text style={[styles.debugTitle, { color: textColor }]}>📋 Debug Log:</Text>
               <ScrollView style={styles.debugScroll} nestedScrollEnabled>
                 {debugInfo.map((info, index) => (
@@ -632,40 +637,37 @@ export default function ProfileScreen() {
                   </Text>
                 ))}
               </ScrollView>
-            </View>
+            </CardWrapper>
           )}
         </ScrollView>
-      </View>
+      </ContainerWrapper>
     );
   }
 
   // Show subscription selection if user is trainer but has no subscription
   if (user && needsSubscription) {
     return (
-      <View style={[styles.container, { backgroundColor: bgColor }]}>
-        <ScrollView 
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
+      <ContainerWrapper style={[styles.safeArea, { backgroundColor: bgColor }]} edges={containerEdges}>
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={[styles.contentContainer, Platform.OS !== 'ios' && { paddingTop: 60 }]}
         >
-          <View style={styles.header}>
-            <Text style={[styles.headerTitle, { color: textColor }]}>Vælg dit abonnement</Text>
-            <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
-              Som træner skal du vælge et abonnement for at administrere spillere
-            </Text>
-          </View>
+          <Text style={[styles.title, { color: textColor }]}>Vælg dit abonnement</Text>
+          <Text style={[styles.subtitle, { color: textSecondaryColor }]}>
+            Som træner skal du vælge et abonnement for at administrere spillere
+          </Text>
 
-          <View style={[styles.card, { backgroundColor: cardBgColor }]}>
+          <CardWrapper style={[styles.subscriptionCard, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
             <SubscriptionManager 
               onPlanSelected={handleCompleteSubscription}
               isSignupFlow={true}
               selectedRole="trainer"
             />
-          </View>
+          </CardWrapper>
 
           {/* Debug Info */}
           {debugInfo.length > 0 && (
-            <View style={[styles.card, { backgroundColor: cardBgColor, marginTop: 16 }]}>
+            <CardWrapper style={[styles.debugCard, { marginTop: 20 }, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
               <Text style={[styles.debugTitle, { color: textColor }]}>📋 Debug Log:</Text>
               <ScrollView style={styles.debugScroll} nestedScrollEnabled>
                 {debugInfo.map((info, index) => (
@@ -674,88 +676,77 @@ export default function ProfileScreen() {
                   </Text>
                 ))}
               </ScrollView>
-            </View>
+            </CardWrapper>
           )}
         </ScrollView>
-      </View>
+      </ContainerWrapper>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: bgColor }]}>
-      <ScrollView 
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+    <ContainerWrapper style={[styles.safeArea, { backgroundColor: bgColor }]} edges={containerEdges}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[styles.contentContainer, Platform.OS !== 'ios' && { paddingTop: 60 }]}
       >
-        <View style={styles.header}>
-          <Text style={[styles.headerTitle, { color: textColor }]}>Profil</Text>
-          <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
-            {user ? `Logget ind som ${user.email}` : 'Log ind for at gemme dine data'}
-          </Text>
-        </View>
-
         {user ? (
+          // Logged in view
           <>
-            <View style={[styles.card, { backgroundColor: cardBgColor }]}>
-              <View style={styles.userInfo}>
-                <View style={styles.avatarContainer}>
-                  <View style={[styles.avatar, { 
-                    backgroundColor: subscriptionStatus?.hasSubscription 
-                      ? getPlanColor(subscriptionStatus.planName)
-                      : colors.primary 
+            <CardWrapper style={[styles.profileHeader, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
+              <View style={styles.avatarContainer}>
+                <View style={[styles.avatar, { 
+                  backgroundColor: subscriptionStatus?.hasSubscription 
+                    ? getPlanColor(subscriptionStatus.planName)
+                    : colors.primary 
+                }]}>
+                  <IconSymbol 
+                    ios_icon_name="person.circle.fill" 
+                    android_material_icon_name="person" 
+                    size={Platform.OS === 'ios' ? 80 : 48} 
+                    color="#fff" 
+                  />
+                </View>
+                {subscriptionStatus?.hasSubscription && (
+                  <View style={[styles.subscriptionBadge, { 
+                    backgroundColor: getPlanColor(subscriptionStatus.planName) 
                   }]}>
-                    <IconSymbol 
-                      ios_icon_name="person.fill" 
-                      android_material_icon_name="person" 
-                      size={48} 
-                      color="#fff" 
+                    <IconSymbol
+                      ios_icon_name="star.fill"
+                      android_material_icon_name="star"
+                      size={16}
+                      color="#fff"
                     />
                   </View>
-                  {subscriptionStatus?.hasSubscription && (
-                    <View style={[styles.subscriptionBadge, { 
-                      backgroundColor: getPlanColor(subscriptionStatus.planName) 
-                    }]}>
-                      <IconSymbol
-                        ios_icon_name="star.fill"
-                        android_material_icon_name="star"
-                        size={16}
-                        color="#fff"
-                      />
-                    </View>
-                  )}
-                </View>
-                <View style={styles.userDetails}>
-                  <Text style={[styles.userName, { color: textColor }]}>
-                    {profile?.full_name || user.email?.split('@')[0] || 'Bruger'}
-                  </Text>
-                  <Text style={[styles.userEmail, { color: textSecondaryColor }]}>
-                    {user.email}
-                  </Text>
-                  {/* Only show subscription badge if user has an active subscription */}
-                  {subscriptionStatus?.hasSubscription && subscriptionStatus.planName && (
-                    <View style={styles.badgesRow}>
-                      <View style={[styles.planBadge, { 
-                        backgroundColor: getPlanColor(subscriptionStatus.planName) 
-                      }]}>
-                        <IconSymbol
-                          ios_icon_name="star.fill"
-                          android_material_icon_name="star"
-                          size={12}
-                          color="#fff"
-                        />
-                        <Text style={styles.planBadgeText}>
-                          {subscriptionStatus.planName}
-                        </Text>
-                      </View>
-                    </View>
-                  )}
-                </View>
+                )}
               </View>
-            </View>
+              <Text style={[styles.name, { color: textColor }]}>
+                {profile?.full_name || user.email?.split('@')[0] || 'Bruger'}
+              </Text>
+              <Text style={[styles.email, { color: textSecondaryColor }]}>
+                {user.email}
+              </Text>
+              {/* Only show subscription badge if user has an active subscription */}
+              {subscriptionStatus?.hasSubscription && subscriptionStatus.planName && (
+                <View style={styles.badgesRow}>
+                  <View style={[styles.planBadge, { 
+                    backgroundColor: getPlanColor(subscriptionStatus.planName) 
+                  }]}>
+                    <IconSymbol
+                      ios_icon_name="star.fill"
+                      android_material_icon_name="star"
+                      size={12}
+                      color="#fff"
+                    />
+                    <Text style={styles.planBadgeText}>
+                      {subscriptionStatus.planName}
+                    </Text>
+                  </View>
+                </View>
+              )}
+            </CardWrapper>
 
             {/* Profile Info Section */}
-            <View style={[styles.card, { backgroundColor: cardBgColor }]}>
+            <CardWrapper style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
               <View style={styles.sectionHeader}>
                 <Text style={[styles.sectionTitle, { color: textColor }]}>
                   Profil Information
@@ -776,7 +767,10 @@ export default function ProfileScreen() {
                 <View style={styles.editForm}>
                   <Text style={[styles.label, { color: textColor }]}>Navn</Text>
                   <TextInput
-                    style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+                    style={[styles.input, { 
+                      backgroundColor: Platform.OS === 'ios' ? (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)') : bgColor,
+                      color: textColor 
+                    }]}
                     value={editName}
                     onChangeText={setEditName}
                     placeholder="Dit navn"
@@ -785,7 +779,10 @@ export default function ProfileScreen() {
 
                   <Text style={[styles.label, { color: textColor }]}>Telefon</Text>
                   <TextInput
-                    style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+                    style={[styles.input, { 
+                      backgroundColor: Platform.OS === 'ios' ? (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)') : bgColor,
+                      color: textColor 
+                    }]}
                     value={editPhone}
                     onChangeText={setEditPhone}
                     placeholder="+45 12 34 56 78"
@@ -795,7 +792,7 @@ export default function ProfileScreen() {
 
                   <View style={styles.editButtons}>
                     <TouchableOpacity
-                      style={[styles.button, { backgroundColor: colors.highlight }]}
+                      style={[styles.button, { backgroundColor: Platform.OS === 'ios' ? (isDark ? '#3a3a3c' : '#e5e5e5') : colors.highlight }]}
                       onPress={() => {
                         setIsEditingProfile(false);
                         setEditName(profile?.full_name || '');
@@ -852,11 +849,11 @@ export default function ProfileScreen() {
                   )}
                 </View>
               )}
-            </View>
+            </CardWrapper>
 
             {/* Admin Info for Players */}
             {userRole === 'player' && adminInfo && (
-              <View style={[styles.card, { backgroundColor: cardBgColor }]}>
+              <CardWrapper style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
                 <Text style={[styles.sectionTitle, { color: textColor }]}>
                   Din Træner
                 </Text>
@@ -886,11 +883,11 @@ export default function ProfileScreen() {
                     </View>
                   )}
                 </View>
-              </View>
+              </CardWrapper>
             )}
 
-            {/* Calendar Sync Section - Collapsible - Available for all users - NOW COLLAPSED BY DEFAULT */}
-            <View style={[styles.card, { backgroundColor: cardBgColor }]}>
+            {/* Calendar Sync Section - Collapsible - Available for all users */}
+            <CardWrapper style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
               <TouchableOpacity
                 style={styles.collapsibleHeader}
                 onPress={() => setIsCalendarSyncExpanded(!isCalendarSyncExpanded)}
@@ -922,22 +919,22 @@ export default function ProfileScreen() {
                   
                   {/* Delete All External Activities Button */}
                   <TouchableOpacity
-                    style={[styles.deleteExternalButton, { backgroundColor: isDark ? '#3a1a1a' : '#ffe5e5' }]}
+                    style={[styles.deleteExternalButton, { backgroundColor: Platform.OS === 'ios' ? (isDark ? 'rgba(255,59,48,0.2)' : 'rgba(255,59,48,0.1)') : (isDark ? '#3a1a1a' : '#ffe5e5') }]}
                     onPress={handleDeleteAllExternalActivities}
                     activeOpacity={0.7}
                     disabled={isDeletingExternalActivities}
                   >
                     {isDeletingExternalActivities ? (
-                      <ActivityIndicator size="small" color={colors.error} />
+                      <ActivityIndicator size="small" color={Platform.OS === 'ios' ? '#ff3b30' : colors.error} />
                     ) : (
                       <React.Fragment>
                         <IconSymbol
                           ios_icon_name="trash.fill"
                           android_material_icon_name="delete"
                           size={24}
-                          color={colors.error}
+                          color={Platform.OS === 'ios' ? '#ff3b30' : colors.error}
                         />
-                        <Text style={[styles.deleteExternalButtonText, { color: colors.error }]}>
+                        <Text style={[styles.deleteExternalButtonText, { color: Platform.OS === 'ios' ? '#ff3b30' : colors.error }]}>
                           Slet alle eksterne aktiviteter
                         </Text>
                       </React.Fragment>
@@ -945,10 +942,10 @@ export default function ProfileScreen() {
                   </TouchableOpacity>
                 </>
               )}
-            </View>
+            </CardWrapper>
 
             {/* Subscription Section - Collapsible - Available for all users */}
-            <View style={[styles.card, { backgroundColor: cardBgColor }]}>
+            <CardWrapper style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
               <TouchableOpacity
                 style={styles.collapsibleHeader}
                 onPress={() => setIsSubscriptionExpanded(!isSubscriptionExpanded)}
@@ -979,31 +976,33 @@ export default function ProfileScreen() {
                   <SubscriptionManager />
                 </>
               )}
-            </View>
+            </CardWrapper>
 
             <TouchableOpacity
-              style={[styles.signOutButton, { backgroundColor: colors.error }]}
+              style={[styles.signOutButton, { backgroundColor: Platform.OS === 'ios' ? '#ff3b30' : colors.error }]}
               onPress={handleSignOut}
               activeOpacity={0.7}
             >
-              <IconSymbol 
-                ios_icon_name="arrow.right.square" 
-                android_material_icon_name="logout" 
-                size={24} 
-                color="#fff" 
-              />
+              {Platform.OS !== 'ios' && (
+                <IconSymbol 
+                  ios_icon_name="arrow.right.square" 
+                  android_material_icon_name="logout" 
+                  size={24} 
+                  color="#fff" 
+                />
+              )}
               <Text style={styles.signOutButtonText}>Log ud</Text>
             </TouchableOpacity>
           </>
         ) : (
           // Login/Sign up view
-          <View style={[styles.card, { backgroundColor: cardBgColor }]}>
+          <CardWrapper style={[styles.authCard, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
             {showSuccessMessage && (
               <View style={[styles.successMessage, { backgroundColor: colors.primary }]}>
                 <IconSymbol 
                   ios_icon_name="checkmark.circle.fill" 
                   android_material_icon_name="check_circle" 
-                  size={48} 
+                  size={Platform.OS === 'ios' ? 64 : 48} 
                   color="#fff" 
                 />
                 <Text style={styles.successTitle}>Konto oprettet! 🎉</Text>
@@ -1026,11 +1025,17 @@ export default function ProfileScreen() {
 
             {!showSuccessMessage && (
               <>
+                {Platform.OS === 'ios' && (
+                  <Text style={[styles.title, { color: textColor }]}>
+                    {isSignUp ? 'Opret konto' : 'Log ind'}
+                  </Text>
+                )}
+
                 <View style={styles.authToggle}>
                   <TouchableOpacity
                     style={[
                       styles.authToggleButton,
-                      !isSignUp && [styles.authToggleButtonActive, { backgroundColor: colors.primary }]
+                      !isSignUp && [styles.authToggleButtonActive, Platform.OS === 'ios' ? { backgroundColor: 'rgba(0,122,255,0.3)' } : { backgroundColor: colors.primary }]
                     ]}
                     onPress={() => {
                       setIsSignUp(false);
@@ -1040,6 +1045,7 @@ export default function ProfileScreen() {
                   >
                     <Text style={[
                       styles.authToggleText,
+                      { color: Platform.OS === 'ios' ? textColor : (isSignUp ? colors.textSecondary : '#fff') },
                       !isSignUp && styles.authToggleTextActive
                     ]}>
                       Log ind
@@ -1048,7 +1054,7 @@ export default function ProfileScreen() {
                   <TouchableOpacity
                     style={[
                       styles.authToggleButton,
-                      isSignUp && [styles.authToggleButtonActive, { backgroundColor: colors.primary }]
+                      isSignUp && [styles.authToggleButtonActive, Platform.OS === 'ios' ? { backgroundColor: 'rgba(0,122,255,0.3)' } : { backgroundColor: colors.primary }]
                     ]}
                     onPress={() => {
                       setIsSignUp(true);
@@ -1058,6 +1064,7 @@ export default function ProfileScreen() {
                   >
                     <Text style={[
                       styles.authToggleText,
+                      { color: Platform.OS === 'ios' ? textColor : (!isSignUp ? colors.textSecondary : '#fff') },
                       isSignUp && styles.authToggleTextActive
                     ]}>
                       Opret konto
@@ -1068,7 +1075,10 @@ export default function ProfileScreen() {
                 <View style={styles.form}>
                   <Text style={[styles.label, { color: textColor }]}>Email</Text>
                   <TextInput
-                    style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+                    style={[styles.input, { 
+                      backgroundColor: Platform.OS === 'ios' ? (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)') : bgColor,
+                      color: textColor 
+                    }]}
                     value={email}
                     onChangeText={setEmail}
                     placeholder="din@email.dk"
@@ -1081,7 +1091,10 @@ export default function ProfileScreen() {
 
                   <Text style={[styles.label, { color: textColor }]}>Adgangskode</Text>
                   <TextInput
-                    style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+                    style={[styles.input, { 
+                      backgroundColor: Platform.OS === 'ios' ? (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)') : bgColor,
+                      color: textColor 
+                    }]}
                     value={password}
                     onChangeText={setPassword}
                     placeholder="Mindst 6 tegn"
@@ -1117,77 +1130,75 @@ export default function ProfileScreen() {
                   </TouchableOpacity>
                 </View>
 
-                <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd', marginTop: 24 }]}>
+                <View style={[styles.infoBox, { backgroundColor: Platform.OS === 'ios' ? 'rgba(128,128,128,0.1)' : (isDark ? '#2a3a4a' : '#e3f2fd') }]}>
                   <IconSymbol 
                     ios_icon_name="info.circle" 
                     android_material_icon_name="info" 
-                    size={28} 
-                    color={colors.secondary} 
+                    size={Platform.OS === 'ios' ? 24 : 28} 
+                    color={Platform.OS === 'ios' ? colors.primary : colors.secondary} 
                   />
-                  <View style={styles.infoTextContainer}>
-                    <Text style={[styles.infoTitle, { color: textColor }]}>
-                      {isSignUp ? 'Hvad sker der efter oprettelse?' : 'Hvorfor skal jeg logge ind?'}
-                    </Text>
+                  <View style={Platform.OS !== 'ios' && styles.infoTextContainer}>
+                    {Platform.OS !== 'ios' && (
+                      <Text style={[styles.infoTitle, { color: textColor }]}>
+                        {isSignUp ? 'Hvad sker der efter oprettelse?' : 'Hvorfor skal jeg logge ind?'}
+                      </Text>
+                    )}
                     <Text style={[styles.infoBoxText, { color: textSecondaryColor }]}>
                       {isSignUp 
                         ? 'Efter du opretter din konto, bliver du automatisk logget ind og kan begynde at bruge appen med det samme. Du vil modtage en bekræftelsesmail som du kan bekræfte når du har tid.\n\nDu vil blive bedt om at vælge din rolle (spiller eller træner) og derefter vælge et abonnement hvis du er træner.'
-                        : 'For at gemme eksterne kalendere og synkronisere dine data på tværs af enheder, skal du oprette en gratis konto.\n\nDine data gemmes sikkert i Supabase og er kun tilgængelige for dig.'
+                        : Platform.OS === 'ios' 
+                          ? 'Log ind for at gemme dine data sikkert i skyen.'
+                          : 'For at gemme eksterne kalendere og synkronisere dine data på tværs af enheder, skal du oprette en gratis konto.\n\nDine data gemmes sikkert i Supabase og er kun tilgængelige for dig.'
                       }
                     </Text>
                   </View>
                 </View>
+                
+                {/* Debug Info during signup */}
+                {debugInfo.length > 0 && (
+                  <View style={styles.debugContainer}>
+                    <Text style={[styles.debugTitle, { color: Platform.OS === 'ios' ? '#fff' : textColor }]}>📋 Debug Log:</Text>
+                    <ScrollView style={styles.debugScroll} nestedScrollEnabled>
+                      {debugInfo.map((info, index) => (
+                        <Text key={index} style={[styles.debugText, { color: Platform.OS === 'ios' ? '#fff' : textSecondaryColor }]}>{info}</Text>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
               </>
             )}
-          </View>
+          </CardWrapper>
         )}
-
-        <View style={{ height: 120 }} />
       </ScrollView>
-    </View>
+    </ContainerWrapper>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+  },
   container: {
     flex: 1,
   },
-  scrollView: {
-    flex: 1,
+  contentContainer: {
+    padding: 20,
+    paddingBottom: 100,
   },
-  scrollContent: {
-    paddingBottom: 20,
-  },
-  header: {
-    paddingTop: Platform.OS === 'android' ? 60 : 70,
-    paddingHorizontal: 20,
-    paddingBottom: 24,
-  },
-  headerTitle: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    marginBottom: 6,
-  },
-  headerSubtitle: {
-    fontSize: 16,
-  },
-  card: {
-    marginHorizontal: 20,
-    borderRadius: 20,
-    padding: 24,
-    marginBottom: 16,
-  },
-  userInfo: {
-    flexDirection: 'row',
+  profileHeader: {
     alignItems: 'center',
-    gap: 20,
+    borderRadius: 12,
+    padding: 32,
+    marginBottom: 16,
+    gap: 12,
   },
   avatarContainer: {
     position: 'relative',
   },
   avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: Platform.OS === 'ios' ? 100 : 80,
+    height: Platform.OS === 'ios' ? 100 : 80,
+    borderRadius: Platform.OS === 'ios' ? 50 : 40,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1195,43 +1206,44 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 0,
     right: 0,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: Platform.OS === 'ios' ? 32 : 28,
+    height: Platform.OS === 'ios' ? 32 : 28,
+    borderRadius: Platform.OS === 'ios' ? 16 : 14,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 3,
     borderColor: '#fff',
   },
-  userDetails: {
-    flex: 1,
-  },
-  userName: {
+  name: {
     fontSize: 24,
     fontWeight: 'bold',
-    marginBottom: 4,
   },
-  userEmail: {
+  email: {
     fontSize: 16,
-    marginBottom: 8,
   },
   badgesRow: {
     flexDirection: 'row',
     gap: 8,
     flexWrap: 'wrap',
+    marginTop: 8,
   },
   planBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: Platform.OS === 'ios' ? 12 : 10,
+    paddingVertical: Platform.OS === 'ios' ? 6 : 4,
+    borderRadius: Platform.OS === 'ios' ? 20 : 12,
   },
   planBadgeText: {
-    fontSize: 12,
+    fontSize: Platform.OS === 'ios' ? 14 : 12,
     fontWeight: '600',
     color: '#fff',
+  },
+  section: {
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 16,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -1279,16 +1291,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   label: {
-    fontSize: 17,
+    fontSize: Platform.OS === 'ios' ? 14 : 17,
     fontWeight: '600',
-    marginBottom: 8,
+    marginBottom: Platform.OS === 'ios' ? 4 : 8,
     marginTop: 8,
   },
   input: {
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 17,
-    marginBottom: 12,
+    borderRadius: Platform.OS === 'ios' ? 8 : 12,
+    padding: Platform.OS === 'ios' ? 12 : 16,
+    fontSize: Platform.OS === 'ios' ? 16 : 17,
+    marginBottom: Platform.OS === 'ios' ? 8 : 12,
   },
   editButtons: {
     flexDirection: 'row',
@@ -1297,8 +1309,8 @@ const styles = StyleSheet.create({
   },
   button: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingVertical: Platform.OS === 'ios' ? 12 : 14,
+    borderRadius: Platform.OS === 'ios' ? 8 : 12,
     alignItems: 'center',
   },
   buttonText: {
@@ -1310,22 +1322,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
-    paddingVertical: 18,
-    borderRadius: 14,
-    marginHorizontal: 20,
-    marginTop: 8,
+    paddingVertical: Platform.OS === 'ios' ? 16 : 18,
+    borderRadius: Platform.OS === 'ios' ? 12 : 14,
+    marginTop: Platform.OS === 'ios' ? 16 : 8,
   },
   signOutButtonText: {
     fontSize: 18,
     fontWeight: '600',
     color: '#fff',
   },
+  authCard: {
+    borderRadius: Platform.OS === 'ios' ? 12 : 20,
+    padding: 24,
+  },
   successMessage: {
-    borderRadius: 16,
-    padding: 32,
+    borderRadius: Platform.OS === 'ios' ? 12 : 16,
+    padding: Platform.OS === 'ios' ? 40 : 32,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 16,
+    gap: Platform.OS === 'ios' ? 20 : 16,
   },
   successTitle: {
     fontSize: 28,
@@ -1339,33 +1354,43 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 24,
   },
+  title: {
+    fontSize: Platform.OS === 'ios' ? 28 : 36,
+    fontWeight: 'bold',
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 16,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
   authToggle: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 32,
+    marginBottom: Platform.OS === 'ios' ? 24 : 32,
   },
   authToggleButton: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingVertical: Platform.OS === 'ios' ? 12 : 14,
+    borderRadius: Platform.OS === 'ios' ? 8 : 12,
     alignItems: 'center',
-    backgroundColor: colors.highlight,
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(128,128,128,0.2)' : colors.highlight,
   },
   authToggleButtonActive: {},
   authToggleText: {
-    fontSize: 17,
+    fontSize: Platform.OS === 'ios' ? 16 : 17,
     fontWeight: '600',
-    color: colors.textSecondary,
   },
   authToggleTextActive: {
-    color: '#fff',
+    fontWeight: 'bold',
   },
   form: {
     gap: 8,
   },
   authButton: {
-    paddingVertical: 18,
-    borderRadius: 14,
+    paddingVertical: Platform.OS === 'ios' ? 16 : 18,
+    borderRadius: Platform.OS === 'ios' ? 8 : 14,
     alignItems: 'center',
     marginTop: 16,
   },
@@ -1381,9 +1406,10 @@ const styles = StyleSheet.create({
   },
   infoBox: {
     flexDirection: 'row',
-    gap: 16,
-    padding: 20,
-    borderRadius: 16,
+    gap: Platform.OS === 'ios' ? 12 : 16,
+    marginTop: 24,
+    padding: Platform.OS === 'ios' ? 16 : 20,
+    borderRadius: Platform.OS === 'ios' ? 8 : 16,
   },
   infoTextContainer: {
     flex: 1,
@@ -1394,8 +1420,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   infoBoxText: {
-    fontSize: 15,
-    lineHeight: 22,
+    flex: Platform.OS === 'ios' ? 1 : undefined,
+    fontSize: Platform.OS === 'ios' ? 14 : 15,
+    lineHeight: Platform.OS === 'ios' ? 20 : 22,
   },
   debugContainer: {
     padding: 16,
@@ -1407,7 +1434,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
     marginBottom: 8,
-    color: '#fff',
   },
   debugScroll: {
     maxHeight: 200,
@@ -1416,8 +1442,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
     marginBottom: 4,
-    color: '#fff',
     opacity: 0.9,
+  },
+  onboardingCard: {
+    borderRadius: 12,
+    padding: 24,
+    marginBottom: 16,
   },
   onboardingTitle: {
     fontSize: 24,
@@ -1435,7 +1465,7 @@ const styles = StyleSheet.create({
     padding: 24,
     borderRadius: 16,
     borderWidth: 2,
-    borderColor: colors.primary,
+    borderColor: Platform.OS === 'ios' ? 'rgba(0,122,255,0.5)' : colors.primary,
     alignItems: 'center',
     marginBottom: 16,
   },
@@ -1458,13 +1488,22 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
   },
+  subscriptionCard: {
+    borderRadius: 12,
+    padding: 24,
+    marginBottom: 16,
+  },
+  debugCard: {
+    borderRadius: 12,
+    padding: 16,
+  },
   deleteExternalButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
-    paddingVertical: 16,
-    borderRadius: 14,
+    paddingVertical: Platform.OS === 'ios' ? 16 : 16,
+    borderRadius: Platform.OS === 'ios' ? 12 : 14,
     marginTop: 20,
   },
   deleteExternalButtonText: {

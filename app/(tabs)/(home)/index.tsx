@@ -1,140 +1,168 @@
 
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, useColorScheme, Modal, Platform } from 'react-native';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useColorScheme, Modal, RefreshControl, Dimensions, ActivityIndicator, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFootball } from '@/contexts/FootballContext';
-import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import { colors, getColors } from '@/styles/commonStyles';
 import { Activity, Task } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
-import { getWeek, startOfWeek, endOfWeek, subWeeks } from 'date-fns';
-import { requestNotificationPermissions } from '@/utils/notificationService';
+import { getWeek, subWeeks, startOfWeek } from 'date-fns';
 import CreateActivityModal, { ActivityCreationData } from '@/components/CreateActivityModal';
-import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { supabase } from '@/app/integrations/supabase/client';
+import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
+import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { LinearGradient } from 'expo-linear-gradient';
+import { TaskDescriptionRenderer } from '@/components/TaskDescriptionRenderer';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SmartVideoPlayer from '@/components/SmartVideoPlayer';
 import { isValidVideoUrl } from '@/utils/videoUrlParser';
 
-export default function HomeScreen() {
-  const { currentWeekStats, todayActivities, activities, categories, toggleTaskCompletion, createActivity, externalCalendars, fetchExternalCalendarEvents } = useFootball();
-  const { selectedContext } = useTeamPlayer();
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Wrapper component to handle context errors gracefully
+function HomeScreenContent() {
   const router = useRouter();
+  const footballContext = useFootball();
+  const { currentWeekStats, todayActivities, activities, categories, toggleTaskCompletion, createActivity, externalCalendars, fetchExternalCalendarEvents } = footballContext;
+  const { selectedContext } = useTeamPlayer();
   const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
   const themeColors = getColors(colorScheme);
-  const [refreshing, setRefreshing] = useState(false);
-  const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [weeksToLoad, setWeeksToLoad] = useState(0);
-  
+  const insets = useSafeAreaInsets();
+
   // Separate modal states
-  const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<{ task: Task; activityId: string; activityTitle: string } | null>(null);
+  const [isTaskModalVisible, setIsTaskModalVisible] = useState(false);
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
   const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
   const [selectedVideoTitle, setSelectedVideoTitle] = useState('');
   
+  const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [weeksToLoad, setWeeksToLoad] = useState(0);
+  
+  // Confirmation dialog state
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [pendingAction, setPendingAction] = useState<{
     type: 'create' | 'complete';
     data?: any;
   } | null>(null);
 
+  // Check admin status only once on mount
   useEffect(() => {
-    const checkAdminStatus = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data, error } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', user.id)
-          .single();
+    let mounted = true;
 
-        if (!error && data) {
-          setIsAdmin(data.role === 'admin' || data.role === 'trainer');
+    const checkAdminStatus = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user && mounted) {
+          const { data, error } = await supabase
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', user.id)
+            .single();
+
+          if (!error && data && mounted) {
+            setIsAdmin(data.role === 'admin' || data.role === 'trainer');
+          }
         }
+      } catch (error) {
+        console.error('Error checking admin status:', error);
       }
     };
+    
     checkAdminStatus();
-  }, []);
 
-  useEffect(() => {
-    requestNotificationPermissions().then(granted => {
-      if (granted) {
-        console.log('Notification permissions granted');
-      } else {
-        console.log('Notification permissions denied');
-      }
-    });
-  }, []);
+    return () => {
+      mounted = false;
+    };
+  }, []); // Empty dependency array - only run once
 
-  const onRefresh = async () => {
-    console.log('Pull to refresh triggered on home screen');
+  const onRefresh = useCallback(async () => {
+    console.log('');
+    console.log('🔄 ========== PULL TO REFRESH STARTED ==========');
+    console.log('⏰ Timestamp:', new Date().toISOString());
+    console.log(`📱 Platform: ${Platform.OS}`);
     setRefreshing(true);
     
     setWeeksToLoad(0);
     
     try {
+      if (Platform.OS === 'ios') {
+        console.log('⏳ Waiting 2 seconds for pending database writes to complete...');
+        console.log('   This ensures manual category changes are fully persisted');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        console.log('✅ Wait complete - proceeding with sync');
+      }
+      
       const enabledCalendars = externalCalendars.filter(cal => cal.enabled);
-      console.log(`Syncing ${enabledCalendars.length} enabled calendars`);
+      console.log(`📅 Found ${enabledCalendars.length} enabled calendars to sync`);
       
       for (const calendar of enabledCalendars) {
         try {
+          console.log(`🔄 Syncing calendar: "${calendar.name}"`);
           await fetchExternalCalendarEvents(calendar);
-          console.log(`Successfully synced calendar: ${calendar.name}`);
+          console.log(`✅ Successfully synced calendar: "${calendar.name}"`);
         } catch (error) {
-          console.error(`Failed to sync calendar ${calendar.name}:`, error);
+          console.error(`❌ Failed to sync calendar "${calendar.name}":`, error);
         }
       }
       
-      console.log('Refresh completed');
+      console.log('✅ ========== PULL TO REFRESH COMPLETED ==========');
+      console.log('');
     } catch (error) {
-      console.error('Error during refresh:', error);
+      console.error('❌ Error during refresh:', error);
+      console.log('');
     } finally {
       setRefreshing(false);
     }
-  };
+  }, [externalCalendars, fetchExternalCalendarEvents]);
 
-  const getMotivationalMessage = (percentage: number) => {
+  const getMotivationalMessage = useCallback((percentage: number, completedTasks: number, totalTasks: number, totalTasksForWeek: number) => {
+    const remaining = totalTasks - completedTasks;
+    const remainingForWeek = totalTasksForWeek - completedTasks;
+    
     if (percentage >= 80) {
-      return 'Fremragende præstation! Du er en sand champion! 🏆';
+      return `Fremragende! Du har klaret alle opgaver indtil nu! 🚀\n${remainingForWeek} opgaver tilbage for ugen.`;
     } else if (percentage >= 60) {
-      return 'Stærk indsats! Fortsæt den gode udvikling! 💪';
+      return `Stærk indsats! ${remaining} opgaver tilbage indtil i dag.\n${remainingForWeek} opgaver tilbage for ugen. 💪`;
     } else if (percentage >= 40) {
-      return 'Du er på rette vej! Bliv ved med at kæmpe! 🔥';
+      return `Fortsæt! ${remaining} opgaver tilbage indtil i dag.\n${remainingForWeek} opgaver tilbage for ugen. 🔥`;
     } else {
-      return 'Hver træning tæller! Lad os tage det næste skridt! ⚽';
+      return `Hver træning tæller! ${remaining} opgaver tilbage indtil i dag.\n${remainingForWeek} opgaver tilbage for ugen. ⚽`;
     }
-  };
+  }, []);
 
-  const getProgressColor = (percentage: number) => {
+  const getProgressColor = useCallback((percentage: number) => {
     if (percentage >= 80) return colors.success;
     if (percentage >= 60) return '#FFC107';
     if (percentage >= 40) return '#FF9800';
     return '#F44336';
-  };
+  }, []);
 
-  const getTrophyEmoji = (percentage: number) => {
+  const getTrophyEmoji = useCallback((percentage: number) => {
     if (percentage >= 80) return '🥇';
     if (percentage >= 60) return '🥈';
     return '🥉';
-  };
+  }, []);
 
-  const formatDate = (date: Date) => {
+  const formatDate = useCallback((date: Date) => {
     const days = ['søndag', 'mandag', 'tirsdag', 'onsdag', 'torsdag', 'fredag', 'lørdag'];
     const months = ['januar', 'februar', 'marts', 'april', 'maj', 'juni', 'juli', 'august', 'september', 'oktober', 'november', 'december'];
     
     return `${days[date.getDay()]} ${date.getDate()}. ${months[date.getMonth()]}`;
-  };
+  }, []);
 
-  const formatTime = (time: string) => {
+  const formatTime = useCallback((time: string) => {
     return time.substring(0, 5);
-  };
+  }, []);
 
-  const formatDateTime = (date: Date, time: string) => {
+  const formatDateTime = useCallback((date: Date, time: string) => {
     return `${formatDate(date)} kl. ${formatTime(time)}`;
-  };
+  }, [formatDate, formatTime]);
 
-  const isActivityCompleted = (activity: Activity) => {
+  const isActivityCompleted = useCallback((activity: Activity) => {
     const now = new Date();
     const activityDate = new Date(activity.date);
     
@@ -142,75 +170,76 @@ export default function HomeScreen() {
     activityDate.setHours(hours, minutes, 0, 0);
     
     return activityDate < now;
-  };
+  }, []);
 
-  const getActivitiesByWeek = () => {
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    
-    const currentWeekStart = startOfWeek(now, { weekStartsOn: 1 });
-    const loadFromWeekStart = subWeeks(currentWeekStart, weeksToLoad);
-    
-    const relevantActivities = activities.filter(activity => {
-      const activityDate = new Date(activity.date);
-      activityDate.setHours(0, 0, 0, 0);
-      return activityDate >= loadFromWeekStart;
-    });
-    
-    const grouped: { [key: string]: { activities: Activity[], dateRange: string, sortDate: Date } } = {};
-    
-    relevantActivities.forEach(activity => {
-      const activityDate = new Date(activity.date);
-      const weekNumber = getWeek(activityDate, { weekStartsOn: 1 });
-      const year = activityDate.getFullYear();
-      const key = `Uge ${weekNumber}`;
-      
-      if (!grouped[key]) {
-        grouped[key] = { activities: [], dateRange: '', sortDate: activityDate };
-      }
-      grouped[key].activities.push(activity);
-      
-      if (activityDate < grouped[key].sortDate) {
-        grouped[key].sortDate = activityDate;
-      }
-    });
-
-    Object.keys(grouped).forEach(key => {
-      const weekActivities = grouped[key].activities;
-      if (weekActivities.length > 0) {
-        weekActivities.sort((a, b) => {
-          const dateA = new Date(a.date);
-          const dateB = new Date(b.date);
-          
-          const timePartsA = a.time.split(':');
-          const timePartsB = b.time.split(':');
-          
-          const hoursA = parseInt(timePartsA[0], 10);
-          const minutesA = parseInt(timePartsA[1], 10);
-          const hoursB = parseInt(timePartsB[0], 10);
-          const minutesB = parseInt(timePartsB[1], 10);
-          
-          const timestampA = new Date(dateA.getFullYear(), dateA.getMonth(), dateA.getDate(), hoursA, minutesA, 0, 0);
-          const timestampB = new Date(dateB.getFullYear(), dateB.getMonth(), dateB.getDate(), hoursB, minutesB, 0, 0);
-          
-          return timestampA.getTime() - timestampB.getTime();
-        });
-        
-        const firstDate = new Date(weekActivities[0].date);
-        const lastDate = new Date(weekActivities[weekActivities.length - 1].date);
-        grouped[key].dateRange = `${firstDate.getDate()}/${firstDate.getMonth() + 1} - ${lastDate.getDate()}/${lastDate.getMonth() + 1}`;
-      }
-    });
-
-    return grouped;
-  };
-
-  const handleActivityPress = (activityId: string) => {
-    console.log('⚡ FAST: Opening activity details for:', activityId);
+  const handleActivityPress = useCallback((activityId: string) => {
+    console.log('Opening activity details for:', activityId);
     router.push(`/activity-details?id=${activityId}`);
-  };
+  }, [router]);
 
-  const handleCircleClick = async (activityId: string, taskId: string, e: any) => {
+  const handleTaskPress = useCallback((task: Task, activityId: string, activityTitle: string) => {
+    console.log('⚡ Task clicked:', task.title);
+    console.log('📹 Task videoUrl:', task.videoUrl);
+    console.log('📹 Is valid video URL:', task.videoUrl ? isValidVideoUrl(task.videoUrl) : false);
+    
+    // Check if task has a valid video URL
+    if (task.videoUrl && isValidVideoUrl(task.videoUrl)) {
+      console.log('📹 Opening video modal with URL:', task.videoUrl);
+      setSelectedVideoUrl(task.videoUrl);
+      setSelectedVideoTitle(task.title);
+      setIsVideoModalOpen(true);
+      return;
+    }
+    
+    // Platform-specific behavior
+    if (Platform.OS === 'ios') {
+      // iOS: Open task modal
+      console.log('⚡ Opening task modal for:', task.title);
+      setSelectedTask({ task, activityId, activityTitle });
+      setIsTaskModalVisible(true);
+    } else {
+      // Android/Web: Open activity details
+      console.log('⚡ No video, opening activity details');
+      handleActivityPress(activityId);
+    }
+  }, [handleActivityPress]);
+
+  const handleToggleTaskCompletion = useCallback(async () => {
+    if (!selectedTask) return;
+    
+    console.log('⚡ INSTANT: Toggling task completion with optimistic update');
+    
+    // Check if we need confirmation (trainer/admin managing player/team data)
+    if (isAdmin && selectedContext.type) {
+      setIsTaskModalVisible(false);
+      setPendingAction({
+        type: 'complete',
+        data: { activityId: selectedTask.activityId, taskId: selectedTask.task.id },
+      });
+      setShowConfirmDialog(true);
+      setTimeout(() => {
+        setSelectedTask(null);
+      }, 300);
+      return;
+    }
+    
+    console.log('⚡ INSTANT: Closing modal immediately');
+    setIsTaskModalVisible(false);
+    
+    setTimeout(() => {
+      setSelectedTask(null);
+    }, 300);
+    
+    try {
+      console.log('🔄 BACKGROUND: Updating task completion in database');
+      await toggleTaskCompletion(selectedTask.activityId, selectedTask.task.id);
+      console.log('✅ BACKGROUND: Task completion toggled successfully');
+    } catch (error) {
+      console.error('❌ BACKGROUND: Error toggling task completion:', error);
+    }
+  }, [selectedTask, toggleTaskCompletion, isAdmin, selectedContext]);
+
+  const handleCircleClick = useCallback(async (activityId: string, taskId: string, e: any) => {
     e.stopPropagation();
     
     console.log('⚡ INSTANT: Circle clicked - toggling task completion');
@@ -230,9 +259,9 @@ export default function HomeScreen() {
     } catch (error) {
       console.error('Error toggling task:', error);
     }
-  };
+  }, [isAdmin, selectedContext, toggleTaskCompletion]);
 
-  const handleTaskBarClick = (activityId: string, taskId: string, task: Task, e: any) => {
+  const handleTaskBarClick = useCallback((activityId: string, taskId: string, task: Task, e: any) => {
     e.stopPropagation();
     
     console.log('⚡ Task bar clicked:', task.title);
@@ -249,9 +278,9 @@ export default function HomeScreen() {
     
     console.log('⚡ No video, opening activity details');
     handleActivityPress(activityId);
-  };
+  }, [handleActivityPress]);
 
-  const handleConfirmAction = async () => {
+  const handleConfirmAction = useCallback(async () => {
     setShowConfirmDialog(false);
     
     if (!pendingAction) return;
@@ -269,19 +298,14 @@ export default function HomeScreen() {
     } finally {
       setPendingAction(null);
     }
-  };
+  }, [pendingAction, createActivity, toggleTaskCompletion]);
 
-  const handleCancelAction = () => {
+  const handleCancelAction = useCallback(() => {
     setShowConfirmDialog(false);
     setPendingAction(null);
-  };
+  }, []);
 
-  const handleHistoryPress = () => {
-    console.log('Navigating to performance page');
-    router.push('/(tabs)/performance');
-  };
-
-  const handleCreateActivity = async (activityData: ActivityCreationData) => {
+  const handleCreateActivity = useCallback(async (activityData: ActivityCreationData) => {
     if (isAdmin && selectedContext.type) {
       setPendingAction({
         type: 'create',
@@ -298,391 +322,578 @@ export default function HomeScreen() {
       console.error('Error creating activity:', error);
       throw error;
     }
-  };
+  }, [isAdmin, selectedContext, createActivity]);
 
-  const handleLoadPreviousWeek = () => {
+  const handleLoadPreviousWeek = useCallback(() => {
     console.log('Loading previous week, current weeksToLoad:', weeksToLoad);
     setWeeksToLoad(prev => prev + 1);
-  };
+  }, [weeksToLoad]);
 
-  const handleCloseVideoModal = () => {
+  const handleCloseVideoModal = useCallback(() => {
     console.log('📹 Closing video modal');
     setIsVideoModalOpen(false);
     setSelectedVideoUrl(null);
     setSelectedVideoTitle('');
-  };
+  }, []);
 
-  const activitiesByWeek = getActivitiesByWeek();
-  
-  const sortedWeeks = Object.entries(activitiesByWeek).sort((a, b) => {
-    return a[1].sortDate.getTime() - b[1].sortDate.getTime();
-  });
+  const getUpcomingActivitiesByWeek = useMemo(() => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    
+    const currentWeekStart = startOfWeek(now, { weekStartsOn: 1 });
+    const loadFromWeekStart = subWeeks(currentWeekStart, weeksToLoad);
+    
+    const upcoming = activities.filter(activity => {
+      const activityDate = new Date(activity.date);
+      activityDate.setHours(0, 0, 0, 0);
+      return activityDate >= loadFromWeekStart;
+    });
+    
+    const grouped: { [key: string]: { activities: Activity[], dateRange: string, sortDate: Date } } = {};
+    
+    upcoming.forEach(activity => {
+      const activityDate = new Date(activity.date);
+      const weekNumber = getWeek(activityDate, { weekStartsOn: 1 });
+      const year = activityDate.getFullYear();
+      const key = `${year}-W${weekNumber}`;
+      
+      if (!grouped[key]) {
+        grouped[key] = { activities: [], dateRange: '', sortDate: activityDate };
+      }
+      grouped[key].activities.push(activity);
+      
+      if (activityDate < grouped[key].sortDate) {
+        grouped[key].sortDate = activityDate;
+      }
+    });
+
+    Object.keys(grouped).forEach(key => {
+      const weekActivities = grouped[key].activities;
+      if (weekActivities.length > 0) {
+        weekActivities.sort((a, b) => {
+          const dateA = new Date(a.date);
+          const dateB = new Date(b.date);
+          
+          const [hoursA, minutesA] = a.time.split(':').map(Number);
+          const [hoursB, minutesB] = b.time.split(':').map(Number);
+          
+          dateA.setHours(hoursA, minutesA, 0, 0);
+          dateB.setHours(hoursB, minutesB, 0, 0);
+          
+          return dateA.getTime() - dateB.getTime();
+        });
+        
+        const firstDate = new Date(weekActivities[0].date);
+        const lastDate = new Date(weekActivities[weekActivities.length - 1].date);
+        grouped[key].dateRange = `${firstDate.getDate()}/${firstDate.getMonth() + 1} - ${lastDate.getDate()}/${lastDate.getMonth() + 1}`;
+      }
+    });
+
+    return grouped;
+  }, [activities, weeksToLoad]);
+
+  const sortedWeeks = useMemo(() => {
+    return Object.entries(getUpcomingActivitiesByWeek).sort((a, b) => {
+      return a[1].sortDate.getTime() - b[1].sortDate.getTime();
+    });
+  }, [getUpcomingActivitiesByWeek]);
+
+  const bgColor = isDark ? '#000' : '#f8f9fa';
+  const cardBgColor = isDark ? '#1a1a1a' : '#fff';
+  const textColor = isDark ? '#fff' : '#1a1a1a';
+  const textSecondaryColor = isDark ? '#999' : '#666';
 
   const isManagingContext = isAdmin && selectedContext.type;
-  const containerBgColor = isManagingContext ? themeColors.contextWarning : themeColors.background;
+  const containerBgColor = isManagingContext ? themeColors.contextWarning : bgColor;
+
+  // Platform-specific top padding
+  const headerPaddingTop = Platform.OS === 'ios' ? insets.top + 20 : Platform.OS === 'android' ? 48 : 60;
 
   return (
-    <ScrollView 
-      style={[styles.container, { backgroundColor: containerBgColor }]} 
-      contentContainerStyle={styles.contentContainer}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          tintColor={colors.primary}
-          colors={[colors.primary]}
-        />
-      }
-    >
-      <View style={styles.headerContainer}>
-        <LinearGradient
-          colors={['#1a1a2e', '#16213e', '#0f3460']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.headerGradient}
-        >
-          <View style={styles.headerContent}>
-            <View style={styles.headerTop}>
-              <View style={styles.brandContainer}>
-                <View style={styles.logoCircle}>
-                  <Text style={styles.logoEmoji}>⚽</Text>
-                </View>
-                <View style={styles.brandText}>
-                  <Text style={styles.appName}>FOOTBALL COACH</Text>
-                  <Text style={styles.appTagline}>Styrk din fodboldtræning</Text>
-                </View>
-              </View>
-            </View>
-          </View>
-        </LinearGradient>
-      </View>
-
-      {isManagingContext && (
-        <View style={[styles.contextBanner, { backgroundColor: '#D4A574' }]}>
-          <IconSymbol
-            ios_icon_name="exclamationmark.triangle.fill"
-            android_material_icon_name="warning"
-            size={28}
-            color="#fff"
+    <View style={{ flex: 1 }}>
+      <ScrollView 
+        style={[styles.container, { backgroundColor: containerBgColor }]} 
+        contentContainerStyle={styles.contentContainer}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
           />
-          <View style={styles.contextBannerText}>
-            <Text style={styles.contextBannerTitle}>
-              ⚠️ DU ADMINISTRERER DATA FOR {selectedContext.type === 'player' ? 'SPILLER' : 'TEAM'}
-            </Text>
-            <Text style={styles.contextBannerSubtitle}>
-              {selectedContext.name}
-            </Text>
-            <Text style={styles.contextBannerInfo}>
-              Alle ændringer påvirker denne {selectedContext.type === 'player' ? 'spillers' : 'teams'} data
-            </Text>
-          </View>
-        </View>
-      )}
-
-      <View style={styles.statsContainer}>
-        <LinearGradient
-          colors={[getProgressColor(currentWeekStats.percentage), '#000']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.statsGradient}
-        >
-          <View style={styles.statsContent}>
-            <View style={styles.statsHeaderRow}>
-              <View style={styles.statsHeaderLeft}>
-                <Text style={styles.statsLabel}>DENNE UGE</Text>
-                <Text style={styles.statsPercentage}>{currentWeekStats.percentage}%</Text>
-              </View>
-              <View style={styles.trophyContainer}>
-                <Text style={styles.trophyLarge}>{getTrophyEmoji(currentWeekStats.percentage)}</Text>
+        }
+      >
+        <View style={styles.headerContainer}>
+          <LinearGradient
+            colors={['#1a1a2e', '#16213e', '#0f3460']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.headerGradient, { paddingTop: headerPaddingTop }]}
+          >
+            <View style={styles.headerContent}>
+              <View style={styles.headerTop}>
+                <View style={styles.brandContainer}>
+                  <View style={styles.logoCircle}>
+                    <Text style={styles.logoEmoji}>⚽</Text>
+                  </View>
+                  <View style={styles.brandText}>
+                    <Text style={styles.appName}>FOOTBALL COACH</Text>
+                    <Text style={styles.appTagline}>Styrk din fodboldtræning</Text>
+                  </View>
+                </View>
               </View>
             </View>
-            
-            <View style={styles.progressSection}>
-              <View style={styles.progressBarOuter}>
-                <View style={[styles.progressBarInner, { width: `${currentWeekStats.percentage}%` }]} />
-              </View>
-              <Text style={styles.taskCountText}>
-                {currentWeekStats.completedTasks} / {currentWeekStats.totalTasks} opgaver gennemført
+          </LinearGradient>
+        </View>
+
+        {isManagingContext && (
+          <View style={[styles.contextBanner, { backgroundColor: '#D4A574' }]}>
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle.fill"
+              android_material_icon_name="warning"
+              size={28}
+              color="#fff"
+            />
+            <View style={styles.contextBannerText}>
+              <Text style={styles.contextBannerTitle}>
+                ⚠️ DU ADMINISTRERER DATA FOR {selectedContext.type === 'player' ? 'SPILLER' : 'TEAM'}
+              </Text>
+              <Text style={styles.contextBannerSubtitle}>
+                {selectedContext.name}
+              </Text>
+              <Text style={styles.contextBannerInfo}>
+                Alle ændringer påvirker denne {selectedContext.type === 'player' ? 'spillers' : 'teams'} data
               </Text>
             </View>
-            
-            <Text style={styles.motivationTextPremium}>{getMotivationalMessage(currentWeekStats.percentage)}</Text>
-            
-            <TouchableOpacity 
-              style={styles.historyButtonPremium}
-              onPress={handleHistoryPress}
-              activeOpacity={0.8}
-            >
-              <IconSymbol ios_icon_name="chart.bar.fill" android_material_icon_name="assessment" size={20} color="#fff" />
-              <Text style={styles.historyButtonTextPremium}>Se Performance</Text>
-              <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron_right" size={20} color="#fff" />
-            </TouchableOpacity>
           </View>
-        </LinearGradient>
-      </View>
-
-      <TouchableOpacity
-        style={styles.createButtonPremium}
-        onPress={() => setIsCreateModalVisible(true)}
-        activeOpacity={0.8}
-      >
-        <LinearGradient
-          colors={['#4CAF50', '#2E7D32']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.createButtonGradient}
-        >
-          <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add_circle" size={24} color="#fff" />
-          <Text style={styles.createButtonTextPremium}>Opret Aktivitet</Text>
-        </LinearGradient>
-      </TouchableOpacity>
-
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <View style={styles.sectionTitleContainer}>
-            <View style={styles.sectionIndicator} />
-            <Text style={[styles.sectionTitle, { color: themeColors.text }]}>I DAG</Text>
-          </View>
-        </View>
-        
-        {todayActivities.length === 0 ? (
-          <View style={[styles.emptyCard, { backgroundColor: themeColors.card }]}>
-            <IconSymbol ios_icon_name="calendar" android_material_icon_name="event" size={48} color={themeColors.textSecondary} />
-            <Text style={[styles.emptyText, { color: themeColors.textSecondary }]}>Ingen aktiviteter i dag</Text>
-            <Text style={[styles.emptySubtext, { color: themeColors.textSecondary }]}>Nyd din fridag eller opret en ny aktivitet</Text>
-          </View>
-        ) : (
-          todayActivities.map((activity) => (
-            <TouchableOpacity
-              key={activity.id}
-              style={styles.activityCardPremium}
-              onPress={() => handleActivityPress(activity.id)}
-              activeOpacity={0.9}
-            >
-              <LinearGradient
-                colors={[activity.category.color, '#000']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.activityCardGradient}
-              >
-                <View style={styles.activityCardContent}>
-                  <View style={styles.activityHeaderPremium}>
-                    <View style={styles.activityEmojiContainer}>
-                      <Text style={styles.activityEmojiPremium}>{activity.category.emoji}</Text>
-                    </View>
-                    <View style={styles.activityInfoPremium}>
-                      <View style={styles.activityTitleRow}>
-                        <Text style={styles.activityTitlePremium}>{activity.title}</Text>
-                        {activity.isExternal && (
-                          <View style={styles.externalBadgePremium}>
-                            <IconSymbol 
-                              ios_icon_name="calendar.badge.clock" 
-                              android_material_icon_name="event" 
-                              size={14} 
-                              color="#fff" 
-                            />
-                          </View>
-                        )}
-                      </View>
-                      <View style={styles.activityMetaRow}>
-                        <IconSymbol ios_icon_name="clock.fill" android_material_icon_name="schedule" size={14} color="rgba(255,255,255,0.9)" />
-                        <Text style={styles.activityTimePremium}>{formatTime(activity.time)}</Text>
-                        <View style={styles.metaDivider} />
-                        <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={14} color="rgba(255,255,255,0.9)" />
-                        <Text style={styles.activityLocationPremium}>{activity.location}</Text>
-                      </View>
-                    </View>
-                    <IconSymbol 
-                      ios_icon_name="chevron.right" 
-                      android_material_icon_name="chevron_right" 
-                      size={24} 
-                      color="rgba(255,255,255,0.6)" 
-                    />
-                  </View>
-
-                  {activity.tasks.length > 0 && (
-                    <View style={styles.tasksSectionPremium}>
-                      <View style={styles.tasksDivider} />
-                      <Text style={styles.tasksTitlePremium}>OPGAVER</Text>
-                      {activity.tasks.map((task) => (
-                        <View
-                          key={task.id}
-                          style={styles.taskItemPremium}
-                        >
-                          <TouchableOpacity
-                            onPress={(e) => handleCircleClick(activity.id, task.id, e)}
-                            activeOpacity={0.7}
-                            style={[styles.checkboxPremium, task.completed && styles.checkboxCheckedPremium]}
-                          >
-                            {task.completed && (
-                              <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={14} color="#000" />
-                            )}
-                          </TouchableOpacity>
-                          
-                          <TouchableOpacity
-                            onPress={(e) => handleTaskBarClick(activity.id, task.id, task, e)}
-                            activeOpacity={0.7}
-                            style={styles.taskContentPremium}
-                          >
-                            <Text style={[styles.taskTextPremium, task.completed && styles.taskTextCompletedPremium]}>
-                              {task.title}
-                            </Text>
-                            <View style={styles.taskBadgesContainer}>
-                              {task.reminder && (
-                                <View style={styles.reminderBadgePremium}>
-                                  <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={10} color="#fff" />
-                                  <Text style={styles.reminderTextPremium}>{task.reminder}m</Text>
-                                </View>
-                              )}
-                              {task.videoUrl && isValidVideoUrl(task.videoUrl) && (
-                                <View style={styles.videoBadgePremium}>
-                                  <IconSymbol ios_icon_name="play.circle.fill" android_material_icon_name="play_circle" size={10} color="#fff" />
-                                  <Text style={styles.videoBadgeTextPremium}>Video</Text>
-                                </View>
-                              )}
-                            </View>
-                          </TouchableOpacity>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </View>
-              </LinearGradient>
-            </TouchableOpacity>
-          ))
         )}
-      </View>
 
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <View style={styles.sectionTitleContainer}>
-            <View style={styles.sectionIndicator} />
-            <Text style={[styles.sectionTitle, { color: themeColors.text }]}>KOMMENDE</Text>
-          </View>
-          <TouchableOpacity
-            style={styles.loadPreviousButtonPremium}
-            onPress={handleLoadPreviousWeek}
-            activeOpacity={0.7}
+        <View style={styles.statsContainer}>
+          <LinearGradient
+            colors={[getProgressColor(currentWeekStats.percentage), '#000']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.statsGradient}
           >
-            <IconSymbol 
-              ios_icon_name="chevron.up" 
-              android_material_icon_name="expand_less" 
-              size={16} 
-              color={themeColors.textSecondary} 
-            />
-            <Text style={[styles.loadPreviousTextPremium, { color: themeColors.textSecondary }]}>
-              Tidligere
-            </Text>
-          </TouchableOpacity>
-        </View>
-        
-        {sortedWeeks.length === 0 ? (
-          <View style={[styles.emptyCard, { backgroundColor: themeColors.card }]}>
-            <IconSymbol ios_icon_name="calendar.badge.plus" android_material_icon_name="event_available" size={48} color={themeColors.textSecondary} />
-            <Text style={[styles.emptyText, { color: themeColors.textSecondary }]}>Ingen kommende aktiviteter</Text>
-            <Text style={[styles.emptySubtext, { color: themeColors.textSecondary }]}>Opret din første aktivitet for at komme i gang</Text>
-          </View>
-        ) : (
-          <React.Fragment>
-            {sortedWeeks.map(([week, data], weekIndex) => (
-              <View key={`week-${week}-${weekIndex}`} style={styles.weekSectionPremium}>
-                <View style={styles.weekHeaderPremium}>
-                  <Text style={[styles.weekTitlePremium, { color: themeColors.text }]}>
-                    {week}
-                  </Text>
-                  <Text style={[styles.weekDatesPremium, { color: themeColors.textSecondary }]}>
-                    {data.dateRange}
-                  </Text>
+            <View style={styles.statsContent}>
+              <View style={styles.statsHeaderRow}>
+                <View style={styles.statsHeaderLeft}>
+                  <Text style={styles.statsLabel}>DENNE UGE</Text>
+                  <Text style={styles.statsPercentage}>{currentWeekStats.percentage}%</Text>
                 </View>
-                
-                {data.activities.map((activity) => {
-                  const isCompleted = isActivityCompleted(activity);
-                  
-                  return (
-                    <TouchableOpacity
-                      key={activity.id}
-                      style={styles.upcomingActivityCardPremium}
-                      onPress={() => handleActivityPress(activity.id)}
-                      activeOpacity={0.9}
-                    >
-                      <View style={[styles.upcomingCardInner, { backgroundColor: activity.category.color }]}>
-                        <View style={styles.upcomingActivityHeaderPremium}>
-                          <View style={styles.upcomingEmojiContainer}>
-                            <Text style={styles.upcomingActivityEmojiPremium}>{activity.category.emoji}</Text>
+                <View style={styles.trophyContainer}>
+                  <Text style={styles.trophyLarge}>{getTrophyEmoji(currentWeekStats.percentage)}</Text>
+                </View>
+              </View>
+              
+              <View style={styles.progressSection}>
+                <View style={styles.progressBarOuter}>
+                  <View style={[styles.progressBarInner, { width: `${currentWeekStats.percentage}%` }]} />
+                </View>
+                <Text style={styles.taskCountText}>
+                  Opgaver indtil i dag: {currentWeekStats.completedTasks} / {currentWeekStats.totalTasks}
+                </Text>
+              </View>
+              
+              <View style={styles.weekStatsSection}>
+                <Text style={styles.weekStatsText}>
+                  Hele ugen: {currentWeekStats.completedTasksForWeek} / {currentWeekStats.totalTasksForWeek} opgaver
+                </Text>
+                <View style={styles.progressBarOuter}>
+                  <View style={[
+                    styles.progressBarInner, 
+                    { 
+                      width: `${currentWeekStats.totalTasksForWeek > 0 
+                        ? Math.round((currentWeekStats.completedTasksForWeek / currentWeekStats.totalTasksForWeek) * 100) 
+                        : 0}%`,
+                      opacity: 0.7
+                    }
+                  ]} />
+                </View>
+              </View>
+              
+              <Text style={styles.motivationTextPremium}>
+                {getMotivationalMessage(
+                  currentWeekStats.percentage, 
+                  currentWeekStats.completedTasks, 
+                  currentWeekStats.totalTasks,
+                  currentWeekStats.totalTasksForWeek
+                )}
+              </Text>
+              
+              <TouchableOpacity 
+                style={styles.historyButtonPremium}
+                onPress={() => router.push('/(tabs)/performance')}
+                activeOpacity={0.8}
+              >
+                <IconSymbol ios_icon_name="chart.line.uptrend.xyaxis" android_material_icon_name="assessment" size={20} color="#fff" />
+                <Text style={styles.historyButtonTextPremium}>Se Performance</Text>
+                <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron_right" size={20} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          </LinearGradient>
+        </View>
+
+        <TouchableOpacity
+          style={styles.createButtonPremium}
+          onPress={() => setIsCreateModalVisible(true)}
+          activeOpacity={0.8}
+        >
+          <LinearGradient
+            colors={['#4CAF50', '#2E7D32']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.createButtonGradient}
+          >
+            <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add_circle" size={24} color="#fff" />
+            <Text style={styles.createButtonTextPremium}>Opret Aktivitet</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleContainer}>
+              <View style={styles.sectionIndicator} />
+              <Text style={[styles.sectionTitle, { color: textColor }]}>I DAG</Text>
+            </View>
+          </View>
+          
+          {todayActivities.length === 0 ? (
+            <View style={[styles.emptyCard, { backgroundColor: cardBgColor }]}>
+              <IconSymbol ios_icon_name="calendar" android_material_icon_name="event" size={48} color={textSecondaryColor} />
+              <Text style={[styles.emptyText, { color: textSecondaryColor }]}>Ingen aktiviteter i dag</Text>
+              <Text style={[styles.emptySubtext, { color: textSecondaryColor }]}>Nyd din fridag eller opret en ny aktivitet</Text>
+            </View>
+          ) : (
+            <React.Fragment>
+              {todayActivities.map((activity, activityIndex) => (
+                <TouchableOpacity
+                  key={`today-activity-${activity.id}-${activityIndex}`}
+                  style={styles.activityCardPremium}
+                  onPress={() => handleActivityPress(activity.id)}
+                  activeOpacity={0.9}
+                >
+                  <LinearGradient
+                    colors={[activity.category.color, '#000']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.activityCardGradient}
+                  >
+                    <View style={styles.activityCardContent}>
+                      <View style={styles.activityHeaderPremium}>
+                        <View style={styles.activityEmojiContainer}>
+                          <Text style={styles.activityEmojiPremium}>{activity.category.emoji}</Text>
+                        </View>
+                        <View style={styles.activityInfoPremium}>
+                          <View style={styles.activityTitleRow}>
+                            <Text style={styles.activityTitlePremium}>{activity.title}</Text>
+                            {activity.isExternal && (
+                              <View style={styles.externalBadgePremium}>
+                                <IconSymbol 
+                                  ios_icon_name="calendar.badge.clock" 
+                                  android_material_icon_name="event" 
+                                  size={14} 
+                                  color="#fff" 
+                                />
+                              </View>
+                            )}
                           </View>
-                          <View style={styles.upcomingActivityInfoPremium}>
-                            <View style={styles.activityTitleRow}>
-                              <Text style={styles.upcomingActivityTitlePremium}>{activity.title}</Text>
-                              {activity.isExternal && (
-                                <View style={styles.externalBadgeSmallPremium}>
-                                  <IconSymbol 
-                                    ios_icon_name="calendar.badge.clock" 
-                                    android_material_icon_name="event" 
-                                    size={10} 
-                                    color="#fff" 
-                                  />
-                                </View>
-                              )}
-                              {isCompleted && (
-                                <View style={styles.completedBadgePremium}>
-                                  <IconSymbol 
-                                    ios_icon_name="checkmark.circle.fill" 
-                                    android_material_icon_name="check_circle" 
-                                    size={14} 
-                                    color="#fff" 
-                                  />
-                                </View>
-                              )}
-                            </View>
-                            <View style={styles.upcomingMetaRow}>
-                              <IconSymbol ios_icon_name="clock.fill" android_material_icon_name="schedule" size={12} color="rgba(255,255,255,0.9)" />
-                              <Text style={styles.upcomingActivityTimePremium}>
-                                {new Date(activity.date).toLocaleDateString('da-DK', { weekday: 'short', day: 'numeric', month: 'short' })} • {formatTime(activity.time)}
-                              </Text>
-                            </View>
-                            <View style={styles.upcomingMetaRow}>
-                              <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={12} color="rgba(255,255,255,0.9)" />
-                              <Text style={styles.upcomingActivityLocationPremium}>{activity.location}</Text>
-                            </View>
+                          <View style={styles.activityMetaRow}>
+                            <IconSymbol ios_icon_name="clock.fill" android_material_icon_name="schedule" size={14} color="rgba(255,255,255,0.9)" />
+                            <Text style={styles.activityTimePremium}>{formatTime(activity.time)}</Text>
+                            <View style={styles.metaDivider} />
+                            <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={14} color="rgba(255,255,255,0.9)" />
+                            <Text style={styles.activityLocationPremium}>{activity.location}</Text>
                           </View>
+                        </View>
+                        {Platform.OS !== 'ios' && (
                           <IconSymbol 
                             ios_icon_name="chevron.right" 
                             android_material_icon_name="chevron_right" 
-                            size={20} 
-                            color="rgba(255,255,255,0.5)" 
+                            size={24} 
+                            color="rgba(255,255,255,0.6)" 
                           />
-                        </View>
+                        )}
                       </View>
-                    </TouchableOpacity>
-                  );
-                })}
+
+                      {activity.tasks.length > 0 && (
+                        <View style={styles.tasksSectionPremium}>
+                          <View style={styles.tasksDivider} />
+                          <Text style={styles.tasksTitlePremium}>OPGAVER</Text>
+                          {activity.tasks.map((task, taskIndex) => (
+                            <View
+                              key={`task-${task.id}-${taskIndex}`}
+                              style={styles.taskItemPremium}
+                            >
+                              {Platform.OS === 'ios' ? (
+                                <TouchableOpacity
+                                  onPress={(e) => {
+                                    e.stopPropagation();
+                                    handleTaskPress(task, activity.id, activity.title);
+                                  }}
+                                  activeOpacity={0.7}
+                                  style={styles.taskItemPressable}
+                                >
+                                  <View style={[styles.checkboxPremium, task.completed && styles.checkboxCheckedPremium]}>
+                                    {task.completed && (
+                                      <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={14} color="#000" />
+                                    )}
+                                  </View>
+                                  <View style={styles.taskContentPremium}>
+                                    <Text style={[styles.taskTextPremium, task.completed && styles.taskTextCompletedPremium]}>
+                                      {task.title}
+                                    </Text>
+                                    <View style={styles.taskBadgesContainer}>
+                                      {task.reminder && (
+                                        <View style={styles.reminderBadgePremium}>
+                                          <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={10} color="#fff" />
+                                          <Text style={styles.reminderTextPremium}>{task.reminder}m</Text>
+                                        </View>
+                                      )}
+                                      {task.videoUrl && isValidVideoUrl(task.videoUrl) && (
+                                        <View style={styles.videoBadgePremium}>
+                                          <IconSymbol ios_icon_name="play.circle.fill" android_material_icon_name="play_circle" size={10} color="#fff" />
+                                          <Text style={styles.videoBadgeTextPremium}>Video</Text>
+                                        </View>
+                                      )}
+                                    </View>
+                                  </View>
+                                </TouchableOpacity>
+                              ) : (
+                                <React.Fragment>
+                                  <TouchableOpacity
+                                    onPress={(e) => handleCircleClick(activity.id, task.id, e)}
+                                    activeOpacity={0.7}
+                                    style={[styles.checkboxPremium, task.completed && styles.checkboxCheckedPremium]}
+                                  >
+                                    {task.completed && (
+                                      <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={14} color="#000" />
+                                    )}
+                                  </TouchableOpacity>
+                                  
+                                  <TouchableOpacity
+                                    onPress={(e) => handleTaskBarClick(activity.id, task.id, task, e)}
+                                    activeOpacity={0.7}
+                                    style={styles.taskContentPremium}
+                                  >
+                                    <Text style={[styles.taskTextPremium, task.completed && styles.taskTextCompletedPremium]}>
+                                      {task.title}
+                                    </Text>
+                                    <View style={styles.taskBadgesContainer}>
+                                      {task.reminder && (
+                                        <View style={styles.reminderBadgePremium}>
+                                          <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={10} color="#fff" />
+                                          <Text style={styles.reminderTextPremium}>{task.reminder}m</Text>
+                                        </View>
+                                      )}
+                                      {task.videoUrl && isValidVideoUrl(task.videoUrl) && (
+                                        <View style={styles.videoBadgePremium}>
+                                          <IconSymbol ios_icon_name="play.circle.fill" android_material_icon_name="play_circle" size={10} color="#fff" />
+                                          <Text style={styles.videoBadgeTextPremium}>Video</Text>
+                                        </View>
+                                      )}
+                                    </View>
+                                  </TouchableOpacity>
+                                </React.Fragment>
+                              )}
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                    </View>
+                  </LinearGradient>
+                </TouchableOpacity>
+              ))}
+            </React.Fragment>
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleContainer}>
+              <View style={styles.sectionIndicator} />
+              <Text style={[styles.sectionTitle, { color: textColor }]}>KOMMENDE</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.loadPreviousButtonPremium}
+              onPress={handleLoadPreviousWeek}
+              activeOpacity={0.7}
+            >
+              <IconSymbol 
+                ios_icon_name="chevron.up" 
+                android_material_icon_name="expand_less" 
+                size={16} 
+                color={textSecondaryColor} 
+              />
+              <Text style={[styles.loadPreviousTextPremium, { color: textSecondaryColor }]}>
+                Tidligere
+              </Text>
+            </TouchableOpacity>
+          </View>
+          
+          {sortedWeeks.length === 0 ? (
+            <View style={[styles.emptyCard, { backgroundColor: cardBgColor }]}>
+              <IconSymbol ios_icon_name="calendar.badge.plus" android_material_icon_name="event_available" size={48} color={textSecondaryColor} />
+              <Text style={[styles.emptyText, { color: textSecondaryColor }]}>Ingen kommende aktiviteter</Text>
+              <Text style={[styles.emptySubtext, { color: textSecondaryColor }]}>Opret din første aktivitet for at komme i gang</Text>
+            </View>
+          ) : (
+            <React.Fragment>
+              {sortedWeeks.map(([weekKey, data], weekIndex) => {
+                const weekNumber = weekKey.split('-W')[1];
+                return (
+                  <View key={`week-${weekKey}-${weekIndex}`} style={styles.weekSectionPremium}>
+                    <View style={styles.weekHeaderPremium}>
+                      <Text style={[styles.weekTitlePremium, { color: textColor }]}>
+                        Uge {weekNumber}
+                      </Text>
+                      <Text style={[styles.weekDatesPremium, { color: textSecondaryColor }]}>
+                        {data.dateRange}
+                      </Text>
+                    </View>
+                    
+                    {data.activities.map((activity, activityIndex) => {
+                      const isCompleted = isActivityCompleted(activity);
+                      
+                      return (
+                        <TouchableOpacity
+                          key={`upcoming-activity-${activity.id}-${activityIndex}`}
+                          style={styles.upcomingActivityCardPremium}
+                          onPress={() => handleActivityPress(activity.id)}
+                          activeOpacity={0.9}
+                        >
+                          <View style={[styles.upcomingCardInner, { backgroundColor: activity.category.color }]}>
+                            <View style={styles.upcomingActivityHeaderPremium}>
+                              <View style={styles.upcomingEmojiContainer}>
+                                <Text style={styles.upcomingActivityEmojiPremium}>{activity.category.emoji}</Text>
+                              </View>
+                              <View style={styles.upcomingActivityInfoPremium}>
+                                <View style={styles.activityTitleRow}>
+                                  <Text style={styles.upcomingActivityTitlePremium}>{activity.title}</Text>
+                                  {activity.isExternal && (
+                                    <View style={styles.externalBadgeSmallPremium}>
+                                      <IconSymbol 
+                                        ios_icon_name="calendar.badge.clock" 
+                                        android_material_icon_name="event" 
+                                        size={10} 
+                                        color="#fff" 
+                                      />
+                                    </View>
+                                  )}
+                                  {isCompleted && (
+                                    <View style={styles.completedBadgePremium}>
+                                      <IconSymbol 
+                                        ios_icon_name="checkmark.circle.fill" 
+                                        android_material_icon_name="check_circle" 
+                                        size={14} 
+                                        color="#fff" 
+                                      />
+                                    </View>
+                                  )}
+                                </View>
+                                <View style={styles.upcomingMetaRow}>
+                                  <IconSymbol ios_icon_name="clock.fill" android_material_icon_name="schedule" size={12} color="rgba(255,255,255,0.9)" />
+                                  <Text style={styles.upcomingActivityTimePremium}>
+                                    {new Date(activity.date).toLocaleDateString('da-DK', { weekday: 'short', day: 'numeric', month: 'short' })} • {formatTime(activity.time)}
+                                  </Text>
+                                </View>
+                                <View style={styles.upcomingMetaRow}>
+                                  <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={12} color="rgba(255,255,255,0.9)" />
+                                  <Text style={styles.upcomingActivityLocationPremium}>{activity.location}</Text>
+                                </View>
+                              </View>
+                              <IconSymbol 
+                                ios_icon_name="chevron.right" 
+                                android_material_icon_name="chevron_right" 
+                                size={20} 
+                                color="rgba(255,255,255,0.5)" 
+                              />
+                            </View>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                );
+              })}
+            </React.Fragment>
+          )}
+        </View>
+
+        <View style={{ height: 120 }} />
+      </ScrollView>
+
+      {Platform.OS === 'ios' && isTaskModalVisible && selectedTask && (
+        <Modal
+          visible={true}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => {
+            setIsTaskModalVisible(false);
+            setTimeout(() => setSelectedTask(null), 300);
+          }}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: cardBgColor }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: textColor }]}>Opgave</Text>
+                <TouchableOpacity 
+                  onPress={() => {
+                    setIsTaskModalVisible(false);
+                    setTimeout(() => setSelectedTask(null), 300);
+                  }} 
+                  activeOpacity={0.7}
+                >
+                  <IconSymbol ios_icon_name="xmark.circle.fill" android_material_icon_name="close" size={32} color={textSecondaryColor} />
+                </TouchableOpacity>
               </View>
-            ))}
-          </React.Fragment>
-        )}
-      </View>
 
-      <View style={{ height: 120 }} />
+              <ScrollView 
+                style={styles.modalBody}
+                contentContainerStyle={styles.modalBodyContent}
+                showsVerticalScrollIndicator={true}
+                bounces={true}
+              >
+                <Text style={[styles.taskModalActivity, { color: textSecondaryColor }]}>
+                  {selectedTask.activityTitle}
+                </Text>
+                
+                <Text style={[styles.taskModalTitle, { color: textColor }]}>
+                  {selectedTask.task.title}
+                </Text>
+                
+                {selectedTask.task.description && (
+                  <View style={styles.taskDescriptionContainer}>
+                    <TaskDescriptionRenderer 
+                      description={selectedTask.task.description}
+                      textColor={textSecondaryColor}
+                    />
+                  </View>
+                )}
 
-      <CreateActivityModal
-        visible={isCreateModalVisible}
-        onClose={() => setIsCreateModalVisible(false)}
-        onCreateActivity={handleCreateActivity}
-        categories={categories}
-        onRefreshCategories={() => {
-          onRefresh();
-        }}
-      />
-
-      <ContextConfirmationDialog
-        visible={showConfirmDialog}
-        contextType={selectedContext.type}
-        contextName={selectedContext.name}
-        actionType={pendingAction?.type === 'create' ? 'create' : 'complete'}
-        itemType={pendingAction?.type === 'create' ? 'activity' : 'task'}
-        onConfirm={handleConfirmAction}
-        onCancel={handleCancelAction}
-      />
+                <TouchableOpacity
+                  style={[
+                    styles.completeButton,
+                    { backgroundColor: selectedTask.task.completed ? colors.highlight : colors.success }
+                  ]}
+                  onPress={handleToggleTaskCompletion}
+                  activeOpacity={0.7}
+                >
+                  <IconSymbol
+                    ios_icon_name={selectedTask.task.completed ? "arrow.uturn.backward" : "checkmark.circle.fill"}
+                    android_material_icon_name={selectedTask.task.completed ? "undo" : "check_circle"}
+                    size={24}
+                    color="#fff"
+                  />
+                  <Text style={styles.completeButtonText}>
+                    {selectedTask.task.completed ? 'Marker som ikke udført' : 'Marker som udført'}
+                  </Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      )}
 
       <Modal
         visible={isVideoModalOpen}
@@ -695,7 +906,7 @@ export default function HomeScreen() {
             flexDirection: 'row', 
             alignItems: 'center', 
             justifyContent: 'space-between',
-            paddingTop: Platform.OS === 'android' ? 48 : 60,
+            paddingTop: Platform.OS === 'ios' ? insets.top + 10 : Platform.OS === 'android' ? 48 : 60,
             paddingBottom: 16,
             paddingHorizontal: 20,
             backgroundColor: 'rgba(0,0,0,0.9)'
@@ -725,8 +936,48 @@ export default function HomeScreen() {
           </View>
         </View>
       </Modal>
-    </ScrollView>
+
+      <CreateActivityModal
+        visible={isCreateModalVisible}
+        onClose={() => setIsCreateModalVisible(false)}
+        onCreateActivity={handleCreateActivity}
+        categories={categories}
+        onRefreshCategories={() => {
+          onRefresh();
+        }}
+      />
+
+      <ContextConfirmationDialog
+        visible={showConfirmDialog}
+        contextType={selectedContext.type}
+        contextName={selectedContext.name}
+        actionType={pendingAction?.type === 'create' ? 'create' : 'complete'}
+        itemType={pendingAction?.type === 'create' ? 'activity' : 'task'}
+        onConfirm={handleConfirmAction}
+        onCancel={handleCancelAction}
+      />
+    </View>
   );
+}
+
+// Main export with error boundary
+export default function HomeScreen() {
+  try {
+    return <HomeScreenContent />;
+  } catch (error) {
+    console.error('Error rendering HomeScreen:', error);
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: '#f8f9fa' }}>
+        <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: '#1a1a1a' }}>
+          Indlæser...
+        </Text>
+        <Text style={{ textAlign: 'center', color: '#666', marginBottom: 20 }}>
+          Appen initialiserer. Vent venligst.
+        </Text>
+        <ActivityIndicator size="large" color="#FF6347" />
+      </View>
+    );
+  }
 }
 
 const styles = StyleSheet.create({
@@ -734,17 +985,15 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   contentContainer: {
-    paddingTop: 60,
     paddingHorizontal: 16,
   },
   
   headerContainer: {
     marginHorizontal: -16,
-    marginTop: -60,
+    marginTop: 0,
     marginBottom: 24,
   },
   headerGradient: {
-    paddingTop: 60,
     paddingBottom: 32,
     paddingHorizontal: 24,
   },
@@ -850,6 +1099,14 @@ const styles = StyleSheet.create({
   taskCountText: {
     fontSize: 15,
     color: 'rgba(255, 255, 255, 0.95)',
+    fontWeight: '600',
+  },
+  weekStatsSection: {
+    gap: 8,
+  },
+  weekStatsText: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.9)',
     fontWeight: '600',
   },
   motivationTextPremium: {
@@ -1045,6 +1302,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
   },
+  taskItemPressable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
   checkboxPremium: {
     width: 24,
     height: 24,
@@ -1187,6 +1450,63 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.95)',
     fontWeight: '500',
     flex: 1,
+  },
+  
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '90%',
+    height: '90%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.highlight,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+  },
+  modalBody: {
+    flex: 1,
+  },
+  modalBodyContent: {
+    padding: 24,
+    paddingBottom: 40,
+  },
+  taskModalActivity: {
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  taskModalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 16,
+  },
+  taskDescriptionContainer: {
+    marginBottom: 24,
+  },
+  completeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 16,
+    borderRadius: 14,
+    marginTop: 8,
+  },
+  completeButtonText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
   },
   
   contextBanner: {
