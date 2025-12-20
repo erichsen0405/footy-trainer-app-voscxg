@@ -33,6 +33,7 @@ interface VideoPlayerProps {
  * 1. Support for ANY video URL (not just YouTube/Vimeo)
  * 2. HTML <video> wrapper for better iOS compatibility
  * 3. Proper WebView configuration for video playback
+ * 4. CRUCIAL: userAgent is critical - without it, WebView is treated as "embedded client" and rejected
  */
 export function VideoPlayer({ videoUrl, onClose }: VideoPlayerProps) {
   const [webViewError, setWebViewError] = useState(false);
@@ -244,36 +245,33 @@ export function VideoPlayer({ videoUrl, onClose }: VideoPlayerProps) {
   const source = renderSource();
   const isHtmlSource = 'html' in source;
 
-  // CRITICAL FIX: More flexible userAgent that works across iOS versions
-  const getUserAgent = () => {
-    if (Platform.OS === 'ios') {
-      return 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1';
-    } else if (Platform.OS === 'android') {
-      return 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36';
-    }
-    return undefined;
-  };
-
   return (
     <View style={styles.playerContainer}>
       <WebView
         source={source}
         style={styles.webView}
-        // Standard WebView props for video playback
+        // CRITICAL: javaScriptEnabled is required for video playback
         javaScriptEnabled={true}
+        // CRITICAL: domStorageEnabled is required for video playback
         domStorageEnabled={true}
+        // CRITICAL: allowsInlineMediaPlayback allows video to play inline (not fullscreen)
         allowsInlineMediaPlayback={true}
+        // CRITICAL: mediaPlaybackRequiresUserAction=false allows autoplay
         mediaPlaybackRequiresUserAction={false}
+        // CRITICAL: allowsFullscreenVideo enables fullscreen button
         allowsFullscreenVideo={true}
+        // CRITICAL: originWhitelist=['*'] allows loading from any domain
         originWhitelist={['*']}
-        // CRITICAL FIX: Enable shared cookies for YouTube authentication
-        sharedCookiesEnabled={!isHtmlSource}
-        // CRITICAL FIX: Use flexible userAgent
-        userAgent={getUserAgent()}
+        // CRITICAL: userAgent is THE MOST IMPORTANT PROPERTY
+        // Without it, WebView is treated as "embedded client" and gets rejected
+        // This specific userAgent makes the WebView appear as a real Safari browser
+        userAgent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile Safari/604.1"
         // Additional props for better compatibility
         startInLoadingState={true}
         scalesPageToFit={true}
         mixedContentMode="always"
+        // Enable shared cookies for YouTube authentication (only for iframe embeds)
+        sharedCookiesEnabled={!isHtmlSource}
         // Error handling
         onError={(syntheticEvent) => {
           const { nativeEvent } = syntheticEvent;
