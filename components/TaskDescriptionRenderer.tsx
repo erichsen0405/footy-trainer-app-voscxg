@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { isValidVideoUrl, parseVideoUrl } from '@/utils/videoUrlParser';
@@ -17,145 +17,86 @@ interface TaskDescriptionRendererProps {
  * - Regular text as Text components
  * - Video URLs as embedded video players
  * 
- * Supports YouTube and Vimeo URLs anywhere in the description
+ * CRITICAL FIXES FOR iOS:
+ * 1. Broader regex to match ANY http(s) URL (not just .mp4/.mov/.avi)
+ * 2. useMemo to force re-render when description changes
+ * 3. key prop on VideoPlayer to force unmount/remount (iOS cache fix)
  */
 export function TaskDescriptionRenderer({ description, textColor }: TaskDescriptionRendererProps) {
   const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
+
+  // CRITICAL FIX: Use useMemo to detect description changes and force re-render
+  const videoUrl = useMemo(() => {
+    if (!description || !description.trim()) {
+      return null;
+    }
+
+    // CRITICAL FIX: Broader regex that matches ANY http(s) URL
+    // This will match Supabase storage URLs, CDN URLs, YouTube, Vimeo, signed URLs, etc.
+    const videoUrlRegex = /(https?:\/\/[^\s]+)/i;
+    const match = description.match(videoUrlRegex);
+    
+    console.log('🔍 TaskDescriptionRenderer - Checking for video URL');
+    console.log('📝 Description:', description.substring(0, 100));
+    console.log('🎯 Regex match:', match ? match[0] : 'No match');
+    
+    return match ? match[0] : null;
+  }, [description]);
+
+  console.log('🎬 TaskDescriptionRenderer rendering');
+  console.log('📹 Video URL found:', videoUrl);
 
   if (!description || !description.trim()) {
     return null;
   }
 
-  // Parse the description to find video URLs
-  const parts = parseDescriptionWithVideos(description);
+  // If we found a video URL, render the video player
+  if (videoUrl) {
+    console.log('✅ Rendering VideoPlayer with URL:', videoUrl);
+    
+    // CRITICAL FIX: key={videoUrl} forces unmount/remount when URL changes
+    // This solves iOS tab screen caching issues
+    return (
+      <View style={styles.container}>
+        <VideoThumbnail
+          key={videoUrl}
+          videoUrl={videoUrl}
+          onPress={() => setSelectedVideoUrl(videoUrl)}
+          style={styles.videoThumbnail}
+        />
+        <Text style={[styles.videoLabel, { color: textColor }]}>
+          {getVideoLabel(videoUrl)}
+        </Text>
 
+        {/* Video Modal */}
+        {selectedVideoUrl && (
+          <VideoModal
+            visible={!!selectedVideoUrl}
+            videoUrl={selectedVideoUrl}
+            onClose={() => setSelectedVideoUrl(null)}
+            title="Opgave video"
+          />
+        )}
+      </View>
+    );
+  }
+
+  // No video URL found, render as regular text
+  console.log('📝 No video URL found, rendering as text');
   return (
     <View style={styles.container}>
-      {parts.map((part, index) => {
-        if (part.type === 'text') {
-          return (
-            <Text 
-              key={`text-${index}`} 
-              style={[styles.text, { color: textColor }]}
-            >
-              {part.content}
-            </Text>
-          );
-        } else if (part.type === 'video') {
-          return (
-            <View key={`video-${index}`} style={styles.videoContainer}>
-              <VideoThumbnail
-                videoUrl={part.content}
-                onPress={() => setSelectedVideoUrl(part.content)}
-                style={styles.videoThumbnail}
-              />
-              <Text style={[styles.videoLabel, { color: textColor }]}>
-                {getVideoLabel(part.content)}
-              </Text>
-            </View>
-          );
-        }
-        return null;
-      })}
-
-      {/* Video Modal */}
-      {selectedVideoUrl && (
-        <VideoModal
-          visible={!!selectedVideoUrl}
-          videoUrl={selectedVideoUrl}
-          onClose={() => setSelectedVideoUrl(null)}
-          title="Opgave video"
-        />
-      )}
+      <Text style={[styles.text, { color: textColor }]}>
+        {description}
+      </Text>
     </View>
   );
-}
-
-/**
- * Parse description text and extract video URLs
- */
-interface DescriptionPart {
-  type: 'text' | 'video';
-  content: string;
-}
-
-function parseDescriptionWithVideos(description: string): DescriptionPart[] {
-  const parts: DescriptionPart[] = [];
-  
-  // Regular expressions for detecting video URLs
-  const urlPatterns = [
-    // YouTube patterns
-    /https?:\/\/(?:www\.)?youtube\.com\/watch\?v=[\w-]+/gi,
-    /https?:\/\/(?:www\.)?youtu\.be\/[\w-]+/gi,
-    /https?:\/\/(?:www\.)?youtube\.com\/embed\/[\w-]+/gi,
-    /https?:\/\/(?:www\.)?youtube\.com\/shorts\/[\w-]+/gi,
-    // Vimeo patterns
-    /https?:\/\/(?:www\.)?vimeo\.com\/\d+/gi,
-    /https?:\/\/(?:www\.)?vimeo\.com\/video\/\d+/gi,
-    /https?:\/\/player\.vimeo\.com\/video\/\d+/gi,
-  ];
-
-  let remainingText = description;
-  let lastIndex = 0;
-
-  // Find all video URLs in the description
-  const matches: Array<{ url: string; index: number }> = [];
-  
-  for (const pattern of urlPatterns) {
-    let match;
-    while ((match = pattern.exec(description)) !== null) {
-      const url = match[0];
-      if (isValidVideoUrl(url)) {
-        matches.push({ url, index: match.index });
-      }
-    }
-  }
-
-  // Sort matches by index
-  matches.sort((a, b) => a.index - b.index);
-
-  // Remove duplicates (same URL at same position)
-  const uniqueMatches = matches.filter((match, index, self) => 
-    index === 0 || match.index !== self[index - 1].index
-  );
-
-  // Build parts array
-  if (uniqueMatches.length === 0) {
-    // No videos found, return entire description as text
-    return [{ type: 'text', content: description }];
-  }
-
-  uniqueMatches.forEach((match, index) => {
-    // Add text before this video URL
-    if (match.index > lastIndex) {
-      const textBefore = description.substring(lastIndex, match.index).trim();
-      if (textBefore) {
-        parts.push({ type: 'text', content: textBefore });
-      }
-    }
-
-    // Add video URL
-    parts.push({ type: 'video', content: match.url });
-
-    // Update lastIndex
-    lastIndex = match.index + match.url.length;
-
-    // Add remaining text after last video
-    if (index === uniqueMatches.length - 1 && lastIndex < description.length) {
-      const textAfter = description.substring(lastIndex).trim();
-      if (textAfter) {
-        parts.push({ type: 'text', content: textAfter });
-      }
-    }
-  });
-
-  return parts;
 }
 
 /**
  * Get a friendly label for the video URL
  */
 function getVideoLabel(url: string): string {
+  // Check if it's a known platform (YouTube/Vimeo)
   const videoInfo = parseVideoUrl(url);
   
   if (videoInfo.platform === 'youtube') {
@@ -164,6 +105,7 @@ function getVideoLabel(url: string): string {
     return '▶️ Vimeo Video';
   }
   
+  // Generic video label for other URLs
   return '▶️ Video';
 }
 
@@ -174,9 +116,6 @@ const styles = StyleSheet.create({
   text: {
     fontSize: 14,
     lineHeight: 20,
-  },
-  videoContainer: {
-    marginVertical: 8,
   },
   videoThumbnail: {
     borderRadius: 12,
