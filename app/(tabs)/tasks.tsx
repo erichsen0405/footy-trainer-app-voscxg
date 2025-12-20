@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, useColorScheme, KeyboardAvoidingView, Platform, RefreshControl, Alert } from 'react-native';
 import { useFootball } from '@/contexts/FootballContext';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
@@ -33,6 +33,74 @@ interface FolderItem {
   isExpanded?: boolean;
 }
 
+// Pure function to organize tasks into folders
+function organizeFolders(templateTasks: Task[]): FolderItem[] {
+  const personalTasks: Task[] = [];
+  const trainerFolders = new Map<string, FolderItem>();
+  const footballCoachTasks: Task[] = [];
+
+  templateTasks.forEach(task => {
+    const sourceFolder = (task as any).source_folder;
+
+    if (sourceFolder && sourceFolder.startsWith('Fra træner:')) {
+      // Extract trainer name
+      const trainerName = sourceFolder.replace('Fra træner:', '').trim();
+      const trainerId = `trainer_${trainerName}`;
+
+      if (!trainerFolders.has(trainerId)) {
+        trainerFolders.set(trainerId, {
+          id: trainerId,
+          name: `Fra træner: ${trainerName}`,
+          type: 'trainer',
+          icon: 'person.crop.circle.fill',
+          androidIcon: 'account_circle',
+          tasks: [],
+        });
+      }
+
+      trainerFolders.get(trainerId)!.tasks.push(task);
+    } else if (sourceFolder && sourceFolder === 'FootballCoach Inspiration') {
+      footballCoachTasks.push(task);
+    } else {
+      // Personal tasks (no source_folder or other values)
+      personalTasks.push(task);
+    }
+  });
+
+  const newFolders: FolderItem[] = [];
+
+  // Add personal folder
+  if (personalTasks.length > 0) {
+    newFolders.push({
+      id: 'personal',
+      name: 'Personligt oprettet',
+      type: 'personal',
+      icon: 'person.fill',
+      androidIcon: 'person',
+      tasks: personalTasks,
+    });
+  }
+
+  // Add trainer folders
+  trainerFolders.forEach(folder => {
+    newFolders.push(folder);
+  });
+
+  // Add FootballCoach folder
+  if (footballCoachTasks.length > 0) {
+    newFolders.push({
+      id: 'footballcoach',
+      name: 'FootballCoach Inspiration',
+      type: 'footballcoach',
+      icon: 'star.circle.fill',
+      androidIcon: 'stars',
+      tasks: footballCoachTasks,
+    });
+  }
+
+  return newFolders;
+}
+
 export default function TasksScreen() {
   const { tasks, categories, addTask, updateTask, deleteTask, duplicateTask, refreshData } = useFootball();
   const { selectedContext } = useTeamPlayer();
@@ -48,7 +116,6 @@ export default function TasksScreen() {
   const [subtasks, setSubtasks] = useState<string[]>(['']);
   const [isSaving, setIsSaving] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
-  const [folders, setFolders] = useState<FolderItem[]>([]);
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const themeColors = getColors(colorScheme);
@@ -60,88 +127,24 @@ export default function TasksScreen() {
     data?: any;
   } | null>(null);
 
-  const templateTasks = tasks.filter(task => task.isTemplate);
+  const templateTasks = useMemo(() => tasks.filter(task => task.isTemplate), [tasks]);
 
-  // Organize tasks into folders
-  useEffect(() => {
-    const organizeFolders = () => {
-      const personalTasks: Task[] = [];
-      const trainerFolders = new Map<string, FolderItem>();
-      const footballCoachTasks: Task[] = [];
-
-      templateTasks.forEach(task => {
-        const sourceFolder = (task as any).source_folder;
-
-        if (sourceFolder && sourceFolder.startsWith('Fra træner:')) {
-          // Extract trainer name
-          const trainerName = sourceFolder.replace('Fra træner:', '').trim();
-          const trainerId = `trainer_${trainerName}`;
-
-          if (!trainerFolders.has(trainerId)) {
-            trainerFolders.set(trainerId, {
-              id: trainerId,
-              name: `Fra træner: ${trainerName}`,
-              type: 'trainer',
-              icon: 'person.crop.circle.fill',
-              androidIcon: 'account_circle',
-              tasks: [],
-            });
-          }
-
-          trainerFolders.get(trainerId)!.tasks.push(task);
-        } else if (sourceFolder && sourceFolder === 'FootballCoach Inspiration') {
-          footballCoachTasks.push(task);
-        } else {
-          // Personal tasks (no source_folder or other values)
-          personalTasks.push(task);
-        }
-      });
-
-      const newFolders: FolderItem[] = [];
-
-      // Add personal folder
-      if (personalTasks.length > 0) {
-        newFolders.push({
-          id: 'personal',
-          name: 'Personligt oprettet',
-          type: 'personal',
-          icon: 'person.fill',
-          androidIcon: 'person',
-          tasks: personalTasks,
-        });
-      }
-
-      // Add trainer folders
-      trainerFolders.forEach(folder => {
-        newFolders.push(folder);
-      });
-
-      // Add FootballCoach folder
-      if (footballCoachTasks.length > 0) {
-        newFolders.push({
-          id: 'footballcoach',
-          name: 'FootballCoach Inspiration',
-          type: 'footballcoach',
-          icon: 'star.circle.fill',
-          androidIcon: 'stars',
-          tasks: footballCoachTasks,
-        });
-      }
-
-      setFolders(newFolders);
-    };
-
-    organizeFolders();
+  // Use useMemo to compute folders from tasks - this prevents the render loop
+  const folders = useMemo(() => {
+    console.log('Computing folders from template tasks');
+    return organizeFolders(templateTasks);
   }, [templateTasks]);
 
-  const filteredFolders = folders.map(folder => ({
-    ...folder,
-    tasks: folder.tasks.filter(task =>
-      task.title.toLowerCase().includes(searchQuery.toLowerCase())
-    ),
-  })).filter(folder => folder.tasks.length > 0);
+  const filteredFolders = useMemo(() => {
+    return folders.map(folder => ({
+      ...folder,
+      tasks: folder.tasks.filter(task =>
+        task.title.toLowerCase().includes(searchQuery.toLowerCase())
+      ),
+    })).filter(folder => folder.tasks.length > 0);
+  }, [folders, searchQuery]);
 
-  const onRefresh = React.useCallback(async () => {
+  const onRefresh = useCallback(async () => {
     console.log('Pull to refresh triggered on tasks screen');
     setRefreshing(true);
     
@@ -155,7 +158,7 @@ export default function TasksScreen() {
     }
   }, [refreshData]);
 
-  const toggleFolder = (folderId: string) => {
+  const toggleFolder = useCallback((folderId: string) => {
     setExpandedFolders(prev => {
       const newSet = new Set(prev);
       if (newSet.has(folderId)) {
@@ -165,9 +168,9 @@ export default function TasksScreen() {
       }
       return newSet;
     });
-  };
+  }, []);
 
-  const openTaskModal = async (task: Task | null, creating: boolean = false) => {
+  const openTaskModal = useCallback(async (task: Task | null, creating: boolean = false) => {
     setSelectedTask(task);
     setIsCreating(creating);
     setVideoUrl(task?.videoUrl || '');
@@ -197,33 +200,18 @@ export default function TasksScreen() {
     }
     
     setIsModalVisible(true);
-  };
+  }, []);
 
-  const closeTaskModal = () => {
+  const closeTaskModal = useCallback(() => {
     setSelectedTask(null);
     setIsCreating(false);
     setIsModalVisible(false);
     setVideoUrl('');
     setSubtasks(['']);
     setIsSaving(false);
-  };
+  }, []);
 
-  const handleSaveTask = async () => {
-    if (!selectedTask) return;
-    
-    if (isAdmin && selectedContext.type) {
-      setPendingAction({
-        type: isCreating ? 'create' : 'edit',
-        data: { task: selectedTask, videoUrl, subtasks, isCreating },
-      });
-      setShowConfirmDialog(true);
-      return;
-    }
-    
-    await executeSaveTask();
-  };
-
-  const executeSaveTask = async () => {
+  const executeSaveTask = useCallback(async () => {
     if (!selectedTask) return;
 
     setIsSaving(true);
@@ -276,9 +264,24 @@ export default function TasksScreen() {
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [selectedTask, videoUrl, subtasks, isCreating, addTask, updateTask, closeTaskModal]);
 
-  const handleDeleteTask = (taskId: string) => {
+  const handleSaveTask = useCallback(async () => {
+    if (!selectedTask) return;
+    
+    if (isAdmin && selectedContext.type) {
+      setPendingAction({
+        type: isCreating ? 'create' : 'edit',
+        data: { task: selectedTask, videoUrl, subtasks, isCreating },
+      });
+      setShowConfirmDialog(true);
+      return;
+    }
+    
+    await executeSaveTask();
+  }, [selectedTask, isAdmin, selectedContext.type, isCreating, videoUrl, subtasks, executeSaveTask]);
+
+  const handleDeleteTask = useCallback((taskId: string) => {
     if (isAdmin && selectedContext.type) {
       setPendingAction({
         type: 'delete',
@@ -290,9 +293,9 @@ export default function TasksScreen() {
     
     deleteTask(taskId);
     closeTaskModal();
-  };
+  }, [isAdmin, selectedContext.type, deleteTask, closeTaskModal]);
 
-  const handleConfirmAction = async () => {
+  const handleConfirmAction = useCallback(async () => {
     setShowConfirmDialog(false);
     
     if (!pendingAction) return;
@@ -309,18 +312,18 @@ export default function TasksScreen() {
     } finally {
       setPendingAction(null);
     }
-  };
+  }, [pendingAction, executeSaveTask, deleteTask, closeTaskModal]);
 
-  const handleCancelAction = () => {
+  const handleCancelAction = useCallback(() => {
     setShowConfirmDialog(false);
     setPendingAction(null);
-  };
+  }, []);
 
-  const handleDuplicateTask = (taskId: string) => {
+  const handleDuplicateTask = useCallback((taskId: string) => {
     duplicateTask(taskId);
-  };
+  }, [duplicateTask]);
 
-  const toggleCategory = (categoryId: string) => {
+  const toggleCategory = useCallback((categoryId: string) => {
     if (selectedTask) {
       const categoryIds = selectedTask.categoryIds.includes(categoryId)
         ? selectedTask.categoryIds.filter(id => id !== categoryId)
@@ -328,16 +331,16 @@ export default function TasksScreen() {
       
       setSelectedTask({ ...selectedTask, categoryIds });
     }
-  };
+  }, [selectedTask]);
 
-  const getCategoryNames = (categoryIds: string[]) => {
+  const getCategoryNames = useCallback((categoryIds: string[]) => {
     return categoryIds
       .map(id => categories.find(c => c.id === id)?.name.toLowerCase())
       .filter(Boolean)
       .join(', ');
-  };
+  }, [categories]);
 
-  const openVideoModal = (url: string) => {
+  const openVideoModal = useCallback((url: string) => {
     if (!isValidVideoUrl(url)) {
       Alert.alert('Fejl', 'Ugyldig video URL. Kun YouTube og Vimeo understøttes.');
       return;
@@ -345,9 +348,9 @@ export default function TasksScreen() {
     
     setSelectedVideoUrl(url);
     setShowVideoModal(true);
-  };
+  }, []);
 
-  const handleDeleteVideo = () => {
+  const handleDeleteVideo = useCallback(() => {
     Alert.alert(
       'Slet video',
       'Er du sikker på at du vil fjerne videoen fra denne opgave?',
@@ -364,25 +367,25 @@ export default function TasksScreen() {
         },
       ]
     );
-  };
+  }, []);
 
-  const addSubtask = () => {
+  const addSubtask = useCallback(() => {
     setSubtasks([...subtasks, '']);
-  };
+  }, [subtasks]);
 
-  const updateSubtask = (index: number, value: string) => {
+  const updateSubtask = useCallback((index: number, value: string) => {
     const newSubtasks = [...subtasks];
     newSubtasks[index] = value;
     setSubtasks(newSubtasks);
-  };
+  }, [subtasks]);
 
-  const removeSubtask = (index: number) => {
+  const removeSubtask = useCallback((index: number) => {
     if (subtasks.length > 1) {
       setSubtasks(subtasks.filter((_, i) => i !== index));
     }
-  };
+  }, [subtasks]);
 
-  const renderTaskCard = (task: Task) => (
+  const renderTaskCard = useCallback((task: Task) => (
     <TouchableOpacity
       key={task.id}
       style={[styles.taskCard, { backgroundColor: isDark ? '#2a2a2a' : colors.card }]}
@@ -441,9 +444,9 @@ export default function TasksScreen() {
         </Text>
       </View>
     </TouchableOpacity>
-  );
+  ), [isDark, openTaskModal, handleDuplicateTask, handleDeleteTask, openVideoModal, getCategoryNames]);
 
-  const renderFolder = (folder: FolderItem) => {
+  const renderFolder = useCallback((folder: FolderItem) => {
     const isExpanded = expandedFolders.has(folder.id);
     const textColor = isDark ? '#e3e3e3' : colors.text;
     const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
@@ -484,7 +487,7 @@ export default function TasksScreen() {
         )}
       </React.Fragment>
     );
-  };
+  }, [expandedFolders, isDark, toggleFolder, renderTaskCard]);
 
   const bgColor = isDark ? '#1a1a1a' : colors.background;
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
