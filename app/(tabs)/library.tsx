@@ -35,6 +35,7 @@ interface Exercise {
   subtasks: ExerciseSubtask[];
   assignments: ExerciseAssignment[];
   isAssignedByCurrentTrainer?: boolean;
+  trainer_name?: string;
 }
 
 interface ExerciseSubtask {
@@ -52,6 +53,18 @@ interface ExerciseAssignment {
   team_id: string | null;
   player_name?: string;
   team_name?: string;
+}
+
+interface FolderItem {
+  id: string;
+  name: string;
+  type: 'personal' | 'trainer' | 'footballcoach' | 'category';
+  icon: string;
+  androidIcon: string;
+  exercises?: Exercise[];
+  subfolders?: FolderItem[];
+  trainerId?: string;
+  isExpanded?: boolean;
 }
 
 // Helper function to extract YouTube video ID
@@ -80,11 +93,51 @@ const getYouTubeThumbnail = (url: string): string | null => {
   return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
 };
 
+// Predefined FootballCoach focus areas
+const FOOTBALLCOACH_STRUCTURE: FolderItem[] = [
+  {
+    id: 'holdtraening',
+    name: 'Holdtræning',
+    type: 'category',
+    icon: 'person.3.fill',
+    androidIcon: 'groups',
+    subfolders: [
+      { id: 'holdtraening_faelles', name: 'Fælles (alle positioner)', type: 'category', icon: 'star.fill', androidIcon: 'star', exercises: [] },
+      { id: 'holdtraening_maalm and', name: 'Målmand', type: 'category', icon: 'hand.raised.fill', androidIcon: 'sports_soccer', exercises: [] },
+      { id: 'holdtraening_back', name: 'Back', type: 'category', icon: 'shield.fill', androidIcon: 'shield', exercises: [] },
+      { id: 'holdtraening_midterforsvarer', name: 'Midterforsvarer', type: 'category', icon: 'shield.lefthalf.filled', androidIcon: 'security', exercises: [] },
+      { id: 'holdtraening_central_midtbane', name: 'Central midtbane', type: 'category', icon: 'circle.grid.cross.fill', androidIcon: 'grid_on', exercises: [] },
+      { id: 'holdtraening_offensiv_midtbane', name: 'Offensiv midtbane', type: 'category', icon: 'arrow.up.circle.fill', androidIcon: 'arrow_upward', exercises: [] },
+      { id: 'holdtraening_kant', name: 'Kant', type: 'category', icon: 'arrow.left.and.right.circle.fill', androidIcon: 'swap_horiz', exercises: [] },
+      { id: 'holdtraening_angriber', name: 'Angriber', type: 'category', icon: 'flame.fill', androidIcon: 'local_fire_department', exercises: [] },
+    ],
+  },
+  {
+    id: 'selvtraening',
+    name: 'Selvtræning',
+    type: 'category',
+    icon: 'person.fill',
+    androidIcon: 'person',
+    subfolders: [
+      { id: 'selvtraening_faelles', name: 'Fælles', type: 'category', icon: 'star.fill', androidIcon: 'star', exercises: [] },
+      { id: 'selvtraening_maalmand', name: 'Målmand', type: 'category', icon: 'hand.raised.fill', androidIcon: 'sports_soccer', exercises: [] },
+      { id: 'selvtraening_back', name: 'Back', type: 'category', icon: 'shield.fill', androidIcon: 'shield', exercises: [] },
+      { id: 'selvtraening_midterforsvarer', name: 'Midterforsvarer', type: 'category', icon: 'shield.lefthalf.filled', androidIcon: 'security', exercises: [] },
+      { id: 'selvtraening_central_midtbane', name: 'Central midtbane', type: 'category', icon: 'circle.grid.cross.fill', androidIcon: 'grid_on', exercises: [] },
+      { id: 'selvtraening_offensiv_midtbane', name: 'Offensiv midtbane', type: 'category', icon: 'arrow.up.circle.fill', androidIcon: 'arrow_upward', exercises: [] },
+      { id: 'selvtraening_kant', name: 'Kant', type: 'category', icon: 'arrow.left.and.right.circle.fill', androidIcon: 'swap_horiz', exercises: [] },
+      { id: 'selvtraening_angriber', name: 'Angriber', type: 'category', icon: 'flame.fill', androidIcon: 'local_fire_department', exercises: [] },
+    ],
+  },
+];
+
 export default function LibraryScreen() {
   const { teams, players, selectedContext } = useTeamPlayer();
   const { isAdmin } = useUserRole();
-  const [exercises, setExercises] = useState<Exercise[]>([]);
-  const [assignedExercises, setAssignedExercises] = useState<Exercise[]>([]);
+  const [personalExercises, setPersonalExercises] = useState<Exercise[]>([]);
+  const [trainerFolders, setTrainerFolders] = useState<FolderItem[]>([]);
+  const [footballCoachFolders] = useState<FolderItem[]>(FOOTBALLCOACH_STRUCTURE);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['personal', 'trainers', 'footballcoach']));
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
@@ -95,6 +148,7 @@ export default function LibraryScreen() {
   const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [webViewError, setWebViewError] = useState(false);
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   
   // Form state
   const [title, setTitle] = useState('');
@@ -111,152 +165,65 @@ export default function LibraryScreen() {
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
 
-  // Determine if we're in context management mode
   const isManagingContext = isAdmin && selectedContext.type;
   const containerBgColor = isManagingContext ? themeColors.contextWarning : bgColor;
 
-  // CRITICAL FIX: Memoize the fetch function to prevent recreation on every render
-  const fetchExercisesForUser = useCallback(async (userId: string) => {
-    console.log('🔄 Library: Fetching exercises for user:', userId);
-    console.log('📋 Library: Selected context:', selectedContext);
+  const fetchLibraryData = useCallback(async (userId: string) => {
+    console.log('🔄 Library: Fetching library data for user:', userId);
 
     try {
       setLoading(true);
 
       if (isAdmin) {
-        // TRAINERS: Fetch exercises based on selected context
-        if (selectedContext.type === 'player' && selectedContext.id) {
-          // Managing player: Show ALL player's exercises
-          console.log('Fetching ALL exercises for player:', selectedContext.id);
-          
-          // Get all assignments for this player
-          const { data: assignmentsData, error: assignmentsError } = await supabase
-            .from('exercise_assignments')
-            .select(`
-              *,
-              exercise:exercise_library(*)
-            `)
-            .eq('player_id', selectedContext.id);
+        // TRAINERS: Fetch their own exercises (personal templates)
+        const { data: exercisesData, error: exercisesError } = await supabase
+          .from('exercise_library')
+          .select('*')
+          .eq('trainer_id', userId)
+          .order('created_at', { ascending: false });
 
-          if (assignmentsError) throw assignmentsError;
+        if (exercisesError) throw exercisesError;
 
-          const exerciseIds = assignmentsData?.map(a => a.exercise_id) || [];
-          
-          // Fetch subtasks
-          const { data: subtasksData, error: subtasksError } = await supabase
-            .from('exercise_subtasks')
-            .select('*')
-            .in('exercise_id', exerciseIds)
-            .order('sort_order', { ascending: true });
+        const exerciseIds = exercisesData?.map(e => e.id) || [];
+        
+        // Fetch subtasks
+        const { data: subtasksData, error: subtasksError } = await supabase
+          .from('exercise_subtasks')
+          .select('*')
+          .in('exercise_id', exerciseIds)
+          .order('sort_order', { ascending: true });
 
-          if (subtasksError) throw subtasksError;
+        if (subtasksError) throw subtasksError;
 
-          // Combine data and mark which exercises are assigned by current trainer
-          const exercisesWithDetails: Exercise[] = (assignmentsData || [])
-            .filter(a => a.exercise)
-            .map(assignment => ({
-              ...assignment.exercise,
-              created_at: new Date(assignment.exercise.created_at),
-              updated_at: new Date(assignment.exercise.updated_at),
-              subtasks: (subtasksData || []).filter(s => s.exercise_id === assignment.exercise.id),
-              assignments: [assignment],
-              isAssignedByCurrentTrainer: assignment.trainer_id === userId,
-            }));
+        // Fetch assignments
+        const { data: assignmentsData, error: assignmentsError } = await supabase
+          .from('exercise_assignments')
+          .select('*')
+          .in('exercise_id', exerciseIds);
 
-          console.log('✅ Library: Loaded exercises for player:', exercisesWithDetails.length);
-          setExercises(exercisesWithDetails);
-          
-        } else if (selectedContext.type === 'team' && selectedContext.id) {
-          // Managing team: Show ONLY exercises assigned to team by current trainer
-          console.log('Fetching exercises assigned to team by current trainer:', selectedContext.id);
-          
-          const { data: assignmentsData, error: assignmentsError } = await supabase
-            .from('exercise_assignments')
-            .select(`
-              *,
-              exercise:exercise_library(*)
-            `)
-            .eq('team_id', selectedContext.id)
-            .eq('trainer_id', userId);
+        if (assignmentsError) throw assignmentsError;
 
-          if (assignmentsError) throw assignmentsError;
+        const exercisesWithDetails: Exercise[] = (exercisesData || []).map(exercise => ({
+          ...exercise,
+          created_at: new Date(exercise.created_at),
+          updated_at: new Date(exercise.updated_at),
+          subtasks: (subtasksData || []).filter(s => s.exercise_id === exercise.id),
+          assignments: (assignmentsData || []).filter(a => a.exercise_id === exercise.id),
+          isAssignedByCurrentTrainer: true,
+        }));
 
-          const exerciseIds = assignmentsData?.map(a => a.exercise_id) || [];
-          
-          // Fetch subtasks
-          const { data: subtasksData, error: subtasksError } = await supabase
-            .from('exercise_subtasks')
-            .select('*')
-            .in('exercise_id', exerciseIds)
-            .order('sort_order', { ascending: true });
+        console.log('✅ Library: Loaded personal exercises:', exercisesWithDetails.length);
+        setPersonalExercises(exercisesWithDetails);
+        setTrainerFolders([]); // Trainers don't see trainer folders
 
-          if (subtasksError) throw subtasksError;
-
-          // Combine data
-          const exercisesWithDetails: Exercise[] = (assignmentsData || [])
-            .filter(a => a.exercise)
-            .map(assignment => ({
-              ...assignment.exercise,
-              created_at: new Date(assignment.exercise.created_at),
-              updated_at: new Date(assignment.exercise.updated_at),
-              subtasks: (subtasksData || []).filter(s => s.exercise_id === assignment.exercise.id),
-              assignments: [assignment],
-              isAssignedByCurrentTrainer: true,
-            }));
-
-          console.log('✅ Library: Loaded exercises for team:', exercisesWithDetails.length);
-          setExercises(exercisesWithDetails);
-          
-        } else {
-          // No context: Show trainer's own exercises
-          console.log('Fetching trainer own exercises');
-          
-          const { data: exercisesData, error: exercisesError } = await supabase
-            .from('exercise_library')
-            .select('*')
-            .eq('trainer_id', userId)
-            .order('created_at', { ascending: false });
-
-          if (exercisesError) throw exercisesError;
-
-          // Fetch subtasks for all exercises
-          const exerciseIds = exercisesData?.map(e => e.id) || [];
-          const { data: subtasksData, error: subtasksError } = await supabase
-            .from('exercise_subtasks')
-            .select('*')
-            .in('exercise_id', exerciseIds)
-            .order('sort_order', { ascending: true });
-
-          if (subtasksError) throw subtasksError;
-
-          // Fetch assignments
-          const { data: assignmentsData, error: assignmentsError } = await supabase
-            .from('exercise_assignments')
-            .select('*')
-            .in('exercise_id', exerciseIds);
-
-          if (assignmentsError) throw assignmentsError;
-
-          // Combine data
-          const exercisesWithDetails: Exercise[] = (exercisesData || []).map(exercise => ({
-            ...exercise,
-            created_at: new Date(exercise.created_at),
-            updated_at: new Date(exercise.updated_at),
-            subtasks: (subtasksData || []).filter(s => s.exercise_id === exercise.id),
-            assignments: (assignmentsData || []).filter(a => a.exercise_id === exercise.id),
-            isAssignedByCurrentTrainer: true,
-          }));
-
-          console.log('✅ Library: Loaded trainer exercises:', exercisesWithDetails.length);
-          setExercises(exercisesWithDetails);
-        }
       } else {
-        // PLAYERS: See exercises assigned to them
+        // PLAYERS: Fetch exercises assigned to them, grouped by trainer
         const { data: assignmentsData, error: assignmentsError } = await supabase
           .from('exercise_assignments')
           .select(`
             *,
-            exercise:exercise_library(*)
+            exercise:exercise_library(*),
+            trainer:trainer_id(id)
           `)
           .eq('player_id', userId);
 
@@ -273,29 +240,63 @@ export default function LibraryScreen() {
 
         if (subtasksError) throw subtasksError;
 
-        // Combine data
-        const assignedExercisesWithDetails: Exercise[] = (assignmentsData || [])
-          .filter(a => a.exercise)
-          .map(assignment => ({
+        // Fetch trainer profiles
+        const trainerIds = [...new Set(assignmentsData?.map(a => a.trainer_id) || [])];
+        const { data: trainersData, error: trainersError } = await supabase
+          .from('profiles')
+          .select('user_id, full_name')
+          .in('user_id', trainerIds);
+
+        if (trainersError) throw trainersError;
+
+        // Group exercises by trainer
+        const trainerMap = new Map<string, FolderItem>();
+        
+        (assignmentsData || []).forEach(assignment => {
+          if (!assignment.exercise) return;
+
+          const trainerId = assignment.trainer_id;
+          const trainerProfile = trainersData?.find(t => t.user_id === trainerId);
+          const trainerName = trainerProfile?.full_name || 'Ukendt træner';
+
+          if (!trainerMap.has(trainerId)) {
+            trainerMap.set(trainerId, {
+              id: `trainer_${trainerId}`,
+              name: `Træner: ${trainerName}`,
+              type: 'trainer',
+              icon: 'person.crop.circle.fill',
+              androidIcon: 'account_circle',
+              exercises: [],
+              trainerId,
+            });
+          }
+
+          const folder = trainerMap.get(trainerId)!;
+          const exercise: Exercise = {
             ...assignment.exercise,
             created_at: new Date(assignment.exercise.created_at),
             updated_at: new Date(assignment.exercise.updated_at),
             subtasks: (subtasksData || []).filter(s => s.exercise_id === assignment.exercise.id),
             assignments: [assignment],
-          }));
+            trainer_name: trainerName,
+          };
 
-        console.log('✅ Library: Loaded assigned exercises for player:', assignedExercisesWithDetails.length);
-        setAssignedExercises(assignedExercisesWithDetails);
+          folder.exercises!.push(exercise);
+        });
+
+        const folders = Array.from(trainerMap.values());
+        console.log('✅ Library: Loaded trainer folders:', folders.length);
+        setTrainerFolders(folders);
+        setPersonalExercises([]); // Players don't have personal exercises in this context
       }
     } catch (error) {
-      console.error('❌ Library: Error fetching exercises:', error);
-      Alert.alert('Fejl', 'Kunne ikke hente øvelser');
+      console.error('❌ Library: Error fetching library data:', error);
+      Alert.alert('Fejl', 'Kunne ikke hente bibliotek');
     } finally {
       setLoading(false);
     }
-  }, [isAdmin, selectedContext]);
+  }, [isAdmin]);
 
-  // CRITICAL FIX: Get user ID immediately on mount
   useEffect(() => {
     let isMounted = true;
 
@@ -333,36 +334,43 @@ export default function LibraryScreen() {
     };
   }, []);
 
-  // CRITICAL FIX: Fetch exercises immediately when user ID is available
   useEffect(() => {
     if (!currentUserId) {
       console.log('⚠️ Library: No user ID yet, waiting...');
       return;
     }
 
-    console.log('🔄 Library: User ID available, fetching exercises...');
-    fetchExercisesForUser(currentUserId);
-  }, [currentUserId, selectedContext, fetchExercisesForUser]);
+    console.log('🔄 Library: User ID available, fetching library data...');
+    fetchLibraryData(currentUserId);
+  }, [currentUserId, selectedContext, fetchLibraryData]);
 
-  // CRITICAL FIX: Also refresh when screen comes into focus
   useFocusEffect(
     useCallback(() => {
       console.log('🔄 Library: Screen focused, refreshing data...');
       if (currentUserId) {
-        fetchExercisesForUser(currentUserId);
+        fetchLibraryData(currentUserId);
       }
-    }, [currentUserId, fetchExercisesForUser])
+    }, [currentUserId, fetchLibraryData])
   );
 
-  const fetchExercises = async () => {
-    if (!currentUserId) {
-      console.log('⚠️ Library: No user ID, skipping fetch');
-      return;
-    }
-    await fetchExercisesForUser(currentUserId);
+  const toggleFolder = (folderId: string) => {
+    setExpandedFolders(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(folderId)) {
+        newSet.delete(folderId);
+      } else {
+        newSet.add(folderId);
+      }
+      return newSet;
+    });
   };
 
   const openCreateModal = () => {
+    if (!isAdmin) {
+      Alert.alert('Ikke tilladt', 'Kun trænere kan oprette øvelser');
+      return;
+    }
+    
     setSelectedExercise(null);
     setIsCreating(true);
     setTitle('');
@@ -373,12 +381,8 @@ export default function LibraryScreen() {
   };
 
   const openEditModal = (exercise: Exercise) => {
-    // Check if trainer can edit this exercise
-    if (isManagingContext && !exercise.isAssignedByCurrentTrainer) {
-      Alert.alert(
-        'Ikke tilladt',
-        'Du kan ikke redigere øvelser som ikke er tildelt af dig selv.'
-      );
+    if (!isAdmin) {
+      Alert.alert('Ikke tilladt', 'Du kan ikke redigere denne øvelse');
       return;
     }
     
@@ -415,16 +419,18 @@ export default function LibraryScreen() {
       return;
     }
 
+    if (!isAdmin) {
+      Alert.alert('Fejl', 'Kun trænere kan gemme øvelser');
+      return;
+    }
+
     setProcessing(true);
     try {
       if (!currentUserId) throw new Error('Not authenticated');
 
       console.log('Saving exercise...');
-      console.log('Title:', title);
-      console.log('Video URL:', videoUrl);
 
       if (isCreating) {
-        // Create new exercise
         const { data: newExercise, error: exerciseError } = await supabase
           .from('exercise_library')
           .insert({
@@ -438,9 +444,6 @@ export default function LibraryScreen() {
 
         if (exerciseError) throw exerciseError;
 
-        console.log('Exercise created:', newExercise.id);
-
-        // Create subtasks
         const validSubtasks = subtasks.filter(s => s.trim());
         if (validSubtasks.length > 0) {
           const subtasksToInsert = validSubtasks.map((subtask, index) => ({
@@ -458,9 +461,6 @@ export default function LibraryScreen() {
 
         Alert.alert('Succes', 'Øvelse oprettet');
       } else if (selectedExercise) {
-        // Update existing exercise
-        console.log('Updating exercise:', selectedExercise.id);
-        
         const { error: updateError } = await supabase
           .from('exercise_library')
           .update({
@@ -473,9 +473,6 @@ export default function LibraryScreen() {
 
         if (updateError) throw updateError;
 
-        console.log('Exercise updated successfully');
-
-        // Delete old subtasks
         const { error: deleteError } = await supabase
           .from('exercise_subtasks')
           .delete()
@@ -483,7 +480,6 @@ export default function LibraryScreen() {
 
         if (deleteError) throw deleteError;
 
-        // Create new subtasks
         const validSubtasks = subtasks.filter(s => s.trim());
         if (validSubtasks.length > 0) {
           const subtasksToInsert = validSubtasks.map((subtask, index) => ({
@@ -503,7 +499,9 @@ export default function LibraryScreen() {
       }
 
       setShowModal(false);
-      await fetchExercises();
+      if (currentUserId) {
+        await fetchLibraryData(currentUserId);
+      }
     } catch (error: any) {
       console.error('Error saving exercise:', error);
       Alert.alert('Fejl', 'Kunne ikke gemme øvelse: ' + error.message);
@@ -513,12 +511,8 @@ export default function LibraryScreen() {
   };
 
   const handleDeleteExercise = (exercise: Exercise) => {
-    // Check if trainer can delete this exercise
-    if (isManagingContext && !exercise.isAssignedByCurrentTrainer) {
-      Alert.alert(
-        'Ikke tilladt',
-        'Du kan ikke slette øvelser som ikke er tildelt af dig selv.'
-      );
+    if (!isAdmin) {
+      Alert.alert('Ikke tilladt', 'Du kan ikke slette denne øvelse');
       return;
     }
     
@@ -540,7 +534,9 @@ export default function LibraryScreen() {
               if (error) throw error;
 
               Alert.alert('Succes', 'Øvelse slettet');
-              await fetchExercises();
+              if (currentUserId) {
+                await fetchLibraryData(currentUserId);
+              }
             } catch (error: any) {
               console.error('Error deleting exercise:', error);
               Alert.alert('Fejl', 'Kunne ikke slette øvelse: ' + error.message);
@@ -552,11 +548,15 @@ export default function LibraryScreen() {
   };
 
   const handleDuplicateExercise = async (exercise: Exercise) => {
+    if (!isAdmin) {
+      Alert.alert('Ikke tilladt', 'Du kan ikke duplikere denne øvelse');
+      return;
+    }
+
     setProcessing(true);
     try {
       if (!currentUserId) throw new Error('Not authenticated');
 
-      // Create duplicate exercise
       const { data: newExercise, error: exerciseError } = await supabase
         .from('exercise_library')
         .insert({
@@ -570,7 +570,6 @@ export default function LibraryScreen() {
 
       if (exerciseError) throw exerciseError;
 
-      // Duplicate subtasks
       if (exercise.subtasks.length > 0) {
         const subtasksToInsert = exercise.subtasks.map(subtask => ({
           exercise_id: newExercise.id,
@@ -586,7 +585,9 @@ export default function LibraryScreen() {
       }
 
       Alert.alert('Succes', 'Øvelse duplikeret');
-      await fetchExercises();
+      if (currentUserId) {
+        await fetchLibraryData(currentUserId);
+      }
     } catch (error: any) {
       console.error('Error duplicating exercise:', error);
       Alert.alert('Fejl', 'Kunne ikke duplikere øvelse: ' + error.message);
@@ -596,6 +597,11 @@ export default function LibraryScreen() {
   };
 
   const openAssignModal = (exercise: Exercise) => {
+    if (!isAdmin) {
+      Alert.alert('Ikke tilladt', 'Du kan ikke tildele denne øvelse');
+      return;
+    }
+    
     setSelectedExercise(exercise);
     setShowAssignModal(true);
   };
@@ -605,14 +611,6 @@ export default function LibraryScreen() {
 
     setProcessing(true);
     try {
-      console.log('🔄 Assigning exercise to player:', {
-        exerciseId: selectedExercise.id,
-        exerciseTitle: selectedExercise.title,
-        playerId,
-        trainerId: currentUserId,
-      });
-
-      // Create exercise assignment
       const { error: assignmentError } = await supabase
         .from('exercise_assignments')
         .insert({
@@ -632,14 +630,11 @@ export default function LibraryScreen() {
         }
       }
 
-      console.log('✅ Exercise assignment created');
-
-      Alert.alert(
-        'Succes', 
-        `Øvelse "${selectedExercise.title}" er nu tildelt spilleren`
-      );
+      Alert.alert('Succes', `Øvelse "${selectedExercise.title}" er nu tildelt spilleren`);
       
-      await fetchExercises();
+      if (currentUserId) {
+        await fetchLibraryData(currentUserId);
+      }
       setShowAssignModal(false);
     } catch (error: any) {
       console.error('Error assigning exercise:', error);
@@ -654,14 +649,6 @@ export default function LibraryScreen() {
 
     setProcessing(true);
     try {
-      console.log('🔄 Assigning exercise to team:', {
-        exerciseId: selectedExercise.id,
-        exerciseTitle: selectedExercise.title,
-        teamId,
-        trainerId: currentUserId,
-      });
-
-      // Create exercise assignment
       const { error: assignmentError } = await supabase
         .from('exercise_assignments')
         .insert({
@@ -681,14 +668,11 @@ export default function LibraryScreen() {
         }
       }
 
-      console.log('✅ Exercise assignment created');
-
-      Alert.alert(
-        'Succes', 
-        `Øvelse "${selectedExercise.title}" er nu tildelt teamet`
-      );
+      Alert.alert('Succes', `Øvelse "${selectedExercise.title}" er nu tildelt teamet`);
       
-      await fetchExercises();
+      if (currentUserId) {
+        await fetchLibraryData(currentUserId);
+      }
       setShowAssignModal(false);
     } catch (error: any) {
       console.error('Error assigning exercise:', error);
@@ -705,12 +689,11 @@ export default function LibraryScreen() {
 
       console.log('🔄 Copying exercise to task template:', exercise.title);
 
-      // Create task template from exercise
       const { data: taskTemplate, error: taskTemplateError } = await supabase
         .from('task_templates')
         .insert({
           user_id: currentUserId,
-          player_id: currentUserId, // Player owns this task template
+          player_id: currentUserId,
           title: exercise.title,
           description: exercise.description,
           video_url: exercise.video_url,
@@ -724,12 +707,7 @@ export default function LibraryScreen() {
         throw taskTemplateError;
       }
 
-      console.log('✅ Task template created:', taskTemplate.id);
-
-      // Copy subtasks if exercise has them
       if (exercise.subtasks.length > 0) {
-        console.log(`🔄 Copying ${exercise.subtasks.length} subtasks...`);
-        
         const subtasksToInsert = exercise.subtasks.map(subtask => ({
           task_template_id: taskTemplate.id,
           title: subtask.title,
@@ -742,15 +720,10 @@ export default function LibraryScreen() {
 
         if (subtasksError) {
           console.error('❌ Error copying subtasks:', subtasksError);
-        } else {
-          console.log('✅ Subtasks copied');
         }
       }
 
-      Alert.alert(
-        'Succes', 
-        `Øvelse "${exercise.title}" er nu kopieret til dine opgaveskabeloner`
-      );
+      Alert.alert('Succes', `Øvelse "${exercise.title}" er nu kopieret til dine opgaveskabeloner`);
     } catch (error: any) {
       console.error('Error copying exercise to tasks:', error);
       Alert.alert('Fejl', 'Kunne ikke kopiere øvelse: ' + error.message);
@@ -778,7 +751,6 @@ export default function LibraryScreen() {
       return;
     }
     
-    // Open in YouTube app or browser
     const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
     Linking.openURL(youtubeUrl).catch(err => {
       console.error('Error opening YouTube:', err);
@@ -802,20 +774,11 @@ export default function LibraryScreen() {
     }
   };
 
-  const renderExerciseCard = (exercise: Exercise, isPlayerView: boolean = false) => {
-    const isDisabled = isManagingContext && !exercise.isAssignedByCurrentTrainer;
-    const cardOpacity = isDisabled ? 0.5 : 1;
-    
+  const renderExerciseCard = (exercise: Exercise, isReadOnly: boolean = false) => {
     return (
       <View 
         key={exercise.id} 
-        style={[
-          styles.exerciseCard, 
-          { 
-            backgroundColor: cardBgColor,
-            opacity: cardOpacity,
-          }
-        ]}
+        style={[styles.exerciseCard, { backgroundColor: cardBgColor }]}
       >
         <View style={styles.exerciseHeader}>
           <View style={styles.exerciseHeaderLeft}>
@@ -823,26 +786,21 @@ export default function LibraryScreen() {
               ios_icon_name="book.fill"
               android_material_icon_name="menu_book"
               size={24}
-              color={isDisabled ? textSecondaryColor : colors.primary}
+              color={colors.primary}
             />
             <View style={styles.exerciseTitleContainer}>
               <Text style={[styles.exerciseTitle, { color: textColor }]}>
                 {exercise.title}
               </Text>
-              {!isPlayerView && exercise.assignments.length > 0 && (
-                <Text style={[styles.assignmentCount, { color: textSecondaryColor }]}>
-                  Tildelt til {exercise.assignments.length} spiller{exercise.assignments.length !== 1 ? 'e' : ''}/team
-                </Text>
-              )}
-              {isDisabled && (
-                <Text style={[styles.disabledBadge, { color: textSecondaryColor }]}>
-                  ⚠️ Ikke tildelt af dig
+              {exercise.trainer_name && (
+                <Text style={[styles.trainerName, { color: textSecondaryColor }]}>
+                  Fra: {exercise.trainer_name}
                 </Text>
               )}
             </View>
           </View>
           <View style={styles.exerciseActions}>
-            {isPlayerView ? (
+            {isReadOnly ? (
               <TouchableOpacity
                 style={[styles.actionButton, { backgroundColor: colors.primary }]}
                 onPress={() => handleCopyToTasks(exercise)}
@@ -854,62 +812,58 @@ export default function LibraryScreen() {
                   size={20}
                   color="#fff"
                 />
-                <Text style={styles.copyButtonText}>Kopier til opgaver</Text>
+                <Text style={styles.copyButtonText}>Kopier</Text>
               </TouchableOpacity>
             ) : (
               <>
-                {!isDisabled && (
-                  <>
-                    <TouchableOpacity
-                      style={styles.actionButton}
-                      onPress={() => openAssignModal(exercise)}
-                      disabled={processing}
-                    >
-                      <IconSymbol
-                        ios_icon_name="person.badge.plus"
-                        android_material_icon_name="person_add"
-                        size={20}
-                        color={colors.secondary}
-                      />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.actionButton}
-                      onPress={() => handleDuplicateExercise(exercise)}
-                      disabled={processing}
-                    >
-                      <IconSymbol
-                        ios_icon_name="doc.on.doc"
-                        android_material_icon_name="content_copy"
-                        size={20}
-                        color={colors.secondary}
-                      />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.actionButton}
-                      onPress={() => openEditModal(exercise)}
-                      disabled={processing}
-                    >
-                      <IconSymbol
-                        ios_icon_name="pencil"
-                        android_material_icon_name="edit"
-                        size={20}
-                        color={colors.accent}
-                      />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.actionButton}
-                      onPress={() => handleDeleteExercise(exercise)}
-                      disabled={processing}
-                    >
-                      <IconSymbol
-                        ios_icon_name="trash"
-                        android_material_icon_name="delete"
-                        size={20}
-                        color={colors.error}
-                      />
-                    </TouchableOpacity>
-                  </>
-                )}
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={() => openAssignModal(exercise)}
+                  disabled={processing}
+                >
+                  <IconSymbol
+                    ios_icon_name="person.badge.plus"
+                    android_material_icon_name="person_add"
+                    size={20}
+                    color={colors.secondary}
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={() => handleDuplicateExercise(exercise)}
+                  disabled={processing}
+                >
+                  <IconSymbol
+                    ios_icon_name="doc.on.doc"
+                    android_material_icon_name="content_copy"
+                    size={20}
+                    color={colors.secondary}
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={() => openEditModal(exercise)}
+                  disabled={processing}
+                >
+                  <IconSymbol
+                    ios_icon_name="pencil"
+                    android_material_icon_name="edit"
+                    size={20}
+                    color={colors.accent}
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={() => handleDeleteExercise(exercise)}
+                  disabled={processing}
+                >
+                  <IconSymbol
+                    ios_icon_name="trash"
+                    android_material_icon_name="delete"
+                    size={20}
+                    color={colors.error}
+                  />
+                </TouchableOpacity>
               </>
             )}
           </View>
@@ -921,7 +875,7 @@ export default function LibraryScreen() {
           </Text>
         )}
 
-        {exercise.video_url && !isDisabled && (
+        {exercise.video_url && (
           <View style={styles.videoPreviewContainer}>
             <TouchableOpacity 
               style={styles.videoThumbnailContainer}
@@ -988,6 +942,69 @@ export default function LibraryScreen() {
     );
   };
 
+  const renderFolder = (folder: FolderItem, level: number = 0) => {
+    const isExpanded = expandedFolders.has(folder.id);
+    const hasContent = (folder.exercises && folder.exercises.length > 0) || (folder.subfolders && folder.subfolders.length > 0);
+    
+    return (
+      <React.Fragment key={folder.id}>
+        <TouchableOpacity
+          style={[
+            styles.folderHeader,
+            { 
+              backgroundColor: cardBgColor,
+              marginLeft: level * 16,
+            }
+          ]}
+          onPress={() => toggleFolder(folder.id)}
+        >
+          <View style={styles.folderHeaderLeft}>
+            <IconSymbol
+              ios_icon_name={folder.icon}
+              android_material_icon_name={folder.androidIcon}
+              size={24}
+              color={colors.primary}
+            />
+            <Text style={[styles.folderName, { color: textColor }]}>
+              {folder.name}
+            </Text>
+            {folder.exercises && folder.exercises.length > 0 && (
+              <View style={[styles.countBadge, { backgroundColor: colors.primary }]}>
+                <Text style={styles.countBadgeText}>{folder.exercises.length}</Text>
+              </View>
+            )}
+          </View>
+          <IconSymbol
+            ios_icon_name={isExpanded ? 'chevron.down' : 'chevron.right'}
+            android_material_icon_name={isExpanded ? 'expand_more' : 'chevron_right'}
+            size={20}
+            color={textSecondaryColor}
+          />
+        </TouchableOpacity>
+
+        {isExpanded && (
+          <View style={[styles.folderContent, { marginLeft: level * 16 }]}>
+            {folder.subfolders && folder.subfolders.map(subfolder => renderFolder(subfolder, level + 1))}
+            
+            {folder.exercises && folder.exercises.length > 0 && (
+              <View style={styles.exercisesContainer}>
+                {folder.exercises.map(exercise => renderExerciseCard(exercise, folder.type === 'trainer' || folder.type === 'footballcoach'))}
+              </View>
+            )}
+
+            {folder.exercises && folder.exercises.length === 0 && !folder.subfolders && (
+              <View style={[styles.emptyFolder, { backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5' }]}>
+                <Text style={[styles.emptyFolderText, { color: textSecondaryColor }]}>
+                  {folder.type === 'footballcoach' ? 'Kommer snart...' : 'Ingen øvelser endnu'}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+      </React.Fragment>
+    );
+  };
+
   if (loading) {
     return (
       <View style={[styles.container, { backgroundColor: containerBgColor }]}>
@@ -1004,16 +1021,13 @@ export default function LibraryScreen() {
       <View style={styles.header}>
         <View>
           <Text style={[styles.headerTitle, { color: textColor }]}>
-            {isAdmin ? 'Øvelsesbibliotek' : 'Bibliotek'}
+            Øvelsesbibliotek
           </Text>
           <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
-            {isAdmin 
-              ? `${exercises.length} øvelser` 
-              : `${assignedExercises.length} tildelte øvelser`
-            }
+            Struktureret i mapper
           </Text>
         </View>
-        {isAdmin && !isManagingContext && (
+        {isAdmin && (
           <TouchableOpacity
             style={[styles.createButton, { backgroundColor: colors.primary }]}
             onPress={openCreateModal}
@@ -1030,91 +1044,93 @@ export default function LibraryScreen() {
         )}
       </View>
 
-      {/* Enhanced Context Banner for Trainers/Admins */}
-      {isManagingContext && (
-        <View style={[styles.contextBanner, { backgroundColor: '#D4A574' }]}>
-          <IconSymbol
-            ios_icon_name="exclamationmark.triangle.fill"
-            android_material_icon_name="warning"
-            size={28}
-            color="#fff"
-          />
-          <View style={styles.contextBannerText}>
-            <Text style={styles.contextBannerTitle}>
-              ⚠️ DU SER BIBLIOTEK FOR {selectedContext.type === 'player' ? 'SPILLER' : 'TEAM'}
-            </Text>
-            <Text style={styles.contextBannerSubtitle}>
-              {selectedContext.name}
-            </Text>
-            <Text style={styles.contextBannerInfo}>
-              {selectedContext.type === 'player' 
-                ? 'Nedtonede øvelser er ikke tildelt af dig. Du kan kun åbne og redigere øvelser du selv har tildelt.'
-                : 'Du ser kun øvelser du har tildelt til dette team.'
-              }
-            </Text>
-          </View>
-        </View>
-      )}
-
       <ScrollView
         style={styles.content}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
-        {isAdmin ? (
-          // Trainer view
-          exercises.length === 0 ? (
-            <View style={[styles.emptyState, { backgroundColor: cardBgColor }]}>
+        {/* Personal Templates Folder */}
+        {isAdmin && (
+          <>
+            {renderFolder({
+              id: 'personal',
+              name: 'Personlige templates',
+              type: 'personal',
+              icon: 'person.crop.circle.fill',
+              androidIcon: 'account_circle',
+              exercises: personalExercises,
+            })}
+          </>
+        )}
+
+        {/* Templates from Trainers Folder */}
+        {!isAdmin && trainerFolders.length > 0 && (
+          <>
+            <TouchableOpacity
+              style={[styles.folderHeader, { backgroundColor: cardBgColor }]}
+              onPress={() => toggleFolder('trainers')}
+            >
+              <View style={styles.folderHeaderLeft}>
+                <IconSymbol
+                  ios_icon_name="person.2.fill"
+                  android_material_icon_name="groups"
+                  size={24}
+                  color={colors.secondary}
+                />
+                <Text style={[styles.folderName, { color: textColor }]}>
+                  Templates fra trænere
+                </Text>
+                <View style={[styles.countBadge, { backgroundColor: colors.secondary }]}>
+                  <Text style={styles.countBadgeText}>{trainerFolders.length}</Text>
+                </View>
+              </View>
               <IconSymbol
-                ios_icon_name="book.fill"
-                android_material_icon_name="menu_book"
-                size={64}
+                ios_icon_name={expandedFolders.has('trainers') ? 'chevron.down' : 'chevron.right'}
+                android_material_icon_name={expandedFolders.has('trainers') ? 'expand_more' : 'chevron_right'}
+                size={20}
                 color={textSecondaryColor}
               />
-              <Text style={[styles.emptyTitle, { color: textColor }]}>Ingen øvelser endnu</Text>
-              <Text style={[styles.emptyText, { color: textSecondaryColor }]}>
-                {isManagingContext 
-                  ? `Ingen øvelser ${selectedContext.type === 'player' ? 'tildelt denne spiller' : 'tildelt dette team'}`
-                  : 'Opret din første øvelse for at komme i gang'
-                }
-              </Text>
-            </View>
-          ) : (
-            exercises.map((exercise) => renderExerciseCard(exercise, false))
-          )
-        ) : (
-          // Player view
-          <>
-            {assignedExercises.length === 0 ? (
-              <View style={[styles.emptyState, { backgroundColor: cardBgColor }]}>
-                <IconSymbol
-                  ios_icon_name="book.fill"
-                  android_material_icon_name="menu_book"
-                  size={64}
-                  color={textSecondaryColor}
-                />
-                <Text style={[styles.emptyTitle, { color: textColor }]}>Ingen øvelser endnu</Text>
-                <Text style={[styles.emptyText, { color: textSecondaryColor }]}>
-                  Din træner har ikke tildelt dig nogen øvelser endnu
-                </Text>
+            </TouchableOpacity>
+
+            {expandedFolders.has('trainers') && (
+              <View style={styles.folderContent}>
+                {trainerFolders.map(folder => renderFolder(folder, 1))}
               </View>
-            ) : (
-              <>
-                <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
-                  <IconSymbol
-                    ios_icon_name="info.circle"
-                    android_material_icon_name="info"
-                    size={20}
-                    color={colors.secondary}
-                  />
-                  <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
-                    Klik på &quot;Kopier til opgaver&quot; for at tilføje en øvelse til dine opgaveskabeloner
-                  </Text>
-                </View>
-                {assignedExercises.map((exercise) => renderExerciseCard(exercise, true))}
-              </>
             )}
           </>
+        )}
+
+        {/* FootballCoach Focus Areas Folder */}
+        <TouchableOpacity
+          style={[styles.folderHeader, { backgroundColor: cardBgColor }]}
+          onPress={() => toggleFolder('footballcoach')}
+        >
+          <View style={styles.folderHeaderLeft}>
+            <IconSymbol
+              ios_icon_name="star.circle.fill"
+              android_material_icon_name="stars"
+              size={24}
+              color={colors.accent}
+            />
+            <Text style={[styles.folderName, { color: textColor }]}>
+              FootballCoach – Fokusområder
+            </Text>
+            <View style={[styles.readOnlyBadge, { backgroundColor: isDark ? '#444' : '#e0e0e0' }]}>
+              <Text style={[styles.readOnlyBadgeText, { color: textSecondaryColor }]}>Inspiration</Text>
+            </View>
+          </View>
+          <IconSymbol
+            ios_icon_name={expandedFolders.has('footballcoach') ? 'chevron.down' : 'chevron.right'}
+            android_material_icon_name={expandedFolders.has('footballcoach') ? 'expand_more' : 'chevron_right'}
+            size={20}
+            color={textSecondaryColor}
+          />
+        </TouchableOpacity>
+
+        {expandedFolders.has('footballcoach') && (
+          <View style={styles.folderContent}>
+            {footballCoachFolders.map(folder => renderFolder(folder, 1))}
+          </View>
         )}
 
         <View style={{ height: 100 }} />
@@ -1551,80 +1567,70 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
   },
-  contextBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    paddingHorizontal: 20,
-    paddingVertical: 20,
-    marginHorizontal: 20,
-    marginBottom: 12,
-    borderRadius: 16,
-    borderWidth: 3,
-    borderColor: '#B8860B',
-  },
-  contextBannerText: {
-    flex: 1,
-  },
-  contextBannerTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 4,
-    letterSpacing: 0.5,
-  },
-  contextBannerSubtitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 4,
-  },
-  contextBannerInfo: {
-    fontSize: 13,
-    color: '#fff',
-    opacity: 0.95,
-    fontStyle: 'italic',
-  },
   content: {
     flex: 1,
   },
   contentContainer: {
     paddingHorizontal: 20,
   },
-  infoBox: {
+  folderHeader: {
     flexDirection: 'row',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginBottom: 16,
-    borderRadius: 12,
-  },
-  infoText: {
-    flex: 1,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  emptyState: {
-    borderRadius: 20,
-    padding: 48,
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 40,
-  },
-  emptyTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginTop: 16,
+    padding: 16,
+    borderRadius: 12,
     marginBottom: 8,
   },
-  emptyText: {
-    fontSize: 16,
-    textAlign: 'center',
-    lineHeight: 24,
+  folderHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  folderName: {
+    fontSize: 18,
+    fontWeight: '600',
+    flex: 1,
+  },
+  countBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  countBadgeText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  readOnlyBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  readOnlyBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  folderContent: {
+    marginBottom: 8,
+  },
+  exercisesContainer: {
+    gap: 8,
+  },
+  emptyFolder: {
+    padding: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  emptyFolderText: {
+    fontSize: 14,
+    fontStyle: 'italic',
   },
   exerciseCard: {
     borderRadius: 16,
     padding: 20,
-    marginBottom: 16,
+    marginBottom: 8,
   },
   exerciseHeader: {
     flexDirection: 'row',
@@ -1646,13 +1652,9 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 4,
   },
-  assignmentCount: {
+  trainerName: {
     fontSize: 14,
-  },
-  disabledBadge: {
-    fontSize: 12,
     fontStyle: 'italic',
-    marginTop: 4,
   },
   exerciseActions: {
     flexDirection: 'row',
@@ -1726,12 +1728,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#fff',
-  },
-  videoText: {
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginTop: 8,
   },
   videoSection: {
     marginBottom: 16,
