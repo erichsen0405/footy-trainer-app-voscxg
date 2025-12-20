@@ -493,86 +493,88 @@ function HomeScreenContent() {
               <Text style={[styles.emptySubtext, { color: textSecondaryColor }]}>Nyd din fridag eller opret en ny aktivitet</Text>
             </View>
           ) : (
-            todayActivities.map((activity) => (
-              <TouchableOpacity
-                key={activity.id}
-                style={styles.activityCardPremium}
-                onPress={() => handleActivityPress(activity.id)}
-                activeOpacity={0.9}
-              >
-                <LinearGradient
-                  colors={[activity.category.color, '#000']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.activityCardGradient}
+            <React.Fragment>
+              {todayActivities.map((activity, activityIndex) => (
+                <TouchableOpacity
+                  key={`today-activity-${activity.id}-${activityIndex}`}
+                  style={styles.activityCardPremium}
+                  onPress={() => handleActivityPress(activity.id)}
+                  activeOpacity={0.9}
                 >
-                  <View style={styles.activityCardContent}>
-                    <View style={styles.activityHeaderPremium}>
-                      <View style={styles.activityEmojiContainer}>
-                        <Text style={styles.activityEmojiPremium}>{activity.category.emoji}</Text>
-                      </View>
-                      <View style={styles.activityInfoPremium}>
-                        <View style={styles.activityTitleRow}>
-                          <Text style={styles.activityTitlePremium}>{activity.title}</Text>
-                          {activity.isExternal && (
-                            <View style={styles.externalBadgePremium}>
-                              <IconSymbol 
-                                ios_icon_name="calendar.badge.clock" 
-                                android_material_icon_name="event" 
-                                size={14} 
-                                color="#fff" 
-                              />
-                            </View>
-                          )}
+                  <LinearGradient
+                    colors={[activity.category.color, '#000']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.activityCardGradient}
+                  >
+                    <View style={styles.activityCardContent}>
+                      <View style={styles.activityHeaderPremium}>
+                        <View style={styles.activityEmojiContainer}>
+                          <Text style={styles.activityEmojiPremium}>{activity.category.emoji}</Text>
                         </View>
-                        <View style={styles.activityMetaRow}>
-                          <IconSymbol ios_icon_name="clock.fill" android_material_icon_name="schedule" size={14} color="rgba(255,255,255,0.9)" />
-                          <Text style={styles.activityTimePremium}>{formatTime(activity.time)}</Text>
-                          <View style={styles.metaDivider} />
-                          <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={14} color="rgba(255,255,255,0.9)" />
-                          <Text style={styles.activityLocationPremium}>{activity.location}</Text>
+                        <View style={styles.activityInfoPremium}>
+                          <View style={styles.activityTitleRow}>
+                            <Text style={styles.activityTitlePremium}>{activity.title}</Text>
+                            {activity.isExternal && (
+                              <View style={styles.externalBadgePremium}>
+                                <IconSymbol 
+                                  ios_icon_name="calendar.badge.clock" 
+                                  android_material_icon_name="event" 
+                                  size={14} 
+                                  color="#fff" 
+                                />
+                              </View>
+                            )}
+                          </View>
+                          <View style={styles.activityMetaRow}>
+                            <IconSymbol ios_icon_name="clock.fill" android_material_icon_name="schedule" size={14} color="rgba(255,255,255,0.9)" />
+                            <Text style={styles.activityTimePremium}>{formatTime(activity.time)}</Text>
+                            <View style={styles.metaDivider} />
+                            <IconSymbol ios_icon_name="mappin.circle.fill" android_material_icon_name="location_on" size={14} color="rgba(255,255,255,0.9)" />
+                            <Text style={styles.activityLocationPremium}>{activity.location}</Text>
+                          </View>
                         </View>
                       </View>
-                    </View>
 
-                    {activity.tasks.length > 0 && (
-                      <View style={styles.tasksSectionPremium}>
-                        <View style={styles.tasksDivider} />
-                        <Text style={styles.tasksTitlePremium}>OPGAVER</Text>
-                        {activity.tasks.map((task) => (
-                          <TouchableOpacity
-                            key={task.id}
-                            style={styles.taskItemPremium}
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              handleTaskPress(task, activity.id, activity.title);
-                            }}
-                            activeOpacity={0.7}
-                          >
-                            <View style={[styles.checkboxPremium, task.completed && styles.checkboxCheckedPremium]}>
-                              {task.completed && (
-                                <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={14} color="#000" />
-                              )}
-                            </View>
-                            <View style={styles.taskContentPremium}>
-                              <Text style={[styles.taskTextPremium, task.completed && styles.taskTextCompletedPremium]}>
-                                {task.title}
-                              </Text>
-                              {task.reminder && (
-                                <View style={styles.reminderBadgePremium}>
-                                  <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={10} color="#fff" />
-                                  <Text style={styles.reminderTextPremium}>{task.reminder}m</Text>
-                                </View>
-                              )}
-                            </View>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    )}
-                  </View>
-                </LinearGradient>
-              </TouchableOpacity>
-            ))
+                      {activity.tasks.length > 0 && (
+                        <View style={styles.tasksSectionPremium}>
+                          <View style={styles.tasksDivider} />
+                          <Text style={styles.tasksTitlePremium}>OPGAVER</Text>
+                          {activity.tasks.map((task, taskIndex) => (
+                            <TouchableOpacity
+                              key={`task-${task.id}-${taskIndex}`}
+                              style={styles.taskItemPremium}
+                              onPress={(e) => {
+                                e.stopPropagation();
+                                handleTaskPress(task, activity.id, activity.title);
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              <View style={[styles.checkboxPremium, task.completed && styles.checkboxCheckedPremium]}>
+                                {task.completed && (
+                                  <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={14} color="#000" />
+                                )}
+                              </View>
+                              <View style={styles.taskContentPremium}>
+                                <Text style={[styles.taskTextPremium, task.completed && styles.taskTextCompletedPremium]}>
+                                  {task.title}
+                                </Text>
+                                {task.reminder && (
+                                  <View style={styles.reminderBadgePremium}>
+                                    <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={10} color="#fff" />
+                                    <Text style={styles.reminderTextPremium}>{task.reminder}m</Text>
+                                  </View>
+                                )}
+                              </View>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      )}
+                    </View>
+                  </LinearGradient>
+                </TouchableOpacity>
+              ))}
+            </React.Fragment>
           )}
         </View>
 
@@ -607,10 +609,10 @@ function HomeScreenContent() {
             </View>
           ) : (
             <React.Fragment>
-              {sortedWeeks.map(([weekKey, data]) => {
+              {sortedWeeks.map(([weekKey, data], weekIndex) => {
                 const weekNumber = weekKey.split('-W')[1];
                 return (
-                  <View key={weekKey} style={styles.weekSectionPremium}>
+                  <View key={`week-${weekKey}-${weekIndex}`} style={styles.weekSectionPremium}>
                     <View style={styles.weekHeaderPremium}>
                       <Text style={[styles.weekTitlePremium, { color: textColor }]}>
                         Uge {weekNumber}
@@ -620,12 +622,12 @@ function HomeScreenContent() {
                       </Text>
                     </View>
                     
-                    {data.activities.map((activity) => {
+                    {data.activities.map((activity, activityIndex) => {
                       const isCompleted = isActivityCompleted(activity);
                       
                       return (
                         <TouchableOpacity
-                          key={activity.id}
+                          key={`upcoming-activity-${activity.id}-${activityIndex}`}
                           style={styles.upcomingActivityCardPremium}
                           onPress={() => handleActivityPress(activity.id)}
                           activeOpacity={0.9}
