@@ -132,9 +132,10 @@ export default function TasksScreen() {
       console.log('Updating task template:', selectedTask.id);
       console.log('Video URL:', videoUrl);
 
+      // CRITICAL FIX: Explicitly set videoUrl to null when empty to ensure deletion
       const taskToSave = {
         ...selectedTask,
-        videoUrl: videoUrl.trim() || undefined,
+        videoUrl: videoUrl.trim() ? videoUrl.trim() : null,
       };
 
       if (isCreating) {
@@ -256,6 +257,7 @@ export default function TasksScreen() {
           text: 'Slet',
           style: 'destructive',
           onPress: () => {
+            console.log('🗑️ Deleting video from task template');
             setVideoUrl('');
             Alert.alert('Video fjernet', 'Husk at gemme opgaven for at bekræfte ændringen');
           },

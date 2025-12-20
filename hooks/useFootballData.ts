@@ -1508,7 +1508,8 @@ export function useFootballData() {
       throw new Error('User not authenticated');
     }
 
-    console.log('Updating task template:', id);
+    console.log('🔄 Updating task template:', id);
+    console.log('📝 Updates:', updates);
 
     try {
       // Update the task template
@@ -1516,8 +1517,18 @@ export function useFootballData() {
       if (updates.title !== undefined) updateData.title = updates.title;
       if (updates.description !== undefined) updateData.description = updates.description;
       if (updates.reminder !== undefined) updateData.reminder_minutes = updates.reminder;
-      if (updates.videoUrl !== undefined) updateData.video_url = updates.videoUrl || null;
+      
+      // CRITICAL FIX: Handle videoUrl explicitly, including null values
+      // Check if videoUrl is present in updates (even if it's null)
+      if ('videoUrl' in updates) {
+        updateData.video_url = updates.videoUrl || null;
+        console.log(`🎬 Setting video_url to: ${updateData.video_url === null ? 'NULL (deleting video)' : updateData.video_url}`);
+      }
+      
       updateData.updated_at = new Date().toISOString();
+
+      console.log('📤 Sending update to task_templates...');
+      console.log('   Update data:', JSON.stringify(updateData, null, 2));
 
       const { error: templateError } = await supabase
         .from('task_templates')
@@ -1526,14 +1537,16 @@ export function useFootballData() {
         .eq('user_id', userId);
 
       if (templateError) {
-        console.error('Error updating task template:', templateError);
+        console.error('❌ Error updating task template:', templateError);
         throw templateError;
       }
 
-      console.log('Task template updated');
+      console.log('✅ Task template updated successfully');
 
       // Update category associations if provided
       if (updates.categoryIds !== undefined) {
+        console.log('🔄 Updating category associations...');
+        
         // Delete existing associations
         const { error: deleteError } = await supabase
           .from('task_template_categories')
@@ -1541,7 +1554,7 @@ export function useFootballData() {
           .eq('task_template_id', id);
 
         if (deleteError) {
-          console.error('Error deleting task template categories:', deleteError);
+          console.error('❌ Error deleting task template categories:', deleteError);
           throw deleteError;
         }
 
@@ -1557,16 +1570,18 @@ export function useFootballData() {
             .insert(categoryInserts);
 
           if (categoryError) {
-            console.error('Error creating task template categories:', categoryError);
+            console.error('❌ Error creating task template categories:', categoryError);
             throw categoryError;
           }
 
-          console.log('Task template categories updated - trigger will update tasks for activities');
+          console.log('✅ Task template categories updated - trigger will update tasks for activities');
         }
       }
 
       // Update all activity tasks linked to this template
       if (updateData.title || updateData.description || updateData.reminder_minutes !== undefined) {
+        console.log('🔄 Updating linked activity tasks...');
+        
         const activityUpdateData: any = {};
         if (updateData.title) activityUpdateData.title = updateData.title;
         if (updateData.description) activityUpdateData.description = updateData.description;
@@ -1579,22 +1594,25 @@ export function useFootballData() {
             .eq('task_template_id', id);
 
           if (activityTaskError) {
-            console.error('Error updating activity tasks:', activityTaskError);
+            console.error('❌ Error updating activity tasks:', activityTaskError);
           } else {
-            console.log('Activity tasks updated to match template');
+            console.log('✅ Activity tasks updated to match template');
           }
         }
       }
 
       // Trigger refresh to reload tasks AND activities
+      console.log('🔄 Triggering data refresh...');
       setRefreshTrigger(prev => prev + 1);
       
       // Refresh notification queue if reminder changed
       if (updateData.reminder_minutes !== undefined && notificationsEnabled) {
         await refreshNotificationQueue(true);
       }
+
+      console.log('✅ Task template update completed successfully');
     } catch (error) {
-      console.error('Failed to update task template:', error);
+      console.error('❌ Failed to update task template:', error);
       throw error;
     }
   };
