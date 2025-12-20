@@ -27,12 +27,11 @@ export default function HomeScreen() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [weeksToLoad, setWeeksToLoad] = useState(0);
   
-  // Video modal state
   const [videoModalVisible, setVideoModalVisible] = useState(false);
   const [selectedVideoUrl, setSelectedVideoUrl] = useState('');
   const [selectedVideoTitle, setSelectedVideoTitle] = useState('');
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   
-  // Confirmation dialog state
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [pendingAction, setPendingAction] = useState<{
     type: 'create' | 'complete';
@@ -210,14 +209,11 @@ export default function HomeScreen() {
     router.push(`/activity-details?id=${activityId}`);
   };
 
-  // CRITICAL FIX: Separate handlers for circle click (toggle) and bar click (open details)
   const handleCircleClick = async (activityId: string, taskId: string, e: any) => {
-    // CRITICAL: Stop event propagation to prevent opening activity details
     e.stopPropagation();
     
     console.log('⚡ INSTANT: Circle clicked - toggling task completion');
     
-    // Check if we need confirmation (trainer/admin managing player/team data)
     if (isAdmin && selectedContext.type) {
       setPendingAction({
         type: 'complete',
@@ -227,7 +223,6 @@ export default function HomeScreen() {
       return;
     }
     
-    // Call toggle immediately - optimistic update happens inside
     try {
       await toggleTaskCompletion(activityId, taskId);
       console.log('✅ Task completion toggled');
@@ -237,22 +232,22 @@ export default function HomeScreen() {
   };
 
   const handleTaskBarClick = (activityId: string, taskId: string, task: Task, e: any) => {
-    // CRITICAL: Stop event propagation to prevent opening activity details
     e.stopPropagation();
     
     console.log('⚡ Task bar clicked:', task.title);
+    console.log('📹 Task videoUrl:', task.videoUrl);
+    console.log('📹 Is valid video URL:', task.videoUrl ? isValidVideoUrl(task.videoUrl) : false);
     
-    // Check if task has a video URL - if so, open video modal
     if (task.videoUrl && isValidVideoUrl(task.videoUrl)) {
-      console.log('📹 Task has video, opening video modal');
+      console.log('📹 Opening video modal with URL:', task.videoUrl);
+      setSelectedTask(task);
       setSelectedVideoUrl(task.videoUrl);
       setSelectedVideoTitle(task.title);
       setVideoModalVisible(true);
       return;
     }
     
-    // Otherwise, open the activity details
-    console.log('⚡ Opening activity details');
+    console.log('⚡ No video, opening activity details');
     handleActivityPress(activityId);
   };
 
@@ -287,7 +282,6 @@ export default function HomeScreen() {
   };
 
   const handleCreateActivity = async (activityData: ActivityCreationData) => {
-    // Check if we need confirmation (trainer/admin managing player/team data)
     if (isAdmin && selectedContext.type) {
       setPendingAction({
         type: 'create',
@@ -311,13 +305,20 @@ export default function HomeScreen() {
     setWeeksToLoad(prev => prev + 1);
   };
 
+  const handleCloseVideoModal = () => {
+    console.log('📹 Closing video modal');
+    setVideoModalVisible(false);
+    setSelectedVideoUrl('');
+    setSelectedVideoTitle('');
+    setSelectedTask(null);
+  };
+
   const activitiesByWeek = getActivitiesByWeek();
   
   const sortedWeeks = Object.entries(activitiesByWeek).sort((a, b) => {
     return a[1].sortDate.getTime() - b[1].sortDate.getTime();
   });
 
-  // Determine if we're in context management mode
   const isManagingContext = isAdmin && selectedContext.type;
   const containerBgColor = isManagingContext ? themeColors.contextWarning : themeColors.background;
 
@@ -334,7 +335,6 @@ export default function HomeScreen() {
         />
       }
     >
-      {/* Premium Header with Gradient */}
       <View style={styles.headerContainer}>
         <LinearGradient
           colors={['#1a1a2e', '#16213e', '#0f3460']}
@@ -358,7 +358,6 @@ export default function HomeScreen() {
         </LinearGradient>
       </View>
 
-      {/* Enhanced Context Banner for Trainers/Admins */}
       {isManagingContext && (
         <View style={[styles.contextBanner, { backgroundColor: '#D4A574' }]}>
           <IconSymbol
@@ -381,7 +380,6 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* Premium Stats Card */}
       <View style={styles.statsContainer}>
         <LinearGradient
           colors={[getProgressColor(currentWeekStats.percentage), '#000']}
@@ -424,7 +422,6 @@ export default function HomeScreen() {
         </LinearGradient>
       </View>
 
-      {/* Create Activity Button - Premium Style */}
       <TouchableOpacity
         style={styles.createButtonPremium}
         onPress={() => setIsCreateModalVisible(true)}
@@ -441,7 +438,6 @@ export default function HomeScreen() {
         </LinearGradient>
       </TouchableOpacity>
 
-      {/* Today's Activities Section */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <View style={styles.sectionTitleContainer}>
@@ -514,7 +510,6 @@ export default function HomeScreen() {
                           key={task.id}
                           style={styles.taskItemPremium}
                         >
-                          {/* CRITICAL FIX: Circle is clickable for toggling completion */}
                           <TouchableOpacity
                             onPress={(e) => handleCircleClick(activity.id, task.id, e)}
                             activeOpacity={0.7}
@@ -525,7 +520,6 @@ export default function HomeScreen() {
                             )}
                           </TouchableOpacity>
                           
-                          {/* CRITICAL FIX: Bar is clickable for opening task details */}
                           <TouchableOpacity
                             onPress={(e) => handleTaskBarClick(activity.id, task.id, task, e)}
                             activeOpacity={0.7}
@@ -560,7 +554,6 @@ export default function HomeScreen() {
         )}
       </View>
 
-      {/* Upcoming Activities Section */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <View style={styles.sectionTitleContainer}>
@@ -678,7 +671,6 @@ export default function HomeScreen() {
         onCreateActivity={handleCreateActivity}
         categories={categories}
         onRefreshCategories={() => {
-          // Trigger a refresh of the data
           onRefresh();
         }}
       />
@@ -697,11 +689,7 @@ export default function HomeScreen() {
         visible={videoModalVisible}
         animationType="slide"
         presentationStyle="fullScreen"
-        onRequestClose={() => {
-          setVideoModalVisible(false);
-          setSelectedVideoUrl('');
-          setSelectedVideoTitle('');
-        }}
+        onRequestClose={handleCloseVideoModal}
       >
         <View style={{ flex: 1, backgroundColor: '#000' }}>
           <View style={{ 
@@ -714,11 +702,7 @@ export default function HomeScreen() {
             backgroundColor: 'rgba(0,0,0,0.9)'
           }}>
             <TouchableOpacity 
-              onPress={() => {
-                setVideoModalVisible(false);
-                setSelectedVideoUrl('');
-                setSelectedVideoTitle('');
-              }}
+              onPress={handleCloseVideoModal}
               style={{ padding: 4 }}
             >
               <IconSymbol
@@ -728,14 +712,18 @@ export default function HomeScreen() {
                 color="#fff"
               />
             </TouchableOpacity>
-            <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#fff' }}>
+            <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#fff', flex: 1, textAlign: 'center', marginHorizontal: 8 }}>
               {selectedVideoTitle}
             </Text>
             <View style={{ width: 32 }} />
           </View>
-          {selectedVideoUrl && (
-            <SmartVideoPlayer url={selectedVideoUrl} />
-          )}
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }}>
+            {selectedVideoUrl ? (
+              <SmartVideoPlayer url={selectedVideoUrl} />
+            ) : (
+              <Text style={{ color: '#fff', fontSize: 16 }}>Ingen video tilgængelig</Text>
+            )}
+          </View>
         </View>
       </Modal>
     </ScrollView>
@@ -751,7 +739,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   
-  // Premium Header Styles
   headerContainer: {
     marginHorizontal: -16,
     marginTop: -60,
@@ -803,7 +790,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   
-  // Premium Stats Card
   statsContainer: {
     marginBottom: 20,
     borderRadius: 24,
@@ -890,7 +876,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   
-  // Premium Create Button
   createButtonPremium: {
     marginBottom: 24,
     borderRadius: 16,
@@ -912,7 +897,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   
-  // Section Styles
   section: {
     marginBottom: 32,
   },
@@ -952,7 +936,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   
-  // Empty State
   emptyCard: {
     borderRadius: 20,
     padding: 48,
@@ -968,7 +951,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   
-  // Premium Activity Cards
   activityCardPremium: {
     marginBottom: 16,
     borderRadius: 20,
@@ -1042,7 +1024,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   
-  // Premium Tasks Section
   tasksSectionPremium: {
     gap: 12,
   },
@@ -1127,7 +1108,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   
-  // Week Section Premium
   weekSectionPremium: {
     marginBottom: 24,
   },
@@ -1147,7 +1127,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   
-  // Upcoming Activity Cards Premium
   upcomingActivityCardPremium: {
     marginBottom: 12,
     borderRadius: 16,
@@ -1211,7 +1190,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   
-  // Context Banner
   contextBanner: {
     flexDirection: 'row',
     alignItems: 'center',
