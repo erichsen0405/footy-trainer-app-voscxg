@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, useColorScheme, KeyboardAvoidingView, Platform, RefreshControl, Alert } from 'react-native';
 import { useFootball } from '@/contexts/FootballContext';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
@@ -22,6 +22,17 @@ function isValidVideoUrl(url?: string): boolean {
   );
 }
 
+interface FolderItem {
+  id: string;
+  name: string;
+  type: 'personal' | 'trainer' | 'footballcoach';
+  icon: string;
+  androidIcon: string;
+  tasks: Task[];
+  trainerId?: string;
+  isExpanded?: boolean;
+}
+
 export default function TasksScreen() {
   const { tasks, categories, addTask, updateTask, deleteTask, duplicateTask, refreshData } = useFootball();
   const { selectedContext } = useTeamPlayer();
@@ -36,6 +47,8 @@ export default function TasksScreen() {
   const [videoUrl, setVideoUrl] = useState('');
   const [subtasks, setSubtasks] = useState<string[]>(['']);
   const [isSaving, setIsSaving] = useState(false);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [folders, setFolders] = useState<FolderItem[]>([]);
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const themeColors = getColors(colorScheme);
@@ -49,9 +62,84 @@ export default function TasksScreen() {
 
   const templateTasks = tasks.filter(task => task.isTemplate);
 
-  const filteredTemplateTasks = templateTasks.filter(task =>
-    task.title.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Organize tasks into folders
+  useEffect(() => {
+    const organizeFolders = () => {
+      const personalTasks: Task[] = [];
+      const trainerFolders = new Map<string, FolderItem>();
+      const footballCoachTasks: Task[] = [];
+
+      templateTasks.forEach(task => {
+        const sourceFolder = (task as any).source_folder;
+
+        if (sourceFolder && sourceFolder.startsWith('Fra træner:')) {
+          // Extract trainer name
+          const trainerName = sourceFolder.replace('Fra træner:', '').trim();
+          const trainerId = `trainer_${trainerName}`;
+
+          if (!trainerFolders.has(trainerId)) {
+            trainerFolders.set(trainerId, {
+              id: trainerId,
+              name: `Fra træner: ${trainerName}`,
+              type: 'trainer',
+              icon: 'person.crop.circle.fill',
+              androidIcon: 'account_circle',
+              tasks: [],
+            });
+          }
+
+          trainerFolders.get(trainerId)!.tasks.push(task);
+        } else if (sourceFolder && sourceFolder === 'FootballCoach Inspiration') {
+          footballCoachTasks.push(task);
+        } else {
+          // Personal tasks (no source_folder or other values)
+          personalTasks.push(task);
+        }
+      });
+
+      const newFolders: FolderItem[] = [];
+
+      // Add personal folder
+      if (personalTasks.length > 0) {
+        newFolders.push({
+          id: 'personal',
+          name: 'Personligt oprettet',
+          type: 'personal',
+          icon: 'person.fill',
+          androidIcon: 'person',
+          tasks: personalTasks,
+        });
+      }
+
+      // Add trainer folders
+      trainerFolders.forEach(folder => {
+        newFolders.push(folder);
+      });
+
+      // Add FootballCoach folder
+      if (footballCoachTasks.length > 0) {
+        newFolders.push({
+          id: 'footballcoach',
+          name: 'FootballCoach Inspiration',
+          type: 'footballcoach',
+          icon: 'star.circle.fill',
+          androidIcon: 'stars',
+          tasks: footballCoachTasks,
+        });
+      }
+
+      setFolders(newFolders);
+    };
+
+    organizeFolders();
+  }, [templateTasks]);
+
+  const filteredFolders = folders.map(folder => ({
+    ...folder,
+    tasks: folder.tasks.filter(task =>
+      task.title.toLowerCase().includes(searchQuery.toLowerCase())
+    ),
+  })).filter(folder => folder.tasks.length > 0);
 
   const onRefresh = React.useCallback(async () => {
     console.log('Pull to refresh triggered on tasks screen');
@@ -66,6 +154,18 @@ export default function TasksScreen() {
       setRefreshing(false);
     }
   }, [refreshData]);
+
+  const toggleFolder = (folderId: string) => {
+    setExpandedFolders(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(folderId)) {
+        newSet.delete(folderId);
+      } else {
+        newSet.add(folderId);
+      }
+      return newSet;
+    });
+  };
 
   const openTaskModal = async (task: Task | null, creating: boolean = false) => {
     setSelectedTask(task);
@@ -282,6 +382,103 @@ export default function TasksScreen() {
     }
   };
 
+  const renderTaskCard = (task: Task) => (
+    <TouchableOpacity
+      key={task.id}
+      style={[styles.taskCard, { backgroundColor: isDark ? '#2a2a2a' : colors.card }]}
+      onPress={() => openTaskModal(task)}
+    >
+      <View style={styles.taskHeader}>
+        <View style={styles.taskHeaderLeft}>
+          <IconSymbol ios_icon_name="doc.text" android_material_icon_name="description" size={20} color={colors.secondary} />
+          <View style={styles.checkbox} />
+          <Text style={[styles.taskTitle, { color: isDark ? '#e3e3e3' : colors.text }]}>{task.title}</Text>
+        </View>
+        <View style={styles.taskActions}>
+          <TouchableOpacity onPress={() => handleDuplicateTask(task.id)} style={styles.actionButton}>
+            <IconSymbol ios_icon_name="doc.on.doc" android_material_icon_name="content_copy" size={20} color={colors.secondary} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => openTaskModal(task)} style={styles.actionButton}>
+            <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={20} color={colors.accent} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => handleDeleteTask(task.id)} style={styles.actionButton}>
+            <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={20} color={colors.error} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {task.videoUrl && isValidVideoUrl(task.videoUrl) && (
+        <View style={styles.videoPreviewContainer}>
+          <VideoThumbnail
+            videoUrl={task.videoUrl}
+            onPress={() => openVideoModal(task.videoUrl!)}
+          />
+          <VideoActionButtons
+            videoUrl={task.videoUrl}
+            onPlayInApp={() => openVideoModal(task.videoUrl!)}
+          />
+        </View>
+      )}
+
+      {task.reminder && (
+        <View style={styles.reminderBadge}>
+          <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={14} color={colors.accent} />
+          <Text style={[styles.reminderText, { color: colors.accent }]}>{task.reminder} min før</Text>
+        </View>
+      )}
+
+      <View style={styles.categoriesRow}>
+        <IconSymbol ios_icon_name="tag.fill" android_material_icon_name="label" size={14} color={isDark ? '#999' : colors.textSecondary} />
+        <Text style={[styles.categoriesText, { color: isDark ? '#999' : colors.textSecondary }]}>
+          Vises automatisk på alle {getCategoryNames(task.categoryIds)} aktiviteter
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+
+  const renderFolder = (folder: FolderItem) => {
+    const isExpanded = expandedFolders.has(folder.id);
+    const textColor = isDark ? '#e3e3e3' : colors.text;
+    const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
+    const cardBgColor = isDark ? '#2a2a2a' : colors.card;
+
+    return (
+      <React.Fragment key={folder.id}>
+        <TouchableOpacity
+          style={[styles.folderHeader, { backgroundColor: cardBgColor }]}
+          onPress={() => toggleFolder(folder.id)}
+        >
+          <View style={styles.folderHeaderLeft}>
+            <IconSymbol
+              ios_icon_name={folder.icon}
+              android_material_icon_name={folder.androidIcon}
+              size={24}
+              color={colors.primary}
+            />
+            <Text style={[styles.folderName, { color: textColor }]}>
+              {folder.name}
+            </Text>
+            <View style={[styles.countBadge, { backgroundColor: colors.primary }]}>
+              <Text style={styles.countBadgeText}>{folder.tasks.length}</Text>
+            </View>
+          </View>
+          <IconSymbol
+            ios_icon_name={isExpanded ? 'chevron.down' : 'chevron.right'}
+            android_material_icon_name={isExpanded ? 'expand_more' : 'chevron_right'}
+            size={20}
+            color={textSecondaryColor}
+          />
+        </TouchableOpacity>
+
+        {isExpanded && (
+          <View style={styles.folderContent}>
+            {folder.tasks.map(task => renderTaskCard(task))}
+          </View>
+        )}
+      </React.Fragment>
+    );
+  };
+
   const bgColor = isDark ? '#1a1a1a' : colors.background;
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
   const textColor = isDark ? '#e3e3e3' : colors.text;
@@ -382,62 +579,24 @@ export default function TasksScreen() {
           <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
             {isAdmin && selectedContext.type 
               ? `Opgaveskabeloner for ${selectedContext.name}. Disse vil automatisk blive tilføjet til relevante aktiviteter.`
-              : 'Rediger skabeloner her for at opdatere alle relaterede opgaver'}
+              : 'Opgaver organiseret i mapper efter oprindelse'}
           </Text>
 
-          {filteredTemplateTasks.map((task) => (
-            <TouchableOpacity
-              key={task.id}
-              style={[styles.taskCard, { backgroundColor: cardBgColor }]}
-              onPress={() => openTaskModal(task)}
-            >
-              <View style={styles.taskHeader}>
-                <View style={styles.taskHeaderLeft}>
-                  <IconSymbol ios_icon_name="doc.text" android_material_icon_name="description" size={20} color={colors.secondary} />
-                  <View style={styles.checkbox} />
-                  <Text style={[styles.taskTitle, { color: textColor }]}>{task.title}</Text>
-                </View>
-                <View style={styles.taskActions}>
-                  <TouchableOpacity onPress={() => handleDuplicateTask(task.id)} style={styles.actionButton}>
-                    <IconSymbol ios_icon_name="doc.on.doc" android_material_icon_name="content_copy" size={20} color={colors.secondary} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => openTaskModal(task)} style={styles.actionButton}>
-                    <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={20} color={colors.accent} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleDeleteTask(task.id)} style={styles.actionButton}>
-                    <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={20} color={colors.error} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {task.videoUrl && isValidVideoUrl(task.videoUrl) && (
-                <View style={styles.videoPreviewContainer}>
-                  <VideoThumbnail
-                    videoUrl={task.videoUrl}
-                    onPress={() => openVideoModal(task.videoUrl!)}
-                  />
-                  <VideoActionButtons
-                    videoUrl={task.videoUrl}
-                    onPlayInApp={() => openVideoModal(task.videoUrl!)}
-                  />
-                </View>
-              )}
-
-              {task.reminder && (
-                <View style={styles.reminderBadge}>
-                  <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={14} color={colors.accent} />
-                  <Text style={[styles.reminderText, { color: colors.accent }]}>{task.reminder} min før</Text>
-                </View>
-              )}
-
-              <View style={styles.categoriesRow}>
-                <IconSymbol ios_icon_name="tag.fill" android_material_icon_name="label" size={14} color={textSecondaryColor} />
-                <Text style={[styles.categoriesText, { color: textSecondaryColor }]}>
-                  Vises automatisk på alle {getCategoryNames(task.categoryIds)} aktiviteter
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ))}
+          {filteredFolders.length > 0 ? (
+            filteredFolders.map(folder => renderFolder(folder))
+          ) : (
+            <View style={[styles.emptyState, { backgroundColor: cardBgColor }]}>
+              <IconSymbol
+                ios_icon_name="folder"
+                android_material_icon_name="folder_open"
+                size={48}
+                color={textSecondaryColor}
+              />
+              <Text style={[styles.emptyStateText, { color: textSecondaryColor }]}>
+                {searchQuery ? 'Ingen opgaver matcher din søgning' : 'Ingen opgaveskabeloner endnu'}
+              </Text>
+            </View>
+          )}
         </View>
 
         <View style={{ height: 100 }} />
@@ -769,6 +928,48 @@ const styles = StyleSheet.create({
   addButtonText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  folderHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  folderHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  folderName: {
+    fontSize: 18,
+    fontWeight: '600',
+    flex: 1,
+  },
+  countBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  countBadgeText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  folderContent: {
+    marginBottom: 8,
+  },
+  emptyState: {
+    padding: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    gap: 16,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    textAlign: 'center',
   },
   taskCard: {
     borderRadius: 12,
