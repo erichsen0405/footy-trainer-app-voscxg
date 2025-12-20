@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useColorScheme, Modal, RefreshControl, Dimensions, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useColorScheme, Modal, RefreshControl, Dimensions, ActivityIndicator, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFootball } from '@/contexts/FootballContext';
 import { colors, getColors } from '@/styles/commonStyles';
@@ -14,6 +14,8 @@ import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { LinearGradient } from 'expo-linear-gradient';
 import { TaskDescriptionRenderer } from '@/components/TaskDescriptionRenderer';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import SmartVideoPlayer from '@/components/SmartVideoPlayer';
+import { isValidVideoUrl } from '@/utils/videoUrlParser';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -28,8 +30,13 @@ function HomeScreenContent() {
   const themeColors = getColors(colorScheme);
   const insets = useSafeAreaInsets();
 
+  // Separate modal states
   const [selectedTask, setSelectedTask] = useState<{ task: Task; activityId: string; activityTitle: string } | null>(null);
   const [isTaskModalVisible, setIsTaskModalVisible] = useState(false);
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
+  const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
+  const [selectedVideoTitle, setSelectedVideoTitle] = useState('');
+  
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -170,15 +177,20 @@ function HomeScreenContent() {
 
   const handleTaskPress = useCallback((task: Task, activityId: string, activityTitle: string) => {
     console.log('⚡ Task clicked:', task.title);
+    console.log('📹 Task videoUrl:', task.videoUrl);
+    console.log('📹 Is valid video URL:', task.videoUrl ? isValidVideoUrl(task.videoUrl) : false);
+    
+    // Check if task has a valid video URL
+    if (task.videoUrl && isValidVideoUrl(task.videoUrl)) {
+      console.log('📹 Opening video modal with URL:', task.videoUrl);
+      setSelectedVideoUrl(task.videoUrl);
+      setSelectedVideoTitle(task.title);
+      setIsVideoModalOpen(true);
+      return;
+    }
+    
+    // Otherwise open task modal
     console.log('⚡ Opening task modal for:', task.title);
-    
-    if (task.videoUrl) {
-      console.log('📹 Task has video URL:', task.videoUrl);
-    }
-    if (task.description) {
-      console.log('📝 Task has description:', task.description.substring(0, 100));
-    }
-    
     setSelectedTask({ task, activityId, activityTitle });
     setIsTaskModalVisible(true);
   }, []);
@@ -266,6 +278,13 @@ function HomeScreenContent() {
     console.log('Loading previous week, current weeksToLoad:', weeksToLoad);
     setWeeksToLoad(prev => prev + 1);
   }, [weeksToLoad]);
+
+  const handleCloseVideoModal = useCallback(() => {
+    console.log('📹 Closing video modal');
+    setIsVideoModalOpen(false);
+    setSelectedVideoUrl(null);
+    setSelectedVideoTitle('');
+  }, []);
 
   const getUpcomingActivitiesByWeek = useMemo(() => {
     const now = new Date();
@@ -559,12 +578,20 @@ function HomeScreenContent() {
                                 <Text style={[styles.taskTextPremium, task.completed && styles.taskTextCompletedPremium]}>
                                   {task.title}
                                 </Text>
-                                {task.reminder && (
-                                  <View style={styles.reminderBadgePremium}>
-                                    <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={10} color="#fff" />
-                                    <Text style={styles.reminderTextPremium}>{task.reminder}m</Text>
-                                  </View>
-                                )}
+                                <View style={styles.taskBadgesContainer}>
+                                  {task.reminder && (
+                                    <View style={styles.reminderBadgePremium}>
+                                      <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={10} color="#fff" />
+                                      <Text style={styles.reminderTextPremium}>{task.reminder}m</Text>
+                                    </View>
+                                  )}
+                                  {task.videoUrl && isValidVideoUrl(task.videoUrl) && (
+                                    <View style={styles.videoBadgePremium}>
+                                      <IconSymbol ios_icon_name="play.circle.fill" android_material_icon_name="play_circle" size={10} color="#fff" />
+                                      <Text style={styles.videoBadgeTextPremium}>Video</Text>
+                                    </View>
+                                  )}
+                                </View>
                               </View>
                             </TouchableOpacity>
                           ))}
@@ -764,6 +791,48 @@ function HomeScreenContent() {
           </View>
         </Modal>
       )}
+
+      <Modal
+        visible={isVideoModalOpen}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={handleCloseVideoModal}
+      >
+        <View style={{ flex: 1, backgroundColor: '#000' }}>
+          <View style={{ 
+            flexDirection: 'row', 
+            alignItems: 'center', 
+            justifyContent: 'space-between',
+            paddingTop: insets.top + 10,
+            paddingBottom: 16,
+            paddingHorizontal: 20,
+            backgroundColor: 'rgba(0,0,0,0.9)'
+          }}>
+            <TouchableOpacity 
+              onPress={handleCloseVideoModal}
+              style={{ padding: 4 }}
+            >
+              <IconSymbol
+                ios_icon_name="xmark.circle.fill"
+                android_material_icon_name="close"
+                size={32}
+                color="#fff"
+              />
+            </TouchableOpacity>
+            <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#fff', flex: 1, textAlign: 'center', marginHorizontal: 8 }}>
+              {selectedVideoTitle}
+            </Text>
+            <View style={{ width: 32 }} />
+          </View>
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }}>
+            {selectedVideoUrl ? (
+              <SmartVideoPlayer url={selectedVideoUrl} />
+            ) : (
+              <Text style={{ color: '#fff', fontSize: 16 }}>Ingen video tilgængelig</Text>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       <CreateActivityModal
         visible={isCreateModalVisible}
@@ -1155,6 +1224,11 @@ const styles = StyleSheet.create({
     textDecorationLine: 'line-through',
     opacity: 0.6,
   },
+  taskBadgesContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   reminderBadgePremium: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1165,6 +1239,20 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   reminderTextPremium: {
+    fontSize: 11,
+    color: '#fff',
+    fontWeight: '700',
+  },
+  videoBadgePremium: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255, 0, 0, 0.8)',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  videoBadgeTextPremium: {
     fontSize: 11,
     color: '#fff',
     fontWeight: '700',

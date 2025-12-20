@@ -27,10 +27,11 @@ export default function HomeScreen() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [weeksToLoad, setWeeksToLoad] = useState(0);
   
-  const [videoModalVisible, setVideoModalVisible] = useState(false);
-  const [selectedVideoUrl, setSelectedVideoUrl] = useState('');
+  // Separate modal states
+  const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
+  const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
   const [selectedVideoTitle, setSelectedVideoTitle] = useState('');
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [pendingAction, setPendingAction] = useState<{
@@ -240,10 +241,9 @@ export default function HomeScreen() {
     
     if (task.videoUrl && isValidVideoUrl(task.videoUrl)) {
       console.log('📹 Opening video modal with URL:', task.videoUrl);
-      setSelectedTask(task);
       setSelectedVideoUrl(task.videoUrl);
       setSelectedVideoTitle(task.title);
-      setVideoModalVisible(true);
+      setIsVideoModalOpen(true);
       return;
     }
     
@@ -307,10 +307,9 @@ export default function HomeScreen() {
 
   const handleCloseVideoModal = () => {
     console.log('📹 Closing video modal');
-    setVideoModalVisible(false);
-    setSelectedVideoUrl('');
+    setIsVideoModalOpen(false);
+    setSelectedVideoUrl(null);
     setSelectedVideoTitle('');
-    setSelectedTask(null);
   };
 
   const activitiesByWeek = getActivitiesByWeek();
@@ -686,7 +685,7 @@ export default function HomeScreen() {
       />
 
       <Modal
-        visible={videoModalVisible}
+        visible={isVideoModalOpen}
         animationType="slide"
         presentationStyle="fullScreen"
         onRequestClose={handleCloseVideoModal}
