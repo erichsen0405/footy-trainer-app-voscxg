@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useColorScheme, Modal, RefreshControl, Dimensions, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFootball } from '@/contexts/FootballContext';
@@ -42,25 +42,37 @@ function HomeScreenContent() {
     data?: any;
   } | null>(null);
 
+  // Check admin status only once on mount
   useEffect(() => {
-    const checkAdminStatus = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data, error } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', user.id)
-          .single();
+    let mounted = true;
 
-        if (!error && data) {
-          setIsAdmin(data.role === 'admin' || data.role === 'trainer');
+    const checkAdminStatus = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user && mounted) {
+          const { data, error } = await supabase
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', user.id)
+            .single();
+
+          if (!error && data && mounted) {
+            setIsAdmin(data.role === 'admin' || data.role === 'trainer');
+          }
         }
+      } catch (error) {
+        console.error('Error checking admin status:', error);
       }
     };
+    
     checkAdminStatus();
-  }, []);
 
-  const onRefresh = async () => {
+    return () => {
+      mounted = false;
+    };
+  }, []); // Empty dependency array - only run once
+
+  const onRefresh = useCallback(async () => {
     console.log('');
     console.log('🔄 ========== PULL TO REFRESH STARTED ==========');
     console.log('⏰ Timestamp:', new Date().toISOString());
@@ -96,9 +108,9 @@ function HomeScreenContent() {
     } finally {
       setRefreshing(false);
     }
-  };
+  }, [externalCalendars, fetchExternalCalendarEvents]);
 
-  const getMotivationalMessage = (percentage: number, completedTasks: number, totalTasks: number, totalTasksForWeek: number) => {
+  const getMotivationalMessage = useCallback((percentage: number, completedTasks: number, totalTasks: number, totalTasksForWeek: number) => {
     const remaining = totalTasks - completedTasks;
     const remainingForWeek = totalTasksForWeek - completedTasks;
     
@@ -111,37 +123,37 @@ function HomeScreenContent() {
     } else {
       return `Hver træning tæller! ${remaining} opgaver tilbage indtil i dag.\n${remainingForWeek} opgaver tilbage for ugen. ⚽`;
     }
-  };
+  }, []);
 
-  const getProgressColor = (percentage: number) => {
+  const getProgressColor = useCallback((percentage: number) => {
     if (percentage >= 80) return colors.success;
     if (percentage >= 60) return '#FFC107';
     if (percentage >= 40) return '#FF9800';
     return '#F44336';
-  };
+  }, []);
 
-  const getTrophyEmoji = (percentage: number) => {
+  const getTrophyEmoji = useCallback((percentage: number) => {
     if (percentage >= 80) return '🥇';
     if (percentage >= 60) return '🥈';
     return '🥉';
-  };
+  }, []);
 
-  const formatDate = (date: Date) => {
+  const formatDate = useCallback((date: Date) => {
     const days = ['søndag', 'mandag', 'tirsdag', 'onsdag', 'torsdag', 'fredag', 'lørdag'];
     const months = ['januar', 'februar', 'marts', 'april', 'maj', 'juni', 'juli', 'august', 'september', 'oktober', 'november', 'december'];
     
     return `${days[date.getDay()]} ${date.getDate()}. ${months[date.getMonth()]}`;
-  };
+  }, []);
 
-  const formatTime = (time: string) => {
+  const formatTime = useCallback((time: string) => {
     return time.substring(0, 5);
-  };
+  }, []);
 
-  const formatDateTime = (date: Date, time: string) => {
+  const formatDateTime = useCallback((date: Date, time: string) => {
     return `${formatDate(date)} kl. ${formatTime(time)}`;
-  };
+  }, [formatDate, formatTime]);
 
-  const isActivityCompleted = (activity: Activity) => {
+  const isActivityCompleted = useCallback((activity: Activity) => {
     const now = new Date();
     const activityDate = new Date(activity.date);
     
@@ -149,12 +161,12 @@ function HomeScreenContent() {
     activityDate.setHours(hours, minutes, 0, 0);
     
     return activityDate < now;
-  };
+  }, []);
 
-  const handleActivityPress = (activityId: string) => {
+  const handleActivityPress = useCallback((activityId: string) => {
     console.log('Opening activity details for:', activityId);
     router.push(`/activity-details?id=${activityId}`);
-  };
+  }, [router]);
 
   const handleTaskPress = useCallback((task: Task, activityId: string, activityTitle: string) => {
     console.log('⚡ Task clicked:', task.title);
@@ -206,7 +218,7 @@ function HomeScreenContent() {
     }
   }, [selectedTask, toggleTaskCompletion, isAdmin, selectedContext]);
 
-  const handleConfirmAction = async () => {
+  const handleConfirmAction = useCallback(async () => {
     setShowConfirmDialog(false);
     
     if (!pendingAction) return;
@@ -224,14 +236,14 @@ function HomeScreenContent() {
     } finally {
       setPendingAction(null);
     }
-  };
+  }, [pendingAction, createActivity, toggleTaskCompletion]);
 
-  const handleCancelAction = () => {
+  const handleCancelAction = useCallback(() => {
     setShowConfirmDialog(false);
     setPendingAction(null);
-  };
+  }, []);
 
-  const handleCreateActivity = async (activityData: ActivityCreationData) => {
+  const handleCreateActivity = useCallback(async (activityData: ActivityCreationData) => {
     if (isAdmin && selectedContext.type) {
       setPendingAction({
         type: 'create',
@@ -248,14 +260,14 @@ function HomeScreenContent() {
       console.error('Error creating activity:', error);
       throw error;
     }
-  };
+  }, [isAdmin, selectedContext, createActivity]);
 
-  const handleLoadPreviousWeek = () => {
+  const handleLoadPreviousWeek = useCallback(() => {
     console.log('Loading previous week, current weeksToLoad:', weeksToLoad);
     setWeeksToLoad(prev => prev + 1);
-  };
+  }, [weeksToLoad]);
 
-  const getUpcomingActivitiesByWeek = () => {
+  const getUpcomingActivitiesByWeek = useMemo(() => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
     
@@ -309,13 +321,13 @@ function HomeScreenContent() {
     });
 
     return grouped;
-  };
+  }, [activities, weeksToLoad]);
 
-  const upcomingByWeek = getUpcomingActivitiesByWeek();
-  
-  const sortedWeeks = Object.entries(upcomingByWeek).sort((a, b) => {
-    return a[1].sortDate.getTime() - b[1].sortDate.getTime();
-  });
+  const sortedWeeks = useMemo(() => {
+    return Object.entries(getUpcomingActivitiesByWeek).sort((a, b) => {
+      return a[1].sortDate.getTime() - b[1].sortDate.getTime();
+    });
+  }, [getUpcomingActivitiesByWeek]);
 
   const bgColor = isDark ? '#000' : '#f8f9fa';
   const cardBgColor = isDark ? '#1a1a1a' : '#fff';
