@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, useColorScheme } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, useColorScheme, Modal, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFootball } from '@/contexts/FootballContext';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
@@ -13,7 +13,7 @@ import CreateActivityModal, { ActivityCreationData } from '@/components/CreateAc
 import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { supabase } from '@/app/integrations/supabase/client';
 import { LinearGradient } from 'expo-linear-gradient';
-import { VideoModal } from '@/components/VideoPlayer';
+import VideoPlayer from '@/components/VideoPlayer';
 import { isValidVideoUrl } from '@/utils/videoUrlParser';
 
 export default function HomeScreen() {
@@ -693,16 +693,51 @@ export default function HomeScreen() {
         onCancel={handleCancelAction}
       />
 
-      <VideoModal
+      <Modal
         visible={videoModalVisible}
-        videoUrl={selectedVideoUrl}
-        onClose={() => {
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => {
           setVideoModalVisible(false);
           setSelectedVideoUrl('');
           setSelectedVideoTitle('');
         }}
-        title={selectedVideoTitle}
-      />
+      >
+        <View style={{ flex: 1, backgroundColor: '#000' }}>
+          <View style={{ 
+            flexDirection: 'row', 
+            alignItems: 'center', 
+            justifyContent: 'space-between',
+            paddingTop: Platform.OS === 'android' ? 48 : 60,
+            paddingBottom: 16,
+            paddingHorizontal: 20,
+            backgroundColor: 'rgba(0,0,0,0.9)'
+          }}>
+            <TouchableOpacity 
+              onPress={() => {
+                setVideoModalVisible(false);
+                setSelectedVideoUrl('');
+                setSelectedVideoTitle('');
+              }}
+              style={{ padding: 4 }}
+            >
+              <IconSymbol
+                ios_icon_name="xmark.circle.fill"
+                android_material_icon_name="close"
+                size={32}
+                color="#fff"
+              />
+            </TouchableOpacity>
+            <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#fff' }}>
+              {selectedVideoTitle}
+            </Text>
+            <View style={{ width: 32 }} />
+          </View>
+          {selectedVideoUrl && (
+            <VideoPlayer videoUrl={selectedVideoUrl} />
+          )}
+        </View>
+      </Modal>
     </ScrollView>
   );
 }

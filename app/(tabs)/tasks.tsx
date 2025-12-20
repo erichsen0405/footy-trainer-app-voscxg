@@ -7,7 +7,7 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { colors, getColors } from '@/styles/commonStyles';
 import { Task } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
-import { VideoThumbnail, VideoModal, VideoActionButtons } from '@/components/VideoPlayer';
+import VideoPlayer from '@/components/VideoPlayer';
 import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { supabase } from '@/app/integrations/supabase/client';
 
@@ -409,14 +409,21 @@ export default function TasksScreen() {
 
       {task.videoUrl && isValidVideoUrl(task.videoUrl) && (
         <View style={styles.videoPreviewContainer}>
-          <VideoThumbnail
-            videoUrl={task.videoUrl}
+          <TouchableOpacity
+            style={styles.videoPreviewButton}
             onPress={() => openVideoModal(task.videoUrl!)}
-          />
-          <VideoActionButtons
-            videoUrl={task.videoUrl}
-            onPlayInApp={() => openVideoModal(task.videoUrl!)}
-          />
+            activeOpacity={0.8}
+          >
+            <IconSymbol
+              ios_icon_name="play.circle.fill"
+              android_material_icon_name="play_circle"
+              size={48}
+              color={colors.primary}
+            />
+            <Text style={[styles.videoPreviewText, { color: colors.primary }]}>
+              Afspil video
+            </Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -670,11 +677,21 @@ export default function TasksScreen() {
                 />
                 {videoUrl.trim() && isValidVideoUrl(videoUrl) && (
                   <View style={styles.videoPreviewSmall}>
-                    <VideoThumbnail
-                      videoUrl={videoUrl}
+                    <TouchableOpacity
+                      style={styles.videoPreviewButton}
                       onPress={() => openVideoModal(videoUrl)}
-                      style={styles.videoThumbnailSmall}
-                    />
+                      activeOpacity={0.8}
+                    >
+                      <IconSymbol
+                        ios_icon_name="play.circle.fill"
+                        android_material_icon_name="play_circle"
+                        size={32}
+                        color={colors.primary}
+                      />
+                      <Text style={[styles.videoPreviewText, { color: colors.primary }]}>
+                        Forhåndsvisning
+                      </Text>
+                    </TouchableOpacity>
                     <Text style={[styles.helperText, { color: colors.secondary }]}>
                       ✓ Video URL gemt
                     </Text>
@@ -795,12 +812,41 @@ export default function TasksScreen() {
       </Modal>
 
       {selectedVideoUrl && (
-        <VideoModal
+        <Modal
           visible={showVideoModal}
-          videoUrl={selectedVideoUrl}
-          onClose={() => setShowVideoModal(false)}
-          title="Opgave video"
-        />
+          animationType="slide"
+          presentationStyle="fullScreen"
+          onRequestClose={() => setShowVideoModal(false)}
+        >
+          <View style={{ flex: 1, backgroundColor: '#000' }}>
+            <View style={{ 
+              flexDirection: 'row', 
+              alignItems: 'center', 
+              justifyContent: 'space-between',
+              paddingTop: Platform.OS === 'android' ? 48 : 60,
+              paddingBottom: 16,
+              paddingHorizontal: 20,
+              backgroundColor: 'rgba(0,0,0,0.9)'
+            }}>
+              <TouchableOpacity 
+                onPress={() => setShowVideoModal(false)}
+                style={{ padding: 4 }}
+              >
+                <IconSymbol
+                  ios_icon_name="xmark.circle.fill"
+                  android_material_icon_name="close"
+                  size={32}
+                  color="#fff"
+                />
+              </TouchableOpacity>
+              <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#fff' }}>
+                Opgave video
+              </Text>
+              <View style={{ width: 32 }} />
+            </View>
+            <VideoPlayer videoUrl={selectedVideoUrl} />
+          </View>
+        </Modal>
       )}
 
       <ContextConfirmationDialog
@@ -1012,6 +1058,19 @@ const styles = StyleSheet.create({
   videoPreviewContainer: {
     marginBottom: 12,
     gap: 8,
+  },
+  videoPreviewButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: 16,
+    backgroundColor: colors.highlight,
+    borderRadius: 12,
+  },
+  videoPreviewText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   videoSection: {
     marginBottom: 16,
