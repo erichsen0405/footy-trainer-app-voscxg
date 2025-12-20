@@ -7,7 +7,7 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { colors, getColors } from '@/styles/commonStyles';
 import { Task } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
-import VideoPlayer from '@/components/VideoPlayer';
+import SmartVideoPlayer from '@/components/SmartVideoPlayer';
 import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { supabase } from '@/app/integrations/supabase/client';
 
@@ -847,7 +847,7 @@ export default function TasksScreen() {
               </Text>
               <View style={{ width: 32 }} />
             </View>
-            <VideoPlayer videoUrl={selectedVideoUrl} />
+            <SmartVideoPlayer url={selectedVideoUrl} />
           </View>
         </Modal>
       )}

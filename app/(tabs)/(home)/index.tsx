@@ -13,7 +13,7 @@ import CreateActivityModal, { ActivityCreationData } from '@/components/CreateAc
 import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { supabase } from '@/app/integrations/supabase/client';
 import { LinearGradient } from 'expo-linear-gradient';
-import VideoPlayer from '@/components/VideoPlayer';
+import SmartVideoPlayer from '@/components/SmartVideoPlayer';
 import { isValidVideoUrl } from '@/utils/videoUrlParser';
 
 export default function HomeScreen() {
@@ -734,7 +734,7 @@ export default function HomeScreen() {
             <View style={{ width: 32 }} />
           </View>
           {selectedVideoUrl && (
-            <VideoPlayer videoUrl={selectedVideoUrl} />
+            <SmartVideoPlayer url={selectedVideoUrl} />
           )}
         </View>
       </Modal>
