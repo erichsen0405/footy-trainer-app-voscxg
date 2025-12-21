@@ -6,13 +6,13 @@ import {
   StyleSheet,
   Pressable,
   ScrollView,
-  TouchableOpacity,
 } from 'react-native';
 import { useTheme } from '@react-navigation/native';
 import { router } from 'expo-router';
 
 import { useHomeActivities } from '@/hooks/useHomeActivities';
 import CreateActivityModal from '@/components/CreateActivityModal';
+import ActivityCard from '@/components/ActivityCard';
 
 // TRIN 1 – ERSTAT resolveActivityDate HELT
 function resolveActivityDate(activity: any): Date | null {
@@ -84,19 +84,17 @@ export default function HomeScreen() {
         date.getDate() === today.getDate()
       );
     })
-    .sort((a, b) => a.date!.getTime() - b.date!.getTime())
-    .map(item => item.activity);
+    .sort((a, b) => a.date!.getTime() - b.date!.getTime());
 
   // UPCOMING ACTIVITIES - filtered and sorted
   const upcomingActivities = datedActivities
     .filter(item => item.date! > today)
-    .sort((a, b) => a.date!.getTime() - b.date!.getTime())
-    .map(item => item.activity);
+    .sort((a, b) => a.date!.getTime() - b.date!.getTime());
 
   // TRIN 5 – VERIFIKATION LOG (SKAL MED)
   console.log('[HomeScreen VERIFY]', {
-    today: todayActivities.filter(a => a.is_external).length,
-    upcoming: upcomingActivities.filter(a => a.is_external).length,
+    today: todayActivities.filter(item => item.activity.is_external).length,
+    upcoming: upcomingActivities.filter(item => item.activity.is_external).length,
   });
 
   // Calculate week progress (placeholder logic)
@@ -202,41 +200,13 @@ export default function HomeScreen() {
               Ingen aktiviteter i dag
             </Text>
           ) : (
-            todayActivities.map((activity) => (
-              <TouchableOpacity
-                key={activity.id}
-                onPress={() => handleActivityPress(activity.id)}
-                style={[
-                  styles.activityCard,
-                  { backgroundColor: theme.colors.card },
-                ]}
-              >
-                <View style={styles.activityCardContent}>
-                  <Text style={[styles.activityTitle, { color: theme.colors.text }]}>
-                    {activity.title || activity.name || 'Uden titel'}
-                  </Text>
-
-                  {(activity.activity_time || activity.start_time) && (
-                    <Text style={[styles.activityTime, { color: theme.colors.text }]}>
-                      {activity.activity_time || 
-                       (activity.start_time ? new Date(activity.start_time).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' }) : '')}
-                    </Text>
-                  )}
-
-                  {activity.category_name && (
-                    <View
-                      style={[
-                        styles.categoryBadge,
-                        { backgroundColor: activity.category_color || theme.colors.primary },
-                      ]}
-                    >
-                      <Text style={styles.categoryText}>
-                        {activity.category_name}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              </TouchableOpacity>
+            todayActivities.map((item) => (
+              <ActivityCard
+                key={item.activity.id}
+                activity={item.activity}
+                resolvedDate={item.date!}
+                onPress={() => handleActivityPress(item.activity.id)}
+              />
             ))
           )}
         </View>
@@ -252,44 +222,13 @@ export default function HomeScreen() {
               Ingen kommende aktiviteter
             </Text>
           ) : (
-            upcomingActivities.map((activity) => (
-              <TouchableOpacity
-                key={activity.id}
-                onPress={() => handleActivityPress(activity.id)}
-                style={[
-                  styles.activityCard,
-                  { backgroundColor: theme.colors.card },
-                ]}
-              >
-                <View style={styles.activityCardContent}>
-                  <Text style={[styles.activityTitle, { color: theme.colors.text }]}>
-                    {activity.title || activity.name || 'Uden titel'}
-                  </Text>
-
-                  {(activity.activity_date || activity.start_date || activity.start_time) && (
-                    <Text style={[styles.activityDate, { color: theme.colors.text }]}>
-                      {activity.activity_date || 
-                       (activity.start_date ? new Date(activity.start_date).toLocaleDateString('da-DK') : '') ||
-                       (activity.start_time ? new Date(activity.start_time).toLocaleDateString('da-DK') : '')}
-                      {(activity.activity_time || activity.start_time) && 
-                        ` • ${activity.activity_time || new Date(activity.start_time).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}`}
-                    </Text>
-                  )}
-
-                  {activity.category_name && (
-                    <View
-                      style={[
-                        styles.categoryBadge,
-                        { backgroundColor: activity.category_color || theme.colors.primary },
-                      ]}
-                    >
-                      <Text style={styles.categoryText}>
-                        {activity.category_name}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              </TouchableOpacity>
+            upcomingActivities.map((item) => (
+              <ActivityCard
+                key={item.activity.id}
+                activity={item.activity}
+                resolvedDate={item.date!}
+                onPress={() => handleActivityPress(item.activity.id)}
+              />
             ))
           )}
         </View>
@@ -386,49 +325,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     opacity: 0.6,
     fontStyle: 'italic',
-  },
-
-  activityCard: {
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-
-  activityCardContent: {
-    gap: 6,
-  },
-
-  activityTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-
-  activityTime: {
-    fontSize: 14,
-    opacity: 0.7,
-  },
-
-  activityDate: {
-    fontSize: 14,
-    opacity: 0.7,
-  },
-
-  categoryBadge: {
-    alignSelf: 'flex-start',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginTop: 4,
-  },
-
-  categoryText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
   },
 });
