@@ -14,13 +14,15 @@ import { router } from 'expo-router';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
 import CreateActivityModal from '@/components/CreateActivityModal';
 
-// ✅ TRIN 1 – FASTLÅS KORREKT DATO-FUNKTION (SKAL BRUGES OVERALT)
+// ✅ TRIN 1 – OPDATÉR resolveActivityDate (KRITISK)
 const resolveActivityDate = (activity: any): Date | null => {
+  // 🟢 Interne aktiviteter (DB)
   if (activity.activity_date) {
     const time = activity.activity_time ?? '00:00:00';
     return new Date(`${activity.activity_date}T${time}`);
   }
 
+  // 🔵 Eksterne aktiviteter (kalender)
   if (activity.start_time) {
     return new Date(activity.start_time);
   }
@@ -29,8 +31,13 @@ const resolveActivityDate = (activity: any): Date | null => {
     return new Date(activity.start_date);
   }
 
+  // 🟡 Fallbacks
   if (activity.date) {
     return new Date(activity.date);
+  }
+
+  if (activity.created_at) {
+    return new Date(activity.created_at);
   }
 
   return null;
@@ -58,26 +65,41 @@ export default function HomeScreen() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // ✅ TRIN 3 – OPDEL AKTIVITETER (OBLIGATORISK)
-  const todayActivities = activitiesSafe.filter((activity) => {
-    const date = resolveActivityDate(activity);
-    if (!date) return false;
+  // ✅ TRIN 2 – SORTÉR "I DAG" (SIKKER, MEN VALGFRI)
+  const todayActivities = activitiesSafe
+    .filter((activity) => {
+      const date = resolveActivityDate(activity);
+      if (!date) return false;
 
-    const d = new Date(date);
-    d.setHours(0, 0, 0, 0);
+      const d = new Date(date);
+      d.setHours(0, 0, 0, 0);
 
-    return d.getTime() === today.getTime();
-  });
+      return d.getTime() === today.getTime();
+    })
+    .sort((a, b) => {
+      return (
+        resolveActivityDate(a)!.getTime() -
+        resolveActivityDate(b)!.getTime()
+      );
+    });
 
-  const upcomingActivities = activitiesSafe.filter((activity) => {
-    const date = resolveActivityDate(activity);
-    if (!date) return false;
+  // ✅ TRIN 3 – SORTÉR "KOMMENDE AKTIVITETER" (OBLIGATORISK)
+  const upcomingActivities = activitiesSafe
+    .filter((activity) => {
+      const date = resolveActivityDate(activity);
+      if (!date) return false;
 
-    const d = new Date(date);
-    d.setHours(0, 0, 0, 0);
+      const d = new Date(date);
+      d.setHours(0, 0, 0, 0);
 
-    return d.getTime() > today.getTime();
-  });
+      return d.getTime() > today.getTime();
+    })
+    .sort((a, b) => {
+      return (
+        resolveActivityDate(a)!.getTime() -
+        resolveActivityDate(b)!.getTime()
+      );
+    });
 
   // Calculate week progress (placeholder logic)
   const weekProgress = {
