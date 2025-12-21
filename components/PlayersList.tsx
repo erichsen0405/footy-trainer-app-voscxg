@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -32,7 +32,7 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
   const [deletingPlayerId, setDeletingPlayerId] = useState<string | null>(null);
   const { refreshPlayers } = useTeamPlayer();
 
-  const fetchPlayers = async () => {
+  const fetchPlayers = useCallback(async () => {
     try {
       setLoading(true);
       console.log('Fetching players...');
@@ -99,11 +99,11 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
     } finally {
       setLoading(false);
     }
-  };
+  }, [refreshPlayers]);
 
   useEffect(() => {
     fetchPlayers();
-  }, [refreshTrigger]);
+  }, [fetchPlayers, refreshTrigger]);
 
   const performDelete = async (playerId: string, playerName: string) => {
     console.log('=== STARTING PLAYER REMOVAL OPERATION ===');

@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
@@ -57,35 +58,32 @@ export default function CreateActivityModal({
   categories,
   onRefreshCategories,
 }: CreateActivityModalProps) {
-  if (!visible) return null;
-
-  const safeOnClose = typeof onClose === 'function' ? onClose : () => {};
-  const safeCategories: ActivityCategory[] = Array.isArray(categories)
-    ? categories
-    : [];
-
+  // All hooks must be called unconditionally at the top level
   const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
   const scrollViewRef = useRef<ScrollView>(null);
-
+  
   const [title, setTitle] = useState('');
   const [location, setLocation] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [date, setDate] = useState(new Date());
   const [time, setTime] = useState('18:00');
   const [isRecurring, setIsRecurring] = useState(false);
-  const [recurrenceType, setRecurrenceType] =
-    useState<'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly'>('weekly');
+  const [recurrenceType, setRecurrenceType] = useState<'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly'>('weekly');
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
   const [hasEndDate, setHasEndDate] = useState(false);
-  const [endDate, setEndDate] = useState(
-    new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)
-  );
+  const [endDate, setEndDate] = useState(new Date(Date.now() + 90 * 24 * 60 * 60 * 1000));
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [showCategoryManagement, setShowCategoryManagement] = useState(false);
+
+  const isDark = colorScheme === 'dark';
+  const safeOnClose = typeof onClose === 'function' ? onClose : () => {};
+  const safeCategories: ActivityCategory[] = useMemo(() => 
+    Array.isArray(categories) ? categories : [], 
+    [categories]
+  );
 
   const bgColor = useMemo(() => {
     if (isDark) return '#1a1a1a';
@@ -175,6 +173,9 @@ export default function CreateActivityModal({
     recurrenceType === 'weekly' ||
     recurrenceType === 'biweekly' ||
     recurrenceType === 'triweekly';
+
+  // Early return after all hooks have been called
+  if (!visible) return null;
 
   return (
     <>

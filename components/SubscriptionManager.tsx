@@ -43,7 +43,7 @@ export default function SubscriptionManager({
       console.log('[SubscriptionManager] Component mounted, refreshing subscription');
       refreshSubscription();
     }
-  }, [isSignupFlow]);
+  }, [isSignupFlow, refreshSubscription]);
 
   // Log subscription status changes for debugging
   useEffect(() => {

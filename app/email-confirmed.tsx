@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/app/integrations/supabase/client';
@@ -10,11 +10,7 @@ export default function EmailConfirmedScreen() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('Bekræfter din email...');
 
-  useEffect(() => {
-    handleEmailConfirmation();
-  }, []);
-
-  const handleEmailConfirmation = async () => {
+  const handleEmailConfirmation = useCallback(async () => {
     try {
       console.log('📧 Email confirmation screen loaded');
       
@@ -62,7 +58,11 @@ export default function EmailConfirmedScreen() {
         router.replace('/(tabs)/(home)');
       }, 3000);
     }
-  };
+  }, [router]);
+
+  useEffect(() => {
+    handleEmailConfirmation();
+  }, [handleEmailConfirmation]);
 
   return (
     <View style={styles.container}>

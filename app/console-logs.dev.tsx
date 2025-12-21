@@ -15,14 +15,14 @@ import { IconSymbol } from '@/components/IconSymbol';
 
 // Store console logs in memory
 const MAX_LOGS = 500;
-const consoleLogs: Array<{ timestamp: string; type: string; message: string }> = [];
+const consoleLogs: { timestamp: string; type: string; message: string }[] = [];
 
 // Override console methods to capture logs
 const originalLog = console.log;
 const originalError = console.error;
 const originalWarn = console.warn;
 
-console.log = (...args: any[]) => {
+console.log = (...args: unknown[]) => {
   const message = args.map(arg => 
     typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
   ).join(' ');
@@ -40,7 +40,7 @@ console.log = (...args: any[]) => {
   originalLog(...args);
 };
 
-console.error = (...args: any[]) => {
+console.error = (...args: unknown[]) => {
   const message = args.map(arg => 
     typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
   ).join(' ');
@@ -58,7 +58,7 @@ console.error = (...args: any[]) => {
   originalError(...args);
 };
 
-console.warn = (...args: any[]) => {
+console.warn = (...args: unknown[]) => {
   const message = args.map(arg => 
     typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
   ).join(' ');

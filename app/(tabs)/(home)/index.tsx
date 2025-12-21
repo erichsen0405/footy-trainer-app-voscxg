@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -24,7 +25,7 @@ export default function HomeScreen() {
   useEffect(() => {
     refetchActivities();
     refetchCategories();
-  }, []);
+  }, [refetchActivities, refetchCategories]);
 
   return (
     <View style={styles.container}>

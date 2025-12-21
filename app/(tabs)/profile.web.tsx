@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, useColorScheme, Alert, Platform, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, useColorScheme, Platform, ActivityIndicator } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
@@ -62,37 +62,7 @@ export default function ProfileScreen() {
     setDebugInfo(prev => [...prev, `${new Date().toISOString().split('T')[1].split('.')[0]} - ${message}`]);
   };
 
-  useEffect(() => {
-    const checkUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      console.log('Current user:', user);
-      setUser(user);
-      
-      if (user) {
-        await checkUserOnboarding(user.id);
-      }
-    };
-    checkUser();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      console.log('Auth state changed:', _event, session?.user);
-      setUser(session?.user || null);
-      
-      if (session?.user) {
-        await checkUserOnboarding(session.user.id);
-      } else {
-        setUserRole(null);
-        setProfile(null);
-        setAdminInfo(null);
-        setNeedsRoleSelection(false);
-        setNeedsSubscription(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const checkUserOnboarding = async (userId: string) => {
+  const checkUserOnboarding = useCallback(async (userId: string) => {
     addDebugInfo('Checking user onboarding status...');
     
     // Check if user has a role
@@ -141,7 +111,37 @@ export default function ProfileScreen() {
     if (role === 'player') {
       await fetchAdminInfo(userId);
     }
-  };
+  }, [refreshSubscription]);
+
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      console.log('Current user:', user);
+      setUser(user);
+      
+      if (user) {
+        await checkUserOnboarding(user.id);
+      }
+    };
+    checkUser();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      console.log('Auth state changed:', _event, session?.user);
+      setUser(session?.user || null);
+      
+      if (session?.user) {
+        await checkUserOnboarding(session.user.id);
+      } else {
+        setUserRole(null);
+        setProfile(null);
+        setAdminInfo(null);
+        setNeedsRoleSelection(false);
+        setNeedsSubscription(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [checkUserOnboarding]);
 
   const fetchUserProfile = async (userId: string) => {
     try {
