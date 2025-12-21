@@ -17,18 +17,32 @@ export default function HomeScreen() {
   const theme = useTheme();
   const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
 
-  // 🔧 TRIN 1 – KORREKT DESTRUKTURERING
+  // ✅ TRIN 1 – KORREKT HOOK-BRUG (VIGTIG)
   const {
-    today,
-    upcomingByWeek,
-    isLoading,
+    activities,
+    loading,
   } = useHomeActivities();
 
-  // 🔧 TRIN 2 – SAFE ALIASES (OBLIGATORISK)
-  const todayActivitiesSafe = Array.isArray(today) ? today : [];
-  const upcomingWeeksSafe = Array.isArray(upcomingByWeek)
-    ? upcomingByWeek
-    : [];
+  // ✅ TRIN 2 – SAFE DEFAULTS (STOPPER CRASHES)
+  const activitiesSafe = Array.isArray(activities) ? activities : [];
+
+  // ✅ TRIN 3 – "I dag" FILTRERING (LOKALT)
+  const todayActivities = activitiesSafe.filter((a) => {
+    if (!a.start_date) return false;
+    const d = new Date(a.start_date);
+    const today = new Date();
+    return (
+      d.getDate() === today.getDate() &&
+      d.getMonth() === today.getMonth() &&
+      d.getFullYear() === today.getFullYear()
+    );
+  });
+
+  // ✅ TRIN 4 – "Kommende" FILTRERING (LOKALT)
+  const upcomingActivities = activitiesSafe.filter((a) => {
+    if (!a.start_date) return false;
+    return new Date(a.start_date) > new Date();
+  });
 
   // Calculate week progress (placeholder logic)
   const weekProgress = {
@@ -102,18 +116,18 @@ export default function HomeScreen() {
           <Text style={styles.primaryCTAText}>Opret aktivitet</Text>
         </Pressable>
 
-        {/* 🔧 TRIN 3 – FIX "I dag" JSX */}
+        {/* ✅ TRIN 5 – RENDERING (ENKEL OG STABIL) - "I dag" */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
             I dag
           </Text>
 
-          {todayActivitiesSafe.length === 0 ? (
+          {todayActivities.length === 0 ? (
             <Text style={styles.emptyText}>
               Ingen aktiviteter i dag
             </Text>
           ) : (
-            todayActivitiesSafe.map((item) => (
+            todayActivities.map((item) => (
               <Pressable
                 key={item.id}
                 onPress={() => router.push(`/activity-details?id=${item.id}`)}
@@ -123,63 +137,61 @@ export default function HomeScreen() {
                   <View style={styles.activityLeft}>
                     <Text style={styles.activityTitle}>{item.title}</Text>
 
-                    {item.category?.name && (
+                    {item.category?.name ? (
                       <Text style={styles.activitySubtitle}>
                         {item.category.name}
                       </Text>
-                    )}
+                    ) : null}
                   </View>
 
-                  {item.start_time && (
+                  {item.start_time ? (
                     <Text style={styles.activityTime}>
                       {item.start_time}
                     </Text>
-                  )}
+                  ) : null}
                 </View>
               </Pressable>
             ))
           )}
         </View>
 
-        {/* 🔧 TRIN 4 – FIX "Kommende aktiviteter" */}
+        {/* ✅ TRIN 5 – RENDERING (ENKEL OG STABIL) - "Kommende aktiviteter" */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
             Kommende aktiviteter
           </Text>
 
-          {upcomingWeeksSafe.map((week) => (
-            <View key={week.weekKey}>
-              <Text style={styles.weekLabel}>
-                {week.label}
-              </Text>
+          {upcomingActivities.length === 0 ? (
+            <Text style={styles.emptyText}>
+              Ingen kommende aktiviteter
+            </Text>
+          ) : (
+            upcomingActivities.map((item) => (
+              <Pressable
+                key={item.id}
+                onPress={() => router.push(`/activity-details?id=${item.id}`)}
+                style={{ marginBottom: 12 }}
+              >
+                <View style={styles.activityCard}>
+                  <View style={styles.activityLeft}>
+                    <Text style={styles.activityTitle}>{item.title}</Text>
 
-              {week.items.map((item) => (
-                <Pressable
-                  key={item.id}
-                  onPress={() => router.push(`/activity-details?id=${item.id}`)}
-                  style={{ marginBottom: 12 }}
-                >
-                  <View style={styles.activityCard}>
-                    <View style={styles.activityLeft}>
-                      <Text style={styles.activityTitle}>{item.title}</Text>
-
-                      {item.category?.name && (
-                        <Text style={styles.activitySubtitle}>
-                          {item.category.name}
-                        </Text>
-                      )}
-                    </View>
-
-                    {item.start_time && (
-                      <Text style={styles.activityTime}>
-                        {item.start_time}
+                    {item.category?.name ? (
+                      <Text style={styles.activitySubtitle}>
+                        {item.category.name}
                       </Text>
-                    )}
+                    ) : null}
                   </View>
-                </Pressable>
-              ))}
-            </View>
-          ))}
+
+                  {item.start_time ? (
+                    <Text style={styles.activityTime}>
+                      {item.start_time}
+                    </Text>
+                  ) : null}
+                </View>
+              </Pressable>
+            ))
+          )}
         </View>
       </ScrollView>
 
@@ -273,13 +285,6 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 14,
     opacity: 0.6,
-  },
-
-  weekLabel: {
-    fontSize: 12,
-    opacity: 0.6,
-    marginBottom: 8,
-    textTransform: 'uppercase',
   },
 
   activityCard: {
