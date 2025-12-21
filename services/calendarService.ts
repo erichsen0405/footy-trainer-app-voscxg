@@ -1,0 +1,86 @@
+
+import { supabase } from '@/app/integrations/supabase/client';
+import { ExternalCalendar } from '@/types';
+
+export const calendarService = {
+  async addExternalCalendar(userId: string, name: string, icsUrl: string, enabled: boolean = true): Promise<ExternalCalendar> {
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !session) {
+      throw new Error('No active session. Please log in again.');
+    }
+
+    const { data, error } = await supabase
+      .from('external_calendars')
+      .insert({
+        user_id: userId,
+        name,
+        ics_url: icsUrl,
+        enabled,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return {
+      id: data.id,
+      name: data.name,
+      icsUrl: data.ics_url,
+      enabled: data.enabled,
+      lastFetched: data.last_fetched ? new Date(data.last_fetched) : undefined,
+      eventCount: data.event_count || 0,
+    };
+  },
+
+  async toggleCalendar(calendarId: string, userId: string, newEnabled: boolean): Promise<void> {
+    const { error } = await supabase
+      .from('external_calendars')
+      .update({ enabled: newEnabled })
+      .eq('id', calendarId)
+      .eq('user_id', userId);
+
+    if (error) throw error;
+  },
+
+  async deleteExternalCalendar(calendarId: string, userId: string): Promise<void> {
+    const { error: eventsError } = await supabase
+      .from('events_external')
+      .delete()
+      .eq('provider_calendar_id', calendarId);
+
+    if (eventsError) throw eventsError;
+
+    const { error } = await supabase
+      .from('external_calendars')
+      .delete()
+      .eq('id', calendarId)
+      .eq('user_id', userId);
+
+    if (error) throw error;
+  },
+
+  async syncCalendar(calendarId: string): Promise<{ eventCount: number }> {
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !session) {
+      throw new Error('No active session');
+    }
+
+    const { data, error } = await supabase.functions.invoke('sync-external-calendar-v4', {
+      body: { calendarId }
+    });
+
+    if (error) throw error;
+
+    const { error: updateError } = await supabase
+      .from('external_calendars')
+      .update({ 
+        last_fetched: new Date().toISOString(),
+        event_count: data?.eventCount || 0
+      })
+      .eq('id', calendarId);
+
+    if (updateError) console.error('Error updating calendar:', updateError);
+
+    return { eventCount: data?.eventCount || 0 };
+  },
+};
