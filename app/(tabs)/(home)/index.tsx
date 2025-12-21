@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Pressable,
   ScrollView,
+  TouchableOpacity,
 } from 'react-native';
 import { useTheme } from '@react-navigation/native';
 import { router } from 'expo-router';
@@ -13,11 +14,32 @@ import { router } from 'expo-router';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
 import CreateActivityModal from '@/components/CreateActivityModal';
 
+// ✅ TRIN 1 – FASTLÅS KORREKT DATO-FUNKTION (SKAL BRUGES OVERALT)
+const resolveActivityDate = (activity: any): Date | null => {
+  if (activity.activity_date) {
+    const time = activity.activity_time ?? '00:00:00';
+    return new Date(`${activity.activity_date}T${time}`);
+  }
+
+  if (activity.start_time) {
+    return new Date(activity.start_time);
+  }
+
+  if (activity.start_date) {
+    return new Date(activity.start_date);
+  }
+
+  if (activity.date) {
+    return new Date(activity.date);
+  }
+
+  return null;
+};
+
 export default function HomeScreen() {
   const theme = useTheme();
   const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
 
-  // 🧩 TRIN 1 – FIND useHomeActivities
   const {
     activities,
     loading,
@@ -29,10 +51,33 @@ export default function HomeScreen() {
     refetchActivities();
   }, [refetchActivities]);
 
-  // 🧩 TRIN 2 – FASTLÅS KANONISK ARRAY
-  const allActivities = Array.isArray(activities)
-    ? activities
-    : [];
+  // Ensure we have a safe array
+  const activitiesSafe = Array.isArray(activities) ? activities : [];
+
+  // ✅ TRIN 2 – DEFINÉR DAGSGRÆNSE KORREKT
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // ✅ TRIN 3 – OPDEL AKTIVITETER (OBLIGATORISK)
+  const todayActivities = activitiesSafe.filter((activity) => {
+    const date = resolveActivityDate(activity);
+    if (!date) return false;
+
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+
+    return d.getTime() === today.getTime();
+  });
+
+  const upcomingActivities = activitiesSafe.filter((activity) => {
+    const date = resolveActivityDate(activity);
+    if (!date) return false;
+
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+
+    return d.getTime() > today.getTime();
+  });
 
   // Calculate week progress (placeholder logic)
   const weekProgress = {
@@ -51,6 +96,13 @@ export default function HomeScreen() {
   const handleCreateActivity = async () => {
     closeCreateModal();
     // Refetch will happen automatically via hook
+  };
+
+  const handleActivityPress = (activityId: string) => {
+    router.push({
+      pathname: '/activity-details',
+      params: { id: activityId },
+    });
   };
 
   return (
@@ -106,35 +158,109 @@ export default function HomeScreen() {
           <Text style={styles.primaryCTAText}>Opret aktivitet</Text>
         </Pressable>
 
-        {/* 🧩 TRIN 4 – RENDER DIREKTE (NO CONDITIONS) */}
+        {/* ✅ TRIN 5 – RENDER KORREKT UI (SAMME SOM FØR) */}
+        
+        {/* ===== I DAG ===== */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-            Alle aktiviteter ({allActivities.length})
+            I dag
           </Text>
 
-          {allActivities.map((item) => (
-            <View
-              key={item.id}
-              style={{
-                padding: 12,
-                marginBottom: 8,
-                backgroundColor: '#1f2933',
-                borderRadius: 8,
-              }}
-            >
-              <Text style={{ color: 'white', fontWeight: '600' }}>
-                {item.title || item.name || 'Untitled'}
-              </Text>
+          {todayActivities.length === 0 ? (
+            <Text style={[styles.emptyText, { color: theme.colors.text }]}>
+              Ingen aktiviteter i dag
+            </Text>
+          ) : (
+            todayActivities.map((activity) => (
+              <TouchableOpacity
+                key={activity.id}
+                onPress={() => handleActivityPress(activity.id)}
+                style={[
+                  styles.activityCard,
+                  { backgroundColor: theme.colors.card },
+                ]}
+              >
+                <View style={styles.activityCardContent}>
+                  <Text style={[styles.activityTitle, { color: theme.colors.text }]}>
+                    {activity.title || activity.name || 'Uden titel'}
+                  </Text>
 
-              <Text style={{ color: '#9ca3af', fontSize: 12 }}>
-                {item.start_time || item.start_date || item.scheduled_at || item.date || 'no date'}
-              </Text>
+                  {(activity.activity_time || activity.start_time) && (
+                    <Text style={[styles.activityTime, { color: theme.colors.text }]}>
+                      {activity.activity_time || 
+                       (activity.start_time ? new Date(activity.start_time).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' }) : '')}
+                    </Text>
+                  )}
 
-              <Text style={{ color: '#9ca3af', fontSize: 12 }}>
-                {item.__source || 'unknown source'}
-              </Text>
-            </View>
-          ))}
+                  {activity.category_name && (
+                    <View
+                      style={[
+                        styles.categoryBadge,
+                        { backgroundColor: activity.category_color || theme.colors.primary },
+                      ]}
+                    >
+                      <Text style={styles.categoryText}>
+                        {activity.category_name}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </TouchableOpacity>
+            ))
+          )}
+        </View>
+
+        {/* ===== KOMMENDE AKTIVITETER ===== */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+            Kommende aktiviteter
+          </Text>
+
+          {upcomingActivities.length === 0 ? (
+            <Text style={[styles.emptyText, { color: theme.colors.text }]}>
+              Ingen kommende aktiviteter
+            </Text>
+          ) : (
+            upcomingActivities.map((activity) => (
+              <TouchableOpacity
+                key={activity.id}
+                onPress={() => handleActivityPress(activity.id)}
+                style={[
+                  styles.activityCard,
+                  { backgroundColor: theme.colors.card },
+                ]}
+              >
+                <View style={styles.activityCardContent}>
+                  <Text style={[styles.activityTitle, { color: theme.colors.text }]}>
+                    {activity.title || activity.name || 'Uden titel'}
+                  </Text>
+
+                  {(activity.activity_date || activity.start_date || activity.start_time) && (
+                    <Text style={[styles.activityDate, { color: theme.colors.text }]}>
+                      {activity.activity_date || 
+                       (activity.start_date ? new Date(activity.start_date).toLocaleDateString('da-DK') : '') ||
+                       (activity.start_time ? new Date(activity.start_time).toLocaleDateString('da-DK') : '')}
+                      {(activity.activity_time || activity.start_time) && 
+                        ` • ${activity.activity_time || new Date(activity.start_time).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}`}
+                    </Text>
+                  )}
+
+                  {activity.category_name && (
+                    <View
+                      style={[
+                        styles.categoryBadge,
+                        { backgroundColor: activity.category_color || theme.colors.primary },
+                      ]}
+                    >
+                      <Text style={styles.categoryText}>
+                        {activity.category_name}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </TouchableOpacity>
+            ))
+          )}
         </View>
       </ScrollView>
 
@@ -223,5 +349,55 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 12,
+  },
+
+  emptyText: {
+    fontSize: 14,
+    opacity: 0.6,
+    fontStyle: 'italic',
+  },
+
+  activityCard: {
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+
+  activityCardContent: {
+    gap: 6,
+  },
+
+  activityTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  activityTime: {
+    fontSize: 14,
+    opacity: 0.7,
+  },
+
+  activityDate: {
+    fontSize: 14,
+    opacity: 0.7,
+  },
+
+  categoryBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginTop: 4,
+  },
+
+  categoryText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
