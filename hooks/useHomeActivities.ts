@@ -65,6 +65,13 @@ export function useHomeActivities(): UseHomeActivitiesResult {
 
     try {
       const data = await getActivities(userId);
+      
+      // 🧩 TRIN 1 & 2 – INSPEKTÉR AKTIVITETS-DATA FRA DATABASE
+      if (data && data.length > 0) {
+        console.log('[DB activity sample]', data[0]);
+        console.log('[DB activity keys]', Object.keys(data[0]));
+      }
+      
       setActivities(Array.isArray(data) ? data : []);
       
       // 🧪 Midlertidig debug
