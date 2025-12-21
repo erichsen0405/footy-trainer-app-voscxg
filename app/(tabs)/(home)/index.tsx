@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ScrollView,
   useColorScheme,
+  Pressable,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { format, startOfWeek, endOfWeek, isSameWeek, isToday, parseISO, isBefore, startOfDay } from 'date-fns';
@@ -33,7 +34,6 @@ export default function HomeScreen() {
     refetchCategories,
   } = useHomeActivities();
 
-  // Calculate week progress and points
   const weekStats = useMemo(() => {
     const now = new Date();
     const weekStart = startOfWeek(now, { weekStartsOn: 1 });
@@ -44,10 +44,8 @@ export default function HomeScreen() {
       return isSameWeek(activityDate, now, { weekStartsOn: 1 });
     });
 
-    // For now, we'll use a simple calculation
-    // In a real app, this would be based on completed tasks
     const totalActivities = weekActivities.length;
-    const completedActivities = 0; // TODO: Calculate from tasks
+    const completedActivities = 0;
     const percentage = totalActivities > 0 ? (completedActivities / totalActivities) * 100 : 0;
 
     return {
@@ -57,39 +55,6 @@ export default function HomeScreen() {
     };
   }, [activities]);
 
-  // Get motivational text based on progress
-  const getMotivationalText = (percentage: number) => {
-    if (percentage >= 80) {
-      return {
-        title: 'Fantastisk arbejde! 🎉',
-        message: 'Du er på rette vej til en fantastisk uge!',
-      };
-    } else if (percentage >= 50) {
-      return {
-        title: 'Godt gået! 💪',
-        message: 'Du klarer dig rigtig godt. Fortsæt det gode arbejde!',
-      };
-    } else if (percentage > 0) {
-      return {
-        title: 'Kom så! 🔥',
-        message: 'Der er stadig tid til at nå dine mål denne uge!',
-      };
-    } else {
-      return {
-        title: 'Lad os komme i gang! ⚽',
-        message: 'En ny uge er en ny mulighed for at nå dine mål!',
-      };
-    }
-  };
-
-  // Get progress color
-  const getProgressColor = (percentage: number) => {
-    if (percentage >= 80) return '#4CAF50'; // Green
-    if (percentage >= 50) return '#FFC107'; // Yellow
-    return '#F44336'; // Red
-  };
-
-  // Filter today's activities
   const todayActivities = useMemo(() => {
     return activities.filter(activity => {
       const activityDate = parseISO(activity.activity_date);
@@ -97,7 +62,6 @@ export default function HomeScreen() {
     });
   }, [activities]);
 
-  // Group upcoming activities by week
   const upcomingActivitiesByWeek = useMemo(() => {
     const now = new Date();
     const today = startOfDay(now);
@@ -126,9 +90,6 @@ export default function HomeScreen() {
     }));
   }, [activities]);
 
-  const motivationalText = getMotivationalText(weekStats.percentage);
-  const progressColor = getProgressColor(weekStats.percentage);
-
   const getCategoryForActivity = (categoryId?: string) => {
     return categories.find(cat => cat.id === categoryId);
   };
@@ -143,13 +104,12 @@ export default function HomeScreen() {
   return (
     <View style={[styles.container, { backgroundColor: themeColors.background }]}>
       <BodyScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Week Progress Card */}
-        <View style={[styles.progressCard, { backgroundColor: themeColors.card }]}>
-          <View style={styles.progressHeader}>
+        <View style={[styles.weekProgressCard, { backgroundColor: themeColors.card }]}>
+          <View style={styles.cardHeader}>
             <Text style={[styles.progressTitle, { color: themeColors.text }]}>
               Ugens fremskridt
             </Text>
-            <View style={[styles.pointsBadge, { backgroundColor: progressColor }]}>
+            <View style={[styles.pointsBadge, { backgroundColor: colors.primary }]}>
               <Text style={styles.pointsText}>
                 {weekStats.completed}/{weekStats.total}
               </Text>
@@ -162,7 +122,7 @@ export default function HomeScreen() {
                 style={[
                   styles.progressBarFill,
                   {
-                    backgroundColor: progressColor,
+                    backgroundColor: colors.primary,
                     width: `${weekStats.percentage}%`,
                   },
                 ]}
@@ -170,31 +130,18 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          <View style={styles.motivationalContainer}>
-            <Text style={[styles.motivationalTitle, { color: themeColors.text }]}>
-              {motivationalText.title}
-            </Text>
-            <Text style={[styles.motivationalMessage, { color: themeColors.textSecondary }]}>
-              {motivationalText.message}
-            </Text>
-          </View>
+          <Text style={[styles.helperText, { color: themeColors.textSecondary }]}>
+            Lad os komme i gang! 💪 En ny uge er en ny mulighed for at nå dine mål
+          </Text>
         </View>
 
-        {/* Create Activity Button */}
-        <TouchableOpacity
-          style={[styles.createButton, { backgroundColor: colors.primary }]}
+        <Pressable
+          style={[styles.createActivityButton, { backgroundColor: colors.primary }]}
           onPress={() => setShowCreateModal(true)}
         >
-          <IconSymbol
-            ios_icon_name="plus.circle.fill"
-            android_material_icon_name="add_circle"
-            size={24}
-            color="#fff"
-          />
           <Text style={styles.createButtonText}>Opret aktivitet</Text>
-        </TouchableOpacity>
+        </Pressable>
 
-        {/* Today's Activities */}
         {todayActivities.length > 0 && (
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: themeColors.text }]}>
@@ -245,7 +192,6 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* Upcoming Activities by Week */}
         {upcomingActivitiesByWeek.length > 0 && (
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: themeColors.text }]}>
@@ -315,7 +261,6 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* Empty State */}
         {!loading && activities.length === 0 && (
           <View style={styles.emptyState}>
             <IconSymbol
@@ -334,13 +279,11 @@ export default function HomeScreen() {
         )}
       </BodyScrollView>
 
-      {/* Create Activity Modal */}
       {showCreateModal && (
         <CreateActivityModal
           visible={showCreateModal}
           onClose={() => setShowCreateModal(false)}
           onCreateActivity={async (activityData) => {
-            // Handle activity creation
             await refetchActivities();
             setShowCreateModal(false);
           }}
@@ -360,14 +303,14 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 100,
   },
-  progressCard: {
+  weekProgressCard: {
     borderRadius: 16,
     padding: 20,
     marginBottom: 16,
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)',
     elevation: 3,
   },
-  progressHeader: {
+  cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -399,26 +342,16 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 6,
   },
-  motivationalContainer: {
-    marginTop: 8,
-  },
-  motivationalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  motivationalMessage: {
+  helperText: {
     fontSize: 14,
     lineHeight: 20,
   },
-  createButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+  createActivityButton: {
     padding: 16,
     borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 24,
-    gap: 8,
   },
   createButtonText: {
     color: '#fff',
