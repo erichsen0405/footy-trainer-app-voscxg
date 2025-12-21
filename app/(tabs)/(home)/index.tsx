@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,52 +13,54 @@ import { router } from 'expo-router';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
 import CreateActivityModal from '@/components/CreateActivityModal';
 
-// ✅ TRIN 1 – TILFØJ DATE RESOLVER (ØVERST I FILEN)
+// 🧩 TRIN 1 – FASTLÅS AKTIVITETS-DATO (KRITISK)
 const resolveActivityDate = (activity: any): Date | null => {
-  if (activity.scheduled_at) return new Date(activity.scheduled_at);
-  if (activity.date) return new Date(activity.date);
-  if (activity.start_date) return new Date(activity.start_date);
-  if (activity.created_at) return new Date(activity.created_at);
-  return null;
+  const raw =
+    activity.scheduled_at ??
+    activity.start_date ??
+    activity.date ??
+    activity.created_at;
+
+  if (!raw) return null;
+
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d;
 };
 
 export default function HomeScreen() {
   const theme = useTheme();
   const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
 
-  // ✅ TRIN 1 – KORREKT HOOK-BRUG (VIGTIG)
   const {
     activities,
     loading,
+    refetchActivities,
   } = useHomeActivities();
 
-  // 🧩 TRIN 1 – TILFØJ HARD DEBUG EFTER HOOK
-  console.log('[HomeScreen] activities RAW:', activities);
-  console.log('[HomeScreen] activities length:', activities?.length);
+  // Force fetch on mount
+  useEffect(() => {
+    refetchActivities();
+  }, [refetchActivities]);
 
   // 🧩 TRIN 2 – TVING SAFE ARRAY (INGEN UNDEFINED)
   const activitiesSafe = Array.isArray(activities) ? activities : [];
 
-  // ✅ TRIN 2 – ERSTAT "I DAG" FILTRERING
+  // 🧩 TRIN 2 – ERSTAT AL FILTER-LOGIK
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
   const todayActivities = activitiesSafe.filter((a) => {
     const d = resolveActivityDate(a);
     if (!d) return false;
-
-    const today = new Date();
-
-    return (
-      d.getDate() === today.getDate() &&
-      d.getMonth() === today.getMonth() &&
-      d.getFullYear() === today.getFullYear()
-    );
+    d.setHours(0, 0, 0, 0);
+    return d.getTime() === today.getTime();
   });
 
-  // ✅ TRIN 3 – ERSTAT "KOMMENDE" FILTRERING
   const upcomingActivities = activitiesSafe.filter((a) => {
     const d = resolveActivityDate(a);
     if (!d) return false;
-
-    return d > new Date();
+    d.setHours(0, 0, 0, 0);
+    return d.getTime() > today.getTime();
   });
 
   // Calculate week progress (placeholder logic)
@@ -79,6 +81,31 @@ export default function HomeScreen() {
     closeCreateModal();
     // Refetch will happen automatically via hook
   };
+
+  // ActivityCard component
+  const ActivityCard = ({ activity, onPress }: { activity: any; onPress: () => void }) => (
+    <Pressable onPress={onPress} style={{ marginBottom: 12 }}>
+      <View style={[styles.activityCard, { backgroundColor: theme.colors.card }]}>
+        <View style={styles.activityLeft}>
+          <Text style={[styles.activityTitle, { color: theme.colors.text }]}>
+            {activity.title}
+          </Text>
+
+          {activity.category?.name ? (
+            <Text style={[styles.activitySubtitle, { color: theme.colors.text, opacity: 0.6 }]}>
+              {activity.category.name}
+            </Text>
+          ) : null}
+        </View>
+
+        {activity.start_time ? (
+          <Text style={[styles.activityTime, { color: theme.colors.text, opacity: 0.5 }]}>
+            {activity.start_time}
+          </Text>
+        ) : null}
+      </View>
+    </Pressable>
+  );
 
   return (
     <>
@@ -133,59 +160,45 @@ export default function HomeScreen() {
           <Text style={styles.primaryCTAText}>Opret aktivitet</Text>
         </Pressable>
 
-        {/* 🧩 TRIN 3 – MIDLER­TIDIG RENDER-BEVISELSE (KRITISK) */}
-        <View style={{ padding: 16 }}>
-          <Text style={{ color: theme.colors.text }}>DEBUG – Activities found: {activitiesSafe.length}</Text>
-        </View>
-
-        {/* 🧩 TRIN 4 – RENDER AKTIVITETER UDEN FILTER (BEVIS) */}
+        {/* 🧩 TRIN 3 – GENSKAB AKTIVITETS-CARDS (INGEN DEBUG) */}
+        {/* 🔹 "I dag" */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-            I dag (DEBUG - RAW RENDER)
+            I dag
           </Text>
 
-          {activitiesSafe.map((item) => (
-            <View key={item.id} style={{ padding: 12, marginBottom: 8, backgroundColor: '#eee' }}>
-              <Text>{item.title}</Text>
-            </View>
-          ))}
+          {todayActivities.length === 0 ? (
+            <Text style={[styles.emptyText, { color: theme.colors.text, opacity: 0.6 }]}>
+              Ingen aktiviteter i dag
+            </Text>
+          ) : (
+            todayActivities.map((item) => (
+              <ActivityCard
+                key={item.id}
+                activity={item}
+                onPress={() => router.push(`/activity-details?id=${item.id}`)}
+              />
+            ))
+          )}
         </View>
 
-        {/* ✅ TRIN 5 – RENDERING (ENKEL OG STABIL) - "Kommende aktiviteter" */}
+        {/* 🔹 "Kommende aktiviteter" */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
             Kommende aktiviteter
           </Text>
 
           {upcomingActivities.length === 0 ? (
-            <Text style={styles.emptyText}>
+            <Text style={[styles.emptyText, { color: theme.colors.text, opacity: 0.6 }]}>
               Ingen kommende aktiviteter
             </Text>
           ) : (
             upcomingActivities.map((item) => (
-              <Pressable
+              <ActivityCard
                 key={item.id}
+                activity={item}
                 onPress={() => router.push(`/activity-details?id=${item.id}`)}
-                style={{ marginBottom: 12 }}
-              >
-                <View style={styles.activityCard}>
-                  <View style={styles.activityLeft}>
-                    <Text style={styles.activityTitle}>{item.title}</Text>
-
-                    {item.category?.name ? (
-                      <Text style={styles.activitySubtitle}>
-                        {item.category.name}
-                      </Text>
-                    ) : null}
-                  </View>
-
-                  {item.start_time ? (
-                    <Text style={styles.activityTime}>
-                      {item.start_time}
-                    </Text>
-                  ) : null}
-                </View>
-              </Pressable>
+              />
             ))
           )}
         </View>
@@ -280,14 +293,11 @@ const styles = StyleSheet.create({
 
   emptyText: {
     fontSize: 14,
-    opacity: 0.6,
   },
 
   activityCard: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 14,
-    marginBottom: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -306,18 +316,15 @@ const styles = StyleSheet.create({
   activityTitle: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#111',
   },
 
   activitySubtitle: {
     fontSize: 12,
-    color: '#777',
     marginTop: 4,
   },
 
   activityTime: {
     fontSize: 12,
-    color: '#999',
     marginLeft: 12,
   },
 });
