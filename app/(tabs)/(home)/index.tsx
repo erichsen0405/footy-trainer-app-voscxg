@@ -1,3 +1,4 @@
+
 import React, { useCallback, useMemo } from 'react';
 import {
   View,
@@ -49,7 +50,19 @@ export default function HomeScreen() {
     playerId: selectedPlayer?.id,
   });
 
-  const themeColors = useMemo(() => getColors(), []);
+  const themeColors = useMemo(() => {
+    const theme = getColors();
+
+    // Sikrer altid array til LinearGradient
+    const background = Array.isArray(theme.background)
+      ? theme.background
+      : [theme.background, theme.background];
+
+    return {
+      ...theme,
+      background,
+    };
+  }, []);
 
   const onCreateActivity = useCallback(
     async (data) => {
