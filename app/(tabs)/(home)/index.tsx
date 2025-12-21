@@ -14,15 +14,15 @@ import { router } from 'expo-router';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
 import CreateActivityModal from '@/components/CreateActivityModal';
 
-// ✅ TRIN 1 – OPDATÉR resolveActivityDate (KRITISK)
+// Date resolver function
 const resolveActivityDate = (activity: any): Date | null => {
-  // 🟢 Interne aktiviteter (DB)
+  // Internal activities (DB)
   if (activity.activity_date) {
     const time = activity.activity_time ?? '00:00:00';
     return new Date(`${activity.activity_date}T${time}`);
   }
 
-  // 🔵 Eksterne aktiviteter (kalender)
+  // External activities (calendar)
   if (activity.start_time) {
     return new Date(activity.start_time);
   }
@@ -31,7 +31,7 @@ const resolveActivityDate = (activity: any): Date | null => {
     return new Date(activity.start_date);
   }
 
-  // 🟡 Fallbacks
+  // Fallbacks
   if (activity.date) {
     return new Date(activity.date);
   }
@@ -61,11 +61,11 @@ export default function HomeScreen() {
   // Ensure we have a safe array
   const activitiesSafe = Array.isArray(activities) ? activities : [];
 
-  // ✅ TRIN 2 – DEFINÉR DAGSGRÆNSE KORREKT
+  // Define day boundary
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // ✅ TRIN 2 – SORTÉR "I DAG" (SIKKER, MEN VALGFRI)
+  // TODAY ACTIVITIES - sorted chronologically
   const todayActivities = activitiesSafe
     .filter((activity) => {
       const date = resolveActivityDate(activity);
@@ -83,7 +83,7 @@ export default function HomeScreen() {
       );
     });
 
-  // ✅ TRIN 3 – SORTÉR "KOMMENDE AKTIVITETER" (OBLIGATORISK)
+  // UPCOMING ACTIVITIES - sorted chronologically (nearest first)
   const upcomingActivities = activitiesSafe
     .filter((activity) => {
       const date = resolveActivityDate(activity);
@@ -100,6 +100,12 @@ export default function HomeScreen() {
         resolveActivityDate(b)!.getTime()
       );
     });
+
+  // VERIFICATION LOG (OBLIGATORISK)
+  console.log('[HomeScreen FINAL]', {
+    today: todayActivities.length,
+    upcoming: upcomingActivities.length,
+  });
 
   // Calculate week progress (placeholder logic)
   const weekProgress = {
@@ -180,8 +186,6 @@ export default function HomeScreen() {
           <Text style={styles.primaryCTAText}>Opret aktivitet</Text>
         </Pressable>
 
-        {/* ✅ TRIN 5 – RENDER KORREKT UI (SAMME SOM FØR) */}
-        
         {/* ===== I DAG ===== */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
