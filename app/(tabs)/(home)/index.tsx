@@ -32,17 +32,12 @@ export default function HomeScreen() {
     loading,
   } = useHomeActivities();
 
-  // ✅ TRIN 2 – SAFE DEFAULTS (STOPPER CRASHES)
-  const activitiesSafe = Array.isArray(activities) ? activities : [];
+  // 🧩 TRIN 1 – TILFØJ HARD DEBUG EFTER HOOK
+  console.log('[HomeScreen] activities RAW:', activities);
+  console.log('[HomeScreen] activities length:', activities?.length);
 
-  // ✅ TRIN 4 – DEBUG (MIDLERTIDIGT, MEGET VIGTIGT)
-  console.log(
-    '[HomeScreen] activities:',
-    activitiesSafe.map(a => ({
-      id: a.id,
-      date: resolveActivityDate(a)
-    }))
-  );
+  // 🧩 TRIN 2 – TVING SAFE ARRAY (INGEN UNDEFINED)
+  const activitiesSafe = Array.isArray(activities) ? activities : [];
 
   // ✅ TRIN 2 – ERSTAT "I DAG" FILTRERING
   const todayActivities = activitiesSafe.filter((a) => {
@@ -138,43 +133,22 @@ export default function HomeScreen() {
           <Text style={styles.primaryCTAText}>Opret aktivitet</Text>
         </Pressable>
 
-        {/* ✅ TRIN 5 – RENDERING (ENKEL OG STABIL) - "I dag" */}
+        {/* 🧩 TRIN 3 – MIDLER­TIDIG RENDER-BEVISELSE (KRITISK) */}
+        <View style={{ padding: 16 }}>
+          <Text style={{ color: theme.colors.text }}>DEBUG – Activities found: {activitiesSafe.length}</Text>
+        </View>
+
+        {/* 🧩 TRIN 4 – RENDER AKTIVITETER UDEN FILTER (BEVIS) */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-            I dag
+            I dag (DEBUG - RAW RENDER)
           </Text>
 
-          {todayActivities.length === 0 ? (
-            <Text style={styles.emptyText}>
-              Ingen aktiviteter i dag
-            </Text>
-          ) : (
-            todayActivities.map((item) => (
-              <Pressable
-                key={item.id}
-                onPress={() => router.push(`/activity-details?id=${item.id}`)}
-                style={{ marginBottom: 12 }}
-              >
-                <View style={styles.activityCard}>
-                  <View style={styles.activityLeft}>
-                    <Text style={styles.activityTitle}>{item.title}</Text>
-
-                    {item.category?.name ? (
-                      <Text style={styles.activitySubtitle}>
-                        {item.category.name}
-                      </Text>
-                    ) : null}
-                  </View>
-
-                  {item.start_time ? (
-                    <Text style={styles.activityTime}>
-                      {item.start_time}
-                    </Text>
-                  ) : null}
-                </View>
-              </Pressable>
-            ))
-          )}
+          {activitiesSafe.map((item) => (
+            <View key={item.id} style={{ padding: 12, marginBottom: 8, backgroundColor: '#eee' }}>
+              <Text>{item.title}</Text>
+            </View>
+          ))}
         </View>
 
         {/* ✅ TRIN 5 – RENDERING (ENKEL OG STABIL) - "Kommende aktiviteter" */}
