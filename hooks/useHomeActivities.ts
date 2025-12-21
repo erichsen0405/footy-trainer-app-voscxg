@@ -1,9 +1,20 @@
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
+import { format, isToday, startOfWeek, endOfWeek } from 'date-fns';
+import { da } from 'date-fns/locale';
 import { supabase } from '@/app/integrations/supabase/client';
 import { getActivities, getCategories, DatabaseActivity, DatabaseActivityCategory } from '@/services/activities';
 
+interface WeekGroup {
+  weekKey: string;
+  label: string;
+  items: DatabaseActivity[];
+}
+
 interface UseHomeActivitiesResult {
+  today: DatabaseActivity[];
+  upcomingByWeek: WeekGroup[];
+  isLoading: boolean;
   activities: DatabaseActivity[];
   categories: DatabaseActivityCategory[];
   loading: boolean;
@@ -90,7 +101,73 @@ export function useHomeActivities(): UseHomeActivitiesResult {
     };
   }, [userId, refetchActivities, refetchCategories]);
 
+  // Process activities into today and upcoming by week
+  const { today, upcomingByWeek } = useMemo(() => {
+    const todayActivities: DatabaseActivity[] = [];
+    const weekGroups: Record<string, DatabaseActivity[]> = {};
+
+    const now = new Date();
+    const todayStr = format(now, 'yyyy-MM-dd');
+
+    activities.forEach((activity) => {
+      if (!activity.date) return;
+
+      const activityDate = new Date(activity.date);
+      
+      // Check if today
+      if (activity.date === todayStr || isToday(activityDate)) {
+        todayActivities.push(activity);
+      } else if (activityDate > now) {
+        // Group by week
+        const weekStart = startOfWeek(activityDate, { locale: da });
+        const weekKey = format(weekStart, 'yyyy-MM-dd');
+        
+        if (!weekGroups[weekKey]) {
+          weekGroups[weekKey] = [];
+        }
+        weekGroups[weekKey].push(activity);
+      }
+    });
+
+    // Sort today activities by time
+    todayActivities.sort((a, b) => {
+      if (!a.start_time || !b.start_time) return 0;
+      return a.start_time.localeCompare(b.start_time);
+    });
+
+    // Convert week groups to array and sort
+    const weekKeys = Object.keys(weekGroups).sort();
+    const upcomingWeeks: WeekGroup[] = weekKeys.map((weekKey) => {
+      const weekStart = new Date(weekKey);
+      const weekEnd = endOfWeek(weekStart, { locale: da });
+      
+      const label = `${format(weekStart, 'd. MMM', { locale: da })} - ${format(weekEnd, 'd. MMM', { locale: da })}`;
+      
+      const items = weekGroups[weekKey].sort((a, b) => {
+        if (!a.date || !b.date) return 0;
+        const dateCompare = a.date.localeCompare(b.date);
+        if (dateCompare !== 0) return dateCompare;
+        if (!a.start_time || !b.start_time) return 0;
+        return a.start_time.localeCompare(b.start_time);
+      });
+
+      return {
+        weekKey,
+        label,
+        items,
+      };
+    });
+
+    return {
+      today: todayActivities,
+      upcomingByWeek: upcomingWeeks,
+    };
+  }, [activities]);
+
   return {
+    today,
+    upcomingByWeek,
+    isLoading: loading,
     activities,
     categories,
     loading,
