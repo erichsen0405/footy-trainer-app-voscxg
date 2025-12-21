@@ -1,5 +1,6 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import { Platform } from 'react-native';
 import { format, isToday, startOfWeek, endOfWeek } from 'date-fns';
 import { da } from 'date-fns/locale';
 import { supabase } from '@/app/integrations/supabase/client';
@@ -32,12 +33,25 @@ export function useHomeActivities(): UseHomeActivitiesResult {
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          setUserId(user.id);
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        const isWeb = Platform.OS === 'web';
+
+        if (!user) {
+          // 🔐 Programkritisk: ingen bruger = ingen aktiviteter
+          // 🌐 Web preview må ikke crashe før auth er klar
+          setActivities([]);
+          setLoading(false);
+          return;
         }
+
+        setUserId(user.id);
       } catch (err) {
         console.error('Failed to fetch user:', err);
+        setActivities([]);
+        setLoading(false);
       }
     };
     fetchUser();
@@ -52,6 +66,12 @@ export function useHomeActivities(): UseHomeActivitiesResult {
     try {
       const data = await getActivities(userId);
       setActivities(Array.isArray(data) ? data : []);
+      
+      // 🧪 Midlertidig debug
+      console.log('[useHomeActivities]', {
+        userId: userId,
+        activitiesCount: data?.length ?? 0,
+      });
     } catch (err) {
       console.error('Failed to fetch activities:', err);
       setActivities([]);
