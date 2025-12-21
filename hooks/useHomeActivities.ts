@@ -1,111 +1,85 @@
+import { useEffect, useState, useCallback } from 'react';
+import { ActivityCategory, Activity } from '@/types';
+import { useUser } from '@/hooks/useUser';
+import { getActivities, getCategories } from '@/services/activities';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert } from 'react-native';
-import { fetchActivities, createActivity } from '@/services/activities';
-
-interface Params {
-  clubId?: string;
-  teamId?: string;
-  playerId?: string;
+interface UseHomeActivitiesResult {
+  activities: Activity[];
+  categories: ActivityCategory[];
+  loading: boolean;
+  refetchActivities: () => Promise<void>;
+  refetchCategories: () => Promise<void>;
 }
 
-export function useHomeActivities({
-  clubId,
-  teamId,
-  playerId,
-}: Params) {
-  const [activities, setActivities] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+export function useHomeActivities(): UseHomeActivitiesResult {
+  const user = useUser(); // ⚠️ kan være undefined på web init
+  const clubId = user?.clubId ?? null;
 
-  const [pendingContextChange, setPendingContextChange] =
-    useState<Params | null>(null);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [categories, setCategories] = useState<ActivityCategory[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const abortRef = useRef<AbortController | null>(null);
+  const refetchActivities = useCallback(async () => {
+    if (!clubId) {
+      setActivities([]);
+      return;
+    }
 
-  const loadActivities = useCallback(
-    async (refresh = false) => {
+    try {
+      const data = await getActivities(clubId);
+      setActivities(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to fetch activities', err);
+      setActivities([]);
+    }
+  }, [clubId]);
+
+  const refetchCategories = useCallback(async () => {
+    if (!clubId) {
+      setCategories([]);
+      return;
+    }
+
+    try {
+      const data = await getCategories(clubId);
+      setCategories(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to fetch categories', err);
+      setCategories([]);
+    }
+  }, [clubId]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function load() {
       if (!clubId) {
-        setActivities([]);
-        setIsLoading(false);
+        setLoading(false);
         return;
       }
 
-      abortRef.current?.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
-
       try {
-        if (refresh) setIsRefreshing(true);
-
-        const data = await fetchActivities(clubId, controller.signal);
-
-        setActivities(data);
-      } catch (err: any) {
-        if (err.name !== 'AbortError') {
-          Alert.alert('Fejl', 'Kunne ikke hente aktiviteter');
-        }
+        await Promise.all([
+          refetchActivities(),
+          refetchCategories(),
+        ]);
       } finally {
-        setIsLoading(false);
-        setIsRefreshing(false);
+        if (mounted) setLoading(false);
       }
-    },
-    [clubId]
-  );
+    }
 
-  useEffect(() => {
-    loadActivities();
-    return () => abortRef.current?.abort();
-  }, [loadActivities]);
+    load();
 
-  const refresh = useCallback(() => {
-    loadActivities(true);
-  }, [loadActivities]);
-
-  const createNewActivity = useCallback(
-    async (payload: any) => {
-      try {
-        await createActivity({
-          ...payload,
-          club_id: clubId!,
-          team_id: teamId,
-          player_id: playerId,
-        });
-
-        loadActivities(true);
-      } catch {
-        Alert.alert('Fejl', 'Kunne ikke oprette aktivitet');
-      }
-    },
-    [clubId, teamId, playerId, loadActivities]
-  );
-
-  const requestContextChange = useCallback(
-    (next: Params) => {
-      setPendingContextChange(next);
-    },
-    []
-  );
-
-  const confirmContextChange = useCallback(() => {
-    if (!pendingContextChange) return;
-    setPendingContextChange(null);
-    loadActivities(true);
-  }, [pendingContextChange, loadActivities]);
-
-  const dismissContextChange = useCallback(() => {
-    setPendingContextChange(null);
-  }, []);
+    return () => {
+      mounted = false;
+    };
+  }, [clubId, refetchActivities, refetchCategories]);
 
   return {
     activities,
-    isLoading,
-    isRefreshing,
-    refresh,
-    createActivity: createNewActivity,
-    pendingContextChange,
-    requestContextChange,
-    confirmContextChange,
-    dismissContextChange,
+    categories,
+    loading,
+    refetchActivities,
+    refetchCategories,
   };
 }

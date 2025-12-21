@@ -1,179 +1,131 @@
-
-import React, { useCallback, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  RefreshControl,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, getColors } from '@/styles/commonStyles';
-import { IconSymbol } from '@/components/IconSymbol';
 import CreateActivityModal from '@/components/CreateActivityModal';
-import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
-import { TaskDescriptionRenderer } from '@/components/TaskDescriptionRenderer';
-import { ensureColorArray } from '@/utils/ensureColorArray';
-
-import { useFootball } from '@/contexts/FootballContext';
-import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
-
-/**
- * ⛔️ VIGTIGT
- * Al data-fetching, Supabase-kald, parsing og abort-logik
- * SKAL ligge i dette hook – ikke i denne route.
- */
 import { useHomeActivities } from '@/hooks/useHomeActivities';
 
 export default function HomeScreen() {
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const { selectedClub } = useFootball();
-  const { selectedTeam, selectedPlayer } = useTeamPlayer();
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   const {
     activities,
-    isLoading,
-    isRefreshing,
-    refresh,
-    createActivity,
-    confirmContextChange,
-    pendingContextChange,
-    dismissContextChange,
-  } = useHomeActivities({
-    clubId: selectedClub?.id,
-    teamId: selectedTeam?.id,
-    playerId: selectedPlayer?.id,
-  });
+    categories,
+    loading,
+    refetchActivities,
+    refetchCategories,
+  } = useHomeActivities();
 
-  const themeColors = useMemo(() => {
-    const theme = getColors();
-
-    // ✅ Sikrer altid array til LinearGradient gennem ensureColorArray
-    const background = ensureColorArray(theme.background);
-
-    return {
-      ...theme,
-      background,
-    };
+  useEffect(() => {
+    refetchActivities();
+    refetchCategories();
   }, []);
 
-  const onCreateActivity = useCallback(
-    async (data) => {
-      await createActivity(data);
-    },
-    [createActivity]
-  );
-
-  if (isLoading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
-
   return (
-    <LinearGradient
-      colors={themeColors.background}
-      style={[styles.container, { paddingTop: insets.top }]}
-    >
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={refresh} />
-        }
-      >
-        {activities.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>Ingen aktiviteter</Text>
-            <Text style={styles.emptyText}>
-              Opret din første aktivitet for at komme i gang.
-            </Text>
-          </View>
-        ) : (
-          activities.map((activity) => (
-            <TouchableOpacity
-              key={activity.id}
-              style={styles.activityCard}
-              onPress={() =>
-                router.push({
-                  pathname: '/activity/[id]',
-                  params: { id: activity.id },
-                })
-              }
-            >
-              <View style={styles.activityHeader}>
-                <Text style={styles.activityTitle}>{activity.title}</Text>
-                <IconSymbol name="chevron-right" size={16} color="#999" />
-              </View>
+    <View style={styles.container}>
+      {/* 🔹 HEADER */}
+      <View style={styles.header}>
+        <Text style={styles.title}>Aktiviteter</Text>
 
-              {activity.description ? (
-                <TaskDescriptionRenderer
-                  description={activity.description}
-                />
-              ) : null}
-            </TouchableOpacity>
-          ))
+        <TouchableOpacity
+          style={styles.createButton}
+          onPress={() => setShowCreateModal(true)}
+        >
+          <Text style={styles.createButtonText}>Opret aktivitet</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* 🔹 CONTENT */}
+      <View style={styles.content}>
+        {loading && <ActivityIndicator />}
+
+        {!loading && activities.length === 0 && (
+          <Text style={styles.emptyText}>
+            Ingen aktiviteter endnu.
+          </Text>
         )}
-      </ScrollView>
 
-      <CreateActivityModal onCreate={onCreateActivity} />
+        {!loading &&
+          activities.map(activity => (
+            <View key={activity.id} style={styles.activityCard}>
+              <Text style={styles.activityTitle}>
+                {activity.title}
+              </Text>
+              <Text style={styles.activityMeta}>
+                {activity.date} – {activity.time}
+              </Text>
+            </View>
+          ))}
+      </View>
 
-      <ContextConfirmationDialog
-        visible={!!pendingContextChange}
-        onConfirm={confirmContextChange}
-        onCancel={dismissContextChange}
-      />
-    </LinearGradient>
+      {/* 🔹 MODAL (OVERLAY) */}
+      {showCreateModal && (
+        <CreateActivityModal
+          visible
+          onClose={() => setShowCreateModal(false)}
+          onCreateActivity={async () => {
+            await refetchActivities();
+            setShowCreateModal(false);
+          }}
+          categories={categories}
+          onRefreshCategories={refetchCategories}
+        />
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  scrollContent: {
     padding: 16,
-    paddingBottom: 40,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+  header: {
+    marginBottom: 16,
   },
-  emptyState: {
-    marginTop: 80,
-    alignItems: 'center',
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  emptyText: {
-    color: '#777',
-    textAlign: 'center',
-  },
-  activityCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
+  title: {
+    fontSize: 26,
+    fontWeight: '700',
     marginBottom: 12,
   },
-  activityHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
+  createButton: {
+    backgroundColor: '#2563eb',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    alignSelf: 'flex-start',
+  },
+  createButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  content: {
+    flex: 1,
+  },
+  emptyText: {
+    marginTop: 40,
+    fontSize: 16,
+    color: '#666',
+  },
+  activityCard: {
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: '#f1f5f9',
+    marginBottom: 12,
   },
   activityTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
+  },
+  activityMeta: {
+    marginTop: 4,
+    fontSize: 14,
+    color: '#555',
   },
 });

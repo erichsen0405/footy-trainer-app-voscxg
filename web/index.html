@@ -6,6 +6,47 @@
     <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
     <title>Football Coach</title>
+    
+    <!-- CRITICAL: Block tolt.js from loading on Web (React Native Web incompatible) -->
+    <script>
+      // Prevent tolt.js from executing by blocking window.tolt
+      (function() {
+        'use strict';
+        
+        // Block any attempt to create window.tolt
+        Object.defineProperty(window, 'tolt', {
+          get: function() { return undefined; },
+          set: function() { 
+            console.warn('[RN Web] Blocked tolt.js injection - incompatible with React Native Web');
+          },
+          configurable: false,
+          enumerable: false
+        });
+        
+        // Block script injection by intercepting createElement
+        const originalCreateElement = document.createElement.bind(document);
+        document.createElement = function(tagName) {
+          const element = originalCreateElement(tagName);
+          
+          if (tagName.toLowerCase() === 'script') {
+            const originalSetAttribute = element.setAttribute.bind(element);
+            element.setAttribute = function(name, value) {
+              // Block any script containing 'tolt'
+              if (name === 'src' && typeof value === 'string' && value.includes('tolt')) {
+                console.warn('[RN Web] Blocked tolt.js script injection:', value);
+                return;
+              }
+              return originalSetAttribute(name, value);
+            };
+          }
+          
+          return element;
+        };
+        
+        console.log('[RN Web] tolt.js blocker initialized');
+      })();
+    </script>
+    
     <style>
       * {
         box-sizing: border-box;

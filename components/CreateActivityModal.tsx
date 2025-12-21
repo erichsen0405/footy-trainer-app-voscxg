@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
@@ -14,18 +13,18 @@ import {
   Platform,
   KeyboardAvoidingView,
 } from 'react-native';
+
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { ActivityCategory } from '@/types';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import CategoryManagementModal from '@/components/CategoryManagementModal';
-import { ensureColorArray } from '@/utils/ensureColorArray';
 
 interface CreateActivityModalProps {
   visible: boolean;
-  onClose: () => void;
+  onClose?: () => void;
   onCreateActivity: (activityData: ActivityCreationData) => Promise<void>;
-  categories: ActivityCategory[];
+  categories?: ActivityCategory[];
   onRefreshCategories: () => void;
 }
 
@@ -37,7 +36,7 @@ export interface ActivityCreationData {
   time: string;
   isRecurring: boolean;
   recurrenceType?: 'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly';
-  recurrenceDays?: number[]; // 0=Sunday, 1=Monday, etc.
+  recurrenceDays?: number[];
   endDate?: Date;
 }
 
@@ -58,68 +57,62 @@ export default function CreateActivityModal({
   categories,
   onRefreshCategories,
 }: CreateActivityModalProps) {
+  if (!visible) return null;
+
+  const safeOnClose = typeof onClose === 'function' ? onClose : () => {};
+  const safeCategories: ActivityCategory[] = Array.isArray(categories)
+    ? categories
+    : [];
+
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const scrollViewRef = useRef<ScrollView>(null);
 
   const [title, setTitle] = useState('');
   const [location, setLocation] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>(categories[0]?.id || '');
+  const [selectedCategory, setSelectedCategory] = useState('');
   const [date, setDate] = useState(new Date());
   const [time, setTime] = useState('18:00');
   const [isRecurring, setIsRecurring] = useState(false);
-  const [recurrenceType, setRecurrenceType] = useState<'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly'>('weekly');
+  const [recurrenceType, setRecurrenceType] =
+    useState<'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly'>('weekly');
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
   const [hasEndDate, setHasEndDate] = useState(false);
-  const [endDate, setEndDate] = useState(new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)); // 90 days from now
+  const [endDate, setEndDate] = useState(
+    new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)
+  );
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [showCategoryManagement, setShowCategoryManagement] = useState(false);
 
-  // ✅ DEFENSIV: sikrer altid gyldige farver gennem ensureColorArray
-  const modalColors = useMemo(() => {
-    return ensureColorArray(colors.background);
-  }, []);
+  const bgColor = useMemo(() => {
+    if (isDark) return '#1a1a1a';
+    if (typeof colors.background === 'string') return colors.background;
+    return '#ffffff';
+  }, [isDark]);
 
-  const bgColor = isDark ? '#1a1a1a' : modalColors[0];
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
 
-  // Update selected category when categories change
   useEffect(() => {
-    if (categories.length > 0 && !selectedCategory) {
-      setSelectedCategory(categories[0].id);
+    if (safeCategories.length > 0 && !selectedCategory) {
+      setSelectedCategory(safeCategories[0].id);
     }
-  }, [categories]);
+  }, [safeCategories, selectedCategory]);
 
-  // Scroll to bottom when picker is shown
-  useEffect(() => {
-    if (showDatePicker || showTimePicker || showEndDatePicker) {
-      setTimeout(() => {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-    }
-  }, [showDatePicker, showTimePicker, showEndDatePicker]);
-
-  const resetForm = () => {
+  const handleClose = () => {
     setTitle('');
     setLocation('');
-    setSelectedCategory(categories[0]?.id || '');
+    setSelectedCategory(safeCategories[0]?.id || '');
     setDate(new Date());
     setTime('18:00');
     setIsRecurring(false);
-    setRecurrenceType('weekly');
     setSelectedDays([]);
     setHasEndDate(false);
-    setEndDate(new Date(Date.now() + 90 * 24 * 60 * 60 * 1000));
-  };
-
-  const handleClose = () => {
-    resetForm();
-    onClose();
+    safeOnClose();
   };
 
   const handleCreate = async () => {
@@ -133,15 +126,19 @@ export default function CreateActivityModal({
       return;
     }
 
-    if (isRecurring && (recurrenceType === 'weekly' || recurrenceType === 'biweekly' || recurrenceType === 'triweekly') && selectedDays.length === 0) {
-      Alert.alert('Fejl', 'Vælg venligst mindst én dag for gentagelse');
+    if (
+      isRecurring &&
+      ['weekly', 'biweekly', 'triweekly'].includes(recurrenceType) &&
+      selectedDays.length === 0
+    ) {
+      Alert.alert('Fejl', 'Vælg mindst én dag');
       return;
     }
 
     setIsCreating(true);
 
     try {
-      const activityData: ActivityCreationData = {
+      await onCreateActivity({
         title: title.trim(),
         location: location.trim() || 'Ingen lokation',
         categoryId: selectedCategory,
@@ -149,15 +146,17 @@ export default function CreateActivityModal({
         time,
         isRecurring,
         recurrenceType: isRecurring ? recurrenceType : undefined,
-        recurrenceDays: isRecurring && (recurrenceType === 'weekly' || recurrenceType === 'biweekly' || recurrenceType === 'triweekly') ? selectedDays : undefined,
+        recurrenceDays:
+          isRecurring &&
+          ['weekly', 'biweekly', 'triweekly'].includes(recurrenceType)
+            ? selectedDays
+            : undefined,
         endDate: isRecurring && hasEndDate ? endDate : undefined,
-      };
+      });
 
-      await onCreateActivity(activityData);
       handleClose();
-      Alert.alert('Succes', isRecurring ? 'Aktivitetsserie oprettet!' : 'Aktivitet oprettet!');
-    } catch (error) {
-      console.error('Error creating activity:', error);
+      Alert.alert('Succes', 'Aktivitet oprettet');
+    } catch {
       Alert.alert('Fejl', 'Kunne ikke oprette aktivitet');
     } finally {
       setIsCreating(false);
@@ -166,68 +165,30 @@ export default function CreateActivityModal({
 
   const toggleDay = (day: number) => {
     setSelectedDays(prev =>
-      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort()
+      prev.includes(day)
+        ? prev.filter(d => d !== day)
+        : [...prev, day].sort()
     );
   };
 
-  const handleDateChange = (event: any, selectedDate?: Date) => {
-    if (Platform.OS === 'android') {
-      setShowDatePicker(false);
-    }
-    if (selectedDate) {
-      setDate(selectedDate);
-    }
-  };
-
-  const handleTimeChange = (event: any, selectedTime?: Date) => {
-    if (Platform.OS === 'android') {
-      setShowTimePicker(false);
-    }
-    if (selectedTime) {
-      const hours = selectedTime.getHours().toString().padStart(2, '0');
-      const minutes = selectedTime.getMinutes().toString().padStart(2, '0');
-      setTime(`${hours}:${minutes}`);
-    }
-  };
-
-  const handleWebTimeChange = (event: any) => {
-    const value = event.target.value;
-    if (value) {
-      setTime(value);
-    }
-  };
-
-  const handleEndDateChange = (event: any, selectedDate?: Date) => {
-    if (Platform.OS === 'android') {
-      setShowEndDatePicker(false);
-    }
-    if (selectedDate) {
-      setEndDate(selectedDate);
-    }
-  };
-
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString('da-DK', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    });
-  };
-
-  const needsDaySelection = recurrenceType === 'weekly' || recurrenceType === 'biweekly' || recurrenceType === 'triweekly';
+  const needsDaySelection =
+    recurrenceType === 'weekly' ||
+    recurrenceType === 'biweekly' ||
+    recurrenceType === 'triweekly';
 
   return (
-    <React.Fragment>
-      <Modal visible={visible} animationType="slide" transparent={true}>
-        <KeyboardAvoidingView 
+    <>
+      <Modal visible animationType="slide" transparent>
+        <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.modalOverlay}
         >
           <View style={[styles.modalContent, { backgroundColor: cardBgColor }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: textColor }]}>Opret aktivitet</Text>
-              <TouchableOpacity onPress={handleClose} activeOpacity={0.7}>
+              <Text style={[styles.modalTitle, { color: textColor }]}>
+                Opret aktivitet
+              </Text>
+              <TouchableOpacity onPress={handleClose}>
                 <IconSymbol
                   ios_icon_name="xmark.circle.fill"
                   android_material_icon_name="close"
@@ -237,442 +198,102 @@ export default function CreateActivityModal({
               </TouchableOpacity>
             </View>
 
-            <ScrollView 
+            <ScrollView
               ref={scrollViewRef}
-              style={styles.modalBody} 
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.scrollContent}
             >
-              {/* Title */}
-              <View style={styles.fieldContainer}>
-                <Text style={[styles.fieldLabel, { color: textColor }]}>Titel *</Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
-                  value={title}
-                  onChangeText={setTitle}
-                  placeholder="F.eks. Fodboldtræning"
-                  placeholderTextColor={textSecondaryColor}
-                />
-              </View>
+              <TextInput
+                style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+                value={title}
+                onChangeText={setTitle}
+                placeholder="Titel *"
+                placeholderTextColor={textSecondaryColor}
+              />
 
-              {/* Location */}
-              <View style={styles.fieldContainer}>
-                <Text style={[styles.fieldLabel, { color: textColor }]}>Lokation</Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
-                  value={location}
-                  onChangeText={setLocation}
-                  placeholder="F.eks. Stadion"
-                  placeholderTextColor={textSecondaryColor}
-                />
-              </View>
+              <TextInput
+                style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+                value={location}
+                onChangeText={setLocation}
+                placeholder="Lokation"
+                placeholderTextColor={textSecondaryColor}
+              />
 
-              {/* Category */}
-              <View style={styles.fieldContainer}>
-                <View style={styles.categoryHeader}>
-                  <Text style={[styles.fieldLabel, { color: textColor }]}>Kategori *</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {safeCategories.map((cat, index) => (
                   <TouchableOpacity
-                    onPress={() => setShowCategoryManagement(true)}
-                    activeOpacity={0.7}
-                    style={styles.manageCategoriesButton}
+                    key={cat.id ?? `category-${index}`}
+                    style={[
+                      styles.categoryChip,
+                      {
+                        backgroundColor:
+                          selectedCategory === cat.id ? cat.color : bgColor,
+                        borderColor: cat.color,
+                      },
+                    ]}
+                    onPress={() => setSelectedCategory(cat.id)}
                   >
-                    <IconSymbol
-                      ios_icon_name="slider.horizontal.3"
-                      android_material_icon_name="tune"
-                      size={20}
-                      color={colors.primary}
-                    />
-                    <Text style={[styles.manageCategoriesText, { color: colors.primary }]}>
-                      Administrer
+                    <Text>{cat.emoji}</Text>
+                    <Text
+                      style={{
+                        color:
+                          selectedCategory === cat.id ? '#fff' : textColor,
+                      }}
+                    >
+                      {cat.name}
                     </Text>
                   </TouchableOpacity>
-                </View>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
-                  {categories.map((cat, index) => (
+                ))}
+              </ScrollView>
+
+              {needsDaySelection && (
+                <View key="days-container" style={styles.daysContainer}>
+                  {DAYS_OF_WEEK.map(day => (
                     <TouchableOpacity
-                      key={index}
+                      key={`day-${day.value}`}
                       style={[
-                        styles.categoryChip,
+                        styles.dayButton,
                         {
-                          backgroundColor: selectedCategory === cat.id ? cat.color : bgColor,
-                          borderColor: cat.color,
-                          borderWidth: 2,
+                          backgroundColor: selectedDays.includes(day.value)
+                            ? colors.primary
+                            : bgColor,
                         },
                       ]}
-                      onPress={() => setSelectedCategory(cat.id)}
-                      activeOpacity={0.7}
+                      onPress={() => toggleDay(day.value)}
                     >
-                      <Text style={styles.categoryEmoji}>{cat.emoji}</Text>
                       <Text
-                        style={[
-                          styles.categoryName,
-                          { color: selectedCategory === cat.id ? '#fff' : textColor },
-                        ]}
+                        style={{
+                          color: selectedDays.includes(day.value)
+                            ? '#fff'
+                            : textColor,
+                        }}
                       >
-                        {cat.name}
+                        {day.label}
                       </Text>
                     </TouchableOpacity>
                   ))}
-                </ScrollView>
-              </View>
-
-              {/* Date */}
-              <View style={styles.fieldContainer}>
-                <Text style={[styles.fieldLabel, { color: textColor }]}>
-                  {isRecurring ? 'Startdato *' : 'Dato *'}
-                </Text>
-                <TouchableOpacity
-                  style={[styles.dateTimeButton, { backgroundColor: bgColor }]}
-                  onPress={() => setShowDatePicker(true)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.dateTimeText, { color: textColor }]}>{formatDate(date)}</Text>
-                  <IconSymbol
-                    ios_icon_name="calendar"
-                    android_material_icon_name="calendar_today"
-                    size={20}
-                    color={colors.primary}
-                  />
-                </TouchableOpacity>
-                {Platform.OS === 'ios' && showDatePicker && (
-                  <View style={[styles.pickerContainer, { backgroundColor: bgColor }]}>
-                    <DateTimePicker
-                      value={date}
-                      mode="date"
-                      display="spinner"
-                      onChange={handleDateChange}
-                      minimumDate={new Date()}
-                      textColor={textColor}
-                      style={styles.iosPicker}
-                    />
-                    <TouchableOpacity
-                      style={[styles.pickerDoneButton, { backgroundColor: colors.primary }]}
-                      onPress={() => setShowDatePicker(false)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.pickerDoneText}>Færdig</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View>
-
-              {/* Time */}
-              <View style={styles.fieldContainer}>
-                <Text style={[styles.fieldLabel, { color: textColor }]}>Tidspunkt *</Text>
-                {Platform.OS === 'web' ? (
-                  <input
-                    type="time"
-                    value={time}
-                    onChange={handleWebTimeChange}
-                    style={{
-                      backgroundColor: bgColor,
-                      color: textColor,
-                      borderRadius: 12,
-                      padding: 16,
-                      fontSize: 17,
-                      border: 'none',
-                      width: '100%',
-                      fontFamily: 'inherit',
-                    }}
-                  />
-                ) : (
-                  <React.Fragment>
-                    <TouchableOpacity
-                      style={[styles.dateTimeButton, { backgroundColor: bgColor }]}
-                      onPress={() => setShowTimePicker(true)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.dateTimeText, { color: textColor }]}>{time}</Text>
-                      <IconSymbol
-                        ios_icon_name="clock"
-                        android_material_icon_name="access_time"
-                        size={20}
-                        color={colors.primary}
-                      />
-                    </TouchableOpacity>
-                    {Platform.OS === 'ios' && showTimePicker && (
-                      <View style={[styles.pickerContainer, { backgroundColor: bgColor }]}>
-                        <DateTimePicker
-                          value={new Date(`2000-01-01T${time}`)}
-                          mode="time"
-                          display="spinner"
-                          onChange={handleTimeChange}
-                          textColor={textColor}
-                          style={styles.iosPicker}
-                        />
-                        <TouchableOpacity
-                          style={[styles.pickerDoneButton, { backgroundColor: colors.primary }]}
-                          onPress={() => setShowTimePicker(false)}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.pickerDoneText}>Færdig</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </React.Fragment>
-                )}
-              </View>
-
-              {/* Recurring Toggle */}
-              <View style={styles.fieldContainer}>
-                <TouchableOpacity
-                  style={styles.recurringToggle}
-                  onPress={() => setIsRecurring(!isRecurring)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.recurringToggleLeft}>
-                    <IconSymbol
-                      ios_icon_name="repeat"
-                      android_material_icon_name="repeat"
-                      size={24}
-                      color={isRecurring ? colors.primary : textSecondaryColor}
-                    />
-                    <Text style={[styles.recurringToggleText, { color: textColor }]}>
-                      Gentag aktivitet
-                    </Text>
-                  </View>
-                  <View
-                    style={[
-                      styles.toggle,
-                      { backgroundColor: isRecurring ? colors.primary : colors.highlight },
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.toggleThumb,
-                        isRecurring && styles.toggleThumbActive,
-                      ]}
-                    />
-                  </View>
-                </TouchableOpacity>
-              </View>
-
-              {/* Recurrence Options */}
-              {isRecurring && (
-                <React.Fragment>
-                  <View style={styles.fieldContainer}>
-                    <Text style={[styles.fieldLabel, { color: textColor }]}>Gentagelsesmønster</Text>
-                    <View style={styles.recurrenceOptions}>
-                      {[
-                        { label: 'Dagligt', value: 'daily' as const },
-                        { label: 'Hver uge', value: 'weekly' as const },
-                        { label: 'Hver anden uge', value: 'biweekly' as const },
-                        { label: 'Hver tredje uge', value: 'triweekly' as const },
-                        { label: 'Månedligt', value: 'monthly' as const },
-                      ].map((option, index) => (
-                        <TouchableOpacity
-                          key={index}
-                          style={[
-                            styles.recurrenceOption,
-                            {
-                              backgroundColor:
-                                recurrenceType === option.value ? colors.primary : bgColor,
-                              borderColor: colors.primary,
-                              borderWidth: 2,
-                            },
-                          ]}
-                          onPress={() => {
-                            setRecurrenceType(option.value);
-                            // Clear selected days if switching away from weekly patterns
-                            if (option.value !== 'weekly' && option.value !== 'biweekly' && option.value !== 'triweekly') {
-                              setSelectedDays([]);
-                            }
-                          }}
-                          activeOpacity={0.7}
-                        >
-                          <Text
-                            style={[
-                              styles.recurrenceOptionText,
-                              {
-                                color: recurrenceType === option.value ? '#fff' : textColor,
-                              },
-                            ]}
-                          >
-                            {option.label}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
-
-                  {/* Day Selection for Weekly Patterns */}
-                  {needsDaySelection && (
-                    <View style={styles.fieldContainer}>
-                      <Text style={[styles.fieldLabel, { color: textColor }]}>
-                        Vælg dage *
-                      </Text>
-                      <View style={styles.daysContainer}>
-                        {DAYS_OF_WEEK.map((day, index) => (
-                          <TouchableOpacity
-                            key={index}
-                            style={[
-                              styles.dayButton,
-                              {
-                                backgroundColor: selectedDays.includes(day.value)
-                                  ? colors.primary
-                                  : bgColor,
-                                borderColor: colors.primary,
-                                borderWidth: 2,
-                              },
-                            ]}
-                            onPress={() => toggleDay(day.value)}
-                            activeOpacity={0.7}
-                          >
-                            <Text
-                              style={[
-                                styles.dayButtonText,
-                                {
-                                  color: selectedDays.includes(day.value) ? '#fff' : textColor,
-                                },
-                              ]}
-                            >
-                              {day.label}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </View>
-                  )}
-
-                  {/* End Date Toggle */}
-                  <View style={styles.fieldContainer}>
-                    <TouchableOpacity
-                      style={styles.recurringToggle}
-                      onPress={() => setHasEndDate(!hasEndDate)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.recurringToggleLeft}>
-                        <IconSymbol
-                          ios_icon_name="calendar.badge.clock"
-                          android_material_icon_name="event_available"
-                          size={24}
-                          color={hasEndDate ? colors.primary : textSecondaryColor}
-                        />
-                        <Text style={[styles.recurringToggleText, { color: textColor }]}>
-                          Sæt slutdato
-                        </Text>
-                      </View>
-                      <View
-                        style={[
-                          styles.toggle,
-                          { backgroundColor: hasEndDate ? colors.primary : colors.highlight },
-                        ]}
-                      >
-                        <View
-                          style={[
-                            styles.toggleThumb,
-                            hasEndDate && styles.toggleThumbActive,
-                          ]}
-                        />
-                      </View>
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* End Date Picker */}
-                  {hasEndDate && (
-                    <View style={styles.fieldContainer}>
-                      <Text style={[styles.fieldLabel, { color: textColor }]}>Slutdato</Text>
-                      <TouchableOpacity
-                        style={[styles.dateTimeButton, { backgroundColor: bgColor }]}
-                        onPress={() => setShowEndDatePicker(true)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={[styles.dateTimeText, { color: textColor }]}>
-                          {formatDate(endDate)}
-                        </Text>
-                        <IconSymbol
-                          ios_icon_name="calendar"
-                          android_material_icon_name="calendar_today"
-                          size={20}
-                          color={colors.primary}
-                        />
-                      </TouchableOpacity>
-                      {Platform.OS === 'ios' && showEndDatePicker && (
-                        <View style={[styles.pickerContainer, { backgroundColor: bgColor }]}>
-                          <DateTimePicker
-                            value={endDate}
-                            mode="date"
-                            display="spinner"
-                            onChange={handleEndDateChange}
-                            minimumDate={date}
-                            textColor={textColor}
-                            style={styles.iosPicker}
-                          />
-                          <TouchableOpacity
-                            style={[styles.pickerDoneButton, { backgroundColor: colors.primary }]}
-                            onPress={() => setShowEndDatePicker(false)}
-                            activeOpacity={0.7}
-                          >
-                            <Text style={styles.pickerDoneText}>Færdig</Text>
-                          </TouchableOpacity>
-                        </View>
-                      )}
-                    </View>
-                  )}
-                </React.Fragment>
+                </View>
               )}
-
-              {/* Android Date/Time Pickers */}
-              {Platform.OS === 'android' && showDatePicker && (
-                <DateTimePicker
-                  value={date}
-                  mode="date"
-                  display="default"
-                  onChange={handleDateChange}
-                  minimumDate={new Date()}
-                />
-              )}
-
-              {Platform.OS === 'android' && showTimePicker && (
-                <DateTimePicker
-                  value={new Date(`2000-01-01T${time}`)}
-                  mode="time"
-                  display="default"
-                  onChange={handleTimeChange}
-                />
-              )}
-
-              {Platform.OS === 'android' && showEndDatePicker && (
-                <DateTimePicker
-                  value={endDate}
-                  mode="date"
-                  display="default"
-                  onChange={handleEndDateChange}
-                  minimumDate={date}
-                />
-              )}
-
-              {/* Extra padding for scroll */}
-              <View style={{ height: 200 }} />
             </ScrollView>
 
             <View style={styles.modalFooter}>
               <TouchableOpacity
-                style={[
-                  styles.modalButton,
-                  styles.cancelButton,
-                  { backgroundColor: bgColor, borderColor: colors.highlight },
-                ]}
+                style={[styles.modalButton, styles.cancelButton]}
                 onPress={handleClose}
-                activeOpacity={0.7}
                 disabled={isCreating}
               >
-                <Text style={[styles.modalButtonText, { color: textColor }]}>Annuller</Text>
+                <Text>Annuller</Text>
               </TouchableOpacity>
+
               <TouchableOpacity
-                style={[
-                  styles.modalButton,
-                  styles.saveButton,
-                  { backgroundColor: colors.primary },
-                ]}
+                style={[styles.modalButton, styles.saveButton]}
                 onPress={handleCreate}
-                activeOpacity={0.7}
                 disabled={isCreating}
               >
                 {isCreating ? (
-                  <ActivityIndicator size="small" color="#fff" />
+                  <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={[styles.modalButtonText, { color: '#fff' }]}>Opret</Text>
+                  <Text style={{ color: '#fff' }}>Opret</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -680,21 +301,20 @@ export default function CreateActivityModal({
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Category Management Modal */}
       <CategoryManagementModal
         visible={showCategoryManagement}
         onClose={() => setShowCategoryManagement(false)}
-        categories={categories}
+        categories={safeCategories}
         onRefresh={onRefreshCategories}
       />
-    </React.Fragment>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
   },
   modalContent: {
@@ -703,167 +323,48 @@ const styles = StyleSheet.create({
     maxHeight: '90%',
   },
   modalHeader: {
+    padding: 24,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.highlight,
   },
   modalTitle: {
     fontSize: 22,
     fontWeight: 'bold',
   },
-  modalBody: {
-    paddingHorizontal: 24,
-  },
   scrollContent: {
-    paddingTop: 24,
-  },
-  fieldContainer: {
-    marginBottom: 20,
-  },
-  fieldLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 10,
+    padding: 24,
   },
   input: {
     borderRadius: 12,
     padding: 16,
     fontSize: 17,
-  },
-  categoryHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  manageCategoriesButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  manageCategoriesText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  categoryScroll: {
-    marginTop: 8,
+    marginBottom: 16,
   },
   categoryChip: {
     flexDirection: 'row',
-    alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 24,
+    padding: 12,
+    borderRadius: 20,
+    borderWidth: 2,
     marginRight: 12,
-  },
-  categoryEmoji: {
-    fontSize: 20,
-  },
-  categoryName: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  dateTimeButton: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    borderRadius: 12,
-    padding: 16,
-  },
-  dateTimeText: {
-    fontSize: 17,
-  },
-  pickerContainer: {
-    marginTop: 12,
-    borderRadius: 12,
-    padding: 16,
-    overflow: 'hidden',
-  },
-  iosPicker: {
-    height: 200,
-  },
-  pickerDoneButton: {
-    marginTop: 12,
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  pickerDoneText: {
-    color: '#fff',
-    fontSize: 17,
-    fontWeight: '600',
-  },
-  recurringToggle: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  recurringToggleLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  recurringToggleText: {
-    fontSize: 17,
-    fontWeight: '500',
-  },
-  toggle: {
-    width: 56,
-    height: 32,
-    borderRadius: 16,
-    padding: 2,
-  },
-  toggleThumb: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#fff',
-  },
-  toggleThumbActive: {
-    transform: [{ translateX: 24 }],
-  },
-  recurrenceOptions: {
-    gap: 12,
-  },
-  recurrenceOption: {
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  recurrenceOptionText: {
-    fontSize: 16,
-    fontWeight: '600',
   },
   daysContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     gap: 8,
+    marginTop: 16,
   },
   dayButton: {
     flex: 1,
-    paddingVertical: 12,
+    padding: 12,
     borderRadius: 12,
     alignItems: 'center',
   },
-  dayButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
   modalFooter: {
     flexDirection: 'row',
-    gap: 14,
+    gap: 12,
     padding: 24,
-    borderTopWidth: 1,
-    borderTopColor: colors.highlight,
   },
   modalButton: {
     flex: 1,
@@ -872,11 +373,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cancelButton: {
-    borderWidth: 2,
+    backgroundColor: '#ddd',
   },
-  saveButton: {},
-  modalButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
+  saveButton: {
+    backgroundColor: colors.primary,
   },
 });
