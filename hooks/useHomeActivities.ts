@@ -1,71 +1,72 @@
 
 import { useEffect, useState, useCallback } from 'react';
-import { ActivityCategory, Activity } from '@/types';
 import { supabase } from '@/app/integrations/supabase/client';
-import { getActivities, getCategories } from '@/services/activities';
+import { getActivities, getCategories, DatabaseActivity, DatabaseActivityCategory } from '@/services/activities';
 
 interface UseHomeActivitiesResult {
-  activities: Activity[];
-  categories: ActivityCategory[];
+  activities: DatabaseActivity[];
+  categories: DatabaseActivityCategory[];
   loading: boolean;
   refetchActivities: () => Promise<void>;
   refetchCategories: () => Promise<void>;
 }
 
 export function useHomeActivities(): UseHomeActivitiesResult {
-  const [clubId, setClubId] = useState<string | null>(null);
-  const [activities, setActivities] = useState<Activity[]>([]);
-  const [categories, setCategories] = useState<ActivityCategory[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [activities, setActivities] = useState<DatabaseActivity[]>([]);
+  const [categories, setCategories] = useState<DatabaseActivityCategory[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Get user and club ID
+  // Get user ID
   useEffect(() => {
     const fetchUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        // For now, use user ID as club ID
-        // This can be extended to fetch actual club_id from profiles table
-        setClubId(user.id);
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          setUserId(user.id);
+        }
+      } catch (err) {
+        console.error('Failed to fetch user:', err);
       }
     };
     fetchUser();
   }, []);
 
   const refetchActivities = useCallback(async () => {
-    if (!clubId) {
+    if (!userId) {
       setActivities([]);
       return;
     }
 
     try {
-      const data = await getActivities(clubId);
+      const data = await getActivities(userId);
       setActivities(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error('Failed to fetch activities', err);
+      console.error('Failed to fetch activities:', err);
       setActivities([]);
     }
-  }, [clubId]);
+  }, [userId]);
 
   const refetchCategories = useCallback(async () => {
-    if (!clubId) {
+    if (!userId) {
       setCategories([]);
       return;
     }
 
     try {
-      const data = await getCategories(clubId);
+      const data = await getCategories(userId);
       setCategories(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error('Failed to fetch categories', err);
+      console.error('Failed to fetch categories:', err);
       setCategories([]);
     }
-  }, [clubId]);
+  }, [userId]);
 
   useEffect(() => {
     let mounted = true;
 
     async function load() {
-      if (!clubId) {
+      if (!userId) {
         setLoading(false);
         return;
       }
@@ -75,6 +76,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           refetchActivities(),
           refetchCategories(),
         ]);
+      } catch (err) {
+        console.error('Failed to load home activities:', err);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -85,7 +88,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
     return () => {
       mounted = false;
     };
-  }, [clubId, refetchActivities, refetchCategories]);
+  }, [userId, refetchActivities, refetchCategories]);
 
   return {
     activities,
