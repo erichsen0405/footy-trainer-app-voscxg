@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -77,7 +77,20 @@ export default function CreateActivityModal({
   const [isCreating, setIsCreating] = useState(false);
   const [showCategoryManagement, setShowCategoryManagement] = useState(false);
 
-  const bgColor = isDark ? '#1a1a1a' : colors.background;
+  // 🔒 DEFENSIV: sikrer altid gyldige farver
+  const modalColors = useMemo(() => {
+    if (Array.isArray(colors.background)) {
+      return colors.background;
+    }
+
+    if (typeof colors.background === 'string') {
+      return [colors.background, colors.background];
+    }
+
+    return ['#000', '#000'];
+  }, []);
+
+  const bgColor = isDark ? '#1a1a1a' : modalColors[0];
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
