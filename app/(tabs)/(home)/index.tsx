@@ -13,6 +13,15 @@ import { router } from 'expo-router';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
 import CreateActivityModal from '@/components/CreateActivityModal';
 
+// ✅ TRIN 1 – TILFØJ DATE RESOLVER (ØVERST I FILEN)
+const resolveActivityDate = (activity: any): Date | null => {
+  if (activity.scheduled_at) return new Date(activity.scheduled_at);
+  if (activity.date) return new Date(activity.date);
+  if (activity.start_date) return new Date(activity.start_date);
+  if (activity.created_at) return new Date(activity.created_at);
+  return null;
+};
+
 export default function HomeScreen() {
   const theme = useTheme();
   const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
@@ -26,11 +35,22 @@ export default function HomeScreen() {
   // ✅ TRIN 2 – SAFE DEFAULTS (STOPPER CRASHES)
   const activitiesSafe = Array.isArray(activities) ? activities : [];
 
-  // ✅ TRIN 3 – "I dag" FILTRERING (LOKALT)
+  // ✅ TRIN 4 – DEBUG (MIDLERTIDIGT, MEGET VIGTIGT)
+  console.log(
+    '[HomeScreen] activities:',
+    activitiesSafe.map(a => ({
+      id: a.id,
+      date: resolveActivityDate(a)
+    }))
+  );
+
+  // ✅ TRIN 2 – ERSTAT "I DAG" FILTRERING
   const todayActivities = activitiesSafe.filter((a) => {
-    if (!a.start_date) return false;
-    const d = new Date(a.start_date);
+    const d = resolveActivityDate(a);
+    if (!d) return false;
+
     const today = new Date();
+
     return (
       d.getDate() === today.getDate() &&
       d.getMonth() === today.getMonth() &&
@@ -38,10 +58,12 @@ export default function HomeScreen() {
     );
   });
 
-  // ✅ TRIN 4 – "Kommende" FILTRERING (LOKALT)
+  // ✅ TRIN 3 – ERSTAT "KOMMENDE" FILTRERING
   const upcomingActivities = activitiesSafe.filter((a) => {
-    if (!a.start_date) return false;
-    return new Date(a.start_date) > new Date();
+    const d = resolveActivityDate(a);
+    if (!d) return false;
+
+    return d > new Date();
   });
 
   // Calculate week progress (placeholder logic)
