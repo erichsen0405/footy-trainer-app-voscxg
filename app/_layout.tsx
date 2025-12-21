@@ -121,22 +121,27 @@ function RootLayoutContent() {
                     animation: 'fade',
                   }} 
                 />
-                <Stack.Screen 
-                  name="console-logs" 
-                  options={{ 
-                    presentation: 'modal',
-                    headerShown: true,
-                    title: 'Console Logs',
-                  }} 
-                />
-                <Stack.Screen 
-                  name="notification-debug" 
-                  options={{ 
-                    presentation: 'modal',
-                    headerShown: true,
-                    title: 'Notification Debug',
-                  }} 
-                />
+                {/* Debug routes - only available in development */}
+                {__DEV__ && (
+                  <React.Fragment>
+                    <Stack.Screen 
+                      name="console-logs" 
+                      options={{ 
+                        presentation: 'modal',
+                        headerShown: false,
+                        title: 'Console Logs (DEV)',
+                      }} 
+                    />
+                    <Stack.Screen 
+                      name="notification-debug" 
+                      options={{ 
+                        presentation: 'modal',
+                        headerShown: false,
+                        title: 'Notification Debug (DEV)',
+                      }} 
+                    />
+                  </React.Fragment>
+                )}
                 <Stack.Screen 
                   name="email-confirmed" 
                   options={{ 

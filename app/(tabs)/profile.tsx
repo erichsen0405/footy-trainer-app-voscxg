@@ -50,19 +50,11 @@ export default function ProfileScreen() {
   // Delete external activities state
   const [isDeletingExternalActivities, setIsDeletingExternalActivities] = useState(false);
   
-  // Debug state
-  const [debugInfo, setDebugInfo] = useState<string[]>([]);
-  
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
   // Get subscription status
   const { subscriptionStatus, refreshSubscription } = useSubscription();
-
-  const addDebugInfo = (message: string) => {
-    console.log('[PROFILE DEBUG]', message);
-    setDebugInfo(prev => [...prev, `${new Date().toISOString().split('T')[1].split('.')[0]} - ${message}`]);
-  };
 
   useEffect(() => {
     const checkUser = async () => {
@@ -99,7 +91,9 @@ export default function ProfileScreen() {
   }, []);
 
   const checkUserOnboarding = async (userId: string) => {
-    addDebugInfo('Checking user onboarding status...');
+    if (__DEV__) {
+      console.log('[PROFILE] Checking user onboarding status...');
+    }
     
     // Check if user has a role
     const { data: roleData, error: roleError } = await supabase
@@ -109,7 +103,9 @@ export default function ProfileScreen() {
       .single();
 
     if (roleError || !roleData) {
-      addDebugInfo('No role found - needs role selection');
+      if (__DEV__) {
+        console.log('[PROFILE] No role found - needs role selection');
+      }
       setNeedsRoleSelection(true);
       setNeedsSubscription(false);
       return;
@@ -117,7 +113,9 @@ export default function ProfileScreen() {
 
     const role = roleData.role as 'admin' | 'trainer' | 'player';
     setUserRole(role);
-    addDebugInfo(`Role found: ${role}`);
+    if (__DEV__) {
+      console.log(`[PROFILE] Role found: ${role}`);
+    }
 
     // If role is trainer or admin, check if they have a subscription
     if (role === 'trainer' || role === 'admin') {
@@ -128,13 +126,17 @@ export default function ProfileScreen() {
         .single();
 
       if (subError || !subData) {
-        addDebugInfo('No subscription found - needs subscription');
+        if (__DEV__) {
+          console.log('[PROFILE] No subscription found - needs subscription');
+        }
         setNeedsRoleSelection(false);
         setNeedsSubscription(true);
         return;
       }
 
-      addDebugInfo(`Subscription found: ${subData.status}`);
+      if (__DEV__) {
+        console.log(`[PROFILE] Subscription found: ${subData.status}`);
+      }
       // Refresh subscription status
       await refreshSubscription();
     }
@@ -275,8 +277,6 @@ export default function ProfileScreen() {
     }
 
     setLoading(true);
-    setDebugInfo([]);
-    addDebugInfo('Starting signup process...');
     
     try {
       const { data, error } = await supabase.auth.signUp({
@@ -288,7 +288,9 @@ export default function ProfileScreen() {
       });
 
       if (error) {
-        addDebugInfo(`❌ Signup error: ${error.message}`);
+        if (__DEV__) {
+          console.log(`[PROFILE] Signup error: ${error.message}`);
+        }
         console.error('Sign up error:', error);
         Alert.alert(
           'Kunne ikke oprette konto',
@@ -298,13 +300,17 @@ export default function ProfileScreen() {
       }
 
       if (!data.user) {
-        addDebugInfo('❌ No user returned from signup');
+        if (__DEV__) {
+          console.log('[PROFILE] No user returned from signup');
+        }
         Alert.alert('Fejl', 'Kunne ikke oprette bruger. Prøv venligst igen.');
         return;
       }
 
-      addDebugInfo(`✅ User created: ${data.user.id}`);
-      addDebugInfo(`Session exists: ${data.session ? 'Yes - Auto logged in!' : 'No - Email confirmation required'}`);
+      if (__DEV__) {
+        console.log(`[PROFILE] User created: ${data.user.id}`);
+        console.log(`[PROFILE] Session exists: ${data.session ? 'Yes - Auto logged in!' : 'No - Email confirmation required'}`);
+      }
 
       setEmail('');
       setPassword('');
@@ -312,7 +318,6 @@ export default function ProfileScreen() {
       // Check if user is automatically logged in
       if (data.session) {
         // User is logged in immediately - show success and they'll be prompted for role
-        addDebugInfo('✅ User logged in automatically - will show role selection');
         Alert.alert(
           'Velkommen! 🎉', 
           `Din konto er oprettet og du er nu logget ind!\n\nVi har sendt en bekræftelsesmail til ${email}. Bekræft venligst din email når du får tid.\n\nNu skal du vælge din rolle for at fortsætte.`,
@@ -320,7 +325,6 @@ export default function ProfileScreen() {
         );
       } else {
         // Email confirmation required before login
-        addDebugInfo('📧 Email confirmation required before login');
         setShowSuccessMessage(true);
         
         setTimeout(() => {
@@ -335,7 +339,9 @@ export default function ProfileScreen() {
         );
       }
     } catch (error: any) {
-      addDebugInfo(`❌ Unexpected error: ${error.message}`);
+      if (__DEV__) {
+        console.log(`[PROFILE] Unexpected error: ${error.message}`);
+      }
       console.error('Signup error:', error);
       Alert.alert('Fejl', error.message || 'Der opstod en uventet fejl. Prøv venligst igen.');
     } finally {
@@ -400,7 +406,9 @@ export default function ProfileScreen() {
     if (!user) return;
 
     setLoading(true);
-    addDebugInfo(`Setting role to: ${role}`);
+    if (__DEV__) {
+      console.log(`[PROFILE] Setting role to: ${role}`);
+    }
 
     try {
       // Insert role into user_roles table
@@ -412,12 +420,16 @@ export default function ProfileScreen() {
         });
 
       if (roleError) {
-        addDebugInfo(`❌ Error setting role: ${roleError.message}`);
+        if (__DEV__) {
+          console.log(`[PROFILE] Error setting role: ${roleError.message}`);
+        }
         Alert.alert('Fejl', 'Kunne ikke gemme rolle. Prøv venligst igen.');
         return;
       }
 
-      addDebugInfo(`✅ Role set successfully`);
+      if (__DEV__) {
+        console.log('[PROFILE] Role set successfully');
+      }
       setSelectedRole(role);
       setUserRole(role);
       setNeedsRoleSelection(false);
@@ -439,7 +451,9 @@ export default function ProfileScreen() {
         );
       }
     } catch (error: any) {
-      addDebugInfo(`❌ Unexpected error: ${error.message}`);
+      if (__DEV__) {
+        console.log(`[PROFILE] Unexpected error: ${error.message}`);
+      }
       Alert.alert('Fejl', error.message || 'Der opstod en fejl. Prøv venligst igen.');
     } finally {
       setLoading(false);
@@ -450,7 +464,9 @@ export default function ProfileScreen() {
     if (!user) return;
 
     setLoading(true);
-    addDebugInfo(`Creating subscription with plan: ${planId}`);
+    if (__DEV__) {
+      console.log(`[PROFILE] Creating subscription with plan: ${planId}`);
+    }
 
     try {
       // Call the create-subscription edge function
@@ -459,12 +475,16 @@ export default function ProfileScreen() {
       });
 
       if (error) {
-        addDebugInfo(`❌ Error creating subscription: ${error.message}`);
+        if (__DEV__) {
+          console.log(`[PROFILE] Error creating subscription: ${error.message}`);
+        }
         Alert.alert('Fejl', 'Kunne ikke oprette abonnement. Prøv venligst igen.');
         return;
       }
 
-      addDebugInfo(`✅ Subscription created successfully`);
+      if (__DEV__) {
+        console.log('[PROFILE] Subscription created successfully');
+      }
       setNeedsSubscription(false);
       
       // Refresh subscription status
@@ -476,7 +496,9 @@ export default function ProfileScreen() {
         [{ text: 'OK' }]
       );
     } catch (error: any) {
-      addDebugInfo(`❌ Unexpected error: ${error.message}`);
+      if (__DEV__) {
+        console.log(`[PROFILE] Unexpected error: ${error.message}`);
+      }
       Alert.alert('Fejl', error.message || 'Der opstod en fejl. Prøv venligst igen.');
     } finally {
       setLoading(false);
@@ -625,20 +647,6 @@ export default function ProfileScreen() {
               </View>
             )}
           </CardWrapper>
-
-          {/* Debug Info */}
-          {debugInfo.length > 0 && (
-            <CardWrapper style={[styles.debugCard, { marginTop: 20 }, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
-              <Text style={[styles.debugTitle, { color: textColor }]}>📋 Debug Log:</Text>
-              <ScrollView style={styles.debugScroll} nestedScrollEnabled>
-                {debugInfo.map((info, index) => (
-                  <Text key={index} style={[styles.debugText, { color: textSecondaryColor }]}>
-                    {info}
-                  </Text>
-                ))}
-              </ScrollView>
-            </CardWrapper>
-          )}
         </ScrollView>
       </ContainerWrapper>
     );
@@ -664,20 +672,6 @@ export default function ProfileScreen() {
               selectedRole="trainer"
             />
           </CardWrapper>
-
-          {/* Debug Info */}
-          {debugInfo.length > 0 && (
-            <CardWrapper style={[styles.debugCard, { marginTop: 20 }, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
-              <Text style={[styles.debugTitle, { color: textColor }]}>📋 Debug Log:</Text>
-              <ScrollView style={styles.debugScroll} nestedScrollEnabled>
-                {debugInfo.map((info, index) => (
-                  <Text key={index} style={[styles.debugText, { color: textSecondaryColor }]}>
-                    {info}
-                  </Text>
-                ))}
-              </ScrollView>
-            </CardWrapper>
-          )}
         </ScrollView>
       </ContainerWrapper>
     );
@@ -1010,16 +1004,6 @@ export default function ProfileScreen() {
                   Din konto er blevet oprettet succesfuldt.{'\n'}
                   Tjek din email for at bekræfte din konto, og log derefter ind.
                 </Text>
-                
-                {/* Debug Info */}
-                {debugInfo.length > 0 && (
-                  <View style={styles.debugContainer}>
-                    <Text style={styles.debugTitle}>📋 Debug Log:</Text>
-                    {debugInfo.map((info, index) => (
-                      <Text key={index} style={styles.debugText}>{info}</Text>
-                    ))}
-                  </View>
-                )}
               </View>
             )}
 
@@ -1153,18 +1137,6 @@ export default function ProfileScreen() {
                     </Text>
                   </View>
                 </View>
-                
-                {/* Debug Info during signup */}
-                {debugInfo.length > 0 && (
-                  <View style={styles.debugContainer}>
-                    <Text style={[styles.debugTitle, { color: Platform.OS === 'ios' ? '#fff' : textColor }]}>📋 Debug Log:</Text>
-                    <ScrollView style={styles.debugScroll} nestedScrollEnabled>
-                      {debugInfo.map((info, index) => (
-                        <Text key={index} style={[styles.debugText, { color: Platform.OS === 'ios' ? '#fff' : textSecondaryColor }]}>{info}</Text>
-                      ))}
-                    </ScrollView>
-                  </View>
-                )}
               </>
             )}
           </CardWrapper>
@@ -1424,26 +1396,6 @@ const styles = StyleSheet.create({
     fontSize: Platform.OS === 'ios' ? 14 : 15,
     lineHeight: Platform.OS === 'ios' ? 20 : 22,
   },
-  debugContainer: {
-    padding: 16,
-    borderRadius: 12,
-    marginTop: 16,
-    backgroundColor: 'rgba(0,0,0,0.2)',
-  },
-  debugTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  debugScroll: {
-    maxHeight: 200,
-  },
-  debugText: {
-    fontSize: 12,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    marginBottom: 4,
-    opacity: 0.9,
-  },
   onboardingCard: {
     borderRadius: 12,
     padding: 24,
@@ -1492,10 +1444,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 24,
     marginBottom: 16,
-  },
-  debugCard: {
-    borderRadius: 12,
-    padding: 16,
   },
   deleteExternalButton: {
     flexDirection: 'row',
