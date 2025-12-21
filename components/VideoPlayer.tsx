@@ -1,92 +1,81 @@
 
-import React, { useMemo, useState } from "react";
-import { View, Text, Platform, Pressable, ActivityIndicator } from "react-native";
-import { WebView } from "react-native-webview";
-import * as Linking from "expo-linking";
+import React, { useMemo } from 'react';
+import { View, StyleSheet, Platform } from 'react-native';
+import { WebView } from 'react-native-webview';
 
-export default function VideoPlayer({ videoUrl }: { videoUrl: string }) {
-  const [failed, setFailed] = useState(false);
+interface Props {
+  url: string;
+}
 
-  const video = useMemo(() => parseVideo(videoUrl), [videoUrl]);
+/**
+ * KRITISKE REGLER (iOS):
+ * - WebView må aldrig mount/unmount baseret på props
+ * - Ingen conditional rendering
+ * - Ingen inline HTML-regenerering per render
+ */
+const VideoPlayer: React.FC<Props> = ({ url }) => {
+  const html = useMemo(() => {
+    if (!url) {
+      // Tom, stabil HTML – WebView lever videre uden reload
+      return '<html><body style="margin:0;background:black;"></body></html>';
+    }
 
-  if (!video) return <Centered text="Ugyldigt video-link" />;
-
-  if (failed && video.platform === "youtube" && Platform.OS === "ios") {
-    return (
-      <Centered>
-        <Text style={{ marginBottom: 12, textAlign: "center" }}>
-          Videoen kan ikke afspilles i appen
-        </Text>
-        <Pressable
-          onPress={() => Linking.openURL(video.watchUrl)}
-          style={{ backgroundColor: "#000", padding: 10, borderRadius: 6 }}
-        >
-          <Text style={{ color: "#fff", fontWeight: "600" }}>Åbn i Safari</Text>
-        </Pressable>
-      </Centered>
-    );
-  }
+    // YouTube / Vimeo embed
+    return `
+      <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <style>
+            html, body {
+              margin: 0;
+              padding: 0;
+              background: black;
+              height: 100%;
+              width: 100%;
+            }
+            iframe {
+              position: absolute;
+              top: 0;
+              left: 0;
+              width: 100%;
+              height: 100%;
+              border: 0;
+            }
+          </style>
+        </head>
+        <body>
+          <iframe
+            src="${url}"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowfullscreen
+          ></iframe>
+        </body>
+      </html>
+    `;
+  }, [url]);
 
   return (
-    <View style={{ height: 220, backgroundColor: "#000" }}>
+    <View style={styles.container}>
       <WebView
-        source={{ uri: video.embedUrl }}
+        originWhitelist={['*']}
+        source={{ html }}
+        allowsFullscreenVideo
         javaScriptEnabled
         domStorageEnabled
-        allowsInlineMediaPlayback
-        mediaPlaybackRequiresUserAction={false}
-        allowsFullscreenVideo
-        originWhitelist={["*"]}
-        userAgent={
-          Platform.OS === "ios"
-            ? "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile Safari/604.1"
-            : undefined
-        }
-        onError={() => setFailed(true)}
-        onHttpError={(e) => e.nativeEvent.statusCode >= 400 && setFailed(true)}
-        startInLoadingState
-        renderLoading={() => <Centered><ActivityIndicator /></Centered>}
+        scrollEnabled={false}
+        bounces={false}
+        mediaPlaybackRequiresUserAction={Platform.OS === 'ios'}
+        automaticallyAdjustContentInsets={false}
       />
     </View>
   );
-}
+};
 
-function parseVideo(url: string) {
-  if (!url) return null;
+export default VideoPlayer;
 
-  if (url.includes("youtube")) {
-    const id =
-      url.split("v=")[1]?.split("&")[0] ||
-      url.split("youtu.be/")[1]?.split("?")[0];
-    if (!id) return null;
-
-    return {
-      platform: "youtube",
-      embedUrl:
-        `https://www.youtube.com/embed/${id}` +
-        "?playsinline=1&controls=1&rel=0&modestbranding=1&enablejsapi=1&origin=https://www.youtube.com",
-      watchUrl: `https://www.youtube.com/watch?v=${id}`,
-    };
-  }
-
-  if (url.includes("vimeo.com")) {
-    const id = url.split("vimeo.com/")[1]?.split("?")[0];
-    if (!id) return null;
-
-    return {
-      platform: "vimeo",
-      embedUrl: `https://player.vimeo.com/video/${id}`,
-      watchUrl: `https://vimeo.com/${id}`,
-    };
-  }
-
-  return null;
-}
-
-function Centered({ children, text }: any) {
-  return (
-    <View style={{ height: 220, justifyContent: "center", alignItems: "center", padding: 16 }}>
-      {text ? <Text>{text}</Text> : children}
-    </View>
-  );
-}
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: 'black',
+  },
+});
