@@ -14,15 +14,15 @@ import { router } from 'expo-router';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
 import CreateActivityModal from '@/components/CreateActivityModal';
 
-// Date resolver function
-const resolveActivityDate = (activity: any): Date | null => {
+// TRIN 1 – ERSTAT resolveActivityDate HELT
+function resolveActivityDate(activity: any): Date | null {
   // Internal activities (DB)
   if (activity.activity_date) {
-    const time = activity.activity_time ?? '00:00:00';
+    const time = activity.activity_time ?? '00:00';
     return new Date(`${activity.activity_date}T${time}`);
   }
 
-  // External activities (calendar)
+  // External calendar events
   if (activity.start_time) {
     return new Date(activity.start_time);
   }
@@ -31,17 +31,18 @@ const resolveActivityDate = (activity: any): Date | null => {
     return new Date(activity.start_date);
   }
 
-  // Fallbacks
   if (activity.date) {
     return new Date(activity.date);
   }
 
-  if (activity.created_at) {
-    return new Date(activity.created_at);
-  }
+  console.warn('[HomeScreen] Activity dropped – no date:', {
+    id: activity.id,
+    title: activity.title,
+    is_external: activity.is_external,
+  });
 
   return null;
-};
+}
 
 export default function HomeScreen() {
   const theme = useTheme();
@@ -65,46 +66,37 @@ export default function HomeScreen() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // TODAY ACTIVITIES - sorted chronologically
-  const todayActivities = activitiesSafe
-    .filter((activity) => {
-      const date = resolveActivityDate(activity);
-      if (!date) return false;
+  // TRIN 2 – GØR FILTRERINGEN EKSPLICIT (VIGTIGT)
+  const datedActivities = activitiesSafe
+    .map(activity => ({
+      activity,
+      date: resolveActivityDate(activity),
+    }))
+    .filter(item => item.date !== null);
 
-      const d = new Date(date);
-      d.setHours(0, 0, 0, 0);
-
-      return d.getTime() === today.getTime();
-    })
-    .sort((a, b) => {
+  // TODAY ACTIVITIES - filtered and sorted
+  const todayActivities = datedActivities
+    .filter(item => {
+      const date = item.date!;
       return (
-        resolveActivityDate(a)!.getTime() -
-        resolveActivityDate(b)!.getTime()
+        date.getFullYear() === today.getFullYear() &&
+        date.getMonth() === today.getMonth() &&
+        date.getDate() === today.getDate()
       );
-    });
-
-  // UPCOMING ACTIVITIES - sorted chronologically (nearest first)
-  const upcomingActivities = activitiesSafe
-    .filter((activity) => {
-      const date = resolveActivityDate(activity);
-      if (!date) return false;
-
-      const d = new Date(date);
-      d.setHours(0, 0, 0, 0);
-
-      return d.getTime() > today.getTime();
     })
-    .sort((a, b) => {
-      return (
-        resolveActivityDate(a)!.getTime() -
-        resolveActivityDate(b)!.getTime()
-      );
-    });
+    .sort((a, b) => a.date!.getTime() - b.date!.getTime())
+    .map(item => item.activity);
 
-  // VERIFICATION LOG (OBLIGATORISK)
-  console.log('[HomeScreen FINAL]', {
-    today: todayActivities.length,
-    upcoming: upcomingActivities.length,
+  // UPCOMING ACTIVITIES - filtered and sorted
+  const upcomingActivities = datedActivities
+    .filter(item => item.date! > today)
+    .sort((a, b) => a.date!.getTime() - b.date!.getTime())
+    .map(item => item.activity);
+
+  // TRIN 5 – VERIFIKATION LOG (SKAL MED)
+  console.log('[HomeScreen VERIFY]', {
+    today: todayActivities.filter(a => a.is_external).length,
+    upcoming: upcomingActivities.filter(a => a.is_external).length,
   });
 
   // Calculate week progress (placeholder logic)
