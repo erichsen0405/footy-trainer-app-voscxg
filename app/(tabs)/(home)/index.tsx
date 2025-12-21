@@ -18,6 +18,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import CreateActivityModal from '@/components/CreateActivityModal';
 import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { TaskDescriptionRenderer } from '@/components/TaskDescriptionRenderer';
+import { ensureColorArray } from '@/utils/ensureColorArray';
 
 import { useFootball } from '@/contexts/FootballContext';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
@@ -53,10 +54,8 @@ export default function HomeScreen() {
   const themeColors = useMemo(() => {
     const theme = getColors();
 
-    // Sikrer altid array til LinearGradient
-    const background = Array.isArray(theme.background)
-      ? theme.background
-      : [theme.background, theme.background];
+    // ✅ Sikrer altid array til LinearGradient gennem ensureColorArray
+    const background = ensureColorArray(theme.background);
 
     return {
       ...theme,

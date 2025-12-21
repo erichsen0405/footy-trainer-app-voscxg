@@ -19,6 +19,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { ActivityCategory } from '@/types';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import CategoryManagementModal from '@/components/CategoryManagementModal';
+import { ensureColorArray } from '@/utils/ensureColorArray';
 
 interface CreateActivityModalProps {
   visible: boolean;
@@ -77,17 +78,9 @@ export default function CreateActivityModal({
   const [isCreating, setIsCreating] = useState(false);
   const [showCategoryManagement, setShowCategoryManagement] = useState(false);
 
-  // 🔒 DEFENSIV: sikrer altid gyldige farver
+  // ✅ DEFENSIV: sikrer altid gyldige farver gennem ensureColorArray
   const modalColors = useMemo(() => {
-    if (Array.isArray(colors.background)) {
-      return colors.background;
-    }
-
-    if (typeof colors.background === 'string') {
-      return [colors.background, colors.background];
-    }
-
-    return ['#000', '#000'];
+    return ensureColorArray(colors.background);
   }, []);
 
   const bgColor = isDark ? '#1a1a1a' : modalColors[0];
