@@ -1,7 +1,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert } from 'react-native';
-import { supabase } from '@/app/integrations/supabase/client';
+import { fetchActivities, createActivity } from '@/services/activities';
 
 interface Params {
   clubId?: string;
@@ -23,7 +23,7 @@ export function useHomeActivities({
 
   const abortRef = useRef<AbortController | null>(null);
 
-  const fetchActivities = useCallback(
+  const loadActivities = useCallback(
     async (refresh = false) => {
       if (!clubId) {
         setActivities([]);
@@ -38,16 +38,9 @@ export function useHomeActivities({
       try {
         if (refresh) setIsRefreshing(true);
 
-        const { data, error } = await supabase
-          .from('activities')
-          .select('*')
-          .eq('club_id', clubId)
-          .abortSignal(controller.signal)
-          .order('created_at', { ascending: false });
+        const data = await fetchActivities(clubId, controller.signal);
 
-        if (error) throw error;
-
-        setActivities(data ?? []);
+        setActivities(data);
       } catch (err: any) {
         if (err.name !== 'AbortError') {
           Alert.alert('Fejl', 'Kunne ikke hente aktiviteter');
@@ -61,32 +54,30 @@ export function useHomeActivities({
   );
 
   useEffect(() => {
-    fetchActivities();
+    loadActivities();
     return () => abortRef.current?.abort();
-  }, [fetchActivities]);
+  }, [loadActivities]);
 
   const refresh = useCallback(() => {
-    fetchActivities(true);
-  }, [fetchActivities]);
+    loadActivities(true);
+  }, [loadActivities]);
 
-  const createActivity = useCallback(
+  const createNewActivity = useCallback(
     async (payload: any) => {
       try {
-        const { error } = await supabase.from('activities').insert({
+        await createActivity({
           ...payload,
-          club_id: clubId,
+          club_id: clubId!,
           team_id: teamId,
           player_id: playerId,
         });
 
-        if (error) throw error;
-
-        fetchActivities(true);
+        loadActivities(true);
       } catch {
         Alert.alert('Fejl', 'Kunne ikke oprette aktivitet');
       }
     },
-    [clubId, teamId, playerId, fetchActivities]
+    [clubId, teamId, playerId, loadActivities]
   );
 
   const requestContextChange = useCallback(
@@ -99,8 +90,8 @@ export function useHomeActivities({
   const confirmContextChange = useCallback(() => {
     if (!pendingContextChange) return;
     setPendingContextChange(null);
-    fetchActivities(true);
-  }, [pendingContextChange, fetchActivities]);
+    loadActivities(true);
+  }, [pendingContextChange, loadActivities]);
 
   const dismissContextChange = useCallback(() => {
     setPendingContextChange(null);
@@ -111,7 +102,7 @@ export function useHomeActivities({
     isLoading,
     isRefreshing,
     refresh,
-    createActivity,
+    createActivity: createNewActivity,
     pendingContextChange,
     requestContextChange,
     confirmContextChange,
