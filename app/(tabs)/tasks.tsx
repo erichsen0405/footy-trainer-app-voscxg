@@ -350,6 +350,14 @@ export default function TasksScreen() {
     setShowVideoModal(true);
   }, []);
 
+  const closeVideoModal = useCallback(() => {
+    setShowVideoModal(false);
+    // Don't clear selectedVideoUrl immediately to prevent unmounting
+    setTimeout(() => {
+      setSelectedVideoUrl(null);
+    }, 300);
+  }, []);
+
   const handleDeleteVideo = useCallback(() => {
     Alert.alert(
       'Slet video',
@@ -814,43 +822,45 @@ export default function TasksScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {selectedVideoUrl && (
-        <Modal
-          visible={showVideoModal}
-          animationType="slide"
-          presentationStyle="fullScreen"
-          onRequestClose={() => setShowVideoModal(false)}
-        >
-          <View style={{ flex: 1, backgroundColor: '#000' }}>
-            <View style={{ 
-              flexDirection: 'row', 
-              alignItems: 'center', 
-              justifyContent: 'space-between',
-              paddingTop: Platform.OS === 'android' ? 48 : 60,
-              paddingBottom: 16,
-              paddingHorizontal: 20,
-              backgroundColor: 'rgba(0,0,0,0.9)'
-            }}>
-              <TouchableOpacity 
-                onPress={() => setShowVideoModal(false)}
-                style={{ padding: 4 }}
-              >
-                <IconSymbol
-                  ios_icon_name="xmark.circle.fill"
-                  android_material_icon_name="close"
-                  size={32}
-                  color="#fff"
-                />
-              </TouchableOpacity>
-              <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#fff' }}>
-                Opgave video
-              </Text>
-              <View style={{ width: 32 }} />
-            </View>
-            <SmartVideoPlayer url={selectedVideoUrl} />
+      {/* CRITICAL FIX: Video modal is always mounted when visible, SmartVideoPlayer never unmounts during modal lifecycle */}
+      <Modal
+        visible={showVideoModal}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={closeVideoModal}
+      >
+        <View style={{ flex: 1, backgroundColor: '#000' }}>
+          <View style={{ 
+            flexDirection: 'row', 
+            alignItems: 'center', 
+            justifyContent: 'space-between',
+            paddingTop: Platform.OS === 'android' ? 48 : 60,
+            paddingBottom: 16,
+            paddingHorizontal: 20,
+            backgroundColor: 'rgba(0,0,0,0.9)'
+          }}>
+            <TouchableOpacity 
+              onPress={closeVideoModal}
+              style={{ padding: 4 }}
+            >
+              <IconSymbol
+                ios_icon_name="xmark.circle.fill"
+                android_material_icon_name="close"
+                size={32}
+                color="#fff"
+              />
+            </TouchableOpacity>
+            <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#fff' }}>
+              Opgave video
+            </Text>
+            <View style={{ width: 32 }} />
           </View>
-        </Modal>
-      )}
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }}>
+            {/* SmartVideoPlayer is always rendered when modal is visible, preventing mount/unmount cycles */}
+            <SmartVideoPlayer url={selectedVideoUrl || undefined} />
+          </View>
+        </View>
+      </Modal>
 
       <ContextConfirmationDialog
         visible={showConfirmDialog}

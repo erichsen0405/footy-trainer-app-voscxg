@@ -332,8 +332,11 @@ function HomeScreenContent() {
   const handleCloseVideoModal = useCallback(() => {
     console.log('📹 Closing video modal');
     setIsVideoModalOpen(false);
-    setSelectedVideoUrl(null);
-    setSelectedVideoTitle('');
+    // Don't clear selectedVideoUrl immediately to prevent unmounting
+    setTimeout(() => {
+      setSelectedVideoUrl(null);
+      setSelectedVideoTitle('');
+    }, 300);
   }, []);
 
   const getUpcomingActivitiesByWeek = useMemo(() => {
@@ -895,6 +898,7 @@ function HomeScreenContent() {
         </Modal>
       )}
 
+      {/* CRITICAL FIX: Video modal is always mounted, visibility controlled via Modal visible prop and opacity */}
       <Modal
         visible={isVideoModalOpen}
         animationType="slide"
@@ -928,11 +932,8 @@ function HomeScreenContent() {
             <View style={{ width: 32 }} />
           </View>
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }}>
-            {selectedVideoUrl ? (
-              <SmartVideoPlayer url={selectedVideoUrl} />
-            ) : (
-              <Text style={{ color: '#fff', fontSize: 16 }}>Ingen video tilgængelig</Text>
-            )}
+            {/* SmartVideoPlayer is always rendered when modal is visible, preventing mount/unmount cycles */}
+            <SmartVideoPlayer url={selectedVideoUrl || undefined} />
           </View>
         </View>
       </Modal>
