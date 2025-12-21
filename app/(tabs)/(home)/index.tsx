@@ -139,6 +139,19 @@ export default function HomeScreen() {
         style={{ backgroundColor: theme.colors.background }}
         contentContainerStyle={styles.container}
       >
+        {/* ===== UI MARKER - FILE VERIFICATION ===== */}
+        <View
+          style={{
+            backgroundColor: 'red',
+            padding: 20,
+            marginBottom: 20,
+          }}
+        >
+          <Text style={{ color: 'white', fontSize: 18, fontWeight: 'bold' }}>
+            🚨 HOME SCREEN SOURCE: app/(tabs)/(home)/index.tsx
+          </Text>
+        </View>
+
         {/* ===== HEADER ===== */}
         <View style={[styles.headerCard, { backgroundColor: theme.colors.card }]}>
           <View style={styles.headerRow}>
