@@ -22,7 +22,7 @@ export interface UpdateTaskData {
 }
 
 export const taskService = {
-  async createTask(data: CreateTaskData): Promise<void> {
+  async createTask(data: CreateTaskData, signal?: AbortSignal): Promise<void> {
     const { data: templateData, error: templateError } = await supabase
       .from('task_templates')
       .insert({
@@ -35,6 +35,7 @@ export const taskService = {
         team_id: data.teamId,
       })
       .select()
+      .abortSignal(signal)
       .single();
 
     if (templateError) throw templateError;
@@ -47,13 +48,14 @@ export const taskService = {
 
       const { error: categoryError } = await supabase
         .from('task_template_categories')
-        .insert(categoryInserts);
+        .insert(categoryInserts)
+        .abortSignal(signal);
 
       if (categoryError) throw categoryError;
     }
   },
 
-  async updateTask(taskId: string, userId: string, updates: UpdateTaskData): Promise<void> {
+  async updateTask(taskId: string, userId: string, updates: UpdateTaskData, signal?: AbortSignal): Promise<void> {
     const updateData: any = {};
     
     if (updates.title !== undefined) updateData.title = updates.title;
@@ -70,7 +72,8 @@ export const taskService = {
       .from('task_templates')
       .update(updateData)
       .eq('id', taskId)
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .abortSignal(signal);
 
     if (templateError) throw templateError;
 
@@ -78,7 +81,8 @@ export const taskService = {
       const { error: deleteError } = await supabase
         .from('task_template_categories')
         .delete()
-        .eq('task_template_id', taskId);
+        .eq('task_template_id', taskId)
+        .abortSignal(signal);
 
       if (deleteError) throw deleteError;
 
@@ -90,7 +94,8 @@ export const taskService = {
 
         const { error: categoryError } = await supabase
           .from('task_template_categories')
-          .insert(categoryInserts);
+          .insert(categoryInserts)
+          .abortSignal(signal);
 
         if (categoryError) throw categoryError;
       }
@@ -106,41 +111,45 @@ export const taskService = {
         const { error: activityTaskError } = await supabase
           .from('activity_tasks')
           .update(activityUpdateData)
-          .eq('task_template_id', taskId);
+          .eq('task_template_id', taskId)
+          .abortSignal(signal);
 
         if (activityTaskError) console.error('Error updating activity tasks:', activityTaskError);
       }
     }
   },
 
-  async deleteTask(taskId: string, userId: string): Promise<void> {
+  async deleteTask(taskId: string, userId: string, signal?: AbortSignal): Promise<void> {
     const { error } = await supabase
       .from('task_templates')
       .delete()
       .eq('id', taskId)
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .abortSignal(signal);
 
     if (error) throw error;
   },
 
-  async toggleTaskCompletion(taskId: string, isExternal: boolean, newCompleted: boolean): Promise<void> {
+  async toggleTaskCompletion(taskId: string, isExternal: boolean, newCompleted: boolean, signal?: AbortSignal): Promise<void> {
     const tableName = isExternal ? 'external_event_tasks' : 'activity_tasks';
     
     const { error } = await supabase
       .from(tableName)
       .update({ completed: newCompleted })
-      .eq('id', taskId);
+      .eq('id', taskId)
+      .abortSignal(signal);
 
     if (error) throw error;
   },
 
-  async deleteActivityTask(activityId: string, taskId: string, userId: string, isExternal: boolean): Promise<void> {
+  async deleteActivityTask(activityId: string, taskId: string, userId: string, isExternal: boolean, signal?: AbortSignal): Promise<void> {
     if (!isExternal) {
       const { data: activityData, error: activityError } = await supabase
         .from('activities')
         .select('id, user_id')
         .eq('id', activityId)
         .eq('user_id', userId)
+        .abortSignal(signal)
         .single();
 
       if (activityError || !activityData) {
@@ -151,14 +160,16 @@ export const taskService = {
         .from('activity_tasks')
         .delete()
         .eq('id', taskId)
-        .eq('activity_id', activityId);
+        .eq('activity_id', activityId)
+        .abortSignal(signal);
 
       if (deleteError) throw deleteError;
     } else {
       const { error: deleteError } = await supabase
         .from('external_event_tasks')
         .delete()
-        .eq('id', taskId);
+        .eq('id', taskId)
+        .abortSignal(signal);
 
       if (deleteError) throw deleteError;
     }

@@ -77,7 +77,7 @@ function generateRecurringDates(
 }
 
 export const activityService = {
-  async createActivity(data: CreateActivityData): Promise<void> {
+  async createActivity(data: CreateActivityData, signal?: AbortSignal): Promise<void> {
     console.log('Creating activity:', data);
 
     if (data.isRecurring) {
@@ -97,6 +97,7 @@ export const activityService = {
           team_id: data.teamId,
         })
         .select()
+        .abortSignal(signal)
         .single();
 
       if (seriesError) throw seriesError;
@@ -124,7 +125,8 @@ export const activityService = {
 
       const { error: activitiesError } = await supabase
         .from('activities')
-        .insert(activitiesToInsert);
+        .insert(activitiesToInsert)
+        .abortSignal(signal);
 
       if (activitiesError) throw activitiesError;
     } else {
@@ -140,13 +142,14 @@ export const activityService = {
           is_external: false,
           player_id: data.playerId,
           team_id: data.teamId,
-        });
+        })
+        .abortSignal(signal);
 
       if (error) throw error;
     }
   },
 
-  async updateActivitySingle(activityId: string, updates: UpdateActivityData, isExternal: boolean): Promise<void> {
+  async updateActivitySingle(activityId: string, updates: UpdateActivityData, isExternal: boolean, signal?: AbortSignal): Promise<void> {
     if (isExternal) {
       const updateData: any = {};
       
@@ -166,7 +169,8 @@ export const activityService = {
       const { error } = await supabase
         .from('events_local_meta')
         .update(updateData)
-        .eq('id', activityId);
+        .eq('id', activityId)
+        .abortSignal(signal);
 
       if (error) throw error;
     } else {
@@ -193,13 +197,14 @@ export const activityService = {
       const { error } = await supabase
         .from('activities')
         .update(updateData)
-        .eq('id', activityId);
+        .eq('id', activityId)
+        .abortSignal(signal);
 
       if (error) throw error;
     }
   },
 
-  async updateActivitySeries(seriesId: string, userId: string, updates: UpdateActivityData): Promise<void> {
+  async updateActivitySeries(seriesId: string, userId: string, updates: UpdateActivityData, signal?: AbortSignal): Promise<void> {
     const updateData: any = {};
     
     if (updates.title) updateData.title = updates.title;
@@ -212,27 +217,30 @@ export const activityService = {
       .from('activity_series')
       .update(updateData)
       .eq('id', seriesId)
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .abortSignal(signal);
 
     if (error) throw error;
   },
 
-  async deleteActivitySingle(activityId: string, userId: string): Promise<void> {
+  async deleteActivitySingle(activityId: string, userId: string, signal?: AbortSignal): Promise<void> {
     const { error } = await supabase
       .from('activities')
       .delete()
       .eq('id', activityId)
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .abortSignal(signal);
 
     if (error) throw error;
   },
 
-  async deleteActivitySeries(seriesId: string, userId: string): Promise<void> {
+  async deleteActivitySeries(seriesId: string, userId: string, signal?: AbortSignal): Promise<void> {
     const { error: activitiesError } = await supabase
       .from('activities')
       .delete()
       .eq('series_id', seriesId)
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .abortSignal(signal);
 
     if (activitiesError) throw activitiesError;
 
@@ -240,12 +248,13 @@ export const activityService = {
       .from('activity_series')
       .delete()
       .eq('id', seriesId)
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .abortSignal(signal);
 
     if (seriesError) throw seriesError;
   },
 
-  async duplicateActivity(activityId: string, userId: string, playerId?: string | null, teamId?: string | null): Promise<void> {
+  async duplicateActivity(activityId: string, userId: string, playerId?: string | null, teamId?: string | null, signal?: AbortSignal): Promise<void> {
     const { data: activity, error: fetchError } = await supabase
       .from('activities')
       .select(`
@@ -259,6 +268,7 @@ export const activityService = {
         )
       `)
       .eq('id', activityId)
+      .abortSignal(signal)
       .single();
 
     if (fetchError || !activity) throw new Error('Activity not found');
@@ -279,6 +289,7 @@ export const activityService = {
         team_id: teamId,
       })
       .select()
+      .abortSignal(signal)
       .single();
 
     if (activityError) throw activityError;
@@ -295,7 +306,8 @@ export const activityService = {
 
       const { error: tasksError } = await supabase
         .from('activity_tasks')
-        .insert(tasksToInsert);
+        .insert(tasksToInsert)
+        .abortSignal(signal);
 
       if (tasksError) console.error('Error duplicating tasks:', tasksError);
     }

@@ -1,5 +1,5 @@
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { taskService, CreateTaskData, UpdateTaskData } from '@/services/taskService';
 import { refreshNotificationQueue, forceRefreshNotificationQueue } from '@/utils/notificationScheduler';
 
@@ -13,12 +13,26 @@ export function useTasks(
   const [isDeleting, setIsDeleting] = useState(false);
   const [isTogglingCompletion, setIsTogglingCompletion] = useState(false);
 
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+    };
+  }, []);
+
   const createTask = useCallback(async (data: Omit<CreateTaskData, 'userId'>) => {
     if (!userId) throw new Error('User not authenticated');
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setIsCreating(true);
     try {
-      await taskService.createTask({ ...data, userId });
+      await taskService.createTask({ ...data, userId }, controller.signal);
       onRefresh();
       
       if (notificationsEnabled) {
@@ -26,15 +40,21 @@ export function useTasks(
       }
     } finally {
       setIsCreating(false);
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
     }
   }, [userId, notificationsEnabled, onRefresh]);
 
   const updateTask = useCallback(async (taskId: string, updates: UpdateTaskData) => {
     if (!userId) throw new Error('User not authenticated');
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setIsUpdating(true);
     try {
-      await taskService.updateTask(taskId, userId, updates);
+      await taskService.updateTask(taskId, userId, updates, controller.signal);
       onRefresh();
       
       if (updates.reminder !== undefined && notificationsEnabled) {
@@ -42,15 +62,21 @@ export function useTasks(
       }
     } finally {
       setIsUpdating(false);
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
     }
   }, [userId, notificationsEnabled, onRefresh]);
 
   const deleteTask = useCallback(async (taskId: string) => {
     if (!userId) throw new Error('User not authenticated');
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setIsDeleting(true);
     try {
-      await taskService.deleteTask(taskId, userId);
+      await taskService.deleteTask(taskId, userId, controller.signal);
       onRefresh();
       
       if (notificationsEnabled) {
@@ -58,6 +84,9 @@ export function useTasks(
       }
     } finally {
       setIsDeleting(false);
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
     }
   }, [userId, notificationsEnabled, onRefresh]);
 
@@ -66,10 +95,13 @@ export function useTasks(
     isExternal: boolean,
     currentCompleted: boolean
   ) => {
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setIsTogglingCompletion(true);
     try {
       const newCompleted = !currentCompleted;
-      await taskService.toggleTaskCompletion(taskId, isExternal, newCompleted);
+      await taskService.toggleTaskCompletion(taskId, isExternal, newCompleted, controller.signal);
       
       if (notificationsEnabled) {
         refreshNotificationQueue(true).catch(err => {
@@ -78,6 +110,9 @@ export function useTasks(
       }
     } finally {
       setIsTogglingCompletion(false);
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
     }
   }, [notificationsEnabled]);
 
@@ -88,9 +123,12 @@ export function useTasks(
   ) => {
     if (!userId) throw new Error('User not authenticated');
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setIsDeleting(true);
     try {
-      await taskService.deleteActivityTask(activityId, taskId, userId, isExternal);
+      await taskService.deleteActivityTask(activityId, taskId, userId, isExternal, controller.signal);
       onRefresh();
       
       if (notificationsEnabled) {
@@ -98,6 +136,9 @@ export function useTasks(
       }
     } finally {
       setIsDeleting(false);
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
     }
   }, [userId, notificationsEnabled, onRefresh]);
 

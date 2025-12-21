@@ -3,7 +3,7 @@ import { supabase } from '@/app/integrations/supabase/client';
 import { ExternalCalendar } from '@/types';
 
 export const calendarService = {
-  async addExternalCalendar(userId: string, name: string, icsUrl: string, enabled: boolean = true): Promise<ExternalCalendar> {
+  async addExternalCalendar(userId: string, name: string, icsUrl: string, enabled: boolean = true, signal?: AbortSignal): Promise<ExternalCalendar> {
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !session) {
       throw new Error('No active session. Please log in again.');
@@ -18,6 +18,7 @@ export const calendarService = {
         enabled,
       })
       .select()
+      .abortSignal(signal)
       .single();
 
     if (error) throw error;
@@ -32,21 +33,23 @@ export const calendarService = {
     };
   },
 
-  async toggleCalendar(calendarId: string, userId: string, newEnabled: boolean): Promise<void> {
+  async toggleCalendar(calendarId: string, userId: string, newEnabled: boolean, signal?: AbortSignal): Promise<void> {
     const { error } = await supabase
       .from('external_calendars')
       .update({ enabled: newEnabled })
       .eq('id', calendarId)
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .abortSignal(signal);
 
     if (error) throw error;
   },
 
-  async deleteExternalCalendar(calendarId: string, userId: string): Promise<void> {
+  async deleteExternalCalendar(calendarId: string, userId: string, signal?: AbortSignal): Promise<void> {
     const { error: eventsError } = await supabase
       .from('events_external')
       .delete()
-      .eq('provider_calendar_id', calendarId);
+      .eq('provider_calendar_id', calendarId)
+      .abortSignal(signal);
 
     if (eventsError) throw eventsError;
 
@@ -54,12 +57,13 @@ export const calendarService = {
       .from('external_calendars')
       .delete()
       .eq('id', calendarId)
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .abortSignal(signal);
 
     if (error) throw error;
   },
 
-  async syncCalendar(calendarId: string): Promise<{ eventCount: number }> {
+  async syncCalendar(calendarId: string, signal?: AbortSignal): Promise<{ eventCount: number }> {
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !session) {
       throw new Error('No active session');
@@ -77,7 +81,8 @@ export const calendarService = {
         last_fetched: new Date().toISOString(),
         event_count: data?.eventCount || 0
       })
-      .eq('id', calendarId);
+      .eq('id', calendarId)
+      .abortSignal(signal);
 
     if (updateError) console.error('Error updating calendar:', updateError);
 

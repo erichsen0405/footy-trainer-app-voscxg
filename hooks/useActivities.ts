@@ -1,5 +1,5 @@
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Activity } from '@/types';
 import { activityService, CreateActivityData, UpdateActivityData } from '@/services/activityService';
 import { refreshNotificationQueue, forceRefreshNotificationQueue } from '@/utils/notificationScheduler';
@@ -14,12 +14,26 @@ export function useActivities(
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
 
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+    };
+  }, []);
+
   const createActivity = useCallback(async (data: Omit<CreateActivityData, 'userId'>) => {
     if (!userId) throw new Error('User not authenticated');
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setIsCreating(true);
     try {
-      await activityService.createActivity({ ...data, userId });
+      await activityService.createActivity({ ...data, userId }, controller.signal);
       onRefresh();
       
       if (notificationsEnabled) {
@@ -27,6 +41,9 @@ export function useActivities(
       }
     } finally {
       setIsCreating(false);
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
     }
   }, [userId, notificationsEnabled, onRefresh]);
 
@@ -37,9 +54,12 @@ export function useActivities(
   ) => {
     if (!userId) throw new Error('User not authenticated');
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setIsUpdating(true);
     try {
-      await activityService.updateActivitySingle(activityId, updates, isExternal);
+      await activityService.updateActivitySingle(activityId, updates, isExternal, controller.signal);
       
       await new Promise(resolve => setTimeout(resolve, 500));
       onRefresh();
@@ -49,6 +69,9 @@ export function useActivities(
       }
     } finally {
       setIsUpdating(false);
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
     }
   }, [userId, notificationsEnabled, onRefresh]);
 
@@ -58,9 +81,12 @@ export function useActivities(
   ) => {
     if (!userId) throw new Error('User not authenticated');
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setIsUpdating(true);
     try {
-      await activityService.updateActivitySeries(seriesId, userId, updates);
+      await activityService.updateActivitySeries(seriesId, userId, updates, controller.signal);
       onRefresh();
       
       if (updates.time && notificationsEnabled) {
@@ -68,15 +94,21 @@ export function useActivities(
       }
     } finally {
       setIsUpdating(false);
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
     }
   }, [userId, notificationsEnabled, onRefresh]);
 
   const deleteActivitySingle = useCallback(async (activityId: string) => {
     if (!userId) throw new Error('User not authenticated');
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setIsDeleting(true);
     try {
-      await activityService.deleteActivitySingle(activityId, userId);
+      await activityService.deleteActivitySingle(activityId, userId, controller.signal);
       onRefresh();
       
       if (notificationsEnabled) {
@@ -84,15 +116,21 @@ export function useActivities(
       }
     } finally {
       setIsDeleting(false);
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
     }
   }, [userId, notificationsEnabled, onRefresh]);
 
   const deleteActivitySeries = useCallback(async (seriesId: string) => {
     if (!userId) throw new Error('User not authenticated');
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setIsDeleting(true);
     try {
-      await activityService.deleteActivitySeries(seriesId, userId);
+      await activityService.deleteActivitySeries(seriesId, userId, controller.signal);
       onRefresh();
       
       if (notificationsEnabled) {
@@ -100,6 +138,9 @@ export function useActivities(
       }
     } finally {
       setIsDeleting(false);
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
     }
   }, [userId, notificationsEnabled, onRefresh]);
 
@@ -110,9 +151,12 @@ export function useActivities(
   ) => {
     if (!userId) throw new Error('User not authenticated');
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setIsDuplicating(true);
     try {
-      await activityService.duplicateActivity(activityId, userId, playerId, teamId);
+      await activityService.duplicateActivity(activityId, userId, playerId, teamId, controller.signal);
       onRefresh();
       
       if (notificationsEnabled) {
@@ -120,6 +164,9 @@ export function useActivities(
       }
     } finally {
       setIsDuplicating(false);
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
     }
   }, [userId, notificationsEnabled, onRefresh]);
 
