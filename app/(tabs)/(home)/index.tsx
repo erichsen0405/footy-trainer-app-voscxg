@@ -1,446 +1,317 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  useColorScheme,
   Pressable,
+  ScrollView,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { format, startOfWeek, endOfWeek, isSameWeek, isToday, parseISO, isBefore, startOfDay } from 'date-fns';
-import { da } from 'date-fns/locale';
+import { useTheme } from '@react-navigation/native';
+import { router } from 'expo-router';
 
-import { BodyScrollView } from '@/components/BodyScrollView';
-import CreateActivityModal from '@/components/CreateActivityModal';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
-import { colors, getColors } from '@/styles/commonStyles';
-import { IconSymbol } from '@/components/IconSymbol';
+import CreateActivityModal from '@/components/CreateActivityModal';
+import { Activity } from '@/types';
 
 export default function HomeScreen() {
-  const colorScheme = useColorScheme();
-  const themeColors = getColors(colorScheme);
-  const router = useRouter();
-  
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const theme = useTheme();
 
   const {
-    activities,
-    categories,
-    loading,
-    refetchActivities,
-    refetchCategories,
+    todayActivities,
+    upcomingActivitiesByWeek,
+    weekProgress,
+    isCreateModalOpen,
+    openCreateModal,
+    closeCreateModal,
+    handleCreateActivity,
   } = useHomeActivities();
 
-  const weekStats = useMemo(() => {
-    const now = new Date();
-    const weekStart = startOfWeek(now, { weekStartsOn: 1 });
-    const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
+  // ✅ SAFETY NORMALIZATION (web + first render)
+  const safeTodayActivities = todayActivities ?? [];
+  const safeUpcomingActivitiesByWeek = upcomingActivitiesByWeek ?? [];
+  const safeWeekProgress = weekProgress ?? { current: 0, goal: 0 };
 
-    const weekActivities = activities.filter(activity => {
-      const activityDate = parseISO(activity.activity_date);
-      return isSameWeek(activityDate, now, { weekStartsOn: 1 });
-    });
-
-    const totalActivities = weekActivities.length;
-    const completedActivities = 0;
-    const percentage = totalActivities > 0 ? (completedActivities / totalActivities) * 100 : 0;
-
-    return {
-      percentage,
-      completed: completedActivities,
-      total: totalActivities,
-    };
-  }, [activities]);
-
-  const todayActivities = useMemo(() => {
-    return activities.filter(activity => {
-      const activityDate = parseISO(activity.activity_date);
-      return isToday(activityDate);
-    });
-  }, [activities]);
-
-  const upcomingActivitiesByWeek = useMemo(() => {
-    const now = new Date();
-    const today = startOfDay(now);
-    
-    const upcoming = activities.filter(activity => {
-      const activityDate = parseISO(activity.activity_date);
-      return !isBefore(activityDate, today);
-    });
-
-    const grouped: { [key: string]: typeof activities } = {};
-    
-    upcoming.forEach(activity => {
-      const activityDate = parseISO(activity.activity_date);
-      const weekStart = startOfWeek(activityDate, { weekStartsOn: 1 });
-      const weekKey = format(weekStart, 'yyyy-MM-dd');
-      
-      if (!grouped[weekKey]) {
-        grouped[weekKey] = [];
-      }
-      grouped[weekKey].push(activity);
-    });
-
-    return Object.entries(grouped).map(([weekKey, weekActivities]) => ({
-      weekStart: parseISO(weekKey),
-      activities: weekActivities,
-    }));
-  }, [activities]);
-
-  const getCategoryForActivity = (categoryId?: string) => {
-    return categories.find(cat => cat.id === categoryId);
-  };
-
-  const handleActivityPress = (activityId: string) => {
-    router.push({
-      pathname: '/activity-details',
-      params: { id: activityId },
-    });
-  };
+  const progressPercent = useMemo(() => {
+    if (!safeWeekProgress.goal) return 0;
+    return Math.min(
+      100,
+      Math.round(
+        (safeWeekProgress.current / safeWeekProgress.goal) * 100
+      )
+    );
+  }, [safeWeekProgress]);
 
   return (
-    <View style={[styles.container, { backgroundColor: themeColors.background }]}>
-      <BodyScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={[styles.weekProgressCard, { backgroundColor: themeColors.card }]}>
-          <View style={styles.cardHeader}>
-            <Text style={[styles.progressTitle, { color: themeColors.text }]}>
+    <>
+      <ScrollView
+        style={{ backgroundColor: theme.colors.background }}
+        contentContainerStyle={styles.container}
+      >
+        {/* ===== HEADER ===== */}
+        <View style={[styles.headerCard, { backgroundColor: theme.colors.card }]}>
+          <View style={styles.headerRow}>
+            <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
               Ugens fremskridt
             </Text>
-            <View style={[styles.pointsBadge, { backgroundColor: colors.primary }]}>
-              <Text style={styles.pointsText}>
-                {weekStats.completed}/{weekStats.total}
+
+            <View
+              style={[
+                styles.badge,
+                { backgroundColor: theme.colors.primary },
+              ]}
+            >
+              <Text style={styles.badgeText}>
+                {safeWeekProgress.current}/{safeWeekProgress.goal}
               </Text>
             </View>
           </View>
-          
-          <View style={styles.progressBarContainer}>
-            <View style={[styles.progressBar, { backgroundColor: themeColors.highlight }]}>
-              <View
-                style={[
-                  styles.progressBarFill,
-                  {
-                    backgroundColor: colors.primary,
-                    width: `${weekStats.percentage}%`,
-                  },
-                ]}
-              />
-            </View>
+
+          <View style={styles.progressBarTrack}>
+            <View
+              style={[
+                styles.progressBarFill,
+                {
+                  width: `${progressPercent}%`,
+                  backgroundColor: theme.colors.primary,
+                },
+              ]}
+            />
           </View>
 
-          <Text style={[styles.helperText, { color: themeColors.textSecondary }]}>
+          <Text style={[styles.helperText, { color: theme.colors.text }]}>
             Lad os komme i gang! 💪 En ny uge er en ny mulighed for at nå dine mål
           </Text>
         </View>
 
+        {/* ===== CTA ===== */}
         <Pressable
-          style={[styles.createActivityButton, { backgroundColor: colors.primary }]}
-          onPress={() => setShowCreateModal(true)}
+          onPress={openCreateModal}
+          style={[
+            styles.primaryCTA,
+            { backgroundColor: theme.colors.primary },
+          ]}
         >
-          <Text style={styles.createButtonText}>Opret aktivitet</Text>
+          <Text style={styles.primaryCTAText}>Opret aktivitet</Text>
         </Pressable>
 
-        {todayActivities.length > 0 && (
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: themeColors.text }]}>
-              I dag
-            </Text>
-            {todayActivities.map((activity, index) => {
-              const category = getCategoryForActivity(activity.category_id);
-              return (
-                <TouchableOpacity
-                  key={activity.id}
-                  style={[styles.activityCard, { backgroundColor: themeColors.card }]}
-                  onPress={() => handleActivityPress(activity.id)}
-                >
-                  <View style={styles.activityHeader}>
-                    <View style={styles.activityTitleRow}>
-                      {category && (
-                        <View
-                          style={[
-                            styles.categoryDot,
-                            { backgroundColor: category.color },
-                          ]}
-                        />
-                      )}
-                      <Text style={[styles.activityTitle, { color: themeColors.text }]}>
-                        {activity.title}
+        {/* ===== TODAY ===== */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+            I dag
+          </Text>
+
+          {safeTodayActivities.length === 0 ? (
+            <Text style={styles.emptyText}>Ingen aktiviteter i dag</Text>
+          ) : (
+            safeTodayActivities.map((activity: Activity) => (
+              <Pressable
+                key={activity.id}
+                onPress={() =>
+                  router.push(`/activity-details?id=${activity.id}`)
+                }
+              >
+                <View style={styles.activityCard}>
+                  <View style={styles.activityLeft}>
+                    <Text style={styles.activityTitle}>{activity.title}</Text>
+
+                    {activity.category?.name ? (
+                      <Text style={styles.activitySubtitle}>
+                        {activity.category.name}
                       </Text>
-                    </View>
-                    <Text style={[styles.activityTime, { color: themeColors.textSecondary }]}>
-                      {activity.activity_time}
-                    </Text>
+                    ) : null}
                   </View>
-                  {activity.location && (
-                    <Text style={[styles.activityLocation, { color: themeColors.textSecondary }]}>
-                      📍 {activity.location}
+
+                  {activity.start_time ? (
+                    <Text style={styles.activityTime}>
+                      {activity.start_time}
                     </Text>
-                  )}
-                  {category && (
-                    <View style={styles.categoryBadge}>
-                      <Text style={styles.categoryEmoji}>{category.emoji}</Text>
-                      <Text style={[styles.categoryName, { color: themeColors.textSecondary }]}>
-                        {category.name}
-                      </Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        )}
-
-        {upcomingActivitiesByWeek.length > 0 && (
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: themeColors.text }]}>
-              Kommende aktiviteter
-            </Text>
-            {upcomingActivitiesByWeek.map((week, weekIndex) => {
-              const weekStart = week.weekStart;
-              const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
-              const weekLabel = `Uge ${format(weekStart, 'w', { locale: da })} • ${format(weekStart, 'd. MMM', { locale: da })} - ${format(weekEnd, 'd. MMM', { locale: da })}`;
-
-              return (
-                <View key={weekIndex} style={styles.weekGroup}>
-                  <Text style={[styles.weekLabel, { color: themeColors.textSecondary }]}>
-                    {weekLabel}
-                  </Text>
-                  {week.activities.map((activity, activityIndex) => {
-                    const category = getCategoryForActivity(activity.category_id);
-                    const activityDate = parseISO(activity.activity_date);
-                    const dayLabel = format(activityDate, 'EEEE d. MMM', { locale: da });
-
-                    return (
-                      <TouchableOpacity
-                        key={activity.id}
-                        style={[styles.activityCard, { backgroundColor: themeColors.card }]}
-                        onPress={() => handleActivityPress(activity.id)}
-                      >
-                        <View style={styles.activityHeader}>
-                          <View style={styles.activityTitleRow}>
-                            {category && (
-                              <View
-                                style={[
-                                  styles.categoryDot,
-                                  { backgroundColor: category.color },
-                                ]}
-                              />
-                            )}
-                            <Text style={[styles.activityTitle, { color: themeColors.text }]}>
-                              {activity.title}
-                            </Text>
-                          </View>
-                          <Text style={[styles.activityTime, { color: themeColors.textSecondary }]}>
-                            {activity.activity_time}
-                          </Text>
-                        </View>
-                        <Text style={[styles.activityDate, { color: themeColors.textSecondary }]}>
-                          {dayLabel}
-                        </Text>
-                        {activity.location && (
-                          <Text style={[styles.activityLocation, { color: themeColors.textSecondary }]}>
-                            📍 {activity.location}
-                          </Text>
-                        )}
-                        {category && (
-                          <View style={styles.categoryBadge}>
-                            <Text style={styles.categoryEmoji}>{category.emoji}</Text>
-                            <Text style={[styles.categoryName, { color: themeColors.textSecondary }]}>
-                              {category.name}
-                            </Text>
-                          </View>
-                        )}
-                      </TouchableOpacity>
-                    );
-                  })}
+                  ) : null}
                 </View>
-              );
-            })}
-          </View>
-        )}
+              </Pressable>
+            ))
+          )}
+        </View>
 
-        {!loading && activities.length === 0 && (
-          <View style={styles.emptyState}>
-            <IconSymbol
-              ios_icon_name="calendar.badge.plus"
-              android_material_icon_name="event_available"
-              size={64}
-              color={themeColors.textSecondary}
-            />
-            <Text style={[styles.emptyTitle, { color: themeColors.text }]}>
-              Ingen aktiviteter endnu
-            </Text>
-            <Text style={[styles.emptyMessage, { color: themeColors.textSecondary }]}>
-              Opret din første aktivitet for at komme i gang
-            </Text>
-          </View>
-        )}
-      </BodyScrollView>
+        {/* ===== UPCOMING ===== */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+            Kommende aktiviteter
+          </Text>
 
-      {showCreateModal && (
-        <CreateActivityModal
-          visible={showCreateModal}
-          onClose={() => setShowCreateModal(false)}
-          onCreateActivity={async (activityData) => {
-            await refetchActivities();
-            setShowCreateModal(false);
-          }}
-          categories={categories}
-          onRefreshCategories={refetchCategories}
-        />
-      )}
-    </View>
+          {safeUpcomingActivitiesByWeek.map((week) => (
+            <View key={week.label} style={styles.weekGroup}>
+              <Text style={styles.weekLabel}>{week.label}</Text>
+
+              {week.activities.map((activity: Activity) => (
+                <Pressable
+                  key={activity.id}
+                  onPress={() =>
+                    router.push(`/activity-details?id=${activity.id}`)
+                  }
+                >
+                  <View style={styles.activityCard}>
+                    <View style={styles.activityLeft}>
+                      <Text style={styles.activityTitle}>{activity.title}</Text>
+
+                      {activity.category?.name ? (
+                        <Text style={styles.activitySubtitle}>
+                          {activity.category.name}
+                        </Text>
+                      ) : null}
+                    </View>
+
+                    {activity.start_time ? (
+                      <Text style={styles.activityTime}>
+                        {activity.start_time}
+                      </Text>
+                    ) : null}
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+
+      {/* ===== MODAL ===== */}
+      <CreateActivityModal
+        visible={isCreateModalOpen}
+        onClose={closeCreateModal}
+        onCreate={handleCreateActivity}
+      />
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-  },
-  scrollContent: {
     padding: 16,
-    paddingBottom: 100,
+    paddingBottom: 32,
   },
-  weekProgressCard: {
+
+  headerCard: {
     borderRadius: 16,
-    padding: 20,
+    padding: 16,
     marginBottom: 16,
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)',
-    elevation: 3,
   },
-  cardHeader: {
+
+  headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
-  progressTitle: {
-    fontSize: 20,
-    fontWeight: '700',
+
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
   },
-  pointsBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
+
+  badge: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
-  pointsText: {
+
+  badgeText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '600',
+    fontSize: 12,
   },
-  progressBarContainer: {
-    marginBottom: 16,
-  },
-  progressBar: {
-    height: 12,
-    borderRadius: 6,
+
+  progressBarTrack: {
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: '#e5e5e5',
     overflow: 'hidden',
+    marginBottom: 12,
   },
+
   progressBarFill: {
     height: '100%',
-    borderRadius: 6,
+    borderRadius: 999,
   },
+
   helperText: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 13,
+    opacity: 0.8,
   },
-  createActivityButton: {
-    padding: 16,
-    borderRadius: 12,
+
+  primaryCTA: {
+    borderRadius: 14,
+    paddingVertical: 14,
     alignItems: 'center',
-    justifyContent: 'center',
     marginBottom: 24,
   },
-  createButtonText: {
+
+  primaryCTAText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
   },
+
   section: {
     marginBottom: 24,
   },
+
   sectionTitle: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '600',
     marginBottom: 12,
   },
+
+  emptyText: {
+    fontSize: 14,
+    opacity: 0.6,
+  },
+
   weekGroup: {
     marginBottom: 16,
   },
+
   weekLabel: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 12,
+    opacity: 0.6,
     marginBottom: 8,
     textTransform: 'uppercase',
   },
+
   activityCard: {
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    padding: 16,
+    padding: 14,
     marginBottom: 12,
-    boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.08)',
-    elevation: 2,
-  },
-  activityHeader: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
+
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  activityTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+
+  activityLeft: {
     flex: 1,
-    gap: 8,
   },
-  categoryDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
+
   activityTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    flex: 1,
+    color: '#111',
   },
-  activityTime: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  activityDate: {
-    fontSize: 14,
-    marginBottom: 4,
-  },
-  activityLocation: {
-    fontSize: 14,
-    marginBottom: 8,
-  },
-  categoryBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+
+  activitySubtitle: {
+    fontSize: 12,
+    color: '#777',
     marginTop: 4,
   },
-  categoryEmoji: {
-    fontSize: 14,
-  },
-  categoryName: {
-    fontSize: 13,
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptyMessage: {
-    fontSize: 14,
-    textAlign: 'center',
+
+  activityTime: {
+    fontSize: 12,
+    color: '#999',
+    marginLeft: 12,
   },
 });
