@@ -64,7 +64,7 @@ const DEFAULT_CATEGORY_KEYWORDS: CategoryKeywords[] = [
  */
 export function parseActivityNameForCategory(
   activityName: string,
-  userCategories: Array<{ id: string; name: string; color: string; emoji: string }>,
+  userCategories: { id: string; name: string; color: string; emoji: string }[],
   customKeywords?: CategoryKeywords[]
 ): { categoryId: string; categoryName: string; confidence: number } | null {
   if (!activityName || !userCategories || userCategories.length === 0) {
@@ -78,11 +78,11 @@ export function parseActivityNameForCategory(
   const sortedKeywords = [...keywords].sort((a, b) => b.priority - a.priority);
 
   // Track all matches with their scores
-  const matches: Array<{
+  const matches: {
     category: { id: string; name: string; color: string; emoji: string };
     score: number;
     matchedKeyword: string;
-  }> = [];
+  }[] = [];
 
   // Check each keyword set
   for (const keywordSet of sortedKeywords) {

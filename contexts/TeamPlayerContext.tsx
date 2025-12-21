@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { supabase } from '@/app/integrations/supabase/client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -86,7 +86,7 @@ export function TeamPlayerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Refresh teams
-  const refreshTeams = async () => {
+  const refreshTeams = useCallback(async () => {
     if (!userId) return;
 
     try {
@@ -116,10 +116,10 @@ export function TeamPlayerProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Error in refreshTeams:', error);
     }
-  };
+  }, [userId]);
 
   // Refresh players
-  const refreshPlayers = async () => {
+  const refreshPlayers = useCallback(async () => {
     if (!userId) return;
 
     try {
@@ -167,7 +167,7 @@ export function TeamPlayerProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Error in refreshPlayers:', error);
     }
-  };
+  }, [userId]);
 
   // Load teams and players on mount
   useEffect(() => {
@@ -183,7 +183,7 @@ export function TeamPlayerProvider({ children }: { children: ReactNode }) {
     };
 
     loadData();
-  }, [userId]);
+  }, [userId, refreshTeams, refreshPlayers]);
 
   // Set selected context and save to AsyncStorage
   const setSelectedContext = async (context: SelectedContext) => {

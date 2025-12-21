@@ -684,7 +684,7 @@ export async function getNotificationStats(): Promise<{
   scheduled: number;
   stored: number;
   orphaned: number;
-  upcoming: Array<{ taskId: string; scheduledFor: string; minutesUntil: number }>;
+  upcoming: { taskId: string; scheduledFor: string; minutesUntil: number }[];
 }> {
   try {
     const scheduledNotifications = await Notifications.getAllScheduledNotificationsAsync();

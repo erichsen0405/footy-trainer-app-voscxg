@@ -2,6 +2,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { colors } from '@/styles/commonStyles';
+import NotificationDebugDev from './notification-debug.dev';
 
 // This debug screen is only available in development
 export default function NotificationDebugScreen() {
@@ -9,8 +10,7 @@ export default function NotificationDebugScreen() {
     return null;
   }
 
-  // Lazy load the actual component only in development
-  const NotificationDebugDev = require('./notification-debug.dev').default;
+  // Use the dev component directly
   return <NotificationDebugDev />;
 }
 

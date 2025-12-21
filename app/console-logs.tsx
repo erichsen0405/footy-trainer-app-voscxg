@@ -2,6 +2,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { colors } from '@/styles/commonStyles';
+import ConsoleLogsDebug from './console-logs.dev';
 
 // This debug screen is only available in development
 export default function ConsoleLogsScreen() {
@@ -9,8 +10,7 @@ export default function ConsoleLogsScreen() {
     return null;
   }
 
-  // Lazy load the actual component only in development
-  const ConsoleLogsDebug = require('./console-logs.dev').default;
+  // Use the dev component directly
   return <ConsoleLogsDebug />;
 }
 

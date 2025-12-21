@@ -2,6 +2,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { colors } from '@/styles/commonStyles';
+import SubscriptionDiagnosticDev from './SubscriptionDiagnostic.dev';
 
 // This diagnostic component is only available in development
 export default function SubscriptionDiagnostic() {
@@ -9,8 +10,7 @@ export default function SubscriptionDiagnostic() {
     return null;
   }
 
-  // Lazy load the actual component only in development
-  const SubscriptionDiagnosticDev = require('./SubscriptionDiagnostic.dev').default;
+  // Use the dev component directly
   return <SubscriptionDiagnosticDev />;
 }
 

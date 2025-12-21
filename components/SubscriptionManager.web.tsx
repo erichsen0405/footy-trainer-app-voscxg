@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -44,7 +44,7 @@ export default function SubscriptionManager({
       console.log('[SubscriptionManager.web] Component mounted, refreshing subscription');
       refreshSubscription();
     }
-  }, [isSignupFlow]);
+  }, [isSignupFlow, refreshSubscription]);
 
   // Log subscription status changes for debugging
   useEffect(() => {
@@ -213,7 +213,7 @@ export default function SubscriptionManager({
   };
 
   // Helper function to check if a plan is the current plan
-  const isCurrentPlanCheck = (planName: string): boolean => {
+  const isCurrentPlanCheck = useCallback((planName: string): boolean => {
     if (isSignupFlow || !subscriptionStatus?.hasSubscription || !subscriptionStatus?.planName) {
       console.log('[SubscriptionManager.web] isCurrentPlanCheck: Not checking (signup flow or no subscription)', {
         isSignupFlow,
@@ -238,7 +238,7 @@ export default function SubscriptionManager({
     });
     
     return isMatch;
-  };
+  }, [isSignupFlow, subscriptionStatus]);
 
   if (loading && !isSignupFlow) {
     return (

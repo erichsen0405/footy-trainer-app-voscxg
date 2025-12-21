@@ -1,6 +1,7 @@
+
 import { useEffect, useState, useCallback } from 'react';
 import { ActivityCategory, Activity } from '@/types';
-import { useUser } from '@/hooks/useUser';
+import { supabase } from '@/app/integrations/supabase/client';
 import { getActivities, getCategories } from '@/services/activities';
 
 interface UseHomeActivitiesResult {
@@ -12,12 +13,23 @@ interface UseHomeActivitiesResult {
 }
 
 export function useHomeActivities(): UseHomeActivitiesResult {
-  const user = useUser(); // ⚠️ kan være undefined på web init
-  const clubId = user?.clubId ?? null;
-
+  const [clubId, setClubId] = useState<string | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [categories, setCategories] = useState<ActivityCategory[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Get user and club ID
+  useEffect(() => {
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        // For now, use user ID as club ID
+        // This can be extended to fetch actual club_id from profiles table
+        setClubId(user.id);
+      }
+    };
+    fetchUser();
+  }, []);
 
   const refetchActivities = useCallback(async () => {
     if (!clubId) {

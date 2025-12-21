@@ -1,13 +1,14 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { Platform, Alert } from 'react-native';
 import { supabase } from '@/app/integrations/supabase/client';
+import * as RNIapImport from 'react-native-iap';
 
 // Dynamically import react-native-iap only on native platforms
-let RNIap: any = null;
+let RNIap: typeof RNIapImport | null = null;
 if (Platform.OS === 'ios' || Platform.OS === 'android') {
   try {
-    RNIap = require('react-native-iap');
+    RNIap = RNIapImport;
   } catch (error) {
     console.warn('[AppleIAP] ⚠️ react-native-iap not available in Expo Go.');
     console.warn('[AppleIAP] 📱 To use In-App Purchases, build with EAS:');
@@ -60,104 +61,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
 
-  // Initialize IAP connection
-  useEffect(() => {
-    if (Platform.OS === 'ios' && RNIap) {
-      initializeIAP();
-    } else {
-      setLoading(false);
-      if (!RNIap && Platform.OS === 'ios') {
-        console.log('[AppleIAP] 📱 In-App Purchases require a development build.');
-        console.log('[AppleIAP] 🔧 Build with: eas build --profile development --platform ios');
-      } else if (Platform.OS !== 'ios') {
-        console.log('[AppleIAP] Not on iOS, skipping IAP initialization');
-      }
-    }
-
-    return () => {
-      if (Platform.OS === 'ios' && RNIap) {
-        RNIap.endConnection();
-      }
-    };
-  }, []);
-
-  // Set up purchase update listener
-  useEffect(() => {
-    if (Platform.OS !== 'ios' || !RNIap) return;
-
-    const purchaseUpdateSubscription = RNIap.purchaseUpdatedListener(
-      async (purchase) => {
-        console.log('[AppleIAP] Purchase updated:', purchase);
-        const receipt = purchase.transactionReceipt;
-        
-        if (receipt) {
-          try {
-            // Finish the transaction
-            await RNIap.finishTransaction({ purchase, isConsumable: false });
-            
-            // Update subscription status in Supabase
-            await updateSubscriptionInSupabase(purchase.productId, receipt);
-            
-            // Refresh subscription status
-            await refreshSubscriptionStatus();
-            
-            Alert.alert(
-              'Køb gennemført! 🎉',
-              'Dit abonnement er nu aktivt. Du kan nu bruge alle funktioner.',
-              [{ text: 'OK' }]
-            );
-          } catch (error) {
-            console.error('[AppleIAP] Error finishing transaction:', error);
-          }
-        }
-      }
-    );
-
-    const purchaseErrorSubscription = RNIap.purchaseErrorListener(
-      (error) => {
-        console.error('[AppleIAP] Purchase error:', error);
-        if (error.code !== 'E_USER_CANCELLED') {
-          Alert.alert(
-            'Fejl ved køb',
-            'Der opstod en fejl ved køb af abonnement. Prøv venligst igen.',
-            [{ text: 'OK' }]
-          );
-        }
-      }
-    );
-
-    return () => {
-      purchaseUpdateSubscription.remove();
-      purchaseErrorSubscription.remove();
-    };
-  }, []);
-
-  const initializeIAP = async () => {
-    if (!RNIap) {
-      console.log('[AppleIAP] react-native-iap not available');
-      setLoading(false);
-      return;
-    }
-    
-    try {
-      console.log('[AppleIAP] Initializing IAP connection...');
-      await RNIap.initConnection();
-      console.log('[AppleIAP] IAP connection initialized');
-
-      // Fetch products from App Store
-      await fetchProducts();
-
-      // Check current subscription status
-      await refreshSubscriptionStatus();
-
-      setLoading(false);
-    } catch (error) {
-      console.error('[AppleIAP] Error initializing IAP:', error);
-      setLoading(false);
-    }
-  };
-
-  const fetchProducts = async () => {
+  const fetchProducts = useCallback(async () => {
     if (!RNIap) {
       console.log('[AppleIAP] react-native-iap not available');
       return;
@@ -196,9 +100,9 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('[AppleIAP] Error fetching products:', error);
     }
-  };
+  }, []);
 
-  const refreshSubscriptionStatus = async () => {
+  const refreshSubscriptionStatus = useCallback(async () => {
     if (!RNIap) {
       console.log('[AppleIAP] react-native-iap not available');
       setSubscriptionStatus({
@@ -263,7 +167,104 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('[AppleIAP] Error refreshing subscription status:', error);
     }
-  };
+  }, []);
+
+  const initializeIAP = useCallback(async () => {
+    if (!RNIap) {
+      console.log('[AppleIAP] react-native-iap not available');
+      setLoading(false);
+      return;
+    }
+    
+    try {
+      console.log('[AppleIAP] Initializing IAP connection...');
+      await RNIap.initConnection();
+      console.log('[AppleIAP] IAP connection initialized');
+
+      // Fetch products from App Store
+      await fetchProducts();
+
+      // Check current subscription status
+      await refreshSubscriptionStatus();
+
+      setLoading(false);
+    } catch (error) {
+      console.error('[AppleIAP] Error initializing IAP:', error);
+      setLoading(false);
+    }
+  }, [fetchProducts, refreshSubscriptionStatus]);
+
+  // Initialize IAP connection
+  useEffect(() => {
+    if (Platform.OS === 'ios' && RNIap) {
+      initializeIAP();
+    } else {
+      setLoading(false);
+      if (!RNIap && Platform.OS === 'ios') {
+        console.log('[AppleIAP] 📱 In-App Purchases require a development build.');
+        console.log('[AppleIAP] 🔧 Build with: eas build --profile development --platform ios');
+      } else if (Platform.OS !== 'ios') {
+        console.log('[AppleIAP] Not on iOS, skipping IAP initialization');
+      }
+    }
+
+    return () => {
+      if (Platform.OS === 'ios' && RNIap) {
+        RNIap.endConnection();
+      }
+    };
+  }, [initializeIAP]);
+
+  // Set up purchase update listener
+  useEffect(() => {
+    if (Platform.OS !== 'ios' || !RNIap) return;
+
+    const purchaseUpdateSubscription = RNIap.purchaseUpdatedListener(
+      async (purchase) => {
+        console.log('[AppleIAP] Purchase updated:', purchase);
+        const receipt = purchase.transactionReceipt;
+        
+        if (receipt) {
+          try {
+            // Finish the transaction
+            await RNIap.finishTransaction({ purchase, isConsumable: false });
+            
+            // Update subscription status in Supabase
+            await updateSubscriptionInSupabase(purchase.productId, receipt);
+            
+            // Refresh subscription status
+            await refreshSubscriptionStatus();
+            
+            Alert.alert(
+              'Køb gennemført! 🎉',
+              'Dit abonnement er nu aktivt. Du kan nu bruge alle funktioner.',
+              [{ text: 'OK' }]
+            );
+          } catch (error) {
+            console.error('[AppleIAP] Error finishing transaction:', error);
+          }
+        }
+      }
+    );
+
+    const purchaseErrorSubscription = RNIap.purchaseErrorListener(
+      (error) => {
+        console.error('[AppleIAP] Purchase error:', error);
+        if (error.code !== 'E_USER_CANCELLED') {
+          Alert.alert(
+            'Fejl ved køb',
+            'Der opstod en fejl ved køb af abonnement. Prøv venligst igen.',
+            [{ text: 'OK' }]
+          );
+        }
+      }
+    );
+
+    return () => {
+      purchaseUpdateSubscription.remove();
+      purchaseErrorSubscription.remove();
+    };
+  }, [refreshSubscriptionStatus]);
 
   const updateSubscriptionInSupabase = async (productId: string, receipt: string) => {
     try {
