@@ -121,7 +121,8 @@ export default function HomeScreen() {
           </View>
         </View>
         <View style={styles.headerTextContainer}>
-          <Text style={styles.headerTitle}>Træn som en Pro</Text>
+          <Text style={styles.headerTitle}>Football Coach</Text>
+          <Text style={styles.headerSubtitle}>Træn som en Pro</Text>
         </View>
       </View>
 
@@ -276,10 +277,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerTitle: {
-    fontSize: 32,
+    fontSize: 36,
     fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  headerSubtitle: {
+    fontSize: 18,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
   },
 
   // Progress Card
