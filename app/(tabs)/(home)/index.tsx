@@ -1,25 +1,24 @@
-
 import React, { useMemo } from 'react';
 import { ScrollView, View, Text, StyleSheet } from 'react-native';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
 import ActivityCard from '@/components/ActivityCard';
 
 /**
- * Resolve activity datetime as ISO string.
- * This MUST be a valid datetime for ActivityCard.
+ * Resolve a FULL ISO datetime string.
+ * ActivityCard MUST receive a valid datetime.
  */
 function resolveActivityDateTime(activity: any): string | null {
-  // External activities (calendar)
+  // External calendar activities
   if (activity.scheduled_at) return activity.scheduled_at;
   if (activity.start_time) return activity.start_time;
 
-  // Internal activities (DB)
+  // Internal DB activities
   if (activity.activity_date && activity.activity_time) {
     return `${activity.activity_date}T${activity.activity_time}`;
   }
 
   if (activity.activity_date) {
-    // fallback: noon to avoid timezone issues
+    // Safe fallback to avoid timezone crash
     return `${activity.activity_date}T12:00:00`;
   }
 
@@ -27,13 +26,11 @@ function resolveActivityDateTime(activity: any): string | null {
 }
 
 export default function HomeScreen() {
-  const { activitiesSafe, loading } = useHomeActivities();
+  const { activities, loading } = useHomeActivities();
+
+  const activitiesSafe = Array.isArray(activities) ? activities : [];
 
   const { todayActivities, upcomingActivities } = useMemo(() => {
-    if (!Array.isArray(activitiesSafe)) {
-      return { todayActivities: [], upcomingActivities: [] };
-    }
-
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
