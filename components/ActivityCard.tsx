@@ -12,18 +12,58 @@ interface ActivityCardProps {
   onPress?: () => void;
 }
 
-// Category gradient mapping - uses actual category names from database
+// Helper function to lighten a hex color
+function lightenColor(hex: string, percent: number): string {
+  // Remove # if present
+  hex = hex.replace('#', '');
+  
+  // Convert to RGB
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  
+  // Lighten
+  const newR = Math.min(255, Math.floor(r + (255 - r) * percent));
+  const newG = Math.min(255, Math.floor(g + (255 - g) * percent));
+  const newB = Math.min(255, Math.floor(b + (255 - b) * percent));
+  
+  // Convert back to hex
+  return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
+}
+
+// Helper function to darken a hex color
+function darkenColor(hex: string, percent: number): string {
+  // Remove # if present
+  hex = hex.replace('#', '');
+  
+  // Convert to RGB
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  
+  // Darken
+  const newR = Math.floor(r * (1 - percent));
+  const newG = Math.floor(g * (1 - percent));
+  const newB = Math.floor(b * (1 - percent));
+  
+  // Convert back to hex
+  return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
+}
+
+// Category gradient mapping - uses actual category color to create gradient
 const getCategoryGradient = (category: any): string[] => {
   if (!category || !category.color) {
-    return ['#6B7280', '#4B5563']; // Neutral gray fallback
+    // Fallback gradient - should never be used if category is properly resolved
+    return ['#6B7280', '#4B5563'];
   }
   
-  // Use the category color from the database to generate a gradient
   const baseColor = category.color;
   
-  // Create a gradient by darkening the base color slightly
-  // This ensures all categories get their correct color
-  return [baseColor, baseColor];
+  // Create a gradient from lighter to darker variant of the same color
+  const lighterColor = lightenColor(baseColor, 0.15);
+  const darkerColor = darkenColor(baseColor, 0.2);
+  
+  return [lighterColor, darkerColor];
 };
 
 // Get emoji for category
@@ -105,7 +145,7 @@ export default function ActivityCard({ activity, resolvedDate, onPress }: Activi
             )}
           </View>
 
-          {/* Arrow */}
+          {/* Chevron Arrow */}
           <View style={styles.arrowContainer}>
             <Text style={styles.arrow}>›</Text>
           </View>
@@ -118,9 +158,10 @@ export default function ActivityCard({ activity, resolvedDate, onPress }: Activi
 const styles = StyleSheet.create({
   card: {
     borderRadius: 20,
-    padding: 16,
-    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.15)',
-    elevation: 4,
+    padding: 18,
+    minHeight: 100,
+    boxShadow: '0px 4px 14px rgba(0, 0, 0, 0.18)',
+    elevation: 5,
   },
   cardPressed: {
     opacity: 0.85,
@@ -133,18 +174,18 @@ const styles = StyleSheet.create({
 
   // Icon
   iconContainer: {
-    marginRight: 12,
+    marginRight: 14,
   },
   iconCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   iconEmoji: {
-    fontSize: 28,
+    fontSize: 30,
   },
 
   // Text Content
@@ -155,7 +196,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: '#FFFFFF',
-    marginBottom: 6,
+    marginBottom: 8,
   },
   detailRow: {
     flexDirection: 'row',
@@ -163,12 +204,13 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   detailIcon: {
-    fontSize: 12,
-    marginRight: 4,
+    fontSize: 13,
+    marginRight: 6,
   },
   detailText: {
     fontSize: 14,
-    color: '#FFFFFF',
+    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.95)',
     flex: 1,
   },
   externalBadge: {
@@ -176,16 +218,19 @@ const styles = StyleSheet.create({
   },
   externalText: {
     fontSize: 12,
+    fontWeight: '500',
     color: 'rgba(255, 255, 255, 0.9)',
   },
 
-  // Arrow
+  // Chevron Arrow
   arrowContainer: {
-    marginLeft: 8,
+    marginLeft: 12,
+    justifyContent: 'center',
   },
   arrow: {
-    fontSize: 32,
+    fontSize: 40,
     fontWeight: '300',
-    color: '#FFFFFF',
+    color: 'rgba(255, 255, 255, 0.9)',
+    lineHeight: 40,
   },
 });

@@ -121,14 +121,13 @@ export default function HomeScreen() {
           </View>
         </View>
         <View style={styles.headerTextContainer}>
-          <Text style={styles.headerTitle}>FOOTBALL COACH</Text>
-          <Text style={styles.headerSubtitle}>Styrk din fodboldtræning</Text>
+          <Text style={styles.headerTitle}>Træn som en Pro</Text>
         </View>
       </View>
 
       {/* Weekly Progress Card with Red Gradient */}
       <LinearGradient
-        colors={['#DC2626', '#991B1B']}
+        colors={['#EF4444', '#DC2626', '#991B1B']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.progressCard}
@@ -253,7 +252,7 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: '#2C3E50',
     paddingHorizontal: 20,
-    paddingVertical: 24,
+    paddingVertical: 32,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -277,90 +276,87 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 32,
+    fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: 0.5,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
-    marginTop: 2,
   },
 
   // Progress Card
   progressCard: {
     marginHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 12,
-    borderRadius: 20,
-    padding: 20,
-    boxShadow: '0px 4px 16px rgba(0, 0, 0, 0.2)',
-    elevation: 6,
+    marginTop: 20,
+    marginBottom: 16,
+    borderRadius: 24,
+    padding: 24,
+    boxShadow: '0px 6px 20px rgba(0, 0, 0, 0.25)',
+    elevation: 8,
   },
   progressHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   progressLabel: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#FFFFFF',
-    letterSpacing: 1,
+    letterSpacing: 1.5,
   },
   medalBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   medalIcon: {
-    fontSize: 24,
+    fontSize: 28,
   },
   progressPercentage: {
-    fontSize: 64,
-    fontWeight: '700',
+    fontSize: 72,
+    fontWeight: '800',
     color: '#FFFFFF',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   progressBar: {
-    height: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
-    borderRadius: 4,
-    marginVertical: 8,
+    height: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+    borderRadius: 5,
+    marginVertical: 10,
     overflow: 'hidden',
   },
   progressBarFill: {
     height: '100%',
     backgroundColor: '#FFFFFF',
-    borderRadius: 4,
+    borderRadius: 5,
   },
   progressDetail: {
-    fontSize: 14,
+    fontSize: 15,
+    fontWeight: '600',
     color: '#FFFFFF',
     marginTop: 8,
   },
   motivationText: {
-    fontSize: 14,
-    color: '#FFFFFF',
-    marginTop: 16,
-    lineHeight: 20,
+    fontSize: 15,
+    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.95)',
+    marginTop: 20,
+    lineHeight: 22,
   },
   performanceButton: {
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    marginTop: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    marginTop: 20,
     alignItems: 'center',
   },
   performanceButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '700',
     color: '#FFFFFF',
   },
 
@@ -368,15 +364,15 @@ const styles = StyleSheet.create({
   createButton: {
     backgroundColor: '#4CAF50',
     marginHorizontal: 16,
-    marginVertical: 12,
-    borderRadius: 12,
-    paddingVertical: 16,
+    marginVertical: 16,
+    borderRadius: 14,
+    paddingVertical: 18,
     alignItems: 'center',
-    boxShadow: '0px 2px 8px rgba(76, 175, 80, 0.3)',
-    elevation: 3,
+    boxShadow: '0px 3px 10px rgba(76, 175, 80, 0.35)',
+    elevation: 4,
   },
   createButtonText: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '700',
     color: '#FFFFFF',
   },
@@ -384,61 +380,63 @@ const styles = StyleSheet.create({
   // Sections
   section: {
     paddingHorizontal: 16,
-    marginTop: 16,
+    marginTop: 20,
   },
   sectionTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   greenMarker: {
     width: 4,
-    height: 24,
+    height: 28,
     backgroundColor: '#4CAF50',
     borderRadius: 2,
-    marginRight: 8,
+    marginRight: 12,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 20,
+    fontWeight: '800',
     color: colors.text,
+    letterSpacing: 0.5,
   },
   expandButton: {
     fontSize: 14,
+    fontWeight: '600',
     color: colors.textSecondary,
   },
   emptyText: {
-    fontSize: 14,
+    fontSize: 15,
     color: colors.textSecondary,
-    marginBottom: 12,
+    marginBottom: 16,
   },
 
   // Week Groups
   weekGroup: {
-    marginBottom: 20,
+    marginBottom: 24,
   },
   weekLabel: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 17,
+    fontWeight: '800',
     color: colors.text,
     marginBottom: 4,
   },
   weekDateRange: {
     fontSize: 14,
-    fontWeight: '400',
+    fontWeight: '500',
     color: colors.textSecondary,
-    marginBottom: 12,
+    marginBottom: 16,
   },
 
   // Activity Wrapper
   activityWrapper: {
-    marginBottom: 12,
+    marginBottom: 14,
   },
 
   // Bottom Spacer
