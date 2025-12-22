@@ -45,6 +45,9 @@ function resolveActivityDate(activity: any): Date | null {
 }
 
 export default function HomeScreen() {
+  // 🔥🔥🔥 CRITICAL DIAGNOSTIC - STEP 1: CONSOLE ERROR AT TOP OF RENDER 🔥🔥🔥
+  console.error("🔥🔥🔥 HOME INDEX.TSX IS RENDERING 🔥🔥🔥");
+
   const theme = useTheme();
   const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
 
@@ -129,18 +132,24 @@ export default function HomeScreen() {
         style={{ backgroundColor: theme.colors.background }}
         contentContainerStyle={styles.container}
       >
-        {/* ===== UI MARKER - FILE VERIFICATION ===== */}
-        <View
-          style={{
-            backgroundColor: 'red',
-            padding: 20,
-            marginBottom: 20,
-          }}
-        >
-          <Text style={{ color: 'white', fontSize: 18, fontWeight: 'bold' }}>
-            🚨 HOME SCREEN SOURCE: app/(tabs)/(home)/index.tsx
+        {/* 🚨🚨🚨 CRITICAL DIAGNOSTIC - STEP 2: BLACK/YELLOW BANNER 🚨🚨🚨 */}
+        <View style={{ 
+          backgroundColor: "black",
+          padding: 40,
+        }}>
+          <Text style={{
+            color: "yellow",
+            fontSize: 24,
+            fontWeight: "bold",
+          }}>
+            🚨 THIS IS HOME index.tsx 🚨
           </Text>
         </View>
+
+        {/* 🔥🔥🔥 CRITICAL DIAGNOSTIC - STEP 3: FORCE CRASH 🔥🔥🔥 */}
+        {(() => {
+          throw new Error("HOME SCREEN FORCED CRASH – VERIFY FILE OWNERSHIP");
+        })()}
 
         {/* ===== HEADER ===== */}
         <View style={[styles.headerCard, { backgroundColor: theme.colors.card }]}>
