@@ -2,10 +2,32 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Platform } from 'react-native';
 import { supabase } from '@/app/integrations/supabase/client';
-import { getActivities, getCategories, DatabaseActivity, DatabaseActivityCategory } from '@/services/activities';
+import { getCategories, DatabaseActivityCategory } from '@/services/activities';
 
-interface ActivityWithCategory extends DatabaseActivity {
+interface ActivityTask {
+  id: string;
+  title: string;
+  description?: string;
+  completed: boolean;
+  reminder_minutes?: number;
+  video_url?: string;
+}
+
+interface ActivityWithCategory {
+  id: string;
+  user_id: string;
+  title: string;
+  activity_date: string;
+  activity_time: string;
+  location?: string;
+  category_id?: string;
   category?: DatabaseActivityCategory | null;
+  is_external: boolean;
+  external_calendar_id?: string;
+  external_event_id?: string;
+  created_at: string;
+  updated_at: string;
+  tasks?: ActivityTask[];
 }
 
 interface UseHomeActivitiesResult {
@@ -67,22 +89,65 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       
       console.log('[useHomeActivities] Category map size:', categoryMap.size);
       
-      // 2. Fetch internal activities
-      const internalData = await getActivities(userId);
+      // 2. Fetch internal activities WITH TASKS
+      const { data: internalData, error: internalError } = await supabase
+        .from('activities')
+        .select(`
+          id,
+          user_id,
+          title,
+          activity_date,
+          activity_time,
+          location,
+          category_id,
+          created_at,
+          updated_at,
+          activity_tasks (
+            id,
+            title,
+            description,
+            completed,
+            reminder_minutes
+          )
+        `)
+        .eq('user_id', userId);
+      
+      if (internalError) {
+        console.error('[useHomeActivities] Error fetching internal activities:', internalError);
+      }
+      
       console.log('[useHomeActivities] Internal activities:', internalData?.length ?? 0);
       
-      // Mark internal activities with is_external: false and resolve category
+      // Map internal activities with tasks and resolved category
       const internalActivities: ActivityWithCategory[] = (internalData || []).map(activity => {
         const resolvedCategory = activity.category_id ? categoryMap.get(activity.category_id) || null : null;
         
+        // Map tasks to the expected format
+        const tasks: ActivityTask[] = (activity.activity_tasks || []).map((task: any) => ({
+          id: task.id,
+          title: task.title,
+          description: task.description || '',
+          completed: task.completed,
+          reminder_minutes: task.reminder_minutes,
+        }));
+        
         return {
-          ...activity,
-          is_external: false,
+          id: activity.id,
+          user_id: activity.user_id,
+          title: activity.title,
+          activity_date: activity.activity_date,
+          activity_time: activity.activity_time,
+          location: activity.location || '',
+          category_id: activity.category_id,
           category: resolvedCategory,
+          is_external: false,
+          created_at: activity.created_at,
+          updated_at: activity.updated_at,
+          tasks,
         };
       });
       
-      // 3. Fetch external calendar activities
+      // 3. Fetch external calendar activities WITH TASKS
       // First, get the user's external calendars
       const { data: calendarsData, error: calendarsError } = await supabase
         .from('external_calendars')
@@ -112,11 +177,24 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         } else if (eventsData) {
           console.log('[useHomeActivities] External events found:', eventsData.length);
           
-          // Get metadata for these events (if any)
+          // Get metadata for these events (if any) WITH TASKS
           const externalEventIds = eventsData.map(e => e.id);
           const { data: metaData, error: metaError } = await supabase
             .from('events_local_meta')
-            .select('id, external_event_id, category_id, user_id')
+            .select(`
+              id,
+              external_event_id,
+              category_id,
+              user_id,
+              local_title_override,
+              external_event_tasks (
+                id,
+                title,
+                description,
+                completed,
+                reminder_minutes
+              )
+            `)
             .eq('user_id', userId)
             .in('external_event_id', externalEventIds);
           
@@ -124,16 +202,25 @@ export function useHomeActivities(): UseHomeActivitiesResult {
             console.error('[useHomeActivities] Error fetching external event metadata:', metaError);
           }
           
-          // Map external events to activity format with resolved category
+          // Map external events to activity format with resolved category and tasks
           externalActivities = eventsData.map(event => {
             const meta = metaData?.find(m => m.external_event_id === event.id);
             const categoryId = meta?.category_id || null;
             const resolvedCategory = categoryId ? categoryMap.get(categoryId) || null : null;
             
+            // Map tasks to the expected format
+            const tasks: ActivityTask[] = (meta?.external_event_tasks || []).map((task: any) => ({
+              id: task.id,
+              title: task.title,
+              description: task.description || '',
+              completed: task.completed,
+              reminder_minutes: task.reminder_minutes,
+            }));
+            
             return {
               id: meta?.id || event.id,
               user_id: userId,
-              title: event.title,
+              title: meta?.local_title_override || event.title,
               activity_date: event.start_date,
               activity_time: event.start_time || '12:00:00',
               location: event.location || '',
@@ -144,6 +231,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
               external_event_id: event.provider_event_uid,
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
+              tasks,
             } as ActivityWithCategory;
           });
         }
@@ -156,6 +244,22 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       console.log('[useHomeActivities] Total merged activities:', mergedActivities.length);
       console.log('[useHomeActivities] Activities with resolved category:', mergedActivities.filter(a => a.category).length);
       console.log('[useHomeActivities] Activities WITHOUT resolved category:', mergedActivities.filter(a => !a.category).length);
+      
+      // 🔍 DEBUG: Log activities with tasks
+      const activitiesWithTasks = mergedActivities.filter(a => a.tasks && a.tasks.length > 0);
+      console.log('[useHomeActivities] Activities with tasks:', activitiesWithTasks.length);
+      if (activitiesWithTasks.length > 0) {
+        console.log('═══════════════════════════════════════════════════════');
+        console.log('✅ ACTIVITIES WITH TASKS:');
+        activitiesWithTasks.forEach(activity => {
+          console.log(`  - Title: ${activity.title}`);
+          console.log(`    ID: ${activity.id}`);
+          console.log(`    Tasks: ${activity.tasks?.length || 0}`);
+          console.log(`    Is External: ${activity.is_external}`);
+          console.log('  ---');
+        });
+        console.log('═══════════════════════════════════════════════════════');
+      }
       
       // 🔍 DEBUG: Log all activities without resolved categories
       const activitiesWithoutCategory = mergedActivities.filter(a => !a.category);
@@ -172,6 +276,24 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         });
         console.log('═══════════════════════════════════════════════════════');
       }
+      
+      // 🔍 DEBUG: Warn if "I DAG" activities have 0 tasks
+      const now = new Date();
+      const todayStart = new Date(now);
+      todayStart.setHours(0, 0, 0, 0);
+      const todayEnd = new Date(todayStart);
+      todayEnd.setHours(23, 59, 59, 999);
+      
+      const todayActivities = mergedActivities.filter(a => {
+        const activityDate = new Date(a.activity_date);
+        return activityDate >= todayStart && activityDate <= todayEnd;
+      });
+      
+      todayActivities.forEach(activity => {
+        if (!activity.tasks || activity.tasks.length === 0) {
+          console.warn(`⚠️ "I DAG" activity "${activity.title}" (${activity.id}) has 0 tasks`);
+        }
+      });
       
       setActivities(mergedActivities);
     } catch (err) {

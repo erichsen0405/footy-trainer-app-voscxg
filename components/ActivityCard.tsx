@@ -65,12 +65,14 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
   // Local optimistic state for tasks
   const [optimisticTasks, setOptimisticTasks] = useState<any[]>([]);
 
-  // Initialize optimistic tasks from activity
+  // Initialize and update optimistic tasks from activity
   useEffect(() => {
     if (activity.tasks) {
       setOptimisticTasks(activity.tasks);
+    } else {
+      setOptimisticTasks([]);
     }
-  }, [activity.tasks]);
+  }, [activity.tasks, activity.id]); // Re-run when tasks or activity ID changes
 
   const handleCardPress = () => {
     if (onPress) {
