@@ -1,10 +1,12 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
+import { useFootball } from '@/contexts/FootballContext';
 import ActivityCard from '@/components/ActivityCard';
+import CreateActivityModal from '@/components/CreateActivityModal';
 import { colors } from '@/styles/commonStyles';
 import { format, startOfWeek, endOfWeek, getWeek } from 'date-fns';
 import { da } from 'date-fns/locale';
@@ -37,6 +39,8 @@ function getWeekLabel(date: Date): string {
 export default function HomeScreen() {
   const router = useRouter();
   const { activities, loading } = useHomeActivities();
+  const { categories, createActivity, refreshData } = useFootball();
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   const { todayActivities, upcomingByWeek } = useMemo(() => {
     if (!Array.isArray(activities)) {
@@ -103,6 +107,11 @@ export default function HomeScreen() {
     return { todayActivities, upcomingByWeek };
   }, [activities]);
 
+  const handleCreateActivity = async (activityData: any) => {
+    await createActivity(activityData);
+    refreshData();
+  };
+
   if (loading) {
     return (
       <View style={styles.loading}>
@@ -112,121 +121,133 @@ export default function HomeScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.logoContainer}>
-          <View style={styles.logo}>
-            <Text style={styles.logoIcon}>⚽</Text>
+    <>
+      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={styles.logoContainer}>
+            <View style={styles.logo}>
+              <Text style={styles.logoIcon}>⚽</Text>
+            </View>
+          </View>
+          <View style={styles.headerTextContainer}>
+            <Text style={styles.headerTitle}>Football Coach</Text>
+            <Text style={styles.headerSubtitle}>Træn som en Pro</Text>
           </View>
         </View>
-        <View style={styles.headerTextContainer}>
-          <Text style={styles.headerTitle}>Football Coach</Text>
-          <Text style={styles.headerSubtitle}>Træn som en Pro</Text>
-        </View>
-      </View>
 
-      {/* Weekly Progress Card with Red Gradient */}
-      <LinearGradient
-        colors={['#EF4444', '#DC2626', '#991B1B']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.progressCard}
-      >
-        <View style={styles.progressHeader}>
-          <Text style={styles.progressLabel}>DENNE UGE</Text>
-          <View style={styles.medalBadge}>
-            <Text style={styles.medalIcon}>🥉</Text>
+        {/* Weekly Progress Card with Red Gradient */}
+        <LinearGradient
+          colors={['#EF4444', '#DC2626', '#991B1B']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.progressCard}
+        >
+          <View style={styles.progressHeader}>
+            <Text style={styles.progressLabel}>DENNE UGE</Text>
+            <View style={styles.medalBadge}>
+              <Text style={styles.medalIcon}>🥉</Text>
+            </View>
           </View>
-        </View>
-        
-        <Text style={styles.progressPercentage}>0%</Text>
-        
-        <View style={styles.progressBar}>
-          <View style={[styles.progressBarFill, { width: '0%' }]} />
-        </View>
+          
+          <Text style={styles.progressPercentage}>0%</Text>
+          
+          <View style={styles.progressBar}>
+            <View style={[styles.progressBarFill, { width: '0%' }]} />
+          </View>
 
-        <Text style={styles.progressDetail}>Opgaver indtil i dag: 0 / 3</Text>
-        <View style={styles.progressBar}>
-          <View style={[styles.progressBarFill, { width: '0%' }]} />
-        </View>
+          <Text style={styles.progressDetail}>Opgaver indtil i dag: 0 / 3</Text>
+          <View style={styles.progressBar}>
+            <View style={[styles.progressBarFill, { width: '0%' }]} />
+          </View>
 
-        <Text style={styles.progressDetail}>Hele ugen: 0 / 22 opgaver</Text>
+          <Text style={styles.progressDetail}>Hele ugen: 0 / 22 opgaver</Text>
 
-        <Text style={styles.motivationText}>
-          Hver træning tæller! 3 opgaver tilbage indtil i dag.{'\n'}
-          22 opgaver tilbage for ugen. ⚽
-        </Text>
+          <Text style={styles.motivationText}>
+            Hver træning tæller! 3 opgaver tilbage indtil i dag.{'\n'}
+            22 opgaver tilbage for ugen. ⚽
+          </Text>
 
-        <Pressable style={styles.performanceButton}>
-          <Text style={styles.performanceButtonText}>📊  Se Performance  →</Text>
+          <Pressable 
+            style={styles.performanceButton}
+            onPress={() => router.push('/(tabs)/performance')}
+          >
+            <Text style={styles.performanceButtonText}>📊  Se Performance  →</Text>
+          </Pressable>
+        </LinearGradient>
+
+        {/* Create Activity Button */}
+        <Pressable 
+          style={styles.createButton}
+          onPress={() => setShowCreateModal(true)}
+        >
+          <Text style={styles.createButtonText}>+  Opret Aktivitet</Text>
         </Pressable>
-      </LinearGradient>
 
-      {/* Create Activity Button */}
-      <Pressable 
-        style={styles.createButton}
-        onPress={() => {
-          // Navigate to create activity
-        }}
-      >
-        <Text style={styles.createButtonText}>+  Opret Aktivitet</Text>
-      </Pressable>
-
-      {/* I DAG Section */}
-      <View style={styles.section}>
-        <View style={styles.sectionTitleContainer}>
-          <View style={styles.greenMarker} />
-          <Text style={styles.sectionTitle}>I DAG</Text>
-        </View>
-
-        {todayActivities.length === 0 && (
-          <Text style={styles.emptyText}>Ingen aktiviteter i dag</Text>
-        )}
-
-        {todayActivities.map((activity, index) => (
-          <View key={index} style={styles.activityWrapper}>
-            <ActivityCard
-              activity={activity}
-              resolvedDate={activity.__resolvedDateTime}
-            />
-          </View>
-        ))}
-      </View>
-
-      {/* KOMMENDE Section */}
-      {upcomingByWeek.length > 0 && (
+        {/* I DAG Section */}
         <View style={styles.section}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>KOMMENDE</Text>
-            <Pressable>
-              <Text style={styles.expandButton}>▲ Tidligere</Text>
-            </Pressable>
+          <View style={styles.sectionTitleContainer}>
+            <View style={styles.greenMarker} />
+            <Text style={styles.sectionTitle}>I DAG</Text>
           </View>
 
-          {upcomingByWeek.map((weekGroup, weekIndex) => (
-            <View key={weekIndex} style={styles.weekGroup}>
-              <Text style={styles.weekLabel}>
-                Uge {getWeek(weekGroup.weekStart, { weekStartsOn: 1, locale: da })}
-              </Text>
-              <Text style={styles.weekDateRange}>{getWeekLabel(weekGroup.weekStart)}</Text>
+          {todayActivities.length === 0 && (
+            <Text style={styles.emptyText}>Ingen aktiviteter i dag</Text>
+          )}
 
-              {weekGroup.activities.map((activity, activityIndex) => (
-                <View key={activityIndex} style={styles.activityWrapper}>
-                  <ActivityCard
-                    activity={activity}
-                    resolvedDate={activity.__resolvedDateTime}
-                  />
-                </View>
-              ))}
+          {todayActivities.map((activity, index) => (
+            <View key={index} style={styles.activityWrapper}>
+              <ActivityCard
+                activity={activity}
+                resolvedDate={activity.__resolvedDateTime}
+              />
             </View>
           ))}
         </View>
-      )}
 
-      {/* Bottom spacing for tab bar */}
-      <View style={styles.bottomSpacer} />
-    </ScrollView>
+        {/* KOMMENDE Section */}
+        {upcomingByWeek.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>KOMMENDE</Text>
+              <Pressable>
+                <Text style={styles.expandButton}>▲ Tidligere</Text>
+              </Pressable>
+            </View>
+
+            {upcomingByWeek.map((weekGroup, weekIndex) => (
+              <View key={weekIndex} style={styles.weekGroup}>
+                <Text style={styles.weekLabel}>
+                  Uge {getWeek(weekGroup.weekStart, { weekStartsOn: 1, locale: da })}
+                </Text>
+                <Text style={styles.weekDateRange}>{getWeekLabel(weekGroup.weekStart)}</Text>
+
+                {weekGroup.activities.map((activity, activityIndex) => (
+                  <View key={activityIndex} style={styles.activityWrapper}>
+                    <ActivityCard
+                      activity={activity}
+                      resolvedDate={activity.__resolvedDateTime}
+                    />
+                  </View>
+                ))}
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Bottom spacing for tab bar */}
+        <View style={styles.bottomSpacer} />
+      </ScrollView>
+
+      {/* Create Activity Modal */}
+      <CreateActivityModal
+        visible={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onCreateActivity={handleCreateActivity}
+        categories={categories}
+        onRefreshCategories={refreshData}
+      />
+    </>
   );
 }
 
