@@ -14,40 +14,36 @@ import { useHomeActivities } from '@/hooks/useHomeActivities';
 import CreateActivityModal from '@/components/CreateActivityModal';
 import ActivityCard from '@/components/ActivityCard';
 
-// TRIN 1 – ERSTAT resolveActivityDate HELT
-function resolveActivityDate(activity: any): Date | null {
-  // Internal activities (DB)
+// Helper function to resolve activity local date
+function resolveActivityLocalDate(activity: any): string | null {
+  if (!activity) return null;
+
+  // Internal activities
   if (activity.activity_date) {
-    const time = activity.activity_time ?? '00:00';
-    return new Date(`${activity.activity_date}T${time}`);
+    return activity.activity_date; // already YYYY-MM-DD
   }
 
-  // External calendar events
-  if (activity.start_time) {
-    return new Date(activity.start_time);
-  }
+  // External activities (ISO / start_time)
+  const raw =
+    activity.start_time ||
+    activity.start_date ||
+    activity.scheduled_at ||
+    activity.date;
 
-  if (activity.start_date) {
-    return new Date(activity.start_date);
-  }
+  if (!raw) return null;
 
-  if (activity.date) {
-    return new Date(activity.date);
-  }
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return null;
 
-  console.warn('[HomeScreen] Activity dropped – no date:', {
-    id: activity.id,
-    title: activity.title,
-    is_external: activity.is_external,
-  });
+  // Normalize to LOCAL date string
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
 
-  return null;
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 export default function HomeScreen() {
-  // 🔥🔥🔥 CRITICAL DIAGNOSTIC - STEP 1: CONSOLE ERROR AT TOP OF RENDER 🔥🔥🔥
-  console.error("🔥🔥🔥 HOME INDEX.TSX IS RENDERING 🔥🔥🔥");
-
   const theme = useTheme();
   const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
 
@@ -65,40 +61,26 @@ export default function HomeScreen() {
   // Ensure we have a safe array
   const activitiesSafe = Array.isArray(activities) ? activities : [];
 
-  // Define day boundary
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // Define today string ONCE
+  const todayStr = new Date().toISOString().slice(0, 10);
 
-  // TRIN 2 – GØR FILTRERINGEN EKSPLICIT (VIGTIGT)
-  const datedActivities = activitiesSafe
-    .map(activity => ({
-      activity,
-      date: resolveActivityDate(activity),
-    }))
-    .filter(item => item.date !== null);
-
-  // TODAY ACTIVITIES - filtered and sorted
-  const todayActivities = datedActivities
-    .filter(item => {
-      const date = item.date!;
-      return (
-        date.getFullYear() === today.getFullYear() &&
-        date.getMonth() === today.getMonth() &&
-        date.getDate() === today.getDate()
-      );
-    })
-    .sort((a, b) => a.date!.getTime() - b.date!.getTime());
-
-  // UPCOMING ACTIVITIES - filtered and sorted
-  const upcomingActivities = datedActivities
-    .filter(item => item.date! > today)
-    .sort((a, b) => a.date!.getTime() - b.date!.getTime());
-
-  // TRIN 5 – VERIFIKATION LOG (SKAL MED)
-  console.log('[HomeScreen VERIFY]', {
-    today: todayActivities.filter(item => item.activity.is_external).length,
-    upcoming: upcomingActivities.filter(item => item.activity.is_external).length,
+  // Filter TODAY activities
+  const todayActivities = activitiesSafe.filter(a => {
+    const d = resolveActivityLocalDate(a);
+    return d === todayStr;
   });
+
+  // Filter UPCOMING activities
+  const upcomingActivities = activitiesSafe
+    .filter(a => {
+      const d = resolveActivityLocalDate(a);
+      return d && d > todayStr;
+    })
+    .sort((a, b) => {
+      const da = resolveActivityLocalDate(a);
+      const db = resolveActivityLocalDate(b);
+      return da!.localeCompare(db!);
+    });
 
   // Calculate week progress (placeholder logic)
   const weekProgress = {
@@ -132,25 +114,6 @@ export default function HomeScreen() {
         style={{ backgroundColor: theme.colors.background }}
         contentContainerStyle={styles.container}
       >
-        {/* 🚨🚨🚨 CRITICAL DIAGNOSTIC - STEP 2: BLACK/YELLOW BANNER 🚨🚨🚨 */}
-        <View style={{ 
-          backgroundColor: "black",
-          padding: 40,
-        }}>
-          <Text style={{
-            color: "yellow",
-            fontSize: 24,
-            fontWeight: "bold",
-          }}>
-            🚨 THIS IS HOME index.tsx 🚨
-          </Text>
-        </View>
-
-        {/* 🔥🔥🔥 CRITICAL DIAGNOSTIC - STEP 3: FORCE CRASH 🔥🔥🔥 */}
-        {(() => {
-          throw new Error("HOME SCREEN FORCED CRASH – VERIFY FILE OWNERSHIP");
-        })()}
-
         {/* ===== HEADER ===== */}
         <View style={[styles.headerCard, { backgroundColor: theme.colors.card }]}>
           <View style={styles.headerRow}>
@@ -209,36 +172,13 @@ export default function HomeScreen() {
               Ingen aktiviteter i dag
             </Text>
           ) : (
-            todayActivities.map((item) => {
-              // DIAGNOSTIC: Bypass ActivityCard for external activities
-              if (item.activity.is_external === true) {
-                return (
-                  <View
-                    key={item.activity.id}
-                    style={styles.debugCard}
-                  >
-                    <Text style={styles.debugTitle}>{item.activity.title}</Text>
-                    <Text style={styles.debugLabel}>EXTERNAL ACTIVITY</Text>
-                    <Text style={styles.debugDate}>
-                      Date: {item.date?.toString()}
-                    </Text>
-                    <Text style={styles.debugId}>
-                      External Event ID: {item.activity.external_event_id || 'N/A'}
-                    </Text>
-                  </View>
-                );
-              }
-
-              // Internal activities use ActivityCard
-              return (
-                <ActivityCard
-                  key={item.activity.id}
-                  activity={item.activity}
-                  resolvedDate={item.date!}
-                  onPress={() => handleActivityPress(item.activity.id)}
-                />
-              );
-            })
+            todayActivities.map((activity, index) => (
+              <ActivityCard
+                key={activity.id || index}
+                activity={activity}
+                onPress={() => handleActivityPress(activity.id)}
+              />
+            ))
           )}
         </View>
 
@@ -253,36 +193,13 @@ export default function HomeScreen() {
               Ingen kommende aktiviteter
             </Text>
           ) : (
-            upcomingActivities.map((item) => {
-              // DIAGNOSTIC: Bypass ActivityCard for external activities
-              if (item.activity.is_external === true) {
-                return (
-                  <View
-                    key={item.activity.id}
-                    style={styles.debugCard}
-                  >
-                    <Text style={styles.debugTitle}>{item.activity.title}</Text>
-                    <Text style={styles.debugLabel}>EXTERNAL ACTIVITY</Text>
-                    <Text style={styles.debugDate}>
-                      Date: {item.date?.toString()}
-                    </Text>
-                    <Text style={styles.debugId}>
-                      External Event ID: {item.activity.external_event_id || 'N/A'}
-                    </Text>
-                  </View>
-                );
-              }
-
-              // Internal activities use ActivityCard
-              return (
-                <ActivityCard
-                  key={item.activity.id}
-                  activity={item.activity}
-                  resolvedDate={item.date!}
-                  onPress={() => handleActivityPress(item.activity.id)}
-                />
-              );
-            })
+            upcomingActivities.map((activity, index) => (
+              <ActivityCard
+                key={activity.id || index}
+                activity={activity}
+                onPress={() => handleActivityPress(activity.id)}
+              />
+            ))
           )}
         </View>
       </ScrollView>
@@ -378,42 +295,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     opacity: 0.6,
     fontStyle: 'italic',
-  },
-
-  // DIAGNOSTIC DEBUG CARD STYLES
-  debugCard: {
-    borderWidth: 3,
-    borderColor: 'red',
-    backgroundColor: '#ffe6e6',
-    padding: 16,
-    borderRadius: 8,
-    marginBottom: 12,
-  },
-
-  debugTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#000',
-    marginBottom: 8,
-  },
-
-  debugLabel: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: 'red',
-    marginBottom: 8,
-  },
-
-  debugDate: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 4,
-  },
-
-  debugId: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#333',
   },
 });
