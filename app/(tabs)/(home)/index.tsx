@@ -5,22 +5,25 @@ import { useHomeActivities } from '@/hooks/useHomeActivities';
 import ActivityCard from '@/components/ActivityCard';
 
 /**
- * Normalize activity date to YYYY-MM-DD (local).
- * Works for both internal and external activities.
+ * Resolve activity datetime as ISO string.
+ * This MUST be a valid datetime for ActivityCard.
  */
-function normalizeActivityDate(activity: any): string | null {
-  const raw =
-    activity.activity_date ||
-    activity.scheduled_at ||
-    activity.start_date ||
-    activity.date;
+function resolveActivityDateTime(activity: any): string | null {
+  // External activities (calendar)
+  if (activity.scheduled_at) return activity.scheduled_at;
+  if (activity.start_time) return activity.start_time;
 
-  if (!raw || typeof raw !== 'string') return null;
+  // Internal activities (DB)
+  if (activity.activity_date && activity.activity_time) {
+    return `${activity.activity_date}T${activity.activity_time}`;
+  }
 
-  const datePart = raw.split('T')[0];
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return null;
+  if (activity.activity_date) {
+    // fallback: noon to avoid timezone issues
+    return `${activity.activity_date}T12:00:00`;
+  }
 
-  return datePart;
+  return null;
 }
 
 export default function HomeScreen() {
@@ -31,23 +34,37 @@ export default function HomeScreen() {
       return { todayActivities: [], upcomingActivities: [] };
     }
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
     const resolved = activitiesSafe
       .map(activity => {
-        const date = normalizeActivityDate(activity);
-        if (!date) return null;
-        return { ...activity, __resolvedDate: date };
+        const dateTime = resolveActivityDateTime(activity);
+        if (!dateTime) return null;
+
+        const dateObj = new Date(dateTime);
+        if (isNaN(dateObj.getTime())) return null;
+
+        return {
+          ...activity,
+          __resolvedDateTime: dateTime,
+          __dateObj: dateObj,
+        };
       })
       .filter(Boolean) as any[];
 
     return {
       todayActivities: resolved
-        .filter(a => a.__resolvedDate === todayStr)
-        .sort((a, b) => a.__resolvedDate.localeCompare(b.__resolvedDate)),
+        .filter(a => {
+          const d = new Date(a.__dateObj);
+          d.setHours(0, 0, 0, 0);
+          return d.getTime() === today.getTime();
+        })
+        .sort((a, b) => a.__dateObj.getTime() - b.__dateObj.getTime()),
+
       upcomingActivities: resolved
-        .filter(a => a.__resolvedDate > todayStr)
-        .sort((a, b) => a.__resolvedDate.localeCompare(b.__resolvedDate)),
+        .filter(a => a.__dateObj.getTime() > today.getTime())
+        .sort((a, b) => a.__dateObj.getTime() - b.__dateObj.getTime()),
     };
   }, [activitiesSafe]);
 
@@ -71,7 +88,7 @@ export default function HomeScreen() {
         <ActivityCard
           key={activity.id}
           activity={activity}
-          resolvedDate={activity.__resolvedDate}
+          resolvedDate={activity.__resolvedDateTime}
         />
       ))}
 
@@ -87,7 +104,7 @@ export default function HomeScreen() {
         <ActivityCard
           key={activity.id}
           activity={activity}
-          resolvedDate={activity.__resolvedDate}
+          resolvedDate={activity.__resolvedDateTime}
         />
       ))}
     </ScrollView>
