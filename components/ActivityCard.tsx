@@ -65,8 +65,10 @@ export default function ActivityCard({ activity, resolvedDate, onPress }: Activi
     }
   };
 
-  const gradientColors = getCategoryGradient(activity.category_name);
-  const categoryEmoji = getCategoryEmoji(activity.category_name);
+  // Read category from activity.category (resolved in useHomeActivities)
+  const categoryName = activity.category?.name || null;
+  const gradientColors = getCategoryGradient(categoryName);
+  const categoryEmoji = getCategoryEmoji(categoryName);
   
   // Format date and time
   const dayLabel = format(resolvedDate, 'EEE. d. MMM.', { locale: da });

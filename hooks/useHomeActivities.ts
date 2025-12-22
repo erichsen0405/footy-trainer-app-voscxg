@@ -4,14 +4,18 @@ import { Platform } from 'react-native';
 import { supabase } from '@/app/integrations/supabase/client';
 import { getActivities, getCategories, DatabaseActivity, DatabaseActivityCategory } from '@/services/activities';
 
+interface ActivityWithCategory extends DatabaseActivity {
+  category?: DatabaseActivityCategory | null;
+}
+
 interface UseHomeActivitiesResult {
-  activities: DatabaseActivity[];
+  activities: ActivityWithCategory[];
   loading: boolean;
 }
 
 export function useHomeActivities(): UseHomeActivitiesResult {
   const [userId, setUserId] = useState<string | null>(null);
-  const [activities, setActivities] = useState<DatabaseActivity[]>([]);
+  const [activities, setActivities] = useState<ActivityWithCategory[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Get user ID
@@ -51,17 +55,28 @@ export function useHomeActivities(): UseHomeActivitiesResult {
     try {
       console.log('[useHomeActivities] Fetching activities for user:', userId);
       
-      // 1. Fetch internal activities
+      // 1. Fetch categories first
+      const categoriesData = await getCategories(userId);
+      console.log('[useHomeActivities] Categories fetched:', categoriesData?.length ?? 0);
+      
+      // Create a map for quick category lookup
+      const categoryMap = new Map<string, DatabaseActivityCategory>();
+      (categoriesData || []).forEach(cat => {
+        categoryMap.set(cat.id, cat);
+      });
+      
+      // 2. Fetch internal activities
       const internalData = await getActivities(userId);
       console.log('[useHomeActivities] Internal activities:', internalData?.length ?? 0);
       
-      // Mark internal activities with is_external: false
-      const internalActivities = (internalData || []).map(activity => ({
+      // Mark internal activities with is_external: false and resolve category
+      const internalActivities: ActivityWithCategory[] = (internalData || []).map(activity => ({
         ...activity,
         is_external: false,
+        category: activity.category_id ? categoryMap.get(activity.category_id) || null : null,
       }));
       
-      // 2. Fetch external calendar activities
+      // 3. Fetch external calendar activities
       // First, get the user's external calendars
       const { data: calendarsData, error: calendarsError } = await supabase
         .from('external_calendars')
@@ -76,7 +91,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       const calendarIds = calendarsData?.map(c => c.id) || [];
       console.log('[useHomeActivities] Found enabled calendars:', calendarIds.length);
       
-      let externalActivities: DatabaseActivity[] = [];
+      let externalActivities: ActivityWithCategory[] = [];
       
       if (calendarIds.length > 0) {
         // Fetch all external events from enabled calendars
@@ -103,9 +118,10 @@ export function useHomeActivities(): UseHomeActivitiesResult {
             console.error('[useHomeActivities] Error fetching external event metadata:', metaError);
           }
           
-          // Map external events to activity format
+          // Map external events to activity format with resolved category
           externalActivities = eventsData.map(event => {
             const meta = metaData?.find(m => m.external_event_id === event.id);
+            const categoryId = meta?.category_id || null;
             
             return {
               id: meta?.id || event.id,
@@ -114,24 +130,26 @@ export function useHomeActivities(): UseHomeActivitiesResult {
               activity_date: event.start_date,
               activity_time: event.start_time || '12:00:00',
               location: event.location || '',
-              category_id: meta?.category_id || null,
+              category_id: categoryId,
+              category: categoryId ? categoryMap.get(categoryId) || null : null,
               is_external: true,
               external_calendar_id: event.provider_calendar_id,
               external_event_id: event.provider_event_uid,
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
-            } as DatabaseActivity;
+            } as ActivityWithCategory;
           });
         }
       }
       
       console.log('[useHomeActivities] External activities:', externalActivities.length);
       
-      // 3. Merge internal and external activities
+      // 4. Merge internal and external activities
       const mergedActivities = [...internalActivities, ...externalActivities];
       console.log('[useHomeActivities] Total merged activities:', mergedActivities.length);
       console.log('[useHomeActivities] Activities with is_external=true:', mergedActivities.filter(a => a.is_external).length);
       console.log('[useHomeActivities] Activities with is_external=false:', mergedActivities.filter(a => !a.is_external).length);
+      console.log('[useHomeActivities] Activities with resolved category:', mergedActivities.filter(a => a.category).length);
       
       setActivities(mergedActivities);
     } catch (err) {
