@@ -1,8 +1,10 @@
 
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { useTheme } from '@react-navigation/native';
+import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
+import { useRouter } from 'expo-router';
 import { format } from 'date-fns';
+import { da } from 'date-fns/locale';
+import { colors } from '@/styles/commonStyles';
 
 interface ActivityCardProps {
   activity: any;
@@ -10,111 +12,182 @@ interface ActivityCardProps {
   onPress?: () => void;
 }
 
+// Category color mapping
+const getCategoryColor = (categoryName: string | null): string => {
+  if (!categoryName) return '#6B7280';
+  
+  const colorMap: { [key: string]: string } = {
+    'Træning': '#4CAF50',
+    'Styrketræning': '#5B9AA0',
+    'VR træning': '#6366F1',
+    'Sprinttræning': '#F59E0B',
+    'Privattræning m. Ergün': '#EF4444',
+  };
+  
+  return colorMap[categoryName] || '#6B7280';
+};
+
+// Get emoji for category
+const getCategoryEmoji = (categoryName: string | null): string => {
+  if (!categoryName) return '⚽';
+  
+  const emojiMap: { [key: string]: string } = {
+    'Træning': '⚽',
+    'Styrketræning': '💪',
+    'VR træning': '🥽',
+    'Sprinttræning': '🏃',
+    'Privattræning m. Ergün': '📋',
+  };
+  
+  return emojiMap[categoryName] || '⚽';
+};
+
 export default function ActivityCard({ activity, resolvedDate, onPress }: ActivityCardProps) {
-  const theme = useTheme();
+  const router = useRouter();
 
-  // TRIN 5 – VERIFIKATION LOG (KUN MIDLOM)
-  console.log('[ActivityCard]', {
-    title: activity.title,
-    is_external: activity.is_external,
-    resolvedDate,
-  });
+  const handlePress = () => {
+    if (onPress) {
+      onPress();
+    } else {
+      // Navigate to activity details
+      router.push({
+        pathname: '/activity-details',
+        params: { activityId: activity.id },
+      });
+    }
+  };
 
-  // TRIN 3 – BRUG KUN resolvedDate I ActivityCard
-  const dateLabel = format(resolvedDate, 'dd-MM-yyyy');
+  const categoryColor = getCategoryColor(activity.category_name);
+  const categoryEmoji = getCategoryEmoji(activity.category_name);
+  
+  // Format date and time
+  const dayLabel = format(resolvedDate, 'EEE. d. MMM.', { locale: da });
   const timeLabel = format(resolvedDate, 'HH:mm');
+  
+  // Location or category location
+  const location = activity.location || activity.category_location || '';
 
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      style={[
-        styles.activityCard,
-        { backgroundColor: theme.colors.card },
+    <Pressable
+      onPress={handlePress}
+      style={({ pressed }) => [
+        styles.card,
+        { backgroundColor: categoryColor },
+        pressed && styles.cardPressed,
       ]}
     >
-      <View style={styles.activityCardContent}>
-        <Text style={[styles.activityTitle, { color: theme.colors.text }]}>
-          {activity.title || activity.name || 'Uden titel'}
-        </Text>
-
-        <Text style={[styles.activityDateTime, { color: theme.colors.text }]}>
-          {dateLabel} • {timeLabel}
-        </Text>
-
-        {activity.category_name && (
-          <View
-            style={[
-              styles.categoryBadge,
-              { backgroundColor: activity.category_color || theme.colors.primary },
-            ]}
-          >
-            <Text style={styles.categoryText}>
-              {activity.category_name}
-            </Text>
+      <View style={styles.cardContent}>
+        {/* Icon */}
+        <View style={styles.iconContainer}>
+          <View style={styles.iconCircle}>
+            <Text style={styles.iconEmoji}>{categoryEmoji}</Text>
           </View>
-        )}
+        </View>
 
-        {activity.is_external && (
-          <View style={[styles.externalBadge, { backgroundColor: '#6366f1' }]}>
-            <Text style={styles.externalText}>Ekstern</Text>
+        {/* Content */}
+        <View style={styles.textContainer}>
+          <Text style={styles.title} numberOfLines={1}>
+            {activity.title || activity.name || 'Uden titel'}
+          </Text>
+          
+          <View style={styles.detailRow}>
+            <Text style={styles.detailIcon}>🕐</Text>
+            <Text style={styles.detailText}>{dayLabel} • {timeLabel}</Text>
           </View>
-        )}
+
+          {location && (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailIcon}>📍</Text>
+              <Text style={styles.detailText}>{location}</Text>
+            </View>
+          )}
+
+          {activity.is_external && (
+            <View style={styles.externalBadge}>
+              <Text style={styles.externalText}>📅 Ekstern kalender</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Arrow */}
+        <View style={styles.arrowContainer}>
+          <Text style={styles.arrow}>›</Text>
+        </View>
       </View>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  activityCard: {
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+  card: {
+    borderRadius: 16,
+    padding: 16,
+    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)',
+    elevation: 3,
+  },
+  cardPressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.98 }],
+  },
+  cardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
 
-  activityCardContent: {
-    gap: 6,
+  // Icon
+  iconContainer: {
+    marginRight: 12,
+  },
+  iconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconEmoji: {
+    fontSize: 28,
   },
 
-  activityTitle: {
-    fontSize: 16,
-    fontWeight: '600',
+  // Text Content
+  textContainer: {
+    flex: 1,
   },
-
-  activityDateTime: {
+  title: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 6,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  detailIcon: {
+    fontSize: 12,
+    marginRight: 4,
+  },
+  detailText: {
     fontSize: 14,
-    opacity: 0.7,
+    color: '#FFFFFF',
   },
-
-  categoryBadge: {
-    alignSelf: 'flex-start',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginTop: 4,
-  },
-
-  categoryText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-
   externalBadge: {
-    alignSelf: 'flex-start',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginTop: 4,
+    marginTop: 6,
+  },
+  externalText: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.9)',
   },
 
-  externalText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
+  // Arrow
+  arrowContainer: {
+    marginLeft: 8,
+  },
+  arrow: {
+    fontSize: 32,
+    fontWeight: '300',
+    color: '#FFFFFF',
   },
 });

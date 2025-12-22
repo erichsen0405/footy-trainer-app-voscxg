@@ -1,11 +1,12 @@
 
 import React, { useMemo } from 'react';
-import { ScrollView, View, StyleSheet } from 'react-native';
-import { Text } from 'native-base';
+import { ScrollView, View, Text, StyleSheet, Pressable, Platform } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
 import ActivityCard from '@/components/ActivityCard';
-// import WeeklyProgressCard from '@/components/WeeklyProgressCard';
-// import CreateActivityButton from '@/components/CreateActivityButton';
+import { colors } from '@/styles/commonStyles';
+import { format, startOfWeek, endOfWeek, isSameDay, isAfter, isBefore } from 'date-fns';
+import { da } from 'date-fns/locale';
 
 function resolveActivityDateTime(activity: any): Date | null {
   // Internal DB activities
@@ -26,12 +27,19 @@ function resolveActivityDateTime(activity: any): Date | null {
   return null;
 }
 
+function getWeekLabel(date: Date): string {
+  const start = startOfWeek(date, { weekStartsOn: 1 });
+  const end = endOfWeek(date, { weekStartsOn: 1 });
+  return `${format(start, 'd/M', { locale: da })} - ${format(end, 'd/M', { locale: da })}`;
+}
+
 export default function HomeScreen() {
+  const router = useRouter();
   const { activities, loading } = useHomeActivities();
 
-  const { todayActivities, upcomingActivities } = useMemo(() => {
+  const { todayActivities, upcomingByWeek } = useMemo(() => {
     if (!Array.isArray(activities)) {
-      return { todayActivities: [], upcomingActivities: [] };
+      return { todayActivities: [], upcomingByWeek: [] };
     }
 
     const now = new Date();
@@ -73,50 +81,142 @@ export default function HomeScreen() {
           b.__resolvedDateTime.getTime()
       );
 
-    return { todayActivities, upcomingActivities };
+    // Group upcoming activities by week
+    const weekGroups: { [key: string]: any[] } = {};
+    upcomingActivities.forEach(activity => {
+      const weekStart = startOfWeek(activity.__resolvedDateTime, { weekStartsOn: 1 });
+      const weekKey = weekStart.toISOString();
+      if (!weekGroups[weekKey]) {
+        weekGroups[weekKey] = [];
+      }
+      weekGroups[weekKey].push(activity);
+    });
+
+    const upcomingByWeek = Object.entries(weekGroups)
+      .map(([weekKey, activities]) => ({
+        weekStart: new Date(weekKey),
+        activities,
+      }))
+      .sort((a, b) => a.weekStart.getTime() - b.weekStart.getTime());
+
+    return { todayActivities, upcomingByWeek };
   }, [activities]);
 
   if (loading) {
     return (
       <View style={styles.loading}>
-        <Text>Indlæser…</Text>
+        <Text style={styles.loadingText}>Indlæser…</Text>
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container}>
-      {/* I DAG */}
-      <Text style={styles.sectionTitle}>I dag</Text>
+    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.logoContainer}>
+          <View style={styles.logo}>
+            <Text style={styles.logoIcon}>⚽</Text>
+          </View>
+        </View>
+        <View style={styles.headerTextContainer}>
+          <Text style={styles.headerTitle}>FOOTBALL COACH</Text>
+          <Text style={styles.headerSubtitle}>Styrk din fodboldtræning</Text>
+        </View>
+      </View>
 
-      {todayActivities.length === 0 && (
-        <Text style={styles.emptyText}>Ingen aktiviteter i dag</Text>
-      )}
+      {/* Weekly Progress Card */}
+      <View style={styles.progressCard}>
+        <View style={styles.progressHeader}>
+          <Text style={styles.progressLabel}>DENNE UGE</Text>
+          <View style={styles.medalBadge}>
+            <Text style={styles.medalIcon}>🥉</Text>
+          </View>
+        </View>
+        
+        <Text style={styles.progressPercentage}>0%</Text>
+        
+        <View style={styles.progressBar}>
+          <View style={[styles.progressBarFill, { width: '0%' }]} />
+        </View>
 
-      {todayActivities.map(activity => (
-        <ActivityCard
-          key={activity.id}
-          activity={activity}
-          resolvedDate={activity.__resolvedDateTime}
-        />
-      ))}
+        <Text style={styles.progressDetail}>Opgaver indtil i dag: 0 / 3</Text>
+        <View style={styles.progressBar}>
+          <View style={[styles.progressBarFill, { width: '0%' }]} />
+        </View>
 
-      {/* KOMMENDE */}
-      <Text style={styles.sectionTitle}>Kommende aktiviteter</Text>
+        <Text style={styles.progressDetail}>Hele ugen: 0 / 22 opgaver</Text>
 
-      {upcomingActivities.length === 0 && (
-        <Text style={styles.emptyText}>
-          Ingen kommende aktiviteter
+        <Text style={styles.motivationText}>
+          Hver træning tæller! 3 opgaver tilbage indtil i dag.{'\n'}
+          22 opgaver tilbage for ugen. ⚽
         </Text>
+
+        <Pressable style={styles.performanceButton}>
+          <Text style={styles.performanceButtonText}>📊  Se Performance  →</Text>
+        </Pressable>
+      </View>
+
+      {/* Create Activity Button */}
+      <Pressable 
+        style={styles.createButton}
+        onPress={() => {
+          // Navigate to create activity
+        }}
+      >
+        <Text style={styles.createButtonText}>+  Opret Aktivitet</Text>
+      </Pressable>
+
+      {/* I DAG Section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>I DAG</Text>
+
+        {todayActivities.length === 0 && (
+          <Text style={styles.emptyText}>Ingen aktiviteter i dag</Text>
+        )}
+
+        {todayActivities.map((activity, index) => (
+          <View key={index} style={styles.activityWrapper}>
+            <ActivityCard
+              activity={activity}
+              resolvedDate={activity.__resolvedDateTime}
+            />
+          </View>
+        ))}
+      </View>
+
+      {/* KOMMENDE Section */}
+      {upcomingByWeek.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>KOMMENDE</Text>
+            <Pressable>
+              <Text style={styles.expandButton}>▲ Tidligere</Text>
+            </Pressable>
+          </View>
+
+          {upcomingByWeek.map((weekGroup, weekIndex) => (
+            <View key={weekIndex} style={styles.weekGroup}>
+              <Text style={styles.weekLabel}>
+                Uge {format(weekGroup.weekStart, 'w', { locale: da })}
+                <Text style={styles.weekDateRange}>  {getWeekLabel(weekGroup.weekStart)}</Text>
+              </Text>
+
+              {weekGroup.activities.map((activity, activityIndex) => (
+                <View key={activityIndex} style={styles.activityWrapper}>
+                  <ActivityCard
+                    activity={activity}
+                    resolvedDate={activity.__resolvedDateTime}
+                  />
+                </View>
+              ))}
+            </View>
+          ))}
+        </View>
       )}
 
-      {upcomingActivities.map(activity => (
-        <ActivityCard
-          key={activity.id}
-          activity={activity}
-          resolvedDate={activity.__resolvedDateTime}
-        />
-      ))}
+      {/* Bottom spacing for tab bar */}
+      <View style={styles.bottomSpacer} />
     </ScrollView>
   );
 }
@@ -124,19 +224,205 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 16,
+    backgroundColor: colors.background,
+  },
+  contentContainer: {
+    paddingTop: Platform.OS === 'android' ? 48 : 0,
   },
   loading: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
     padding: 24,
   },
-  sectionTitle: {
-    marginTop: 24,
+  loadingText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+  },
+
+  // Header
+  header: {
+    backgroundColor: '#2C3E50',
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  logoContainer: {
+    marginRight: 16,
+  },
+  logo: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  logoIcon: {
+    fontSize: 32,
+  },
+  headerTextContainer: {
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginTop: 2,
+  },
+
+  // Progress Card
+  progressCard: {
+    backgroundColor: '#8B4545',
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 12,
+    borderRadius: 16,
+    padding: 20,
+    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.15)',
+    elevation: 4,
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  progressLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 1,
+  },
+  medalBadge: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  medalIcon: {
+    fontSize: 24,
+  },
+  progressPercentage: {
+    fontSize: 64,
+    fontWeight: '700',
+    color: '#FFFFFF',
     marginBottom: 8,
-    fontSize: 18,
+  },
+  progressBar: {
+    height: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    borderRadius: 4,
+    marginVertical: 8,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 4,
+  },
+  progressDetail: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    marginTop: 8,
+  },
+  motivationText: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    marginTop: 16,
+    lineHeight: 20,
+  },
+  performanceButton: {
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  performanceButtonText: {
+    fontSize: 16,
     fontWeight: '600',
+    color: '#FFFFFF',
+  },
+
+  // Create Button
+  createButton: {
+    backgroundColor: '#4CAF50',
+    marginHorizontal: 16,
+    marginVertical: 12,
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+    boxShadow: '0px 2px 8px rgba(76, 175, 80, 0.3)',
+    elevation: 3,
+  },
+  createButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+
+  // Sections
+  section: {
+    paddingHorizontal: 16,
+    marginTop: 8,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 12,
+  },
+  expandButton: {
+    fontSize: 14,
+    color: colors.textSecondary,
   },
   emptyText: {
-    color: '#888',
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 12,
+  },
+
+  // Week Groups
+  weekGroup: {
+    marginBottom: 16,
+  },
+  weekLabel: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
     marginBottom: 8,
+  },
+  weekDateRange: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: colors.textSecondary,
+  },
+
+  // Activity Wrapper
+  activityWrapper: {
+    marginBottom: 12,
+  },
+
+  // Bottom Spacer
+  bottomSpacer: {
+    height: 120,
   },
 });
