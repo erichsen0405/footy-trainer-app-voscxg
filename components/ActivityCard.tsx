@@ -49,10 +49,11 @@ export default function ActivityCard({ activity, resolvedDate, onPress }: Activi
     if (onPress) {
       onPress();
     } else {
-      // Navigate to activity details
+      // Navigate to activity details - FIXED: use 'id' parameter name
+      console.log('ActivityCard: Navigating to activity details with id:', activity.id);
       router.push({
         pathname: '/activity-details',
-        params: { activityId: activity.id },
+        params: { id: activity.id },
       });
     }
   };
