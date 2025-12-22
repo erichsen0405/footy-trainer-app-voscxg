@@ -200,14 +200,36 @@ export default function HomeScreen() {
               Ingen aktiviteter i dag
             </Text>
           ) : (
-            todayActivities.map((item) => (
-              <ActivityCard
-                key={item.activity.id}
-                activity={item.activity}
-                resolvedDate={item.date!}
-                onPress={() => handleActivityPress(item.activity.id)}
-              />
-            ))
+            todayActivities.map((item) => {
+              // DIAGNOSTIC: Bypass ActivityCard for external activities
+              if (item.activity.is_external === true) {
+                return (
+                  <View
+                    key={item.activity.id}
+                    style={styles.debugCard}
+                  >
+                    <Text style={styles.debugTitle}>{item.activity.title}</Text>
+                    <Text style={styles.debugLabel}>EXTERNAL ACTIVITY</Text>
+                    <Text style={styles.debugDate}>
+                      Date: {item.date?.toString()}
+                    </Text>
+                    <Text style={styles.debugId}>
+                      External Event ID: {item.activity.external_event_id || 'N/A'}
+                    </Text>
+                  </View>
+                );
+              }
+
+              // Internal activities use ActivityCard
+              return (
+                <ActivityCard
+                  key={item.activity.id}
+                  activity={item.activity}
+                  resolvedDate={item.date!}
+                  onPress={() => handleActivityPress(item.activity.id)}
+                />
+              );
+            })
           )}
         </View>
 
@@ -222,14 +244,36 @@ export default function HomeScreen() {
               Ingen kommende aktiviteter
             </Text>
           ) : (
-            upcomingActivities.map((item) => (
-              <ActivityCard
-                key={item.activity.id}
-                activity={item.activity}
-                resolvedDate={item.date!}
-                onPress={() => handleActivityPress(item.activity.id)}
-              />
-            ))
+            upcomingActivities.map((item) => {
+              // DIAGNOSTIC: Bypass ActivityCard for external activities
+              if (item.activity.is_external === true) {
+                return (
+                  <View
+                    key={item.activity.id}
+                    style={styles.debugCard}
+                  >
+                    <Text style={styles.debugTitle}>{item.activity.title}</Text>
+                    <Text style={styles.debugLabel}>EXTERNAL ACTIVITY</Text>
+                    <Text style={styles.debugDate}>
+                      Date: {item.date?.toString()}
+                    </Text>
+                    <Text style={styles.debugId}>
+                      External Event ID: {item.activity.external_event_id || 'N/A'}
+                    </Text>
+                  </View>
+                );
+              }
+
+              // Internal activities use ActivityCard
+              return (
+                <ActivityCard
+                  key={item.activity.id}
+                  activity={item.activity}
+                  resolvedDate={item.date!}
+                  onPress={() => handleActivityPress(item.activity.id)}
+                />
+              );
+            })
           )}
         </View>
       </ScrollView>
@@ -325,5 +369,42 @@ const styles = StyleSheet.create({
     fontSize: 14,
     opacity: 0.6,
     fontStyle: 'italic',
+  },
+
+  // DIAGNOSTIC DEBUG CARD STYLES
+  debugCard: {
+    borderWidth: 3,
+    borderColor: 'red',
+    backgroundColor: '#ffe6e6',
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+
+  debugTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#000',
+    marginBottom: 8,
+  },
+
+  debugLabel: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: 'red',
+    marginBottom: 8,
+  },
+
+  debugDate: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+
+  debugId: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#333',
   },
 });
