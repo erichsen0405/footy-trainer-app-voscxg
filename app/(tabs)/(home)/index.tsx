@@ -1,13 +1,12 @@
 
 import React, { useMemo } from 'react';
-import { ScrollView, View } from 'react-native';
-import { Text, VStack } from 'native-base';
+import { ScrollView, View, Text, StyleSheet } from 'react-native';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
 import ActivityCard from '@/components/ActivityCard';
 
 /**
- * Normalize all activity dates to YYYY-MM-DD (local).
- * Returns null if no valid date can be resolved.
+ * Normalize activity date to YYYY-MM-DD (local).
+ * Works for both internal and external activities.
  */
 function normalizeActivityDate(activity: any): string | null {
   const raw =
@@ -18,7 +17,6 @@ function normalizeActivityDate(activity: any): string | null {
 
   if (!raw || typeof raw !== 'string') return null;
 
-  // Accept ISO or YYYY-MM-DD
   const datePart = raw.split('T')[0];
   if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return null;
 
@@ -39,74 +37,78 @@ export default function HomeScreen() {
       .map(activity => {
         const date = normalizeActivityDate(activity);
         if (!date) return null;
-
-        return {
-          ...activity,
-          __resolvedDate: date,
-        };
+        return { ...activity, __resolvedDate: date };
       })
-      .filter(Boolean) as Array<any>;
+      .filter(Boolean) as any[];
 
-    const todayActivities = resolved
-      .filter(a => a.__resolvedDate === todayStr)
-      .sort((a, b) =>
-        a.__resolvedDate.localeCompare(b.__resolvedDate)
-      );
-
-    const upcomingActivities = resolved
-      .filter(a => a.__resolvedDate > todayStr)
-      .sort((a, b) =>
-        a.__resolvedDate.localeCompare(b.__resolvedDate)
-      );
-
-    return { todayActivities, upcomingActivities };
+    return {
+      todayActivities: resolved
+        .filter(a => a.__resolvedDate === todayStr)
+        .sort((a, b) => a.__resolvedDate.localeCompare(b.__resolvedDate)),
+      upcomingActivities: resolved
+        .filter(a => a.__resolvedDate > todayStr)
+        .sort((a, b) => a.__resolvedDate.localeCompare(b.__resolvedDate)),
+    };
   }, [activitiesSafe]);
 
   if (loading) {
     return (
-      <View style={{ padding: 16 }}>
+      <View style={styles.center}>
         <Text>Indlæser…</Text>
       </View>
     );
   }
 
   return (
-    <ScrollView>
-      <VStack space={4} padding={4}>
-        {/* I DAG */}
-        <Text fontSize="lg" fontWeight="bold">
-          I dag
-        </Text>
+    <ScrollView contentContainerStyle={styles.container}>
+      <Text style={styles.sectionTitle}>I dag</Text>
 
-        {todayActivities.length === 0 && (
-          <Text color="gray.500">Ingen aktiviteter i dag</Text>
-        )}
+      {todayActivities.length === 0 && (
+        <Text style={styles.emptyText}>Ingen aktiviteter i dag</Text>
+      )}
 
-        {todayActivities.map(activity => (
-          <ActivityCard
-            key={activity.id}
-            activity={activity}
-            resolvedDate={activity.__resolvedDate}
-          />
-        ))}
+      {todayActivities.map(activity => (
+        <ActivityCard
+          key={activity.id}
+          activity={activity}
+          resolvedDate={activity.__resolvedDate}
+        />
+      ))}
 
-        {/* KOMMENDE */}
-        <Text fontSize="lg" fontWeight="bold" marginTop={6}>
-          Kommende aktiviteter
-        </Text>
+      <Text style={[styles.sectionTitle, { marginTop: 24 }]}>
+        Kommende aktiviteter
+      </Text>
 
-        {upcomingActivities.length === 0 && (
-          <Text color="gray.500">Ingen kommende aktiviteter</Text>
-        )}
+      {upcomingActivities.length === 0 && (
+        <Text style={styles.emptyText}>Ingen kommende aktiviteter</Text>
+      )}
 
-        {upcomingActivities.map(activity => (
-          <ActivityCard
-            key={activity.id}
-            activity={activity}
-            resolvedDate={activity.__resolvedDate}
-          />
-        ))}
-      </VStack>
+      {upcomingActivities.map(activity => (
+        <ActivityCard
+          key={activity.id}
+          activity={activity}
+          resolvedDate={activity.__resolvedDate}
+        />
+      ))}
     </ScrollView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    padding: 16,
+  },
+  center: {
+    padding: 16,
+    alignItems: 'center',
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  emptyText: {
+    color: '#666',
+    marginBottom: 12,
+  },
+});
