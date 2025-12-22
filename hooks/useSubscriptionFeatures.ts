@@ -13,7 +13,10 @@ interface SubscriptionFeatures {
 }
 
 export function useSubscriptionFeatures(): SubscriptionFeatures {
-  const { subscriptionStatus, products, loading: iapLoading } = useAppleIAP();
+  // Safely get Apple IAP context - it should always be available since provider is in _layout
+  const appleIAPContext = useAppleIAP();
+  const { subscriptionStatus, products, loading: iapLoading } = appleIAPContext;
+  
   const [profileData, setProfileData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
