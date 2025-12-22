@@ -1,69 +1,54 @@
 
-import React from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, Pressable, TouchableOpacity, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { format } from 'date-fns';
 import { da } from 'date-fns/locale';
+import { IconSymbol } from '@/components/IconSymbol';
+import { colors } from '@/styles/commonStyles';
+import { useFootball } from '@/contexts/FootballContext';
 
 interface ActivityCardProps {
   activity: any;
   resolvedDate: Date;
   onPress?: () => void;
+  showTasks?: boolean;
 }
 
 // Helper function to lighten a hex color
 function lightenColor(hex: string, percent: number): string {
-  // Remove # if present
   hex = hex.replace('#', '');
-  
-  // Convert to RGB
   const r = parseInt(hex.substring(0, 2), 16);
   const g = parseInt(hex.substring(2, 4), 16);
   const b = parseInt(hex.substring(4, 6), 16);
-  
-  // Lighten
   const newR = Math.min(255, Math.floor(r + (255 - r) * percent));
   const newG = Math.min(255, Math.floor(g + (255 - g) * percent));
   const newB = Math.min(255, Math.floor(b + (255 - b) * percent));
-  
-  // Convert back to hex
   return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
 }
 
 // Helper function to darken a hex color
 function darkenColor(hex: string, percent: number): string {
-  // Remove # if present
   hex = hex.replace('#', '');
-  
-  // Convert to RGB
   const r = parseInt(hex.substring(0, 2), 16);
   const g = parseInt(hex.substring(2, 4), 16);
   const b = parseInt(hex.substring(4, 6), 16);
-  
-  // Darken
   const newR = Math.floor(r * (1 - percent));
   const newG = Math.floor(g * (1 - percent));
   const newB = Math.floor(b * (1 - percent));
-  
-  // Convert back to hex
   return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
 }
 
-// Category gradient mapping - uses actual category color to create gradient
+// Category gradient mapping
 const getCategoryGradient = (category: any): string[] => {
   if (!category || !category.color) {
-    // Fallback gradient - should never be used if category is properly resolved
     console.warn('ActivityCard: No category or category color found, using fallback gradient');
     return ['#6B7280', '#4B5563'];
   }
-  
   const baseColor = category.color;
-  
-  // Create a gradient from lighter to darker variant of the same color
   const lighterColor = lightenColor(baseColor, 0.15);
   const darkerColor = darkenColor(baseColor, 0.2);
-  
   return [lighterColor, darkerColor];
 };
 
@@ -73,10 +58,21 @@ const getCategoryEmoji = (category: any): string => {
   return category.emoji;
 };
 
-export default function ActivityCard({ activity, resolvedDate, onPress }: ActivityCardProps) {
+export default function ActivityCard({ activity, resolvedDate, onPress, showTasks = false }: ActivityCardProps) {
   const router = useRouter();
+  const { toggleTaskCompletion, refreshData } = useFootball();
+  
+  // Local optimistic state for tasks
+  const [optimisticTasks, setOptimisticTasks] = useState<any[]>([]);
 
-  const handlePress = () => {
+  // Initialize optimistic tasks from activity
+  useEffect(() => {
+    if (activity.tasks) {
+      setOptimisticTasks(activity.tasks);
+    }
+  }, [activity.tasks]);
+
+  const handleCardPress = () => {
     if (onPress) {
       onPress();
     } else {
@@ -88,21 +84,71 @@ export default function ActivityCard({ activity, resolvedDate, onPress }: Activi
     }
   };
 
-  // Read category from activity.category (resolved in useHomeActivities)
+  const handleTaskPress = (task: any) => {
+    // Navigate to activity details which will show the task modal
+    console.log('ActivityCard: Task pressed, navigating to activity details');
+    router.push({
+      pathname: '/activity-details',
+      params: { id: activity.id },
+    });
+  };
+
+  const handleToggleTask = async (taskId: string, event: any) => {
+    // Stop propagation to prevent card press
+    event.stopPropagation();
+    
+    console.log('ActivityCard: Toggling task:', taskId);
+    
+    // Find the task
+    const taskIndex = optimisticTasks.findIndex(t => t.id === taskId);
+    if (taskIndex === -1) {
+      console.error('Task not found:', taskId);
+      return;
+    }
+    
+    const task = optimisticTasks[taskIndex];
+    const previousCompleted = task.completed;
+    
+    // Optimistic update
+    const newTasks = [...optimisticTasks];
+    newTasks[taskIndex] = { ...task, completed: !previousCompleted };
+    setOptimisticTasks(newTasks);
+    
+    try {
+      // Backend call
+      await toggleTaskCompletion(activity.id, taskId);
+      console.log('✅ Task toggled successfully');
+      
+      // Refresh data to sync with backend
+      refreshData();
+    } catch (error) {
+      console.error('❌ Error toggling task, rolling back:', error);
+      
+      // Rollback on error
+      const rollbackTasks = [...optimisticTasks];
+      rollbackTasks[taskIndex] = { ...task, completed: previousCompleted };
+      setOptimisticTasks(rollbackTasks);
+      
+      Alert.alert('Fejl', 'Kunne ikke opdatere opgaven. Prøv igen.');
+    }
+  };
+
+  const formatReminderTime = (reminderMinutes: number) => {
+    if (!reminderMinutes) return null;
+    return `${reminderMinutes} min før`;
+  };
+
   const category = activity.category || null;
   const gradientColors = getCategoryGradient(category);
   const categoryEmoji = getCategoryEmoji(category);
   
-  // Format date and time
   const dayLabel = format(resolvedDate, 'EEE. d. MMM.', { locale: da });
   const timeLabel = format(resolvedDate, 'HH:mm');
-  
-  // Location or category location
   const location = activity.location || activity.category_location || '';
 
   return (
     <Pressable
-      onPress={handlePress}
+      onPress={handleCardPress}
       style={({ pressed }) => [
         pressed && styles.cardPressed,
       ]}
@@ -151,6 +197,78 @@ export default function ActivityCard({ activity, resolvedDate, onPress }: Activi
             <Text style={styles.arrow}>›</Text>
           </View>
         </View>
+
+        {/* Tasks Section - Only show if showTasks is true and tasks exist */}
+        {showTasks && optimisticTasks && optimisticTasks.length > 0 && (
+          <View style={styles.tasksSection}>
+            <View style={styles.tasksDivider} />
+            {optimisticTasks.map((task, index) => (
+              <View key={index} style={styles.taskRow}>
+                <TouchableOpacity
+                  style={styles.taskCheckboxArea}
+                  onPress={(e) => handleToggleTask(task.id, e)}
+                  activeOpacity={0.7}
+                >
+                  <View
+                    style={[
+                      styles.taskCheckbox,
+                      task.completed && styles.taskCheckboxCompleted,
+                    ]}
+                  >
+                    {task.completed && (
+                      <IconSymbol
+                        ios_icon_name="checkmark"
+                        android_material_icon_name="check"
+                        size={14}
+                        color="#fff"
+                      />
+                    )}
+                  </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.taskContent}
+                  onPress={() => handleTaskPress(task)}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.taskTitle,
+                      task.completed && styles.taskTitleCompleted,
+                    ]}
+                  >
+                    {task.title}
+                  </Text>
+                  
+                  {task.reminder_minutes && (
+                    <View style={styles.reminderBadge}>
+                      <IconSymbol
+                        ios_icon_name="bell.fill"
+                        android_material_icon_name="notifications"
+                        size={12}
+                        color="rgba(255, 255, 255, 0.9)"
+                      />
+                      <Text style={styles.reminderText}>
+                        {formatReminderTime(task.reminder_minutes)}
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+
+                {task.video_url && (
+                  <View style={styles.videoIndicator}>
+                    <IconSymbol
+                      ios_icon_name="play.circle.fill"
+                      android_material_icon_name="play_circle"
+                      size={20}
+                      color="rgba(255, 255, 255, 0.9)"
+                    />
+                  </View>
+                )}
+              </View>
+            ))}
+          </View>
+        )}
       </LinearGradient>
     </Pressable>
   );
@@ -233,5 +351,65 @@ const styles = StyleSheet.create({
     fontWeight: '300',
     color: 'rgba(255, 255, 255, 0.9)',
     lineHeight: 40,
+  },
+
+  // Tasks Section
+  tasksSection: {
+    marginTop: 16,
+  },
+  tasksDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    marginBottom: 12,
+  },
+  taskRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+  },
+  taskCheckboxArea: {
+    marginRight: 12,
+    padding: 4,
+  },
+  taskCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  taskCheckboxCompleted: {
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderColor: 'rgba(255, 255, 255, 0.9)',
+  },
+  taskContent: {
+    flex: 1,
+  },
+  taskTitle: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#FFFFFF',
+  },
+  taskTitleCompleted: {
+    textDecorationLine: 'line-through',
+    opacity: 0.7,
+  },
+  reminderBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  reminderText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.9)',
+  },
+  videoIndicator: {
+    marginLeft: 8,
   },
 });

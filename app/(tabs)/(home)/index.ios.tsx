@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState } from 'react';
-import { ScrollView, View, Text, StyleSheet, Pressable, StatusBar, TouchableOpacity, Modal, Platform } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, Pressable, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -11,9 +11,6 @@ import CreateActivityModal from '@/components/CreateActivityModal';
 import { colors } from '@/styles/commonStyles';
 import { format, startOfWeek, endOfWeek, getWeek } from 'date-fns';
 import { da } from 'date-fns/locale';
-import { IconSymbol } from '@/components/IconSymbol';
-import { supabase } from '@/app/integrations/supabase/client';
-import SmartVideoPlayer from '@/components/SmartVideoPlayer';
 
 function resolveActivityDateTime(activity: any): Date | null {
   // Internal DB activities
@@ -43,93 +40,8 @@ function getWeekLabel(date: Date): string {
 export default function HomeScreen() {
   const router = useRouter();
   const { activities, loading } = useHomeActivities();
-  const { categories, createActivity, refreshData, toggleTaskCompletion } = useFootball();
+  const { categories, createActivity, refreshData } = useFootball();
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [activityTasks, setActivityTasks] = useState<{ [activityId: string]: any[] }>({});
-  const [selectedTaskVideo, setSelectedTaskVideo] = useState<string | null>(null);
-  const [showVideoModal, setShowVideoModal] = useState(false);
-
-  // Fetch tasks for today's activities
-  React.useEffect(() => {
-    async function fetchTasksForActivities() {
-      if (!Array.isArray(activities) || activities.length === 0) return;
-
-      const now = new Date();
-      const todayStart = new Date(now);
-      todayStart.setHours(0, 0, 0, 0);
-      const todayEnd = new Date(todayStart);
-      todayEnd.setHours(23, 59, 59, 999);
-
-      const resolved = activities
-        .map(activity => {
-          const dateTime = resolveActivityDateTime(activity);
-          if (!dateTime) return null;
-          return {
-            ...activity,
-            __resolvedDateTime: dateTime,
-          };
-        })
-        .filter(Boolean) as any[];
-
-      const todayActivities = resolved.filter(
-        a =>
-          a.__resolvedDateTime >= todayStart &&
-          a.__resolvedDateTime <= todayEnd
-      );
-
-      const tasksMap: { [activityId: string]: any[] } = {};
-
-      for (const activity of todayActivities) {
-        try {
-          if (activity.is_external) {
-            // Fetch tasks for external activities
-            const { data: externalTasks, error } = await supabase
-              .from('external_event_tasks')
-              .select('*')
-              .eq('external_event_id', activity.external_event_id)
-              .order('created_at', { ascending: true });
-
-            if (!error && externalTasks) {
-              tasksMap[activity.id] = externalTasks.map((task: any) => ({
-                id: task.id,
-                title: task.title,
-                description: task.description || '',
-                completed: task.completed,
-                reminder_minutes: task.reminder_minutes,
-                video_url: task.video_url,
-                isExternal: true,
-              }));
-            }
-          } else {
-            // Fetch tasks for internal activities
-            const { data: internalTasks, error } = await supabase
-              .from('activity_tasks')
-              .select('*')
-              .eq('activity_id', activity.id)
-              .order('created_at', { ascending: true });
-
-            if (!error && internalTasks) {
-              tasksMap[activity.id] = internalTasks.map((task: any) => ({
-                id: task.id,
-                title: task.title,
-                description: task.description || '',
-                completed: task.completed,
-                reminder_minutes: task.reminder_minutes,
-                video_url: task.video_url,
-                isExternal: false,
-              }));
-            }
-          }
-        } catch (error) {
-          console.error('Error fetching tasks for activity:', activity.id, error);
-        }
-      }
-
-      setActivityTasks(tasksMap);
-    }
-
-    fetchTasksForActivities();
-  }, [activities]);
 
   const { todayActivities, upcomingByWeek } = useMemo(() => {
     if (!Array.isArray(activities)) {
@@ -199,90 +111,6 @@ export default function HomeScreen() {
   const handleCreateActivity = async (activityData: any) => {
     await createActivity(activityData);
     refreshData();
-  };
-
-  const handleToggleTask = async (activityId: string, taskId: string) => {
-    try {
-      await toggleTaskCompletion(activityId, taskId);
-      
-      // Refresh tasks for this activity
-      const activity = todayActivities.find(a => a.id === activityId);
-      if (!activity) return;
-
-      if (activity.is_external) {
-        const { data: externalTasks, error } = await supabase
-          .from('external_event_tasks')
-          .select('*')
-          .eq('external_event_id', activity.external_event_id)
-          .order('created_at', { ascending: true });
-
-        if (!error && externalTasks) {
-          setActivityTasks(prev => ({
-            ...prev,
-            [activityId]: externalTasks.map((task: any) => ({
-              id: task.id,
-              title: task.title,
-              description: task.description || '',
-              completed: task.completed,
-              reminder_minutes: task.reminder_minutes,
-              video_url: task.video_url,
-              isExternal: true,
-            })),
-          }));
-        }
-      } else {
-        const { data: internalTasks, error } = await supabase
-          .from('activity_tasks')
-          .select('*')
-          .eq('activity_id', activityId)
-          .order('created_at', { ascending: true });
-
-        if (!error && internalTasks) {
-          setActivityTasks(prev => ({
-            ...prev,
-            [activityId]: internalTasks.map((task: any) => ({
-              id: task.id,
-              title: task.title,
-              description: task.description || '',
-              completed: task.completed,
-              reminder_minutes: task.reminder_minutes,
-              video_url: task.video_url,
-              isExternal: false,
-            })),
-          }));
-        }
-      }
-    } catch (error) {
-      console.error('Error toggling task:', error);
-    }
-  };
-
-  const handleTaskPress = (task: any) => {
-    if (task.video_url) {
-      setSelectedTaskVideo(task.video_url);
-      setShowVideoModal(true);
-    }
-  };
-
-  const closeVideoModal = () => {
-    setShowVideoModal(false);
-    setTimeout(() => {
-      setSelectedTaskVideo(null);
-    }, 300);
-  };
-
-  const formatReminderTime = (reminderMinutes: number, activityTime: string) => {
-    if (!reminderMinutes) return null;
-    
-    // Parse activity time
-    const [hours, minutes] = activityTime.split(':').map(Number);
-    const activityDate = new Date();
-    activityDate.setHours(hours, minutes, 0, 0);
-    
-    // Subtract reminder minutes
-    const reminderDate = new Date(activityDate.getTime() - reminderMinutes * 60000);
-    
-    return `${reminderMinutes} min før`;
   };
 
   if (loading) {
@@ -378,82 +206,8 @@ export default function HomeScreen() {
               <ActivityCard
                 activity={activity}
                 resolvedDate={activity.__resolvedDateTime}
+                showTasks={true}
               />
-              
-              {/* Tasks for this activity */}
-              {activityTasks[activity.id] && activityTasks[activity.id].length > 0 && (
-                <View style={styles.tasksContainer}>
-                  {activityTasks[activity.id].map((task, taskIndex) => (
-                    <View key={taskIndex} style={styles.taskRow}>
-                      <TouchableOpacity
-                        style={styles.taskCheckboxArea}
-                        onPress={() => handleToggleTask(activity.id, task.id)}
-                        activeOpacity={0.7}
-                      >
-                        <View
-                          style={[
-                            styles.taskCheckbox,
-                            task.completed && styles.taskCheckboxCompleted,
-                          ]}
-                        >
-                          {task.completed && (
-                            <IconSymbol
-                              ios_icon_name="checkmark"
-                              android_material_icon_name="check"
-                              size={14}
-                              color="#fff"
-                            />
-                          )}
-                        </View>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={styles.taskContent}
-                        onPress={() => handleTaskPress(task)}
-                        activeOpacity={0.7}
-                      >
-                        <Text
-                          style={[
-                            styles.taskTitle,
-                            task.completed && styles.taskTitleCompleted,
-                          ]}
-                        >
-                          {task.title}
-                        </Text>
-                        
-                        {task.reminder_minutes && (
-                          <View style={styles.reminderBadge}>
-                            <IconSymbol
-                              ios_icon_name="bell.fill"
-                              android_material_icon_name="notifications"
-                              size={12}
-                              color={colors.accent}
-                            />
-                            <Text style={styles.reminderText}>
-                              {formatReminderTime(task.reminder_minutes, activity.activity_time || activity.start_time)}
-                            </Text>
-                          </View>
-                        )}
-                      </TouchableOpacity>
-
-                      {task.video_url && (
-                        <TouchableOpacity
-                          style={styles.videoIndicator}
-                          onPress={() => handleTaskPress(task)}
-                          activeOpacity={0.7}
-                        >
-                          <IconSymbol
-                            ios_icon_name="play.circle.fill"
-                            android_material_icon_name="play_circle"
-                            size={24}
-                            color={colors.primary}
-                          />
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  ))}
-                </View>
-              )}
             </View>
           ))}
         </View>
@@ -480,6 +234,7 @@ export default function HomeScreen() {
                     <ActivityCard
                       activity={activity}
                       resolvedDate={activity.__resolvedDateTime}
+                      showTasks={false}
                     />
                   </View>
                 ))}
@@ -500,45 +255,6 @@ export default function HomeScreen() {
         categories={categories}
         onRefreshCategories={refreshData}
       />
-
-      {/* Video Modal */}
-      <Modal
-        visible={showVideoModal}
-        animationType="slide"
-        presentationStyle="fullScreen"
-        onRequestClose={closeVideoModal}
-      >
-        <View style={{ flex: 1, backgroundColor: '#000' }}>
-          <View style={{ 
-            flexDirection: 'row', 
-            alignItems: 'center', 
-            justifyContent: 'space-between',
-            paddingTop: Platform.OS === 'android' ? 48 : 60,
-            paddingBottom: 16,
-            paddingHorizontal: 20,
-            backgroundColor: 'rgba(0,0,0,0.9)'
-          }}>
-            <TouchableOpacity 
-              onPress={closeVideoModal}
-              style={{ padding: 4 }}
-            >
-              <IconSymbol
-                ios_icon_name="xmark.circle.fill"
-                android_material_icon_name="close"
-                size={32}
-                color="#fff"
-              />
-            </TouchableOpacity>
-            <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#fff' }}>
-              Opgave video
-            </Text>
-            <View style={{ width: 32 }} />
-          </View>
-          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }}>
-            <SmartVideoPlayer url={selectedTaskVideo || undefined} />
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -764,64 +480,6 @@ const styles = StyleSheet.create({
   // Activity Wrapper
   activityWrapper: {
     marginBottom: 14,
-  },
-
-  // Tasks Container
-  tasksContainer: {
-    marginTop: 8,
-    paddingLeft: 8,
-  },
-  taskRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    marginBottom: 8,
-  },
-  taskCheckboxArea: {
-    marginRight: 12,
-  },
-  taskCheckbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-  },
-  taskCheckboxCompleted: {
-    backgroundColor: colors.success,
-    borderColor: colors.success,
-  },
-  taskContent: {
-    flex: 1,
-  },
-  taskTitle: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: colors.text,
-  },
-  taskTitleCompleted: {
-    textDecorationLine: 'line-through',
-    opacity: 0.6,
-  },
-  reminderBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 4,
-  },
-  reminderText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.accent,
-  },
-  videoIndicator: {
-    marginLeft: 8,
   },
 
   // Bottom Spacer
