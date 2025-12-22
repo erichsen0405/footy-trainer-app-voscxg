@@ -323,7 +323,10 @@ export default function CreateActivityModal({
               </TouchableOpacity>
 
               {showDatePicker && (
-                <View style={Platform.OS === 'ios' ? styles.iosPickerContainer : undefined}>
+                <View style={[
+                  Platform.OS === 'ios' ? styles.iosPickerContainer : undefined,
+                  { backgroundColor: isDark ? '#2a2a2a' : '#FFFFFF' }
+                ]}>
                   <DateTimePicker
                     value={date}
                     mode="date"
@@ -363,7 +366,10 @@ export default function CreateActivityModal({
               </TouchableOpacity>
 
               {showTimePicker && (
-                <View style={Platform.OS === 'ios' ? styles.iosPickerContainer : undefined}>
+                <View style={[
+                  Platform.OS === 'ios' ? styles.iosPickerContainer : undefined,
+                  { backgroundColor: isDark ? '#2a2a2a' : '#FFFFFF' }
+                ]}>
                   <DateTimePicker
                     value={getTimeAsDate()}
                     mode="time"
@@ -501,7 +507,10 @@ export default function CreateActivityModal({
                       </TouchableOpacity>
 
                       {showEndDatePicker && (
-                        <View style={Platform.OS === 'ios' ? styles.iosPickerContainer : undefined}>
+                        <View style={[
+                          Platform.OS === 'ios' ? styles.iosPickerContainer : undefined,
+                          { backgroundColor: isDark ? '#2a2a2a' : '#FFFFFF' }
+                        ]}>
                           <DateTimePicker
                             value={endDate}
                             mode="date"
@@ -619,7 +628,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
   },
   iosPickerContainer: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderRadius: 12,
     marginBottom: 12,
     overflow: 'hidden',

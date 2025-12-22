@@ -124,9 +124,10 @@ export default function HomeScreen() {
 
   return (
     <>
+      {/* Status bar with light content for dark header */}
       <StatusBar barStyle="light-content" />
       
-      {/* White background for status bar area */}
+      {/* White background behind status bar (only visible on initial load) */}
       <View style={[styles.statusBarBackground, { height: insets.top }]} />
       
       <ScrollView 
@@ -134,8 +135,8 @@ export default function HomeScreen() {
         contentContainerStyle={styles.contentContainer}
         scrollIndicatorInsets={{ top: insets.top }}
       >
-        {/* Header with proper safe area handling */}
-        <View style={[styles.header, { paddingTop: insets.top }]}>
+        {/* Header with dynamic safe area padding */}
+        <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
           <View style={styles.logoContainer}>
             <View style={styles.logo}>
               <Text style={styles.logoIcon}>⚽</Text>
@@ -276,7 +277,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: '#FFFFFF',
-    zIndex: 1,
+    zIndex: 10,
   },
   loading: {
     flex: 1,
