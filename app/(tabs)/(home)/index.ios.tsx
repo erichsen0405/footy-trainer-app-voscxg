@@ -1,9 +1,9 @@
 
 import React, { useMemo, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, Pressable, StatusBar } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
 import { useFootball } from '@/contexts/FootballContext';
 import ActivityCard from '@/components/ActivityCard';
@@ -39,7 +39,6 @@ function getWeekLabel(date: Date): string {
 
 export default function HomeScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { activities, loading } = useHomeActivities();
   const { categories, createActivity, refreshData } = useFootball();
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -116,27 +115,22 @@ export default function HomeScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loading}>
+      <SafeAreaView style={styles.loading} edges={['top']}>
         <Text style={styles.loadingText}>Indlæser…</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <>
-      {/* Status bar with light content for dark header */}
-      <StatusBar barStyle="light-content" />
-      
-      {/* White background behind status bar (only visible on initial load) */}
-      <View style={[styles.statusBarBackground, { height: insets.top }]} />
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <StatusBar barStyle="dark-content" />
       
       <ScrollView 
         style={styles.container} 
         contentContainerStyle={styles.contentContainer}
-        scrollIndicatorInsets={{ top: insets.top }}
       >
-        {/* Header with dynamic safe area padding */}
-        <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
+        {/* Header */}
+        <View style={styles.header}>
           <View style={styles.logoContainer}>
             <View style={styles.logo}>
               <Text style={styles.logoIcon}>⚽</Text>
@@ -259,11 +253,15 @@ export default function HomeScreen() {
         categories={categories}
         onRefreshCategories={refreshData}
       />
-    </>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -271,19 +269,12 @@ const styles = StyleSheet.create({
   contentContainer: {
     paddingTop: 0,
   },
-  statusBarBackground: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#FFFFFF',
-    zIndex: 10,
-  },
   loading: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
+    backgroundColor: '#FFFFFF',
   },
   loadingText: {
     fontSize: 16,
@@ -294,6 +285,7 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: '#2C3E50',
     paddingHorizontal: 20,
+    paddingTop: 16,
     paddingBottom: 32,
     flexDirection: 'row',
     alignItems: 'center',
