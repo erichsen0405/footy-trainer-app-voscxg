@@ -99,28 +99,6 @@ function RootLayoutContent() {
                     headerShown: false,
                   }} 
                 />
-                <Stack.Screen 
-                  name="modal" 
-                  options={{ 
-                    presentation: 'modal',
-                    headerShown: false,
-                  }} 
-                />
-                <Stack.Screen 
-                  name="formsheet" 
-                  options={{ 
-                    presentation: 'formSheet',
-                    headerShown: false,
-                  }} 
-                />
-                <Stack.Screen 
-                  name="transparent-modal" 
-                  options={{ 
-                    presentation: 'transparentModal',
-                    headerShown: false,
-                    animation: 'fade',
-                  }} 
-                />
                 {/* Debug routes - only available in development */}
                 {__DEV__ && (
                   <React.Fragment>
