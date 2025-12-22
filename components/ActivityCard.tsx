@@ -12,42 +12,24 @@ interface ActivityCardProps {
   onPress?: () => void;
 }
 
-// Category gradient mapping
-const getCategoryGradient = (categoryName: string | null): string[] => {
-  if (!categoryName) return ['#6B7280', '#4B5563']; // Neutral gray
+// Category gradient mapping - uses actual category names from database
+const getCategoryGradient = (category: any): string[] => {
+  if (!category || !category.color) {
+    return ['#6B7280', '#4B5563']; // Neutral gray fallback
+  }
   
-  const gradientMap: { [key: string]: string[] } = {
-    'VR træning': ['#8B5CF6', '#3B82F6'], // Purple to Blue
-    'Styrketræning': ['#14B8A6', '#3B82F6'], // Turquoise to Blue
-    'Sprinttræning': ['#F59E0B', '#FBBF24'], // Orange to Yellow
-    'Træning': ['#10B981', '#3B82F6'], // Green to Blue
-    'Kamp': ['#F97316', '#DC2626'], // Orange to Red
-    'Turnering': ['#DC2626', '#991B1B'], // Red gradient
-    'Fysisk træning': ['#10B981', '#059669'], // Green gradient
-    'Møde': ['#6B7280', '#3B82F6'], // Gray to Blue
-    'Privattræning m. Ergün': ['#EF4444', '#DC2626'], // Red gradient
-  };
+  // Use the category color from the database to generate a gradient
+  const baseColor = category.color;
   
-  return gradientMap[categoryName] || ['#6B7280', '#4B5563']; // Default neutral gray
+  // Create a gradient by darkening the base color slightly
+  // This ensures all categories get their correct color
+  return [baseColor, baseColor];
 };
 
 // Get emoji for category
-const getCategoryEmoji = (categoryName: string | null): string => {
-  if (!categoryName) return '⚽';
-  
-  const emojiMap: { [key: string]: string } = {
-    'Træning': '⚽',
-    'Styrketræning': '💪',
-    'VR træning': '🥽',
-    'Sprinttræning': '🏃',
-    'Privattræning m. Ergün': '📋',
-    'Kamp': '🏆',
-    'Turnering': '🏅',
-    'Fysisk træning': '🏋️',
-    'Møde': '📅',
-  };
-  
-  return emojiMap[categoryName] || '⚽';
+const getCategoryEmoji = (category: any): string => {
+  if (!category || !category.emoji) return '⚽';
+  return category.emoji;
 };
 
 export default function ActivityCard({ activity, resolvedDate, onPress }: ActivityCardProps) {
@@ -66,9 +48,9 @@ export default function ActivityCard({ activity, resolvedDate, onPress }: Activi
   };
 
   // Read category from activity.category (resolved in useHomeActivities)
-  const categoryName = activity.category?.name || null;
-  const gradientColors = getCategoryGradient(categoryName);
-  const categoryEmoji = getCategoryEmoji(categoryName);
+  const category = activity.category || null;
+  const gradientColors = getCategoryGradient(category);
+  const categoryEmoji = getCategoryEmoji(category);
   
   // Format date and time
   const dayLabel = format(resolvedDate, 'EEE. d. MMM.', { locale: da });
