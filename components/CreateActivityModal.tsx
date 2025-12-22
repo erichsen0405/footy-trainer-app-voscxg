@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
   Platform,
   KeyboardAvoidingView,
+  Switch,
 } from 'react-native';
 
 import { colors } from '@/styles/commonStyles';
@@ -49,6 +50,14 @@ const DAYS_OF_WEEK = [
   { label: 'Tor', value: 4 },
   { label: 'Fre', value: 5 },
   { label: 'Lør', value: 6 },
+];
+
+const RECURRENCE_TYPES = [
+  { label: 'Daglig', value: 'daily' as const },
+  { label: 'Ugentlig', value: 'weekly' as const },
+  { label: 'Hver 2. uge', value: 'biweekly' as const },
+  { label: 'Hver 3. uge', value: 'triweekly' as const },
+  { label: 'Månedlig', value: 'monthly' as const },
 ];
 
 export default function CreateActivityModal({
@@ -108,8 +117,10 @@ export default function CreateActivityModal({
     setDate(new Date());
     setTime('18:00');
     setIsRecurring(false);
+    setRecurrenceType('weekly');
     setSelectedDays([]);
     setHasEndDate(false);
+    setEndDate(new Date(Date.now() + 90 * 24 * 60 * 60 * 1000));
     safeOnClose();
   };
 
@@ -174,6 +185,51 @@ export default function CreateActivityModal({
     recurrenceType === 'biweekly' ||
     recurrenceType === 'triweekly';
 
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString('da-DK', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+  };
+
+  const handleDateChange = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
+    if (selectedDate) {
+      setDate(selectedDate);
+    }
+  };
+
+  const handleTimeChange = (event: any, selectedTime?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowTimePicker(false);
+    }
+    if (selectedTime) {
+      const hours = selectedTime.getHours().toString().padStart(2, '0');
+      const minutes = selectedTime.getMinutes().toString().padStart(2, '0');
+      setTime(`${hours}:${minutes}`);
+    }
+  };
+
+  const handleEndDateChange = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowEndDatePicker(false);
+    }
+    if (selectedDate) {
+      setEndDate(selectedDate);
+    }
+  };
+
+  const getTimeAsDate = () => {
+    const [hours, minutes] = time.split(':').map(Number);
+    const timeDate = new Date();
+    timeDate.setHours(hours);
+    timeDate.setMinutes(minutes);
+    return timeDate;
+  };
+
   // Early return after all hooks have been called
   if (!visible) return null;
 
@@ -204,6 +260,7 @@ export default function CreateActivityModal({
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.scrollContent}
             >
+              {/* Title Input */}
               <TextInput
                 style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
                 value={title}
@@ -212,6 +269,7 @@ export default function CreateActivityModal({
                 placeholderTextColor={textSecondaryColor}
               />
 
+              {/* Location Input */}
               <TextInput
                 style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
                 value={location}
@@ -220,7 +278,8 @@ export default function CreateActivityModal({
                 placeholderTextColor={textSecondaryColor}
               />
 
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {/* Category Selection */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScrollContainer}>
                 {safeCategories.map((cat, index) => (
                   <TouchableOpacity
                     key={cat.id ?? `category-${index}`}
@@ -247,33 +306,211 @@ export default function CreateActivityModal({
                 ))}
               </ScrollView>
 
-              {needsDaySelection && (
-                <View key="days-container" style={styles.daysContainer}>
-                  {DAYS_OF_WEEK.map(day => (
-                    <TouchableOpacity
-                      key={`day-${day.value}`}
-                      style={[
-                        styles.dayButton,
-                        {
-                          backgroundColor: selectedDays.includes(day.value)
-                            ? colors.primary
-                            : bgColor,
-                        },
-                      ]}
-                      onPress={() => toggleDay(day.value)}
-                    >
-                      <Text
-                        style={{
-                          color: selectedDays.includes(day.value)
-                            ? '#fff'
-                            : textColor,
-                        }}
-                      >
-                        {day.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+              {/* Date Picker */}
+              <TouchableOpacity
+                style={[styles.pickerButton, { backgroundColor: bgColor }]}
+                onPress={() => setShowDatePicker(true)}
+              >
+                <IconSymbol
+                  ios_icon_name="calendar"
+                  android_material_icon_name="calendar_today"
+                  size={20}
+                  color={textColor}
+                />
+                <Text style={[styles.pickerButtonText, { color: textColor }]}>
+                  {formatDate(date)}
+                </Text>
+              </TouchableOpacity>
+
+              {showDatePicker && (
+                <DateTimePicker
+                  value={date}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={handleDateChange}
+                  minimumDate={new Date()}
+                />
+              )}
+
+              {Platform.OS === 'ios' && showDatePicker && (
+                <TouchableOpacity
+                  style={[styles.doneButton, { backgroundColor: colors.primary }]}
+                  onPress={() => setShowDatePicker(false)}
+                >
+                  <Text style={styles.doneButtonText}>Færdig</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Time Picker */}
+              <TouchableOpacity
+                style={[styles.pickerButton, { backgroundColor: bgColor }]}
+                onPress={() => setShowTimePicker(true)}
+              >
+                <IconSymbol
+                  ios_icon_name="clock"
+                  android_material_icon_name="schedule"
+                  size={20}
+                  color={textColor}
+                />
+                <Text style={[styles.pickerButtonText, { color: textColor }]}>
+                  {time}
+                </Text>
+              </TouchableOpacity>
+
+              {showTimePicker && (
+                <DateTimePicker
+                  value={getTimeAsDate()}
+                  mode="time"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={handleTimeChange}
+                  is24Hour={true}
+                />
+              )}
+
+              {Platform.OS === 'ios' && showTimePicker && (
+                <TouchableOpacity
+                  style={[styles.doneButton, { backgroundColor: colors.primary }]}
+                  onPress={() => setShowTimePicker(false)}
+                >
+                  <Text style={styles.doneButtonText}>Færdig</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Series Toggle */}
+              <View style={[styles.switchContainer, { backgroundColor: bgColor }]}>
+                <View style={styles.switchLabelContainer}>
+                  <IconSymbol
+                    ios_icon_name="repeat"
+                    android_material_icon_name="repeat"
+                    size={20}
+                    color={textColor}
+                  />
+                  <Text style={[styles.switchLabel, { color: textColor }]}>
+                    Opret som serie
+                  </Text>
                 </View>
+                <Switch
+                  value={isRecurring}
+                  onValueChange={setIsRecurring}
+                  trackColor={{ false: '#767577', true: colors.primary }}
+                  thumbColor={isRecurring ? '#fff' : '#f4f3f4'}
+                />
+              </View>
+
+              {/* Recurrence Options */}
+              {isRecurring && (
+                <>
+                  <View style={styles.recurrenceTypeContainer}>
+                    {RECURRENCE_TYPES.map((type) => (
+                      <TouchableOpacity
+                        key={type.value}
+                        style={[
+                          styles.recurrenceTypeButton,
+                          {
+                            backgroundColor:
+                              recurrenceType === type.value
+                                ? colors.primary
+                                : bgColor,
+                          },
+                        ]}
+                        onPress={() => setRecurrenceType(type.value)}
+                      >
+                        <Text
+                          style={{
+                            color:
+                              recurrenceType === type.value
+                                ? '#fff'
+                                : textColor,
+                            fontSize: 14,
+                          }}
+                        >
+                          {type.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  {needsDaySelection && (
+                    <View style={styles.daysContainer}>
+                      {DAYS_OF_WEEK.map(day => (
+                        <TouchableOpacity
+                          key={`day-${day.value}`}
+                          style={[
+                            styles.dayButton,
+                            {
+                              backgroundColor: selectedDays.includes(day.value)
+                                ? colors.primary
+                                : bgColor,
+                            },
+                          ]}
+                          onPress={() => toggleDay(day.value)}
+                        >
+                          <Text
+                            style={{
+                              color: selectedDays.includes(day.value)
+                                ? '#fff'
+                                : textColor,
+                            }}
+                          >
+                            {day.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+
+                  {/* End Date Toggle */}
+                  <View style={[styles.switchContainer, { backgroundColor: bgColor }]}>
+                    <Text style={[styles.switchLabel, { color: textColor }]}>
+                      Slutdato
+                    </Text>
+                    <Switch
+                      value={hasEndDate}
+                      onValueChange={setHasEndDate}
+                      trackColor={{ false: '#767577', true: colors.primary }}
+                      thumbColor={hasEndDate ? '#fff' : '#f4f3f4'}
+                    />
+                  </View>
+
+                  {/* End Date Picker */}
+                  {hasEndDate && (
+                    <>
+                      <TouchableOpacity
+                        style={[styles.pickerButton, { backgroundColor: bgColor }]}
+                        onPress={() => setShowEndDatePicker(true)}
+                      >
+                        <IconSymbol
+                          ios_icon_name="calendar.badge.clock"
+                          android_material_icon_name="event"
+                          size={20}
+                          color={textColor}
+                        />
+                        <Text style={[styles.pickerButtonText, { color: textColor }]}>
+                          {formatDate(endDate)}
+                        </Text>
+                      </TouchableOpacity>
+
+                      {showEndDatePicker && (
+                        <DateTimePicker
+                          value={endDate}
+                          mode="date"
+                          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                          onChange={handleEndDateChange}
+                          minimumDate={date}
+                        />
+                      )}
+
+                      {Platform.OS === 'ios' && showEndDatePicker && (
+                        <TouchableOpacity
+                          style={[styles.doneButton, { backgroundColor: colors.primary }]}
+                          onPress={() => setShowEndDatePicker(false)}
+                        >
+                          <Text style={styles.doneButtonText}>Færdig</Text>
+                        </TouchableOpacity>
+                      )}
+                    </>
+                  )}
+                </>
               )}
             </ScrollView>
 
@@ -335,11 +572,15 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 24,
+    paddingTop: 0,
   },
   input: {
     borderRadius: 12,
     padding: 16,
     fontSize: 17,
+    marginBottom: 16,
+  },
+  categoryScrollContainer: {
     marginBottom: 16,
   },
   categoryChip: {
@@ -351,10 +592,61 @@ const styles = StyleSheet.create({
     marginRight: 12,
     alignItems: 'center',
   },
+  pickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  pickerButtonText: {
+    fontSize: 17,
+  },
+  doneButton: {
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  doneButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  switchContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  switchLabelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  switchLabel: {
+    fontSize: 17,
+  },
+  recurrenceTypeContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  recurrenceTypeButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
   daysContainer: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 16,
+    marginBottom: 16,
   },
   dayButton: {
     flex: 1,
