@@ -54,6 +54,7 @@ function darkenColor(hex: string, percent: number): string {
 const getCategoryGradient = (category: any): string[] => {
   if (!category || !category.color) {
     // Fallback gradient - should never be used if category is properly resolved
+    console.warn('ActivityCard: No category or category color found, using fallback gradient');
     return ['#6B7280', '#4B5563'];
   }
   
