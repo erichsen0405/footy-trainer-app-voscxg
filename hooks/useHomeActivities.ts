@@ -59,22 +59,57 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       const categoriesData = await getCategories(userId);
       console.log('[useHomeActivities] Categories fetched:', categoriesData?.length ?? 0);
       
+      // 🔍 DEBUG: Log ALL categories with their IDs, names, and slugs
+      console.log('═══════════════════════════════════════════════════════');
+      console.log('📋 ALL CATEGORIES IN DATABASE:');
+      (categoriesData || []).forEach(cat => {
+        console.log(`  - ID: ${cat.id}`);
+        console.log(`    Name: ${cat.name}`);
+        console.log(`    Slug: ${cat.slug || 'N/A'}`);
+        console.log(`    Color: ${cat.color}`);
+        console.log('  ---');
+      });
+      console.log('═══════════════════════════════════════════════════════');
+      
       // Create a map for quick category lookup
       const categoryMap = new Map<string, DatabaseActivityCategory>();
       (categoriesData || []).forEach(cat => {
         categoryMap.set(cat.id, cat);
       });
       
+      console.log('[useHomeActivities] Category map size:', categoryMap.size);
+      
       // 2. Fetch internal activities
       const internalData = await getActivities(userId);
       console.log('[useHomeActivities] Internal activities:', internalData?.length ?? 0);
       
       // Mark internal activities with is_external: false and resolve category
-      const internalActivities: ActivityWithCategory[] = (internalData || []).map(activity => ({
-        ...activity,
-        is_external: false,
-        category: activity.category_id ? categoryMap.get(activity.category_id) || null : null,
-      }));
+      const internalActivities: ActivityWithCategory[] = (internalData || []).map(activity => {
+        const resolvedCategory = activity.category_id ? categoryMap.get(activity.category_id) || null : null;
+        
+        // 🔍 DEBUG: Log specific activity if it matches "Privattræning m. Ergün"
+        if (activity.title && activity.title.includes('Privattræning')) {
+          console.log('═══════════════════════════════════════════════════════');
+          console.log('🔍 FOUND ACTIVITY: "Privattræning m. Ergün"');
+          console.log('  Activity ID:', activity.id);
+          console.log('  Activity Title:', activity.title);
+          console.log('  Category ID:', activity.category_id);
+          console.log('  Category ID exists in map?', categoryMap.has(activity.category_id || ''));
+          console.log('  Resolved Category:', resolvedCategory ? {
+            id: resolvedCategory.id,
+            name: resolvedCategory.name,
+            slug: resolvedCategory.slug,
+            color: resolvedCategory.color,
+          } : 'NULL');
+          console.log('═══════════════════════════════════════════════════════');
+        }
+        
+        return {
+          ...activity,
+          is_external: false,
+          category: resolvedCategory,
+        };
+      });
       
       // 3. Fetch external calendar activities
       // First, get the user's external calendars
@@ -122,6 +157,25 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           externalActivities = eventsData.map(event => {
             const meta = metaData?.find(m => m.external_event_id === event.id);
             const categoryId = meta?.category_id || null;
+            const resolvedCategory = categoryId ? categoryMap.get(categoryId) || null : null;
+            
+            // 🔍 DEBUG: Log specific external activity if it matches "Privattræning m. Ergün"
+            if (event.title && event.title.includes('Privattræning')) {
+              console.log('═══════════════════════════════════════════════════════');
+              console.log('🔍 FOUND EXTERNAL ACTIVITY: "Privattræning m. Ergün"');
+              console.log('  Event ID:', event.id);
+              console.log('  Event Title:', event.title);
+              console.log('  Meta ID:', meta?.id || 'N/A');
+              console.log('  Category ID from meta:', categoryId);
+              console.log('  Category ID exists in map?', categoryId ? categoryMap.has(categoryId) : 'N/A');
+              console.log('  Resolved Category:', resolvedCategory ? {
+                id: resolvedCategory.id,
+                name: resolvedCategory.name,
+                slug: resolvedCategory.slug,
+                color: resolvedCategory.color,
+              } : 'NULL');
+              console.log('═══════════════════════════════════════════════════════');
+            }
             
             return {
               id: meta?.id || event.id,
@@ -131,7 +185,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
               activity_time: event.start_time || '12:00:00',
               location: event.location || '',
               category_id: categoryId,
-              category: categoryId ? categoryMap.get(categoryId) || null : null,
+              category: resolvedCategory,
               is_external: true,
               external_calendar_id: event.provider_calendar_id,
               external_event_id: event.provider_event_uid,
@@ -150,6 +204,22 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       console.log('[useHomeActivities] Activities with is_external=true:', mergedActivities.filter(a => a.is_external).length);
       console.log('[useHomeActivities] Activities with is_external=false:', mergedActivities.filter(a => !a.is_external).length);
       console.log('[useHomeActivities] Activities with resolved category:', mergedActivities.filter(a => a.category).length);
+      console.log('[useHomeActivities] Activities WITHOUT resolved category:', mergedActivities.filter(a => !a.category).length);
+      
+      // 🔍 DEBUG: Log all activities without resolved categories
+      const activitiesWithoutCategory = mergedActivities.filter(a => !a.category);
+      if (activitiesWithoutCategory.length > 0) {
+        console.log('═══════════════════════════════════════════════════════');
+        console.log('⚠️ ACTIVITIES WITHOUT RESOLVED CATEGORY:');
+        activitiesWithoutCategory.forEach(activity => {
+          console.log(`  - Title: ${activity.title}`);
+          console.log(`    ID: ${activity.id}`);
+          console.log(`    Category ID: ${activity.category_id || 'NULL'}`);
+          console.log(`    Is External: ${activity.is_external}`);
+          console.log('  ---');
+        });
+        console.log('═══════════════════════════════════════════════════════');
+      }
       
       setActivities(mergedActivities);
     } catch (err) {
