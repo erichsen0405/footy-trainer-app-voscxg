@@ -25,6 +25,7 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { CreateActivityTaskModal } from '@/components/CreateActivityTaskModal';
 import { deleteSingleExternalActivity } from '@/utils/deleteExternalActivities';
 import { TaskDescriptionRenderer } from '@/components/TaskDescriptionRenderer';
+import { supabase } from '@/app/integrations/supabase/client';
 
 const DAYS_OF_WEEK = [
   { label: 'Søn', value: 0 },
@@ -36,11 +37,166 @@ const DAYS_OF_WEEK = [
   { label: 'Lør', value: 6 },
 ];
 
+// Helper function to fetch activity directly from database
+async function fetchActivityFromDatabase(activityId: string): Promise<Activity | null> {
+  try {
+    console.log('🔍 Fetching activity from database:', activityId);
+
+    // First, try to fetch from internal activities table
+    const { data: internalActivity, error: internalError } = await supabase
+      .from('activities')
+      .select(`
+        id,
+        title,
+        activity_date,
+        activity_time,
+        location,
+        category_id,
+        is_external,
+        external_calendar_id,
+        external_event_id,
+        series_id,
+        series_instance_date,
+        activity_categories (
+          id,
+          name,
+          color,
+          emoji
+        ),
+        activity_tasks (
+          id,
+          title,
+          description,
+          completed,
+          reminder_minutes
+        )
+      `)
+      .eq('id', activityId)
+      .single();
+
+    if (!internalError && internalActivity) {
+      console.log('✅ Found internal activity:', internalActivity.title);
+      
+      // Map to Activity type
+      return {
+        id: internalActivity.id,
+        title: internalActivity.title,
+        date: new Date(internalActivity.activity_date),
+        time: internalActivity.activity_time,
+        location: internalActivity.location || '',
+        category: internalActivity.activity_categories ? {
+          id: internalActivity.activity_categories.id,
+          name: internalActivity.activity_categories.name,
+          color: internalActivity.activity_categories.color,
+          emoji: internalActivity.activity_categories.emoji,
+        } : {
+          id: '',
+          name: 'Unknown',
+          color: '#999999',
+          emoji: '❓',
+        },
+        tasks: (internalActivity.activity_tasks || []).map((task: any) => ({
+          id: task.id,
+          title: task.title,
+          description: task.description || '',
+          completed: task.completed,
+          isTemplate: false,
+          categoryIds: [],
+          reminder: task.reminder_minutes,
+          subtasks: [],
+        })),
+        isExternal: internalActivity.is_external,
+        externalCalendarId: internalActivity.external_calendar_id,
+        externalEventId: internalActivity.external_event_id,
+        seriesId: internalActivity.series_id,
+        seriesInstanceDate: internalActivity.series_instance_date ? new Date(internalActivity.series_instance_date) : undefined,
+      };
+    }
+
+    // If not found in activities, try events_local_meta + events_external
+    console.log('🔍 Trying events_local_meta...');
+    const { data: localMeta, error: metaError } = await supabase
+      .from('events_local_meta')
+      .select(`
+        id,
+        external_event_id,
+        category_id,
+        local_title_override,
+        activity_categories (
+          id,
+          name,
+          color,
+          emoji
+        ),
+        events_external (
+          id,
+          title,
+          location,
+          start_date,
+          start_time,
+          provider_calendar_id
+        ),
+        external_event_tasks (
+          id,
+          title,
+          description,
+          completed,
+          reminder_minutes
+        )
+      `)
+      .eq('id', activityId)
+      .single();
+
+    if (!metaError && localMeta && localMeta.events_external) {
+      console.log('✅ Found external activity:', localMeta.events_external.title);
+      
+      const externalEvent = localMeta.events_external;
+      
+      return {
+        id: localMeta.id,
+        title: localMeta.local_title_override || externalEvent.title,
+        date: new Date(externalEvent.start_date),
+        time: externalEvent.start_time,
+        location: externalEvent.location || '',
+        category: localMeta.activity_categories ? {
+          id: localMeta.activity_categories.id,
+          name: localMeta.activity_categories.name,
+          color: localMeta.activity_categories.color,
+          emoji: localMeta.activity_categories.emoji,
+        } : {
+          id: '',
+          name: 'Unknown',
+          color: '#999999',
+          emoji: '❓',
+        },
+        tasks: (localMeta.external_event_tasks || []).map((task: any) => ({
+          id: task.id,
+          title: task.title,
+          description: task.description || '',
+          completed: task.completed,
+          isTemplate: false,
+          categoryIds: [],
+          reminder: task.reminder_minutes,
+          subtasks: [],
+        })),
+        isExternal: true,
+        externalCalendarId: externalEvent.provider_calendar_id,
+        externalEventId: localMeta.external_event_id,
+      };
+    }
+
+    console.log('❌ Activity not found in database');
+    return null;
+  } catch (error) {
+    console.error('❌ Error fetching activity from database:', error);
+    return null;
+  }
+}
+
 export default function ActivityDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { 
-    activities, 
     categories, 
     updateActivitySingle, 
     updateActivitySeries, 
@@ -85,34 +241,44 @@ export default function ActivityDetailsScreen() {
   const [endDate, setEndDate] = useState(new Date(Date.now() + 90 * 24 * 60 * 60 * 1000));
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
 
-  // Find activity from context
+  // Fetch activity directly from database on mount
   useEffect(() => {
-    console.log('🔍 Looking for activity with ID:', id);
-    console.log('📦 Available activities:', activities.length);
-    
-    if (!id) {
-      console.error('❌ No activity ID provided');
+    let isMounted = true;
+
+    async function loadActivity() {
+      if (!id) {
+        console.error('❌ No activity ID provided');
+        setIsLoading(false);
+        return;
+      }
+
+      console.log('🔍 Loading activity with ID:', id);
+      
+      const fetchedActivity = await fetchActivityFromDatabase(id);
+      
+      if (!isMounted) return;
+
+      if (fetchedActivity) {
+        console.log('✅ Activity loaded successfully:', fetchedActivity.title);
+        setActivity(fetchedActivity);
+        setEditTitle(fetchedActivity.title);
+        setEditLocation(fetchedActivity.location);
+        setEditDate(fetchedActivity.date);
+        setEditTime(fetchedActivity.time);
+        setEditCategory(fetchedActivity.category);
+      } else {
+        console.log('❌ Activity not found');
+      }
+      
       setIsLoading(false);
-      return;
     }
 
-    // Find activity in context
-    const foundActivity = activities.find(a => a.id === id);
-    
-    if (foundActivity) {
-      console.log('✅ Found activity in context:', foundActivity.title);
-      setActivity(foundActivity);
-      setEditTitle(foundActivity.title);
-      setEditLocation(foundActivity.location);
-      setEditDate(foundActivity.date);
-      setEditTime(foundActivity.time);
-      setEditCategory(foundActivity.category);
-      setIsLoading(false);
-    } else {
-      console.error('❌ Activity not found in context');
-      setIsLoading(false);
-    }
-  }, [id, activities]);
+    loadActivity();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [id]);
 
   // Scroll to bottom when picker is shown
   useEffect(() => {
