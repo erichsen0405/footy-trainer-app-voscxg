@@ -1,11 +1,12 @@
 
 import React, { useMemo } from 'react';
 import { ScrollView, View, Text, StyleSheet, Pressable, Platform } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
 import ActivityCard from '@/components/ActivityCard';
 import { colors } from '@/styles/commonStyles';
-import { format, startOfWeek, endOfWeek, isSameDay, isAfter, isBefore } from 'date-fns';
+import { format, startOfWeek, endOfWeek, getWeek } from 'date-fns';
 import { da } from 'date-fns/locale';
 
 function resolveActivityDateTime(activity: any): Date | null {
@@ -125,8 +126,13 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {/* Weekly Progress Card */}
-      <View style={styles.progressCard}>
+      {/* Weekly Progress Card with Red Gradient */}
+      <LinearGradient
+        colors={['#DC2626', '#991B1B']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.progressCard}
+      >
         <View style={styles.progressHeader}>
           <Text style={styles.progressLabel}>DENNE UGE</Text>
           <View style={styles.medalBadge}>
@@ -155,7 +161,7 @@ export default function HomeScreen() {
         <Pressable style={styles.performanceButton}>
           <Text style={styles.performanceButtonText}>📊  Se Performance  →</Text>
         </Pressable>
-      </View>
+      </LinearGradient>
 
       {/* Create Activity Button */}
       <Pressable 
@@ -169,7 +175,10 @@ export default function HomeScreen() {
 
       {/* I DAG Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>I DAG</Text>
+        <View style={styles.sectionTitleContainer}>
+          <View style={styles.greenMarker} />
+          <Text style={styles.sectionTitle}>I DAG</Text>
+        </View>
 
         {todayActivities.length === 0 && (
           <Text style={styles.emptyText}>Ingen aktiviteter i dag</Text>
@@ -198,9 +207,9 @@ export default function HomeScreen() {
           {upcomingByWeek.map((weekGroup, weekIndex) => (
             <View key={weekIndex} style={styles.weekGroup}>
               <Text style={styles.weekLabel}>
-                Uge {format(weekGroup.weekStart, 'w', { locale: da })}
-                <Text style={styles.weekDateRange}>  {getWeekLabel(weekGroup.weekStart)}</Text>
+                Uge {getWeek(weekGroup.weekStart, { weekStartsOn: 1, locale: da })}
               </Text>
+              <Text style={styles.weekDateRange}>{getWeekLabel(weekGroup.weekStart)}</Text>
 
               {weekGroup.activities.map((activity, activityIndex) => (
                 <View key={activityIndex} style={styles.activityWrapper}>
@@ -281,14 +290,13 @@ const styles = StyleSheet.create({
 
   // Progress Card
   progressCard: {
-    backgroundColor: '#8B4545',
     marginHorizontal: 16,
     marginTop: 16,
     marginBottom: 12,
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 20,
-    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.15)',
-    elevation: 4,
+    boxShadow: '0px 4px 16px rgba(0, 0, 0, 0.2)',
+    elevation: 6,
   },
   progressHeader: {
     flexDirection: 'row',
@@ -376,7 +384,19 @@ const styles = StyleSheet.create({
   // Sections
   section: {
     paddingHorizontal: 16,
-    marginTop: 8,
+    marginTop: 16,
+  },
+  sectionTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  greenMarker: {
+    width: 4,
+    height: 24,
+    backgroundColor: '#4CAF50',
+    borderRadius: 2,
+    marginRight: 8,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
@@ -388,7 +408,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: colors.text,
-    marginBottom: 12,
   },
   expandButton: {
     fontSize: 14,
@@ -402,18 +421,19 @@ const styles = StyleSheet.create({
 
   // Week Groups
   weekGroup: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   weekLabel: {
     fontSize: 16,
     fontWeight: '700',
     color: colors.text,
-    marginBottom: 8,
+    marginBottom: 4,
   },
   weekDateRange: {
     fontSize: 14,
     fontWeight: '400',
     color: colors.textSecondary,
+    marginBottom: 12,
   },
 
   // Activity Wrapper
