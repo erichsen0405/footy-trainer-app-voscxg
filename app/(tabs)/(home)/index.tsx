@@ -1,3 +1,4 @@
+
 import React, { useMemo } from 'react';
 import { ScrollView, View, Text, StyleSheet } from 'react-native';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
@@ -28,13 +29,19 @@ function resolveActivityDateTime(activity: any): string | null {
 export default function HomeScreen() {
   const { activities, loading } = useHomeActivities();
 
-  const activitiesSafe = Array.isArray(activities) ? activities : [];
+  console.log('[HomeScreen] Total activities received:', activities.length);
+  console.log('[HomeScreen] External activities:', activities.filter(a => a.is_external).length);
+  console.log('[HomeScreen] Internal activities:', activities.filter(a => !a.is_external).length);
 
   const { todayActivities, upcomingActivities } = useMemo(() => {
+    if (!Array.isArray(activities)) {
+      return { todayActivities: [], upcomingActivities: [] };
+    }
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const resolved = activitiesSafe
+    const resolved = activities
       .map(activity => {
         const dateTime = resolveActivityDateTime(activity);
         if (!dateTime) return null;
@@ -63,7 +70,7 @@ export default function HomeScreen() {
         .filter(a => a.__dateObj.getTime() > today.getTime())
         .sort((a, b) => a.__dateObj.getTime() - b.__dateObj.getTime()),
     };
-  }, [activitiesSafe]);
+  }, [activities]);
 
   if (loading) {
     return (
@@ -85,7 +92,7 @@ export default function HomeScreen() {
         <ActivityCard
           key={activity.id}
           activity={activity}
-          resolvedDate={activity.__resolvedDateTime}
+          resolvedDate={activity.__dateObj}
         />
       ))}
 
@@ -101,7 +108,7 @@ export default function HomeScreen() {
         <ActivityCard
           key={activity.id}
           activity={activity}
-          resolvedDate={activity.__resolvedDateTime}
+          resolvedDate={activity.__dateObj}
         />
       ))}
     </ScrollView>
