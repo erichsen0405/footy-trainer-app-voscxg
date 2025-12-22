@@ -18,7 +18,6 @@ import { useFootball } from '@/contexts/FootballContext';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { Activity, ActivityCategory } from '@/types';
-import { supabase } from '@/app/integrations/supabase/client';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import EditSeriesDialog from '@/components/EditSeriesDialog';
 import DeleteActivityDialog from '@/components/DeleteActivityDialog';
@@ -40,7 +39,19 @@ const DAYS_OF_WEEK = [
 export default function ActivityDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { categories, updateActivitySingle, updateActivitySeries, toggleTaskCompletion, deleteActivityTask, deleteActivitySingle, deleteActivitySeries, refreshData, createActivity, duplicateActivity } = useFootball();
+  const { 
+    activities, 
+    categories, 
+    updateActivitySingle, 
+    updateActivitySeries, 
+    toggleTaskCompletion, 
+    deleteActivityTask, 
+    deleteActivitySingle, 
+    deleteActivitySeries, 
+    refreshData, 
+    createActivity, 
+    duplicateActivity 
+  } = useFootball();
   const { isAdmin } = useUserRole();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -74,161 +85,34 @@ export default function ActivityDetailsScreen() {
   const [endDate, setEndDate] = useState(new Date(Date.now() + 90 * 24 * 60 * 60 * 1000));
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
 
-  // Fetch activity data directly from database
+  // Find activity from context
   useEffect(() => {
-    async function fetchActivity() {
-      if (!id) {
-        console.error('No activity ID provided');
-        setIsLoading(false);
-        return;
-      }
-
-      console.log('🔍 Fetching activity with ID:', id);
-      setIsLoading(true);
-
-      try {
-        // Get current user
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-          console.error('No user found');
-          setIsLoading(false);
-          return;
-        }
-
-        // First, try to fetch from activities table (internal activities)
-        const { data: activityData, error: activityError } = await supabase
-          .from('activities')
-          .select(`
-            *,
-            category:categories(id, name, emoji, color, location)
-          `)
-          .eq('id', id)
-          .single();
-
-        if (activityData && !activityError) {
-          console.log('✅ Found internal activity:', activityData);
-          
-          // Fetch tasks for this activity
-          const { data: tasksData, error: tasksError } = await supabase
-            .from('activity_tasks')
-            .select(`
-              id,
-              activity_id,
-              task_template_id,
-              completed,
-              task_templates(id, title, description)
-            `)
-            .eq('activity_id', id);
-
-          if (tasksError) {
-            console.error('Error fetching tasks:', tasksError);
-          }
-
-          const tasks = (tasksData || []).map((t: any) => ({
-            id: t.id,
-            title: t.task_templates?.title || 'Uden titel',
-            description: t.task_templates?.description || '',
-            completed: t.completed,
-          }));
-
-          const mappedActivity: Activity = {
-            id: activityData.id,
-            title: activityData.title,
-            date: new Date(activityData.activity_date),
-            time: activityData.activity_time?.substring(0, 5) || '12:00',
-            location: activityData.location || '',
-            category: activityData.category || { id: '', name: 'Ingen kategori', emoji: '⚽', color: '#6B7280', location: '' },
-            tasks: tasks,
-            seriesId: activityData.series_id || undefined,
-            isExternal: false,
-          };
-
-          setActivity(mappedActivity);
-          setEditTitle(mappedActivity.title);
-          setEditLocation(mappedActivity.location);
-          setEditDate(mappedActivity.date);
-          setEditTime(mappedActivity.time);
-          setEditCategory(mappedActivity.category);
-          setIsLoading(false);
-          return;
-        }
-
-        // If not found in activities, try events_local_meta (external activities)
-        console.log('🔍 Activity not found in activities table, checking external events...');
-        const { data: metaData, error: metaError } = await supabase
-          .from('events_local_meta')
-          .select(`
-            *,
-            category:categories(id, name, emoji, color, location),
-            external_event:events_external(id, title, start_date, start_time, location)
-          `)
-          .eq('id', id)
-          .eq('user_id', user.id)
-          .single();
-
-        if (metaData && !metaError && metaData.external_event) {
-          console.log('✅ Found external activity:', metaData);
-          
-          const externalEvent = metaData.external_event;
-          
-          // Fetch tasks for this activity
-          const { data: tasksData, error: tasksError } = await supabase
-            .from('activity_tasks')
-            .select(`
-              id,
-              activity_id,
-              task_template_id,
-              completed,
-              task_templates(id, title, description)
-            `)
-            .eq('activity_id', id);
-
-          if (tasksError) {
-            console.error('Error fetching tasks:', tasksError);
-          }
-
-          const tasks = (tasksData || []).map((t: any) => ({
-            id: t.id,
-            title: t.task_templates?.title || 'Uden titel',
-            description: t.task_templates?.description || '',
-            completed: t.completed,
-          }));
-
-          const mappedActivity: Activity = {
-            id: metaData.id,
-            title: externalEvent.title,
-            date: new Date(externalEvent.start_date),
-            time: externalEvent.start_time?.substring(0, 5) || '12:00',
-            location: externalEvent.location || '',
-            category: metaData.category || { id: '', name: 'Ingen kategori', emoji: '⚽', color: '#6B7280', location: '' },
-            tasks: tasks,
-            isExternal: true,
-          };
-
-          setActivity(mappedActivity);
-          setEditTitle(mappedActivity.title);
-          setEditLocation(mappedActivity.location);
-          setEditDate(mappedActivity.date);
-          setEditTime(mappedActivity.time);
-          setEditCategory(mappedActivity.category);
-          setIsLoading(false);
-          return;
-        }
-
-        console.error('❌ Activity not found in either table');
-        Alert.alert('Fejl', 'Aktiviteten blev ikke fundet');
-        router.back();
-      } catch (error) {
-        console.error('❌ Error fetching activity:', error);
-        Alert.alert('Fejl', 'Der opstod en fejl ved indlæsning af aktiviteten');
-        router.back();
-      } finally {
-        setIsLoading(false);
-      }
+    console.log('🔍 Looking for activity with ID:', id);
+    console.log('📦 Available activities:', activities.length);
+    
+    if (!id) {
+      console.error('❌ No activity ID provided');
+      setIsLoading(false);
+      return;
     }
 
-    fetchActivity();
-  }, [id]);
+    // Find activity in context
+    const foundActivity = activities.find(a => a.id === id);
+    
+    if (foundActivity) {
+      console.log('✅ Found activity in context:', foundActivity.title);
+      setActivity(foundActivity);
+      setEditTitle(foundActivity.title);
+      setEditLocation(foundActivity.location);
+      setEditDate(foundActivity.date);
+      setEditTime(foundActivity.time);
+      setEditCategory(foundActivity.category);
+      setIsLoading(false);
+    } else {
+      console.error('❌ Activity not found in context');
+      setIsLoading(false);
+    }
+  }, [id, activities]);
 
   // Scroll to bottom when picker is shown
   useEffect(() => {
@@ -332,28 +216,19 @@ export default function ActivityDetailsScreen() {
       }
 
       if (activity.isExternal) {
-        // CRITICAL FIX: Use updateActivitySingle for external activities to ensure manually_set_category flag is set
-        console.log('🔄 Updating external activity category via updateActivitySingle');
-        console.log('  Activity ID:', activity.id);
-        console.log('  New Category:', editCategory?.name, editCategory?.id);
+        // Use updateActivitySingle for external activities
+        console.log('🔄 Updating external activity category');
         
         await updateActivitySingle(activity.id, {
           categoryId: editCategory?.id,
         });
 
-        console.log('✅ External activity category updated with manually_set_category=true');
+        console.log('✅ External activity category updated');
 
-        // Update local state immediately
-        const updatedActivity = {
-          ...activity,
-          category: editCategory!,
-        };
-        setActivity(updatedActivity);
-
-        // Also trigger a full refresh to ensure consistency
+        // Trigger refresh
         refreshData();
 
-        Alert.alert('Gemt', 'Kategorien er blevet opdateret og vil ikke blive ændret ved næste synkronisering');
+        Alert.alert('Gemt', 'Kategorien er blevet opdateret');
         setIsEditing(false);
       } else if (activity.seriesId && showSeriesDialog) {
         // User chose to edit the entire series
@@ -382,18 +257,7 @@ export default function ActivityDetailsScreen() {
         Alert.alert('Gemt', 'Aktiviteten er blevet opdateret');
         setIsEditing(false);
         
-        // Update local state
-        const updatedActivity = {
-          ...activity,
-          title: editTitle,
-          date: editDate,
-          time: editTime,
-          location: editLocation,
-          category: editCategory!,
-        };
-        setActivity(updatedActivity);
-        
-        // Also trigger a full refresh to ensure consistency
+        // Refresh data
         refreshData();
       }
     } catch (error) {
@@ -465,13 +329,8 @@ export default function ActivityDetailsScreen() {
     try {
       await toggleTaskCompletion(activity.id, taskId);
       
-      // Update local activity state
-      setActivity({
-        ...activity,
-        tasks: activity.tasks.map(task =>
-          task.id === taskId ? { ...task, completed: !task.completed } : task
-        ),
-      });
+      // Refresh to get updated state
+      refreshData();
     } catch (error) {
       console.error('Error toggling task:', error);
       Alert.alert('Fejl', 'Kunne ikke opdatere opgaven');
@@ -495,12 +354,10 @@ export default function ActivityDetailsScreen() {
               console.log('🗑️ Attempting to delete task:', taskId, 'from activity:', activity.id);
               await deleteActivityTask(activity.id, taskId);
               
-              console.log('✅ Task deleted successfully, updating local state');
-              // Update local activity state
-              setActivity({
-                ...activity,
-                tasks: activity.tasks.filter(task => task.id !== taskId),
-              });
+              console.log('✅ Task deleted successfully');
+              
+              // Refresh data
+              refreshData();
               
               Alert.alert('Slettet', 'Opgaven er blevet slettet fra denne aktivitet');
             } catch (error: any) {
@@ -525,38 +382,6 @@ export default function ActivityDetailsScreen() {
     setShowCreateTaskModal(false);
     // Refresh data from context
     refreshData();
-    
-    // Also re-fetch the activity to get the updated tasks
-    if (id) {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      // Fetch updated tasks
-      const { data: tasksData } = await supabase
-        .from('activity_tasks')
-        .select(`
-          id,
-          activity_id,
-          task_template_id,
-          completed,
-          task_templates(id, title, description)
-        `)
-        .eq('activity_id', id);
-
-      if (tasksData && activity) {
-        const tasks = tasksData.map((t: any) => ({
-          id: t.id,
-          title: t.task_templates?.title || 'Uden titel',
-          description: t.task_templates?.description || '',
-          completed: t.completed,
-        }));
-
-        setActivity({
-          ...activity,
-          tasks: tasks,
-        });
-      }
-    }
   };
 
   const handleDeleteClick = () => {
@@ -685,6 +510,13 @@ export default function ActivityDetailsScreen() {
           <Text style={[styles.loadingText, { color: isDark ? '#e3e3e3' : colors.text }]}>
             Aktivitet ikke fundet
           </Text>
+          <TouchableOpacity
+            style={[styles.backButton, { backgroundColor: colors.primary }]}
+            onPress={() => router.back()}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.backButtonText}>Gå tilbage</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -705,7 +537,7 @@ export default function ActivityDetailsScreen() {
       {/* Header */}
       <View style={[styles.header, { backgroundColor: activity.category.color }]}>
         <TouchableOpacity
-          style={styles.backButton}
+          style={styles.backButtonHeader}
           onPress={() => router.back()}
           activeOpacity={0.7}
         >
@@ -1577,12 +1409,23 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
   },
+  backButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 16,
+  },
+  backButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   header: {
     paddingTop: Platform.OS === 'android' ? 60 : 70,
     paddingBottom: 24,
     paddingHorizontal: 20,
   },
-  backButton: {
+  backButtonHeader: {
     width: 44,
     height: 44,
     borderRadius: 22,
