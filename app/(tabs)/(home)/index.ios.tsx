@@ -276,7 +276,7 @@ export default function HomeScreen() {
         }
       >
         {/* Header */}
-        <View style={styles.header} pointerEvents="box-none">
+        <View style={styles.header} pointerEvents="none">
           <View style={styles.logoContainer}>
             <View style={styles.logo}>
               <Text style={styles.logoIcon}>⚽</Text>
