@@ -230,15 +230,12 @@ export default function HomeScreen() {
     setIsPreviousExpanded(prev => !prev);
   };
 
-  // Pull-to-refresh handler - binds to existing refresh flow
+  // Pull-to-refresh handler - binds exclusively to refetchActivities()
   const onRefresh = async () => {
     console.log('[Home iOS] Pull-to-refresh triggered');
     setRefreshing(true);
     try {
-      await Promise.all([
-        refreshActivities(),
-        refreshData(),
-      ]);
+      await refreshActivities();
       console.log('[Home iOS] Pull-to-refresh completed');
     } catch (error) {
       console.error('[Home iOS] Pull-to-refresh error:', error);
