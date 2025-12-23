@@ -260,7 +260,7 @@ export default function HomeScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea} edges={['top']} pointerEvents="box-none">
       <StatusBar barStyle="dark-content" />
       
       <ScrollView 
@@ -294,14 +294,13 @@ export default function HomeScreen() {
         </View>
 
         {/* Weekly Progress Card with Dynamic Gradient */}
-        <View style={styles.progressCardContainer} pointerEvents="none">
+        <View style={styles.progressCardContainer} pointerEvents="box-none">
           <Pressable 
             onPress={() => {
               console.log('[Home iOS] Performance button pressed');
               router.push('/(tabs)/performance');
             }}
             style={styles.pressableWrapper}
-            pointerEvents="none"
           >
             <LinearGradient
               colors={performanceMetrics.gradientColors}
