@@ -41,7 +41,7 @@ export default function HomeScreen() {
   const { activities, loading } = useHomeActivities();
   const { categories, createActivity, refreshData } = useFootball();
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showPreviousWeeks, setShowPreviousWeeks] = useState(false);
+  const [showPreviousWeeks, setShowPreviousWeeks] = useState(0);
 
   const currentWeekNumber = getWeek(new Date(), { weekStartsOn: 1, locale: da });
   const currentWeekLabel = getWeekLabel(new Date());
@@ -137,9 +137,19 @@ export default function HomeScreen() {
     return { todayActivities, upcomingByWeek, previousByWeek };
   }, [activities]);
 
+  // Calculate how many previous weeks to display
+  const visiblePreviousWeeks = useMemo(() => {
+    if (showPreviousWeeks === 0) return [];
+    return previousByWeek.slice(0, showPreviousWeeks);
+  }, [previousByWeek, showPreviousWeeks]);
+
   const handleCreateActivity = async (activityData: any) => {
     await createActivity(activityData);
     refreshData();
+  };
+
+  const handleLoadMorePrevious = () => {
+    setShowPreviousWeeks(prev => prev + 1);
   };
 
   if (loading) {
@@ -224,6 +234,45 @@ export default function HomeScreen() {
           <Text style={styles.createButtonText}>+  Opret Aktivitet</Text>
         </Pressable>
 
+        {/* TIDLIGERE Section - Now BEFORE "I DAG" */}
+        {previousByWeek.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionTitleContainer}>
+              <View style={styles.greenMarker} />
+              <Text style={styles.sectionTitle}>TIDLIGERE</Text>
+            </View>
+
+            {visiblePreviousWeeks.map((weekGroup, weekIndex) => (
+              <View key={weekIndex} style={styles.weekGroup}>
+                <Text style={styles.weekLabel}>
+                  Uge {getWeek(weekGroup.weekStart, { weekStartsOn: 1, locale: da })}
+                </Text>
+                <Text style={styles.weekDateRange}>{getWeekLabel(weekGroup.weekStart)}</Text>
+
+                {weekGroup.activities.map((activity, activityIndex) => (
+                  <View key={activityIndex} style={styles.activityWrapper}>
+                    <ActivityCard
+                      activity={activity}
+                      resolvedDate={activity.__resolvedDateTime}
+                      showTasks={true}
+                    />
+                  </View>
+                ))}
+              </View>
+            ))}
+
+            {/* Load More Button - Show if there are more weeks to load */}
+            {showPreviousWeeks < previousByWeek.length && (
+              <Pressable 
+                style={styles.loadMoreButton}
+                onPress={handleLoadMorePrevious}
+              >
+                <Text style={styles.loadMoreButtonText}>▲ Tidligere uge</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
+
         {/* I DAG Section */}
         <View style={styles.section}>
           <View style={styles.sectionTitleContainer}>
@@ -255,47 +304,6 @@ export default function HomeScreen() {
             </View>
 
             {upcomingByWeek.map((weekGroup, weekIndex) => (
-              <View key={weekIndex} style={styles.weekGroup}>
-                <Text style={styles.weekLabel}>
-                  Uge {getWeek(weekGroup.weekStart, { weekStartsOn: 1, locale: da })}
-                </Text>
-                <Text style={styles.weekDateRange}>{getWeekLabel(weekGroup.weekStart)}</Text>
-
-                {weekGroup.activities.map((activity, activityIndex) => (
-                  <View key={activityIndex} style={styles.activityWrapper}>
-                    <ActivityCard
-                      activity={activity}
-                      resolvedDate={activity.__resolvedDateTime}
-                      showTasks={false}
-                    />
-                  </View>
-                ))}
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* Tidligere Button - Show when there are previous weeks and they're not already shown */}
-        {!showPreviousWeeks && previousByWeek.length > 0 && (
-          <View style={styles.section}>
-            <Pressable 
-              style={styles.previousButtonStandalone}
-              onPress={() => setShowPreviousWeeks(true)}
-            >
-              <Text style={styles.previousButtonText}>▲ Tidligere</Text>
-            </Pressable>
-          </View>
-        )}
-
-        {/* TIDLIGERE Section */}
-        {showPreviousWeeks && previousByWeek.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionTitleContainer}>
-              <View style={styles.greenMarker} />
-              <Text style={styles.sectionTitle}>TIDLIGERE</Text>
-            </View>
-
-            {previousByWeek.map((weekGroup, weekIndex) => (
               <View key={weekIndex} style={styles.weekGroup}>
                 <Text style={styles.weekLabel}>
                   Uge {getWeek(weekGroup.weekStart, { weekStartsOn: 1, locale: da })}
@@ -531,27 +539,13 @@ const styles = StyleSheet.create({
     borderRadius: 2.5,
     marginRight: 14,
   },
-  sectionHeaderContent: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
   sectionTitle: {
     fontSize: 22,
     fontWeight: '800',
     color: colors.text,
     letterSpacing: 0.8,
   },
-  previousButton: {
-    backgroundColor: colors.cardBackground,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  previousButtonStandalone: {
+  loadMoreButton: {
     backgroundColor: colors.cardBackground,
     paddingHorizontal: 16,
     paddingVertical: 14,
@@ -559,8 +553,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: 'center',
+    marginTop: 12,
   },
-  previousButtonText: {
+  loadMoreButtonText: {
     fontSize: 14,
     fontWeight: '700',
     color: colors.text,
