@@ -257,17 +257,7 @@ export default function HomeScreen() {
           <View style={styles.section}>
             <View style={styles.sectionTitleContainer}>
               <View style={styles.greenMarker} />
-              <View style={styles.sectionHeaderContent}>
-                <Text style={styles.sectionTitle}>KOMMENDE</Text>
-                {!showPreviousWeeks && previousByWeek.length > 0 && (
-                  <Pressable 
-                    style={styles.previousButton}
-                    onPress={() => setShowPreviousWeeks(true)}
-                  >
-                    <Text style={styles.previousButtonText}>▲ Tidligere</Text>
-                  </Pressable>
-                )}
-              </View>
+              <Text style={styles.sectionTitle}>KOMMENDE</Text>
             </View>
 
             {upcomingByWeek.map((weekGroup, weekIndex) => (
@@ -288,6 +278,18 @@ export default function HomeScreen() {
                 ))}
               </View>
             ))}
+          </View>
+        )}
+
+        {/* Tidligere Button - Show when there are previous weeks and they're not already shown */}
+        {!showPreviousWeeks && previousByWeek.length > 0 && (
+          <View style={styles.section}>
+            <Pressable 
+              style={styles.previousButtonStandalone}
+              onPress={() => setShowPreviousWeeks(true)}
+            >
+              <Text style={styles.previousButtonText}>▲ Tidligere</Text>
+            </Pressable>
           </View>
         )}
 
@@ -560,6 +562,15 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  previousButtonStandalone: {
+    backgroundColor: colors.cardBackground,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
   },
   previousButtonText: {
     fontSize: 14,
