@@ -33,6 +33,7 @@ interface ActivityWithCategory {
 interface UseHomeActivitiesResult {
   activities: ActivityWithCategory[];
   loading: boolean;
+  refresh: () => Promise<void>;
 }
 
 export function useHomeActivities(): UseHomeActivitiesResult {
@@ -302,6 +303,12 @@ export function useHomeActivities(): UseHomeActivitiesResult {
     }
   }, [userId]);
 
+  // Exposed refresh function for pull-to-refresh
+  const refresh = useCallback(async () => {
+    console.log('[useHomeActivities] Manual refresh triggered');
+    await refetchActivities();
+  }, [refetchActivities]);
+
   useEffect(() => {
     let mounted = true;
 
@@ -330,5 +337,6 @@ export function useHomeActivities(): UseHomeActivitiesResult {
   return {
     activities,
     loading,
+    refresh,
   };
 }

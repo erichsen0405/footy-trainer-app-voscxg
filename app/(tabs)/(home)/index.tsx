@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { ScrollView, View, Text, StyleSheet, Pressable, Platform } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, Pressable, Platform, RefreshControl } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
@@ -54,11 +54,12 @@ function getPerformanceGradient(percentage: number): string[] {
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { activities, loading } = useHomeActivities();
+  const { activities, loading, refresh: refreshActivities } = useHomeActivities();
   const { categories, createActivity, refreshData, currentWeekStats } = useFootball();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showPreviousWeeks, setShowPreviousWeeks] = useState(0);
   const [isPreviousExpanded, setIsPreviousExpanded] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const currentWeekNumber = getWeek(new Date(), { weekStartsOn: 1, locale: da });
   const currentWeekLabel = getWeekLabel(new Date());
@@ -228,6 +229,24 @@ export default function HomeScreen() {
     setIsPreviousExpanded(prev => !prev);
   };
 
+  // Pull-to-refresh handler
+  const onRefresh = async () => {
+    console.log('[Home] Pull-to-refresh triggered');
+    setRefreshing(true);
+    try {
+      // Refresh both activities and context data
+      await Promise.all([
+        refreshActivities(),
+        refreshData(),
+      ]);
+      console.log('[Home] Pull-to-refresh completed');
+    } catch (error) {
+      console.error('[Home] Pull-to-refresh error:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.loading}>
@@ -238,7 +257,18 @@ export default function HomeScreen() {
 
   return (
     <>
-      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      <ScrollView 
+        style={styles.container} 
+        contentContainerStyle={styles.contentContainer}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.text}
+            colors={[colors.text]}
+          />
+        }
+      >
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.logoContainer}>

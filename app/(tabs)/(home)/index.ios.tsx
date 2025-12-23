@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { ScrollView, View, Text, StyleSheet, Pressable, StatusBar } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -38,13 +38,29 @@ function getWeekLabel(date: Date): string {
   return `${format(start, 'd. MMM', { locale: da })} – ${format(end, 'd. MMM', { locale: da })}`;
 }
 
+// Helper function to get gradient colors based on performance percentage
+// Matches the trophy thresholds from performance screen: ≥80% gold, ≥60% silver, <60% bronze
+function getPerformanceGradient(percentage: number): string[] {
+  if (percentage >= 80) {
+    // Gold gradient
+    return ['#FFD700', '#FFA500', '#FF8C00'];
+  } else if (percentage >= 60) {
+    // Silver gradient
+    return ['#E8E8E8', '#C0C0C0', '#A8A8A8'];
+  } else {
+    // Bronze gradient
+    return ['#CD7F32', '#B8722E', '#A0642A'];
+  }
+}
+
 export default function HomeScreen() {
   const router = useRouter();
-  const { activities, loading } = useHomeActivities();
-  const { categories, createActivity, refreshData } = useFootball();
+  const { activities, loading, refresh: refreshActivities } = useHomeActivities();
+  const { categories, createActivity, refreshData, currentWeekStats } = useFootball();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showPreviousWeeks, setShowPreviousWeeks] = useState(0);
   const [isPreviousExpanded, setIsPreviousExpanded] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const currentWeekNumber = getWeek(new Date(), { weekStartsOn: 1, locale: da });
   const currentWeekLabel = getWeekLabel(new Date());
@@ -154,6 +170,53 @@ export default function HomeScreen() {
     return previousByWeek.slice(0, showPreviousWeeks);
   }, [previousByWeek, showPreviousWeeks]);
 
+  // Calculate performance metrics from currentWeekStats
+  const performanceMetrics = useMemo(() => {
+    const percentageUpToToday = currentWeekStats.percentage;
+    const weekPercentage = currentWeekStats.totalTasksForWeek > 0 
+      ? Math.round((currentWeekStats.completedTasksForWeek / currentWeekStats.totalTasksForWeek) * 100) 
+      : 0;
+
+    // Determine trophy emoji based on percentage up to today (same thresholds as performance screen)
+    let trophyEmoji = '🥉'; // Bronze
+    if (percentageUpToToday >= 80) {
+      trophyEmoji = '🥇'; // Gold
+    } else if (percentageUpToToday >= 60) {
+      trophyEmoji = '🥈'; // Silver
+    }
+
+    // Calculate remaining tasks
+    const remainingTasksToday = currentWeekStats.totalTasks - currentWeekStats.completedTasks;
+    const remainingTasksWeek = currentWeekStats.totalTasksForWeek - currentWeekStats.completedTasksForWeek;
+
+    // Generate motivation text
+    let motivationText = '';
+    if (percentageUpToToday >= 80) {
+      motivationText = `Fantastisk! Du er helt på toppen! ${remainingTasksToday > 0 ? `${remainingTasksToday} opgaver tilbage indtil i dag.` : 'Alle opgaver indtil i dag er fuldført! 🌟'}\n${remainingTasksWeek > 0 ? `${remainingTasksWeek} opgaver tilbage for ugen.` : 'Hele ugen er fuldført! 🎉'} ⚽`;
+    } else if (percentageUpToToday >= 60) {
+      motivationText = `Rigtig godt! Du klarer dig godt! ${remainingTasksToday > 0 ? `${remainingTasksToday} opgaver tilbage indtil i dag.` : 'Alle opgaver indtil i dag er fuldført! 💪'}\n${remainingTasksWeek > 0 ? `${remainingTasksWeek} opgaver tilbage for ugen.` : 'Hele ugen er fuldført! 🎉'} ⚽`;
+    } else if (percentageUpToToday >= 40) {
+      motivationText = `Du er på vej! ${remainingTasksToday > 0 ? `${remainingTasksToday} opgaver tilbage indtil i dag.` : 'Alle opgaver indtil i dag er fuldført!'}\n${remainingTasksWeek > 0 ? `${remainingTasksWeek} opgaver tilbage for ugen.` : 'Hele ugen er fuldført!'} 🔥`;
+    } else {
+      motivationText = `Hver træning tæller! ${remainingTasksToday > 0 ? `${remainingTasksToday} opgaver tilbage indtil i dag.` : 'Alle opgaver indtil i dag er fuldført!'}\n${remainingTasksWeek > 0 ? `${remainingTasksWeek} opgaver tilbage for ugen.` : 'Hele ugen er fuldført!'} ⚽`;
+    }
+
+    // Get gradient colors based on performance (same thresholds as performance screen)
+    const gradientColors = getPerformanceGradient(percentageUpToToday);
+
+    return {
+      percentageUpToToday,
+      weekPercentage,
+      trophyEmoji,
+      motivationText,
+      completedTasksToday: currentWeekStats.completedTasks,
+      totalTasksToday: currentWeekStats.totalTasks,
+      completedTasksWeek: currentWeekStats.completedTasksForWeek,
+      totalTasksWeek: currentWeekStats.totalTasksForWeek,
+      gradientColors,
+    };
+  }, [currentWeekStats]);
+
   const handleCreateActivity = async (activityData: any) => {
     await createActivity(activityData);
     refreshData();
@@ -165,6 +228,24 @@ export default function HomeScreen() {
 
   const togglePreviousExpanded = () => {
     setIsPreviousExpanded(prev => !prev);
+  };
+
+  // Pull-to-refresh handler
+  const onRefresh = async () => {
+    console.log('[Home iOS] Pull-to-refresh triggered');
+    setRefreshing(true);
+    try {
+      // Refresh both activities and context data
+      await Promise.all([
+        refreshActivities(),
+        refreshData(),
+      ]);
+      console.log('[Home iOS] Pull-to-refresh completed');
+    } catch (error) {
+      console.error('[Home iOS] Pull-to-refresh error:', error);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   if (loading) {
@@ -182,6 +263,13 @@ export default function HomeScreen() {
       <ScrollView 
         style={styles.container} 
         contentContainerStyle={styles.contentContainer}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.text}
+          />
+        }
       >
         {/* Header */}
         <View style={styles.header}>
@@ -202,14 +290,14 @@ export default function HomeScreen() {
           <Text style={styles.weekHeaderSubtitle}>{currentWeekLabel}</Text>
         </View>
 
-        {/* Weekly Progress Card with Red Gradient */}
+        {/* Weekly Progress Card with Dynamic Gradient */}
         <View style={styles.progressCardContainer}>
           <Pressable 
             onPress={() => router.push('/(tabs)/performance')}
             style={styles.pressableWrapper}
           >
             <LinearGradient
-              colors={['#EF4444', '#DC2626', '#991B1B']}
+              colors={performanceMetrics.gradientColors}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.progressCard}
@@ -217,26 +305,29 @@ export default function HomeScreen() {
               <View style={styles.progressHeader}>
                 <Text style={styles.progressLabel}>DENNE UGE</Text>
                 <View style={styles.medalBadge}>
-                  <Text style={styles.medalIcon}>🥉</Text>
+                  <Text style={styles.medalIcon}>{performanceMetrics.trophyEmoji}</Text>
                 </View>
               </View>
               
-              <Text style={styles.progressPercentage}>0%</Text>
+              <Text style={styles.progressPercentage}>{performanceMetrics.percentageUpToToday}%</Text>
               
               <View style={styles.progressBar}>
-                <View style={[styles.progressBarFill, { width: '0%' }]} />
+                <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
               </View>
 
-              <Text style={styles.progressDetail}>Opgaver indtil i dag: 0 / 3</Text>
+              <Text style={styles.progressDetail}>
+                Opgaver indtil i dag: {performanceMetrics.completedTasksToday} / {performanceMetrics.totalTasksToday}
+              </Text>
               <View style={styles.progressBar}>
-                <View style={[styles.progressBarFill, { width: '0%' }]} />
+                <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
               </View>
 
-              <Text style={styles.progressDetail}>Hele ugen: 0 / 22 opgaver</Text>
+              <Text style={styles.progressDetail}>
+                Hele ugen: {performanceMetrics.completedTasksWeek} / {performanceMetrics.totalTasksWeek} opgaver
+              </Text>
 
               <Text style={styles.motivationText}>
-                Hver træning tæller! 3 opgaver tilbage indtil i dag.{'\n'}
-                22 opgaver tilbage for ugen. ⚽
+                {performanceMetrics.motivationText}
               </Text>
 
               <View style={styles.performanceButton}>
