@@ -8,6 +8,7 @@ import { useHomeActivities } from '@/hooks/useHomeActivities';
 import { useFootball } from '@/contexts/FootballContext';
 import ActivityCard from '@/components/ActivityCard';
 import CreateActivityModal from '@/components/CreateActivityModal';
+import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { format, startOfWeek, endOfWeek, getWeek } from 'date-fns';
 import { da } from 'date-fns/locale';
@@ -259,9 +260,14 @@ export default function HomeScreen() {
             <Pressable onPress={togglePreviousExpanded}>
               <View style={styles.sectionTitleContainer}>
                 <View style={styles.greenMarker} />
-                <Text style={styles.sectionTitle}>
-                  {isPreviousExpanded ? '▼' : '▶'} TIDLIGERE
-                </Text>
+                <Text style={styles.sectionTitle}>TIDLIGERE</Text>
+                <IconSymbol
+                  ios_icon_name={isPreviousExpanded ? "chevron.up" : "chevron.down"}
+                  android_material_icon_name={isPreviousExpanded ? "keyboard-arrow-up" : "keyboard-arrow-down"}
+                  size={18}
+                  color={colors.text}
+                  style={styles.chevronIcon}
+                />
               </View>
             </Pressable>
 
@@ -579,6 +585,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: colors.text,
     letterSpacing: 0.8,
+  },
+  chevronIcon: {
+    marginLeft: 8,
   },
   loadMoreButton: {
     backgroundColor: colors.cardBackground,
