@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { ScrollView, View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -42,9 +42,18 @@ export default function HomeScreen() {
   const { categories, createActivity, refreshData } = useFootball();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showPreviousWeeks, setShowPreviousWeeks] = useState(0);
+  const [isPreviousExpanded, setIsPreviousExpanded] = useState(false);
 
   const currentWeekNumber = getWeek(new Date(), { weekStartsOn: 1, locale: da });
   const currentWeekLabel = getWeekLabel(new Date());
+
+  // Reset "TIDLIGERE" section when loading starts (pull-to-refresh or navigation back)
+  useEffect(() => {
+    if (loading) {
+      setIsPreviousExpanded(false);
+      setShowPreviousWeeks(0);
+    }
+  }, [loading]);
 
   const { todayActivities, upcomingByWeek, previousByWeek } = useMemo(() => {
     if (!Array.isArray(activities)) {
@@ -152,6 +161,10 @@ export default function HomeScreen() {
     setShowPreviousWeeks(prev => prev + 1);
   };
 
+  const togglePreviousExpanded = () => {
+    setIsPreviousExpanded(prev => !prev);
+  };
+
   if (loading) {
     return (
       <View style={styles.loading}>
@@ -234,41 +247,51 @@ export default function HomeScreen() {
           <Text style={styles.createButtonText}>+  Opret Aktivitet</Text>
         </Pressable>
 
-        {/* TIDLIGERE Section - Now BEFORE "I DAG" */}
+        {/* TIDLIGERE Section - Collapsible */}
         {previousByWeek.length > 0 && (
           <View style={styles.section}>
-            <View style={styles.sectionTitleContainer}>
-              <View style={styles.greenMarker} />
-              <Text style={styles.sectionTitle}>TIDLIGERE</Text>
-            </View>
-
-            {visiblePreviousWeeks.map((weekGroup, weekIndex) => (
-              <View key={weekIndex} style={styles.weekGroup}>
-                <Text style={styles.weekLabel}>
-                  Uge {getWeek(weekGroup.weekStart, { weekStartsOn: 1, locale: da })}
+            <Pressable onPress={togglePreviousExpanded}>
+              <View style={styles.sectionTitleContainer}>
+                <View style={styles.greenMarker} />
+                <Text style={styles.sectionTitle}>
+                  {isPreviousExpanded ? '▼' : '▶'} TIDLIGERE
                 </Text>
-                <Text style={styles.weekDateRange}>{getWeekLabel(weekGroup.weekStart)}</Text>
+              </View>
+            </Pressable>
 
-                {weekGroup.activities.map((activity, activityIndex) => (
-                  <View key={activityIndex} style={styles.activityWrapper}>
-                    <ActivityCard
-                      activity={activity}
-                      resolvedDate={activity.__resolvedDateTime}
-                      showTasks={true}
-                    />
+            {isPreviousExpanded && (
+              <>
+                {visiblePreviousWeeks.map((weekGroup, weekIndex) => (
+                  <View key={weekIndex} style={styles.weekGroup}>
+                    <Text style={styles.weekLabel}>
+                      Uge {getWeek(weekGroup.weekStart, { weekStartsOn: 1, locale: da })}
+                    </Text>
+                    <Text style={styles.weekDateRange}>{getWeekLabel(weekGroup.weekStart)}</Text>
+
+                    {weekGroup.activities.map((activity, activityIndex) => (
+                      <View key={activityIndex} style={styles.activityWrapper}>
+                        <ActivityCard
+                          activity={activity}
+                          resolvedDate={activity.__resolvedDateTime}
+                          showTasks={true}
+                        />
+                      </View>
+                    ))}
                   </View>
                 ))}
-              </View>
-            ))}
 
-            {/* Load More Button - Show if there are more weeks to load */}
-            {showPreviousWeeks < previousByWeek.length && (
-              <Pressable 
-                style={styles.loadMoreButton}
-                onPress={handleLoadMorePrevious}
-              >
-                <Text style={styles.loadMoreButtonText}>▲ Tidligere uge</Text>
-              </Pressable>
+                {/* Load More Button - Show if there are more weeks to load */}
+                {showPreviousWeeks < previousByWeek.length && (
+                  <Pressable 
+                    style={styles.loadMoreButton}
+                    onPress={handleLoadMorePrevious}
+                  >
+                    <Text style={styles.loadMoreButtonText}>
+                      {showPreviousWeeks === 0 ? 'Hent tidligere uger' : 'Hent en uge mere'}
+                    </Text>
+                  </Pressable>
+                )}
+              </>
             )}
           </View>
         )}
