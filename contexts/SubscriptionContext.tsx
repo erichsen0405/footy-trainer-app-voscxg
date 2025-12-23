@@ -42,26 +42,26 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         .order('price_dkk', { ascending: true });
 
       if (error) {
-        console.error('[SubscriptionContext] Error fetching subscription plans:', error);
+        console.warn('[SubscriptionContext] Could not fetch subscription plans');
         return;
       }
 
       console.log('[SubscriptionContext] Fetched subscription plans:', data);
       setSubscriptionPlans(data || []);
     } catch (error) {
-      console.error('[SubscriptionContext] Error in fetchSubscriptionPlans:', error);
+      console.warn('[SubscriptionContext] Network error fetching subscription plans');
     }
   };
 
   const fetchSubscriptionStatus = async () => {
     try {
-      console.log('[SubscriptionContext] ========== FETCHING SUBSCRIPTION STATUS ==========');
+      console.log('[SubscriptionContext] Fetching subscription status');
       setLoading(true);
       
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       
       if (userError || !user) {
-        console.log('[SubscriptionContext] No user found:', userError);
+        console.log('[SubscriptionContext] No user found');
         const emptyStatus: SubscriptionStatus = {
           hasSubscription: false,
           status: null,
@@ -82,7 +82,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
       if (sessionError || !session) {
-        console.error('[SubscriptionContext] No valid session:', sessionError);
+        console.warn('[SubscriptionContext] No valid session');
         const emptyStatus: SubscriptionStatus = {
           hasSubscription: false,
           status: null,
@@ -96,7 +96,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      console.log('[SubscriptionContext] Session verified, calling Edge Function with direct fetch...');
+      console.log('[SubscriptionContext] Session verified, calling Edge Function');
       
       // Use direct fetch to ensure proper headers and body handling
       const supabaseUrl = 'https://lhpczofddvwcyrgotzha.supabase.co';
@@ -114,7 +114,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       console.log('[SubscriptionContext] Response status:', response.status);
 
       if (!response.ok) {
-        console.error('[SubscriptionContext] Error response:', response.status, response.statusText);
+        console.warn('[SubscriptionContext] Edge function returned non-OK status:', response.status);
         const emptyStatus: SubscriptionStatus = {
           hasSubscription: false,
           status: null,
@@ -130,9 +130,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
       const data = await response.json();
 
-      console.log('[SubscriptionContext] ========== EDGE FUNCTION RESPONSE ==========');
-      console.log('[SubscriptionContext] Raw response:', JSON.stringify(data, null, 2));
-      console.log('[SubscriptionContext] Data type:', typeof data);
+      console.log('[SubscriptionContext] Edge function response received');
       console.log('[SubscriptionContext] Has subscription:', data?.hasSubscription);
       console.log('[SubscriptionContext] Plan name:', data?.planName);
       console.log('[SubscriptionContext] Status:', data?.status);
@@ -148,24 +146,17 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         currentPeriodEnd: data?.currentPeriodEnd ?? null,
       };
 
-      console.log('[SubscriptionContext] ========== PROCESSED STATUS DATA ==========');
       console.log('[SubscriptionContext] Processed status:', JSON.stringify(statusData, null, 2));
-      console.log('[SubscriptionContext] Has subscription (boolean):', statusData.hasSubscription);
-      console.log('[SubscriptionContext] Plan name:', statusData.planName);
-      console.log('[SubscriptionContext] Status:', statusData.status);
-      
-      console.log('[SubscriptionContext] Setting subscription status to state...');
+      console.log('[SubscriptionContext] Setting subscription status to state');
       setSubscriptionStatus(statusData);
       
       // Force a small delay to ensure state is updated
       await new Promise(resolve => setTimeout(resolve, 100));
       
-      console.log('[SubscriptionContext] ========== SUBSCRIPTION STATUS SET SUCCESSFULLY ==========');
-      console.log('[SubscriptionContext] Current state should now be:', JSON.stringify(statusData, null, 2));
+      console.log('[SubscriptionContext] Subscription status set successfully');
     } catch (error) {
-      console.error('[SubscriptionContext] ========== UNEXPECTED ERROR ==========');
-      console.error('[SubscriptionContext] Error in fetchSubscriptionStatus:', error);
-      console.error('[SubscriptionContext] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+      // Silent error handling - network failures are expected conditions
+      console.warn('[SubscriptionContext] Network request failed - using fallback');
       const emptyStatus: SubscriptionStatus = {
         hasSubscription: false,
         status: null,
@@ -183,20 +174,20 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshSubscription = async () => {
-    console.log('[SubscriptionContext] ========== MANUAL REFRESH REQUESTED ==========');
+    console.log('[SubscriptionContext] Manual refresh requested');
     await fetchSubscriptionStatus();
   };
 
   const createSubscription = async (planId: string): Promise<{ success: boolean; error?: string; alreadyHasSubscription?: boolean }> => {
     try {
-      console.log('[SubscriptionContext] ========== CREATING SUBSCRIPTION ==========');
+      console.log('[SubscriptionContext] Creating subscription');
       console.log('[SubscriptionContext] Plan ID:', planId);
       
       // Verify we have a valid session
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
       if (sessionError || !session) {
-        console.error('[SubscriptionContext] No valid session:', sessionError);
+        console.warn('[SubscriptionContext] No valid session for subscription creation');
         return { 
           success: false, 
           error: 'Du skal være logget ind for at oprette et abonnement. Prøv at logge ud og ind igen.' 
@@ -231,12 +222,12 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       console.log('[SubscriptionContext] Response data:', responseData);
 
       if (!response.ok) {
-        console.error('[SubscriptionContext] Error response:', responseData);
+        console.warn('[SubscriptionContext] Subscription creation failed with status:', response.status);
         
         // Check if the error is "already has subscription"
         const errorMessage = responseData.error || '';
         if (errorMessage.includes('allerede et abonnement') || errorMessage.includes('already has')) {
-          console.log('[SubscriptionContext] User already has a subscription, refreshing status...');
+          console.log('[SubscriptionContext] User already has a subscription, refreshing status');
           // Refresh subscription status to show current subscription
           await new Promise(resolve => setTimeout(resolve, 1500));
           await fetchSubscriptionStatus();
@@ -254,12 +245,12 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       }
 
       if (!responseData || !responseData.success) {
-        console.error('[SubscriptionContext] Subscription creation failed:', responseData);
+        console.warn('[SubscriptionContext] Subscription creation returned unsuccessful response');
         
         // Check if the error is "already has subscription"
         const errorMessage = responseData?.error || '';
         if (errorMessage.includes('allerede et abonnement') || errorMessage.includes('already has')) {
-          console.log('[SubscriptionContext] User already has a subscription, refreshing status...');
+          console.log('[SubscriptionContext] User already has a subscription, refreshing status');
           await new Promise(resolve => setTimeout(resolve, 1500));
           await fetchSubscriptionStatus();
           return { 
@@ -275,7 +266,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         };
       }
 
-      console.log('[SubscriptionContext] Subscription created successfully, refreshing status...');
+      console.log('[SubscriptionContext] Subscription created successfully, refreshing status');
 
       // Refresh subscription status with a delay
       await new Promise(resolve => setTimeout(resolve, 1500));
@@ -283,9 +274,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
       return { success: true };
     } catch (error: any) {
-      console.error('[SubscriptionContext] ========== UNEXPECTED ERROR ==========');
-      console.error('[SubscriptionContext] Error in createSubscription:', error);
-      console.error('[SubscriptionContext] Error stack:', error.stack);
+      // Silent error handling - network failures are expected conditions
+      console.warn('[SubscriptionContext] Network error during subscription creation');
       
       // Provide user-friendly error messages
       if (error.message?.includes('network') || error.message?.includes('fetch') || error.message?.includes('Failed to fetch')) {
@@ -303,14 +293,14 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    console.log('[SubscriptionContext] ========== CONTEXT INITIALIZED ==========');
+    console.log('[SubscriptionContext] Context initialized');
     fetchSubscriptionPlans();
     fetchSubscriptionStatus();
   }, []);
 
   // Log whenever subscription status changes
   useEffect(() => {
-    console.log('[SubscriptionContext] ========== SUBSCRIPTION STATUS CHANGED ==========');
+    console.log('[SubscriptionContext] Subscription status changed');
     console.log('[SubscriptionContext] New status:', JSON.stringify(subscriptionStatus, null, 2));
   }, [subscriptionStatus]);
 
