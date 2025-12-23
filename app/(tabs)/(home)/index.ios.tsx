@@ -448,15 +448,13 @@ export default function HomeScreen() {
                 <Text style={styles.weekDateRange}>{getWeekLabel(weekGroup.weekStart)}</Text>
 
                 {weekGroup.activities.map((activity) => (
-                  <React.Fragment key={activity.id}>
-                    <View style={styles.activityWrapper}>
-                      <ActivityCard
-                        activity={activity}
-                        resolvedDate={activity.__resolvedDateTime}
-                        showTasks={false}
-                      />
-                    </View>
-                  </React.Fragment>
+                  <View key={activity.id} style={styles.activityWrapper}>
+                    <ActivityCard
+                      activity={activity}
+                      resolvedDate={activity.__resolvedDateTime}
+                      showTasks={false}
+                    />
+                  </View>
                 ))}
               </View>
             ))}
