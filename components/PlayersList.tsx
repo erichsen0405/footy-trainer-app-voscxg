@@ -238,51 +238,53 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
       ) : (
         <ScrollView style={styles.playersList} showsVerticalScrollIndicator={false}>
           {players.map((player) => (
-            <View key={player.id} style={styles.playerCard}>
-              <View style={styles.playerIcon}>
-                <IconSymbol
-                  ios_icon_name="person.fill"
-                  android_material_icon_name="person"
-                  size={32}
-                  color={colors.primary}
-                />
-              </View>
-              <View style={styles.playerInfo}>
-                <Text style={styles.playerName}>{player.full_name}</Text>
-                {player.phone_number && (
-                  <View style={styles.playerDetail}>
-                    <IconSymbol
-                      ios_icon_name="phone.fill"
-                      android_material_icon_name="phone"
-                      size={14}
-                      color={colors.textSecondary}
-                    />
-                    <Text style={styles.playerDetailText}>{player.phone_number}</Text>
-                  </View>
-                )}
-              </View>
-              <TouchableOpacity
-                style={styles.deleteButton}
-                onPress={() => {
-                  console.log('Remove button onPress triggered');
-                  handleDeletePlayer(player.id, player.full_name);
-                }}
-                disabled={deletingPlayerId === player.id}
-                activeOpacity={0.6}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                {deletingPlayerId === player.id ? (
-                  <ActivityIndicator size="small" color={colors.error} />
-                ) : (
+            <React.Fragment key={player.id}>
+              <View style={styles.playerCard}>
+                <View style={styles.playerIcon}>
                   <IconSymbol
-                    ios_icon_name="person.badge.minus"
-                    android_material_icon_name="person_remove"
-                    size={22}
-                    color={colors.error}
+                    ios_icon_name="person.fill"
+                    android_material_icon_name="person"
+                    size={32}
+                    color={colors.primary}
                   />
-                )}
-              </TouchableOpacity>
-            </View>
+                </View>
+                <View style={styles.playerInfo}>
+                  <Text style={styles.playerName}>{player.full_name}</Text>
+                  {player.phone_number && (
+                    <View style={styles.playerDetail}>
+                      <IconSymbol
+                        ios_icon_name="phone.fill"
+                        android_material_icon_name="phone"
+                        size={14}
+                        color={colors.textSecondary}
+                      />
+                      <Text style={styles.playerDetailText}>{player.phone_number}</Text>
+                    </View>
+                  )}
+                </View>
+                <TouchableOpacity
+                  style={styles.deleteButton}
+                  onPress={() => {
+                    console.log('Remove button onPress triggered');
+                    handleDeletePlayer(player.id, player.full_name);
+                  }}
+                  disabled={deletingPlayerId === player.id}
+                  activeOpacity={0.6}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  {deletingPlayerId === player.id ? (
+                    <ActivityIndicator size="small" color={colors.error} />
+                  ) : (
+                    <IconSymbol
+                      ios_icon_name="person.badge.minus"
+                      android_material_icon_name="person_remove"
+                      size={22}
+                      color={colors.error}
+                    />
+                  )}
+                </TouchableOpacity>
+              </View>
+            </React.Fragment>
           ))}
         </ScrollView>
       )}
