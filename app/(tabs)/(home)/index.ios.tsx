@@ -260,7 +260,7 @@ export default function HomeScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea} edges={['top']} pointerEvents="box-none">
       <StatusBar barStyle="dark-content" />
       
       <ScrollView 
@@ -275,7 +275,7 @@ export default function HomeScreen() {
         }
       >
         {/* Header */}
-        <View style={styles.header}>
+        <View style={styles.header} pointerEvents="box-none">
           <View style={styles.logoContainer}>
             <View style={styles.logo}>
               <Text style={styles.logoIcon}>⚽</Text>
@@ -288,15 +288,18 @@ export default function HomeScreen() {
         </View>
 
         {/* Week Header */}
-        <View style={styles.weekHeaderContainer}>
+        <View style={styles.weekHeaderContainer} pointerEvents="box-none">
           <Text style={styles.weekHeaderTitle}>UGE {currentWeekNumber}</Text>
           <Text style={styles.weekHeaderSubtitle}>{currentWeekLabel}</Text>
         </View>
 
         {/* Weekly Progress Card with Dynamic Gradient */}
-        <View style={styles.progressCardContainer}>
+        <View style={styles.progressCardContainer} pointerEvents="box-none">
           <Pressable 
-            onPress={() => router.push('/(tabs)/performance')}
+            onPress={() => {
+              console.log('[Home iOS] Performance button pressed');
+              router.push('/(tabs)/performance');
+            }}
             style={styles.pressableWrapper}
           >
             <LinearGradient
@@ -306,7 +309,7 @@ export default function HomeScreen() {
               style={styles.progressCard}
               pointerEvents="box-none"
             >
-              <View style={styles.progressHeader}>
+              <View style={styles.progressHeader} pointerEvents="none">
                 <Text style={styles.progressLabel}>DENNE UGE</Text>
                 <View style={styles.medalBadge}>
                   <Text style={styles.medalIcon}>{performanceMetrics.trophyEmoji}</Text>
@@ -315,14 +318,14 @@ export default function HomeScreen() {
               
               <Text style={styles.progressPercentage}>{performanceMetrics.percentageUpToToday}%</Text>
               
-              <View style={styles.progressBar}>
+              <View style={styles.progressBar} pointerEvents="none">
                 <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
               </View>
 
               <Text style={styles.progressDetail}>
                 Opgaver indtil i dag: {performanceMetrics.completedTasksToday} / {performanceMetrics.totalTasksToday}
               </Text>
-              <View style={styles.progressBar}>
+              <View style={styles.progressBar} pointerEvents="none">
                 <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
               </View>
 
@@ -334,7 +337,7 @@ export default function HomeScreen() {
                 {performanceMetrics.motivationText}
               </Text>
 
-              <View style={styles.performanceButton}>
+              <View style={styles.performanceButton} pointerEvents="none">
                 <Text style={styles.performanceButtonText}>📊  Se Performance  →</Text>
               </View>
             </LinearGradient>
