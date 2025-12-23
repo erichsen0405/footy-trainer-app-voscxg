@@ -301,7 +301,6 @@ export default function HomeScreen() {
               router.push('/(tabs)/performance');
             }}
             style={styles.pressableWrapper}
-            pointerEvents="none"
           >
             <LinearGradient
               colors={performanceMetrics.gradientColors}
