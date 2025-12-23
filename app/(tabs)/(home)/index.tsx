@@ -40,7 +40,7 @@ function getWeekLabel(date: Date): string {
 export default function HomeScreen() {
   const router = useRouter();
   const { activities, loading } = useHomeActivities();
-  const { categories, createActivity, refreshData } = useFootball();
+  const { categories, createActivity, refreshData, currentWeekStats } = useFootball();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showPreviousWeeks, setShowPreviousWeeks] = useState(0);
   const [isPreviousExpanded, setIsPreviousExpanded] = useState(false);
@@ -153,6 +153,49 @@ export default function HomeScreen() {
     return previousByWeek.slice(0, showPreviousWeeks);
   }, [previousByWeek, showPreviousWeeks]);
 
+  // Calculate performance metrics from currentWeekStats
+  const performanceMetrics = useMemo(() => {
+    const percentageUpToToday = currentWeekStats.percentage;
+    const weekPercentage = currentWeekStats.totalTasksForWeek > 0 
+      ? Math.round((currentWeekStats.completedTasksForWeek / currentWeekStats.totalTasksForWeek) * 100) 
+      : 0;
+
+    // Determine trophy emoji based on percentage up to today
+    let trophyEmoji = '🥉'; // Bronze
+    if (percentageUpToToday >= 80) {
+      trophyEmoji = '🥇'; // Gold
+    } else if (percentageUpToToday >= 60) {
+      trophyEmoji = '🥈'; // Silver
+    }
+
+    // Calculate remaining tasks
+    const remainingTasksToday = currentWeekStats.totalTasks - currentWeekStats.completedTasks;
+    const remainingTasksWeek = currentWeekStats.totalTasksForWeek - currentWeekStats.completedTasksForWeek;
+
+    // Generate motivation text
+    let motivationText = '';
+    if (percentageUpToToday >= 80) {
+      motivationText = `Fantastisk! Du er helt på toppen! ${remainingTasksToday > 0 ? `${remainingTasksToday} opgaver tilbage indtil i dag.` : 'Alle opgaver indtil i dag er fuldført! 🌟'}\n${remainingTasksWeek > 0 ? `${remainingTasksWeek} opgaver tilbage for ugen.` : 'Hele ugen er fuldført! 🎉'} ⚽`;
+    } else if (percentageUpToToday >= 60) {
+      motivationText = `Rigtig godt! Du klarer dig godt! ${remainingTasksToday > 0 ? `${remainingTasksToday} opgaver tilbage indtil i dag.` : 'Alle opgaver indtil i dag er fuldført! 💪'}\n${remainingTasksWeek > 0 ? `${remainingTasksWeek} opgaver tilbage for ugen.` : 'Hele ugen er fuldført! 🎉'} ⚽`;
+    } else if (percentageUpToToday >= 40) {
+      motivationText = `Du er på vej! ${remainingTasksToday > 0 ? `${remainingTasksToday} opgaver tilbage indtil i dag.` : 'Alle opgaver indtil i dag er fuldført!'}\n${remainingTasksWeek > 0 ? `${remainingTasksWeek} opgaver tilbage for ugen.` : 'Hele ugen er fuldført!'} 🔥`;
+    } else {
+      motivationText = `Hver træning tæller! ${remainingTasksToday > 0 ? `${remainingTasksToday} opgaver tilbage indtil i dag.` : 'Alle opgaver indtil i dag er fuldført!'}\n${remainingTasksWeek > 0 ? `${remainingTasksWeek} opgaver tilbage for ugen.` : 'Hele ugen er fuldført!'} ⚽`;
+    }
+
+    return {
+      percentageUpToToday,
+      weekPercentage,
+      trophyEmoji,
+      motivationText,
+      completedTasksToday: currentWeekStats.completedTasks,
+      totalTasksToday: currentWeekStats.totalTasks,
+      completedTasksWeek: currentWeekStats.completedTasksForWeek,
+      totalTasksWeek: currentWeekStats.totalTasksForWeek,
+    };
+  }, [currentWeekStats]);
+
   const handleCreateActivity = async (activityData: any) => {
     await createActivity(activityData);
     refreshData();
@@ -211,26 +254,29 @@ export default function HomeScreen() {
               <View style={styles.progressHeader}>
                 <Text style={styles.progressLabel}>DENNE UGE</Text>
                 <View style={styles.medalBadge}>
-                  <Text style={styles.medalIcon}>🥉</Text>
+                  <Text style={styles.medalIcon}>{performanceMetrics.trophyEmoji}</Text>
                 </View>
               </View>
               
-              <Text style={styles.progressPercentage}>0%</Text>
+              <Text style={styles.progressPercentage}>{performanceMetrics.percentageUpToToday}%</Text>
               
               <View style={styles.progressBar}>
-                <View style={[styles.progressBarFill, { width: '0%' }]} />
+                <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
               </View>
 
-              <Text style={styles.progressDetail}>Opgaver indtil i dag: 0 / 3</Text>
+              <Text style={styles.progressDetail}>
+                Opgaver indtil i dag: {performanceMetrics.completedTasksToday} / {performanceMetrics.totalTasksToday}
+              </Text>
               <View style={styles.progressBar}>
-                <View style={[styles.progressBarFill, { width: '0%' }]} />
+                <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
               </View>
 
-              <Text style={styles.progressDetail}>Hele ugen: 0 / 22 opgaver</Text>
+              <Text style={styles.progressDetail}>
+                Hele ugen: {performanceMetrics.completedTasksWeek} / {performanceMetrics.totalTasksWeek} opgaver
+              </Text>
 
               <Text style={styles.motivationText}>
-                Hver træning tæller! 3 opgaver tilbage indtil i dag.{'\n'}
-                22 opgaver tilbage for ugen. ⚽
+                {performanceMetrics.motivationText}
               </Text>
 
               <View style={styles.performanceButton}>
