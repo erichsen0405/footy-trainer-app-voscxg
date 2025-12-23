@@ -490,7 +490,11 @@ export default function TasksScreen() {
 
         {isExpanded && (
           <View style={styles.folderContent}>
-            {folder.tasks.map(task => renderTaskCard(task))}
+            {folder.tasks.map(task => (
+              <View key={task.id}>
+                {renderTaskCard(task)}
+              </View>
+            ))}
           </View>
         )}
       </React.Fragment>
