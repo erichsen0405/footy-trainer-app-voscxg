@@ -379,13 +379,15 @@ export default function HomeScreen() {
                     <Text style={styles.weekDateRange}>{getWeekLabel(weekGroup.weekStart)}</Text>
 
                     {weekGroup.activities.map((activity) => (
-                      <View key={activity.id} style={styles.activityWrapper}>
-                        <ActivityCard
-                          activity={activity}
-                          resolvedDate={activity.__resolvedDateTime}
-                          showTasks={true}
-                        />
-                      </View>
+                      <React.Fragment key={activity.id}>
+                        <View style={styles.activityWrapper}>
+                          <ActivityCard
+                            activity={activity}
+                            resolvedDate={activity.__resolvedDateTime}
+                            showTasks={true}
+                          />
+                        </View>
+                      </React.Fragment>
                     ))}
                   </View>
                 ))}
@@ -418,13 +420,15 @@ export default function HomeScreen() {
           )}
 
           {todayActivities.map((activity) => (
-            <View key={activity.id} style={styles.activityWrapper}>
-              <ActivityCard
-                activity={activity}
-                resolvedDate={activity.__resolvedDateTime}
-                showTasks={true}
-              />
-            </View>
+            <React.Fragment key={activity.id}>
+              <View style={styles.activityWrapper}>
+                <ActivityCard
+                  activity={activity}
+                  resolvedDate={activity.__resolvedDateTime}
+                  showTasks={true}
+                />
+              </View>
+            </React.Fragment>
           ))}
         </View>
 
@@ -444,13 +448,15 @@ export default function HomeScreen() {
                 <Text style={styles.weekDateRange}>{getWeekLabel(weekGroup.weekStart)}</Text>
 
                 {weekGroup.activities.map((activity) => (
-                  <View key={activity.id} style={styles.activityWrapper}>
-                    <ActivityCard
-                      activity={activity}
-                      resolvedDate={activity.__resolvedDateTime}
-                      showTasks={false}
-                    />
-                  </View>
+                  <React.Fragment key={activity.id}>
+                    <View style={styles.activityWrapper}>
+                      <ActivityCard
+                        activity={activity}
+                        resolvedDate={activity.__resolvedDateTime}
+                        showTasks={false}
+                      />
+                    </View>
+                  </React.Fragment>
                 ))}
               </View>
             ))}
