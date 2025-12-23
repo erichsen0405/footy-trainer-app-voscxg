@@ -322,7 +322,7 @@ export default function CreateActivityModal({
                 </Text>
               </TouchableOpacity>
 
-              {showDatePicker && (
+              {showDatePicker ? (
                 <View style={[
                   Platform.OS === 'ios' ? styles.iosPickerContainer : undefined,
                   { backgroundColor: isDark ? '#2a2a2a' : '#FFFFFF' }
@@ -338,16 +338,16 @@ export default function CreateActivityModal({
                     style={Platform.OS === 'ios' ? styles.iosPicker : undefined}
                   />
                 </View>
-              )}
+              ) : null}
 
-              {Platform.OS === 'ios' && showDatePicker && (
+              {Platform.OS === 'ios' && showDatePicker ? (
                 <TouchableOpacity
                   style={[styles.doneButton, { backgroundColor: colors.primary }]}
                   onPress={() => setShowDatePicker(false)}
                 >
                   <Text style={styles.doneButtonText}>Færdig</Text>
                 </TouchableOpacity>
-              )}
+              ) : null}
 
               {/* Time Picker */}
               <TouchableOpacity
@@ -365,7 +365,7 @@ export default function CreateActivityModal({
                 </Text>
               </TouchableOpacity>
 
-              {showTimePicker && (
+              {showTimePicker ? (
                 <View style={[
                   Platform.OS === 'ios' ? styles.iosPickerContainer : undefined,
                   { backgroundColor: isDark ? '#2a2a2a' : '#FFFFFF' }
@@ -381,16 +381,16 @@ export default function CreateActivityModal({
                     style={Platform.OS === 'ios' ? styles.iosPicker : undefined}
                   />
                 </View>
-              )}
+              ) : null}
 
-              {Platform.OS === 'ios' && showTimePicker && (
+              {Platform.OS === 'ios' && showTimePicker ? (
                 <TouchableOpacity
                   style={[styles.doneButton, { backgroundColor: colors.primary }]}
                   onPress={() => setShowTimePicker(false)}
                 >
                   <Text style={styles.doneButtonText}>Færdig</Text>
                 </TouchableOpacity>
-              )}
+              ) : null}
 
               {/* Series Toggle */}
               <View style={[styles.switchContainer, { backgroundColor: bgColor }]}>
@@ -414,7 +414,7 @@ export default function CreateActivityModal({
               </View>
 
               {/* Recurrence Options */}
-              {isRecurring && (
+              {isRecurring ? (
                 <React.Fragment key="recurrence-options">
                   <View style={styles.recurrenceTypeContainer}>
                     {RECURRENCE_TYPES.map((type) => (
@@ -446,7 +446,7 @@ export default function CreateActivityModal({
                     ))}
                   </View>
 
-                  {needsDaySelection && (
+                  {needsDaySelection ? (
                     <View style={styles.daysContainer}>
                       {DAYS_OF_WEEK.map(day => (
                         <TouchableOpacity
@@ -473,7 +473,7 @@ export default function CreateActivityModal({
                         </TouchableOpacity>
                       ))}
                     </View>
-                  )}
+                  ) : null}
 
                   {/* End Date Toggle */}
                   <View style={[styles.switchContainer, { backgroundColor: bgColor }]}>
@@ -489,7 +489,7 @@ export default function CreateActivityModal({
                   </View>
 
                   {/* End Date Picker */}
-                  {hasEndDate && (
+                  {hasEndDate ? (
                     <React.Fragment key="end-date-picker">
                       <TouchableOpacity
                         style={[styles.pickerButton, { backgroundColor: bgColor }]}
@@ -506,7 +506,7 @@ export default function CreateActivityModal({
                         </Text>
                       </TouchableOpacity>
 
-                      {showEndDatePicker && (
+                      {showEndDatePicker ? (
                         <View style={[
                           Platform.OS === 'ios' ? styles.iosPickerContainer : undefined,
                           { backgroundColor: isDark ? '#2a2a2a' : '#FFFFFF' }
@@ -522,20 +522,20 @@ export default function CreateActivityModal({
                             style={Platform.OS === 'ios' ? styles.iosPicker : undefined}
                           />
                         </View>
-                      )}
+                      ) : null}
 
-                      {Platform.OS === 'ios' && showEndDatePicker && (
+                      {Platform.OS === 'ios' && showEndDatePicker ? (
                         <TouchableOpacity
                           style={[styles.doneButton, { backgroundColor: colors.primary }]}
                           onPress={() => setShowEndDatePicker(false)}
                         >
                           <Text style={styles.doneButtonText}>Færdig</Text>
                         </TouchableOpacity>
-                      )}
+                      ) : null}
                     </React.Fragment>
-                  )}
+                  ) : null}
                 </React.Fragment>
-              )}
+              ) : null}
             </ScrollView>
 
             <View style={styles.modalFooter}>
