@@ -47,34 +47,56 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
       setError(null);
 
       try {
-        // Try fetching from activity_tasks first
+        // Try fetching from activity_tasks first WITH task_templates JOIN to get video_url
         const { data: activityTask, error: activityError } = await supabase
           .from('activity_tasks')
-          .select('*')
+          .select(`
+            *,
+            task_templates!activity_tasks_task_template_id_fkey (
+              video_url
+            )
+          `)
           .eq('id', taskId)
           .maybeSingle();
 
         if (activityTask) {
           console.log('TaskDetailsModal: Found in activity_tasks');
+          console.log('TASK RAW DATA', activityTask);
+          
+          // Extract video_url from the joined task_templates
+          const videoUrl = activityTask.task_templates?.video_url || null;
+          
           setTask({
             ...activityTask,
+            video_url: videoUrl,
             is_external: false,
           });
           setLoading(false);
           return;
         }
 
-        // If not found, try external_event_tasks
+        // If not found, try external_event_tasks WITH task_templates JOIN
         const { data: externalTask, error: externalError } = await supabase
           .from('external_event_tasks')
-          .select('*')
+          .select(`
+            *,
+            task_templates!external_event_tasks_task_template_id_fkey (
+              video_url
+            )
+          `)
           .eq('id', taskId)
           .maybeSingle();
 
         if (externalTask) {
           console.log('TaskDetailsModal: Found in external_event_tasks');
+          console.log('TASK RAW DATA', externalTask);
+          
+          // Extract video_url from the joined task_templates
+          const videoUrl = externalTask.task_templates?.video_url || null;
+          
           setTask({
             ...externalTask,
+            video_url: videoUrl,
             is_external: true,
           });
           setLoading(false);
@@ -131,6 +153,12 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
     return `${hours} time${hours > 1 ? 'r' : ''} og ${remainingMinutes} min før`;
   };
 
+  // Early return if no task loaded yet
+  if (!task && !loading && !error) return null;
+
+  // Defensive video URL extraction
+  const videoUrl = task?.video_url || null;
+
   return (
     <Modal
       visible={true}
@@ -181,10 +209,10 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
               </View>
 
               {/* Video - UNDER title, OVER description */}
-              {task.video_url && (
+              {!!videoUrl && (
                 <View style={styles.section}>
                   <View style={styles.videoContainer}>
-                    <SmartVideoPlayer url={task.video_url} />
+                    <SmartVideoPlayer url={videoUrl} />
                   </View>
                 </View>
               )}
