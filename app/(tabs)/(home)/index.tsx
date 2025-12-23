@@ -41,13 +41,14 @@ export default function HomeScreen() {
   const { activities, loading } = useHomeActivities();
   const { categories, createActivity, refreshData } = useFootball();
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showPreviousWeeks, setShowPreviousWeeks] = useState(false);
 
   const currentWeekNumber = getWeek(new Date(), { weekStartsOn: 1, locale: da });
   const currentWeekLabel = getWeekLabel(new Date());
 
-  const { todayActivities, upcomingByWeek } = useMemo(() => {
+  const { todayActivities, upcomingByWeek, previousByWeek } = useMemo(() => {
     if (!Array.isArray(activities)) {
-      return { todayActivities: [], upcomingByWeek: [] };
+      return { todayActivities: [], upcomingByWeek: [], previousByWeek: [] };
     }
 
     const now = new Date();
@@ -89,25 +90,51 @@ export default function HomeScreen() {
           b.__resolvedDateTime.getTime()
       );
 
+    const previousActivities = resolved
+      .filter(a => a.__resolvedDateTime < todayStart)
+      .sort(
+        (a, b) =>
+          b.__resolvedDateTime.getTime() -
+          a.__resolvedDateTime.getTime()
+      );
+
     // Group upcoming activities by week
-    const weekGroups: { [key: string]: any[] } = {};
+    const upcomingWeekGroups: { [key: string]: any[] } = {};
     upcomingActivities.forEach(activity => {
       const weekStart = startOfWeek(activity.__resolvedDateTime, { weekStartsOn: 1 });
       const weekKey = weekStart.toISOString();
-      if (!weekGroups[weekKey]) {
-        weekGroups[weekKey] = [];
+      if (!upcomingWeekGroups[weekKey]) {
+        upcomingWeekGroups[weekKey] = [];
       }
-      weekGroups[weekKey].push(activity);
+      upcomingWeekGroups[weekKey].push(activity);
     });
 
-    const upcomingByWeek = Object.entries(weekGroups)
+    const upcomingByWeek = Object.entries(upcomingWeekGroups)
       .map(([weekKey, activities]) => ({
         weekStart: new Date(weekKey),
         activities,
       }))
       .sort((a, b) => a.weekStart.getTime() - b.weekStart.getTime());
 
-    return { todayActivities, upcomingByWeek };
+    // Group previous activities by week
+    const previousWeekGroups: { [key: string]: any[] } = {};
+    previousActivities.forEach(activity => {
+      const weekStart = startOfWeek(activity.__resolvedDateTime, { weekStartsOn: 1 });
+      const weekKey = weekStart.toISOString();
+      if (!previousWeekGroups[weekKey]) {
+        previousWeekGroups[weekKey] = [];
+      }
+      previousWeekGroups[weekKey].push(activity);
+    });
+
+    const previousByWeek = Object.entries(previousWeekGroups)
+      .map(([weekKey, activities]) => ({
+        weekStart: new Date(weekKey),
+        activities,
+      }))
+      .sort((a, b) => b.weekStart.getTime() - a.weekStart.getTime());
+
+    return { todayActivities, upcomingByWeek, previousByWeek };
   }, [activities]);
 
   const handleCreateActivity = async (activityData: any) => {
@@ -222,13 +249,47 @@ export default function HomeScreen() {
               <View style={styles.greenMarker} />
               <View style={styles.sectionHeaderContent}>
                 <Text style={styles.sectionTitle}>KOMMENDE</Text>
-                <Pressable style={styles.previousButton}>
-                  <Text style={styles.previousButtonText}>▲ Tidligere</Text>
-                </Pressable>
+                {!showPreviousWeeks && previousByWeek.length > 0 && (
+                  <Pressable 
+                    style={styles.previousButton}
+                    onPress={() => setShowPreviousWeeks(true)}
+                  >
+                    <Text style={styles.previousButtonText}>▲ Tidligere</Text>
+                  </Pressable>
+                )}
               </View>
             </View>
 
             {upcomingByWeek.map((weekGroup, weekIndex) => (
+              <View key={weekIndex} style={styles.weekGroup}>
+                <Text style={styles.weekLabel}>
+                  Uge {getWeek(weekGroup.weekStart, { weekStartsOn: 1, locale: da })}
+                </Text>
+                <Text style={styles.weekDateRange}>{getWeekLabel(weekGroup.weekStart)}</Text>
+
+                {weekGroup.activities.map((activity, activityIndex) => (
+                  <View key={activityIndex} style={styles.activityWrapper}>
+                    <ActivityCard
+                      activity={activity}
+                      resolvedDate={activity.__resolvedDateTime}
+                      showTasks={false}
+                    />
+                  </View>
+                ))}
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* TIDLIGERE Section */}
+        {showPreviousWeeks && previousByWeek.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionTitleContainer}>
+              <View style={styles.greenMarker} />
+              <Text style={styles.sectionTitle}>TIDLIGERE</Text>
+            </View>
+
+            {previousByWeek.map((weekGroup, weekIndex) => (
               <View key={weekIndex} style={styles.weekGroup}>
                 <Text style={styles.weekLabel}>
                   Uge {getWeek(weekGroup.weekStart, { weekStartsOn: 1, locale: da })}
