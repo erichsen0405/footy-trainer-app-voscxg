@@ -173,36 +173,38 @@ export default function HomeScreen() {
         </View>
 
         {/* Weekly Progress Card with Red Gradient */}
-        <LinearGradient
-          colors={['#EF4444', '#DC2626', '#991B1B']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.progressCard}
-        >
-          <View style={styles.progressHeader}>
-            <Text style={styles.progressLabel}>DENNE UGE</Text>
-            <View style={styles.medalBadge}>
-              <Text style={styles.medalIcon}>🥉</Text>
+        <View style={styles.progressCardContainer}>
+          <LinearGradient
+            colors={['#EF4444', '#DC2626', '#991B1B']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.progressCard}
+          >
+            <View style={styles.progressHeader}>
+              <Text style={styles.progressLabel}>DENNE UGE</Text>
+              <View style={styles.medalBadge}>
+                <Text style={styles.medalIcon}>🥉</Text>
+              </View>
             </View>
-          </View>
-          
-          <Text style={styles.progressPercentage}>0%</Text>
-          
-          <View style={styles.progressBar}>
-            <View style={[styles.progressBarFill, { width: '0%' }]} />
-          </View>
+            
+            <Text style={styles.progressPercentage}>0%</Text>
+            
+            <View style={styles.progressBar}>
+              <View style={[styles.progressBarFill, { width: '0%' }]} />
+            </View>
 
-          <Text style={styles.progressDetail}>Opgaver indtil i dag: 0 / 3</Text>
-          <View style={styles.progressBar}>
-            <View style={[styles.progressBarFill, { width: '0%' }]} />
-          </View>
+            <Text style={styles.progressDetail}>Opgaver indtil i dag: 0 / 3</Text>
+            <View style={styles.progressBar}>
+              <View style={[styles.progressBarFill, { width: '0%' }]} />
+            </View>
 
-          <Text style={styles.progressDetail}>Hele ugen: 0 / 22 opgaver</Text>
+            <Text style={styles.progressDetail}>Hele ugen: 0 / 22 opgaver</Text>
 
-          <Text style={styles.motivationText}>
-            Hver træning tæller! 3 opgaver tilbage indtil i dag.{'\n'}
-            22 opgaver tilbage for ugen. ⚽
-          </Text>
+            <Text style={styles.motivationText}>
+              Hver træning tæller! 3 opgaver tilbage indtil i dag.{'\n'}
+              22 opgaver tilbage for ugen. ⚽
+            </Text>
+          </LinearGradient>
 
           <Pressable 
             style={styles.performanceButton}
@@ -210,7 +212,7 @@ export default function HomeScreen() {
           >
             <Text style={styles.performanceButtonText}>📊  Se Performance  →</Text>
           </Pressable>
-        </LinearGradient>
+        </View>
 
         {/* Create Activity Button */}
         <Pressable 
@@ -407,11 +409,13 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
 
-  // Progress Card
-  progressCard: {
+  // Progress Card Container
+  progressCardContainer: {
     marginHorizontal: 16,
     marginTop: 8,
     marginBottom: 16,
+  },
+  progressCard: {
     borderRadius: 24,
     padding: 24,
     boxShadow: '0px 6px 20px rgba(0, 0, 0, 0.25)',
@@ -476,7 +480,8 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 16,
     paddingHorizontal: 24,
-    marginTop: 20,
+    marginTop: -44,
+    marginHorizontal: 24,
     alignItems: 'center',
   },
   performanceButtonText: {
