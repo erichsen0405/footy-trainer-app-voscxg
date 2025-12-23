@@ -37,6 +37,21 @@ function getWeekLabel(date: Date): string {
   return `${format(start, 'd. MMM', { locale: da })} – ${format(end, 'd. MMM', { locale: da })}`;
 }
 
+// Helper function to get gradient colors based on performance percentage
+// Matches the trophy thresholds from performance screen: ≥80% gold, ≥60% silver, <60% bronze
+function getPerformanceGradient(percentage: number): string[] {
+  if (percentage >= 80) {
+    // Gold gradient
+    return ['#FFD700', '#FFA500', '#FF8C00'];
+  } else if (percentage >= 60) {
+    // Silver gradient
+    return ['#E8E8E8', '#C0C0C0', '#A8A8A8'];
+  } else {
+    // Bronze gradient
+    return ['#CD7F32', '#B8722E', '#A0642A'];
+  }
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const { activities, loading } = useHomeActivities();
@@ -160,7 +175,7 @@ export default function HomeScreen() {
       ? Math.round((currentWeekStats.completedTasksForWeek / currentWeekStats.totalTasksForWeek) * 100) 
       : 0;
 
-    // Determine trophy emoji based on percentage up to today
+    // Determine trophy emoji based on percentage up to today (same thresholds as performance screen)
     let trophyEmoji = '🥉'; // Bronze
     if (percentageUpToToday >= 80) {
       trophyEmoji = '🥇'; // Gold
@@ -184,6 +199,9 @@ export default function HomeScreen() {
       motivationText = `Hver træning tæller! ${remainingTasksToday > 0 ? `${remainingTasksToday} opgaver tilbage indtil i dag.` : 'Alle opgaver indtil i dag er fuldført!'}\n${remainingTasksWeek > 0 ? `${remainingTasksWeek} opgaver tilbage for ugen.` : 'Hele ugen er fuldført!'} ⚽`;
     }
 
+    // Get gradient colors based on performance (same thresholds as performance screen)
+    const gradientColors = getPerformanceGradient(percentageUpToToday);
+
     return {
       percentageUpToToday,
       weekPercentage,
@@ -193,6 +211,7 @@ export default function HomeScreen() {
       totalTasksToday: currentWeekStats.totalTasks,
       completedTasksWeek: currentWeekStats.completedTasksForWeek,
       totalTasksWeek: currentWeekStats.totalTasksForWeek,
+      gradientColors,
     };
   }, [currentWeekStats]);
 
@@ -239,14 +258,14 @@ export default function HomeScreen() {
           <Text style={styles.weekHeaderSubtitle}>{currentWeekLabel}</Text>
         </View>
 
-        {/* Weekly Progress Card with Red Gradient */}
+        {/* Weekly Progress Card with Dynamic Gradient */}
         <View style={styles.progressCardContainer}>
           <Pressable 
             onPress={() => router.push('/(tabs)/performance')}
             style={styles.pressableWrapper}
           >
             <LinearGradient
-              colors={['#EF4444', '#DC2626', '#991B1B']}
+              colors={performanceMetrics.gradientColors}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.progressCard}
