@@ -353,7 +353,7 @@ export default function HomeScreen() {
         </Pressable>
 
         {/* TIDLIGERE Section - Collapsible */}
-        {previousByWeek.length > 0 && (
+        {previousByWeek.length > 0 ? (
           <View style={styles.section}>
             <Pressable onPress={togglePreviousExpanded}>
               <View style={styles.sectionTitleContainer}>
@@ -369,7 +369,7 @@ export default function HomeScreen() {
               </View>
             </Pressable>
 
-            {isPreviousExpanded && (
+            {isPreviousExpanded ? (
               <>
                 {visiblePreviousWeeks.map((weekGroup, weekIndex) => (
                   <View key={`previous-week-${weekGroup.weekStart.toISOString()}`} style={styles.weekGroup}>
@@ -391,7 +391,7 @@ export default function HomeScreen() {
                 ))}
 
                 {/* Load More Button - Show if there are more weeks to load */}
-                {showPreviousWeeks < previousByWeek.length && (
+                {showPreviousWeeks < previousByWeek.length ? (
                   <Pressable 
                     style={styles.loadMoreButton}
                     onPress={handleLoadMorePrevious}
@@ -400,11 +400,11 @@ export default function HomeScreen() {
                       {showPreviousWeeks === 0 ? 'Hent tidligere uger' : 'Hent en uge mere'}
                     </Text>
                   </Pressable>
-                )}
+                ) : null}
               </>
-            )}
+            ) : null}
           </View>
-        )}
+        ) : null}
 
         {/* I DAG Section */}
         <View style={styles.section}>
@@ -413,9 +413,9 @@ export default function HomeScreen() {
             <Text style={styles.sectionTitle}>I DAG</Text>
           </View>
 
-          {todayActivities.length === 0 && (
+          {todayActivities.length === 0 ? (
             <Text style={styles.emptyText}>Ingen aktiviteter i dag</Text>
-          )}
+          ) : null}
 
           {todayActivities.map((activity) => (
             <React.Fragment key={activity.id}>
@@ -431,7 +431,7 @@ export default function HomeScreen() {
         </View>
 
         {/* KOMMENDE Section */}
-        {upcomingByWeek.length > 0 && (
+        {upcomingByWeek.length > 0 ? (
           <View style={styles.section}>
             <View style={styles.sectionTitleContainer}>
               <View style={styles.greenMarker} />
@@ -457,7 +457,7 @@ export default function HomeScreen() {
               </View>
             ))}
           </View>
-        )}
+        ) : null}
 
         {/* Bottom spacing for tab bar */}
         <View style={styles.bottomSpacer} />
