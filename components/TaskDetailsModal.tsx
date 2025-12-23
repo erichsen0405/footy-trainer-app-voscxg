@@ -11,7 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import { IconSymbol } from '@/components/IconSymbol';
-import { SmartVideoPlayer } from '@/components/SmartVideoPlayer';
+import SmartVideoPlayer from '@/components/SmartVideoPlayer';
 import { colors } from '@/styles/commonStyles';
 import { supabase } from '@/app/integrations/supabase/client';
 import { taskService } from '@/services/taskService';
@@ -180,21 +180,20 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
                 <Text style={styles.taskTitle}>{task.title}</Text>
               </View>
 
+              {/* Video - UNDER title, OVER description */}
+              {task.video_url && (
+                <View style={styles.section}>
+                  <View style={styles.videoContainer}>
+                    <SmartVideoPlayer url={task.video_url} />
+                  </View>
+                </View>
+              )}
+
               {/* Task Description */}
               {task.description && (
                 <View style={styles.section}>
                   <Text style={styles.sectionLabel}>Beskrivelse</Text>
                   <Text style={styles.description}>{task.description}</Text>
-                </View>
-              )}
-
-              {/* Video */}
-              {task.video_url && (
-                <View style={styles.section}>
-                  <Text style={styles.sectionLabel}>Video</Text>
-                  <View style={styles.videoContainer}>
-                    <SmartVideoPlayer url={task.video_url} />
-                  </View>
                 </View>
               )}
 
@@ -340,6 +339,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: '#000',
+    aspectRatio: 16 / 9,
   },
   reminderContainer: {
     flexDirection: 'row',
