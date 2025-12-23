@@ -34,7 +34,7 @@ function resolveActivityDateTime(activity: any): Date | null {
 function getWeekLabel(date: Date): string {
   const start = startOfWeek(date, { weekStartsOn: 1 });
   const end = endOfWeek(date, { weekStartsOn: 1 });
-  return `${format(start, 'd/M', { locale: da })} - ${format(end, 'd/M', { locale: da })}`;
+  return `${format(start, 'd. MMM', { locale: da })} – ${format(end, 'd. MMM', { locale: da })}`;
 }
 
 export default function HomeScreen() {
@@ -42,6 +42,9 @@ export default function HomeScreen() {
   const { activities, loading } = useHomeActivities();
   const { categories, createActivity, refreshData } = useFootball();
   const [showCreateModal, setShowCreateModal] = useState(false);
+
+  const currentWeekNumber = getWeek(new Date(), { weekStartsOn: 1, locale: da });
+  const currentWeekLabel = getWeekLabel(new Date());
 
   const { todayActivities, upcomingByWeek } = useMemo(() => {
     if (!Array.isArray(activities)) {
@@ -142,6 +145,12 @@ export default function HomeScreen() {
           </View>
         </View>
 
+        {/* Week Header */}
+        <View style={styles.weekHeaderContainer}>
+          <Text style={styles.weekHeaderTitle}>UGE {currentWeekNumber}</Text>
+          <Text style={styles.weekHeaderSubtitle}>{currentWeekLabel}</Text>
+        </View>
+
         {/* Weekly Progress Card with Red Gradient */}
         <LinearGradient
           colors={['#EF4444', '#DC2626', '#991B1B']}
@@ -215,11 +224,14 @@ export default function HomeScreen() {
         {/* KOMMENDE Section */}
         {upcomingByWeek.length > 0 && (
           <View style={styles.section}>
-            <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>KOMMENDE</Text>
-              <Pressable>
-                <Text style={styles.expandButton}>▲ Tidligere</Text>
-              </Pressable>
+            <View style={styles.sectionTitleContainer}>
+              <View style={styles.greenMarker} />
+              <View style={styles.sectionHeaderContent}>
+                <Text style={styles.sectionTitle}>KOMMENDE</Text>
+                <Pressable style={styles.previousButton}>
+                  <Text style={styles.previousButtonText}>▲ Tidligere</Text>
+                </Pressable>
+              </View>
             </View>
 
             {upcomingByWeek.map((weekGroup, weekIndex) => (
@@ -325,10 +337,31 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
 
+  // Week Header
+  weekHeaderContainer: {
+    backgroundColor: colors.background,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 12,
+  },
+  weekHeaderTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.text,
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  weekHeaderSubtitle: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: colors.textSecondary,
+    letterSpacing: 0.2,
+  },
+
   // Progress Card
   progressCard: {
     marginHorizontal: 16,
-    marginTop: 20,
+    marginTop: 8,
     marginBottom: 16,
     borderRadius: 24,
     padding: 24,
@@ -423,63 +456,76 @@ const styles = StyleSheet.create({
   // Sections
   section: {
     paddingHorizontal: 16,
-    marginTop: 20,
+    marginTop: 28,
+    marginBottom: 8,
   },
   sectionTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
   },
   greenMarker: {
-    width: 4,
-    height: 28,
+    width: 5,
+    height: 32,
     backgroundColor: '#4CAF50',
-    borderRadius: 2,
-    marginRight: 12,
+    borderRadius: 2.5,
+    marginRight: 14,
   },
-  sectionHeaderRow: {
+  sectionHeaderContent: {
+    flex: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '800',
     color: colors.text,
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
   },
-  expandButton: {
+  previousButton: {
+    backgroundColor: colors.cardBackground,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  previousButtonText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: colors.textSecondary,
+    fontWeight: '700',
+    color: colors.text,
+    letterSpacing: 0.3,
   },
   emptyText: {
     fontSize: 15,
     color: colors.textSecondary,
     marginBottom: 16,
+    lineHeight: 22,
   },
 
   // Week Groups
   weekGroup: {
-    marginBottom: 24,
+    marginBottom: 28,
   },
   weekLabel: {
     fontSize: 17,
     fontWeight: '800',
     color: colors.text,
-    marginBottom: 4,
+    marginBottom: 6,
+    letterSpacing: 0.3,
   },
   weekDateRange: {
     fontSize: 14,
     fontWeight: '500',
     color: colors.textSecondary,
-    marginBottom: 16,
+    marginBottom: 18,
+    letterSpacing: 0.2,
   },
 
   // Activity Wrapper
   activityWrapper: {
-    marginBottom: 14,
+    marginBottom: 16,
   },
 
   // Bottom Spacer
