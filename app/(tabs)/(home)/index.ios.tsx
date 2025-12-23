@@ -260,13 +260,12 @@ export default function HomeScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']} pointerEvents="box-none">
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
       <StatusBar barStyle="dark-content" />
       
       <ScrollView 
         style={styles.container} 
         contentContainerStyle={styles.contentContainer}
-        pointerEvents="box-none"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -276,7 +275,7 @@ export default function HomeScreen() {
         }
       >
         {/* Header */}
-        <View style={styles.header} pointerEvents="box-none">
+        <View style={styles.header}>
           <View style={styles.logoContainer}>
             <View style={styles.logo}>
               <Text style={styles.logoIcon}>⚽</Text>
@@ -289,13 +288,13 @@ export default function HomeScreen() {
         </View>
 
         {/* Week Header */}
-        <View style={styles.weekHeaderContainer} pointerEvents="box-none">
+        <View style={styles.weekHeaderContainer}>
           <Text style={styles.weekHeaderTitle}>UGE {currentWeekNumber}</Text>
           <Text style={styles.weekHeaderSubtitle}>{currentWeekLabel}</Text>
         </View>
 
         {/* Weekly Progress Card with Dynamic Gradient */}
-        <View style={styles.progressCardContainer} pointerEvents="box-none">
+        <View style={styles.progressCardContainer}>
           <Pressable 
             onPress={() => {
               console.log('[Home iOS] Performance button pressed');
