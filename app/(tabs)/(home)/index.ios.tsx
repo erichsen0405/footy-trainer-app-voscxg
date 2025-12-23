@@ -368,14 +368,14 @@ export default function HomeScreen() {
             {isPreviousExpanded && (
               <>
                 {visiblePreviousWeeks.map((weekGroup, weekIndex) => (
-                  <View key={weekIndex} style={styles.weekGroup}>
+                  <View key={`previous-week-${weekGroup.weekStart.toISOString()}`} style={styles.weekGroup}>
                     <Text style={styles.weekLabel}>
                       Uge {getWeek(weekGroup.weekStart, { weekStartsOn: 1, locale: da })}
                     </Text>
                     <Text style={styles.weekDateRange}>{getWeekLabel(weekGroup.weekStart)}</Text>
 
-                    {weekGroup.activities.map((activity, activityIndex) => (
-                      <View key={activityIndex} style={styles.activityWrapper}>
+                    {weekGroup.activities.map((activity) => (
+                      <View key={activity.id} style={styles.activityWrapper}>
                         <ActivityCard
                           activity={activity}
                           resolvedDate={activity.__resolvedDateTime}
@@ -413,8 +413,8 @@ export default function HomeScreen() {
             <Text style={styles.emptyText}>Ingen aktiviteter i dag</Text>
           )}
 
-          {todayActivities.map((activity, index) => (
-            <View key={index} style={styles.activityWrapper}>
+          {todayActivities.map((activity) => (
+            <View key={activity.id} style={styles.activityWrapper}>
               <ActivityCard
                 activity={activity}
                 resolvedDate={activity.__resolvedDateTime}
@@ -433,14 +433,14 @@ export default function HomeScreen() {
             </View>
 
             {upcomingByWeek.map((weekGroup, weekIndex) => (
-              <View key={weekIndex} style={styles.weekGroup}>
+              <View key={`upcoming-week-${weekGroup.weekStart.toISOString()}`} style={styles.weekGroup}>
                 <Text style={styles.weekLabel}>
                   Uge {getWeek(weekGroup.weekStart, { weekStartsOn: 1, locale: da })}
                 </Text>
                 <Text style={styles.weekDateRange}>{getWeekLabel(weekGroup.weekStart)}</Text>
 
-                {weekGroup.activities.map((activity, activityIndex) => (
-                  <View key={activityIndex} style={styles.activityWrapper}>
+                {weekGroup.activities.map((activity) => (
+                  <View key={activity.id} style={styles.activityWrapper}>
                     <ActivityCard
                       activity={activity}
                       resolvedDate={activity.__resolvedDateTime}
