@@ -280,9 +280,9 @@ export default function CreateActivityModal({
 
               {/* Category Selection */}
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScrollContainer}>
-                {safeCategories.map((cat, index) => (
+                {safeCategories.map((cat) => (
                   <TouchableOpacity
-                    key={cat.id ?? `category-${index}`}
+                    key={cat.id}
                     style={[
                       styles.categoryChip,
                       {
