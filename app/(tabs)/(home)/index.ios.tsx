@@ -170,7 +170,8 @@ export default function HomeScreen() {
     return previousByWeek.slice(0, showPreviousWeeks);
   }, [previousByWeek, showPreviousWeeks]);
 
-  // Calculate performance metrics from currentWeekStats
+  // CRITICAL FIX: Use individual properties as dependencies instead of the object
+  // This ensures re-render when the actual values change, not just the object reference
   const performanceMetrics = useMemo(() => {
     const percentageUpToToday = currentWeekStats.percentage;
     const weekPercentage = currentWeekStats.totalTasksForWeek > 0 
@@ -215,7 +216,13 @@ export default function HomeScreen() {
       totalTasksWeek: currentWeekStats.totalTasksForWeek,
       gradientColors,
     };
-  }, [currentWeekStats]);
+  }, [
+    currentWeekStats.percentage,
+    currentWeekStats.completedTasks,
+    currentWeekStats.totalTasks,
+    currentWeekStats.completedTasksForWeek,
+    currentWeekStats.totalTasksForWeek,
+  ]);
 
   const handleCreateActivity = async (activityData: any) => {
     await createActivity(activityData);
