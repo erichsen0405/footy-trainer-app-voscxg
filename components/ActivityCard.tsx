@@ -8,6 +8,7 @@ import { da } from 'date-fns/locale';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useFootball } from '@/contexts/FootballContext';
+import TaskDetailsModal from '@/components/TaskDetailsModal';
 
 interface ActivityCardProps {
   activity: any;
@@ -64,6 +65,10 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
   
   // Local optimistic state for tasks
   const [optimisticTasks, setOptimisticTasks] = useState<any[]>([]);
+  
+  // Task modal state
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
 
   // Initialize and update optimistic tasks from activity
   useEffect(() => {
@@ -86,13 +91,13 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
     }
   };
 
-  const handleTaskPress = (task: any) => {
-    // Navigate to activity details which will show the task modal
-    console.log('ActivityCard: Task pressed, navigating to activity details');
-    router.push({
-      pathname: '/activity-details',
-      params: { id: activity.id },
-    });
+  const handleTaskPress = (task: any, event: any) => {
+    // Stop propagation to prevent card press
+    event.stopPropagation();
+    
+    console.log('ActivityCard: Task pressed, opening TaskDetailsModal');
+    setActiveTaskId(task.id);
+    setIsTaskModalOpen(true);
   };
 
   const handleToggleTask = async (taskId: string, event: any) => {
@@ -149,130 +154,145 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
   const location = activity.location || activity.category_location || '';
 
   return (
-    <Pressable
-      onPress={handleCardPress}
-      style={({ pressed }) => [
-        pressed && styles.cardPressed,
-      ]}
-    >
-      <LinearGradient
-        colors={gradientColors}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.card}
+    <>
+      <Pressable
+        onPress={handleCardPress}
+        style={({ pressed }) => [
+          pressed && styles.cardPressed,
+        ]}
       >
-        <View style={styles.cardContent}>
-          {/* Icon */}
-          <View style={styles.iconContainer}>
-            <View style={styles.iconCircle}>
-              <Text style={styles.iconEmoji}>{categoryEmoji}</Text>
-            </View>
-          </View>
-
-          {/* Content */}
-          <View style={styles.textContainer}>
-            <Text style={styles.title} numberOfLines={1}>
-              {activity.title || activity.name || 'Uden titel'}
-            </Text>
-            
-            <View style={styles.detailRow}>
-              <Text style={styles.detailIcon}>🕐</Text>
-              <Text style={styles.detailText}>{dayLabel} • {timeLabel}</Text>
+        <LinearGradient
+          colors={gradientColors}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.card}
+        >
+          <View style={styles.cardContent}>
+            {/* Icon */}
+            <View style={styles.iconContainer}>
+              <View style={styles.iconCircle}>
+                <Text style={styles.iconEmoji}>{categoryEmoji}</Text>
+              </View>
             </View>
 
-            {location && (
+            {/* Content */}
+            <View style={styles.textContainer}>
+              <Text style={styles.title} numberOfLines={1}>
+                {activity.title || activity.name || 'Uden titel'}
+              </Text>
+              
               <View style={styles.detailRow}>
-                <Text style={styles.detailIcon}>📍</Text>
-                <Text style={styles.detailText} numberOfLines={1}>{location}</Text>
+                <Text style={styles.detailIcon}>🕐</Text>
+                <Text style={styles.detailText}>{dayLabel} • {timeLabel}</Text>
               </View>
-            )}
 
-            {activity.is_external && (
-              <View style={styles.externalBadge}>
-                <Text style={styles.externalText}>📅 Ekstern kalender</Text>
-              </View>
-            )}
+              {location && (
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailIcon}>📍</Text>
+                  <Text style={styles.detailText} numberOfLines={1}>{location}</Text>
+                </View>
+              )}
+
+              {activity.is_external && (
+                <View style={styles.externalBadge}>
+                  <Text style={styles.externalText}>📅 Ekstern kalender</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Chevron Arrow */}
+            <View style={styles.arrowContainer}>
+              <Text style={styles.arrow}>›</Text>
+            </View>
           </View>
 
-          {/* Chevron Arrow */}
-          <View style={styles.arrowContainer}>
-            <Text style={styles.arrow}>›</Text>
-          </View>
-        </View>
-
-        {/* Tasks Section - Only show if showTasks is true and tasks exist */}
-        {showTasks && optimisticTasks && optimisticTasks.length > 0 && (
-          <View style={styles.tasksSection}>
-            <View style={styles.tasksDivider} />
-            {optimisticTasks.map((task, index) => (
-              <View key={index} style={styles.taskRow}>
-                <TouchableOpacity
-                  style={styles.taskCheckboxArea}
-                  onPress={(e) => handleToggleTask(task.id, e)}
-                  activeOpacity={0.7}
-                >
-                  <View
-                    style={[
-                      styles.taskCheckbox,
-                      task.completed && styles.taskCheckboxCompleted,
-                    ]}
+          {/* Tasks Section - Only show if showTasks is true and tasks exist */}
+          {showTasks && optimisticTasks && optimisticTasks.length > 0 && (
+            <View style={styles.tasksSection}>
+              <View style={styles.tasksDivider} />
+              {optimisticTasks.map((task, index) => (
+                <View key={index} style={styles.taskRow}>
+                  <TouchableOpacity
+                    style={styles.taskCheckboxArea}
+                    onPress={(e) => handleToggleTask(task.id, e)}
+                    activeOpacity={0.7}
                   >
-                    {task.completed && (
-                      <IconSymbol
-                        ios_icon_name="checkmark"
-                        android_material_icon_name="check"
-                        size={14}
-                        color="#fff"
-                      />
+                    <View
+                      style={[
+                        styles.taskCheckbox,
+                        task.completed && styles.taskCheckboxCompleted,
+                      ]}
+                    >
+                      {task.completed && (
+                        <IconSymbol
+                          ios_icon_name="checkmark"
+                          android_material_icon_name="check"
+                          size={14}
+                          color="#fff"
+                        />
+                      )}
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.taskContent}
+                    onPress={(e) => handleTaskPress(task, e)}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.taskTitle,
+                        task.completed && styles.taskTitleCompleted,
+                      ]}
+                    >
+                      {task.title}
+                    </Text>
+                    
+                    {task.reminder_minutes && (
+                      <View style={styles.reminderBadge}>
+                        <IconSymbol
+                          ios_icon_name="bell.fill"
+                          android_material_icon_name="notifications"
+                          size={12}
+                          color="rgba(255, 255, 255, 0.9)"
+                        />
+                        <Text style={styles.reminderText}>
+                          {formatReminderTime(task.reminder_minutes)}
+                        </Text>
+                      </View>
                     )}
-                  </View>
-                </TouchableOpacity>
+                  </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={styles.taskContent}
-                  onPress={() => handleTaskPress(task)}
-                  activeOpacity={0.7}
-                >
-                  <Text
-                    style={[
-                      styles.taskTitle,
-                      task.completed && styles.taskTitleCompleted,
-                    ]}
-                  >
-                    {task.title}
-                  </Text>
-                  
-                  {task.reminder_minutes && (
-                    <View style={styles.reminderBadge}>
+                  {task.video_url && (
+                    <View style={styles.videoIndicator}>
                       <IconSymbol
-                        ios_icon_name="bell.fill"
-                        android_material_icon_name="notifications"
-                        size={12}
+                        ios_icon_name="play.circle.fill"
+                        android_material_icon_name="play_circle"
+                        size={20}
                         color="rgba(255, 255, 255, 0.9)"
                       />
-                      <Text style={styles.reminderText}>
-                        {formatReminderTime(task.reminder_minutes)}
-                      </Text>
                     </View>
                   )}
-                </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+        </LinearGradient>
+      </Pressable>
 
-                {task.video_url && (
-                  <View style={styles.videoIndicator}>
-                    <IconSymbol
-                      ios_icon_name="play.circle.fill"
-                      android_material_icon_name="play_circle"
-                      size={20}
-                      color="rgba(255, 255, 255, 0.9)"
-                    />
-                  </View>
-                )}
-              </View>
-            ))}
-          </View>
-        )}
-      </LinearGradient>
-    </Pressable>
+      {/* Task Details Modal */}
+      {isTaskModalOpen && activeTaskId && (
+        <TaskDetailsModal
+          taskId={activeTaskId}
+          onClose={() => {
+            setIsTaskModalOpen(false);
+            setActiveTaskId(null);
+            // Refresh data when modal closes to sync any changes
+            refreshData();
+          }}
+        />
+      )}
+    </>
   );
 }
 
