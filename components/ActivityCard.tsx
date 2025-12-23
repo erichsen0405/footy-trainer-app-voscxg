@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, TouchableOpacity, Alert, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { format } from 'date-fns';
@@ -70,6 +70,9 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
 
+  // Loading state for each task (by task ID)
+  const [loadingTasks, setLoadingTasks] = useState<Set<string>>(new Set());
+
   // Initialize and update optimistic tasks from activity
   useEffect(() => {
     if (activity.tasks) {
@@ -116,6 +119,9 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
     const task = optimisticTasks[taskIndex];
     const previousCompleted = task.completed;
     
+    // Set loading state
+    setLoadingTasks(prev => new Set(prev).add(taskId));
+    
     // Optimistic update
     const newTasks = [...optimisticTasks];
     newTasks[taskIndex] = { ...task, completed: !previousCompleted };
@@ -137,12 +143,27 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
       setOptimisticTasks(rollbackTasks);
       
       Alert.alert('Fejl', 'Kunne ikke opdatere opgaven. Prøv igen.');
+    } finally {
+      // Remove loading state
+      setLoadingTasks(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(taskId);
+        return newSet;
+      });
     }
   };
 
   const formatReminderTime = (reminderMinutes: number) => {
     if (!reminderMinutes) return null;
-    return `${reminderMinutes} min før`;
+    if (reminderMinutes < 60) {
+      return `${reminderMinutes}m`;
+    }
+    const hours = Math.floor(reminderMinutes / 60);
+    const remainingMinutes = reminderMinutes % 60;
+    if (remainingMinutes === 0) {
+      return `${hours}t`;
+    }
+    return `${hours}t ${remainingMinutes}m`;
   };
 
   const category = activity.category || null;
@@ -210,71 +231,83 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
           {showTasks && optimisticTasks && optimisticTasks.length > 0 && (
             <View style={styles.tasksSection}>
               <View style={styles.tasksDivider} />
-              {optimisticTasks.map((task, index) => (
-                <View key={index} style={styles.taskRow}>
-                  <TouchableOpacity
-                    style={styles.taskCheckboxArea}
-                    onPress={(e) => handleToggleTask(task.id, e)}
-                    activeOpacity={0.7}
-                  >
-                    <View
-                      style={[
-                        styles.taskCheckbox,
-                        task.completed && styles.taskCheckboxCompleted,
-                      ]}
+              {optimisticTasks.map((task, index) => {
+                const isLoading = loadingTasks.has(task.id);
+                
+                return (
+                  <View key={index} style={styles.taskRow}>
+                    <TouchableOpacity
+                      style={styles.taskCheckboxArea}
+                      onPress={(e) => handleToggleTask(task.id, e)}
+                      activeOpacity={0.7}
                     >
-                      {task.completed && (
-                        <IconSymbol
-                          ios_icon_name="checkmark"
-                          android_material_icon_name="check"
-                          size={14}
-                          color="#fff"
-                        />
-                      )}
-                    </View>
-                  </TouchableOpacity>
+                      <Animated.View
+                        style={[
+                          styles.taskCheckbox,
+                          task.completed && styles.taskCheckboxCompleted,
+                          isLoading && styles.taskCheckboxLoading,
+                        ]}
+                      >
+                        {isLoading ? (
+                          <View style={styles.loadingSpinner}>
+                            <View style={styles.spinnerDot} />
+                          </View>
+                        ) : task.completed ? (
+                          <IconSymbol
+                            ios_icon_name="checkmark"
+                            android_material_icon_name="check"
+                            size={14}
+                            color={task.completed ? '#4CAF50' : '#fff'}
+                          />
+                        ) : null}
+                      </Animated.View>
+                    </TouchableOpacity>
 
-                  <TouchableOpacity
-                    style={styles.taskContent}
-                    onPress={(e) => handleTaskPress(task, e)}
-                    activeOpacity={0.7}
-                  >
-                    <Text
-                      style={[
-                        styles.taskTitle,
-                        task.completed && styles.taskTitleCompleted,
-                      ]}
+                    <TouchableOpacity
+                      style={styles.taskContent}
+                      onPress={(e) => handleTaskPress(task, e)}
+                      activeOpacity={0.7}
                     >
-                      {task.title}
-                    </Text>
-                    
-                    {task.reminder_minutes && (
-                      <View style={styles.reminderBadge}>
+                      <View style={styles.taskTitleRow}>
+                        <Text
+                          style={[
+                            styles.taskTitle,
+                            task.completed && styles.taskTitleCompleted,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {task.title}
+                        </Text>
+                        
+                        {task.reminder_minutes && (
+                          <View style={styles.reminderBadge}>
+                            <IconSymbol
+                              ios_icon_name="bell.fill"
+                              android_material_icon_name="notifications"
+                              size={10}
+                              color="rgba(255, 255, 255, 0.8)"
+                            />
+                            <Text style={styles.reminderText}>
+                              {formatReminderTime(task.reminder_minutes)}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+
+                    {task.video_url && (
+                      <View style={styles.videoIndicator}>
                         <IconSymbol
-                          ios_icon_name="bell.fill"
-                          android_material_icon_name="notifications"
-                          size={12}
+                          ios_icon_name="play.circle.fill"
+                          android_material_icon_name="play_circle"
+                          size={20}
                           color="rgba(255, 255, 255, 0.9)"
                         />
-                        <Text style={styles.reminderText}>
-                          {formatReminderTime(task.reminder_minutes)}
-                        </Text>
                       </View>
                     )}
-                  </TouchableOpacity>
-
-                  {task.video_url && (
-                    <View style={styles.videoIndicator}>
-                      <IconSymbol
-                        ios_icon_name="play.circle.fill"
-                        android_material_icon_name="play_circle"
-                        size={20}
-                        color="rgba(255, 255, 255, 0.9)"
-                      />
-                    </View>
-                  )}
-                </View>
-              ))}
+                  </View>
+                );
+              })}
             </View>
           )}
         </LinearGradient>
@@ -405,29 +438,53 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   taskCheckboxCompleted: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#FFFFFF',
+  },
+  taskCheckboxLoading: {
+    opacity: 0.7,
+  },
+  loadingSpinner: {
+    width: 14,
+    height: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  spinnerDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    borderColor: 'rgba(255, 255, 255, 0.9)',
   },
   taskContent: {
     flex: 1,
+  },
+  taskTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   taskTitle: {
     fontSize: 15,
     fontWeight: '500',
     color: '#FFFFFF',
+    flex: 1,
   },
   taskTitleCompleted: {
     textDecorationLine: 'line-through',
-    opacity: 0.7,
+    opacity: 0.6,
   },
   reminderBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    marginTop: 4,
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 12,
   },
   reminderText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
     color: 'rgba(255, 255, 255, 0.9)',
   },

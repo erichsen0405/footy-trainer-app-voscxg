@@ -9,6 +9,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Platform,
+  Animated,
 } from 'react-native';
 import { IconSymbol } from '@/components/IconSymbol';
 import SmartVideoPlayer from '@/components/SmartVideoPlayer';
@@ -38,6 +39,7 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);
+  const [fadeAnim] = useState(new Animated.Value(0));
 
   // Fetch task data
   useEffect(() => {
@@ -72,6 +74,14 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
             is_external: false,
           });
           setLoading(false);
+          
+          // Fade in animation
+          Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }).start();
+          
           return;
         }
 
@@ -100,6 +110,14 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
             is_external: true,
           });
           setLoading(false);
+          
+          // Fade in animation
+          Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }).start();
+          
           return;
         }
 
@@ -184,8 +202,18 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
         <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
           {loading && (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={styles.loadingText}>Henter opgave...</Text>
+              <View style={styles.skeletonContainer}>
+                {/* Skeleton Title */}
+                <View style={[styles.skeleton, styles.skeletonTitle]} />
+                
+                {/* Skeleton Video */}
+                <View style={[styles.skeleton, styles.skeletonVideo]} />
+                
+                {/* Skeleton Description */}
+                <View style={[styles.skeleton, styles.skeletonLine]} />
+                <View style={[styles.skeleton, styles.skeletonLine, { width: '80%' }]} />
+                <View style={[styles.skeleton, styles.skeletonLine, { width: '60%' }]} />
+              </View>
             </View>
           )}
 
@@ -202,7 +230,7 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
           )}
 
           {!loading && !error && task && (
-            <>
+            <Animated.View style={{ opacity: fadeAnim }}>
               {/* Task Title */}
               <View style={styles.section}>
                 <Text style={styles.taskTitle}>{task.title}</Text>
@@ -210,7 +238,7 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
 
               {/* Video - UNDER title, OVER description */}
               {!!videoUrl && (
-                <View style={styles.section}>
+                <View style={styles.videoSection}>
                   <View style={styles.videoContainer}>
                     <SmartVideoPlayer url={videoUrl} />
                   </View>
@@ -255,33 +283,39 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
                   ]}
                 >
                   <View style={styles.completionButtonContent}>
-                    <View
-                      style={[
-                        styles.checkbox,
-                        task.completed && styles.checkboxCompleted,
-                      ]}
-                    >
-                      {task.completed && (
-                        <IconSymbol
-                          ios_icon_name="checkmark"
-                          android_material_icon_name="check"
-                          size={20}
-                          color="#fff"
-                        />
-                      )}
-                    </View>
-                    <Text
-                      style={[
-                        styles.completionButtonText,
-                        task.completed && styles.completionButtonTextCompleted,
-                      ]}
-                    >
-                      {task.completed ? 'Markér som ikke fuldført' : 'Markér som fuldført'}
-                    </Text>
+                    {completing ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <>
+                        <View
+                          style={[
+                            styles.checkbox,
+                            task.completed && styles.checkboxCompleted,
+                          ]}
+                        >
+                          {task.completed && (
+                            <IconSymbol
+                              ios_icon_name="checkmark"
+                              android_material_icon_name="check"
+                              size={20}
+                              color={colors.primary}
+                            />
+                          )}
+                        </View>
+                        <Text
+                          style={[
+                            styles.completionButtonText,
+                            task.completed && styles.completionButtonTextCompleted,
+                          ]}
+                        >
+                          {task.completed ? 'Fuldført ✓' : 'Markér som fuldført'}
+                        </Text>
+                      </>
+                    )}
                   </View>
                 </Pressable>
               </View>
-            </>
+            </Animated.View>
           )}
         </ScrollView>
       </View>
@@ -320,14 +354,29 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
+    paddingVertical: 20,
   },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: colors.textSecondary,
+  skeletonContainer: {
+    gap: 16,
+  },
+  skeleton: {
+    backgroundColor: colors.highlight,
+    borderRadius: 8,
+  },
+  skeletonTitle: {
+    height: 32,
+    width: '70%',
+    marginBottom: 8,
+  },
+  skeletonVideo: {
+    height: 200,
+    width: '100%',
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  skeletonLine: {
+    height: 16,
+    width: '100%',
   },
   errorContainer: {
     flex: 1,
@@ -363,6 +412,9 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     color: colors.text,
   },
+  videoSection: {
+    marginBottom: 24,
+  },
   videoContainer: {
     borderRadius: 12,
     overflow: 'hidden',
@@ -374,10 +426,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     padding: 12,
-    backgroundColor: colors.cardBackground,
+    backgroundColor: colors.cardBackground || colors.card,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.border || colors.highlight,
   },
   reminderText: {
     fontSize: 15,
@@ -394,15 +446,17 @@ const styles = StyleSheet.create({
     backgroundColor: colors.success || '#4CAF50',
   },
   completionButtonPressed: {
-    opacity: 0.8,
+    opacity: 0.85,
+    transform: [{ scale: 0.98 }],
   },
   completionButtonDisabled: {
-    opacity: 0.5,
+    opacity: 0.6,
   },
   completionButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    minHeight: 28,
   },
   checkbox: {
     width: 28,
