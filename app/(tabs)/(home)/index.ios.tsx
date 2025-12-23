@@ -266,6 +266,7 @@ export default function HomeScreen() {
       <ScrollView 
         style={styles.container} 
         contentContainerStyle={styles.contentContainer}
+        pointerEvents="box-none"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
