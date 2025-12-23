@@ -465,13 +465,15 @@ export default function HomeScreen() {
       </ScrollView>
 
       {/* Create Activity Modal */}
-      <CreateActivityModal
-        visible={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        onCreateActivity={handleCreateActivity}
-        categories={categories}
-        onRefreshCategories={refreshData}
-      />
+      {showCreateModal ? (
+        <CreateActivityModal
+          visible={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          onCreateActivity={handleCreateActivity}
+          categories={categories}
+          onRefreshCategories={refreshData}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
