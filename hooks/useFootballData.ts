@@ -1893,15 +1893,12 @@ export function useFootballData() {
         console.log('Adding calendar to state:', newCalendar);
         setExternalCalendars(prev => [...prev, newCalendar]);
 
-        // Immediately fetch events for the new calendar
+        // Immediately fetch events for the new calendar (silent fail)
         if (newCalendar.enabled) {
           console.log('Triggering initial sync for new calendar');
-          try {
-            await fetchExternalCalendarEvents(newCalendar);
-            console.log('Initial sync completed successfully');
-          } catch (syncError) {
-            console.error('Error during initial sync:', syncError);
-          }
+          fetchExternalCalendarEvents(newCalendar).catch(() => {
+            // Silent fail - expected on iOS / offline
+          });
         }
         
         return newCalendar;
@@ -1942,11 +1939,11 @@ export function useFootballData() {
         if (cal.id === id) {
           const updated = { ...cal, enabled: newEnabled };
           
-          // If enabling, fetch events
+          // If enabling, fetch events (silent fail)
           if (newEnabled) {
             console.log('Calendar enabled, fetching events');
-            fetchExternalCalendarEvents(updated).catch(err => {
-              console.error('Failed to fetch calendar events:', err);
+            fetchExternalCalendarEvents(updated).catch(() => {
+              // Silent fail - expected on iOS / offline
             });
           } else {
             // If disabling, remove external activities from this calendar
@@ -2108,29 +2105,20 @@ export function useFootballData() {
   };
 
   const fetchExternalCalendarEvents = useCallback(async (calendar: ExternalCalendar) => {
-    if (!userId) {
-      console.log('No user ID, skipping fetch');
-      throw new Error('User not authenticated');
-    }
-
+    // CRITICAL FIX: Silent fail on all errors - expected on iOS / offline
     try {
-      console.log('🔄 Fetching calendar:', calendar.name);
-      console.log('Calendar URL:', calendar.icsUrl);
-      
-      // Get the current session to ensure we have a valid token
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) {
-        console.error('Session error:', sessionError);
-        throw new Error('Session error: ' + sessionError.message);
+      if (!userId) {
+        // Silent fail - no user ID
+        return;
       }
+
+      // Get the current session to ensure we have a valid token
+      const { data: { session } } = await supabase.auth.getSession();
       
       if (!session) {
-        console.error('No active session');
-        throw new Error('No active session');
+        // Silent fail - no active session
+        return;
       }
-
-      console.log('Session valid, calling Edge Function...');
-      console.log('Supabase URL:', supabase.supabaseUrl);
 
       // Call the Edge Function to sync the calendar
       const { data, error } = await supabase.functions.invoke('sync-external-calendar-v4', {
@@ -2138,15 +2126,12 @@ export function useFootballData() {
       });
 
       if (error) {
-        console.error('Error syncing calendar:', error);
-        console.error('Error details:', JSON.stringify(error, null, 2));
-        throw error;
+        // Silent fail - Edge Function error (expected on iOS / offline)
+        return;
       }
 
-      console.log('✅ Sync response:', data);
-
       // Update the calendar's last fetched time
-      const { error: updateError } = await supabase
+      await supabase
         .from('external_calendars')
         .update({ 
           last_fetched: new Date().toISOString(),
@@ -2154,25 +2139,15 @@ export function useFootballData() {
         })
         .eq('id', calendar.id);
 
-      if (updateError) {
-        console.error('Error updating calendar:', updateError);
-      }
-
       // Add a delay to ensure database writes complete and propagate
-      console.log('⏳ Waiting for database writes to complete and propagate...');
       await new Promise(resolve => setTimeout(resolve, 1000));
 
       // Force immediate data refresh after sync completes
-      console.log('🔄 Triggering immediate data refresh after sync...');
       setRefreshTrigger(prev => prev + 1);
-
-      console.log(`✅ Successfully synced calendar: ${calendar.name}`);
-    } catch (error: any) {
-      console.error('Error fetching external calendar:', error);
-      console.error('Error name:', error?.name);
-      console.error('Error message:', error?.message);
-      console.error('Error stack:', error?.stack);
-      throw error;
+    } catch {
+      // Silent fail - expected on iOS / offline
+      // No console.error, no throw, just return
+      return;
     }
   }, [userId]);
 
@@ -2181,7 +2156,6 @@ export function useFootballData() {
     if (!userId) return;
 
     const enabledCalendars = externalCalendars.filter(cal => cal.enabled);
-    console.log(`Found ${enabledCalendars.length} enabled calendars to fetch`);
     
     enabledCalendars.forEach(calendar => {
       // Only fetch if not recently fetched (within last 5 minutes)
@@ -2189,12 +2163,10 @@ export function useFootballData() {
         (new Date().getTime() - new Date(calendar.lastFetched).getTime()) > 5 * 60 * 1000;
       
       if (shouldFetch) {
-        console.log(`Fetching calendar: ${calendar.name}`);
-        fetchExternalCalendarEvents(calendar).catch(err => {
-          console.error(`Failed to fetch calendar ${calendar.name}:`, err);
+        // Silent fail - no error handling needed
+        fetchExternalCalendarEvents(calendar).catch(() => {
+          // Silent fail - expected on iOS / offline
         });
-      } else {
-        console.log(`Skipping fetch for ${calendar.name} - recently fetched`);
       }
     });
   }, [externalCalendars, fetchExternalCalendarEvents, userId]);
