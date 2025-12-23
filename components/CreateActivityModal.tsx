@@ -415,7 +415,7 @@ export default function CreateActivityModal({
 
               {/* Recurrence Options */}
               {isRecurring && (
-                <>
+                <React.Fragment key="recurrence-options">
                   <View style={styles.recurrenceTypeContainer}>
                     {RECURRENCE_TYPES.map((type) => (
                       <TouchableOpacity
@@ -450,7 +450,7 @@ export default function CreateActivityModal({
                     <View style={styles.daysContainer}>
                       {DAYS_OF_WEEK.map(day => (
                         <TouchableOpacity
-                          key={`day-${day.value}`}
+                          key={day.value}
                           style={[
                             styles.dayButton,
                             {
@@ -490,7 +490,7 @@ export default function CreateActivityModal({
 
                   {/* End Date Picker */}
                   {hasEndDate && (
-                    <>
+                    <React.Fragment key="end-date-picker">
                       <TouchableOpacity
                         style={[styles.pickerButton, { backgroundColor: bgColor }]}
                         onPress={() => setShowEndDatePicker(true)}
@@ -532,9 +532,9 @@ export default function CreateActivityModal({
                           <Text style={styles.doneButtonText}>Færdig</Text>
                         </TouchableOpacity>
                       )}
-                    </>
+                    </React.Fragment>
                   )}
-                </>
+                </React.Fragment>
               )}
             </ScrollView>
 
