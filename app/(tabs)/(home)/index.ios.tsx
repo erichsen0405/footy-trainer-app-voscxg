@@ -304,6 +304,7 @@ export default function HomeScreen() {
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.progressCard}
+              pointerEvents="box-none"
             >
               <View style={styles.progressHeader}>
                 <Text style={styles.progressLabel}>DENNE UGE</Text>
