@@ -238,7 +238,7 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
       ) : (
         <ScrollView style={styles.playersList} showsVerticalScrollIndicator={false}>
           {players.map((player) => (
-            <View key={`player-${player.id}`} style={styles.playerCard}>
+            <View key={player.id} style={styles.playerCard}>
               <View style={styles.playerIcon}>
                 <IconSymbol
                   ios_icon_name="person.fill"
