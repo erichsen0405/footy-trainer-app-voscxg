@@ -294,7 +294,7 @@ export default function HomeScreen() {
         </View>
 
         {/* Weekly Progress Card with Dynamic Gradient */}
-        <View style={styles.progressCardContainer}>
+        <View style={styles.progressCardContainer} pointerEvents="box-none">
           <Pressable 
             onPress={() => {
               console.log('[Home iOS] Performance button pressed');
