@@ -439,24 +439,22 @@ export default function HomeScreen() {
             </View>
 
             {upcomingByWeek.map((weekGroup, weekIndex) => (
-              <React.Fragment key={`upcoming-week-${weekGroup.weekStart.toISOString()}`}>
-                <View style={styles.weekGroup}>
-                  <Text style={styles.weekLabel}>
-                    Uge {getWeek(weekGroup.weekStart, { weekStartsOn: 1, locale: da })}
-                  </Text>
-                  <Text style={styles.weekDateRange}>{getWeekLabel(weekGroup.weekStart)}</Text>
+              <View key={`upcoming-week-${weekGroup.weekStart.toISOString()}`} style={styles.weekGroup}>
+                <Text style={styles.weekLabel}>
+                  Uge {getWeek(weekGroup.weekStart, { weekStartsOn: 1, locale: da })}
+                </Text>
+                <Text style={styles.weekDateRange}>{getWeekLabel(weekGroup.weekStart)}</Text>
 
-                  {weekGroup.activities.map((activity) => (
-                    <View key={activity.id} style={styles.activityWrapper}>
-                      <ActivityCard
-                        activity={activity}
-                        resolvedDate={activity.__resolvedDateTime}
-                        showTasks={false}
-                      />
-                    </View>
-                  ))}
-                </View>
-              </React.Fragment>
+                {weekGroup.activities.map((activity) => (
+                  <View key={activity.id} style={styles.activityWrapper}>
+                    <ActivityCard
+                      activity={activity}
+                      resolvedDate={activity.__resolvedDateTime}
+                      showTasks={false}
+                    />
+                  </View>
+                ))}
+              </View>
             ))}
           </View>
         ) : null}
