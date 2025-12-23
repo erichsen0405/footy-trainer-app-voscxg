@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable, TouchableOpacity, Alert, Animated } from 'react-native';
+import { View, Text, StyleSheet, Pressable, TouchableOpacity, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { format } from 'date-fns';
@@ -70,9 +70,6 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
 
-  // Loading state for each task (by task ID)
-  const [loadingTasks, setLoadingTasks] = useState<Set<string>>(new Set());
-
   // Initialize and update optimistic tasks from activity
   useEffect(() => {
     if (activity.tasks) {
@@ -80,7 +77,7 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
     } else {
       setOptimisticTasks([]);
     }
-  }, [activity.tasks, activity.id]); // Re-run when tasks or activity ID changes
+  }, [activity.tasks, activity.id]);
 
   const handleCardPress = () => {
     if (onPress) {
@@ -119,9 +116,6 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
     const task = optimisticTasks[taskIndex];
     const previousCompleted = task.completed;
     
-    // Set loading state
-    setLoadingTasks(prev => new Set(prev).add(taskId));
-    
     // Optimistic update
     const newTasks = [...optimisticTasks];
     newTasks[taskIndex] = { ...task, completed: !previousCompleted };
@@ -141,15 +135,6 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
       const rollbackTasks = [...optimisticTasks];
       rollbackTasks[taskIndex] = { ...task, completed: previousCompleted };
       setOptimisticTasks(rollbackTasks);
-      
-      Alert.alert('Fejl', 'Kunne ikke opdatere opgaven. Prøv igen.');
-    } finally {
-      // Remove loading state
-      setLoadingTasks(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(taskId);
-        return newSet;
-      });
     }
   };
 
@@ -232,8 +217,6 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
             <View style={styles.tasksSection}>
               <View style={styles.tasksDivider} />
               {optimisticTasks.map((task, index) => {
-                const isLoading = loadingTasks.has(task.id);
-                
                 return (
                   <View key={index} style={styles.taskRow}>
                     <TouchableOpacity
@@ -241,26 +224,21 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
                       onPress={(e) => handleToggleTask(task.id, e)}
                       activeOpacity={0.7}
                     >
-                      <Animated.View
+                      <View
                         style={[
                           styles.taskCheckbox,
                           task.completed && styles.taskCheckboxCompleted,
-                          isLoading && styles.taskCheckboxLoading,
                         ]}
                       >
-                        {isLoading ? (
-                          <View style={styles.loadingSpinner}>
-                            <View style={styles.spinnerDot} />
-                          </View>
-                        ) : task.completed ? (
+                        {task.completed && (
                           <IconSymbol
                             ios_icon_name="checkmark"
                             android_material_icon_name="check"
                             size={14}
                             color={task.completed ? '#4CAF50' : '#fff'}
                           />
-                        ) : null}
-                      </Animated.View>
+                        )}
+                      </View>
                     </TouchableOpacity>
 
                     <TouchableOpacity
@@ -440,21 +418,6 @@ const styles = StyleSheet.create({
   taskCheckboxCompleted: {
     backgroundColor: '#FFFFFF',
     borderColor: '#FFFFFF',
-  },
-  taskCheckboxLoading: {
-    opacity: 0.7,
-  },
-  loadingSpinner: {
-    width: 14,
-    height: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  spinnerDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
   },
   taskContent: {
     flex: 1,

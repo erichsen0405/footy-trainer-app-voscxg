@@ -7,9 +7,7 @@ import {
   Modal,
   Pressable,
   ScrollView,
-  ActivityIndicator,
   Platform,
-  Animated,
 } from 'react-native';
 import { IconSymbol } from '@/components/IconSymbol';
 import SmartVideoPlayer from '@/components/SmartVideoPlayer';
@@ -36,17 +34,12 @@ interface TaskData {
 
 export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalProps) {
   const [task, setTask] = useState<TaskData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);
-  const [fadeAnim] = useState(new Animated.Value(0));
 
   // Fetch task data
   useEffect(() => {
     const fetchTask = async () => {
       console.log('TaskDetailsModal: Fetching task:', taskId);
-      setLoading(true);
-      setError(null);
 
       try {
         // Try fetching from activity_tasks first WITH task_templates JOIN to get video_url
@@ -73,14 +66,6 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
             video_url: videoUrl,
             is_external: false,
           });
-          setLoading(false);
-          
-          // Fade in animation
-          Animated.timing(fadeAnim, {
-            toValue: 1,
-            duration: 300,
-            useNativeDriver: true,
-          }).start();
           
           return;
         }
@@ -109,26 +94,14 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
             video_url: videoUrl,
             is_external: true,
           });
-          setLoading(false);
-          
-          // Fade in animation
-          Animated.timing(fadeAnim, {
-            toValue: 1,
-            duration: 300,
-            useNativeDriver: true,
-          }).start();
           
           return;
         }
 
         // Task not found
         console.error('TaskDetailsModal: Task not found');
-        setError('Opgaven blev ikke fundet');
-        setLoading(false);
       } catch (err) {
         console.error('TaskDetailsModal: Error fetching task:', err);
-        setError('Kunne ikke hente opgaven');
-        setLoading(false);
       }
     };
 
@@ -139,12 +112,15 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
     if (!task || completing) return;
 
     console.log('TaskDetailsModal: Toggling completion');
-    setCompleting(true);
-
-    const newCompleted = !task.completed;
+    
+    const previousCompleted = task.completed;
+    const newCompleted = !previousCompleted;
 
     // Optimistic update
     setTask({ ...task, completed: newCompleted });
+    
+    // Disable further clicks
+    setCompleting(true);
 
     try {
       await taskService.toggleTaskCompletion(taskId, task.is_external, newCompleted);
@@ -152,8 +128,7 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
     } catch (err) {
       console.error('TaskDetailsModal: Error toggling completion:', err);
       // Rollback on error
-      setTask({ ...task, completed: !newCompleted });
-      setError('Kunne ikke opdatere opgaven');
+      setTask({ ...task, completed: previousCompleted });
     } finally {
       setCompleting(false);
     }
@@ -171,11 +146,11 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
     return `${hours} time${hours > 1 ? 'r' : ''} og ${remainingMinutes} min før`;
   };
 
-  // Early return if no task loaded yet
-  if (!task && !loading && !error) return null;
+  // Render guard - return null if no task
+  if (!task) return null;
 
   // Defensive video URL extraction
-  const videoUrl = task?.video_url || null;
+  const videoUrl = task.video_url || null;
 
   return (
     <Modal
@@ -200,123 +175,84 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
 
         {/* Content */}
         <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
-          {loading && (
-            <View style={styles.loadingContainer}>
-              <View style={styles.skeletonContainer}>
-                {/* Skeleton Title */}
-                <View style={[styles.skeleton, styles.skeletonTitle]} />
-                
-                {/* Skeleton Video */}
-                <View style={[styles.skeleton, styles.skeletonVideo]} />
-                
-                {/* Skeleton Description */}
-                <View style={[styles.skeleton, styles.skeletonLine]} />
-                <View style={[styles.skeleton, styles.skeletonLine, { width: '80%' }]} />
-                <View style={[styles.skeleton, styles.skeletonLine, { width: '60%' }]} />
+          {/* Task Title */}
+          <View style={styles.section}>
+            <Text style={styles.taskTitle}>{task.title || 'Uden titel'}</Text>
+          </View>
+
+          {/* Video - only render if valid URL exists */}
+          {videoUrl && (
+            <View style={styles.videoSection}>
+              <View style={styles.videoContainer}>
+                <SmartVideoPlayer url={videoUrl} />
               </View>
             </View>
           )}
 
-          {error && (
-            <View style={styles.errorContainer}>
-              <IconSymbol
-                ios_icon_name="exclamationmark.triangle"
-                android_material_icon_name="error"
-                size={48}
-                color="#FF6B6B"
-              />
-              <Text style={styles.errorText}>{error}</Text>
+          {/* Task Description */}
+          {task.description && (
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>Beskrivelse</Text>
+              <Text style={styles.description}>{task.description}</Text>
             </View>
           )}
 
-          {!loading && !error && task && (
-            <Animated.View style={{ opacity: fadeAnim }}>
-              {/* Task Title */}
-              <View style={styles.section}>
-                <Text style={styles.taskTitle}>{task.title}</Text>
+          {/* Reminder - read-only, hidden if missing */}
+          {task.reminder_minutes && (
+            <View style={styles.section}>
+              <View style={styles.reminderContainer}>
+                <IconSymbol
+                  ios_icon_name="bell.fill"
+                  android_material_icon_name="notifications"
+                  size={20}
+                  color={colors.primary}
+                />
+                <Text style={styles.reminderText}>
+                  Påmindelse: {formatReminderTime(task.reminder_minutes)}
+                </Text>
               </View>
+            </View>
+          )}
 
-              {/* Video - UNDER title, OVER description */}
-              {!!videoUrl && (
-                <View style={styles.videoSection}>
-                  <View style={styles.videoContainer}>
-                    <SmartVideoPlayer url={videoUrl} />
-                  </View>
-                </View>
-              )}
-
-              {/* Task Description */}
-              {task.description && (
-                <View style={styles.section}>
-                  <Text style={styles.sectionLabel}>Beskrivelse</Text>
-                  <Text style={styles.description}>{task.description}</Text>
-                </View>
-              )}
-
-              {/* Reminder */}
-              {task.reminder_minutes && (
-                <View style={styles.section}>
-                  <View style={styles.reminderContainer}>
+          {/* Completion Button */}
+          <View style={styles.section}>
+            <Pressable
+              onPress={handleToggleCompletion}
+              disabled={completing}
+              style={({ pressed }) => [
+                styles.completionButton,
+                task.completed && styles.completionButtonCompleted,
+                pressed && styles.completionButtonPressed,
+                completing && styles.completionButtonDisabled,
+              ]}
+            >
+              <View style={styles.completionButtonContent}>
+                <View
+                  style={[
+                    styles.checkbox,
+                    task.completed && styles.checkboxCompleted,
+                  ]}
+                >
+                  {task.completed && (
                     <IconSymbol
-                      ios_icon_name="bell.fill"
-                      android_material_icon_name="notifications"
+                      ios_icon_name="checkmark"
+                      android_material_icon_name="check"
                       size={20}
                       color={colors.primary}
                     />
-                    <Text style={styles.reminderText}>
-                      Påmindelse: {formatReminderTime(task.reminder_minutes)}
-                    </Text>
-                  </View>
+                  )}
                 </View>
-              )}
-
-              {/* Completion Button */}
-              <View style={styles.section}>
-                <Pressable
-                  onPress={handleToggleCompletion}
-                  disabled={completing}
-                  style={({ pressed }) => [
-                    styles.completionButton,
-                    task.completed && styles.completionButtonCompleted,
-                    pressed && styles.completionButtonPressed,
-                    completing && styles.completionButtonDisabled,
+                <Text
+                  style={[
+                    styles.completionButtonText,
+                    task.completed && styles.completionButtonTextCompleted,
                   ]}
                 >
-                  <View style={styles.completionButtonContent}>
-                    {completing ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <>
-                        <View
-                          style={[
-                            styles.checkbox,
-                            task.completed && styles.checkboxCompleted,
-                          ]}
-                        >
-                          {task.completed && (
-                            <IconSymbol
-                              ios_icon_name="checkmark"
-                              android_material_icon_name="check"
-                              size={20}
-                              color={colors.primary}
-                            />
-                          )}
-                        </View>
-                        <Text
-                          style={[
-                            styles.completionButtonText,
-                            task.completed && styles.completionButtonTextCompleted,
-                          ]}
-                        >
-                          {task.completed ? 'Fuldført ✓' : 'Markér som fuldført'}
-                        </Text>
-                      </>
-                    )}
-                  </View>
-                </Pressable>
+                  {task.completed ? 'Fuldført ✓' : 'Markér som fuldført'}
+                </Text>
               </View>
-            </Animated.View>
-          )}
+            </Pressable>
+          </View>
         </ScrollView>
       </View>
     </Modal>
@@ -351,44 +287,6 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 20,
-  },
-  loadingContainer: {
-    flex: 1,
-    paddingVertical: 20,
-  },
-  skeletonContainer: {
-    gap: 16,
-  },
-  skeleton: {
-    backgroundColor: colors.highlight,
-    borderRadius: 8,
-  },
-  skeletonTitle: {
-    height: 32,
-    width: '70%',
-    marginBottom: 8,
-  },
-  skeletonVideo: {
-    height: 200,
-    width: '100%',
-    borderRadius: 12,
-    marginBottom: 8,
-  },
-  skeletonLine: {
-    height: 16,
-    width: '100%',
-  },
-  errorContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
-  errorText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#FF6B6B',
-    textAlign: 'center',
   },
   section: {
     marginBottom: 24,
@@ -447,7 +345,6 @@ const styles = StyleSheet.create({
   },
   completionButtonPressed: {
     opacity: 0.85,
-    transform: [{ scale: 0.98 }],
   },
   completionButtonDisabled: {
     opacity: 0.6,
