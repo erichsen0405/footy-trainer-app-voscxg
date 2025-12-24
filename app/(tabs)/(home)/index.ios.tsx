@@ -260,7 +260,7 @@ export default function HomeScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']} pointerEvents="box-none">
+    <View style={styles.safeArea} pointerEvents="box-none">
       <StatusBar barStyle="dark-content" />
       
       <ScrollView 
@@ -473,7 +473,7 @@ export default function HomeScreen() {
           onRefreshCategories={refreshData}
         />
       ) : null}
-    </SafeAreaView>
+    </View>
   );
 }
 
