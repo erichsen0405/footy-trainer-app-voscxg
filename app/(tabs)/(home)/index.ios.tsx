@@ -294,53 +294,54 @@ export default function HomeScreen() {
           <Text style={styles.weekHeaderSubtitle}>{currentWeekLabel}</Text>
         </View>
 
-        {/* Weekly Progress Card with Dynamic Gradient */}
+        {/* Weekly Progress Card with Dynamic Gradient - BUTTON REMOVED FROM INSIDE */}
         <View style={styles.progressCardContainer}>
+          <LinearGradient
+            colors={performanceMetrics.gradientColors}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.progressCard}
+          >
+            <View style={styles.progressHeader}>
+              <Text style={styles.progressLabel}>DENNE UGE</Text>
+              <View style={styles.medalBadge}>
+                <Text style={styles.medalIcon}>{performanceMetrics.trophyEmoji}</Text>
+              </View>
+            </View>
+            
+            <Text style={styles.progressPercentage}>{performanceMetrics.percentageUpToToday}%</Text>
+            
+            <View style={styles.progressBar}>
+              <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
+            </View>
+
+            <Text style={styles.progressDetail}>
+              Opgaver indtil i dag: {performanceMetrics.completedTasksToday} / {performanceMetrics.totalTasksToday}
+            </Text>
+            <View style={styles.progressBar}>
+              <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
+            </View>
+
+            <Text style={styles.progressDetail}>
+              Hele ugen: {performanceMetrics.completedTasksWeek} / {performanceMetrics.totalTasksWeek} opgaver
+            </Text>
+
+            <Text style={styles.motivationText}>
+              {performanceMetrics.motivationText}
+            </Text>
+          </LinearGradient>
+        </View>
+
+        {/* "Se performance" CTA - NOW OUTSIDE AS SIBLING */}
+        <View style={styles.performanceButtonWrapper}>
           <Pressable 
             onPress={() => {
-              console.log('[Home iOS] Performance button pressed');
+              console.log('[Home iOS] Performance button pressed - SIBLING STRUCTURE');
               router.push('/(tabs)/performance');
             }}
-            style={styles.pressableWrapper}
+            style={styles.performanceButtonPressable}
           >
-            <LinearGradient
-              colors={performanceMetrics.gradientColors}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.progressCard}
-            >
-              <View style={styles.progressHeader}>
-                <Text style={styles.progressLabel}>DENNE UGE</Text>
-                <View style={styles.medalBadge}>
-                  <Text style={styles.medalIcon}>{performanceMetrics.trophyEmoji}</Text>
-                </View>
-              </View>
-              
-              <Text style={styles.progressPercentage}>{performanceMetrics.percentageUpToToday}%</Text>
-              
-              <View style={styles.progressBar}>
-                <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
-              </View>
-
-              <Text style={styles.progressDetail}>
-                Opgaver indtil i dag: {performanceMetrics.completedTasksToday} / {performanceMetrics.totalTasksToday}
-              </Text>
-              <View style={styles.progressBar}>
-                <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
-              </View>
-
-              <Text style={styles.progressDetail}>
-                Hele ugen: {performanceMetrics.completedTasksWeek} / {performanceMetrics.totalTasksWeek} opgaver
-              </Text>
-
-              <Text style={styles.motivationText}>
-                {performanceMetrics.motivationText}
-              </Text>
-
-              <View style={styles.performanceButton}>
-                <Text style={styles.performanceButtonText}>📊  Se Performance  →</Text>
-              </View>
-            </LinearGradient>
+            <Text style={styles.performanceButtonText}>Se performance</Text>
           </Pressable>
         </View>
 
@@ -564,14 +565,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
 
-  // Progress Card Container
+  // Progress Card Container - NO PRESSABLE WRAPPER
   progressCardContainer: {
     marginHorizontal: 16,
     marginTop: 8,
-    marginBottom: 16,
-  },
-  pressableWrapper: {
-    borderRadius: 24,
+    marginBottom: 0,
   },
   progressCard: {
     borderRadius: 24,
@@ -633,13 +631,20 @@ const styles = StyleSheet.create({
     marginTop: 20,
     lineHeight: 22,
   },
-  performanceButton: {
-    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+
+  // Performance Button - NOW OUTSIDE AS SIBLING
+  performanceButtonWrapper: {
+    marginHorizontal: 16,
+    marginTop: 10,
+  },
+  performanceButtonPressable: {
+    backgroundColor: '#2C3E50',
     borderRadius: 14,
     paddingVertical: 16,
     paddingHorizontal: 24,
-    marginTop: 20,
     alignItems: 'center',
+    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.15)',
+    elevation: 3,
   },
   performanceButtonText: {
     fontSize: 17,
