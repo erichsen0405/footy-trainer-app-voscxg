@@ -275,8 +275,8 @@ export default function HomeScreen() {
           />
         }
       >
-        {/* Header */}
-        <View style={styles.header}>
+        {/* Header - TESTING: Added pointerEvents="none" */}
+        <View style={styles.header} pointerEvents="none">
           <View style={styles.logoContainer}>
             <View style={styles.logo}>
               <Text style={styles.logoIcon}>⚽</Text>
