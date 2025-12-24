@@ -260,7 +260,7 @@ export default function HomeScreen() {
   }
 
   return (
-    <View style={{ flex: 1 }}>
+    <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
       <StatusBar barStyle="dark-content" />
       
       <ScrollView 
@@ -452,20 +452,18 @@ export default function HomeScreen() {
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
-      {/* ========== CTA BUTTON - WRAPPED IN SAFEAREAVIEW ========== */}
-      <SafeAreaView edges={['bottom']}>
-        <View style={styles.performanceCtaWrapper}>
-          <Pressable 
-            onPress={() => {
-              console.log('[Home iOS] Performance CTA pressed');
-              router.push('/(tabs)/performance');
-            }}
-            hitSlop={8}
-          >
-            <Text style={styles.ctaButtonText}>📊 Se Performance →</Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
+      {/* ========== CTA BUTTON - OUTSIDE SCROLLVIEW ========== */}
+      <View style={styles.performanceCtaWrapper}>
+        <Pressable 
+          onPress={() => {
+            console.log('[Home iOS] Performance CTA pressed');
+            router.push('/(tabs)/performance');
+          }}
+          hitSlop={8}
+        >
+          <Text style={styles.ctaButtonText}>📊 Se Performance →</Text>
+        </Pressable>
+      </View>
 
       {/* Create Activity Modal */}
       {showCreateModal ? (
@@ -477,7 +475,7 @@ export default function HomeScreen() {
           onRefreshCategories={refreshData}
         />
       ) : null}
-    </View>
+    </SafeAreaView>
   );
 }
 
