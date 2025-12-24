@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { ScrollView, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -260,13 +260,12 @@ export default function HomeScreen() {
   }
 
   return (
-    <View style={styles.safeArea} pointerEvents="box-none">
+    <View style={styles.safeArea}>
       <StatusBar barStyle="dark-content" />
       
       <ScrollView 
         style={styles.container} 
         contentContainerStyle={styles.contentContainer}
-        pointerEvents="box-none"
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
@@ -276,30 +275,27 @@ export default function HomeScreen() {
           />
         }
       >
-        {/* TESTING: Wrapper View with pointerEvents="none" */}
-        <View pointerEvents="none">
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={styles.logoContainer}>
-              <View style={styles.logo}>
-                <Text style={styles.logoIcon}>⚽</Text>
-              </View>
-            </View>
-            <View style={styles.headerTextContainer}>
-              <Text style={styles.headerTitle}>Football Coach</Text>
-              <Text style={styles.headerSubtitle}>Træn som en Pro</Text>
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={styles.logoContainer}>
+            <View style={styles.logo}>
+              <Text style={styles.logoIcon}>⚽</Text>
             </View>
           </View>
-
-          {/* Week Header */}
-          <View style={styles.weekHeaderContainer}>
-            <Text style={styles.weekHeaderTitle}>UGE {currentWeekNumber}</Text>
-            <Text style={styles.weekHeaderSubtitle}>{currentWeekLabel}</Text>
+          <View style={styles.headerTextContainer}>
+            <Text style={styles.headerTitle}>Football Coach</Text>
+            <Text style={styles.headerSubtitle}>Træn som en Pro</Text>
           </View>
         </View>
 
+        {/* Week Header */}
+        <View style={styles.weekHeaderContainer}>
+          <Text style={styles.weekHeaderTitle}>UGE {currentWeekNumber}</Text>
+          <Text style={styles.weekHeaderSubtitle}>{currentWeekLabel}</Text>
+        </View>
+
         {/* Weekly Progress Card with Dynamic Gradient */}
-        <View style={styles.progressCardContainer} pointerEvents="box-none">
+        <View style={styles.progressCardContainer}>
           <Pressable 
             onPress={() => {
               console.log('[Home iOS] Performance button pressed');
