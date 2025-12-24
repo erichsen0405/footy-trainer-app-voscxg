@@ -267,6 +267,7 @@ export default function HomeScreen() {
         style={styles.container} 
         contentContainerStyle={styles.contentContainer}
         pointerEvents="box-none"
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
