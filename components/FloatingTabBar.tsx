@@ -28,7 +28,7 @@ export default function FloatingTabBar({ tabs }: FloatingTabBarProps) {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} pointerEvents="none">
       <View 
         style={[styles.tabBar, { 
           backgroundColor: colorScheme === 'dark' 
