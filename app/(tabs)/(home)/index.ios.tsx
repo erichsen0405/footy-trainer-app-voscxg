@@ -294,7 +294,7 @@ export default function HomeScreen() {
           <Text style={styles.weekHeaderSubtitle}>{currentWeekLabel}</Text>
         </View>
 
-        {/* ========== PERFORMANCE CARD - INDEPENDENT VISUAL SECTION ========== */}
+        {/* ========== PERFORMANCE CARD ENDS HERE ========== */}
         <LinearGradient
           colors={performanceMetrics.gradientColors}
           start={{ x: 0, y: 0 }}
@@ -330,16 +330,16 @@ export default function HomeScreen() {
           </Text>
         </LinearGradient>
 
-        {/* ========== CTA BUTTON - INDEPENDENT VISUAL SECTION ========== */}
-        <View style={styles.ctaButtonWrapper}>
+        {/* ========== CTA BUTTON STARTS HERE ========== */}
+        <View style={styles.ctaSection}>
           <Pressable 
             onPress={() => {
-              console.log('[Home iOS] Performance CTA pressed - FULLY SEPARATED');
+              console.log('[Home iOS] Performance CTA pressed');
               router.push('/(tabs)/performance');
             }}
-            style={styles.ctaButtonPressable}
+            style={styles.ctaButton}
           >
-            <Text style={styles.ctaButtonText}>Se performance</Text>
+            <Text style={styles.ctaButtonText}>📊 Se Performance →</Text>
           </Pressable>
         </View>
 
@@ -563,11 +563,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
 
-  // ========== PERFORMANCE CARD - OUTERMOST VISUAL CONTAINER ==========
+  // ========== PERFORMANCE CARD - CLOSED VISUAL UNIT ==========
   performanceCard: {
     marginHorizontal: 16,
     marginTop: 8,
-    marginBottom: 0,
     borderRadius: 24,
     padding: 24,
     boxShadow: '0px 6px 20px rgba(0, 0, 0, 0.25)',
@@ -628,12 +627,12 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
 
-  // ========== CTA BUTTON - INDEPENDENT VISUAL SECTION ==========
-  ctaButtonWrapper: {
+  // ========== CTA SECTION - SEPARATE VISUAL BLOCK ==========
+  ctaSection: {
     marginHorizontal: 16,
     marginTop: 12,
   },
-  ctaButtonPressable: {
+  ctaButton: {
     backgroundColor: '#2C3E50',
     borderRadius: 14,
     paddingVertical: 16,
