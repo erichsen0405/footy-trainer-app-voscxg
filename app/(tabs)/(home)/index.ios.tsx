@@ -260,15 +260,15 @@ export default function HomeScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
+    <SafeAreaView
+      style={{ flex: 1, paddingBottom: 83 }}
+      edges={['top']}
+    >
       <StatusBar barStyle="dark-content" />
       
       <ScrollView 
         style={{ flex: 1 }}
-        contentContainerStyle={{
-          flexGrow: 1,
-          paddingBottom: 72,
-        }}
+        contentContainerStyle={{ flexGrow: 1 }}
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
