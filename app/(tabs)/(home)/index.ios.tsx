@@ -260,7 +260,7 @@ export default function HomeScreen() {
   }
 
   return (
-    <View style={styles.safeArea}>
+    <View style={{ flex: 1 }}>
       <StatusBar barStyle="dark-content" />
       
       <ScrollView 
@@ -294,7 +294,7 @@ export default function HomeScreen() {
           <Text style={styles.weekHeaderSubtitle}>{currentWeekLabel}</Text>
         </View>
 
-        {/* ========== PERFORMANCE CARD ENDS HERE ========== */}
+        {/* ========== PERFORMANCE CARD ========== */}
         <LinearGradient
           colors={performanceMetrics.gradientColors}
           start={{ x: 0, y: 0 }}
@@ -329,19 +329,6 @@ export default function HomeScreen() {
             {performanceMetrics.motivationText}
           </Text>
         </LinearGradient>
-
-        {/* ========== CTA BUTTON STARTS HERE ========== */}
-        <View style={styles.ctaSection}>
-          <Pressable 
-            onPress={() => {
-              console.log('[Home iOS] Performance CTA pressed');
-              router.push('/(tabs)/performance');
-            }}
-            style={styles.ctaButton}
-          >
-            <Text style={styles.ctaButtonText}>📊 Se Performance →</Text>
-          </Pressable>
-        </View>
 
         {/* Create Activity Button */}
         <Pressable 
@@ -462,6 +449,19 @@ export default function HomeScreen() {
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
+      {/* ========== CTA BUTTON - OUTSIDE SCROLLVIEW ========== */}
+      <View style={styles.performanceCtaWrapper}>
+        <Pressable 
+          onPress={() => {
+            console.log('[Home iOS] Performance CTA pressed');
+            router.push('/(tabs)/performance');
+          }}
+          hitSlop={8}
+        >
+          <Text style={styles.ctaButtonText}>📊 Se Performance →</Text>
+        </Pressable>
+      </View>
+
       {/* Create Activity Modal */}
       {showCreateModal ? (
         <CreateActivityModal
@@ -477,10 +477,6 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -627,24 +623,16 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
 
-  // ========== CTA SECTION - SEPARATE VISUAL BLOCK ==========
-  ctaSection: {
-    marginHorizontal: 16,
-    marginTop: 12,
-  },
-  ctaButton: {
-    backgroundColor: '#2C3E50',
-    borderRadius: 14,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.15)',
-    elevation: 3,
+  // ========== CTA WRAPPER - OUTSIDE SCROLLVIEW ==========
+  performanceCtaWrapper: {
+    paddingHorizontal: 16,
+    marginTop: 10,
   },
   ctaButtonText: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: '#2C3E50',
+    textAlign: 'center',
   },
 
   // Create Button
