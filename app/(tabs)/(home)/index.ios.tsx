@@ -289,7 +289,7 @@ export default function HomeScreen() {
         </View>
 
         {/* Week Header */}
-        <View style={styles.weekHeaderContainer} pointerEvents="box-none">
+        <View style={styles.weekHeaderContainer} pointerEvents="none">
           <Text style={styles.weekHeaderTitle}>UGE {currentWeekNumber}</Text>
           <Text style={styles.weekHeaderSubtitle}>{currentWeekLabel}</Text>
         </View>
