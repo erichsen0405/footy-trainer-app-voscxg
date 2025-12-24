@@ -276,23 +276,26 @@ export default function HomeScreen() {
           />
         }
       >
-        {/* Header - TESTING: Added pointerEvents="none" */}
-        <View style={styles.header} pointerEvents="none">
-          <View style={styles.logoContainer}>
-            <View style={styles.logo}>
-              <Text style={styles.logoIcon}>⚽</Text>
+        {/* TESTING: Wrapper View with pointerEvents="none" */}
+        <View pointerEvents="none">
+          {/* Header */}
+          <View style={styles.header}>
+            <View style={styles.logoContainer}>
+              <View style={styles.logo}>
+                <Text style={styles.logoIcon}>⚽</Text>
+              </View>
+            </View>
+            <View style={styles.headerTextContainer}>
+              <Text style={styles.headerTitle}>Football Coach</Text>
+              <Text style={styles.headerSubtitle}>Træn som en Pro</Text>
             </View>
           </View>
-          <View style={styles.headerTextContainer}>
-            <Text style={styles.headerTitle}>Football Coach</Text>
-            <Text style={styles.headerSubtitle}>Træn som en Pro</Text>
-          </View>
-        </View>
 
-        {/* Week Header - TESTING: Added pointerEvents="none" */}
-        <View style={styles.weekHeaderContainer} pointerEvents="none">
-          <Text style={styles.weekHeaderTitle}>UGE {currentWeekNumber}</Text>
-          <Text style={styles.weekHeaderSubtitle}>{currentWeekLabel}</Text>
+          {/* Week Header */}
+          <View style={styles.weekHeaderContainer}>
+            <Text style={styles.weekHeaderTitle}>UGE {currentWeekNumber}</Text>
+            <Text style={styles.weekHeaderSubtitle}>{currentWeekLabel}</Text>
+          </View>
         </View>
 
         {/* Weekly Progress Card with Dynamic Gradient */}
