@@ -276,7 +276,7 @@ export default function HomeScreen() {
         }
       >
         {/* Header */}
-        <View style={styles.header} pointerEvents="none">
+        <View style={styles.header}>
           <View style={styles.logoContainer}>
             <View style={styles.logo}>
               <Text style={styles.logoIcon}>⚽</Text>
@@ -289,7 +289,7 @@ export default function HomeScreen() {
         </View>
 
         {/* Week Header */}
-        <View style={styles.weekHeaderContainer} pointerEvents="none">
+        <View style={styles.weekHeaderContainer}>
           <Text style={styles.weekHeaderTitle}>UGE {currentWeekNumber}</Text>
           <Text style={styles.weekHeaderSubtitle}>{currentWeekLabel}</Text>
         </View>
@@ -308,9 +308,8 @@ export default function HomeScreen() {
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.progressCard}
-              pointerEvents="none"
             >
-              <View style={styles.progressHeader} pointerEvents="none">
+              <View style={styles.progressHeader}>
                 <Text style={styles.progressLabel}>DENNE UGE</Text>
                 <View style={styles.medalBadge}>
                   <Text style={styles.medalIcon}>{performanceMetrics.trophyEmoji}</Text>
@@ -319,14 +318,14 @@ export default function HomeScreen() {
               
               <Text style={styles.progressPercentage}>{performanceMetrics.percentageUpToToday}%</Text>
               
-              <View style={styles.progressBar} pointerEvents="none">
+              <View style={styles.progressBar}>
                 <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
               </View>
 
               <Text style={styles.progressDetail}>
                 Opgaver indtil i dag: {performanceMetrics.completedTasksToday} / {performanceMetrics.totalTasksToday}
               </Text>
-              <View style={styles.progressBar} pointerEvents="none">
+              <View style={styles.progressBar}>
                 <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
               </View>
 
@@ -338,7 +337,7 @@ export default function HomeScreen() {
                 {performanceMetrics.motivationText}
               </Text>
 
-              <View style={styles.performanceButton} pointerEvents="none">
+              <View style={styles.performanceButton}>
                 <Text style={styles.performanceButtonText}>📊  Se Performance  →</Text>
               </View>
             </LinearGradient>
