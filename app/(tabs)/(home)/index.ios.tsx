@@ -452,18 +452,20 @@ export default function HomeScreen() {
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
-      {/* ========== CTA BUTTON - OUTSIDE SCROLLVIEW ========== */}
-      <View style={styles.performanceCtaWrapper}>
-        <Pressable 
-          onPress={() => {
-            console.log('[Home iOS] Performance CTA pressed');
-            router.push('/(tabs)/performance');
-          }}
-          hitSlop={8}
-        >
-          <Text style={styles.ctaButtonText}>📊 Se Performance →</Text>
-        </Pressable>
-      </View>
+      {/* ========== CTA BUTTON - WRAPPED IN SAFEAREAVIEW ========== */}
+      <SafeAreaView edges={['bottom']}>
+        <View style={styles.performanceCtaWrapper}>
+          <Pressable 
+            onPress={() => {
+              console.log('[Home iOS] Performance CTA pressed');
+              router.push('/(tabs)/performance');
+            }}
+            hitSlop={8}
+          >
+            <Text style={styles.ctaButtonText}>📊 Se Performance →</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
 
       {/* Create Activity Modal */}
       {showCreateModal ? (
