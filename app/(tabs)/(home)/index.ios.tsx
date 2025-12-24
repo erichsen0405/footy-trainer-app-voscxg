@@ -264,7 +264,7 @@ export default function HomeScreen() {
       <StatusBar barStyle="dark-content" />
       
       <ScrollView 
-        style={styles.container} 
+        style={{ flex: 1 }}
         contentContainerStyle={styles.contentContainer}
         keyboardShouldPersistTaps="handled"
         refreshControl={
