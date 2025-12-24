@@ -294,54 +294,52 @@ export default function HomeScreen() {
           <Text style={styles.weekHeaderSubtitle}>{currentWeekLabel}</Text>
         </View>
 
-        {/* Weekly Progress Card with Dynamic Gradient - BUTTON REMOVED FROM INSIDE */}
-        <View style={styles.progressCardContainer}>
-          <LinearGradient
-            colors={performanceMetrics.gradientColors}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.progressCard}
-          >
-            <View style={styles.progressHeader}>
-              <Text style={styles.progressLabel}>DENNE UGE</Text>
-              <View style={styles.medalBadge}>
-                <Text style={styles.medalIcon}>{performanceMetrics.trophyEmoji}</Text>
-              </View>
+        {/* ========== PERFORMANCE CARD - INDEPENDENT VISUAL SECTION ========== */}
+        <LinearGradient
+          colors={performanceMetrics.gradientColors}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.performanceCard}
+        >
+          <View style={styles.progressHeader}>
+            <Text style={styles.progressLabel}>DENNE UGE</Text>
+            <View style={styles.medalBadge}>
+              <Text style={styles.medalIcon}>{performanceMetrics.trophyEmoji}</Text>
             </View>
-            
-            <Text style={styles.progressPercentage}>{performanceMetrics.percentageUpToToday}%</Text>
-            
-            <View style={styles.progressBar}>
-              <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
-            </View>
+          </View>
+          
+          <Text style={styles.progressPercentage}>{performanceMetrics.percentageUpToToday}%</Text>
+          
+          <View style={styles.progressBar}>
+            <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
+          </View>
 
-            <Text style={styles.progressDetail}>
-              Opgaver indtil i dag: {performanceMetrics.completedTasksToday} / {performanceMetrics.totalTasksToday}
-            </Text>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
-            </View>
+          <Text style={styles.progressDetail}>
+            Opgaver indtil i dag: {performanceMetrics.completedTasksToday} / {performanceMetrics.totalTasksToday}
+          </Text>
+          <View style={styles.progressBar}>
+            <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
+          </View>
 
-            <Text style={styles.progressDetail}>
-              Hele ugen: {performanceMetrics.completedTasksWeek} / {performanceMetrics.totalTasksWeek} opgaver
-            </Text>
+          <Text style={styles.progressDetail}>
+            Hele ugen: {performanceMetrics.completedTasksWeek} / {performanceMetrics.totalTasksWeek} opgaver
+          </Text>
 
-            <Text style={styles.motivationText}>
-              {performanceMetrics.motivationText}
-            </Text>
-          </LinearGradient>
-        </View>
+          <Text style={styles.motivationText}>
+            {performanceMetrics.motivationText}
+          </Text>
+        </LinearGradient>
 
-        {/* "Se performance" CTA - NOW OUTSIDE AS SIBLING */}
-        <View style={styles.performanceButtonWrapper}>
+        {/* ========== CTA BUTTON - INDEPENDENT VISUAL SECTION ========== */}
+        <View style={styles.ctaButtonWrapper}>
           <Pressable 
             onPress={() => {
-              console.log('[Home iOS] Performance button pressed - SIBLING STRUCTURE');
+              console.log('[Home iOS] Performance CTA pressed - FULLY SEPARATED');
               router.push('/(tabs)/performance');
             }}
-            style={styles.performanceButtonPressable}
+            style={styles.ctaButtonPressable}
           >
-            <Text style={styles.performanceButtonText}>Se performance</Text>
+            <Text style={styles.ctaButtonText}>Se performance</Text>
           </Pressable>
         </View>
 
@@ -565,13 +563,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
 
-  // Progress Card Container - NO PRESSABLE WRAPPER
-  progressCardContainer: {
+  // ========== PERFORMANCE CARD - OUTERMOST VISUAL CONTAINER ==========
+  performanceCard: {
     marginHorizontal: 16,
     marginTop: 8,
     marginBottom: 0,
-  },
-  progressCard: {
     borderRadius: 24,
     padding: 24,
     boxShadow: '0px 6px 20px rgba(0, 0, 0, 0.25)',
@@ -632,12 +628,12 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
 
-  // Performance Button - NOW OUTSIDE AS SIBLING
-  performanceButtonWrapper: {
+  // ========== CTA BUTTON - INDEPENDENT VISUAL SECTION ==========
+  ctaButtonWrapper: {
     marginHorizontal: 16,
-    marginTop: 10,
+    marginTop: 12,
   },
-  performanceButtonPressable: {
+  ctaButtonPressable: {
     backgroundColor: '#2C3E50',
     borderRadius: 14,
     paddingVertical: 16,
@@ -646,7 +642,7 @@ const styles = StyleSheet.create({
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.15)',
     elevation: 3,
   },
-  performanceButtonText: {
+  ctaButtonText: {
     fontSize: 17,
     fontWeight: '700',
     color: '#FFFFFF',
