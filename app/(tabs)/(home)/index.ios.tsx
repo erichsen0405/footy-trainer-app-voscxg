@@ -265,7 +265,7 @@ export default function HomeScreen() {
       
       <ScrollView 
         style={{ flex: 1 }}
-        contentContainerStyle={styles.contentContainer}
+        contentContainerStyle={{ flexGrow: 1 }}
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
