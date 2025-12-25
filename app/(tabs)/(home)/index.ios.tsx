@@ -335,6 +335,14 @@ export default function HomeScreen() {
             <Text style={styles.motivationText}>
               {performanceMetrics.motivationText}
             </Text>
+
+            {/* Se Performance Button - Inside Performance Card */}
+            <Pressable 
+              style={styles.performanceButton}
+              onPress={() => router.push('/(tabs)/performance')}
+            >
+              <Text style={styles.performanceButtonText}>Se performance</Text>
+            </Pressable>
           </LinearGradient>
         ) : null}
 
@@ -345,16 +353,6 @@ export default function HomeScreen() {
         >
           <Text style={styles.createButtonText}>+  Opret Aktivitet</Text>
         </Pressable>
-
-        {/* Se Performance Button - ONLY FOR PLAYERS */}
-        {isPlayer ? (
-          <Pressable 
-            style={styles.createButton}
-            onPress={() => router.push('/(tabs)/performance')}
-          >
-            <Text style={styles.createButtonText}>📊 Se performance</Text>
-          </Pressable>
-        ) : null}
 
         {/* TIDLIGERE Section - Collapsible */}
         {previousByWeek.length > 0 ? (
@@ -627,8 +625,22 @@ const styles = StyleSheet.create({
     marginTop: 20,
     lineHeight: 22,
   },
+  performanceButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    marginTop: 20,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
+  },
+  performanceButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
 
-  // Create Button (now used for both buttons)
+  // Create Button
   createButton: {
     backgroundColor: '#4CAF50',
     marginHorizontal: 16,
