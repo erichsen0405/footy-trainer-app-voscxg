@@ -107,7 +107,7 @@ const FOOTBALLCOACH_STRUCTURE: FolderItem[] = [
 
 export default function LibraryScreen() {
   const { teams, players, selectedContext } = useTeamPlayer();
-  const { isAdmin } = useUserRole();
+  const { isAdmin, userRole } = useUserRole();
   const [personalExercises, setPersonalExercises] = useState<Exercise[]>([]);
   const [trainerFolders, setTrainerFolders] = useState<FolderItem[]>([]);
   const [footballCoachFolders, setFootballCoachFolders] = useState<FolderItem[]>(FOOTBALLCOACH_STRUCTURE);
@@ -140,6 +140,8 @@ export default function LibraryScreen() {
 
   const isManagingContext = isAdmin && selectedContext.type;
   const containerBgColor = isManagingContext ? themeColors.contextWarning : bgColor;
+
+  const isPlayer = userRole === 'player';
 
   const fetchLibraryData = useCallback(async (userId: string) => {
     console.log('🔄 Library: Fetching library data for user:', userId);
@@ -717,6 +719,14 @@ export default function LibraryScreen() {
 
       console.log('🔄 Copying exercise to task template:', exercise.title);
 
+      // Determine source folder for tracking
+      let sourceFolder = null;
+      if (exercise.is_system) {
+        sourceFolder = 'FootballCoach Inspiration';
+      } else if (exercise.trainer_name) {
+        sourceFolder = `Fra træner: ${exercise.trainer_name}`;
+      }
+
       const { data: taskTemplate, error: taskTemplateError } = await supabase
         .from('task_templates')
         .insert({
@@ -726,6 +736,7 @@ export default function LibraryScreen() {
           description: exercise.description,
           video_url: exercise.video_url,
           reminder_minutes: null,
+          source_folder: sourceFolder,
         })
         .select()
         .single();
@@ -813,7 +824,7 @@ export default function LibraryScreen() {
           <View style={styles.exerciseActions}>
             {shouldBeReadOnly ? (
               <TouchableOpacity
-                style={[styles.actionButton, { backgroundColor: colors.primary }]}
+                style={[styles.actionButton, styles.copyButton, { backgroundColor: colors.primary }]}
                 onPress={() => handleCopyToTasks(exercise)}
                 disabled={processing}
               >
@@ -823,7 +834,7 @@ export default function LibraryScreen() {
                   size={20}
                   color="#fff"
                 />
-                <Text style={styles.copyButtonText}>Kopier</Text>
+                <Text style={styles.copyButtonText}>Kopiér til mine skabeloner</Text>
               </TouchableOpacity>
             ) : (
               <>
@@ -1005,7 +1016,7 @@ export default function LibraryScreen() {
             Øvelsesbibliotek
           </Text>
           <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
-            Struktureret i mapper
+            {isPlayer ? 'Øvelser fra dine trænere og inspiration' : 'Struktureret i mapper'}
           </Text>
         </View>
         {isAdmin && (
@@ -1024,6 +1035,20 @@ export default function LibraryScreen() {
           </TouchableOpacity>
         )}
       </View>
+
+      {isPlayer && (
+        <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
+          <IconSymbol
+            ios_icon_name="info.circle"
+            android_material_icon_name="info"
+            size={20}
+            color={colors.secondary}
+          />
+          <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
+            Her kan du se øvelser fra dine trænere og FootballCoach inspiration. Tryk på &quot;Kopiér til mine skabeloner&quot; for at tilføje dem til dine egne opgaver.
+          </Text>
+        </View>
+      )}
 
       <ScrollView
         style={styles.content}
@@ -1453,6 +1478,20 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
   },
+  infoBox: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginHorizontal: 20,
+    marginBottom: 16,
+    borderRadius: 12,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+  },
   content: {
     flex: 1,
   },
@@ -1550,9 +1589,12 @@ const styles = StyleSheet.create({
     padding: 8,
     borderRadius: 8,
     backgroundColor: colors.highlight,
+  },
+  copyButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    paddingHorizontal: 12,
   },
   copyButtonText: {
     fontSize: 14,

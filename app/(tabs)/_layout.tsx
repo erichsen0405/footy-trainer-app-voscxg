@@ -119,7 +119,7 @@ function IOSTabLayout({
 
       <NativeTabs.Trigger
         name="library"
-        hidden={!isLoggedIn || !isTrainer}
+        hidden={!isLoggedIn}
       >
         <Icon sf={{ default: 'book', selected: 'book.fill' }} color={colors.primary} />
         <Label style={{ fontSize: 10, fontWeight: '500', color: colors.primary }}>Bibliotek</Label>
@@ -218,17 +218,18 @@ function AndroidWebTabLayout({
 
     // Filter tabs based on user role
     if (isPlayer) {
-      // Players can see: Home, Tasks, Performance, Profile
+      // Players can see: Home, Tasks, Performance, Library, Profile
       return allTabs.filter(tab => 
         tab.name === '(home)' || 
         tab.name === 'tasks' ||
-        tab.name === 'performance' || 
+        tab.name === 'performance' ||
+        tab.name === 'library' ||
         tab.name === 'profile'
       );
     }
 
     if (isTrainer) {
-      // Trainers can see: Home, Tasks, Library, Trainer, Profile (Performance removed)
+      // Trainers can see: Home, Tasks, Library, Trainer, Profile
       return allTabs.filter(tab => 
         tab.name === '(home)' || 
         tab.name === 'tasks' ||
