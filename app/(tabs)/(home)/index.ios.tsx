@@ -6,6 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
 import { useFootball } from '@/contexts/FootballContext';
+import { useUserRole } from '@/hooks/useUserRole';
 import ActivityCard from '@/components/ActivityCard';
 import CreateActivityModal from '@/components/CreateActivityModal';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -55,6 +56,7 @@ function getPerformanceGradient(percentage: number): string[] {
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { userRole } = useUserRole();
   const { activities, loading, refresh: refreshActivities } = useHomeActivities();
   const { categories, createActivity, refreshData, currentWeekStats } = useFootball();
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -64,6 +66,9 @@ export default function HomeScreen() {
 
   const currentWeekNumber = getWeek(new Date(), { weekStartsOn: 1, locale: da });
   const currentWeekLabel = getWeekLabel(new Date());
+
+  // Check if user is a player (not admin/trainer)
+  const isPlayer = userRole === 'player';
 
   // Reset "TIDLIGERE" section when loading starts (pull-to-refresh or navigation back)
   useEffect(() => {
@@ -295,41 +300,43 @@ export default function HomeScreen() {
           <Text style={styles.weekHeaderSubtitle}>{currentWeekLabel}</Text>
         </View>
 
-        {/* ========== PERFORMANCE CARD ========== */}
-        <LinearGradient
-          colors={performanceMetrics.gradientColors}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.performanceCard}
-        >
-          <View style={styles.progressHeader}>
-            <Text style={styles.progressLabel}>DENNE UGE</Text>
-            <View style={styles.medalBadge}>
-              <Text style={styles.medalIcon}>{performanceMetrics.trophyEmoji}</Text>
+        {/* ========== PERFORMANCE CARD - ONLY FOR PLAYERS ========== */}
+        {isPlayer ? (
+          <LinearGradient
+            colors={performanceMetrics.gradientColors}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.performanceCard}
+          >
+            <View style={styles.progressHeader}>
+              <Text style={styles.progressLabel}>DENNE UGE</Text>
+              <View style={styles.medalBadge}>
+                <Text style={styles.medalIcon}>{performanceMetrics.trophyEmoji}</Text>
+              </View>
             </View>
-          </View>
-          
-          <Text style={styles.progressPercentage}>{performanceMetrics.percentageUpToToday}%</Text>
-          
-          <View style={styles.progressBar}>
-            <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
-          </View>
+            
+            <Text style={styles.progressPercentage}>{performanceMetrics.percentageUpToToday}%</Text>
+            
+            <View style={styles.progressBar}>
+              <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
+            </View>
 
-          <Text style={styles.progressDetail}>
-            Opgaver indtil i dag: {performanceMetrics.completedTasksToday} / {performanceMetrics.totalTasksToday}
-          </Text>
-          <View style={styles.progressBar}>
-            <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
-          </View>
+            <Text style={styles.progressDetail}>
+              Opgaver indtil i dag: {performanceMetrics.completedTasksToday} / {performanceMetrics.totalTasksToday}
+            </Text>
+            <View style={styles.progressBar}>
+              <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
+            </View>
 
-          <Text style={styles.progressDetail}>
-            Hele ugen: {performanceMetrics.completedTasksWeek} / {performanceMetrics.totalTasksWeek} opgaver
-          </Text>
+            <Text style={styles.progressDetail}>
+              Hele ugen: {performanceMetrics.completedTasksWeek} / {performanceMetrics.totalTasksWeek} opgaver
+            </Text>
 
-          <Text style={styles.motivationText}>
-            {performanceMetrics.motivationText}
-          </Text>
-        </LinearGradient>
+            <Text style={styles.motivationText}>
+              {performanceMetrics.motivationText}
+            </Text>
+          </LinearGradient>
+        ) : null}
 
         {/* Create Activity Button */}
         <Pressable 
@@ -339,13 +346,15 @@ export default function HomeScreen() {
           <Text style={styles.createButtonText}>+  Opret Aktivitet</Text>
         </Pressable>
 
-        {/* Se Performance Button - Duplicate of Create Activity Button */}
-        <Pressable 
-          style={styles.createButton}
-          onPress={() => router.push('/(tabs)/performance')}
-        >
-          <Text style={styles.createButtonText}>📊 Se performance</Text>
-        </Pressable>
+        {/* Se Performance Button - ONLY FOR PLAYERS */}
+        {isPlayer ? (
+          <Pressable 
+            style={styles.createButton}
+            onPress={() => router.push('/(tabs)/performance')}
+          >
+            <Text style={styles.createButtonText}>📊 Se performance</Text>
+          </Pressable>
+        ) : null}
 
         {/* TIDLIGERE Section - Collapsible */}
         {previousByWeek.length > 0 ? (

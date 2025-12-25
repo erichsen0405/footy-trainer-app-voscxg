@@ -1,10 +1,12 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { ScrollView, View, Text, StyleSheet, Pressable, Platform, RefreshControl } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
 import { useFootball } from '@/contexts/FootballContext';
+import { useUserRole } from '@/hooks/useUserRole';
 import ActivityCard from '@/components/ActivityCard';
 import CreateActivityModal from '@/components/CreateActivityModal';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -54,6 +56,7 @@ function getPerformanceGradient(percentage: number): string[] {
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { userRole } = useUserRole();
   const { activities, loading, refresh: refreshActivities } = useHomeActivities();
   const { categories, createActivity, refreshData, currentWeekStats } = useFootball();
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -63,6 +66,9 @@ export default function HomeScreen() {
 
   const currentWeekNumber = getWeek(new Date(), { weekStartsOn: 1, locale: da });
   const currentWeekLabel = getWeekLabel(new Date());
+
+  // Check if user is a player (not admin/trainer)
+  const isPlayer = userRole === 'player';
 
   // Reset "TIDLIGERE" section when loading starts (pull-to-refresh or navigation back)
   useEffect(() => {
@@ -252,23 +258,26 @@ export default function HomeScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loading}>
+      <SafeAreaView style={styles.loading} edges={['top']}>
         <Text style={styles.loadingText}>Indlæser…</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <>
+    <SafeAreaView
+      style={{ flex: 1 }}
+      edges={['top']}
+    >
+      <StatusBar barStyle="dark-content" />
+      
       <ScrollView 
-        style={styles.container} 
-        contentContainerStyle={styles.contentContainer}
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
             tintColor={colors.text}
-            colors={[colors.text]}
           />
         }
       >
@@ -291,52 +300,43 @@ export default function HomeScreen() {
           <Text style={styles.weekHeaderSubtitle}>{currentWeekLabel}</Text>
         </View>
 
-        {/* Weekly Progress Card with Dynamic Gradient */}
-        <View style={styles.progressCardContainer}>
-          <Pressable 
-            onPress={() => router.push('/(tabs)/performance')}
-            style={styles.pressableWrapper}
+        {/* ========== PERFORMANCE CARD - ONLY FOR PLAYERS ========== */}
+        {isPlayer ? (
+          <LinearGradient
+            colors={performanceMetrics.gradientColors}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.performanceCard}
           >
-            <LinearGradient
-              colors={performanceMetrics.gradientColors}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.progressCard}
-            >
-              <View style={styles.progressHeader}>
-                <Text style={styles.progressLabel}>DENNE UGE</Text>
-                <View style={styles.medalBadge}>
-                  <Text style={styles.medalIcon}>{performanceMetrics.trophyEmoji}</Text>
-                </View>
+            <View style={styles.progressHeader}>
+              <Text style={styles.progressLabel}>DENNE UGE</Text>
+              <View style={styles.medalBadge}>
+                <Text style={styles.medalIcon}>{performanceMetrics.trophyEmoji}</Text>
               </View>
-              
-              <Text style={styles.progressPercentage}>{performanceMetrics.percentageUpToToday}%</Text>
-              
-              <View style={styles.progressBar}>
-                <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
-              </View>
+            </View>
+            
+            <Text style={styles.progressPercentage}>{performanceMetrics.percentageUpToToday}%</Text>
+            
+            <View style={styles.progressBar}>
+              <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
+            </View>
 
-              <Text style={styles.progressDetail}>
-                Opgaver indtil i dag: {performanceMetrics.completedTasksToday} / {performanceMetrics.totalTasksToday}
-              </Text>
-              <View style={styles.progressBar}>
-                <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
-              </View>
+            <Text style={styles.progressDetail}>
+              Opgaver indtil i dag: {performanceMetrics.completedTasksToday} / {performanceMetrics.totalTasksToday}
+            </Text>
+            <View style={styles.progressBar}>
+              <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
+            </View>
 
-              <Text style={styles.progressDetail}>
-                Hele ugen: {performanceMetrics.completedTasksWeek} / {performanceMetrics.totalTasksWeek} opgaver
-              </Text>
+            <Text style={styles.progressDetail}>
+              Hele ugen: {performanceMetrics.completedTasksWeek} / {performanceMetrics.totalTasksWeek} opgaver
+            </Text>
 
-              <Text style={styles.motivationText}>
-                {performanceMetrics.motivationText}
-              </Text>
-
-              <View style={styles.performanceButton}>
-                <Text style={styles.performanceButtonText}>📊  Se Performance  →</Text>
-              </View>
-            </LinearGradient>
-          </Pressable>
-        </View>
+            <Text style={styles.motivationText}>
+              {performanceMetrics.motivationText}
+            </Text>
+          </LinearGradient>
+        ) : null}
 
         {/* Create Activity Button */}
         <Pressable 
@@ -346,8 +346,18 @@ export default function HomeScreen() {
           <Text style={styles.createButtonText}>+  Opret Aktivitet</Text>
         </Pressable>
 
+        {/* Se Performance Button - ONLY FOR PLAYERS */}
+        {isPlayer ? (
+          <Pressable 
+            style={styles.createButton}
+            onPress={() => router.push('/(tabs)/performance')}
+          >
+            <Text style={styles.createButtonText}>📊 Se performance</Text>
+          </Pressable>
+        ) : null}
+
         {/* TIDLIGERE Section - Collapsible */}
-        {previousByWeek.length > 0 && (
+        {previousByWeek.length > 0 ? (
           <View style={styles.section}>
             <Pressable onPress={togglePreviousExpanded}>
               <View style={styles.sectionTitleContainer}>
@@ -363,7 +373,7 @@ export default function HomeScreen() {
               </View>
             </Pressable>
 
-            {isPreviousExpanded && (
+            {isPreviousExpanded ? (
               <>
                 {visiblePreviousWeeks.map((weekGroup, weekIndex) => (
                   <View key={`previous-week-${weekGroup.weekStart.toISOString()}`} style={styles.weekGroup}>
@@ -385,7 +395,7 @@ export default function HomeScreen() {
                 ))}
 
                 {/* Load More Button - Show if there are more weeks to load */}
-                {showPreviousWeeks < previousByWeek.length && (
+                {showPreviousWeeks < previousByWeek.length ? (
                   <Pressable 
                     style={styles.loadMoreButton}
                     onPress={handleLoadMorePrevious}
@@ -394,11 +404,11 @@ export default function HomeScreen() {
                       {showPreviousWeeks === 0 ? 'Hent tidligere uger' : 'Hent en uge mere'}
                     </Text>
                   </Pressable>
-                )}
+                ) : null}
               </>
-            )}
+            ) : null}
           </View>
-        )}
+        ) : null}
 
         {/* I DAG Section */}
         <View style={styles.section}>
@@ -407,23 +417,25 @@ export default function HomeScreen() {
             <Text style={styles.sectionTitle}>I DAG</Text>
           </View>
 
-          {todayActivities.length === 0 && (
+          {todayActivities.length === 0 ? (
             <Text style={styles.emptyText}>Ingen aktiviteter i dag</Text>
-          )}
+          ) : null}
 
           {todayActivities.map((activity) => (
-            <View key={activity.id} style={styles.activityWrapper}>
-              <ActivityCard
-                activity={activity}
-                resolvedDate={activity.__resolvedDateTime}
-                showTasks={true}
-              />
-            </View>
+            <React.Fragment key={activity.id}>
+              <View style={styles.activityWrapper}>
+                <ActivityCard
+                  activity={activity}
+                  resolvedDate={activity.__resolvedDateTime}
+                  showTasks={true}
+                />
+              </View>
+            </React.Fragment>
           ))}
         </View>
 
         {/* KOMMENDE Section */}
-        {upcomingByWeek.length > 0 && (
+        {upcomingByWeek.length > 0 ? (
           <View style={styles.section}>
             <View style={styles.sectionTitleContainer}>
               <View style={styles.greenMarker} />
@@ -449,21 +461,23 @@ export default function HomeScreen() {
               </View>
             ))}
           </View>
-        )}
+        ) : null}
 
         {/* Bottom spacing for tab bar */}
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
       {/* Create Activity Modal */}
-      <CreateActivityModal
-        visible={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        onCreateActivity={handleCreateActivity}
-        categories={categories}
-        onRefreshCategories={refreshData}
-      />
-    </>
+      {showCreateModal ? (
+        <CreateActivityModal
+          visible={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          onCreateActivity={handleCreateActivity}
+          categories={categories}
+          onRefreshCategories={refreshData}
+        />
+      ) : null}
+    </SafeAreaView>
   );
 }
 
@@ -473,13 +487,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   contentContainer: {
-    paddingTop: Platform.OS === 'android' ? 48 : 0,
+    paddingTop: 0,
   },
   loading: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
+    backgroundColor: '#FFFFFF',
   },
   loadingText: {
     fontSize: 16,
@@ -490,7 +505,8 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: '#2C3E50',
     paddingHorizontal: 20,
-    paddingVertical: 32,
+    paddingTop: Platform.OS === 'android' ? 48 : 16,
+    paddingBottom: 32,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -548,16 +564,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
 
-  // Progress Card Container
-  progressCardContainer: {
+  // ========== PERFORMANCE CARD - CLOSED VISUAL UNIT ==========
+  performanceCard: {
     marginHorizontal: 16,
     marginTop: 8,
-    marginBottom: 16,
-  },
-  pressableWrapper: {
-    borderRadius: 24,
-  },
-  progressCard: {
     borderRadius: 24,
     padding: 24,
     boxShadow: '0px 6px 20px rgba(0, 0, 0, 0.25)',
@@ -617,21 +627,8 @@ const styles = StyleSheet.create({
     marginTop: 20,
     lineHeight: 22,
   },
-  performanceButton: {
-    backgroundColor: 'rgba(0, 0, 0, 0.25)',
-    borderRadius: 14,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    marginTop: 20,
-    alignItems: 'center',
-  },
-  performanceButtonText: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
 
-  // Create Button
+  // Create Button (now used for both buttons)
   createButton: {
     backgroundColor: '#4CAF50',
     marginHorizontal: 16,
