@@ -1,10 +1,9 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { ScrollView, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
 import { useFootball } from '@/contexts/FootballContext';
 import ActivityCard from '@/components/ActivityCard';
@@ -56,7 +55,7 @@ function getPerformanceGradient(percentage: number): string[] {
 
 export default function HomeScreen() {
   const router = useRouter();
-  const tabBarHeight = useBottomTabBarHeight();
+  const insets = useSafeAreaInsets();
   const { activities, loading, refresh: refreshActivities } = useHomeActivities();
   const { categories, createActivity, refreshData, currentWeekStats } = useFootball();
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -455,7 +454,7 @@ export default function HomeScreen() {
       </ScrollView>
 
       {/* ========== CTA BUTTON - OUTSIDE SCROLLVIEW ========== */}
-      <View style={[styles.performanceCtaWrapper, { marginBottom: tabBarHeight }]}>
+      <View style={[styles.performanceCtaWrapper, { marginBottom: insets.bottom + 12 }]}>
         <Pressable 
           onPress={() => {
             console.log('[Home iOS] Performance CTA pressed');
