@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { ScrollView, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
@@ -55,7 +55,6 @@ function getPerformanceGradient(percentage: number): string[] {
 
 export default function HomeScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { activities, loading, refresh: refreshActivities } = useHomeActivities();
   const { categories, createActivity, refreshData, currentWeekStats } = useFootball();
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -268,7 +267,6 @@ export default function HomeScreen() {
       <StatusBar barStyle="dark-content" />
       
       <ScrollView 
-        contentContainerStyle={{ flexGrow: 1 }}
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
@@ -340,6 +338,19 @@ export default function HomeScreen() {
         >
           <Text style={styles.createButtonText}>+  Opret Aktivitet</Text>
         </Pressable>
+
+        {/* ========== SE PERFORMANCE CTA - NOW INSIDE SCROLLVIEW ========== */}
+        <View style={styles.performanceCtaWrapper}>
+          <Pressable 
+            onPress={() => {
+              console.log('[Home iOS] Performance CTA pressed');
+              router.push('/(tabs)/performance');
+            }}
+            hitSlop={8}
+          >
+            <Text style={styles.ctaButtonText}>📊 Se Performance →</Text>
+          </Pressable>
+        </View>
 
         {/* TIDLIGERE Section - Collapsible */}
         {previousByWeek.length > 0 ? (
@@ -451,22 +462,6 @@ export default function HomeScreen() {
         {/* Bottom spacing for tab bar */}
         <View style={styles.bottomSpacer} />
       </ScrollView>
-
-      {/* Spacer to push CTA to bottom */}
-      <View style={{ flex: 1 }} />
-
-      {/* ========== CTA BUTTON - OUTSIDE SCROLLVIEW ========== */}
-      <View style={[styles.performanceCtaWrapper, { marginBottom: insets.bottom + 12 }]}>
-        <Pressable 
-          onPress={() => {
-            console.log('[Home iOS] Performance CTA pressed');
-            router.push('/(tabs)/performance');
-          }}
-          hitSlop={8}
-        >
-          <Text style={styles.ctaButtonText}>📊 Se Performance →</Text>
-        </Pressable>
-      </View>
 
       {/* Create Activity Modal */}
       {showCreateModal ? (
@@ -629,16 +624,22 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
 
-  // ========== CTA WRAPPER - OUTSIDE SCROLLVIEW ==========
+  // ========== CTA WRAPPER - NOW INSIDE SCROLLVIEW ==========
   performanceCtaWrapper: {
     paddingHorizontal: 16,
-    marginTop: 10,
+    marginTop: 8,
+    marginBottom: 8,
   },
   ctaButtonText: {
     fontSize: 17,
     fontWeight: '700',
     color: '#2C3E50',
     textAlign: 'center',
+    paddingVertical: 14,
+    backgroundColor: colors.cardBackground,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
 
   // Create Button
