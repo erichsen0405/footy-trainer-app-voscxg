@@ -262,7 +262,7 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView
-      style={{ flex: 1, paddingBottom: 83 }}
+      style={{ flex: 1 }}
       edges={['top']}
     >
       <StatusBar barStyle="dark-content" />
@@ -452,6 +452,9 @@ export default function HomeScreen() {
         {/* Bottom spacing for tab bar */}
         <View style={styles.bottomSpacer} />
       </ScrollView>
+
+      {/* Spacer to push CTA to bottom */}
+      <View style={{ flex: 1 }} />
 
       {/* ========== CTA BUTTON - OUTSIDE SCROLLVIEW ========== */}
       <View style={[styles.performanceCtaWrapper, { marginBottom: insets.bottom + 12 }]}>
