@@ -661,45 +661,33 @@ export default function LibraryScreen() {
           onPress: async () => {
             setProcessing(true);
             try {
-              console.log('🗑️ Library: Deleting exercise:', exercise.id);
-
               // STEP 1: Delete all exercise_assignments first
-              console.log('🗑️ Library: Deleting assignments for exercise:', exercise.id);
               const { error: assignmentsError } = await supabase
                 .from('exercise_assignments')
                 .delete()
                 .eq('exercise_id', exercise.id);
 
               if (assignmentsError) {
-                console.error('❌ Library: Error deleting assignments:', assignmentsError);
                 throw assignmentsError;
               }
-              console.log('✅ Library: Assignments deleted successfully');
 
               // STEP 2: Delete the exercise from exercise_library
-              console.log('🗑️ Library: Deleting exercise from library:', exercise.id);
               const { error: exerciseError } = await supabase
                 .from('exercise_library')
                 .delete()
                 .eq('id', exercise.id);
 
               if (exerciseError) {
-                console.error('❌ Library: Error deleting exercise:', exerciseError);
                 throw exerciseError;
               }
-              console.log('✅ Library: Exercise deleted successfully');
 
+              // STEP 3: Optimistic local state update
+              setPersonalExercises(prev => prev.filter(t => t.id !== exercise.id));
+
+              setProcessing(false);
               Alert.alert('Succes', 'Øvelse slettet');
-
-              // STEP 3: Refetch library data to update UI
-              if (currentUserId) {
-                console.log('🔄 Library: Refreshing library data after delete');
-                await fetchLibraryData(currentUserId);
-              }
             } catch (error: any) {
-              console.error('❌ Library: Error deleting exercise:', error);
               Alert.alert('Fejl', 'Kunne ikke slette øvelse: ' + error.message);
-            } finally {
               setProcessing(false);
             }
           },
