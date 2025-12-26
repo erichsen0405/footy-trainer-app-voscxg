@@ -118,6 +118,7 @@ export default function LibraryScreen() {
   const [showModal, setShowModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showVideoModal, setShowVideoModal] = useState(false);
+  const [showRevokeModal, setShowRevokeModal] = useState(false);
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -255,12 +256,18 @@ export default function LibraryScreen() {
             }
           }
 
+          // DEL 3: Add player names to assignments for revoke modal
+          const assignmentsWithNames = exerciseAssignments.map(assignment => ({
+            ...assignment,
+            player_name: assignment.player_id ? playerNamesMap[assignment.player_id] || 'Ukendt' : undefined,
+          }));
+
           return {
             ...exercise,
             created_at: new Date(exercise.created_at),
             updated_at: new Date(exercise.updated_at),
             subtasks: (subtasksResult.data || []).filter(s => s.exercise_id === exercise.id),
-            assignments: exerciseAssignments,
+            assignments: assignmentsWithNames,
             isAssignedByCurrentTrainer: true,
             assignmentSummary,
           };
@@ -564,7 +571,7 @@ export default function LibraryScreen() {
             title,
             description: description || null,
             video_url: videoUrl.trim() || null,
-            is_system: false, // FIX: Explicitly set is_system to false
+            is_system: false,
           })
           .select()
           .single();
@@ -718,7 +725,7 @@ export default function LibraryScreen() {
           title: `${exercise.title} (kopi)`,
           description: exercise.description,
           video_url: exercise.video_url,
-          is_system: false, // FIX: Explicitly set is_system to false
+          is_system: false,
         })
         .select()
         .single();
@@ -950,6 +957,127 @@ export default function LibraryScreen() {
     );
   };
 
+  // DEL 3: Open revoke modal to show assignments
+  const openRevokeModal = (exercise: Exercise) => {
+    if (!isAdmin) {
+      Alert.alert('Ikke tilladt', 'Kun trænere kan tilbagekalde øvelser');
+      return;
+    }
+
+    if (!exercise.assignments || exercise.assignments.length === 0) {
+      Alert.alert('Info', 'Denne øvelse er ikke tildelt nogen spillere');
+      return;
+    }
+
+    setSelectedExercise(exercise);
+    setShowRevokeModal(true);
+  };
+
+  // DEL 3: Handler to revoke exercise from one player
+  const handleRevokeFromPlayer = async (playerId: string, playerName: string) => {
+    if (!selectedExercise || !currentUserId) return;
+
+    Alert.alert(
+      'Tilbagekald øvelse',
+      `Er du sikker på at du vil tilbagekalde "${selectedExercise.title}" fra ${playerName}?`,
+      [
+        { text: 'Annuller', style: 'cancel' },
+        {
+          text: 'Tilbagekald',
+          style: 'destructive',
+          onPress: async () => {
+            setProcessing(true);
+            try {
+              console.log('🔄 Library: Revoking exercise from player:', playerId);
+
+              const { error: deleteError } = await supabase
+                .from('exercise_assignments')
+                .delete()
+                .eq('exercise_id', selectedExercise.id)
+                .eq('player_id', playerId);
+
+              if (deleteError) {
+                console.error('❌ Library: Error revoking assignment:', deleteError);
+                throw deleteError;
+              }
+
+              console.log('✅ Library: Assignment revoked successfully');
+              Alert.alert('Succes', `Øvelse tilbagekaldt fra ${playerName}`);
+
+              // Refetch library data to update UI
+              if (currentUserId) {
+                console.log('🔄 Library: Refreshing library data after revoke');
+                await fetchLibraryData(currentUserId);
+              }
+
+              // Close modal if no more assignments
+              const remainingAssignments = selectedExercise.assignments.filter(a => a.player_id !== playerId);
+              if (remainingAssignments.length === 0) {
+                setShowRevokeModal(false);
+              }
+            } catch (error: any) {
+              console.error('❌ Library: Error revoking exercise:', error);
+              Alert.alert('Fejl', 'Kunne ikke tilbagekalde øvelse: ' + error.message);
+            } finally {
+              setProcessing(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // DEL 3: Handler to revoke exercise from all players
+  const handleRevokeFromAll = async () => {
+    if (!selectedExercise || !currentUserId) return;
+
+    const assignmentCount = selectedExercise.assignments.length;
+
+    Alert.alert(
+      'Tilbagekald fra alle',
+      `Er du sikker på at du vil tilbagekalde "${selectedExercise.title}" fra alle ${assignmentCount} spillere?`,
+      [
+        { text: 'Annuller', style: 'cancel' },
+        {
+          text: 'Tilbagekald alle',
+          style: 'destructive',
+          onPress: async () => {
+            setProcessing(true);
+            try {
+              console.log('🔄 Library: Revoking exercise from all players');
+
+              const { error: deleteError } = await supabase
+                .from('exercise_assignments')
+                .delete()
+                .eq('exercise_id', selectedExercise.id);
+
+              if (deleteError) {
+                console.error('❌ Library: Error revoking all assignments:', deleteError);
+                throw deleteError;
+              }
+
+              console.log('✅ Library: All assignments revoked successfully');
+              Alert.alert('Succes', `Øvelse tilbagekaldt fra alle spillere`);
+
+              // Refetch library data to update UI
+              if (currentUserId) {
+                console.log('🔄 Library: Refreshing library data after revoke all');
+                await fetchLibraryData(currentUserId);
+              }
+
+              setShowRevokeModal(false);
+            } catch (error: any) {
+              console.error('❌ Library: Error revoking exercise from all:', error);
+              Alert.alert('Fejl', 'Kunne ikke tilbagekalde øvelse: ' + error.message);
+            } finally {
+              setProcessing(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const openVideoModal = (url: string) => {
     setSelectedVideoUrl(url);
     setShowVideoModal(true);
@@ -1113,9 +1241,15 @@ export default function LibraryScreen() {
             // Trainer view: Show assignment summary + action buttons
             <React.Fragment>
               <View style={styles.footerLeft}>
-                {exercise.assignmentSummary && (
-                  <Text style={[styles.statusText, { color: colors.secondary }]}>
-                    {exercise.assignmentSummary}
+                {exercise.assignmentSummary ? (
+                  <TouchableOpacity onPress={() => openRevokeModal(exercise)} disabled={processing}>
+                    <Text style={[styles.statusText, { color: colors.secondary }]}>
+                      {exercise.assignmentSummary}
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  <Text style={[styles.statusText, { color: textSecondaryColor }]}>
+                    Ikke kopieret
                   </Text>
                 )}
               </View>
@@ -1653,6 +1787,126 @@ export default function LibraryScreen() {
         </View>
       </Modal>
 
+      {/* DEL 3: Revoke Exercise Modal */}
+      <Modal
+        visible={showRevokeModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowRevokeModal(false)}
+      >
+        <View style={[styles.modalContainer, { backgroundColor: bgColor }]}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setShowRevokeModal(false)}>
+              <IconSymbol
+                ios_icon_name="xmark"
+                android_material_icon_name="close"
+                size={24}
+                color={textColor}
+              />
+            </TouchableOpacity>
+            <Text style={[styles.modalTitle, { color: textColor }]}>Tilbagekald øvelse</Text>
+            <View style={{ width: 24 }} />
+          </View>
+
+          <ScrollView style={styles.modalContent}>
+            {selectedExercise && (
+              <>
+                <Text style={[styles.sectionTitle, { color: textColor }]}>
+                  {selectedExercise.title}
+                </Text>
+                <Text style={[styles.revokeSubtitle, { color: textSecondaryColor, marginBottom: 20 }]}>
+                  Vælg hvem du vil tilbagekalde øvelsen fra
+                </Text>
+
+                {/* Revoke from all button (if more than 1 assignment) */}
+                {selectedExercise.assignments.length > 1 && (
+                  <TouchableOpacity
+                    style={[styles.revokeAllButton, { backgroundColor: colors.error }]}
+                    onPress={handleRevokeFromAll}
+                    disabled={processing}
+                    activeOpacity={0.7}
+                  >
+                    <IconSymbol
+                      ios_icon_name="person.2.slash"
+                      android_material_icon_name="group_remove"
+                      size={24}
+                      color="#fff"
+                    />
+                    <Text style={styles.revokeAllButtonText}>
+                      Tilbagekald fra alle ({selectedExercise.assignments.length} spillere)
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                <Text style={[styles.sectionTitle, { color: textColor, marginTop: 24 }]}>
+                  Tildelt til
+                </Text>
+
+                {/* List of assigned players */}
+                {selectedExercise.assignments
+                  .filter(a => a.player_id)
+                  .map((assignment) => (
+                    <TouchableOpacity
+                      key={assignment.id}
+                      style={[styles.revokeCard, { backgroundColor: cardBgColor }]}
+                      onPress={() => handleRevokeFromPlayer(assignment.player_id!, assignment.player_name || 'Ukendt')}
+                      disabled={processing}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.revokeCardLeft}>
+                        <View style={styles.assignIcon}>
+                          <IconSymbol
+                            ios_icon_name="person.fill"
+                            android_material_icon_name="person"
+                            size={24}
+                            color={colors.primary}
+                          />
+                        </View>
+                        <Text style={[styles.assignName, { color: textColor }]}>
+                          {assignment.player_name || 'Ukendt'}
+                        </Text>
+                      </View>
+                      <IconSymbol
+                        ios_icon_name="xmark.circle.fill"
+                        android_material_icon_name="cancel"
+                        size={24}
+                        color={colors.error}
+                      />
+                    </TouchableOpacity>
+                  ))}
+
+                {/* List of assigned teams */}
+                {selectedExercise.assignments
+                  .filter(a => a.team_id)
+                  .map((assignment) => (
+                    <View
+                      key={assignment.id}
+                      style={[styles.revokeCard, { backgroundColor: cardBgColor }]}
+                    >
+                      <View style={styles.revokeCardLeft}>
+                        <View style={styles.assignIcon}>
+                          <IconSymbol
+                            ios_icon_name="person.3.fill"
+                            android_material_icon_name="groups"
+                            size={24}
+                            color={colors.primary}
+                          />
+                        </View>
+                        <Text style={[styles.assignName, { color: textColor }]}>
+                          Team: {assignment.team_name || 'Ukendt'}
+                        </Text>
+                      </View>
+                      <Text style={[styles.teamNote, { color: textSecondaryColor }]}>
+                        (Team-tildelinger kan ikke tilbagekaldes individuelt)
+                      </Text>
+                    </View>
+                  ))}
+              </>
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
+
       {/* Video Modal */}
       {selectedVideoUrl && (
         <Modal
@@ -1815,7 +2069,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontStyle: 'italic',
   },
-  // DEL 1: New card structure styles
   exerciseCard: {
     borderRadius: 16,
     padding: 16,
@@ -1906,7 +2159,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
   },
-  // DEL 2: Delete assignment button for players
   deleteAssignmentButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2104,5 +2356,43 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     fontWeight: '600',
+  },
+  // DEL 3: Revoke modal styles
+  revokeSubtitle: {
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  revokeAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  revokeAllButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  revokeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 8,
+    gap: 12,
+  },
+  revokeCardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  teamNote: {
+    fontSize: 12,
+    fontStyle: 'italic',
   },
 });
