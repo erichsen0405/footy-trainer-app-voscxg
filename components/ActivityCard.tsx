@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, TouchableOpacity, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -79,34 +79,29 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
     }
   }, [activity.tasks, activity.id]);
 
-  const handleCardPress = () => {
+  // Memoized card press handler - only navigates, no async work
+  const handleCardPress = useCallback(() => {
     if (onPress) {
       onPress();
     } else {
-      console.log('ActivityCard: Navigating to activity details with id:', activity.id);
       router.push({
         pathname: '/activity-details',
         params: { id: activity.id },
       });
     }
-  };
+  }, [onPress, router, activity.id]);
 
-  const handleTaskPress = (task: any, event: any) => {
-    // Stop propagation to prevent card press
+  // Memoized task press handler
+  const handleTaskPress = useCallback((task: any, event: any) => {
     event.stopPropagation();
-    
-    console.log('ActivityCard: Task pressed, opening TaskDetailsModal');
     setActiveTaskId(task.id);
     setIsTaskModalOpen(true);
-  };
+  }, []);
 
-  const handleToggleTask = async (taskId: string, event: any) => {
-    // Stop propagation to prevent card press
+  // Memoized toggle task handler
+  const handleToggleTask = useCallback(async (taskId: string, event: any) => {
     event.stopPropagation();
     
-    console.log('ActivityCard: Toggling task:', taskId);
-    
-    // Find the task
     const taskIndex = optimisticTasks.findIndex(t => t.id === taskId);
     if (taskIndex === -1) {
       console.error('Task not found:', taskId);
@@ -122,11 +117,7 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
     setOptimisticTasks(newTasks);
     
     try {
-      // Backend call
       await toggleTaskCompletion(activity.id, taskId);
-      console.log('✅ Task toggled successfully');
-      
-      // Refresh data to sync with backend
       refreshData();
     } catch (error) {
       console.error('❌ Error toggling task, rolling back:', error);
@@ -136,7 +127,14 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
       rollbackTasks[taskIndex] = { ...task, completed: previousCompleted };
       setOptimisticTasks(rollbackTasks);
     }
-  };
+  }, [optimisticTasks, activity.id, toggleTaskCompletion, refreshData]);
+
+  // Memoized modal close handler
+  const handleModalClose = useCallback(() => {
+    setIsTaskModalOpen(false);
+    setActiveTaskId(null);
+    refreshData();
+  }, [refreshData]);
 
   const formatReminderTime = (reminderMinutes: number) => {
     if (!reminderMinutes) return null;
@@ -295,12 +293,7 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
       {isTaskModalOpen && activeTaskId && (
         <TaskDetailsModal
           taskId={activeTaskId}
-          onClose={() => {
-            setIsTaskModalOpen(false);
-            setActiveTaskId(null);
-            // Refresh data when modal closes to sync any changes
-            refreshData();
-          }}
+          onClose={handleModalClose}
         />
       )}
     </>
