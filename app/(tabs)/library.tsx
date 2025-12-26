@@ -36,6 +36,7 @@ interface Exercise {
   trainer_name?: string;
   is_system?: boolean;
   category_path?: string;
+  assignmentSummary?: string; // For trainer overview: "Kopieret til 3 spillere" or "Kopieret til: Nohr, Anna"
 }
 
 interface ExerciseSubtask {
@@ -184,21 +185,53 @@ export default function LibraryScreen() {
             .order('sort_order', { ascending: true }),
           supabase
             .from('exercise_assignments')
-            .select('*')
+            .select('*, profiles!exercise_assignments_player_id_fkey(full_name)')
             .in('exercise_id', exerciseIds)
         ]);
 
         if (subtasksResult.error) throw subtasksResult.error;
         if (assignmentsResult.error) throw assignmentsResult.error;
 
-        const exercisesWithDetails: Exercise[] = (exercisesResult.data || []).map(exercise => ({
-          ...exercise,
-          created_at: new Date(exercise.created_at),
-          updated_at: new Date(exercise.updated_at),
-          subtasks: (subtasksResult.data || []).filter(s => s.exercise_id === exercise.id),
-          assignments: (assignmentsResult.data || []).filter(a => a.exercise_id === exercise.id),
-          isAssignedByCurrentTrainer: true,
-        }));
+        // DEL 2: Build assignment summary for each exercise
+        const exercisesWithDetails: Exercise[] = (exercisesResult.data || []).map(exercise => {
+          const exerciseAssignments = (assignmentsResult.data || []).filter(a => a.exercise_id === exercise.id);
+          
+          let assignmentSummary = '';
+          if (exerciseAssignments.length > 0) {
+            const playerAssignments = exerciseAssignments.filter(a => a.player_id);
+            const teamAssignments = exerciseAssignments.filter(a => a.team_id);
+            
+            if (playerAssignments.length > 0) {
+              if (playerAssignments.length <= 2) {
+                // Show names for 1-2 players
+                const names = playerAssignments
+                  .map(a => (a.profiles as any)?.full_name || 'Ukendt')
+                  .join(', ');
+                assignmentSummary = `Kopieret til: ${names}`;
+              } else {
+                // Show count for 3+ players
+                assignmentSummary = `Kopieret til ${playerAssignments.length} spillere`;
+              }
+            }
+            
+            if (teamAssignments.length > 0) {
+              const teamText = teamAssignments.length === 1 ? '1 team' : `${teamAssignments.length} teams`;
+              assignmentSummary = assignmentSummary 
+                ? `${assignmentSummary} + ${teamText}`
+                : `Kopieret til ${teamText}`;
+            }
+          }
+
+          return {
+            ...exercise,
+            created_at: new Date(exercise.created_at),
+            updated_at: new Date(exercise.updated_at),
+            subtasks: (subtasksResult.data || []).filter(s => s.exercise_id === exercise.id),
+            assignments: exerciseAssignments,
+            isAssignedByCurrentTrainer: true,
+            assignmentSummary,
+          };
+        });
 
         console.log('✅ Library: Loaded personal exercises:', exercisesWithDetails.length);
         setPersonalExercises(exercisesWithDetails);
@@ -847,6 +880,12 @@ export default function LibraryScreen() {
               {exercise.trainer_name && (
                 <Text style={[styles.trainerName, { color: textSecondaryColor }]}>
                   Fra: {exercise.trainer_name}
+                </Text>
+              )}
+              {/* DEL 2: Show assignment summary for trainers */}
+              {isAdmin && exercise.assignmentSummary && (
+                <Text style={[styles.assignmentSummary, { color: colors.secondary }]}>
+                  {exercise.assignmentSummary}
                 </Text>
               )}
             </View>
@@ -1631,6 +1670,11 @@ const styles = StyleSheet.create({
   trainerName: {
     fontSize: 14,
     fontStyle: 'italic',
+  },
+  assignmentSummary: {
+    fontSize: 13,
+    fontWeight: '500',
+    marginTop: 2,
   },
   exerciseActions: {
     flexDirection: 'row',
