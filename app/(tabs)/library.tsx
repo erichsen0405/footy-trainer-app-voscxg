@@ -36,7 +36,7 @@ interface Exercise {
   trainer_name?: string;
   is_system?: boolean;
   category_path?: string;
-  assignmentSummary?: string; // For trainer overview: "Kopieret til 3 spillere" or "Kopieret til: Nohr, Anna"
+  assignmentSummary?: string;
 }
 
 interface ExerciseSubtask {
@@ -154,12 +154,13 @@ export default function LibraryScreen() {
       if (isAdmin) {
         // TRAINERS: Parallel fetch for exercises and related data
         const [exercisesResult, systemExercisesResult] = await Promise.all([
-          // Fetch trainer's own exercises
+          // DEL 2 FIX: Fetch trainer's own exercises (personal templates)
+          // Removed is_system filter to ensure we get all trainer's exercises
           supabase
             .from('exercise_library')
             .select('*')
             .eq('trainer_id', userId)
-            .eq('is_system', false)
+            .or('is_system.is.null,is_system.eq.false')
             .order('created_at', { ascending: false }),
           // Fetch system exercises in parallel
           supabase
@@ -169,8 +170,17 @@ export default function LibraryScreen() {
             .order('created_at', { ascending: true })
         ]);
 
-        if (exercisesResult.error) throw exercisesResult.error;
-        if (systemExercisesResult.error) throw systemExercisesResult.error;
+        if (exercisesResult.error) {
+          console.error('❌ Library: Error fetching trainer exercises:', exercisesResult.error);
+          throw exercisesResult.error;
+        }
+        if (systemExercisesResult.error) {
+          console.error('❌ Library: Error fetching system exercises:', systemExercisesResult.error);
+          throw systemExercisesResult.error;
+        }
+
+        console.log('✅ Library: Fetched trainer exercises:', exercisesResult.data?.length || 0);
+        console.log('✅ Library: Fetched system exercises:', systemExercisesResult.data?.length || 0);
 
         const exerciseIds = exercisesResult.data?.map(e => e.id) || [];
         const systemExerciseIds = systemExercisesResult.data?.map(e => e.id) || [];
@@ -855,60 +865,140 @@ export default function LibraryScreen() {
     }
   };
 
+  // DEL 1: Helper function to get source label
+  const getSourceLabel = (exercise: Exercise): string => {
+    if (exercise.is_system) {
+      return 'Fra: FootballCoach';
+    } else if (exercise.trainer_name) {
+      return `Fra: ${exercise.trainer_name}`;
+    } else {
+      return 'Fra: Mig';
+    }
+  };
+
+  // DEL 1: Helper function to truncate text with ellipsis
+  const truncateText = (text: string, maxLines: number): string => {
+    const lines = text.split('\n');
+    if (lines.length > maxLines) {
+      return lines.slice(0, maxLines).join('\n') + '...';
+    }
+    return text;
+  };
+
   const renderExerciseCard = (exercise: Exercise, isReadOnly: boolean = false) => {
     // System exercises are always read-only
     const isSystemExercise = exercise.is_system === true;
     const shouldBeReadOnly = isReadOnly || isSystemExercise;
+
+    // DEL 1: Get source label
+    const sourceLabel = getSourceLabel(exercise);
+
+    // DEL 1: Prepare description (max 3 lines)
+    let displayDescription = '';
+    if (exercise.description) {
+      if (isSystemExercise) {
+        // For system exercises, show first 3 focus points
+        const lines = exercise.description.split('\n').filter(line => line.trim());
+        displayDescription = lines.slice(0, 3).join('\n');
+        if (lines.length > 3) {
+          displayDescription += '\n...';
+        }
+      } else {
+        // For regular exercises, truncate to 3 lines
+        displayDescription = truncateText(exercise.description, 3);
+      }
+    }
 
     return (
       <View 
         key={exercise.id} 
         style={[styles.exerciseCard, { backgroundColor: cardBgColor }]}
       >
-        <View style={styles.exerciseHeader}>
-          <View style={styles.exerciseHeaderLeft}>
-            <IconSymbol
-              ios_icon_name="book.fill"
-              android_material_icon_name="menu_book"
-              size={24}
-              color={colors.primary}
-            />
-            <View style={styles.exerciseTitleContainer}>
-              <Text style={[styles.exerciseTitle, { color: textColor }]}>
-                {exercise.title}
-              </Text>
-              {exercise.trainer_name && (
-                <Text style={[styles.trainerName, { color: textSecondaryColor }]}>
-                  Fra: {exercise.trainer_name}
-                </Text>
-              )}
-              {/* DEL 2: Show assignment summary for trainers */}
-              {isAdmin && exercise.assignmentSummary && (
-                <Text style={[styles.assignmentSummary, { color: colors.secondary }]}>
-                  {exercise.assignmentSummary}
-                </Text>
-              )}
-            </View>
+        {/* DEL 1: HEADER - Title + Source */}
+        <View style={styles.cardHeader}>
+          <View style={styles.cardHeaderContent}>
+            <Text 
+              style={[styles.cardTitle, { color: textColor }]}
+              numberOfLines={2}
+              ellipsizeMode="tail"
+            >
+              {exercise.title}
+            </Text>
+            <Text style={[styles.cardSource, { color: textSecondaryColor }]}>
+              {sourceLabel}
+            </Text>
           </View>
-          <View style={styles.exerciseActions}>
-            {shouldBeReadOnly ? (
-              <TouchableOpacity
-                style={[styles.actionButton, styles.copyButton, { backgroundColor: colors.primary }]}
-                onPress={() => handleCopyToTasks(exercise)}
-                disabled={processing}
-              >
-                <IconSymbol
-                  ios_icon_name="doc.on.doc"
-                  android_material_icon_name="content_copy"
-                  size={20}
-                  color="#fff"
-                />
-                <Text style={styles.copyButtonText}>Kopiér til mine skabeloner</Text>
-              </TouchableOpacity>
+          <IconSymbol
+            ios_icon_name="book.fill"
+            android_material_icon_name="menu_book"
+            size={20}
+            color={colors.primary}
+          />
+        </View>
+
+        {/* DEL 1: BODY - Description (max 3 lines) */}
+        {displayDescription && (
+          <View style={styles.cardBody}>
+            {isSystemExercise ? (
+              // For system exercises, render as bullet list
+              displayDescription.split('\n').map((line, lineIndex) => {
+                if (!line.trim()) return null;
+                return (
+                  <View key={`${exercise.id}-line-${lineIndex}`} style={styles.focusPointItem}>
+                    <Text style={[styles.focusPointBullet, { color: colors.primary }]}>•</Text>
+                    <Text 
+                      style={[styles.focusPointText, { color: textSecondaryColor }]}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                    >
+                      {line.trim()}
+                    </Text>
+                  </View>
+                );
+              })
             ) : (
-              <>
+              // For regular exercises, render as text
+              <Text 
+                style={[styles.cardDescription, { color: textSecondaryColor }]}
+                numberOfLines={3}
+                ellipsizeMode="tail"
+              >
+                {displayDescription}
+              </Text>
+            )}
+          </View>
+        )}
+
+        {/* DEL 1: FOOTER - CTA or Status */}
+        <View style={styles.cardFooter}>
+          {shouldBeReadOnly ? (
+            // Player view: Show copy button
+            <TouchableOpacity
+              style={[styles.ctaButton, { backgroundColor: colors.primary }]}
+              onPress={() => handleCopyToTasks(exercise)}
+              disabled={processing}
+            >
+              <IconSymbol
+                ios_icon_name="doc.on.doc"
+                android_material_icon_name="content_copy"
+                size={18}
+                color="#fff"
+              />
+              <Text style={styles.ctaButtonText}>Kopiér til mine skabeloner</Text>
+            </TouchableOpacity>
+          ) : (
+            // Trainer view: Show assignment summary + action buttons
+            <React.Fragment>
+              <View style={styles.footerLeft}>
+                {exercise.assignmentSummary && (
+                  <Text style={[styles.statusText, { color: colors.secondary }]}>
+                    {exercise.assignmentSummary}
+                  </Text>
+                )}
+              </View>
+              <View style={styles.footerActions}>
                 <TouchableOpacity
-                  style={styles.actionButton}
+                  style={styles.iconButton}
                   onPress={() => openAssignModal(exercise)}
                   disabled={processing}
                 >
@@ -920,7 +1010,7 @@ export default function LibraryScreen() {
                   />
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={styles.actionButton}
+                  style={styles.iconButton}
                   onPress={() => handleDuplicateExercise(exercise)}
                   disabled={processing}
                 >
@@ -932,7 +1022,7 @@ export default function LibraryScreen() {
                   />
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={styles.actionButton}
+                  style={styles.iconButton}
                   onPress={() => openEditModal(exercise)}
                   disabled={processing}
                 >
@@ -944,7 +1034,7 @@ export default function LibraryScreen() {
                   />
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={styles.actionButton}
+                  style={styles.iconButton}
                   onPress={() => handleDeleteExercise(exercise)}
                   disabled={processing}
                 >
@@ -955,50 +1045,10 @@ export default function LibraryScreen() {
                     color={colors.error}
                   />
                 </TouchableOpacity>
-              </>
-            )}
-          </View>
-        </View>
-
-        {exercise.description && (
-          <View style={styles.descriptionContainer}>
-            {isSystemExercise ? (
-              // For system exercises, render focus points as bullet list
-              exercise.description.split('\n').map((line, lineIndex) => (
-                <View key={`${exercise.id}-line-${lineIndex}`} style={styles.focusPointItem}>
-                  <Text style={[styles.focusPointBullet, { color: colors.primary }]}>•</Text>
-                  <Text style={[styles.focusPointText, { color: textSecondaryColor }]}>
-                    {line.trim()}
-                  </Text>
-                </View>
-              ))
-            ) : (
-              // For regular exercises, render as normal text
-              <Text style={[styles.exerciseDescription, { color: textSecondaryColor }]}>
-                {exercise.description}
-              </Text>
-            )}
-          </View>
-        )}
-
-        {exercise.video_url && (
-          <View style={styles.videoPreviewContainer}>
-            <SmartVideoPlayer url={exercise.video_url} />
-          </View>
-        )}
-
-        {exercise.subtasks.length > 0 && (
-          <View style={styles.subtasksContainer}>
-            <Text style={[styles.subtasksTitle, { color: textColor }]}>Delopgaver:</Text>
-            {exercise.subtasks.map((subtask, index) => (
-              <View key={subtask.id} style={styles.subtaskItem}>
-                <Text style={[styles.subtaskText, { color: textSecondaryColor }]}>
-                  {index + 1}. {subtask.title}
-                </Text>
               </View>
-            ))}
-          </View>
-        )}
+            </React.Fragment>
+          )}
+        </View>
       </View>
     );
   };
@@ -1630,7 +1680,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   exercisesContainer: {
-    gap: 8,
+    gap: 12,
   },
   emptyFolder: {
     padding: 24,
@@ -1642,84 +1692,96 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontStyle: 'italic',
   },
+  // DEL 1: New card structure styles
   exerciseCard: {
     borderRadius: 16,
-    padding: 20,
+    padding: 16,
     marginBottom: 8,
   },
-  exerciseHeader: {
+  cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 12,
-  },
-  exerciseHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
     gap: 12,
+  },
+  cardHeaderContent: {
     flex: 1,
   },
-  exerciseTitleContainer: {
-    flex: 1,
-  },
-  exerciseTitle: {
+  cardTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
+    lineHeight: 24,
     marginBottom: 4,
   },
-  trainerName: {
-    fontSize: 14,
-    fontStyle: 'italic',
-  },
-  assignmentSummary: {
+  cardSource: {
     fontSize: 13,
-    fontWeight: '500',
+    fontStyle: 'italic',
     marginTop: 2,
   },
-  exerciseActions: {
-    flexDirection: 'row',
-    gap: 8,
+  cardBody: {
+    marginBottom: 12,
   },
-  actionButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: colors.highlight,
-  },
-  copyButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-  },
-  copyButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  exerciseDescription: {
+  cardDescription: {
     fontSize: 15,
     lineHeight: 22,
-    marginBottom: 12,
-  },
-  descriptionContainer: {
-    marginBottom: 12,
   },
   focusPointItem: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 8,
+    marginBottom: 6,
     paddingLeft: 4,
   },
   focusPointBullet: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
     marginRight: 8,
     marginTop: -2,
   },
   focusPointText: {
     flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  cardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.highlight,
+  },
+  footerLeft: {
+    flex: 1,
+  },
+  statusText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  footerActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  iconButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: colors.highlight,
+  },
+  ctaButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 10,
+    flex: 1,
+  },
+  ctaButtonText: {
     fontSize: 15,
-    lineHeight: 22,
+    fontWeight: '600',
+    color: '#fff',
   },
   videoPreviewContainer: {
     marginBottom: 12,
