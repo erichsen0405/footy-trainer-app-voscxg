@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, useColorScheme, KeyboardAvoidingView, Platform, RefreshControl, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Modal, useColorScheme, KeyboardAvoidingView, Platform, RefreshControl, Alert } from 'react-native';
 import { useFootball } from '@/contexts/FootballContext';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -101,6 +101,83 @@ function organizeFolders(templateTasks: Task[]): FolderItem[] {
   return newFolders;
 }
 
+// Memoized TaskCard component to prevent unnecessary re-renders
+const TaskCard = React.memo(({ 
+  task, 
+  isDark, 
+  onPress, 
+  onDuplicate, 
+  onDelete, 
+  onVideoPress,
+  getCategoryNames 
+}: {
+  task: Task;
+  isDark: boolean;
+  onPress: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+  onVideoPress: (url: string) => void;
+  getCategoryNames: (categoryIds: string[]) => string;
+}) => (
+  <TouchableOpacity
+    style={[styles.taskCard, { backgroundColor: isDark ? '#2a2a2a' : colors.card }]}
+    onPress={onPress}
+  >
+    <View style={styles.taskHeader}>
+      <View style={styles.taskHeaderLeft}>
+        <IconSymbol ios_icon_name="doc.text" android_material_icon_name="description" size={20} color={colors.secondary} />
+        <View style={styles.checkbox} />
+        <Text style={[styles.taskTitle, { color: isDark ? '#e3e3e3' : colors.text }]}>{task.title}</Text>
+      </View>
+      <View style={styles.taskActions}>
+        <TouchableOpacity onPress={onDuplicate} style={styles.actionButton}>
+          <IconSymbol ios_icon_name="doc.on.doc" android_material_icon_name="content_copy" size={20} color={colors.secondary} />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onPress} style={styles.actionButton}>
+          <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={20} color={colors.accent} />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onDelete} style={styles.actionButton}>
+          <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={20} color={colors.error} />
+        </TouchableOpacity>
+      </View>
+    </View>
+
+    {task.videoUrl && isValidVideoUrl(task.videoUrl) && (
+      <View style={styles.videoPreviewContainer}>
+        <TouchableOpacity
+          style={styles.videoPreviewButton}
+          onPress={() => onVideoPress(task.videoUrl!)}
+          activeOpacity={0.8}
+        >
+          <IconSymbol
+            ios_icon_name="play.circle.fill"
+            android_material_icon_name="play_circle"
+            size={48}
+            color={colors.primary}
+          />
+          <Text style={[styles.videoPreviewText, { color: colors.primary }]}>
+            Afspil video
+          </Text>
+        </TouchableOpacity>
+      </View>
+    )}
+
+    {task.reminder && (
+      <View style={styles.reminderBadge}>
+        <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={14} color={colors.accent} />
+        <Text style={[styles.reminderText, { color: colors.accent }]}>{task.reminder} min før</Text>
+      </View>
+    )}
+
+    <View style={styles.categoriesRow}>
+      <IconSymbol ios_icon_name="tag.fill" android_material_icon_name="label" size={14} color={isDark ? '#999' : colors.textSecondary} />
+      <Text style={[styles.categoriesText, { color: isDark ? '#999' : colors.textSecondary }]}>
+        Vises automatisk på alle {getCategoryNames(task.categoryIds)} aktiviteter
+      </Text>
+    </View>
+  </TouchableOpacity>
+));
+
 export default function TasksScreen() {
   const { tasks, categories, addTask, updateTask, deleteTask, duplicateTask, refreshData } = useFootball();
   const { selectedContext } = useTeamPlayer();
@@ -131,7 +208,6 @@ export default function TasksScreen() {
 
   // Use useMemo to compute folders from tasks - this prevents the render loop
   const folders = useMemo(() => {
-    console.log('Computing folders from template tasks');
     return organizeFolders(templateTasks);
   }, [templateTasks]);
 
@@ -145,12 +221,10 @@ export default function TasksScreen() {
   }, [folders, searchQuery]);
 
   const onRefresh = useCallback(async () => {
-    console.log('Pull to refresh triggered on tasks screen');
     setRefreshing(true);
     
     try {
       await refreshData();
-      console.log('Tasks data refreshed successfully');
     } catch (error) {
       console.error('Error refreshing tasks data:', error);
     } finally {
@@ -217,24 +291,17 @@ export default function TasksScreen() {
     setIsSaving(true);
 
     try {
-      console.log('Updating task template:', selectedTask.id);
-      console.log('Video URL:', videoUrl);
-
-      // CRITICAL FIX: Explicitly set videoUrl to null when empty to ensure deletion
       const taskToSave = {
         ...selectedTask,
         videoUrl: videoUrl.trim() ? videoUrl.trim() : null,
       };
 
       if (isCreating) {
-        console.log('Creating new task template...');
         await addTask(taskToSave);
         Alert.alert('Succes', 'Opgaveskabelon oprettet');
       } else {
-        console.log('Updating existing task template...');
         await updateTask(selectedTask.id, taskToSave);
         
-        console.log('Saving subtasks...');
         await supabase
           .from('task_template_subtasks')
           .delete()
@@ -256,7 +323,6 @@ export default function TasksScreen() {
         Alert.alert('Succes', 'Opgaveskabelon opdateret');
       }
 
-      console.log('Task saved successfully');
       closeTaskModal();
     } catch (error: any) {
       console.error('Error saving task:', error);
@@ -368,7 +434,6 @@ export default function TasksScreen() {
           text: 'Slet',
           style: 'destructive',
           onPress: () => {
-            console.log('🗑️ Deleting video from task template');
             setVideoUrl('');
             Alert.alert('Video fjernet', 'Husk at gemme opgaven for at bekræfte ændringen');
           },
@@ -393,78 +458,39 @@ export default function TasksScreen() {
     }
   }, [subtasks]);
 
+  // Memoized render functions for FlatList
   const renderTaskCard = useCallback((task: Task) => (
-    <TouchableOpacity
+    <TaskCard
       key={task.id}
-      style={[styles.taskCard, { backgroundColor: isDark ? '#2a2a2a' : colors.card }]}
+      task={task}
+      isDark={isDark}
       onPress={() => openTaskModal(task)}
-    >
-      <View style={styles.taskHeader}>
-        <View style={styles.taskHeaderLeft}>
-          <IconSymbol ios_icon_name="doc.text" android_material_icon_name="description" size={20} color={colors.secondary} />
-          <View style={styles.checkbox} />
-          <Text style={[styles.taskTitle, { color: isDark ? '#e3e3e3' : colors.text }]}>{task.title}</Text>
-        </View>
-        <View style={styles.taskActions}>
-          <TouchableOpacity onPress={() => handleDuplicateTask(task.id)} style={styles.actionButton}>
-            <IconSymbol ios_icon_name="doc.on.doc" android_material_icon_name="content_copy" size={20} color={colors.secondary} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => openTaskModal(task)} style={styles.actionButton}>
-            <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={20} color={colors.accent} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => handleDeleteTask(task.id)} style={styles.actionButton}>
-            <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={20} color={colors.error} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {task.videoUrl && isValidVideoUrl(task.videoUrl) && (
-        <View style={styles.videoPreviewContainer}>
-          <TouchableOpacity
-            style={styles.videoPreviewButton}
-            onPress={() => openVideoModal(task.videoUrl!)}
-            activeOpacity={0.8}
-          >
-            <IconSymbol
-              ios_icon_name="play.circle.fill"
-              android_material_icon_name="play_circle"
-              size={48}
-              color={colors.primary}
-            />
-            <Text style={[styles.videoPreviewText, { color: colors.primary }]}>
-              Afspil video
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {task.reminder && (
-        <View style={styles.reminderBadge}>
-          <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={14} color={colors.accent} />
-          <Text style={[styles.reminderText, { color: colors.accent }]}>{task.reminder} min før</Text>
-        </View>
-      )}
-
-      <View style={styles.categoriesRow}>
-        <IconSymbol ios_icon_name="tag.fill" android_material_icon_name="label" size={14} color={isDark ? '#999' : colors.textSecondary} />
-        <Text style={[styles.categoriesText, { color: isDark ? '#999' : colors.textSecondary }]}>
-          Vises automatisk på alle {getCategoryNames(task.categoryIds)} aktiviteter
-        </Text>
-      </View>
-    </TouchableOpacity>
+      onDuplicate={() => handleDuplicateTask(task.id)}
+      onDelete={() => handleDeleteTask(task.id)}
+      onVideoPress={openVideoModal}
+      getCategoryNames={getCategoryNames}
+    />
   ), [isDark, openTaskModal, handleDuplicateTask, handleDeleteTask, openVideoModal, getCategoryNames]);
 
-  const renderFolder = useCallback((folder: FolderItem) => {
-    const isExpanded = expandedFolders.has(folder.id);
+  // Memoized FolderItem component
+  const FolderItemComponent = React.memo(({ 
+    folder, 
+    isExpanded, 
+    onToggle 
+  }: { 
+    folder: FolderItem; 
+    isExpanded: boolean; 
+    onToggle: () => void;
+  }) => {
     const textColor = isDark ? '#e3e3e3' : colors.text;
     const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
     const cardBgColor = isDark ? '#2a2a2a' : colors.card;
 
     return (
-      <React.Fragment key={folder.id}>
+      <View>
         <TouchableOpacity
           style={[styles.folderHeader, { backgroundColor: cardBgColor }]}
-          onPress={() => toggleFolder(folder.id)}
+          onPress={onToggle}
         >
           <View style={styles.folderHeaderLeft}>
             <IconSymbol
@@ -490,16 +516,32 @@ export default function TasksScreen() {
 
         {isExpanded && (
           <View style={styles.folderContent}>
-            {folder.tasks.map(task => (
-              <View key={task.id}>
-                {renderTaskCard(task)}
-              </View>
-            ))}
+            <FlatList
+              data={folder.tasks}
+              renderItem={({ item }) => renderTaskCard(item)}
+              keyExtractor={(item) => item.id}
+              scrollEnabled={false}
+              removeClippedSubviews={Platform.OS !== 'web'}
+              initialNumToRender={5}
+              maxToRenderPerBatch={5}
+              windowSize={5}
+            />
           </View>
         )}
-      </React.Fragment>
+      </View>
     );
-  }, [expandedFolders, isDark, toggleFolder, renderTaskCard]);
+  });
+
+  const renderFolder = useCallback(({ item }: { item: FolderItem }) => {
+    const isExpanded = expandedFolders.has(item.id);
+    return (
+      <FolderItemComponent
+        folder={item}
+        isExpanded={isExpanded}
+        onToggle={() => toggleFolder(item.id)}
+      />
+    );
+  }, [expandedFolders, toggleFolder]);
 
   const bgColor = isDark ? '#1a1a1a' : colors.background;
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
@@ -509,8 +551,8 @@ export default function TasksScreen() {
   const isManagingContext = isAdmin && selectedContext.type;
   const containerBgColor = isManagingContext ? themeColors.contextWarning : bgColor;
 
-  return (
-    <View style={[styles.container, { backgroundColor: containerBgColor }]}>
+  const ListHeaderComponent = useMemo(() => (
+    <>
       <View style={styles.header}>
         <Text style={[styles.headerTitle, { color: textColor }]}>Opgaver</Text>
         <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
@@ -565,8 +607,63 @@ export default function TasksScreen() {
         />
       </View>
 
-      <ScrollView 
-        style={styles.content} 
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: textColor }]}>Skabeloner</Text>
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => openTaskModal({
+              id: '',
+              title: '',
+              description: '',
+              completed: false,
+              isTemplate: true,
+              categoryIds: [],
+              subtasks: [],
+              videoUrl: undefined,
+            }, true)}
+          >
+            <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add_circle" size={28} color={colors.primary} />
+            <Text style={[styles.addButtonText, { color: colors.primary }]}>Ny skabelon</Text>
+          </TouchableOpacity>
+        </View>
+        
+        <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
+          {isAdmin && selectedContext.type 
+            ? `Opgaveskabeloner for ${selectedContext.name}. Disse vil automatisk blive tilføjet til relevante aktiviteter.`
+            : 'Opgaver organiseret i mapper efter oprindelse'}
+        </Text>
+      </View>
+    </>
+  ), [templateTasks.length, isManagingContext, isAdmin, selectedContext, isDark, textColor, textSecondaryColor, searchQuery, openTaskModal]);
+
+  const ListEmptyComponent = useMemo(() => (
+    <View style={[styles.emptyState, { backgroundColor: cardBgColor }]}>
+      <IconSymbol
+        ios_icon_name="folder"
+        android_material_icon_name="folder_open"
+        size={48}
+        color={textSecondaryColor}
+      />
+      <Text style={[styles.emptyStateText, { color: textSecondaryColor }]}>
+        {searchQuery ? 'Ingen opgaver matcher din søgning' : 'Ingen opgaveskabeloner endnu'}
+      </Text>
+    </View>
+  ), [searchQuery, cardBgColor, textSecondaryColor]);
+
+  const ListFooterComponent = useMemo(() => (
+    <View style={{ height: 100 }} />
+  ), []);
+
+  return (
+    <View style={[styles.container, { backgroundColor: containerBgColor }]}>
+      <FlatList
+        data={filteredFolders}
+        renderItem={renderFolder}
+        keyExtractor={(item) => item.id}
+        ListHeaderComponent={ListHeaderComponent}
+        ListEmptyComponent={ListEmptyComponent}
+        ListFooterComponent={ListFooterComponent}
         contentContainerStyle={styles.contentContainer}
         refreshControl={
           <RefreshControl 
@@ -576,53 +673,11 @@ export default function TasksScreen() {
             colors={[colors.primary]}
           />
         }
-      >
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: textColor }]}>Skabeloner</Text>
-            <TouchableOpacity
-              style={styles.addButton}
-              onPress={() => openTaskModal({
-                id: '',
-                title: '',
-                description: '',
-                completed: false,
-                isTemplate: true,
-                categoryIds: [],
-                subtasks: [],
-                videoUrl: undefined,
-              }, true)}
-            >
-              <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add_circle" size={28} color={colors.primary} />
-              <Text style={[styles.addButtonText, { color: colors.primary }]}>Ny skabelon</Text>
-            </TouchableOpacity>
-          </View>
-          
-          <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
-            {isAdmin && selectedContext.type 
-              ? `Opgaveskabeloner for ${selectedContext.name}. Disse vil automatisk blive tilføjet til relevante aktiviteter.`
-              : 'Opgaver organiseret i mapper efter oprindelse'}
-          </Text>
-
-          {filteredFolders.length > 0 ? (
-            filteredFolders.map(folder => renderFolder(folder))
-          ) : (
-            <View style={[styles.emptyState, { backgroundColor: cardBgColor }]}>
-              <IconSymbol
-                ios_icon_name="folder"
-                android_material_icon_name="folder_open"
-                size={48}
-                color={textSecondaryColor}
-              />
-              <Text style={[styles.emptyStateText, { color: textSecondaryColor }]}>
-                {searchQuery ? 'Ingen opgaver matcher din søgning' : 'Ingen opgaveskabeloner endnu'}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        <View style={{ height: 100 }} />
-      </ScrollView>
+        removeClippedSubviews={Platform.OS !== 'web'}
+        initialNumToRender={8}
+        maxToRenderPerBatch={5}
+        windowSize={10}
+      />
 
       <Modal visible={isModalVisible} animationType="slide" transparent={true}>
         <KeyboardAvoidingView 
@@ -639,170 +694,177 @@ export default function TasksScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-              <Text style={[styles.label, { color: textColor }]}>Titel</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
-                value={selectedTask?.title}
-                onChangeText={(text) => setSelectedTask(selectedTask ? { ...selectedTask, title: text } : null)}
-                placeholder="Opgavens titel"
-                placeholderTextColor={textSecondaryColor}
-                editable={!isSaving}
-              />
+            <FlatList
+              data={[{ key: 'form' }]}
+              renderItem={() => (
+                <View style={styles.modalBody}>
+                  <Text style={[styles.label, { color: textColor }]}>Titel</Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+                    value={selectedTask?.title}
+                    onChangeText={(text) => setSelectedTask(selectedTask ? { ...selectedTask, title: text } : null)}
+                    placeholder="Opgavens titel"
+                    placeholderTextColor={textSecondaryColor}
+                    editable={!isSaving}
+                  />
 
-              <Text style={[styles.label, { color: textColor }]}>Beskrivelse</Text>
-              <TextInput
-                style={[styles.input, styles.textArea, { backgroundColor: bgColor, color: textColor }]}
-                value={selectedTask?.description}
-                onChangeText={(text) => setSelectedTask(selectedTask ? { ...selectedTask, description: text } : null)}
-                placeholder="Beskrivelse af opgaven"
-                placeholderTextColor={textSecondaryColor}
-                multiline
-                numberOfLines={4}
-                editable={!isSaving}
-              />
+                  <Text style={[styles.label, { color: textColor }]}>Beskrivelse</Text>
+                  <TextInput
+                    style={[styles.input, styles.textArea, { backgroundColor: bgColor, color: textColor }]}
+                    value={selectedTask?.description}
+                    onChangeText={(text) => setSelectedTask(selectedTask ? { ...selectedTask, description: text } : null)}
+                    placeholder="Beskrivelse af opgaven"
+                    placeholderTextColor={textSecondaryColor}
+                    multiline
+                    numberOfLines={4}
+                    editable={!isSaving}
+                  />
 
-              <View style={styles.videoSection}>
-                <View style={styles.videoLabelRow}>
-                  <Text style={[styles.label, { color: textColor }]}>Video URL (YouTube eller Vimeo)</Text>
-                  {videoUrl.trim() && (
-                    <TouchableOpacity
-                      style={styles.deleteVideoButton}
-                      onPress={handleDeleteVideo}
-                      disabled={isSaving}
-                    >
-                      <IconSymbol
-                        ios_icon_name="trash.fill"
-                        android_material_icon_name="delete"
-                        size={18}
-                        color={colors.error}
-                      />
-                      <Text style={[styles.deleteVideoText, { color: colors.error }]}>Slet video</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-                <TextInput
-                  style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
-                  value={videoUrl}
-                  onChangeText={setVideoUrl}
-                  placeholder="https://youtube.com/... eller https://vimeo.com/..."
-                  placeholderTextColor={textSecondaryColor}
-                  autoCapitalize="none"
-                  editable={!isSaving}
-                />
-                {videoUrl.trim() && isValidVideoUrl(videoUrl) && (
-                  <View style={styles.videoPreviewSmall}>
-                    <TouchableOpacity
-                      style={styles.videoPreviewButton}
-                      onPress={() => openVideoModal(videoUrl)}
-                      activeOpacity={0.8}
-                    >
-                      <IconSymbol
-                        ios_icon_name="play.circle.fill"
-                        android_material_icon_name="play_circle"
-                        size={32}
-                        color={colors.primary}
-                      />
-                      <Text style={[styles.videoPreviewText, { color: colors.primary }]}>
-                        Forhåndsvisning
-                      </Text>
-                    </TouchableOpacity>
-                    <Text style={[styles.helperText, { color: colors.secondary }]}>
-                      ✓ Video URL gemt
-                    </Text>
-                  </View>
-                )}
-                {videoUrl.trim() && !isValidVideoUrl(videoUrl) && (
-                  <Text style={[styles.helperText, { color: colors.error }]}>
-                    ⚠ Ugyldig video URL. Kun YouTube og Vimeo understøttes.
-                  </Text>
-                )}
-              </View>
-
-              <View style={styles.subtasksSection}>
-                <View style={styles.subtasksHeader}>
-                  <Text style={[styles.label, { color: textColor }]}>Delopgaver</Text>
-                  <TouchableOpacity
-                    style={[styles.addSubtaskButton, { backgroundColor: colors.primary }]}
-                    onPress={addSubtask}
-                    disabled={isSaving}
-                  >
-                    <IconSymbol
-                      ios_icon_name="plus"
-                      android_material_icon_name="add"
-                      size={16}
-                      color="#fff"
-                    />
-                    <Text style={styles.addSubtaskText}>Tilføj</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {subtasks.map((subtask, index) => (
-                  <View key={index} style={styles.subtaskInputRow}>
+                  <View style={styles.videoSection}>
+                    <View style={styles.videoLabelRow}>
+                      <Text style={[styles.label, { color: textColor }]}>Video URL (YouTube eller Vimeo)</Text>
+                      {videoUrl.trim() && (
+                        <TouchableOpacity
+                          style={styles.deleteVideoButton}
+                          onPress={handleDeleteVideo}
+                          disabled={isSaving}
+                        >
+                          <IconSymbol
+                            ios_icon_name="trash.fill"
+                            android_material_icon_name="delete"
+                            size={18}
+                            color={colors.error}
+                          />
+                          <Text style={[styles.deleteVideoText, { color: colors.error }]}>Slet video</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
                     <TextInput
-                      style={[styles.subtaskInput, { backgroundColor: bgColor, color: textColor }]}
-                      value={subtask}
-                      onChangeText={(value) => updateSubtask(index, value)}
-                      placeholder={`Delopgave ${index + 1}`}
+                      style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+                      value={videoUrl}
+                      onChangeText={setVideoUrl}
+                      placeholder="https://youtube.com/... eller https://vimeo.com/..."
                       placeholderTextColor={textSecondaryColor}
+                      autoCapitalize="none"
                       editable={!isSaving}
                     />
-                    {subtasks.length > 1 && (
+                    {videoUrl.trim() && isValidVideoUrl(videoUrl) && (
+                      <View style={styles.videoPreviewSmall}>
+                        <TouchableOpacity
+                          style={styles.videoPreviewButton}
+                          onPress={() => openVideoModal(videoUrl)}
+                          activeOpacity={0.8}
+                        >
+                          <IconSymbol
+                            ios_icon_name="play.circle.fill"
+                            android_material_icon_name="play_circle"
+                            size={32}
+                            color={colors.primary}
+                          />
+                          <Text style={[styles.videoPreviewText, { color: colors.primary }]}>
+                            Forhåndsvisning
+                          </Text>
+                        </TouchableOpacity>
+                        <Text style={[styles.helperText, { color: colors.secondary }]}>
+                          ✓ Video URL gemt
+                        </Text>
+                      </View>
+                    )}
+                    {videoUrl.trim() && !isValidVideoUrl(videoUrl) && (
+                      <Text style={[styles.helperText, { color: colors.error }]}>
+                        ⚠ Ugyldig video URL. Kun YouTube og Vimeo understøttes.
+                      </Text>
+                    )}
+                  </View>
+
+                  <View style={styles.subtasksSection}>
+                    <View style={styles.subtasksHeader}>
+                      <Text style={[styles.label, { color: textColor }]}>Delopgaver</Text>
                       <TouchableOpacity
-                        style={styles.removeSubtaskButton}
-                        onPress={() => removeSubtask(index)}
+                        style={[styles.addSubtaskButton, { backgroundColor: colors.primary }]}
+                        onPress={addSubtask}
                         disabled={isSaving}
                       >
                         <IconSymbol
-                          ios_icon_name="minus.circle"
-                          android_material_icon_name="remove_circle"
-                          size={24}
-                          color={colors.error}
+                          ios_icon_name="plus"
+                          android_material_icon_name="add"
+                          size={16}
+                          color="#fff"
                         />
+                        <Text style={styles.addSubtaskText}>Tilføj</Text>
                       </TouchableOpacity>
-                    )}
+                    </View>
+
+                    {subtasks.map((subtask, index) => (
+                      <View key={index} style={styles.subtaskInputRow}>
+                        <TextInput
+                          style={[styles.subtaskInput, { backgroundColor: bgColor, color: textColor }]}
+                          value={subtask}
+                          onChangeText={(value) => updateSubtask(index, value)}
+                          placeholder={`Delopgave ${index + 1}`}
+                          placeholderTextColor={textSecondaryColor}
+                          editable={!isSaving}
+                        />
+                        {subtasks.length > 1 && (
+                          <TouchableOpacity
+                            style={styles.removeSubtaskButton}
+                            onPress={() => removeSubtask(index)}
+                            disabled={isSaving}
+                          >
+                            <IconSymbol
+                              ios_icon_name="minus.circle"
+                              android_material_icon_name="remove_circle"
+                              size={24}
+                              color={colors.error}
+                            />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    ))}
                   </View>
-                ))}
-              </View>
 
-              <Text style={[styles.label, { color: textColor }]}>Påmindelse (minutter før)</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
-                value={selectedTask?.reminder?.toString() || ''}
-                onChangeText={(text) => setSelectedTask(selectedTask ? { ...selectedTask, reminder: parseInt(text) || undefined } : null)}
-                placeholder="15"
-                placeholderTextColor={textSecondaryColor}
-                keyboardType="numeric"
-                editable={!isSaving}
-              />
+                  <Text style={[styles.label, { color: textColor }]}>Påmindelse (minutter før)</Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+                    value={selectedTask?.reminder?.toString() || ''}
+                    onChangeText={(text) => setSelectedTask(selectedTask ? { ...selectedTask, reminder: parseInt(text) || undefined } : null)}
+                    placeholder="15"
+                    placeholderTextColor={textSecondaryColor}
+                    keyboardType="numeric"
+                    editable={!isSaving}
+                  />
 
-              <Text style={[styles.label, { color: textColor }]}>Aktivitetskategorier</Text>
-              <View style={styles.categoriesGrid}>
-                {categories.map((category) => (
-                  <TouchableOpacity
-                    key={category.id}
-                    style={[
-                      styles.categoryChip,
-                      {
-                        backgroundColor: selectedTask?.categoryIds.includes(category.id) ? category.color : bgColor,
-                        borderColor: category.color,
-                        borderWidth: 2,
-                      },
-                    ]}
-                    onPress={() => toggleCategory(category.id)}
-                    disabled={isSaving}
-                  >
-                    <Text style={styles.categoryEmoji}>{category.emoji}</Text>
-                    <Text style={[
-                      styles.categoryName,
-                      { color: selectedTask?.categoryIds.includes(category.id) ? '#fff' : textColor }
-                    ]}>
-                      {category.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
+                  <Text style={[styles.label, { color: textColor }]}>Aktivitetskategorier</Text>
+                  <View style={styles.categoriesGrid}>
+                    {categories.map((category) => (
+                      <TouchableOpacity
+                        key={category.id}
+                        style={[
+                          styles.categoryChip,
+                          {
+                            backgroundColor: selectedTask?.categoryIds.includes(category.id) ? category.color : bgColor,
+                            borderColor: category.color,
+                            borderWidth: 2,
+                          },
+                        ]}
+                        onPress={() => toggleCategory(category.id)}
+                        disabled={isSaving}
+                      >
+                        <Text style={styles.categoryEmoji}>{category.emoji}</Text>
+                        <Text style={[
+                          styles.categoryName,
+                          { color: selectedTask?.categoryIds.includes(category.id) ? '#fff' : textColor }
+                        ]}>
+                          {category.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+              keyExtractor={(item) => item.key}
+              showsVerticalScrollIndicator={false}
+            />
 
             <View style={styles.modalFooter}>
               <TouchableOpacity
@@ -826,7 +888,6 @@ export default function TasksScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* CRITICAL FIX: Video modal is always mounted when visible, SmartVideoPlayer never unmounts during modal lifecycle */}
       <Modal
         visible={showVideoModal}
         animationType="slide"
@@ -860,7 +921,6 @@ export default function TasksScreen() {
             <View style={{ width: 32 }} />
           </View>
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }}>
-            {/* SmartVideoPlayer is always rendered when modal is visible, preventing mount/unmount cycles */}
             <SmartVideoPlayer url={selectedVideoUrl || undefined} />
           </View>
         </View>
@@ -883,9 +943,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  contentContainer: {
+    paddingHorizontal: 16,
+  },
   header: {
     paddingTop: Platform.OS === 'android' ? 60 : 70,
-    paddingHorizontal: 16,
     paddingBottom: 16,
   },
   headerTitle: {
@@ -902,7 +964,6 @@ const styles = StyleSheet.create({
     gap: 16,
     paddingHorizontal: 20,
     paddingVertical: 20,
-    marginHorizontal: 16,
     marginBottom: 12,
     borderRadius: 16,
     borderWidth: 3,
@@ -935,7 +996,6 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    marginHorizontal: 16,
     marginBottom: 12,
     borderRadius: 12,
   },
@@ -951,19 +1011,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    marginHorizontal: 16,
     marginBottom: 16,
   },
   searchInput: {
     flex: 1,
     marginLeft: 8,
     fontSize: 16,
-  },
-  content: {
-    flex: 1,
-  },
-  contentContainer: {
-    paddingHorizontal: 16,
   },
   section: {
     marginBottom: 24,
@@ -1113,10 +1166,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 12,
   },
-  videoThumbnailSmall: {
-    height: 120,
-    marginBottom: 8,
-  },
   helperText: {
     fontSize: 14,
     marginTop: 4,
@@ -1164,7 +1213,6 @@ const styles = StyleSheet.create({
   },
   modalBody: {
     padding: 20,
-    maxHeight: '60%',
   },
   label: {
     fontSize: 16,
