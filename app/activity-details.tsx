@@ -193,11 +193,66 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
   }
 }
 
-export default function ActivityDetailsScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+// Skeleton component for first paint
+function ActivityDetailsSkeleton({ isDark }: { isDark: boolean }) {
+  const bgColor = isDark ? '#1a1a1a' : colors.background;
+  const cardBgColor = isDark ? '#2a2a2a' : colors.card;
+  const skeletonColor = isDark ? '#3a3a3a' : '#e0e0e0';
+
+  return (
+    <View style={[styles.container, { backgroundColor: bgColor }]}>
+      {/* Header Skeleton */}
+      <View style={[styles.header, { backgroundColor: skeletonColor }]}>
+        <View style={styles.backButtonHeader}>
+          <View style={{ width: 28, height: 28, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 14 }} />
+        </View>
+        <View style={styles.headerContent}>
+          <View style={{ width: 64, height: 64, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 32 }} />
+          <View style={{ width: 200, height: 28, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 14, marginTop: 12 }} />
+        </View>
+      </View>
+
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+        {/* Details Section Skeleton */}
+        <View style={[styles.section, { backgroundColor: cardBgColor }]}>
+          <View style={{ width: 100, height: 24, backgroundColor: skeletonColor, borderRadius: 12, marginBottom: 20 }} />
+          <View style={{ width: '100%', height: 60, backgroundColor: skeletonColor, borderRadius: 12, marginBottom: 16 }} />
+          <View style={{ width: '100%', height: 60, backgroundColor: skeletonColor, borderRadius: 12, marginBottom: 16 }} />
+          <View style={{ width: '100%', height: 60, backgroundColor: skeletonColor, borderRadius: 12 }} />
+        </View>
+
+        {/* Tasks Section Skeleton */}
+        <View style={[styles.section, { backgroundColor: cardBgColor }]}>
+          <View style={{ width: 100, height: 24, backgroundColor: skeletonColor, borderRadius: 12, marginBottom: 20 }} />
+          <View style={{ width: '100%', height: 60, backgroundColor: skeletonColor, borderRadius: 12, marginBottom: 12 }} />
+          <View style={{ width: '100%', height: 60, backgroundColor: skeletonColor, borderRadius: 12, marginBottom: 12 }} />
+          <View style={{ width: '100%', height: 60, backgroundColor: skeletonColor, borderRadius: 12 }} />
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+// Content component - only mounts after first paint
+interface ActivityDetailsContentProps {
+  activity: Activity;
+  categories: ActivityCategory[];
+  isAdmin: boolean;
+  isDark: boolean;
+  onBack: () => void;
+  onRefresh: () => void;
+}
+
+function ActivityDetailsContent({
+  activity,
+  categories,
+  isAdmin,
+  isDark,
+  onBack,
+  onRefresh,
+}: ActivityDetailsContentProps) {
   const router = useRouter();
   const { 
-    categories, 
     updateActivitySingle, 
     updateActivitySeries, 
     toggleTaskCompletion, 
@@ -208,13 +263,8 @@ export default function ActivityDetailsScreen() {
     createActivity, 
     duplicateActivity 
   } = useFootball();
-  const { isAdmin } = useUserRole();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
   const scrollViewRef = useRef<ScrollView>(null);
 
-  const [activity, setActivity] = useState<Activity | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showSeriesDialog, setShowSeriesDialog] = useState(false);
@@ -225,11 +275,11 @@ export default function ActivityDetailsScreen() {
   const [isDuplicating, setIsDuplicating] = useState(false);
   
   // Edit state
-  const [editTitle, setEditTitle] = useState('');
-  const [editLocation, setEditLocation] = useState('');
-  const [editDate, setEditDate] = useState(new Date());
-  const [editTime, setEditTime] = useState('');
-  const [editCategory, setEditCategory] = useState<ActivityCategory | null>(null);
+  const [editTitle, setEditTitle] = useState(activity.title);
+  const [editLocation, setEditLocation] = useState(activity.location);
+  const [editDate, setEditDate] = useState(activity.date);
+  const [editTime, setEditTime] = useState(activity.time);
+  const [editCategory, setEditCategory] = useState<ActivityCategory | null>(activity.category);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   
@@ -240,45 +290,6 @@ export default function ActivityDetailsScreen() {
   const [hasEndDate, setHasEndDate] = useState(false);
   const [endDate, setEndDate] = useState(new Date(Date.now() + 90 * 24 * 60 * 60 * 1000));
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
-
-  // Fetch activity directly from database on mount
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadActivity() {
-      if (!id) {
-        console.error('❌ No activity ID provided');
-        setIsLoading(false);
-        return;
-      }
-
-      console.log('🔍 Loading activity with ID:', id);
-      
-      const fetchedActivity = await fetchActivityFromDatabase(id);
-      
-      if (!isMounted) return;
-
-      if (fetchedActivity) {
-        console.log('✅ Activity loaded successfully:', fetchedActivity.title);
-        setActivity(fetchedActivity);
-        setEditTitle(fetchedActivity.title);
-        setEditLocation(fetchedActivity.location);
-        setEditDate(fetchedActivity.date);
-        setEditTime(fetchedActivity.time);
-        setEditCategory(fetchedActivity.category);
-      } else {
-        console.log('❌ Activity not found');
-      }
-      
-      setIsLoading(false);
-    }
-
-    loadActivity();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [id]);
 
   // Scroll to bottom when picker is shown
   useEffect(() => {
@@ -291,10 +302,8 @@ export default function ActivityDetailsScreen() {
 
   const handleEditClick = () => {
     if (activity?.seriesId) {
-      // Show dialog to choose between editing single or all
       setShowSeriesDialog(true);
     } else {
-      // No series, just edit normally
       setIsEditing(true);
     }
   };
@@ -310,7 +319,6 @@ export default function ActivityDetailsScreen() {
   const handleDuplicate = async () => {
     if (!activity) return;
 
-    // Check if it's an external activity
     if (activity.isExternal) {
       Alert.alert(
         'Kan ikke duplikere',
@@ -331,7 +339,6 @@ export default function ActivityDetailsScreen() {
             try {
               await duplicateActivity(activity.id);
               Alert.alert('Succes', 'Aktiviteten er blevet duplikeret');
-              // Navigate back to home to see the duplicated activity
               router.replace('/(tabs)/(home)');
             } catch (error: any) {
               console.error('Error duplicating activity:', error);
@@ -351,19 +358,15 @@ export default function ActivityDetailsScreen() {
     setIsSaving(true);
 
     try {
-      // Check if converting to recurring
       if (convertToRecurring && !activity.seriesId && !activity.isExternal) {
-        // Validate recurring settings
         if ((recurrenceType === 'weekly' || recurrenceType === 'biweekly' || recurrenceType === 'triweekly') && selectedDays.length === 0) {
           Alert.alert('Fejl', 'Vælg venligst mindst én dag for gentagelse');
           setIsSaving(false);
           return;
         }
 
-        // Delete the current single activity
         await deleteActivitySingle(activity.id);
 
-        // Create a new recurring series
         await createActivity({
           title: editTitle,
           location: editLocation,
@@ -382,7 +385,6 @@ export default function ActivityDetailsScreen() {
       }
 
       if (activity.isExternal) {
-        // Use updateActivitySingle for external activities
         console.log('🔄 Updating external activity category');
         
         await updateActivitySingle(activity.id, {
@@ -391,13 +393,11 @@ export default function ActivityDetailsScreen() {
 
         console.log('✅ External activity category updated');
 
-        // Trigger refresh
         refreshData();
 
         Alert.alert('Gemt', 'Kategorien er blevet opdateret');
         setIsEditing(false);
       } else if (activity.seriesId && showSeriesDialog) {
-        // User chose to edit the entire series
         await updateActivitySeries(activity.seriesId, {
           title: editTitle,
           location: editLocation,
@@ -408,10 +408,8 @@ export default function ActivityDetailsScreen() {
         Alert.alert('Gemt', 'Hele serien er blevet opdateret');
         setIsEditing(false);
         
-        // Refresh the activity data
         refreshData();
       } else {
-        // Edit single activity (or activity not in a series)
         await updateActivitySingle(activity.id, {
           title: editTitle,
           location: editLocation,
@@ -423,7 +421,6 @@ export default function ActivityDetailsScreen() {
         Alert.alert('Gemt', 'Aktiviteten er blevet opdateret');
         setIsEditing(false);
         
-        // Refresh data
         refreshData();
       }
     } catch (error) {
@@ -437,7 +434,6 @@ export default function ActivityDetailsScreen() {
   const handleCancel = () => {
     if (!activity) return;
     
-    // Reset to original values
     setEditTitle(activity.title);
     setEditLocation(activity.location);
     setEditDate(new Date(activity.date));
@@ -495,7 +491,6 @@ export default function ActivityDetailsScreen() {
     try {
       await toggleTaskCompletion(activity.id, taskId);
       
-      // Refresh to get updated state
       refreshData();
     } catch (error) {
       console.error('Error toggling task:', error);
@@ -522,7 +517,6 @@ export default function ActivityDetailsScreen() {
               
               console.log('✅ Task deleted successfully');
               
-              // Refresh data
               refreshData();
               
               Alert.alert('Slettet', 'Opgaven er blevet slettet fra denne aktivitet');
@@ -546,13 +540,11 @@ export default function ActivityDetailsScreen() {
   const handleTaskCreated = async () => {
     console.log('Task created successfully, refreshing activity data');
     setShowCreateTaskModal(false);
-    // Refresh data from context
     refreshData();
   };
 
   const handleDeleteClick = () => {
     if (activity?.isExternal) {
-      // For external activities, show a confirmation dialog
       Alert.alert(
         'Slet ekstern aktivitet',
         `Er du sikker på at du vil slette "${activity.title}"?\n\nDenne aktivitet er fra en ekstern kalender. Hvis du sletter den her, vil den blive importeret igen ved næste synkronisering, medmindre du sletter den i den eksterne kalender eller fjerner kalenderen fra din profil.`,
@@ -583,10 +575,8 @@ export default function ActivityDetailsScreen() {
 
       console.log('✅ External activity deleted successfully, navigating to home screen');
       
-      // Navigate to home screen immediately
       router.replace('/(tabs)/(home)');
       
-      // Show success message after navigation
       setTimeout(() => {
         Alert.alert('Slettet', 'Den eksterne aktivitet er blevet slettet fra din app');
       }, 300);
@@ -605,10 +595,8 @@ export default function ActivityDetailsScreen() {
       await deleteActivitySingle(activity.id);
       console.log('✅ Activity deleted successfully, navigating to home screen');
       
-      // Navigate to home screen immediately
       router.replace('/(tabs)/(home)');
       
-      // Show success message after navigation
       setTimeout(() => {
         Alert.alert('Slettet', 'Aktiviteten er blevet slettet');
       }, 300);
@@ -627,10 +615,8 @@ export default function ActivityDetailsScreen() {
       await deleteActivitySeries(activity.seriesId);
       console.log('✅ Activity series deleted successfully, navigating to home screen');
       
-      // Navigate to home screen immediately
       router.replace('/(tabs)/(home)');
       
-      // Show success message after navigation
       setTimeout(() => {
         Alert.alert('Slettet', 'Hele serien er blevet slettet');
       }, 300);
@@ -651,42 +637,9 @@ export default function ActivityDetailsScreen() {
   };
 
   const formatDateTime = (date: Date, time: string) => {
-    // Extract just the HH:MM from the time string (removing seconds if present)
     const timeDisplay = time.substring(0, 5);
     return `${formatDate(date)} kl. ${timeDisplay}`;
   };
-
-  if (isLoading) {
-    return (
-      <View style={[styles.container, { backgroundColor: isDark ? '#1a1a1a' : colors.background }]}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[styles.loadingText, { color: isDark ? '#e3e3e3' : colors.text }]}>
-            Indlæser aktivitet...
-          </Text>
-        </View>
-      </View>
-    );
-  }
-
-  if (!activity) {
-    return (
-      <View style={[styles.container, { backgroundColor: isDark ? '#1a1a1a' : colors.background }]}>
-        <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: isDark ? '#e3e3e3' : colors.text }]}>
-            Aktivitet ikke fundet
-          </Text>
-          <TouchableOpacity
-            style={[styles.backButton, { backgroundColor: colors.primary }]}
-            onPress={() => router.back()}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.backButtonText}>Gå tilbage</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
 
   const bgColor = isDark ? '#1a1a1a' : colors.background;
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
@@ -704,7 +657,7 @@ export default function ActivityDetailsScreen() {
       <View style={[styles.header, { backgroundColor: activity.category.color }]}>
         <TouchableOpacity
           style={styles.backButtonHeader}
-          onPress={() => router.back()}
+          onPress={onBack}
           activeOpacity={0.7}
         >
           <IconSymbol
@@ -735,7 +688,6 @@ export default function ActivityDetailsScreen() {
 
         {!isEditing && (
           <View style={styles.headerButtons}>
-            {/* Duplicate button - only for manual activities */}
             {!activity.isExternal && (
               <TouchableOpacity
                 style={styles.headerButton}
@@ -756,7 +708,6 @@ export default function ActivityDetailsScreen() {
               </TouchableOpacity>
             )}
             
-            {/* Edit button */}
             <TouchableOpacity
               style={styles.headerButton}
               onPress={handleEditClick}
@@ -779,7 +730,6 @@ export default function ActivityDetailsScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* External Activity Badge */}
         {activity.isExternal && (
           <View style={[styles.externalBadge, { backgroundColor: colors.secondary }]}>
             <IconSymbol
@@ -920,7 +870,6 @@ export default function ActivityDetailsScreen() {
                 )}
               </View>
 
-              {/* Android Date/Time Pickers */}
               {Platform.OS === 'android' && showDatePicker && (
                 <DateTimePicker
                   value={editDate}
@@ -1382,7 +1331,6 @@ export default function ActivityDetailsScreen() {
                     </View>
                   </TouchableOpacity>
                   
-                  {/* Admin delete button */}
                   {isAdmin && (
                     <TouchableOpacity
                       style={[
@@ -1453,7 +1401,6 @@ export default function ActivityDetailsScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Delete Button - Available for all activities when editing */}
             <TouchableOpacity
               style={[styles.deleteButton, { backgroundColor: isDark ? '#3a1a1a' : '#ffe5e5' }]}
               onPress={handleDeleteClick}
@@ -1479,7 +1426,6 @@ export default function ActivityDetailsScreen() {
           </React.Fragment>
         )}
 
-        {/* Info Box for External Activities */}
         {activity.isExternal && !isEditing && (
           <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
             <IconSymbol
@@ -1495,7 +1441,6 @@ export default function ActivityDetailsScreen() {
           </View>
         )}
 
-        {/* Info Box for Series Activities */}
         {activity.seriesId && !isEditing && (
           <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
             <IconSymbol
@@ -1510,7 +1455,6 @@ export default function ActivityDetailsScreen() {
           </View>
         )}
 
-        {/* Admin Info Box */}
         {isAdmin && activity.tasks && activity.tasks.length > 0 && (
           <View style={[styles.infoBox, { backgroundColor: isDark ? '#3a2a2a' : '#fff3cd' }]}>
             <IconSymbol
@@ -1525,11 +1469,9 @@ export default function ActivityDetailsScreen() {
           </View>
         )}
 
-        {/* Bottom Padding */}
         <View style={{ height: 200 }} />
       </ScrollView>
 
-      {/* Edit Series Dialog */}
       <EditSeriesDialog
         visible={showSeriesDialog}
         onClose={() => setShowSeriesDialog(false)}
@@ -1537,7 +1479,6 @@ export default function ActivityDetailsScreen() {
         onEditAll={handleEditAll}
       />
 
-      {/* Delete Activity Dialog */}
       <DeleteActivityDialog
         visible={showDeleteDialog}
         onClose={() => setShowDeleteDialog(false)}
@@ -1546,7 +1487,6 @@ export default function ActivityDetailsScreen() {
         isSeries={!!activity.seriesId}
       />
 
-      {/* Create Task Modal */}
       {activity && (
         <CreateActivityTaskModal
           visible={showCreateTaskModal}
@@ -1559,6 +1499,122 @@ export default function ActivityDetailsScreen() {
         />
       )}
     </KeyboardAvoidingView>
+  );
+}
+
+// Main component with hard gate
+export default function ActivityDetailsScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
+  const { categories } = useFootball();
+  const { isAdmin } = useUserRole();
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+
+  // Hard gate: prevent content mount before first paint
+  const [hasPainted, setHasPainted] = useState(false);
+  const [isReady, setIsReady] = useState(false);
+  const [activity, setActivity] = useState<Activity | null>(null);
+
+  // First paint gate
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      setHasPainted(true);
+    });
+  }, []);
+
+  // Fetch activity after mount
+  useEffect(() => {
+    if (!hasPainted) return;
+
+    let isMounted = true;
+
+    async function loadActivity() {
+      if (!id) {
+        console.error('❌ No activity ID provided');
+        setIsReady(true);
+        return;
+      }
+
+      console.log('🔍 Loading activity with ID:', id);
+      
+      const fetchedActivity = await fetchActivityFromDatabase(id);
+      
+      if (!isMounted) return;
+
+      if (fetchedActivity) {
+        console.log('✅ Activity loaded successfully:', fetchedActivity.title);
+        setActivity(fetchedActivity);
+      } else {
+        console.log('❌ Activity not found');
+      }
+      
+      setIsReady(true);
+    }
+
+    loadActivity();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [id, hasPainted]);
+
+  const handleBack = () => {
+    router.back();
+  };
+
+  const handleRefresh = () => {
+    // Trigger re-fetch
+    setIsReady(false);
+    setHasPainted(false);
+    requestAnimationFrame(() => {
+      setHasPainted(true);
+    });
+  };
+
+  // Show skeleton before first paint
+  if (!hasPainted) {
+    return <ActivityDetailsSkeleton isDark={isDark} />;
+  }
+
+  // Show loading after first paint but before data ready
+  if (!isReady) {
+    return <ActivityDetailsSkeleton isDark={isDark} />;
+  }
+
+  // Show error state if no activity found
+  if (!activity) {
+    const bgColor = isDark ? '#1a1a1a' : colors.background;
+    const textColor = isDark ? '#e3e3e3' : colors.text;
+
+    return (
+      <View style={[styles.container, { backgroundColor: bgColor }]}>
+        <View style={styles.loadingContainer}>
+          <Text style={[styles.loadingText, { color: textColor }]}>
+            Aktivitet ikke fundet
+          </Text>
+          <TouchableOpacity
+            style={[styles.backButton, { backgroundColor: colors.primary }]}
+            onPress={handleBack}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.backButtonText}>Gå tilbage</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  // Render full content
+  return (
+    <ActivityDetailsContent
+      activity={activity}
+      categories={categories}
+      isAdmin={isAdmin}
+      isDark={isDark}
+      onBack={handleBack}
+      onRefresh={handleRefresh}
+    />
   );
 }
 
