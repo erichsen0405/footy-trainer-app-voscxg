@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { ScrollView, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform } from 'react-native';
+import { FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -256,6 +256,236 @@ export default function HomeScreen() {
     }
   };
 
+  // Flatten all data into a single list for FlatList
+  // Each item has a type to determine how to render it
+  const flattenedData = useMemo(() => {
+    const data: any[] = [];
+
+    // Add TIDLIGERE section
+    if (previousByWeek.length > 0) {
+      data.push({ type: 'previousHeader' });
+      
+      if (isPreviousExpanded) {
+        visiblePreviousWeeks.forEach((weekGroup, weekIndex) => {
+          data.push({ type: 'weekHeader', weekGroup, section: 'previous' });
+          weekGroup.activities.forEach((activity: any) => {
+            data.push({ type: 'activity', activity, section: 'previous' });
+          });
+        });
+
+        if (showPreviousWeeks < previousByWeek.length) {
+          data.push({ type: 'loadMore' });
+        }
+      }
+    }
+
+    // Add I DAG section
+    data.push({ type: 'todayHeader' });
+    if (todayActivities.length === 0) {
+      data.push({ type: 'emptyToday' });
+    } else {
+      todayActivities.forEach((activity) => {
+        data.push({ type: 'activity', activity, section: 'today' });
+      });
+    }
+
+    // Add KOMMENDE section
+    if (upcomingByWeek.length > 0) {
+      data.push({ type: 'upcomingHeader' });
+      upcomingByWeek.forEach((weekGroup, weekIndex) => {
+        data.push({ type: 'weekHeader', weekGroup, section: 'upcoming' });
+        weekGroup.activities.forEach((activity: any) => {
+          data.push({ type: 'activity', activity, section: 'upcoming' });
+        });
+      });
+    }
+
+    return data;
+  }, [previousByWeek, isPreviousExpanded, visiblePreviousWeeks, showPreviousWeeks, todayActivities, upcomingByWeek]);
+
+  // Render item based on type
+  const renderItem = ({ item }: { item: any }) => {
+    switch (item.type) {
+      case 'previousHeader':
+        return (
+          <View style={styles.section}>
+            <Pressable onPress={togglePreviousExpanded}>
+              <View style={styles.sectionTitleContainer}>
+                <View style={styles.greenMarker} />
+                <Text style={styles.sectionTitle}>TIDLIGERE</Text>
+                <IconSymbol
+                  ios_icon_name={isPreviousExpanded ? "chevron.up" : "chevron.down"}
+                  android_material_icon_name={isPreviousExpanded ? "keyboard-arrow-up" : "keyboard-arrow-down"}
+                  size={18}
+                  color={colors.text}
+                  style={styles.chevronIcon}
+                />
+              </View>
+            </Pressable>
+          </View>
+        );
+
+      case 'todayHeader':
+        return (
+          <View style={styles.section}>
+            <View style={styles.sectionTitleContainer}>
+              <View style={styles.greenMarker} />
+              <Text style={styles.sectionTitle}>I DAG</Text>
+            </View>
+          </View>
+        );
+
+      case 'upcomingHeader':
+        return (
+          <View style={styles.section}>
+            <View style={styles.sectionTitleContainer}>
+              <View style={styles.greenMarker} />
+              <Text style={styles.sectionTitle}>KOMMENDE</Text>
+            </View>
+          </View>
+        );
+
+      case 'weekHeader':
+        return (
+          <View style={styles.weekGroup}>
+            <Text style={styles.weekLabel}>
+              Uge {getWeek(item.weekGroup.weekStart, { weekStartsOn: 1, locale: da })}
+            </Text>
+            <Text style={styles.weekDateRange}>{getWeekLabel(item.weekGroup.weekStart)}</Text>
+          </View>
+        );
+
+      case 'activity':
+        return (
+          <View style={styles.activityWrapper}>
+            <ActivityCard
+              activity={item.activity}
+              resolvedDate={item.activity.__resolvedDateTime}
+              showTasks={item.section === 'today' || item.section === 'previous'}
+            />
+          </View>
+        );
+
+      case 'emptyToday':
+        return (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>Ingen aktiviteter i dag</Text>
+          </View>
+        );
+
+      case 'loadMore':
+        return (
+          <View style={styles.loadMoreContainer}>
+            <Pressable 
+              style={styles.loadMoreButton}
+              onPress={handleLoadMorePrevious}
+            >
+              <Text style={styles.loadMoreButtonText}>
+                {showPreviousWeeks === 0 ? 'Hent tidligere uger' : 'Hent en uge mere'}
+              </Text>
+            </Pressable>
+          </View>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  // Key extractor for FlatList
+  const keyExtractor = (item: any, index: number) => {
+    if (item.type === 'activity') {
+      return `activity-${item.activity.id}`;
+    }
+    if (item.type === 'weekHeader') {
+      return `week-${item.section}-${item.weekGroup.weekStart.toISOString()}`;
+    }
+    return `${item.type}-${index}`;
+  };
+
+  // List header component
+  const ListHeaderComponent = () => (
+    <>
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.logoContainer}>
+          <View style={styles.logo}>
+            <Text style={styles.logoIcon}>⚽</Text>
+          </View>
+        </View>
+        <View style={styles.headerTextContainer}>
+          <Text style={styles.headerTitle}>Football Coach</Text>
+          <Text style={styles.headerSubtitle}>Træn som en Pro</Text>
+        </View>
+      </View>
+
+      {/* Week Header */}
+      <View style={styles.weekHeaderContainer}>
+        <Text style={styles.weekHeaderTitle}>UGE {currentWeekNumber}</Text>
+        <Text style={styles.weekHeaderSubtitle}>{currentWeekLabel}</Text>
+      </View>
+
+      {/* ========== PERFORMANCE CARD - ONLY FOR PLAYERS ========== */}
+      {isPlayer ? (
+        <LinearGradient
+          colors={performanceMetrics.gradientColors}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.performanceCard}
+        >
+          <View style={styles.progressHeader}>
+            <Text style={styles.progressLabel}>DENNE UGE</Text>
+            <View style={styles.medalBadge}>
+              <Text style={styles.medalIcon}>{performanceMetrics.trophyEmoji}</Text>
+            </View>
+          </View>
+          
+          <Text style={styles.progressPercentage}>{performanceMetrics.percentageUpToToday}%</Text>
+          
+          <View style={styles.progressBar}>
+            <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
+          </View>
+
+          <Text style={styles.progressDetail}>
+            Opgaver indtil i dag: {performanceMetrics.completedTasksToday} / {performanceMetrics.totalTasksToday}
+          </Text>
+          <View style={styles.progressBar}>
+            <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
+          </View>
+
+          <Text style={styles.progressDetail}>
+            Hele ugen: {performanceMetrics.completedTasksWeek} / {performanceMetrics.totalTasksWeek} opgaver
+          </Text>
+
+          <Text style={styles.motivationText}>
+            {performanceMetrics.motivationText}
+          </Text>
+
+          {/* Se Performance Button - Inside Performance Card */}
+          <Pressable 
+            style={styles.performanceButton}
+            onPress={() => router.push('/(tabs)/performance')}
+          >
+            <Text style={styles.performanceButtonText}>Se performance</Text>
+          </Pressable>
+        </LinearGradient>
+      ) : null}
+
+      {/* Create Activity Button */}
+      <Pressable 
+        style={styles.createButton}
+        onPress={() => setShowCreateModal(true)}
+      >
+        <Text style={styles.createButtonText}>+  Opret Aktivitet</Text>
+      </Pressable>
+    </>
+  );
+
+  // List footer component
+  const ListFooterComponent = () => (
+    <View style={styles.bottomSpacer} />
+  );
+
   if (loading) {
     return (
       <SafeAreaView style={styles.loading} edges={['top']}>
@@ -271,8 +501,17 @@ export default function HomeScreen() {
     >
       <StatusBar barStyle="dark-content" />
       
-      <ScrollView 
+      <FlatList
+        data={flattenedData}
+        renderItem={renderItem}
+        keyExtractor={keyExtractor}
+        ListHeaderComponent={ListHeaderComponent}
+        ListFooterComponent={ListFooterComponent}
         keyboardShouldPersistTaps="handled"
+        removeClippedSubviews={true}
+        initialNumToRender={8}
+        maxToRenderPerBatch={10}
+        windowSize={5}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -280,190 +519,7 @@ export default function HomeScreen() {
             tintColor={colors.text}
           />
         }
-      >
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.logoContainer}>
-            <View style={styles.logo}>
-              <Text style={styles.logoIcon}>⚽</Text>
-            </View>
-          </View>
-          <View style={styles.headerTextContainer}>
-            <Text style={styles.headerTitle}>Football Coach</Text>
-            <Text style={styles.headerSubtitle}>Træn som en Pro</Text>
-          </View>
-        </View>
-
-        {/* Week Header */}
-        <View style={styles.weekHeaderContainer}>
-          <Text style={styles.weekHeaderTitle}>UGE {currentWeekNumber}</Text>
-          <Text style={styles.weekHeaderSubtitle}>{currentWeekLabel}</Text>
-        </View>
-
-        {/* ========== PERFORMANCE CARD - ONLY FOR PLAYERS ========== */}
-        {isPlayer ? (
-          <LinearGradient
-            colors={performanceMetrics.gradientColors}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.performanceCard}
-          >
-            <View style={styles.progressHeader}>
-              <Text style={styles.progressLabel}>DENNE UGE</Text>
-              <View style={styles.medalBadge}>
-                <Text style={styles.medalIcon}>{performanceMetrics.trophyEmoji}</Text>
-              </View>
-            </View>
-            
-            <Text style={styles.progressPercentage}>{performanceMetrics.percentageUpToToday}%</Text>
-            
-            <View style={styles.progressBar}>
-              <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
-            </View>
-
-            <Text style={styles.progressDetail}>
-              Opgaver indtil i dag: {performanceMetrics.completedTasksToday} / {performanceMetrics.totalTasksToday}
-            </Text>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
-            </View>
-
-            <Text style={styles.progressDetail}>
-              Hele ugen: {performanceMetrics.completedTasksWeek} / {performanceMetrics.totalTasksWeek} opgaver
-            </Text>
-
-            <Text style={styles.motivationText}>
-              {performanceMetrics.motivationText}
-            </Text>
-
-            {/* Se Performance Button - Inside Performance Card */}
-            <Pressable 
-              style={styles.performanceButton}
-              onPress={() => router.push('/(tabs)/performance')}
-            >
-              <Text style={styles.performanceButtonText}>Se performance</Text>
-            </Pressable>
-          </LinearGradient>
-        ) : null}
-
-        {/* Create Activity Button */}
-        <Pressable 
-          style={styles.createButton}
-          onPress={() => setShowCreateModal(true)}
-        >
-          <Text style={styles.createButtonText}>+  Opret Aktivitet</Text>
-        </Pressable>
-
-        {/* TIDLIGERE Section - Collapsible */}
-        {previousByWeek.length > 0 ? (
-          <View style={styles.section}>
-            <Pressable onPress={togglePreviousExpanded}>
-              <View style={styles.sectionTitleContainer}>
-                <View style={styles.greenMarker} />
-                <Text style={styles.sectionTitle}>TIDLIGERE</Text>
-                <IconSymbol
-                  ios_icon_name={isPreviousExpanded ? "chevron.up" : "chevron.down"}
-                  android_material_icon_name={isPreviousExpanded ? "keyboard-arrow-up" : "keyboard-arrow-down"}
-                  size={18}
-                  color={colors.text}
-                  style={styles.chevronIcon}
-                />
-              </View>
-            </Pressable>
-
-            {isPreviousExpanded ? (
-              <>
-                {visiblePreviousWeeks.map((weekGroup, weekIndex) => (
-                  <View key={`previous-week-${weekGroup.weekStart.toISOString()}`} style={styles.weekGroup}>
-                    <Text style={styles.weekLabel}>
-                      Uge {getWeek(weekGroup.weekStart, { weekStartsOn: 1, locale: da })}
-                    </Text>
-                    <Text style={styles.weekDateRange}>{getWeekLabel(weekGroup.weekStart)}</Text>
-
-                    {weekGroup.activities.map((activity) => (
-                      <View key={activity.id} style={styles.activityWrapper}>
-                        <ActivityCard
-                          activity={activity}
-                          resolvedDate={activity.__resolvedDateTime}
-                          showTasks={true}
-                        />
-                      </View>
-                    ))}
-                  </View>
-                ))}
-
-                {/* Load More Button - Show if there are more weeks to load */}
-                {showPreviousWeeks < previousByWeek.length ? (
-                  <Pressable 
-                    style={styles.loadMoreButton}
-                    onPress={handleLoadMorePrevious}
-                  >
-                    <Text style={styles.loadMoreButtonText}>
-                      {showPreviousWeeks === 0 ? 'Hent tidligere uger' : 'Hent en uge mere'}
-                    </Text>
-                  </Pressable>
-                ) : null}
-              </>
-            ) : null}
-          </View>
-        ) : null}
-
-        {/* I DAG Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionTitleContainer}>
-            <View style={styles.greenMarker} />
-            <Text style={styles.sectionTitle}>I DAG</Text>
-          </View>
-
-          {todayActivities.length === 0 ? (
-            <Text style={styles.emptyText}>Ingen aktiviteter i dag</Text>
-          ) : null}
-
-          {todayActivities.map((activity) => (
-            <React.Fragment key={activity.id}>
-              <View style={styles.activityWrapper}>
-                <ActivityCard
-                  activity={activity}
-                  resolvedDate={activity.__resolvedDateTime}
-                  showTasks={true}
-                />
-              </View>
-            </React.Fragment>
-          ))}
-        </View>
-
-        {/* KOMMENDE Section */}
-        {upcomingByWeek.length > 0 ? (
-          <View style={styles.section}>
-            <View style={styles.sectionTitleContainer}>
-              <View style={styles.greenMarker} />
-              <Text style={styles.sectionTitle}>KOMMENDE</Text>
-            </View>
-
-            {upcomingByWeek.map((weekGroup, weekIndex) => (
-              <View key={`upcoming-week-${weekGroup.weekStart.toISOString()}`} style={styles.weekGroup}>
-                <Text style={styles.weekLabel}>
-                  Uge {getWeek(weekGroup.weekStart, { weekStartsOn: 1, locale: da })}
-                </Text>
-                <Text style={styles.weekDateRange}>{getWeekLabel(weekGroup.weekStart)}</Text>
-
-                {weekGroup.activities.map((activity) => (
-                  <View key={activity.id} style={styles.activityWrapper}>
-                    <ActivityCard
-                      activity={activity}
-                      resolvedDate={activity.__resolvedDateTime}
-                      showTasks={false}
-                    />
-                  </View>
-                ))}
-              </View>
-            ))}
-          </View>
-        ) : null}
-
-        {/* Bottom spacing for tab bar */}
-        <View style={styles.bottomSpacer} />
-      </ScrollView>
+      />
 
       {/* Create Activity Modal */}
       {showCreateModal ? (
@@ -684,6 +740,10 @@ const styles = StyleSheet.create({
   chevronIcon: {
     marginLeft: 8,
   },
+  loadMoreContainer: {
+    paddingHorizontal: 16,
+    marginTop: 12,
+  },
   loadMoreButton: {
     backgroundColor: colors.cardBackground,
     paddingHorizontal: 16,
@@ -692,13 +752,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: 'center',
-    marginTop: 12,
   },
   loadMoreButtonText: {
     fontSize: 14,
     fontWeight: '700',
     color: colors.text,
     letterSpacing: 0.3,
+  },
+  emptyContainer: {
+    paddingHorizontal: 16,
   },
   emptyText: {
     fontSize: 15,
@@ -709,7 +771,8 @@ const styles = StyleSheet.create({
 
   // Week Groups
   weekGroup: {
-    marginBottom: 28,
+    paddingHorizontal: 16,
+    marginBottom: 12,
   },
   weekLabel: {
     fontSize: 17,
@@ -728,6 +791,7 @@ const styles = StyleSheet.create({
 
   // Activity Wrapper
   activityWrapper: {
+    paddingHorizontal: 16,
     marginBottom: 16,
   },
 
