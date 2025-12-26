@@ -154,13 +154,13 @@ export default function LibraryScreen() {
       if (isAdmin) {
         // TRAINERS: Parallel fetch for exercises and related data
         const [exercisesResult, systemExercisesResult] = await Promise.all([
-          // DEL 2 FIX: Fetch trainer's own exercises (personal templates)
-          // Removed is_system filter to ensure we get all trainer's exercises
+          // Fetch trainer's own exercises (personal templates)
+          // Personal templates are identified by: trainer_id = current user AND is_system != true
           supabase
             .from('exercise_library')
             .select('*')
             .eq('trainer_id', userId)
-            .or('is_system.is.null,is_system.eq.false')
+            .neq('is_system', true)
             .order('created_at', { ascending: false }),
           // Fetch system exercises in parallel
           supabase
