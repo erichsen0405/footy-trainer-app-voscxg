@@ -112,7 +112,8 @@ export default function LibraryScreen() {
   const [trainerFolders, setTrainerFolders] = useState<FolderItem[]>([]);
   const [footballCoachFolders, setFootballCoachFolders] = useState<FolderItem[]>(FOOTBALLCOACH_STRUCTURE);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['personal', 'trainers', 'footballcoach']));
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [initialLoad, setInitialLoad] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showVideoModal, setShowVideoModal] = useState(false);
@@ -150,94 +151,142 @@ export default function LibraryScreen() {
       setLoading(true);
 
       if (isAdmin) {
-        // TRAINERS: Fetch their own exercises (personal templates)
-        const { data: exercisesData, error: exercisesError } = await supabase
-          .from('exercise_library')
-          .select('*')
-          .eq('trainer_id', userId)
-          .eq('is_system', false)
-          .order('created_at', { ascending: false });
+        // TRAINERS: Parallel fetch for exercises and related data
+        const [exercisesResult, systemExercisesResult] = await Promise.all([
+          // Fetch trainer's own exercises
+          supabase
+            .from('exercise_library')
+            .select('*')
+            .eq('trainer_id', userId)
+            .eq('is_system', false)
+            .order('created_at', { ascending: false }),
+          // Fetch system exercises in parallel
+          supabase
+            .from('exercise_library')
+            .select('*')
+            .eq('is_system', true)
+            .order('created_at', { ascending: true })
+        ]);
 
-        if (exercisesError) throw exercisesError;
+        if (exercisesResult.error) throw exercisesResult.error;
+        if (systemExercisesResult.error) throw systemExercisesResult.error;
 
-        const exerciseIds = exercisesData?.map(e => e.id) || [];
+        const exerciseIds = exercisesResult.data?.map(e => e.id) || [];
+        const systemExerciseIds = systemExercisesResult.data?.map(e => e.id) || [];
+        const allExerciseIds = [...exerciseIds, ...systemExerciseIds];
         
-        // Fetch subtasks
-        const { data: subtasksData, error: subtasksError } = await supabase
-          .from('exercise_subtasks')
-          .select('*')
-          .in('exercise_id', exerciseIds)
-          .order('sort_order', { ascending: true });
+        // Fetch subtasks and assignments in parallel
+        const [subtasksResult, assignmentsResult] = await Promise.all([
+          supabase
+            .from('exercise_subtasks')
+            .select('*')
+            .in('exercise_id', allExerciseIds)
+            .order('sort_order', { ascending: true }),
+          supabase
+            .from('exercise_assignments')
+            .select('*')
+            .in('exercise_id', exerciseIds)
+        ]);
 
-        if (subtasksError) throw subtasksError;
+        if (subtasksResult.error) throw subtasksResult.error;
+        if (assignmentsResult.error) throw assignmentsResult.error;
 
-        // Fetch assignments
-        const { data: assignmentsData, error: assignmentsError } = await supabase
-          .from('exercise_assignments')
-          .select('*')
-          .in('exercise_id', exerciseIds);
-
-        if (assignmentsError) throw assignmentsError;
-
-        const exercisesWithDetails: Exercise[] = (exercisesData || []).map(exercise => ({
+        const exercisesWithDetails: Exercise[] = (exercisesResult.data || []).map(exercise => ({
           ...exercise,
           created_at: new Date(exercise.created_at),
           updated_at: new Date(exercise.updated_at),
-          subtasks: (subtasksData || []).filter(s => s.exercise_id === exercise.id),
-          assignments: (assignmentsData || []).filter(a => a.exercise_id === exercise.id),
+          subtasks: (subtasksResult.data || []).filter(s => s.exercise_id === exercise.id),
+          assignments: (assignmentsResult.data || []).filter(a => a.exercise_id === exercise.id),
           isAssignedByCurrentTrainer: true,
         }));
 
         console.log('✅ Library: Loaded personal exercises:', exercisesWithDetails.length);
         setPersonalExercises(exercisesWithDetails);
-        setTrainerFolders([]); // Trainers don't see trainer folders
+        setTrainerFolders([]);
+
+        // Process system exercises
+        const updatedFootballCoachFolders = FOOTBALLCOACH_STRUCTURE.map(mainFolder => {
+          const updatedSubfolders = mainFolder.subfolders?.map(subfolder => {
+            const categoryExercises = (systemExercisesResult.data || [])
+              .filter(ex => ex.category_path === subfolder.id)
+              .map(exercise => ({
+                ...exercise,
+                created_at: new Date(exercise.created_at),
+                updated_at: new Date(exercise.updated_at),
+                subtasks: (subtasksResult.data || []).filter(s => s.exercise_id === exercise.id),
+                assignments: [],
+              }));
+
+            return {
+              ...subfolder,
+              exercises: categoryExercises,
+            };
+          });
+
+          return {
+            ...mainFolder,
+            subfolders: updatedSubfolders,
+          };
+        });
+
+        setFootballCoachFolders(updatedFootballCoachFolders);
+        console.log('✅ Library: Loaded FootballCoach exercises');
 
       } else {
-        // PLAYERS: Fetch exercises assigned to them, grouped by trainer
-        const { data: assignmentsData, error: assignmentsError } = await supabase
-          .from('exercise_assignments')
-          .select('*')
-          .eq('player_id', userId);
+        // PLAYERS: Parallel fetch for assignments and system exercises
+        const [assignmentsResult, systemExercisesResult] = await Promise.all([
+          supabase
+            .from('exercise_assignments')
+            .select('*')
+            .eq('player_id', userId),
+          supabase
+            .from('exercise_library')
+            .select('*')
+            .eq('is_system', true)
+            .order('created_at', { ascending: true })
+        ]);
 
-        if (assignmentsError) throw assignmentsError;
+        if (assignmentsResult.error) throw assignmentsResult.error;
+        if (systemExercisesResult.error) throw systemExercisesResult.error;
 
-        const exerciseIds = assignmentsData?.map(a => a.exercise_id) || [];
+        const exerciseIds = assignmentsResult.data?.map(a => a.exercise_id) || [];
+        const systemExerciseIds = systemExercisesResult.data?.map(e => e.id) || [];
+        const allExerciseIds = [...exerciseIds, ...systemExerciseIds];
         
-        // Fetch exercises separately
-        const { data: exercisesData, error: exercisesError } = await supabase
-          .from('exercise_library')
-          .select('*')
-          .in('id', exerciseIds);
+        // Fetch exercises, subtasks, and trainers in parallel
+        const trainerIds = [...new Set(assignmentsResult.data?.map(a => a.trainer_id) || [])];
+        
+        const [exercisesResult, subtasksResult, trainersResult] = await Promise.all([
+          supabase
+            .from('exercise_library')
+            .select('*')
+            .in('id', exerciseIds),
+          supabase
+            .from('exercise_subtasks')
+            .select('*')
+            .in('exercise_id', allExerciseIds)
+            .order('sort_order', { ascending: true }),
+          trainerIds.length > 0 
+            ? supabase
+                .from('profiles')
+                .select('user_id, full_name')
+                .in('user_id', trainerIds)
+            : Promise.resolve({ data: [], error: null })
+        ]);
 
-        if (exercisesError) throw exercisesError;
-
-        // Fetch subtasks
-        const { data: subtasksData, error: subtasksError } = await supabase
-          .from('exercise_subtasks')
-          .select('*')
-          .in('exercise_id', exerciseIds)
-          .order('sort_order', { ascending: true });
-
-        if (subtasksError) throw subtasksError;
-
-        // Fetch trainer profiles
-        const trainerIds = [...new Set(assignmentsData?.map(a => a.trainer_id) || [])];
-        const { data: trainersData, error: trainersError } = await supabase
-          .from('profiles')
-          .select('user_id, full_name')
-          .in('user_id', trainerIds);
-
-        if (trainersError) throw trainersError;
+        if (exercisesResult.error) throw exercisesResult.error;
+        if (subtasksResult.error) throw subtasksResult.error;
+        if (trainersResult.error) throw trainersResult.error;
 
         // Group exercises by trainer
         const trainerMap = new Map<string, FolderItem>();
         
-        (assignmentsData || []).forEach(assignment => {
-          const exercise = exercisesData?.find(e => e.id === assignment.exercise_id);
+        (assignmentsResult.data || []).forEach(assignment => {
+          const exercise = exercisesResult.data?.find(e => e.id === assignment.exercise_id);
           if (!exercise) return;
 
           const trainerId = assignment.trainer_id;
-          const trainerProfile = trainersData?.find(t => t.user_id === trainerId);
+          const trainerProfile = trainersResult.data?.find(t => t.user_id === trainerId);
           const trainerName = trainerProfile?.full_name || 'Ukendt træner';
 
           if (!trainerMap.has(trainerId)) {
@@ -257,7 +306,7 @@ export default function LibraryScreen() {
             ...exercise,
             created_at: new Date(exercise.created_at),
             updated_at: new Date(exercise.updated_at),
-            subtasks: (subtasksData || []).filter(s => s.exercise_id === exercise.id),
+            subtasks: (subtasksResult.data || []).filter(s => s.exercise_id === exercise.id),
             assignments: [assignment],
             trainer_name: trainerName,
           };
@@ -268,62 +317,43 @@ export default function LibraryScreen() {
         const folders = Array.from(trainerMap.values());
         console.log('✅ Library: Loaded trainer folders:', folders.length);
         setTrainerFolders(folders);
-        setPersonalExercises([]); // Players don't have personal exercises in this context
-      }
+        setPersonalExercises([]);
 
-      // Fetch FootballCoach system exercises for all users
-      const { data: systemExercisesData, error: systemExercisesError } = await supabase
-        .from('exercise_library')
-        .select('*')
-        .eq('is_system', true)
-        .order('created_at', { ascending: true });
+        // Process system exercises
+        const updatedFootballCoachFolders = FOOTBALLCOACH_STRUCTURE.map(mainFolder => {
+          const updatedSubfolders = mainFolder.subfolders?.map(subfolder => {
+            const categoryExercises = (systemExercisesResult.data || [])
+              .filter(ex => ex.category_path === subfolder.id)
+              .map(exercise => ({
+                ...exercise,
+                created_at: new Date(exercise.created_at),
+                updated_at: new Date(exercise.updated_at),
+                subtasks: (subtasksResult.data || []).filter(s => s.exercise_id === exercise.id),
+                assignments: [],
+              }));
 
-      if (systemExercisesError) throw systemExercisesError;
-
-      const systemExerciseIds = systemExercisesData?.map(e => e.id) || [];
-      
-      // Fetch subtasks for system exercises
-      const { data: systemSubtasksData, error: systemSubtasksError } = await supabase
-        .from('exercise_subtasks')
-        .select('*')
-        .in('exercise_id', systemExerciseIds)
-        .order('sort_order', { ascending: true });
-
-      if (systemSubtasksError) throw systemSubtasksError;
-
-      // Group system exercises by category_path
-      const updatedFootballCoachFolders = FOOTBALLCOACH_STRUCTURE.map(mainFolder => {
-        const updatedSubfolders = mainFolder.subfolders?.map(subfolder => {
-          const categoryExercises = (systemExercisesData || [])
-            .filter(ex => ex.category_path === subfolder.id)
-            .map(exercise => ({
-              ...exercise,
-              created_at: new Date(exercise.created_at),
-              updated_at: new Date(exercise.updated_at),
-              subtasks: (systemSubtasksData || []).filter(s => s.exercise_id === exercise.id),
-              assignments: [],
-            }));
+            return {
+              ...subfolder,
+              exercises: categoryExercises,
+            };
+          });
 
           return {
-            ...subfolder,
-            exercises: categoryExercises,
+            ...mainFolder,
+            subfolders: updatedSubfolders,
           };
         });
 
-        return {
-          ...mainFolder,
-          subfolders: updatedSubfolders,
-        };
-      });
-
-      setFootballCoachFolders(updatedFootballCoachFolders);
-      console.log('✅ Library: Loaded FootballCoach exercises');
+        setFootballCoachFolders(updatedFootballCoachFolders);
+        console.log('✅ Library: Loaded FootballCoach exercises');
+      }
 
     } catch (error) {
       console.error('❌ Library: Error fetching library data:', error);
       Alert.alert('Fejl', 'Kunne ikke hente bibliotek');
     } finally {
       setLoading(false);
+      setInitialLoad(false);
     }
   }, [isAdmin]);
 
@@ -339,7 +369,7 @@ export default function LibraryScreen() {
         if (!user) {
           console.log('❌ Library: No user found');
           if (isMounted) {
-            setLoading(false);
+            setInitialLoad(false);
           }
           return;
         }
@@ -352,7 +382,7 @@ export default function LibraryScreen() {
       } catch (error) {
         console.error('❌ Library: Error getting user:', error);
         if (isMounted) {
-          setLoading(false);
+          setInitialLoad(false);
         }
       }
     };
@@ -997,9 +1027,20 @@ export default function LibraryScreen() {
     );
   };
 
-  if (loading) {
+  // Show skeleton UI on initial load
+  if (initialLoad) {
     return (
       <View style={[styles.container, { backgroundColor: containerBgColor }]}>
+        <View style={styles.header}>
+          <View>
+            <Text style={[styles.headerTitle, { color: textColor }]}>
+              Øvelsesbibliotek
+            </Text>
+            <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
+              {isPlayer ? 'Øvelser fra dine trænere og inspiration' : 'Struktureret i mapper'}
+            </Text>
+          </View>
+        </View>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={[styles.loadingText, { color: textColor }]}>Indlæser bibliotek...</Text>
@@ -1047,6 +1088,12 @@ export default function LibraryScreen() {
           <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
             Her kan du se øvelser fra dine trænere og FootballCoach inspiration. Tryk på &quot;Kopiér til mine skabeloner&quot; for at tilføje dem til dine egne opgaver.
           </Text>
+        </View>
+      )}
+
+      {loading && (
+        <View style={styles.refreshingIndicator}>
+          <ActivityIndicator size="small" color={colors.primary} />
         </View>
       )}
 
@@ -1448,6 +1495,10 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 16,
+  },
+  refreshingIndicator: {
+    paddingVertical: 8,
+    alignItems: 'center',
   },
   header: {
     flexDirection: 'row',
