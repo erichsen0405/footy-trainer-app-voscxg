@@ -896,6 +896,60 @@ export default function LibraryScreen() {
     }
   };
 
+  // DEL 2: Handler for player to delete assigned exercise
+  const handleRemoveAssignedExercise = (exercise: Exercise) => {
+    if (isAdmin) {
+      Alert.alert('Fejl', 'Denne funktion er kun for spillere');
+      return;
+    }
+
+    Alert.alert(
+      'Fjern øvelse',
+      `Er du sikker på at du vil fjerne "${exercise.title}" fra dit bibliotek?\n\nØvelsen vil stadig være tilgængelig hos din træner.`,
+      [
+        { text: 'Annuller', style: 'cancel' },
+        {
+          text: 'Fjern',
+          style: 'destructive',
+          onPress: async () => {
+            setProcessing(true);
+            try {
+              if (!currentUserId) throw new Error('Not authenticated');
+
+              console.log('🗑️ Library: Player removing assigned exercise:', exercise.id);
+
+              // Delete the assignment for this player
+              const { error: deleteError } = await supabase
+                .from('exercise_assignments')
+                .delete()
+                .eq('exercise_id', exercise.id)
+                .eq('player_id', currentUserId);
+
+              if (deleteError) {
+                console.error('❌ Library: Error deleting assignment:', deleteError);
+                throw deleteError;
+              }
+
+              console.log('✅ Library: Assignment deleted successfully');
+              Alert.alert('Succes', 'Øvelse fjernet fra dit bibliotek');
+
+              // Refetch library data to update UI
+              if (currentUserId) {
+                console.log('🔄 Library: Refreshing library data after delete');
+                await fetchLibraryData(currentUserId);
+              }
+            } catch (error: any) {
+              console.error('❌ Library: Error removing assigned exercise:', error);
+              Alert.alert('Fejl', 'Kunne ikke fjerne øvelse: ' + error.message);
+            } finally {
+              setProcessing(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const openVideoModal = (url: string) => {
     setSelectedVideoUrl(url);
     setShowVideoModal(true);
@@ -1024,20 +1078,37 @@ export default function LibraryScreen() {
         {/* DEL 1: FOOTER - CTA or Status */}
         <View style={styles.cardFooter}>
           {shouldBeReadOnly ? (
-            // Player view: Show copy button
-            <TouchableOpacity
-              style={[styles.ctaButton, { backgroundColor: colors.primary }]}
-              onPress={() => handleCopyToTasks(exercise)}
-              disabled={processing}
-            >
-              <IconSymbol
-                ios_icon_name="doc.on.doc"
-                android_material_icon_name="content_copy"
-                size={18}
-                color="#fff"
-              />
-              <Text style={styles.ctaButtonText}>Kopiér til mine skabeloner</Text>
-            </TouchableOpacity>
+            // Player view: Show copy button and delete button (for assigned exercises)
+            <React.Fragment>
+              <TouchableOpacity
+                style={[styles.ctaButton, { backgroundColor: colors.primary, flex: exercise.trainer_name ? 0.7 : 1 }]}
+                onPress={() => handleCopyToTasks(exercise)}
+                disabled={processing}
+              >
+                <IconSymbol
+                  ios_icon_name="doc.on.doc"
+                  android_material_icon_name="content_copy"
+                  size={18}
+                  color="#fff"
+                />
+                <Text style={styles.ctaButtonText}>Kopiér til mine skabeloner</Text>
+              </TouchableOpacity>
+              {/* DEL 2: Show delete button only for assigned exercises (not system exercises) */}
+              {exercise.trainer_name && !isSystemExercise && (
+                <TouchableOpacity
+                  style={[styles.deleteAssignmentButton, { backgroundColor: colors.error }]}
+                  onPress={() => handleRemoveAssignedExercise(exercise)}
+                  disabled={processing}
+                >
+                  <IconSymbol
+                    ios_icon_name="trash.fill"
+                    android_material_icon_name="delete"
+                    size={18}
+                    color="#fff"
+                  />
+                </TouchableOpacity>
+              )}
+            </React.Fragment>
           ) : (
             // Trainer view: Show assignment summary + action buttons
             <React.Fragment>
@@ -1834,6 +1905,16 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#fff',
+  },
+  // DEL 2: Delete assignment button for players
+  deleteAssignmentButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 10,
+    flex: 0.3,
   },
   videoPreviewContainer: {
     marginBottom: 12,
