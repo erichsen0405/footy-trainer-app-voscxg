@@ -8,6 +8,7 @@ import {
   Pressable,
   ScrollView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { IconSymbol } from '@/components/IconSymbol';
 import SmartVideoPlayer from '@/components/SmartVideoPlayer';
@@ -32,108 +33,40 @@ interface TaskData {
   is_external: boolean;
 }
 
-export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalProps) {
-  const [task, setTask] = useState<TaskData | null>(null);
-  const [completing, setCompleting] = useState(false);
+// Skeleton component - renders immediately
+function TaskDetailsSkeleton() {
+  return (
+    <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
+      {/* Title skeleton */}
+      <View style={styles.section}>
+        <View style={[styles.skeleton, styles.skeletonTitle]} />
+      </View>
 
-  // Fetch task data
-  useEffect(() => {
-    const fetchTask = async () => {
-      console.log('TaskDetailsModal: Fetching task:', taskId);
+      {/* Description skeleton */}
+      <View style={styles.section}>
+        <View style={[styles.skeleton, styles.skeletonLabel]} />
+        <View style={[styles.skeleton, styles.skeletonDescription]} />
+        <View style={[styles.skeleton, styles.skeletonDescription, { width: '80%' }]} />
+      </View>
 
-      try {
-        // Try fetching from activity_tasks first WITH task_templates JOIN to get video_url
-        const { data: activityTask, error: activityError } = await supabase
-          .from('activity_tasks')
-          .select(`
-            *,
-            task_templates!activity_tasks_task_template_id_fkey (
-              video_url
-            )
-          `)
-          .eq('id', taskId)
-          .maybeSingle();
+      {/* Button skeleton */}
+      <View style={styles.section}>
+        <View style={[styles.skeleton, styles.skeletonButton]} />
+      </View>
+    </ScrollView>
+  );
+}
 
-        if (activityTask) {
-          console.log('TaskDetailsModal: Found in activity_tasks');
-          console.log('TASK RAW DATA', activityTask);
-          
-          // Extract video_url from the joined task_templates
-          const videoUrl = activityTask.task_templates?.video_url || null;
-          
-          setTask({
-            ...activityTask,
-            video_url: videoUrl,
-            is_external: false,
-          });
-          
-          return;
-        }
-
-        // If not found, try external_event_tasks WITH task_templates JOIN
-        const { data: externalTask, error: externalError } = await supabase
-          .from('external_event_tasks')
-          .select(`
-            *,
-            task_templates!external_event_tasks_task_template_id_fkey (
-              video_url
-            )
-          `)
-          .eq('id', taskId)
-          .maybeSingle();
-
-        if (externalTask) {
-          console.log('TaskDetailsModal: Found in external_event_tasks');
-          console.log('TASK RAW DATA', externalTask);
-          
-          // Extract video_url from the joined task_templates
-          const videoUrl = externalTask.task_templates?.video_url || null;
-          
-          setTask({
-            ...externalTask,
-            video_url: videoUrl,
-            is_external: true,
-          });
-          
-          return;
-        }
-
-        // Task not found
-        console.error('TaskDetailsModal: Task not found');
-      } catch (err) {
-        console.error('TaskDetailsModal: Error fetching task:', err);
-      }
-    };
-
-    fetchTask();
-  }, [taskId]);
-
-  const handleToggleCompletion = async () => {
-    if (!task || completing) return;
-
-    console.log('TaskDetailsModal: Toggling completion');
-    
-    const previousCompleted = task.completed;
-    const newCompleted = !previousCompleted;
-
-    // Optimistic update
-    setTask({ ...task, completed: newCompleted });
-    
-    // Disable further clicks
-    setCompleting(true);
-
-    try {
-      await taskService.toggleTaskCompletion(taskId, task.is_external, newCompleted);
-      console.log('TaskDetailsModal: Task completion toggled successfully');
-    } catch (err) {
-      console.error('TaskDetailsModal: Error toggling completion:', err);
-      // Rollback on error
-      setTask({ ...task, completed: previousCompleted });
-    } finally {
-      setCompleting(false);
-    }
-  };
-
+// Content component - only renders when data is ready
+function TaskDetailsContent({ 
+  task, 
+  completing, 
+  onToggleCompletion 
+}: { 
+  task: TaskData; 
+  completing: boolean;
+  onToggleCompletion: () => void;
+}) {
   const formatReminderTime = (minutes: number) => {
     if (minutes < 60) {
       return `${minutes} min før`;
@@ -146,11 +79,182 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
     return `${hours} time${hours > 1 ? 'r' : ''} og ${remainingMinutes} min før`;
   };
 
-  // Render guard - return null if no task
-  if (!task) return null;
-
-  // Defensive video URL extraction
   const videoUrl = task.video_url || null;
+
+  return (
+    <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
+      {/* Task Title */}
+      <View style={styles.section}>
+        <Text style={styles.taskTitle}>{task.title || 'Uden titel'}</Text>
+      </View>
+
+      {/* Video - only render if valid URL exists */}
+      {videoUrl && (
+        <View style={styles.videoSection}>
+          <View style={styles.videoContainer}>
+            <SmartVideoPlayer url={videoUrl} />
+          </View>
+        </View>
+      )}
+
+      {/* Task Description */}
+      {task.description && (
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Beskrivelse</Text>
+          <Text style={styles.description}>{task.description}</Text>
+        </View>
+      )}
+
+      {/* Reminder - read-only, hidden if missing */}
+      {task.reminder_minutes && (
+        <View style={styles.section}>
+          <View style={styles.reminderContainer}>
+            <IconSymbol
+              ios_icon_name="bell.fill"
+              android_material_icon_name="notifications"
+              size={20}
+              color={colors.primary}
+            />
+            <Text style={styles.reminderText}>
+              Påmindelse: {formatReminderTime(task.reminder_minutes)}
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* Completion Button */}
+      <View style={styles.section}>
+        <Pressable
+          onPress={onToggleCompletion}
+          disabled={completing}
+          style={({ pressed }) => [
+            styles.completionButton,
+            task.completed && styles.completionButtonCompleted,
+            pressed && styles.completionButtonPressed,
+            completing && styles.completionButtonDisabled,
+          ]}
+        >
+          <View style={styles.completionButtonContent}>
+            <View
+              style={[
+                styles.checkbox,
+                task.completed && styles.checkboxCompleted,
+              ]}
+            >
+              {task.completed && (
+                <IconSymbol
+                  ios_icon_name="checkmark"
+                  android_material_icon_name="check"
+                  size={20}
+                  color={colors.primary}
+                />
+              )}
+            </View>
+            <Text
+              style={[
+                styles.completionButtonText,
+                task.completed && styles.completionButtonTextCompleted,
+              ]}
+            >
+              {task.completed ? 'Fuldført ✓' : 'Markér som fuldført'}
+            </Text>
+          </View>
+        </Pressable>
+      </View>
+    </ScrollView>
+  );
+}
+
+export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalProps) {
+  const [task, setTask] = useState<TaskData | null>(null);
+  const [completing, setCompleting] = useState(false);
+  const [isReady, setIsReady] = useState(false);
+
+  // Fetch task data - deferred to useEffect after mount
+  useEffect(() => {
+    const fetchTask = async () => {
+      try {
+        // Try fetching from activity_tasks first WITH task_templates JOIN to get video_url
+        const { data: activityTask } = await supabase
+          .from('activity_tasks')
+          .select(`
+            *,
+            task_templates!activity_tasks_task_template_id_fkey (
+              video_url
+            )
+          `)
+          .eq('id', taskId)
+          .maybeSingle();
+
+        if (activityTask) {
+          const videoUrl = activityTask.task_templates?.video_url || null;
+          
+          setTask({
+            ...activityTask,
+            video_url: videoUrl,
+            is_external: false,
+          });
+          setIsReady(true);
+          return;
+        }
+
+        // If not found, try external_event_tasks WITH task_templates JOIN
+        const { data: externalTask } = await supabase
+          .from('external_event_tasks')
+          .select(`
+            *,
+            task_templates!external_event_tasks_task_template_id_fkey (
+              video_url
+            )
+          `)
+          .eq('id', taskId)
+          .maybeSingle();
+
+        if (externalTask) {
+          const videoUrl = externalTask.task_templates?.video_url || null;
+          
+          setTask({
+            ...externalTask,
+            video_url: videoUrl,
+            is_external: true,
+          });
+          setIsReady(true);
+          return;
+        }
+
+        // Task not found - still mark as ready to show error state
+        setIsReady(true);
+      } catch (err) {
+        console.error('TaskDetailsModal: Error fetching task:', err);
+        setIsReady(true);
+      }
+    };
+
+    fetchTask();
+  }, [taskId]);
+
+  const handleToggleCompletion = async () => {
+    if (!task || completing) return;
+
+    const previousCompleted = task.completed;
+    const newCompleted = !previousCompleted;
+
+    // Optimistic update
+    setTask({ ...task, completed: newCompleted });
+    
+    // Disable further clicks
+    setCompleting(true);
+
+    try {
+      await taskService.toggleTaskCompletion(taskId, task.is_external, newCompleted);
+    } catch (err) {
+      console.error('TaskDetailsModal: Error toggling completion:', err);
+      // Rollback on error
+      setTask({ ...task, completed: previousCompleted });
+    } finally {
+      setCompleting(false);
+    }
+  };
 
   return (
     <Modal
@@ -160,7 +264,7 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
       onRequestClose={onClose}
     >
       <View style={styles.container}>
-        {/* Header */}
+        {/* Header - always visible */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Opgave</Text>
           <Pressable onPress={onClose} style={styles.closeButton}>
@@ -173,87 +277,20 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
           </Pressable>
         </View>
 
-        {/* Content */}
-        <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
-          {/* Task Title */}
-          <View style={styles.section}>
-            <Text style={styles.taskTitle}>{task.title || 'Uden titel'}</Text>
+        {/* Content - skeleton first, then real content */}
+        {!isReady ? (
+          <TaskDetailsSkeleton />
+        ) : task ? (
+          <TaskDetailsContent 
+            task={task} 
+            completing={completing}
+            onToggleCompletion={handleToggleCompletion}
+          />
+        ) : (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>Opgave ikke fundet</Text>
           </View>
-
-          {/* Video - only render if valid URL exists */}
-          {videoUrl && (
-            <View style={styles.videoSection}>
-              <View style={styles.videoContainer}>
-                <SmartVideoPlayer url={videoUrl} />
-              </View>
-            </View>
-          )}
-
-          {/* Task Description */}
-          {task.description && (
-            <View style={styles.section}>
-              <Text style={styles.sectionLabel}>Beskrivelse</Text>
-              <Text style={styles.description}>{task.description}</Text>
-            </View>
-          )}
-
-          {/* Reminder - read-only, hidden if missing */}
-          {task.reminder_minutes && (
-            <View style={styles.section}>
-              <View style={styles.reminderContainer}>
-                <IconSymbol
-                  ios_icon_name="bell.fill"
-                  android_material_icon_name="notifications"
-                  size={20}
-                  color={colors.primary}
-                />
-                <Text style={styles.reminderText}>
-                  Påmindelse: {formatReminderTime(task.reminder_minutes)}
-                </Text>
-              </View>
-            </View>
-          )}
-
-          {/* Completion Button */}
-          <View style={styles.section}>
-            <Pressable
-              onPress={handleToggleCompletion}
-              disabled={completing}
-              style={({ pressed }) => [
-                styles.completionButton,
-                task.completed && styles.completionButtonCompleted,
-                pressed && styles.completionButtonPressed,
-                completing && styles.completionButtonDisabled,
-              ]}
-            >
-              <View style={styles.completionButtonContent}>
-                <View
-                  style={[
-                    styles.checkbox,
-                    task.completed && styles.checkboxCompleted,
-                  ]}
-                >
-                  {task.completed && (
-                    <IconSymbol
-                      ios_icon_name="checkmark"
-                      android_material_icon_name="check"
-                      size={20}
-                      color={colors.primary}
-                    />
-                  )}
-                </View>
-                <Text
-                  style={[
-                    styles.completionButtonText,
-                    task.completed && styles.completionButtonTextCompleted,
-                  ]}
-                >
-                  {task.completed ? 'Fuldført ✓' : 'Markér som fuldført'}
-                </Text>
-              </View>
-            </Pressable>
-          </View>
-        </ScrollView>
+        )}
       </View>
     </Modal>
   );
@@ -376,5 +413,41 @@ const styles = StyleSheet.create({
   },
   completionButtonTextCompleted: {
     color: '#fff',
+  },
+  skeleton: {
+    backgroundColor: colors.border || '#E0E0E0',
+    borderRadius: 8,
+    opacity: 0.3,
+  },
+  skeletonTitle: {
+    height: 32,
+    width: '70%',
+    marginBottom: 8,
+  },
+  skeletonLabel: {
+    height: 14,
+    width: '30%',
+    marginBottom: 8,
+  },
+  skeletonDescription: {
+    height: 16,
+    width: '100%',
+    marginBottom: 8,
+  },
+  skeletonButton: {
+    height: 60,
+    width: '100%',
+    borderRadius: 12,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
 });
