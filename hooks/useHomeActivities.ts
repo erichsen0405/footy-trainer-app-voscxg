@@ -78,9 +78,59 @@ export function useHomeActivities(): UseHomeActivitiesResult {
     try {
       console.log('[useHomeActivities] Fetching activities for user:', userId);
       
-      // 1. Fetch categories first
-      const categoriesData = await getCategories(userId);
+      // ✅ PARALLEL FETCH GROUP 1: Categories + Internal Activities + External Calendars
+      // These are independent and can run in parallel
+      const [categoriesData, internalData, calendarsData] = await Promise.all([
+        // 1. Fetch categories
+        getCategories(userId),
+        
+        // 2. Fetch internal activities WITH TASKS
+        supabase
+          .from('activities')
+          .select(`
+            id,
+            user_id,
+            title,
+            activity_date,
+            activity_time,
+            location,
+            category_id,
+            created_at,
+            updated_at,
+            activity_tasks (
+              id,
+              title,
+              description,
+              completed,
+              reminder_minutes
+            )
+          `)
+          .eq('user_id', userId)
+          .then(({ data, error }) => {
+            if (error) {
+              console.error('[useHomeActivities] Error fetching internal activities:', error);
+              return null;
+            }
+            return data;
+          }),
+        
+        // 3. Fetch external calendars
+        supabase
+          .from('external_calendars')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('enabled', true)
+          .then(({ data, error }) => {
+            if (error) {
+              console.error('[useHomeActivities] Error fetching calendars:', error);
+              return null;
+            }
+            return data;
+          }),
+      ]);
+      
       console.log('[useHomeActivities] Categories fetched:', categoriesData?.length ?? 0);
+      console.log('[useHomeActivities] Internal activities:', internalData?.length ?? 0);
       
       // Create a map for quick category lookup
       const categoryMap = new Map<string, DatabaseActivityCategory>();
@@ -89,35 +139,6 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       });
       
       console.log('[useHomeActivities] Category map size:', categoryMap.size);
-      
-      // 2. Fetch internal activities WITH TASKS
-      const { data: internalData, error: internalError } = await supabase
-        .from('activities')
-        .select(`
-          id,
-          user_id,
-          title,
-          activity_date,
-          activity_time,
-          location,
-          category_id,
-          created_at,
-          updated_at,
-          activity_tasks (
-            id,
-            title,
-            description,
-            completed,
-            reminder_minutes
-          )
-        `)
-        .eq('user_id', userId);
-      
-      if (internalError) {
-        console.error('[useHomeActivities] Error fetching internal activities:', internalError);
-      }
-      
-      console.log('[useHomeActivities] Internal activities:', internalData?.length ?? 0);
       
       // Map internal activities with tasks and resolved category
       const internalActivities: ActivityWithCategory[] = (internalData || []).map(activity => {
@@ -148,25 +169,13 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         };
       });
       
-      // 3. Fetch external calendar activities WITH TASKS
-      // First, get the user's external calendars
-      const { data: calendarsData, error: calendarsError } = await supabase
-        .from('external_calendars')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('enabled', true);
-      
-      if (calendarsError) {
-        console.error('[useHomeActivities] Error fetching calendars:', calendarsError);
-      }
-      
       const calendarIds = calendarsData?.map(c => c.id) || [];
       console.log('[useHomeActivities] Found enabled calendars:', calendarIds.length);
       
       let externalActivities: ActivityWithCategory[] = [];
       
       if (calendarIds.length > 0) {
-        // Fetch all external events from enabled calendars
+        // ✅ SEQUENTIAL FETCH GROUP 2: External Events (depends on calendar IDs)
         const { data: eventsData, error: eventsError } = await supabase
           .from('events_external')
           .select('id, title, start_date, start_time, location, provider_calendar_id, provider_event_uid')
@@ -178,7 +187,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         } else if (eventsData) {
           console.log('[useHomeActivities] External events found:', eventsData.length);
           
-          // Get metadata for these events (if any) WITH TASKS
+          // ✅ SEQUENTIAL FETCH GROUP 3: External Metadata (depends on event IDs)
           const externalEventIds = eventsData.map(e => e.id);
           const { data: metaData, error: metaError } = await supabase
             .from('events_local_meta')
