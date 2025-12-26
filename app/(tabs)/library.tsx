@@ -541,6 +541,7 @@ export default function LibraryScreen() {
             title,
             description: description || null,
             video_url: videoUrl.trim() || null,
+            is_system: false, // FIX: Explicitly set is_system to false
           })
           .select()
           .single();
@@ -667,6 +668,7 @@ export default function LibraryScreen() {
           title: `${exercise.title} (kopi)`,
           description: exercise.description,
           video_url: exercise.video_url,
+          is_system: false, // FIX: Explicitly set is_system to false
         })
         .select()
         .single();
