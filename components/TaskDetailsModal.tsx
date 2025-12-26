@@ -169,6 +169,14 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
   const [task, setTask] = useState<TaskData | null>(null);
   const [completing, setCompleting] = useState(false);
   const [isReady, setIsReady] = useState(false);
+  const [hasPainted, setHasPainted] = useState(false);
+
+  // Hard gate: ensure first paint before mounting TaskDetailsContent
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      setHasPainted(true);
+    });
+  }, []);
 
   // Fetch task data - deferred to useEffect after mount
   useEffect(() => {
@@ -277,16 +285,20 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
           </Pressable>
         </View>
 
-        {/* Content - skeleton first, then real content */}
-        {!isReady ? (
-          <TaskDetailsSkeleton />
-        ) : task ? (
+        {/* Skeleton - shown before first paint */}
+        {!hasPainted && <TaskDetailsSkeleton />}
+
+        {/* Content - only mounted after first paint AND data is ready */}
+        {hasPainted && isReady && task && (
           <TaskDetailsContent 
             task={task} 
             completing={completing}
             onToggleCompletion={handleToggleCompletion}
           />
-        ) : (
+        )}
+
+        {/* Error state - only shown after first paint AND when task is not found */}
+        {hasPainted && isReady && !task && (
           <View style={styles.errorContainer}>
             <Text style={styles.errorText}>Opgave ikke fundet</Text>
           </View>
