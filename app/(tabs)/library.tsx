@@ -186,7 +186,7 @@ export default function LibraryScreen() {
         const systemExerciseIds = systemExercisesResult.data?.map(e => e.id) || [];
         const allExerciseIds = [...exerciseIds, ...systemExerciseIds];
         
-        // Fetch subtasks and assignments in parallel
+        // Fetch subtasks and assignments in parallel (WITHOUT profiles JOIN)
         const [subtasksResult, assignmentsResult] = await Promise.all([
           supabase
             .from('exercise_subtasks')
@@ -195,12 +195,35 @@ export default function LibraryScreen() {
             .order('sort_order', { ascending: true }),
           supabase
             .from('exercise_assignments')
-            .select('*, profiles!exercise_assignments_player_id_fkey(full_name)')
+            .select('*')
             .in('exercise_id', exerciseIds)
         ]);
 
         if (subtasksResult.error) throw subtasksResult.error;
         if (assignmentsResult.error) throw assignmentsResult.error;
+
+        // Fetch player names separately
+        const playerIds = [...new Set((assignmentsResult.data || [])
+          .filter(a => a.player_id)
+          .map(a => a.player_id))];
+
+        let playerNamesMap: Record<string, string> = {};
+        
+        if (playerIds.length > 0) {
+          const { data: profilesData, error: profilesError } = await supabase
+            .from('profiles')
+            .select('id, full_name')
+            .in('id', playerIds);
+
+          if (profilesError) {
+            console.error('❌ Library: Error fetching profiles:', profilesError);
+          } else {
+            playerNamesMap = (profilesData || []).reduce((acc, profile) => {
+              acc[profile.id] = profile.full_name;
+              return acc;
+            }, {} as Record<string, string>);
+          }
+        }
 
         // DEL 2: Build assignment summary for each exercise
         const exercisesWithDetails: Exercise[] = (exercisesResult.data || []).map(exercise => {
@@ -215,7 +238,7 @@ export default function LibraryScreen() {
               if (playerAssignments.length <= 2) {
                 // Show names for 1-2 players
                 const names = playerAssignments
-                  .map(a => (a.profiles as any)?.full_name || 'Ukendt')
+                  .map(a => playerNamesMap[a.player_id!] || 'Ukendt')
                   .join(', ');
                 assignmentSummary = `Kopieret til: ${names}`;
               } else {
