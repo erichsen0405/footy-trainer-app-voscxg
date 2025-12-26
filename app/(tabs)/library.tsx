@@ -239,7 +239,7 @@ export default function LibraryScreen() {
               if (playerAssignments.length <= 2) {
                 // Show names for 1-2 players
                 const names = playerAssignments
-                  .map(a => playerNamesMap[a.player_id!] || 'Ukendt')
+                  .map(a => playerNamesMap[a.player_id!] || 'Spiller')
                   .join(', ');
                 assignmentSummary = `Kopieret til: ${names}`;
               } else {
@@ -259,7 +259,7 @@ export default function LibraryScreen() {
           // DEL 3: Add player names to assignments for revoke modal
           const assignmentsWithNames = exerciseAssignments.map(assignment => ({
             ...assignment,
-            player_name: assignment.player_id ? playerNamesMap[assignment.player_id] || 'Ukendt' : undefined,
+            player_name: assignment.player_id ? playerNamesMap[assignment.player_id] || 'Spiller' : undefined,
           }));
 
           return {
@@ -977,9 +977,12 @@ export default function LibraryScreen() {
   const handleRevokeFromPlayer = async (playerId: string, playerName: string) => {
     if (!selectedExercise || !currentUserId) return;
 
+    // DEL 4: Ensure we never show "ukendt" in the alert
+    const displayName = playerName || 'Spiller';
+
     Alert.alert(
       'Tilbagekald øvelse',
-      `Er du sikker på at du vil tilbagekalde "${selectedExercise.title}" fra ${playerName}?`,
+      `Er du sikker på at du vil tilbagekalde "${selectedExercise.title}" fra ${displayName}?`,
       [
         { text: 'Annuller', style: 'cancel' },
         {
@@ -1002,7 +1005,7 @@ export default function LibraryScreen() {
               }
 
               console.log('✅ Library: Assignment revoked successfully');
-              Alert.alert('Succes', `Øvelse tilbagekaldt fra ${playerName}`);
+              Alert.alert('Succes', `Øvelse tilbagekaldt fra ${displayName}`);
 
               // Refetch library data to update UI
               if (currentUserId) {
@@ -1845,35 +1848,40 @@ export default function LibraryScreen() {
                 {/* List of assigned players */}
                 {selectedExercise.assignments
                   .filter(a => a.player_id)
-                  .map((assignment) => (
-                    <TouchableOpacity
-                      key={assignment.id}
-                      style={[styles.revokeCard, { backgroundColor: cardBgColor }]}
-                      onPress={() => handleRevokeFromPlayer(assignment.player_id!, assignment.player_name || 'Ukendt')}
-                      disabled={processing}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.revokeCardLeft}>
-                        <View style={styles.assignIcon}>
-                          <IconSymbol
-                            ios_icon_name="person.fill"
-                            android_material_icon_name="person"
-                            size={24}
-                            color={colors.primary}
-                          />
+                  .map((assignment) => {
+                    // DEL 4: Ensure we never show "ukendt" - always show "Spiller" as fallback
+                    const displayName = assignment.player_name || 'Spiller';
+                    
+                    return (
+                      <TouchableOpacity
+                        key={assignment.id}
+                        style={[styles.revokeCard, { backgroundColor: cardBgColor }]}
+                        onPress={() => handleRevokeFromPlayer(assignment.player_id!, displayName)}
+                        disabled={processing}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.revokeCardLeft}>
+                          <View style={styles.assignIcon}>
+                            <IconSymbol
+                              ios_icon_name="person.fill"
+                              android_material_icon_name="person"
+                              size={24}
+                              color={colors.primary}
+                            />
+                          </View>
+                          <Text style={[styles.assignName, { color: textColor }]}>
+                            {displayName}
+                          </Text>
                         </View>
-                        <Text style={[styles.assignName, { color: textColor }]}>
-                          {assignment.player_name || 'Ukendt'}
-                        </Text>
-                      </View>
-                      <IconSymbol
-                        ios_icon_name="xmark.circle.fill"
-                        android_material_icon_name="cancel"
-                        size={24}
-                        color={colors.error}
-                      />
-                    </TouchableOpacity>
-                  ))}
+                        <IconSymbol
+                          ios_icon_name="xmark.circle.fill"
+                          android_material_icon_name="cancel"
+                          size={24}
+                          color={colors.error}
+                        />
+                      </TouchableOpacity>
+                    );
+                  })}
 
                 {/* List of assigned teams */}
                 {selectedExercise.assignments
