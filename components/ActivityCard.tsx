@@ -163,9 +163,8 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
       <Pressable
         onPress={handleCardPress}
         style={({ pressed }) => [
-          !isDimmed && pressed && styles.cardPressed,
+          pressed && styles.cardPressed,
         ]}
-        disabled={isDimmed}
       >
         <LinearGradient
           colors={gradientColors}
