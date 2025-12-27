@@ -15,6 +15,8 @@ interface ActivityCardProps {
   resolvedDate: Date;
   onPress?: () => void;
   showTasks?: boolean;
+  isAdminMode?: boolean;
+  canManageActivity?: boolean;
 }
 
 // Helper function to lighten a hex color
@@ -59,7 +61,14 @@ const getCategoryEmoji = (category: any): string => {
   return category.emoji;
 };
 
-export default function ActivityCard({ activity, resolvedDate, onPress, showTasks = false }: ActivityCardProps) {
+export default function ActivityCard({ 
+  activity, 
+  resolvedDate, 
+  onPress, 
+  showTasks = false,
+  isAdminMode = false,
+  canManageActivity = true,
+}: ActivityCardProps) {
   const router = useRouter();
   const { toggleTaskCompletion, refreshData } = useFootball();
   
@@ -91,17 +100,27 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
     }
   }, [onPress, router, activity.id]);
 
-  // Memoized task press handler
+  // 3️⃣ Memoized task press handler - BLOCKED if not allowed
   const handleTaskPress = useCallback((task: any, event: any) => {
     event.stopPropagation();
 
+    // Block if in admin mode and cannot manage
+    if (isAdminMode && !canManageActivity) {
+      return;
+    }
+
     setActiveTaskId(task.id);
     setIsTaskModalOpen(true);
-  }, []);
+  }, [isAdminMode, canManageActivity]);
 
-  // Memoized toggle task handler
+  // 3️⃣ Memoized toggle task handler - BLOCKED if not allowed
   const handleToggleTask = useCallback(async (taskId: string, event: any) => {
     event.stopPropagation();
+    
+    // Block if in admin mode and cannot manage
+    if (isAdminMode && !canManageActivity) {
+      return;
+    }
     
     const taskIndex = optimisticTasks.findIndex(t => t.id === taskId);
     if (taskIndex === -1) {
@@ -128,7 +147,7 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
       rollbackTasks[taskIndex] = { ...task, completed: previousCompleted };
       setOptimisticTasks(rollbackTasks);
     }
-  }, [optimisticTasks, activity.id, toggleTaskCompletion, refreshData]);
+  }, [optimisticTasks, activity.id, toggleTaskCompletion, refreshData, isAdminMode, canManageActivity]);
 
   // Memoized modal close handler
   const handleModalClose = useCallback(() => {
@@ -157,6 +176,9 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
   const dayLabel = format(resolvedDate, 'EEE. d. MMM.', { locale: da });
   const timeLabel = format(resolvedDate, 'HH:mm');
   const location = activity.location || activity.category_location || '';
+
+  // 2️⃣ Determine if tasks should be dimmed
+  const shouldDimTasks = isAdminMode && !canManageActivity;
 
   return (
     <>
@@ -217,72 +239,77 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
               <View style={styles.tasksDivider} />
               {optimisticTasks.map((task, index) => {
                 return (
-                  <View key={index} style={styles.taskRow}>
-                    <TouchableOpacity
-                      style={styles.taskCheckboxArea}
-                      onPress={(e) => handleToggleTask(task.id, e)}
-                      activeOpacity={0.7}
-                    >
-                      <View
-                        style={[
-                          styles.taskCheckbox,
-                          task.completed && styles.taskCheckboxCompleted,
-                        ]}
-                      >
-                        {task.completed && (
-                          <IconSymbol
-                            ios_icon_name="checkmark"
-                            android_material_icon_name="check"
-                            size={14}
-                            color={task.completed ? '#4CAF50' : '#fff'}
-                          />
-                        )}
-                      </View>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={styles.taskContent}
-                      onPress={(e) => handleTaskPress(task, e)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.taskTitleRow}>
-                        <Text
-                          style={[
-                            styles.taskTitle,
-                            task.completed && styles.taskTitleCompleted,
-                          ]}
-                          numberOfLines={1}
+                  <React.Fragment key={index}>
+                    {/* 2️⃣ Task dimming wrapper */}
+                    <View style={shouldDimTasks && styles.taskRowDimmed}>
+                      <View style={styles.taskRow}>
+                        <TouchableOpacity
+                          style={styles.taskCheckboxArea}
+                          onPress={(e) => handleToggleTask(task.id, e)}
+                          activeOpacity={0.7}
                         >
-                          {task.title}
-                        </Text>
-                        
-                        {task.reminder_minutes && (
-                          <View style={styles.reminderBadge}>
-                            <IconSymbol
-                              ios_icon_name="bell.fill"
-                              android_material_icon_name="notifications"
-                              size={10}
-                              color="rgba(255, 255, 255, 0.8)"
-                            />
-                            <Text style={styles.reminderText}>
-                              {formatReminderTime(task.reminder_minutes)}
+                          <View
+                            style={[
+                              styles.taskCheckbox,
+                              task.completed && styles.taskCheckboxCompleted,
+                            ]}
+                          >
+                            {task.completed && (
+                              <IconSymbol
+                                ios_icon_name="checkmark"
+                                android_material_icon_name="check"
+                                size={14}
+                                color={task.completed ? '#4CAF50' : '#fff'}
+                              />
+                            )}
+                          </View>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.taskContent}
+                          onPress={(e) => handleTaskPress(task, e)}
+                          activeOpacity={0.7}
+                        >
+                          <View style={styles.taskTitleRow}>
+                            <Text
+                              style={[
+                                styles.taskTitle,
+                                task.completed && styles.taskTitleCompleted,
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {task.title}
                             </Text>
+                            
+                            {task.reminder_minutes && (
+                              <View style={styles.reminderBadge}>
+                                <IconSymbol
+                                  ios_icon_name="bell.fill"
+                                  android_material_icon_name="notifications"
+                                  size={10}
+                                  color="rgba(255, 255, 255, 0.8)"
+                                />
+                                <Text style={styles.reminderText}>
+                                  {formatReminderTime(task.reminder_minutes)}
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                        </TouchableOpacity>
+
+                        {task.video_url && (
+                          <View style={styles.videoIndicator}>
+                            <IconSymbol
+                              ios_icon_name="play.circle.fill"
+                              android_material_icon_name="play_circle"
+                              size={20}
+                              color="rgba(255, 255, 255, 0.9)"
+                            />
                           </View>
                         )}
                       </View>
-                    </TouchableOpacity>
-
-                    {task.video_url && (
-                      <View style={styles.videoIndicator}>
-                        <IconSymbol
-                          ios_icon_name="play.circle.fill"
-                          android_material_icon_name="play_circle"
-                          size={20}
-                          color="rgba(255, 255, 255, 0.9)"
-                        />
-                      </View>
-                    )}
-                  </View>
+                    </View>
+                  </React.Fragment>
                 );
               })}
             </View>
@@ -394,6 +421,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
     paddingHorizontal: 4,
+  },
+  taskRowDimmed: {
+    opacity: 0.4,
   },
   taskCheckboxArea: {
     marginRight: 12,

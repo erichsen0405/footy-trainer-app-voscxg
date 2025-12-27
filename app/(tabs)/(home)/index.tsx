@@ -389,19 +389,19 @@ export default function HomeScreen() {
       case 'activity':
         const activity = item.activity;
         
-        // Permission-check (kun via helper)
-        const isAllowed = canTrainerManageActivity({
+        // 1️⃣ Permission-check (only via helper)
+        const canManageActivity = canTrainerManageActivity({
           activity,
           trainerId: currentTrainerId || undefined,
           adminMode,
         });
-        
-        // Dimming (kun wrapper)
-        const shouldDim = isAdminMode && !isAllowed;
+
+        // Dimming (only wrapper)
+        const shouldDim = isAdminMode && !canManageActivity;
 
         // Navigation-guard
         const handleActivityPress = () => {
-          if (isAdminMode && !isAllowed) {
+          if (isAdminMode && !canManageActivity) {
             return;
           }
           
@@ -418,6 +418,8 @@ export default function HomeScreen() {
               resolvedDate={activity.__resolvedDateTime}
               showTasks={item.section === 'today' || item.section === 'previous'}
               onPress={handleActivityPress}
+              isAdminMode={isAdminMode}
+              canManageActivity={canManageActivity}
             />
           </View>
         );
@@ -821,7 +823,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   activityWrapperDimmed: {
-    opacity: 0.5,
+    opacity: 0.4,
   },
 
   // Bottom Spacer
