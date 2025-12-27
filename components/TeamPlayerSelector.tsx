@@ -12,6 +12,7 @@ import {
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
+import { useAdmin } from '@/contexts/AdminContext';
 import { supabase } from '@/app/integrations/supabase/client';
 
 export default function TeamPlayerSelector() {
@@ -22,6 +23,8 @@ export default function TeamPlayerSelector() {
     setSelectedContext,
     loading,
   } = useTeamPlayer();
+
+  const { startAdminPlayer, startAdminTeam, exitAdmin } = useAdmin();
 
   const [showModal, setShowModal] = useState(false);
   const [trainerProfile, setTrainerProfile] = useState<{ id: string; name: string } | null>(null);
@@ -61,6 +64,8 @@ export default function TeamPlayerSelector() {
       id: playerId,
       name: playerName,
     });
+    // CRITICAL FIX: Synchronize AdminContext with TeamPlayerContext
+    startAdminPlayer(playerId);
     setShowModal(false);
   };
 
@@ -70,6 +75,8 @@ export default function TeamPlayerSelector() {
       id: teamId,
       name: teamName,
     });
+    // CRITICAL FIX: Synchronize AdminContext with TeamPlayerContext
+    startAdminTeam(teamId);
     setShowModal(false);
   };
 
@@ -81,6 +88,8 @@ export default function TeamPlayerSelector() {
       id: null,
       name: null,
     });
+    // CRITICAL FIX: Synchronize AdminContext with TeamPlayerContext
+    exitAdmin();
     setShowModal(false);
   };
 
