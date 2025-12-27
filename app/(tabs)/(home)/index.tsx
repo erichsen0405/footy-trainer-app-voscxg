@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform } from 'react-native';
+import { FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform, useColorScheme } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -8,14 +8,16 @@ import { useHomeActivities } from '@/hooks/useHomeActivities';
 import { useFootball } from '@/contexts/FootballContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useAdmin } from '@/contexts/AdminContext';
+import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import ActivityCard from '@/components/ActivityCard';
 import CreateActivityModal from '@/components/CreateActivityModal';
 import HomeSkeleton from '@/components/HomeSkeleton';
 import { IconSymbol } from '@/components/IconSymbol';
-import { colors } from '@/styles/commonStyles';
+import { colors, getColors } from '@/styles/commonStyles';
 import { format, startOfWeek, endOfWeek, getWeek } from 'date-fns';
 import { da } from 'date-fns/locale';
 import { supabase } from '@/app/integrations/supabase/client';
+import { canTrainerManageActivity } from '@/utils/permissions';
 
 function resolveActivityDateTime(activity: any): Date | null {
   // Internal DB activities
@@ -63,11 +65,14 @@ export default function HomeScreen() {
   const { activities, loading, refresh: refreshActivities } = useHomeActivities();
   const { categories, createActivity, refreshData, currentWeekStats } = useFootball();
   const { adminMode, adminTargetId, adminTargetType } = useAdmin();
+  const { selectedContext } = useTeamPlayer();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showPreviousWeeks, setShowPreviousWeeks] = useState(0);
   const [isPreviousExpanded, setIsPreviousExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [currentTrainerId, setCurrentTrainerId] = useState<string | null>(null);
+  const colorScheme = useColorScheme();
+  const themeColors = getColors(colorScheme);
 
   const currentWeekNumber = getWeek(new Date(), { weekStartsOn: 1, locale: da });
   const currentWeekLabel = getWeekLabel(new Date());
@@ -75,7 +80,7 @@ export default function HomeScreen() {
   // Check if user is a player (not admin/trainer)
   const isPlayer = userRole === 'player';
 
-  // Check if in admin mode
+  // 1️⃣ Admin-mode detektion
   const isAdminMode = adminMode !== 'self';
 
   // Fetch current trainer ID (the logged-in user who is administering)
@@ -92,13 +97,8 @@ export default function HomeScreen() {
       }
     }
 
-    // Only fetch if in admin mode
-    if (isAdminMode) {
-      fetchCurrentTrainerId();
-    } else {
-      setCurrentTrainerId(null);
-    }
-  }, [isAdminMode]);
+    fetchCurrentTrainerId();
+  }, []);
 
   // Reset "TIDLIGERE" section when loading starts (pull-to-refresh or navigation back)
   useEffect(() => {
@@ -388,22 +388,22 @@ export default function HomeScreen() {
       case 'activity':
         const activity = item.activity;
         
-        // STEP B½: Item-specific permission check
-        // Check if this specific activity was created by the current trainer
-        const isCreatedByCurrentTrainer = activity.user_id === currentTrainerId;
+        // 3️⃣ Permission-check (kun via helper)
+        const isAllowed = canTrainerManageActivity({
+          activity,
+          trainerId: currentTrainerId || undefined,
+          adminMode,
+        });
         
-        // In admin mode, only allow interaction if activity was created by current trainer
-        const isAllowed = !isAdminMode || isCreatedByCurrentTrainer;
-        const shouldDim = !isAllowed;
+        // 4️⃣ Dimming (kun wrapper)
+        const shouldDim = isAdminMode && !isAllowed;
 
+        // 5️⃣ Navigation-guard
         const handleActivityPress = () => {
-          // Block navigation if not allowed
-          if (!isAllowed) {
-            console.log('[Home] Activity not created by current trainer, blocking navigation');
+          if (isAdminMode && !isAllowed) {
             return;
           }
           
-          // Navigate to activity details
           router.push({
             pathname: '/activity-details',
             params: { id: activity.id },
@@ -461,18 +461,24 @@ export default function HomeScreen() {
   // List header component
   const ListHeaderComponent = () => (
     <>
-      {/* Admin Warning Banner */}
+      {/* 2️⃣ Fælles admin-UI (advarsel + baggrund) - Reused from Tasks screen */}
       {isAdminMode && (
-        <View style={styles.adminBanner}>
+        <View style={[styles.adminBanner, { backgroundColor: '#D4A574' }]}>
           <IconSymbol
             ios_icon_name="exclamationmark.triangle.fill"
             android_material_icon_name="warning"
-            size={24}
+            size={28}
             color="#fff"
           />
           <View style={styles.adminBannerTextContainer}>
-            <Text style={styles.adminBannerText}>
-              Du administrerer nu data for {adminTargetType === 'player' ? 'Spiller' : 'Team'}
+            <Text style={styles.adminBannerTitle}>
+              ⚠️ DU ADMINISTRERER NU DATA FOR {selectedContext.type === 'player' ? 'SPILLER' : 'TEAM'}
+            </Text>
+            <Text style={styles.adminBannerSubtitle}>
+              {selectedContext.name}
+            </Text>
+            <Text style={styles.adminBannerInfo}>
+              Alle ændringer påvirker denne {selectedContext.type === 'player' ? 'spillers' : 'teams'} aktiviteter
             </Text>
           </View>
         </View>
@@ -558,9 +564,12 @@ export default function HomeScreen() {
     <View style={styles.bottomSpacer} />
   );
 
+  // 2️⃣ Fælles admin-UI (baggrund) - Apply background styling when in admin mode
+  const containerBgColor = isAdminMode ? themeColors.contextWarning : colors.background;
+
   return (
     <SafeAreaView
-      style={{ flex: 1 }}
+      style={{ flex: 1, backgroundColor: containerBgColor }}
       edges={['top']}
     >
       <StatusBar barStyle="dark-content" />
@@ -612,25 +621,38 @@ const styles = StyleSheet.create({
     paddingTop: 0,
   },
 
-  // Admin Banner
+  // 2️⃣ Fælles admin-UI (advarsel + baggrund) - Reused from Tasks screen
   adminBanner: {
-    backgroundColor: '#D4A574',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    marginBottom: 0,
     borderBottomWidth: 3,
     borderBottomColor: '#B8860B',
   },
   adminBannerTextContainer: {
     flex: 1,
   },
-  adminBannerText: {
-    fontSize: 15,
-    fontWeight: '700',
+  adminBannerTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
     color: '#fff',
-    letterSpacing: 0.3,
+    marginBottom: 4,
+    letterSpacing: 0.5,
+  },
+  adminBannerSubtitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  adminBannerInfo: {
+    fontSize: 13,
+    color: '#fff',
+    opacity: 0.95,
+    fontStyle: 'italic',
   },
 
   // Header
