@@ -78,7 +78,7 @@ export default function HomeScreen() {
   // Check if in admin mode
   const isAdminMode = adminMode !== 'self';
 
-  // Get current trainer ID
+  // Get current trainer ID from auth
   useEffect(() => {
     const fetchCurrentTrainerId = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -385,14 +385,26 @@ export default function HomeScreen() {
         const isOwnedByTrainer = isCreatedByCurrentTrainer(activity);
         const shouldDim = isAdminMode && !isOwnedByTrainer;
 
+        const handleActivityPress = () => {
+          // Block navigation if dimmed
+          if (shouldDim) {
+            return;
+          }
+          
+          // Navigate to activity details
+          router.push({
+            pathname: '/activity-details',
+            params: { id: activity.id },
+          });
+        };
+
         return (
           <View style={[styles.activityWrapper, shouldDim && styles.activityWrapperDimmed]}>
             <ActivityCard
               activity={activity}
               resolvedDate={activity.__resolvedDateTime}
               showTasks={item.section === 'today' || item.section === 'previous'}
-              onPress={shouldDim ? undefined : undefined}
-              isDimmed={shouldDim}
+              onPress={handleActivityPress}
             />
           </View>
         );

@@ -15,7 +15,6 @@ interface ActivityCardProps {
   resolvedDate: Date;
   onPress?: () => void;
   showTasks?: boolean;
-  isDimmed?: boolean;
 }
 
 // Helper function to lighten a hex color
@@ -60,7 +59,7 @@ const getCategoryEmoji = (category: any): string => {
   return category.emoji;
 };
 
-export default function ActivityCard({ activity, resolvedDate, onPress, showTasks = false, isDimmed = false }: ActivityCardProps) {
+export default function ActivityCard({ activity, resolvedDate, onPress, showTasks = false }: ActivityCardProps) {
   const router = useRouter();
   const { toggleTaskCompletion, refreshData } = useFootball();
   
@@ -82,11 +81,6 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
 
   // Memoized card press handler - only navigates, no async work
   const handleCardPress = useCallback(() => {
-    // Block navigation if dimmed
-    if (isDimmed) {
-      return;
-    }
-
     if (onPress) {
       onPress();
     } else {
@@ -95,29 +89,19 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
         params: { id: activity.id },
       });
     }
-  }, [onPress, router, activity.id, isDimmed]);
+  }, [onPress, router, activity.id]);
 
   // Memoized task press handler
   const handleTaskPress = useCallback((task: any, event: any) => {
     event.stopPropagation();
-    
-    // Block interaction if dimmed
-    if (isDimmed) {
-      return;
-    }
 
     setActiveTaskId(task.id);
     setIsTaskModalOpen(true);
-  }, [isDimmed]);
+  }, []);
 
   // Memoized toggle task handler
   const handleToggleTask = useCallback(async (taskId: string, event: any) => {
     event.stopPropagation();
-    
-    // Block interaction if dimmed
-    if (isDimmed) {
-      return;
-    }
     
     const taskIndex = optimisticTasks.findIndex(t => t.id === taskId);
     if (taskIndex === -1) {
@@ -144,7 +128,7 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
       rollbackTasks[taskIndex] = { ...task, completed: previousCompleted };
       setOptimisticTasks(rollbackTasks);
     }
-  }, [optimisticTasks, activity.id, toggleTaskCompletion, refreshData, isDimmed]);
+  }, [optimisticTasks, activity.id, toggleTaskCompletion, refreshData]);
 
   // Memoized modal close handler
   const handleModalClose = useCallback(() => {
@@ -239,7 +223,6 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
                       style={styles.taskCheckboxArea}
                       onPress={(e) => handleToggleTask(task.id, e)}
                       activeOpacity={0.7}
-                      disabled={isDimmed}
                     >
                       <View
                         style={[
@@ -262,7 +245,6 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
                       style={styles.taskContent}
                       onPress={(e) => handleTaskPress(task, e)}
                       activeOpacity={0.7}
-                      disabled={isDimmed}
                     >
                       <View style={styles.taskTitleRow}>
                         <Text
@@ -309,8 +291,8 @@ export default function ActivityCard({ activity, resolvedDate, onPress, showTask
         </LinearGradient>
       </Pressable>
 
-      {/* Task Details Modal - Only open if not dimmed */}
-      {!isDimmed && isTaskModalOpen && activeTaskId && (
+      {/* Task Details Modal */}
+      {isTaskModalOpen && activeTaskId && (
         <TaskDetailsModal
           taskId={activeTaskId}
           onClose={handleModalClose}
