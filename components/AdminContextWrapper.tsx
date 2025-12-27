@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 
 interface AdminContextWrapperProps {
@@ -16,6 +17,8 @@ export function AdminContextWrapper({
   contextType = 'player',
   children,
 }: AdminContextWrapperProps) {
+  const insets = useSafeAreaInsets();
+
   if (!isAdmin) {
     // When not in admin mode, render children without any wrapper styling
     return <>{children}</>;
@@ -24,7 +27,12 @@ export function AdminContextWrapper({
   return (
     <View style={styles.adminBackground}>
       {/* Admin warning banner - always rendered when isAdmin is true */}
-      <View style={styles.contextBanner}>
+      <View style={[
+        styles.contextBanner,
+        { 
+          marginTop: Platform.OS === 'ios' ? insets.top + 16 : (Platform.OS === 'android' ? 60 : 70)
+        }
+      ]}>
         <IconSymbol
           ios_icon_name="exclamationmark.triangle.fill"
           android_material_icon_name="warning"
@@ -64,7 +72,6 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: '#B8860B',
     marginHorizontal: 16,
-    marginTop: Platform.OS === 'android' ? 60 : 70,
     backgroundColor: '#D4A574',
   },
   contextBannerText: {

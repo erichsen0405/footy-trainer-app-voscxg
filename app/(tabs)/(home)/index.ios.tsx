@@ -1,20 +1,22 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
 import { useFootball } from '@/contexts/FootballContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useAdmin } from '@/contexts/AdminContext';
+import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import ActivityCard from '@/components/ActivityCard';
 import CreateActivityModal from '@/components/CreateActivityModal';
 import { IconSymbol } from '@/components/IconSymbol';
+import { AdminContextWrapper } from '@/components/AdminContextWrapper';
 import { colors } from '@/styles/commonStyles';
 import { format, startOfWeek, endOfWeek, getWeek } from 'date-fns';
 import { da } from 'date-fns/locale';
 import { supabase } from '@/app/integrations/supabase/client';
+import { canTrainerManageActivity } from '@/utils/permissions';
 
 function resolveActivityDateTime(activity: any): Date | null {
   // Internal DB activities
@@ -62,6 +64,7 @@ export default function HomeScreen() {
   const { activities, loading, refresh: refreshActivities } = useHomeActivities();
   const { categories, createActivity, refreshData, currentWeekStats } = useFootball();
   const { adminMode, adminTargetId, adminTargetType } = useAdmin();
+  const { selectedContext } = useTeamPlayer();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showPreviousWeeks, setShowPreviousWeeks] = useState(0);
   const [isPreviousExpanded, setIsPreviousExpanded] = useState(false);
@@ -71,11 +74,10 @@ export default function HomeScreen() {
   const currentWeekNumber = getWeek(new Date(), { weekStartsOn: 1, locale: da });
   const currentWeekLabel = getWeekLabel(new Date());
 
-  // Check if user is a player (not admin/trainer)
-  const isPlayer = userRole === 'player';
-
-  // Check if in admin mode
-  const isAdminMode = adminMode !== 'self';
+  // CRITICAL FIX: Check for both player AND team admin mode
+  const isPlayerAdmin = adminMode !== 'self' && adminTargetType === 'player';
+  const isTeamAdmin = adminMode !== 'self' && adminTargetType === 'team';
+  const isAdminMode = isPlayerAdmin || isTeamAdmin;
 
   // Get current trainer ID
   useEffect(() => {
@@ -274,12 +276,6 @@ export default function HomeScreen() {
     }
   };
 
-  // Helper function to check if activity was created by current trainer
-  const isCreatedByCurrentTrainer = (activity: any): boolean => {
-    if (!currentTrainerId) return true; // If we don't know trainer ID, allow interaction
-    return activity.user_id === currentTrainerId;
-  };
-
   // Flatten all data into a single list for FlatList
   // Each item has a type to determine how to render it
   const flattenedData = useMemo(() => {
@@ -381,12 +377,20 @@ export default function HomeScreen() {
 
       case 'activity':
         const activity = item.activity;
-        const isOwnedByTrainer = isCreatedByCurrentTrainer(activity);
-        const shouldDim = isAdminMode && !isOwnedByTrainer;
+        
+        // Permission-check (only via helper)
+        const isAllowed = canTrainerManageActivity({
+          activity,
+          trainerId: currentTrainerId || undefined,
+          adminMode,
+        });
+        
+        // Dimming (only wrapper)
+        const shouldDim = isAdminMode && !isAllowed;
 
         const handleActivityPress = () => {
           // Block navigation if dimmed
-          if (shouldDim) {
+          if (isAdminMode && !isAllowed) {
             return;
           }
           
@@ -448,23 +452,6 @@ export default function HomeScreen() {
   // List header component
   const ListHeaderComponent = () => (
     <>
-      {/* Admin Warning Banner */}
-      {isAdminMode && (
-        <View style={styles.adminBanner}>
-          <IconSymbol
-            ios_icon_name="exclamationmark.triangle.fill"
-            android_material_icon_name="warning"
-            size={24}
-            color="#fff"
-          />
-          <View style={styles.adminBannerTextContainer}>
-            <Text style={styles.adminBannerText}>
-              Du administrerer nu data for {adminTargetType === 'player' ? 'Spiller' : 'Team'}
-            </Text>
-          </View>
-        </View>
-      )}
-
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.logoContainer}>
@@ -484,8 +471,8 @@ export default function HomeScreen() {
         <Text style={styles.weekHeaderSubtitle}>{currentWeekLabel}</Text>
       </View>
 
-      {/* ========== PERFORMANCE CARD - ONLY FOR PLAYERS ========== */}
-      {isPlayer ? (
+      {/* ========== PERFORMANCE CARD - ALWAYS SHOWN IN ADMIN MODE ========== */}
+      {isAdminMode ? (
         <LinearGradient
           colors={performanceMetrics.gradientColors}
           start={{ x: 0, y: 0 }}
@@ -547,16 +534,23 @@ export default function HomeScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.loading} edges={['top']}>
-        <Text style={styles.loadingText}>Indlæser…</Text>
-      </SafeAreaView>
+      <AdminContextWrapper
+        isAdmin={isAdminMode}
+        contextName={selectedContext?.name}
+        contextType={adminTargetType || 'player'}
+      >
+        <View style={styles.loading}>
+          <Text style={styles.loadingText}>Indlæser…</Text>
+        </View>
+      </AdminContextWrapper>
     );
   }
 
   return (
-    <SafeAreaView
-      style={{ flex: 1 }}
-      edges={['top']}
+    <AdminContextWrapper
+      isAdmin={isAdminMode}
+      contextName={selectedContext?.name}
+      contextType={adminTargetType || 'player'}
     >
       <StatusBar barStyle="dark-content" />
       
@@ -590,18 +584,11 @@ export default function HomeScreen() {
           onRefreshCategories={refreshData}
         />
       ) : null}
-    </SafeAreaView>
+    </AdminContextWrapper>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  contentContainer: {
-    paddingTop: 0,
-  },
   loading: {
     flex: 1,
     alignItems: 'center',
@@ -612,27 +599,6 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     color: colors.textSecondary,
-  },
-
-  // Admin Banner
-  adminBanner: {
-    backgroundColor: '#D4A574',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    borderBottomWidth: 3,
-    borderBottomColor: '#B8860B',
-  },
-  adminBannerTextContainer: {
-    flex: 1,
-  },
-  adminBannerText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#fff',
-    letterSpacing: 0.3,
   },
 
   // Header
