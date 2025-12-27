@@ -10,6 +10,7 @@ import { Task } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
 import SmartVideoPlayer from '@/components/SmartVideoPlayer';
 import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
+import { AdminContextWrapper } from '@/components/AdminContextWrapper';
 import { supabase } from '@/app/integrations/supabase/client';
 
 // Local helper function to validate video URLs
@@ -551,6 +552,7 @@ export default function TasksScreen() {
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
 
   const isManagingContext = isAdmin && selectedContext.type;
+  const isPlayerAdmin = adminMode !== 'self' && adminTargetType === 'player';
   const containerBgColor = isManagingContext ? themeColors.contextWarning : bgColor;
 
   const ListHeaderComponent = useMemo(() => (
@@ -561,28 +563,6 @@ export default function TasksScreen() {
           {templateTasks.length} skabeloner
         </Text>
       </View>
-
-      {isManagingContext && (
-        <View style={[styles.contextBanner, { backgroundColor: '#D4A574' }]}>
-          <IconSymbol
-            ios_icon_name="exclamationmark.triangle.fill"
-            android_material_icon_name="warning"
-            size={28}
-            color="#fff"
-          />
-          <View style={styles.contextBannerText}>
-            <Text style={styles.contextBannerTitle}>
-              ⚠️ DU ADMINISTRERER OPGAVER FOR {selectedContext.type === 'player' ? 'SPILLER' : 'TEAM'}
-            </Text>
-            <Text style={styles.contextBannerSubtitle}>
-              {selectedContext.name}
-            </Text>
-            <Text style={styles.contextBannerInfo}>
-              Alle ændringer påvirker denne {selectedContext.type === 'player' ? 'spillers' : 'teams'} opgaver
-            </Text>
-          </View>
-        </View>
-      )}
 
       {!isAdmin && (
         <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
@@ -658,7 +638,12 @@ export default function TasksScreen() {
   ), []);
 
   return (
-    <View style={[styles.container, { backgroundColor: containerBgColor }]}>
+    <AdminContextWrapper
+      isAdminMode={isPlayerAdmin}
+      contextName={selectedContext.name}
+      contextType={selectedContext.type as 'player' | 'team'}
+      backgroundColor={containerBgColor}
+    >
       <FlatList
         data={filteredFolders}
         renderItem={renderFolder}
@@ -937,14 +922,11 @@ export default function TasksScreen() {
         onConfirm={handleConfirmAction}
         onCancel={handleCancelAction}
       />
-    </View>
+    </AdminContextWrapper>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
   contentContainer: {
     paddingHorizontal: 16,
   },
@@ -959,39 +941,6 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     fontSize: 16,
-  },
-  contextBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    paddingHorizontal: 20,
-    paddingVertical: 20,
-    marginBottom: 12,
-    borderRadius: 16,
-    borderWidth: 3,
-    borderColor: '#B8860B',
-  },
-  contextBannerText: {
-    flex: 1,
-  },
-  contextBannerTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 4,
-    letterSpacing: 0.5,
-  },
-  contextBannerSubtitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 4,
-  },
-  contextBannerInfo: {
-    fontSize: 13,
-    color: '#fff',
-    opacity: 0.95,
-    fontStyle: 'italic',
   },
   infoBox: {
     flexDirection: 'row',

@@ -13,6 +13,7 @@ import ActivityCard from '@/components/ActivityCard';
 import CreateActivityModal from '@/components/CreateActivityModal';
 import HomeSkeleton from '@/components/HomeSkeleton';
 import { IconSymbol } from '@/components/IconSymbol';
+import { AdminContextWrapper } from '@/components/AdminContextWrapper';
 import { colors, getColors } from '@/styles/commonStyles';
 import { format, startOfWeek, endOfWeek, getWeek } from 'date-fns';
 import { da } from 'date-fns/locale';
@@ -459,29 +460,6 @@ export default function HomeScreen() {
   // List header component
   const ListHeaderComponent = () => (
     <>
-      {/* Admin banner - Reused from Tasks screen */}
-      {isPlayerAdmin && (
-        <View style={[styles.contextBanner, { backgroundColor: '#D4A574' }]}>
-          <IconSymbol
-            ios_icon_name="exclamationmark.triangle.fill"
-            android_material_icon_name="warning"
-            size={28}
-            color="#fff"
-          />
-          <View style={styles.contextBannerText}>
-            <Text style={styles.contextBannerTitle}>
-              ⚠️ DU ADMINISTRERER NU DATA FOR SPILLER
-            </Text>
-            <Text style={styles.contextBannerSubtitle}>
-              {selectedContext.name}
-            </Text>
-            <Text style={styles.contextBannerInfo}>
-              Alle ændringer påvirker denne spillers aktiviteter
-            </Text>
-          </View>
-        </View>
-      )}
-
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.logoContainer}>
@@ -564,7 +542,12 @@ export default function HomeScreen() {
   const containerBgColor = isPlayerAdmin ? themeColors.contextWarning : (isDark ? '#1a1a1a' : colors.background);
 
   return (
-    <View style={[styles.container, { backgroundColor: containerBgColor }]}>
+    <AdminContextWrapper
+      isAdminMode={isPlayerAdmin}
+      contextName={selectedContext.name}
+      contextType={selectedContext.type as 'player' | 'team'}
+      backgroundColor={containerBgColor}
+    >
       <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
       
       {loading ? (
@@ -601,53 +584,13 @@ export default function HomeScreen() {
           onRefreshCategories={refreshData}
         />
       ) : null}
-    </View>
+    </AdminContextWrapper>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
   contentContainer: {
     paddingTop: 0,
-  },
-
-  // Admin banner - Reused from Tasks screen
-  contextBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    paddingHorizontal: 20,
-    paddingVertical: 20,
-    marginBottom: 12,
-    borderRadius: 16,
-    borderWidth: 3,
-    borderColor: '#B8860B',
-    marginHorizontal: 16,
-    marginTop: Platform.OS === 'android' ? 60 : 70,
-  },
-  contextBannerText: {
-    flex: 1,
-  },
-  contextBannerTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 4,
-    letterSpacing: 0.5,
-  },
-  contextBannerSubtitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 4,
-  },
-  contextBannerInfo: {
-    fontSize: 13,
-    color: '#fff',
-    opacity: 0.95,
-    fontStyle: 'italic',
   },
 
   // Header
