@@ -552,7 +552,11 @@ export default function TasksScreen() {
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
 
   const isManagingContext = isAdmin && selectedContext.type;
+  
+  // CRITICAL FIX: Check for both player AND team admin mode
   const isPlayerAdmin = adminMode !== 'self' && adminTargetType === 'player';
+  const isTeamAdmin = adminMode !== 'self' && adminTargetType === 'team';
+  const isAdminMode = isPlayerAdmin || isTeamAdmin;
 
   const ListHeaderComponent = useMemo(() => (
     <>
@@ -638,9 +642,9 @@ export default function TasksScreen() {
 
   return (
     <AdminContextWrapper
-      isAdmin={isPlayerAdmin}
+      isAdmin={isAdminMode}
       contextName={selectedContext?.name}
-      contextType="player"
+      contextType={adminTargetType || 'player'}
     >
       <FlatList
         data={filteredFolders}

@@ -12,6 +12,7 @@ import {
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
+import { useAdmin } from '@/contexts/AdminContext';
 import { supabase } from '@/app/integrations/supabase/client';
 
 export default function TeamPlayerSelector() {
@@ -22,6 +23,12 @@ export default function TeamPlayerSelector() {
     setSelectedContext,
     loading,
   } = useTeamPlayer();
+
+  const {
+    startAdminPlayer,
+    startAdminTeam,
+    exitAdmin,
+  } = useAdmin();
 
   const [showModal, setShowModal] = useState(false);
   const [trainerProfile, setTrainerProfile] = useState<{ id: string; name: string } | null>(null);
@@ -56,31 +63,46 @@ export default function TeamPlayerSelector() {
   }, []);
 
   const handleSelectPlayer = async (playerId: string, playerName: string) => {
+    // CRITICAL FIX: Update both TeamPlayerContext AND AdminContext
     await setSelectedContext({
       type: 'player',
       id: playerId,
       name: playerName,
     });
+    
+    // Start admin mode for this player
+    startAdminPlayer(playerId);
+    
     setShowModal(false);
   };
 
   const handleSelectTeam = async (teamId: string, teamName: string) => {
+    // CRITICAL FIX: Update both TeamPlayerContext AND AdminContext
     await setSelectedContext({
       type: 'team',
       id: teamId,
       name: teamName,
     });
+    
+    // Start admin mode for this team
+    startAdminTeam(teamId);
+    
     setShowModal(false);
   };
 
   const handleSelectOwnProfile = async () => {
     if (!trainerProfile) return;
     
+    // CRITICAL FIX: Update both TeamPlayerContext AND AdminContext
     await setSelectedContext({
       type: null,
       id: null,
       name: null,
     });
+    
+    // Exit admin mode
+    exitAdmin();
+    
     setShowModal(false);
   };
 

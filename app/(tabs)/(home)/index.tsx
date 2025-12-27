@@ -79,8 +79,10 @@ export default function HomeScreen() {
   const currentWeekNumber = getWeek(new Date(), { weekStartsOn: 1, locale: da });
   const currentWeekLabel = getWeekLabel(new Date());
 
-  // Admin-mode detection
+  // CRITICAL FIX: Check for both player AND team admin mode
   const isPlayerAdmin = adminMode !== 'self' && adminTargetType === 'player';
+  const isTeamAdmin = adminMode !== 'self' && adminTargetType === 'team';
+  const isAdminMode = isPlayerAdmin || isTeamAdmin;
 
   // Fetch current trainer ID (the logged-in user who is administering)
   useEffect(() => {
@@ -395,11 +397,11 @@ export default function HomeScreen() {
         });
         
         // Dimming (kun wrapper)
-        const shouldDim = isPlayerAdmin && !isAllowed;
+        const shouldDim = isAdminMode && !isAllowed;
 
         // Navigation-guard
         const handleActivityPress = () => {
-          if (isPlayerAdmin && !isAllowed) {
+          if (isAdminMode && !isAllowed) {
             return;
           }
           
@@ -540,9 +542,9 @@ export default function HomeScreen() {
 
   return (
     <AdminContextWrapper
-      isAdmin={isPlayerAdmin}
+      isAdmin={isAdminMode}
       contextName={selectedContext?.name}
-      contextType="player"
+      contextType={adminTargetType || 'player'}
     >
       <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
       

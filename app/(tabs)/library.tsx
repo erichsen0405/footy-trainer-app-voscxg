@@ -144,8 +144,10 @@ export default function LibraryScreen() {
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
 
-  // Admin-mode detection
+  // CRITICAL FIX: Check for both player AND team admin mode
   const isPlayerAdmin = adminMode !== 'self' && adminTargetType === 'player';
+  const isTeamAdmin = adminMode !== 'self' && adminTargetType === 'team';
+  const isAdminMode = isPlayerAdmin || isTeamAdmin;
 
   const isPlayer = userRole === 'player';
 
@@ -1397,9 +1399,9 @@ export default function LibraryScreen() {
 
   return (
     <AdminContextWrapper
-      isAdmin={isPlayerAdmin}
+      isAdmin={isAdminMode}
       contextName={selectedContext?.name}
-      contextType="player"
+      contextType={adminTargetType || 'player'}
     >
       <View style={[styles.container, { backgroundColor: bgColor }]}>
         <View style={styles.header}>
