@@ -15,6 +15,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { format, startOfWeek, endOfWeek, getWeek } from 'date-fns';
 import { da } from 'date-fns/locale';
+import { supabase } from '@/app/integrations/supabase/client';
 
 function resolveActivityDateTime(activity: any): Date | null {
   // Internal DB activities
@@ -66,6 +67,7 @@ export default function HomeScreen() {
   const [showPreviousWeeks, setShowPreviousWeeks] = useState(0);
   const [isPreviousExpanded, setIsPreviousExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [currentTrainerId, setCurrentTrainerId] = useState<string | null>(null);
 
   const currentWeekNumber = getWeek(new Date(), { weekStartsOn: 1, locale: da });
   const currentWeekLabel = getWeekLabel(new Date());
@@ -75,6 +77,28 @@ export default function HomeScreen() {
 
   // Check if in admin mode
   const isAdminMode = adminMode !== 'self';
+
+  // Fetch current trainer ID (the logged-in user who is administering)
+  useEffect(() => {
+    async function fetchCurrentTrainerId() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          setCurrentTrainerId(user.id);
+          console.log('[Home] Current trainer ID:', user.id);
+        }
+      } catch (error) {
+        console.error('[Home] Error fetching current trainer ID:', error);
+      }
+    }
+
+    // Only fetch if in admin mode
+    if (isAdminMode) {
+      fetchCurrentTrainerId();
+    } else {
+      setCurrentTrainerId(null);
+    }
+  }, [isAdminMode]);
 
   // Reset "TIDLIGERE" section when loading starts (pull-to-refresh or navigation back)
   useEffect(() => {
@@ -364,15 +388,18 @@ export default function HomeScreen() {
       case 'activity':
         const activity = item.activity;
         
-        // STEP B FIX: Use existing permission flag (isAdmin from userRole)
-        // In admin mode, only allow interaction with activities if user is admin (trainer)
-        // This reuses the same permission pattern used throughout the app (activity-details, library, tasks)
-        const isAllowed = !isAdminMode || userRole === 'admin';
+        // STEP B½: Item-specific permission check
+        // Check if this specific activity was created by the current trainer
+        const isCreatedByCurrentTrainer = activity.user_id === currentTrainerId;
+        
+        // In admin mode, only allow interaction if activity was created by current trainer
+        const isAllowed = !isAdminMode || isCreatedByCurrentTrainer;
         const shouldDim = !isAllowed;
 
         const handleActivityPress = () => {
           // Block navigation if not allowed
           if (!isAllowed) {
+            console.log('[Home] Activity not created by current trainer, blocking navigation');
             return;
           }
           
