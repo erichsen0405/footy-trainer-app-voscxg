@@ -15,9 +15,6 @@ interface ActivityCardProps {
   resolvedDate: Date;
   onPress?: () => void;
   showTasks?: boolean;
-  onTaskPress?: (task: any, event: any) => void;
-  onToggleTask?: (taskId: string, event: any) => void;
-  tasksDimmed?: boolean;
 }
 
 // Helper function to lighten a hex color
@@ -67,9 +64,6 @@ export default function ActivityCard({
   resolvedDate, 
   onPress, 
   showTasks = false,
-  onTaskPress,
-  onToggleTask,
-  tasksDimmed = false,
 }: ActivityCardProps) {
   const router = useRouter();
   const { toggleTaskCompletion, refreshData } = useFootball();
@@ -102,26 +96,16 @@ export default function ActivityCard({
     }
   }, [onPress, router, activity.id]);
 
-  // Task press handler - uses parent handler if provided
+  // Task press handler
   const handleTaskPress = useCallback((task: any, event: any) => {
     event.stopPropagation();
+    setActiveTaskId(task.id);
+    setIsTaskModalOpen(true);
+  }, []);
 
-    if (onTaskPress) {
-      onTaskPress(task, event);
-    } else {
-      setActiveTaskId(task.id);
-      setIsTaskModalOpen(true);
-    }
-  }, [onTaskPress]);
-
-  // Toggle task handler - uses parent handler if provided
+  // Toggle task handler
   const handleToggleTask = useCallback(async (taskId: string, event: any) => {
     event.stopPropagation();
-    
-    if (onToggleTask) {
-      onToggleTask(taskId, event);
-      return;
-    }
     
     const taskIndex = optimisticTasks.findIndex(t => t.id === taskId);
     if (taskIndex === -1) {
@@ -148,7 +132,7 @@ export default function ActivityCard({
       rollbackTasks[taskIndex] = { ...task, completed: previousCompleted };
       setOptimisticTasks(rollbackTasks);
     }
-  }, [optimisticTasks, activity.id, toggleTaskCompletion, refreshData, onToggleTask]);
+  }, [optimisticTasks, activity.id, toggleTaskCompletion, refreshData]);
 
   // Memoized modal close handler
   const handleModalClose = useCallback(() => {
@@ -238,73 +222,71 @@ export default function ActivityCard({
               {optimisticTasks.map((task, index) => {
                 return (
                   <React.Fragment key={index}>
-                    <View style={tasksDimmed && styles.taskRowDimmed}>
-                      <View style={styles.taskRow}>
-                        <TouchableOpacity
-                          style={styles.taskCheckboxArea}
-                          onPress={(e) => handleToggleTask(task.id, e)}
-                          activeOpacity={0.7}
+                    <View style={styles.taskRow}>
+                      <TouchableOpacity
+                        style={styles.taskCheckboxArea}
+                        onPress={(e) => handleToggleTask(task.id, e)}
+                        activeOpacity={0.7}
+                      >
+                        <View
+                          style={[
+                            styles.taskCheckbox,
+                            task.completed && styles.taskCheckboxCompleted,
+                          ]}
                         >
-                          <View
-                            style={[
-                              styles.taskCheckbox,
-                              task.completed && styles.taskCheckboxCompleted,
-                            ]}
-                          >
-                            {task.completed && (
-                              <IconSymbol
-                                ios_icon_name="checkmark"
-                                android_material_icon_name="check"
-                                size={14}
-                                color={task.completed ? '#4CAF50' : '#fff'}
-                              />
-                            )}
-                          </View>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={styles.taskContent}
-                          onPress={(e) => handleTaskPress(task, e)}
-                          activeOpacity={0.7}
-                        >
-                          <View style={styles.taskTitleRow}>
-                            <Text
-                              style={[
-                                styles.taskTitle,
-                                task.completed && styles.taskTitleCompleted,
-                              ]}
-                              numberOfLines={1}
-                            >
-                              {task.title}
-                            </Text>
-                            
-                            {task.reminder_minutes && (
-                              <View style={styles.reminderBadge}>
-                                <IconSymbol
-                                  ios_icon_name="bell.fill"
-                                  android_material_icon_name="notifications"
-                                  size={10}
-                                  color="rgba(255, 255, 255, 0.8)"
-                                />
-                                <Text style={styles.reminderText}>
-                                  {formatReminderTime(task.reminder_minutes)}
-                                </Text>
-                              </View>
-                            )}
-                          </View>
-                        </TouchableOpacity>
-
-                        {task.video_url && (
-                          <View style={styles.videoIndicator}>
+                          {task.completed && (
                             <IconSymbol
-                              ios_icon_name="play.circle.fill"
-                              android_material_icon_name="play_circle"
-                              size={20}
-                              color="rgba(255, 255, 255, 0.9)"
+                              ios_icon_name="checkmark"
+                              android_material_icon_name="check"
+                              size={14}
+                              color={task.completed ? '#4CAF50' : '#fff'}
                             />
-                          </View>
-                        )}
-                      </View>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.taskContent}
+                        onPress={(e) => handleTaskPress(task, e)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.taskTitleRow}>
+                          <Text
+                            style={[
+                              styles.taskTitle,
+                              task.completed && styles.taskTitleCompleted,
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {task.title}
+                          </Text>
+                          
+                          {task.reminder_minutes && (
+                            <View style={styles.reminderBadge}>
+                              <IconSymbol
+                                ios_icon_name="bell.fill"
+                                android_material_icon_name="notifications"
+                                size={10}
+                                color="rgba(255, 255, 255, 0.8)"
+                              />
+                              <Text style={styles.reminderText}>
+                                {formatReminderTime(task.reminder_minutes)}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+
+                      {task.video_url && (
+                        <View style={styles.videoIndicator}>
+                          <IconSymbol
+                            ios_icon_name="play.circle.fill"
+                            android_material_icon_name="play_circle"
+                            size={20}
+                            color="rgba(255, 255, 255, 0.9)"
+                          />
+                        </View>
+                      )}
                     </View>
                   </React.Fragment>
                 );
@@ -418,9 +400,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
     paddingHorizontal: 4,
-  },
-  taskRowDimmed: {
-    opacity: 0.4,
   },
   taskCheckboxArea: {
     marginRight: 12,

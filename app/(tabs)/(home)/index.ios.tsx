@@ -378,51 +378,26 @@ export default function HomeScreen() {
       case 'activity':
         const activity = item.activity;
         
-        // 1️⃣ Permission-check (only via helper)
+        // 1️⃣ Permission calculation (only via helper)
         const canManageActivity = canTrainerManageActivity({
           activity,
           trainerId: currentTrainerId || undefined,
           adminMode,
         });
         
-        // Dimming (only wrapper)
+        // 2️⃣ Determine if should dim
         const shouldDim = isAdminMode && !canManageActivity;
 
+        // 3️⃣ Activity press handler with early return
         const handleActivityPress = () => {
-          // Block navigation if dimmed
           if (isAdminMode && !canManageActivity) {
             return;
           }
           
-          // Navigate to activity details
           router.push({
             pathname: '/activity-details',
             params: { id: activity.id },
           });
-        };
-
-        // 3️⃣ Task press handler - BLOCKED if not allowed
-        const handleTaskPress = (task: any, event: any) => {
-          if (isAdminMode && !canManageActivity) {
-            return;
-          }
-          
-          // Default behavior - open task modal
-          // This will be handled by ActivityCard's internal logic
-        };
-
-        // 3️⃣ Task toggle handler - BLOCKED if not allowed
-        const handleToggleTask = async (taskId: string, event: any) => {
-          if (isAdminMode && !canManageActivity) {
-            return;
-          }
-          
-          try {
-            await toggleTaskCompletion(activity.id, taskId);
-            refreshData();
-          } catch (error) {
-            console.error('❌ Error toggling task:', error);
-          }
         };
 
         return (
@@ -432,9 +407,6 @@ export default function HomeScreen() {
               resolvedDate={activity.__resolvedDateTime}
               showTasks={item.section === 'today' || item.section === 'previous'}
               onPress={handleActivityPress}
-              onTaskPress={handleTaskPress}
-              onToggleTask={handleToggleTask}
-              tasksDimmed={shouldDim}
             />
           </View>
         );
@@ -498,51 +470,49 @@ export default function HomeScreen() {
         <Text style={styles.weekHeaderSubtitle}>{currentWeekLabel}</Text>
       </View>
 
-      {/* ========== PERFORMANCE CARD - ALWAYS SHOWN IN ADMIN MODE ========== */}
-      {isAdminMode ? (
-        <LinearGradient
-          colors={performanceMetrics.gradientColors}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.performanceCard}
+      {/* Performance card */}
+      <LinearGradient
+        colors={performanceMetrics.gradientColors}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.performanceCard}
+      >
+        <View style={styles.progressHeader}>
+          <Text style={styles.progressLabel}>DENNE UGE</Text>
+          <View style={styles.medalBadge}>
+            <Text style={styles.medalIcon}>{performanceMetrics.trophyEmoji}</Text>
+          </View>
+        </View>
+        
+        <Text style={styles.progressPercentage}>{performanceMetrics.percentageUpToToday}%</Text>
+        
+        <View style={styles.progressBar}>
+          <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
+        </View>
+
+        <Text style={styles.progressDetail}>
+          Opgaver indtil i dag: {performanceMetrics.completedTasksToday} / {performanceMetrics.totalTasksToday}
+        </Text>
+        <View style={styles.progressBar}>
+          <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
+        </View>
+
+        <Text style={styles.progressDetail}>
+          Hele ugen: {performanceMetrics.completedTasksWeek} / {performanceMetrics.totalTasksWeek} opgaver
+        </Text>
+
+        <Text style={styles.motivationText}>
+          {performanceMetrics.motivationText}
+        </Text>
+
+        {/* Se Performance Button - Inside Performance Card */}
+        <Pressable 
+          style={styles.performanceButton}
+          onPress={() => router.push('/(tabs)/performance')}
         >
-          <View style={styles.progressHeader}>
-            <Text style={styles.progressLabel}>DENNE UGE</Text>
-            <View style={styles.medalBadge}>
-              <Text style={styles.medalIcon}>{performanceMetrics.trophyEmoji}</Text>
-            </View>
-          </View>
-          
-          <Text style={styles.progressPercentage}>{performanceMetrics.percentageUpToToday}%</Text>
-          
-          <View style={styles.progressBar}>
-            <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
-          </View>
-
-          <Text style={styles.progressDetail}>
-            Opgaver indtil i dag: {performanceMetrics.completedTasksToday} / {performanceMetrics.totalTasksToday}
-          </Text>
-          <View style={styles.progressBar}>
-            <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
-          </View>
-
-          <Text style={styles.progressDetail}>
-            Hele ugen: {performanceMetrics.completedTasksWeek} / {performanceMetrics.totalTasksWeek} opgaver
-          </Text>
-
-          <Text style={styles.motivationText}>
-            {performanceMetrics.motivationText}
-          </Text>
-
-          {/* Se Performance Button - Inside Performance Card */}
-          <Pressable 
-            style={styles.performanceButton}
-            onPress={() => router.push('/(tabs)/performance')}
-          >
-            <Text style={styles.performanceButtonText}>Se performance</Text>
-          </Pressable>
-        </LinearGradient>
-      ) : null}
+          <Text style={styles.performanceButtonText}>Se performance</Text>
+        </Pressable>
+      </LinearGradient>
 
       {/* Create Activity Button */}
       <Pressable 
@@ -691,7 +661,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
 
-  // ========== PERFORMANCE CARD - CLOSED VISUAL UNIT ==========
+  // Performance card
   performanceCard: {
     marginHorizontal: 16,
     marginTop: 8,
