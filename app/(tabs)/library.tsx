@@ -1372,8 +1372,8 @@ export default function LibraryScreen() {
     return (
       <AdminContextWrapper
         isAdmin={isPlayerAdmin}
-        contextName={selectedContext.name}
-        contextType={selectedContext.type as 'player' | 'team'}
+        contextName={selectedContext?.name}
+        contextType="player"
       >
         <View style={[styles.container, { backgroundColor: bgColor }]}>
           <View style={styles.header}>
@@ -1398,8 +1398,8 @@ export default function LibraryScreen() {
   return (
     <AdminContextWrapper
       isAdmin={isPlayerAdmin}
-      contextName={selectedContext.name}
-      contextType={selectedContext.type as 'player' | 'team'}
+      contextName={selectedContext?.name}
+      contextType="player"
     >
       <View style={[styles.container, { backgroundColor: bgColor }]}>
         <View style={styles.header}>
@@ -1951,7 +1951,7 @@ export default function LibraryScreen() {
                 </Text>
                 <View style={{ width: 32 }} />
               </View>
-              <SmartVideoPlayer url={selectedVideoUrl} />
+              <SmartVideoPlayer url={selectedVideoUrl || undefined} />
             </View>
           </Modal>
         )}

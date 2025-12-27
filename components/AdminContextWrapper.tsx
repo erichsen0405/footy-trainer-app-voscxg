@@ -2,7 +2,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { IconSymbol } from '@/components/IconSymbol';
-import { colors } from '@/styles/commonStyles';
 
 interface AdminContextWrapperProps {
   isAdmin: boolean;
@@ -17,40 +16,42 @@ export function AdminContextWrapper({
   contextType = 'player',
   children,
 }: AdminContextWrapperProps) {
+  if (!isAdmin) {
+    // When not in admin mode, render children without any wrapper styling
+    return <>{children}</>;
+  }
+
   return (
-    <View style={[styles.container, isAdmin && styles.adminBackground]}>
-      {isAdmin && (
-        <View style={styles.contextBanner}>
-          <IconSymbol
-            ios_icon_name="exclamationmark.triangle.fill"
-            android_material_icon_name="warning"
-            size={28}
-            color="#fff"
-          />
-          <View style={styles.contextBannerText}>
-            <Text style={styles.contextBannerTitle}>
-              ⚠️ DU ADMINISTRERER {contextType === 'player' ? 'SPILLER' : 'TEAM'}
-            </Text>
-            <Text style={styles.contextBannerSubtitle}>
-              {contextName}
-            </Text>
-            <Text style={styles.contextBannerInfo}>
-              Alle ændringer påvirker denne {contextType === 'player' ? 'spillers' : 'teams'} data
-            </Text>
-          </View>
+    <View style={styles.adminBackground}>
+      {/* Admin warning banner - always rendered when isAdmin is true */}
+      <View style={styles.contextBanner}>
+        <IconSymbol
+          ios_icon_name="exclamationmark.triangle.fill"
+          android_material_icon_name="warning"
+          size={28}
+          color="#fff"
+        />
+        <View style={styles.contextBannerText}>
+          <Text style={styles.contextBannerTitle}>
+            ⚠️ DU ADMINISTRERER {contextType === 'player' ? 'SPILLER' : 'TEAM'}
+          </Text>
+          <Text style={styles.contextBannerSubtitle}>
+            {contextName}
+          </Text>
+          <Text style={styles.contextBannerInfo}>
+            Alle ændringer påvirker denne {contextType === 'player' ? 'spillers' : 'teams'} data
+          </Text>
         </View>
-      )}
+      </View>
       {children}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
   adminBackground: {
-    backgroundColor: '#F5E6D3', // Dusty yellow background (themeColors.contextWarning)
+    flex: 1,
+    backgroundColor: '#F5E6D3', // Dusty yellow background (themeColors.contextWarning) - HARDCODED
   },
   contextBanner: {
     flexDirection: 'row',

@@ -639,8 +639,8 @@ export default function TasksScreen() {
   return (
     <AdminContextWrapper
       isAdmin={isPlayerAdmin}
-      contextName={selectedContext.name}
-      contextType={selectedContext.type as 'player' | 'team'}
+      contextName={selectedContext?.name}
+      contextType="player"
     >
       <FlatList
         data={filteredFolders}

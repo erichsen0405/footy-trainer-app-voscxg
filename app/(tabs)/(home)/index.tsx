@@ -541,8 +541,8 @@ export default function HomeScreen() {
   return (
     <AdminContextWrapper
       isAdmin={isPlayerAdmin}
-      contextName={selectedContext.name}
-      contextType={selectedContext.type as 'player' | 'team'}
+      contextName={selectedContext?.name}
+      contextType="player"
     >
       <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
       
