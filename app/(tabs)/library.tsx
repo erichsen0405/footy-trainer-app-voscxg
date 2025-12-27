@@ -143,8 +143,9 @@ export default function LibraryScreen() {
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
 
-  const isManagingContext = isAdmin && selectedContext.type;
-  const containerBgColor = isManagingContext ? themeColors.contextWarning : bgColor;
+  // 4️⃣ Korrekt admin-visning på Bibliotek
+  const isAdminMode = adminMode !== 'self' && adminTargetType === 'player';
+  const containerBgColor = isAdminMode ? themeColors.contextWarning : bgColor;
 
   const isPlayer = userRole === 'player';
 
@@ -1390,6 +1391,29 @@ export default function LibraryScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: containerBgColor }]}>
+      {/* 4️⃣ Korrekt admin-visning på Bibliotek - Reused from Tasks screen */}
+      {isAdminMode && (
+        <View style={[styles.adminBanner, { backgroundColor: '#D4A574' }]}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle.fill"
+            android_material_icon_name="warning"
+            size={28}
+            color="#fff"
+          />
+          <View style={styles.adminBannerTextContainer}>
+            <Text style={styles.adminBannerTitle}>
+              ⚠️ DU ADMINISTRERER NU DATA FOR SPILLER
+            </Text>
+            <Text style={styles.adminBannerSubtitle}>
+              {selectedContext.name}
+            </Text>
+            <Text style={styles.adminBannerInfo}>
+              Alle ændringer påvirker denne spillers bibliotek
+            </Text>
+          </View>
+        </View>
+      )}
+
       <View style={styles.header}>
         <View>
           <Text style={[styles.headerTitle, { color: textColor }]}>
@@ -1964,6 +1988,41 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     alignItems: 'center',
   },
+
+  // 4️⃣ Korrekt admin-visning på Bibliotek - Reused from Tasks screen
+  adminBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    marginBottom: 0,
+    borderBottomWidth: 3,
+    borderBottomColor: '#B8860B',
+  },
+  adminBannerTextContainer: {
+    flex: 1,
+  },
+  adminBannerTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 4,
+    letterSpacing: 0.5,
+  },
+  adminBannerSubtitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  adminBannerInfo: {
+    fontSize: 13,
+    color: '#fff',
+    opacity: 0.95,
+    fontStyle: 'italic',
+  },
+
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',

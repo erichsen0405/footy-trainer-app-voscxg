@@ -77,11 +77,8 @@ export default function HomeScreen() {
   const currentWeekNumber = getWeek(new Date(), { weekStartsOn: 1, locale: da });
   const currentWeekLabel = getWeekLabel(new Date());
 
-  // Check if user is a player (not admin/trainer)
-  const isPlayer = userRole === 'player';
-
   // 1️⃣ Admin-mode detektion
-  const isAdminMode = adminMode !== 'self';
+  const isAdminMode = adminMode !== 'self' && adminTargetType === 'player';
 
   // Fetch current trainer ID (the logged-in user who is administering)
   useEffect(() => {
@@ -472,13 +469,13 @@ export default function HomeScreen() {
           />
           <View style={styles.adminBannerTextContainer}>
             <Text style={styles.adminBannerTitle}>
-              ⚠️ DU ADMINISTRERER NU DATA FOR {selectedContext.type === 'player' ? 'SPILLER' : 'TEAM'}
+              ⚠️ DU ADMINISTRERER NU DATA FOR SPILLER
             </Text>
             <Text style={styles.adminBannerSubtitle}>
               {selectedContext.name}
             </Text>
             <Text style={styles.adminBannerInfo}>
-              Alle ændringer påvirker denne {selectedContext.type === 'player' ? 'spillers' : 'teams'} aktiviteter
+              Alle ændringer påvirker denne spillers aktiviteter
             </Text>
           </View>
         </View>
@@ -503,51 +500,49 @@ export default function HomeScreen() {
         <Text style={styles.weekHeaderSubtitle}>{currentWeekLabel}</Text>
       </View>
 
-      {/* ========== PERFORMANCE CARD - ONLY FOR PLAYERS ========== */}
-      {isPlayer ? (
-        <LinearGradient
-          colors={performanceMetrics.gradientColors}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.performanceCard}
+      {/* ========== PERFORMANCE CARD - ALWAYS SHOW (for player's data) ========== */}
+      <LinearGradient
+        colors={performanceMetrics.gradientColors}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.performanceCard}
+      >
+        <View style={styles.progressHeader}>
+          <Text style={styles.progressLabel}>DENNE UGE</Text>
+          <View style={styles.medalBadge}>
+            <Text style={styles.medalIcon}>{performanceMetrics.trophyEmoji}</Text>
+          </View>
+        </View>
+        
+        <Text style={styles.progressPercentage}>{performanceMetrics.percentageUpToToday}%</Text>
+        
+        <View style={styles.progressBar}>
+          <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
+        </View>
+
+        <Text style={styles.progressDetail}>
+          Opgaver indtil i dag: {performanceMetrics.completedTasksToday} / {performanceMetrics.totalTasksToday}
+        </Text>
+        <View style={styles.progressBar}>
+          <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
+        </View>
+
+        <Text style={styles.progressDetail}>
+          Hele ugen: {performanceMetrics.completedTasksWeek} / {performanceMetrics.totalTasksWeek} opgaver
+        </Text>
+
+        <Text style={styles.motivationText}>
+          {performanceMetrics.motivationText}
+        </Text>
+
+        {/* Se Performance Button - Inside Performance Card */}
+        <Pressable 
+          style={styles.performanceButton}
+          onPress={() => router.push('/(tabs)/performance')}
         >
-          <View style={styles.progressHeader}>
-            <Text style={styles.progressLabel}>DENNE UGE</Text>
-            <View style={styles.medalBadge}>
-              <Text style={styles.medalIcon}>{performanceMetrics.trophyEmoji}</Text>
-            </View>
-          </View>
-          
-          <Text style={styles.progressPercentage}>{performanceMetrics.percentageUpToToday}%</Text>
-          
-          <View style={styles.progressBar}>
-            <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
-          </View>
-
-          <Text style={styles.progressDetail}>
-            Opgaver indtil i dag: {performanceMetrics.completedTasksToday} / {performanceMetrics.totalTasksToday}
-          </Text>
-          <View style={styles.progressBar}>
-            <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
-          </View>
-
-          <Text style={styles.progressDetail}>
-            Hele ugen: {performanceMetrics.completedTasksWeek} / {performanceMetrics.totalTasksWeek} opgaver
-          </Text>
-
-          <Text style={styles.motivationText}>
-            {performanceMetrics.motivationText}
-          </Text>
-
-          {/* Se Performance Button - Inside Performance Card */}
-          <Pressable 
-            style={styles.performanceButton}
-            onPress={() => router.push('/(tabs)/performance')}
-          >
-            <Text style={styles.performanceButtonText}>Se performance</Text>
-          </Pressable>
-        </LinearGradient>
-      ) : null}
+          <Text style={styles.performanceButtonText}>Se performance</Text>
+        </Pressable>
+      </LinearGradient>
 
       {/* Create Activity Button */}
       <Pressable 
