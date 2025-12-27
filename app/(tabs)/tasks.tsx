@@ -208,11 +208,6 @@ export default function TasksScreen() {
 
   const templateTasks = useMemo(() => tasks.filter(task => task.isTemplate), [tasks]);
 
-  // Read admin context (no behavior change yet)
-  useEffect(() => {
-    console.log('[Tasks] Admin context:', { adminMode, adminTargetId, adminTargetType });
-  }, [adminMode, adminTargetId, adminTargetType]);
-
   // Use useMemo to compute folders from tasks - this prevents the render loop
   const folders = useMemo(() => {
     return organizeFolders(templateTasks);

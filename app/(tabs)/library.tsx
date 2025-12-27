@@ -148,11 +148,6 @@ export default function LibraryScreen() {
 
   const isPlayer = userRole === 'player';
 
-  // Read admin context (no behavior change yet)
-  useEffect(() => {
-    console.log('[Library] Admin context:', { adminMode, adminTargetId, adminTargetType });
-  }, [adminMode, adminTargetId, adminTargetType]);
-
   const fetchLibraryData = useCallback(async (userId: string) => {
     console.log('🔄 Library: Fetching library data for user:', userId);
 

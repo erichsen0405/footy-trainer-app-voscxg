@@ -73,11 +73,6 @@ export default function HomeScreen() {
   // Check if user is a player (not admin/trainer)
   const isPlayer = userRole === 'player';
 
-  // Read admin context (no behavior change yet)
-  useEffect(() => {
-    console.log('[Home] Admin context:', { adminMode, adminTargetId, adminTargetType });
-  }, [adminMode, adminTargetId, adminTargetType]);
-
   // Reset "TIDLIGERE" section when loading starts (pull-to-refresh or navigation back)
   useEffect(() => {
     if (loading) {
