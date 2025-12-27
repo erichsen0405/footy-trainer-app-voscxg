@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
 import { useFootball } from '@/contexts/FootballContext';
 import { useUserRole } from '@/hooks/useUserRole';
+import { useAdmin } from '@/contexts/AdminContext';
 import ActivityCard from '@/components/ActivityCard';
 import CreateActivityModal from '@/components/CreateActivityModal';
 import HomeSkeleton from '@/components/HomeSkeleton';
@@ -60,6 +61,7 @@ export default function HomeScreen() {
   const { userRole } = useUserRole();
   const { activities, loading, refresh: refreshActivities } = useHomeActivities();
   const { categories, createActivity, refreshData, currentWeekStats } = useFootball();
+  const { adminMode, adminTargetId, adminTargetType } = useAdmin();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showPreviousWeeks, setShowPreviousWeeks] = useState(0);
   const [isPreviousExpanded, setIsPreviousExpanded] = useState(false);
@@ -70,6 +72,11 @@ export default function HomeScreen() {
 
   // Check if user is a player (not admin/trainer)
   const isPlayer = userRole === 'player';
+
+  // Read admin context (no behavior change yet)
+  useEffect(() => {
+    console.log('[Home] Admin context:', { adminMode, adminTargetId, adminTargetType });
+  }, [adminMode, adminTargetId, adminTargetType]);
 
   // Reset "TIDLIGERE" section when loading starts (pull-to-refresh or navigation back)
   useEffect(() => {

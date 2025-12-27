@@ -19,6 +19,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import { useUserRole } from '@/hooks/useUserRole';
+import { useAdmin } from '@/contexts/AdminContext';
 import { useFocusEffect } from '@react-navigation/native';
 import SmartVideoPlayer from '@/components/SmartVideoPlayer';
 
@@ -109,6 +110,7 @@ const FOOTBALLCOACH_STRUCTURE: FolderItem[] = [
 export default function LibraryScreen() {
   const { teams, players, selectedContext } = useTeamPlayer();
   const { isAdmin, userRole } = useUserRole();
+  const { adminMode, adminTargetId, adminTargetType } = useAdmin();
   const [personalExercises, setPersonalExercises] = useState<Exercise[]>([]);
   const [trainerFolders, setTrainerFolders] = useState<FolderItem[]>([]);
   const [footballCoachFolders, setFootballCoachFolders] = useState<FolderItem[]>(FOOTBALLCOACH_STRUCTURE);
@@ -145,6 +147,11 @@ export default function LibraryScreen() {
   const containerBgColor = isManagingContext ? themeColors.contextWarning : bgColor;
 
   const isPlayer = userRole === 'player';
+
+  // Read admin context (no behavior change yet)
+  useEffect(() => {
+    console.log('[Library] Admin context:', { adminMode, adminTargetId, adminTargetType });
+  }, [adminMode, adminTargetId, adminTargetType]);
 
   const fetchLibraryData = useCallback(async (userId: string) => {
     console.log('🔄 Library: Fetching library data for user:', userId);

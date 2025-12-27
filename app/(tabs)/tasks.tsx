@@ -4,6 +4,7 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Modal, u
 import { useFootball } from '@/contexts/FootballContext';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import { useUserRole } from '@/hooks/useUserRole';
+import { useAdmin } from '@/contexts/AdminContext';
 import { colors, getColors } from '@/styles/commonStyles';
 import { Task } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -182,6 +183,7 @@ export default function TasksScreen() {
   const { tasks, categories, addTask, updateTask, deleteTask, duplicateTask, refreshData } = useFootball();
   const { selectedContext } = useTeamPlayer();
   const { isAdmin } = useUserRole();
+  const { adminMode, adminTargetId, adminTargetType } = useAdmin();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
@@ -205,6 +207,11 @@ export default function TasksScreen() {
   } | null>(null);
 
   const templateTasks = useMemo(() => tasks.filter(task => task.isTemplate), [tasks]);
+
+  // Read admin context (no behavior change yet)
+  useEffect(() => {
+    console.log('[Tasks] Admin context:', { adminMode, adminTargetId, adminTargetType });
+  }, [adminMode, adminTargetId, adminTargetType]);
 
   // Use useMemo to compute folders from tasks - this prevents the render loop
   const folders = useMemo(() => {
