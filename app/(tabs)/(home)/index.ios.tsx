@@ -62,7 +62,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const { userRole } = useUserRole();
   const { activities, loading, refresh: refreshActivities } = useHomeActivities();
-  const { categories, createActivity, refreshData, currentWeekStats } = useFootball();
+  const { categories, createActivity, refreshData, currentWeekStats, toggleTaskCompletion } = useFootball();
   const { adminMode, adminTargetId, adminTargetType } = useAdmin();
   const { selectedContext } = useTeamPlayer();
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -401,6 +401,30 @@ export default function HomeScreen() {
           });
         };
 
+        // 3️⃣ Task press handler - BLOCKED if not allowed
+        const handleTaskPress = (task: any, event: any) => {
+          if (isAdminMode && !canManageActivity) {
+            return;
+          }
+          
+          // Default behavior - open task modal
+          // This will be handled by ActivityCard's internal logic
+        };
+
+        // 3️⃣ Task toggle handler - BLOCKED if not allowed
+        const handleToggleTask = async (taskId: string, event: any) => {
+          if (isAdminMode && !canManageActivity) {
+            return;
+          }
+          
+          try {
+            await toggleTaskCompletion(activity.id, taskId);
+            refreshData();
+          } catch (error) {
+            console.error('❌ Error toggling task:', error);
+          }
+        };
+
         return (
           <View style={[styles.activityWrapper, shouldDim && styles.activityWrapperDimmed]}>
             <ActivityCard
@@ -408,8 +432,9 @@ export default function HomeScreen() {
               resolvedDate={activity.__resolvedDateTime}
               showTasks={item.section === 'today' || item.section === 'previous'}
               onPress={handleActivityPress}
-              isAdminMode={isAdminMode}
-              canManageActivity={canManageActivity}
+              onTaskPress={handleTaskPress}
+              onToggleTask={handleToggleTask}
+              tasksDimmed={shouldDim}
             />
           </View>
         );

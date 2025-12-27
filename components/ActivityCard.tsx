@@ -15,8 +15,9 @@ interface ActivityCardProps {
   resolvedDate: Date;
   onPress?: () => void;
   showTasks?: boolean;
-  isAdminMode?: boolean;
-  canManageActivity?: boolean;
+  onTaskPress?: (task: any, event: any) => void;
+  onToggleTask?: (taskId: string, event: any) => void;
+  tasksDimmed?: boolean;
 }
 
 // Helper function to lighten a hex color
@@ -66,8 +67,9 @@ export default function ActivityCard({
   resolvedDate, 
   onPress, 
   showTasks = false,
-  isAdminMode = false,
-  canManageActivity = true,
+  onTaskPress,
+  onToggleTask,
+  tasksDimmed = false,
 }: ActivityCardProps) {
   const router = useRouter();
   const { toggleTaskCompletion, refreshData } = useFootball();
@@ -100,25 +102,24 @@ export default function ActivityCard({
     }
   }, [onPress, router, activity.id]);
 
-  // 3️⃣ Memoized task press handler - BLOCKED if not allowed
+  // Task press handler - uses parent handler if provided
   const handleTaskPress = useCallback((task: any, event: any) => {
     event.stopPropagation();
 
-    // Block if in admin mode and cannot manage
-    if (isAdminMode && !canManageActivity) {
-      return;
+    if (onTaskPress) {
+      onTaskPress(task, event);
+    } else {
+      setActiveTaskId(task.id);
+      setIsTaskModalOpen(true);
     }
+  }, [onTaskPress]);
 
-    setActiveTaskId(task.id);
-    setIsTaskModalOpen(true);
-  }, [isAdminMode, canManageActivity]);
-
-  // 3️⃣ Memoized toggle task handler - BLOCKED if not allowed
+  // Toggle task handler - uses parent handler if provided
   const handleToggleTask = useCallback(async (taskId: string, event: any) => {
     event.stopPropagation();
     
-    // Block if in admin mode and cannot manage
-    if (isAdminMode && !canManageActivity) {
+    if (onToggleTask) {
+      onToggleTask(taskId, event);
       return;
     }
     
@@ -147,7 +148,7 @@ export default function ActivityCard({
       rollbackTasks[taskIndex] = { ...task, completed: previousCompleted };
       setOptimisticTasks(rollbackTasks);
     }
-  }, [optimisticTasks, activity.id, toggleTaskCompletion, refreshData, isAdminMode, canManageActivity]);
+  }, [optimisticTasks, activity.id, toggleTaskCompletion, refreshData, onToggleTask]);
 
   // Memoized modal close handler
   const handleModalClose = useCallback(() => {
@@ -176,9 +177,6 @@ export default function ActivityCard({
   const dayLabel = format(resolvedDate, 'EEE. d. MMM.', { locale: da });
   const timeLabel = format(resolvedDate, 'HH:mm');
   const location = activity.location || activity.category_location || '';
-
-  // 2️⃣ Determine if tasks should be dimmed
-  const shouldDimTasks = isAdminMode && !canManageActivity;
 
   return (
     <>
@@ -240,8 +238,7 @@ export default function ActivityCard({
               {optimisticTasks.map((task, index) => {
                 return (
                   <React.Fragment key={index}>
-                    {/* 2️⃣ Task dimming wrapper */}
-                    <View style={shouldDimTasks && styles.taskRowDimmed}>
+                    <View style={tasksDimmed && styles.taskRowDimmed}>
                       <View style={styles.taskRow}>
                         <TouchableOpacity
                           style={styles.taskCheckboxArea}
