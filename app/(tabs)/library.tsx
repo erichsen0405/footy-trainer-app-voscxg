@@ -23,6 +23,7 @@ import { useAdmin } from '@/contexts/AdminContext';
 import { useFocusEffect } from '@react-navigation/native';
 import SmartVideoPlayer from '@/components/SmartVideoPlayer';
 import { AdminContextWrapper } from '@/components/AdminContextWrapper';
+import InlineFeedback from '@/components/InlineFeedback';
 
 interface Exercise {
   id: string;
@@ -128,6 +129,7 @@ export default function LibraryScreen() {
   const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const [showFeedback, setShowFeedback] = useState(false);
   
   // Form state
   const [title, setTitle] = useState('');
@@ -478,7 +480,7 @@ export default function LibraryScreen() {
   const openCreateModal = () => {
     // STEP E: Show feedback before early return
     if (adminMode !== 'self') {
-      Alert.alert('Låst indhold', 'Du kan kun redigere indhold, du selv har oprettet.');
+      setShowFeedback(true);
       return;
     }
 
@@ -499,7 +501,7 @@ export default function LibraryScreen() {
   const openEditModal = (exercise: Exercise) => {
     // STEP E: Show feedback before early return
     if (adminMode !== 'self') {
-      Alert.alert('Låst indhold', 'Du kan kun redigere indhold, du selv har oprettet.');
+      setShowFeedback(true);
       return;
     }
 
@@ -634,7 +636,7 @@ export default function LibraryScreen() {
   const handleDeleteExercise = (exercise: Exercise) => {
     // STEP E: Show feedback before early return
     if (adminMode !== 'self') {
-      Alert.alert('Låst indhold', 'Du kan kun redigere indhold, du selv har oprettet.');
+      setShowFeedback(true);
       return;
     }
 
@@ -689,7 +691,7 @@ export default function LibraryScreen() {
   const handleDuplicateExercise = async (exercise: Exercise) => {
     // STEP E: Show feedback before early return
     if (adminMode !== 'self') {
-      Alert.alert('Låst indhold', 'Du kan kun redigere indhold, du selv har oprettet.');
+      setShowFeedback(true);
       return;
     }
 
@@ -745,7 +747,7 @@ export default function LibraryScreen() {
   const openAssignModal = (exercise: Exercise) => {
     // STEP E: Show feedback before early return
     if (adminMode !== 'self') {
-      Alert.alert('Låst indhold', 'Du kan kun redigere indhold, du selv har oprettet.');
+      setShowFeedback(true);
       return;
     }
 
@@ -837,7 +839,7 @@ export default function LibraryScreen() {
   const handleCopyToTasks = async (exercise: Exercise) => {
     // STEP E: Show feedback before early return
     if (adminMode !== 'self') {
-      Alert.alert('Låst indhold', 'Du kan kun redigere indhold, du selv har oprettet.');
+      setShowFeedback(true);
       return;
     }
 
@@ -944,7 +946,7 @@ export default function LibraryScreen() {
   const openRevokeModal = (exercise: Exercise) => {
     // STEP E: Show feedback before early return
     if (adminMode !== 'self') {
-      Alert.alert('Låst indhold', 'Du kan kun redigere indhold, du selv har oprettet.');
+      setShowFeedback(true);
       return;
     }
 
@@ -1502,6 +1504,13 @@ export default function LibraryScreen() {
 
           <View style={{ height: 100 }} />
         </ScrollView>
+
+        {/* Inline Feedback */}
+        <InlineFeedback
+          message="Du kan kun redigere indhold, du selv har oprettet."
+          visible={showFeedback}
+          onHide={() => setShowFeedback(false)}
+        />
 
         <Modal
           visible={showModal}

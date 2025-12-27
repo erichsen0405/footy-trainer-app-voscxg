@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform, useColorScheme, Alert } from 'react-native';
+import { FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform, useColorScheme } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -14,6 +14,7 @@ import CreateActivityModal from '@/components/CreateActivityModal';
 import HomeSkeleton from '@/components/HomeSkeleton';
 import { IconSymbol } from '@/components/IconSymbol';
 import { AdminContextWrapper } from '@/components/AdminContextWrapper';
+import InlineFeedback from '@/components/InlineFeedback';
 import { colors, getColors } from '@/styles/commonStyles';
 import { format, startOfWeek, endOfWeek, getWeek } from 'date-fns';
 import { da } from 'date-fns/locale';
@@ -72,6 +73,7 @@ export default function HomeScreen() {
   const [isPreviousExpanded, setIsPreviousExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [currentTrainerId, setCurrentTrainerId] = useState<string | null>(null);
+  const [showFeedback, setShowFeedback] = useState(false);
   const colorScheme = useColorScheme();
   const themeColors = getColors(colorScheme);
   const isDark = colorScheme === 'dark';
@@ -402,7 +404,7 @@ export default function HomeScreen() {
         // 3️⃣ Activity press handler with early return + feedback
         const handleActivityPress = () => {
           if (isAdminMode && !canManageActivity) {
-            Alert.alert('Låst indhold', 'Du kan kun redigere indhold, du selv har oprettet.');
+            setShowFeedback(true);
             return;
           }
           
@@ -572,6 +574,13 @@ export default function HomeScreen() {
           }
         />
       )}
+
+      {/* Inline Feedback */}
+      <InlineFeedback
+        message="Du kan kun redigere indhold, du selv har oprettet."
+        visible={showFeedback}
+        onHide={() => setShowFeedback(false)}
+      />
 
       {/* Create Activity Modal */}
       {showCreateModal ? (
