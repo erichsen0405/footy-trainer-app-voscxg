@@ -17,6 +17,7 @@ import {
 import { FootballProvider } from '@/contexts/FootballContext';
 import { SubscriptionProvider } from '@/contexts/SubscriptionContext';
 import { TeamPlayerProvider } from '@/contexts/TeamPlayerContext';
+import { AdminProvider } from '@/contexts/AdminContext';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -164,26 +165,28 @@ function RootLayoutContent() {
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <SubscriptionProvider>
         <TeamPlayerProvider>
-          <FootballProvider>
-            <Suspense fallback={<LoadingScreen />}>
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="(tabs)" />
-                <Stack.Screen name="+not-found" />
-                <Stack.Screen name="activity-details" options={{ presentation: 'modal' }} />
-                <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-                <Stack.Screen name="formsheet" options={{ presentation: 'formSheet' }} />
-                <Stack.Screen
-                  name="transparent-modal"
-                  options={{ presentation: 'transparentModal', animation: 'fade' }}
-                />
-                <Stack.Screen name="console-logs" options={{ headerShown: true }} />
-                <Stack.Screen name="notification-debug" options={{ headerShown: true }} />
-                <Stack.Screen name="email-confirmed" />
-                <Stack.Screen name="update-password" />
-              </Stack>
-              <StatusBar style="auto" />
-            </Suspense>
-          </FootballProvider>
+          <AdminProvider>
+            <FootballProvider>
+              <Suspense fallback={<LoadingScreen />}>
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="(tabs)" />
+                  <Stack.Screen name="+not-found" />
+                  <Stack.Screen name="activity-details" options={{ presentation: 'modal' }} />
+                  <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+                  <Stack.Screen name="formsheet" options={{ presentation: 'formSheet' }} />
+                  <Stack.Screen
+                    name="transparent-modal"
+                    options={{ presentation: 'transparentModal', animation: 'fade' }}
+                  />
+                  <Stack.Screen name="console-logs" options={{ headerShown: true }} />
+                  <Stack.Screen name="notification-debug" options={{ headerShown: true }} />
+                  <Stack.Screen name="email-confirmed" />
+                  <Stack.Screen name="update-password" />
+                </Stack>
+                <StatusBar style="auto" />
+              </Suspense>
+            </FootballProvider>
+          </AdminProvider>
         </TeamPlayerProvider>
       </SubscriptionProvider>
     </ThemeProvider>
