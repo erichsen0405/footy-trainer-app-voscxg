@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Modal, useColorScheme, KeyboardAvoidingView, Platform, RefreshControl, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Modal, useColorScheme, KeyboardAvoidingView, Platform, RefreshControl, Alert, ActivityIndicator } from 'react-native';
 import { useFootball } from '@/contexts/FootballContext';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -181,7 +181,7 @@ const TaskCard = React.memo(({
 ));
 
 export default function TasksScreen() {
-  const { tasks, categories, addTask, updateTask, deleteTask, duplicateTask, refreshData } = useFootball();
+  const { tasks, categories, addTask, updateTask, deleteTask, duplicateTask, refreshData, isLoading } = useFootball();
   const { selectedContext } = useTeamPlayer();
   const { isAdmin } = useUserRole();
   const { adminMode, adminTargetId, adminTargetType } = useAdmin();
@@ -640,6 +640,21 @@ export default function TasksScreen() {
     <View style={{ height: 100 }} />
   ), []);
 
+  // Show loading spinner when data is being fetched
+  if (isLoading) {
+    return (
+      <AdminContextWrapper
+        isAdmin={isAdminMode}
+        contextName={selectedContext?.name}
+        contextType={adminTargetType || 'player'}
+      >
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" />
+        </View>
+      </AdminContextWrapper>
+    );
+  }
+
   return (
     <AdminContextWrapper
       isAdmin={isAdminMode}
@@ -929,6 +944,11 @@ export default function TasksScreen() {
 }
 
 const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   contentContainer: {
     paddingHorizontal: 16,
   },

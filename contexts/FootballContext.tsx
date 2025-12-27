@@ -10,6 +10,7 @@ interface FootballContextType {
   trophies: Trophy[];
   externalCalendars: ExternalCalendar[];
   externalActivities: Activity[];
+  isLoading: boolean;
   currentWeekStats: {
     percentage: number;
     completedTasks: number;
