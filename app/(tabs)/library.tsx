@@ -476,8 +476,11 @@ export default function LibraryScreen() {
   };
 
   const openCreateModal = () => {
-    // STEP D: Block in admin mode
-    if (adminMode !== 'self') return;
+    // STEP E: Show feedback before early return
+    if (adminMode !== 'self') {
+      Alert.alert('Låst indhold', 'Du kan kun redigere indhold, du selv har oprettet.');
+      return;
+    }
 
     if (!isAdmin) {
       Alert.alert('Ikke tilladt', 'Kun trænere kan oprette øvelser');
@@ -494,8 +497,11 @@ export default function LibraryScreen() {
   };
 
   const openEditModal = (exercise: Exercise) => {
-    // STEP D: Block in admin mode
-    if (adminMode !== 'self') return;
+    // STEP E: Show feedback before early return
+    if (adminMode !== 'self') {
+      Alert.alert('Låst indhold', 'Du kan kun redigere indhold, du selv har oprettet.');
+      return;
+    }
 
     if (!isAdmin) {
       Alert.alert('Ikke tilladt', 'Du kan ikke redigere denne øvelse');
@@ -626,8 +632,11 @@ export default function LibraryScreen() {
   };
 
   const handleDeleteExercise = (exercise: Exercise) => {
-    // STEP D: Block in admin mode
-    if (adminMode !== 'self') return;
+    // STEP E: Show feedback before early return
+    if (adminMode !== 'self') {
+      Alert.alert('Låst indhold', 'Du kan kun redigere indhold, du selv har oprettet.');
+      return;
+    }
 
     if (!isAdmin) {
       Alert.alert('Ikke tilladt', 'Du kan ikke slette denne øvelse');
@@ -678,8 +687,11 @@ export default function LibraryScreen() {
   };
 
   const handleDuplicateExercise = async (exercise: Exercise) => {
-    // STEP D: Block in admin mode
-    if (adminMode !== 'self') return;
+    // STEP E: Show feedback before early return
+    if (adminMode !== 'self') {
+      Alert.alert('Låst indhold', 'Du kan kun redigere indhold, du selv har oprettet.');
+      return;
+    }
 
     if (!isAdmin) {
       Alert.alert('Ikke tilladt', 'Du kan ikke duplikere denne øvelse');
@@ -731,8 +743,11 @@ export default function LibraryScreen() {
   };
 
   const openAssignModal = (exercise: Exercise) => {
-    // STEP D: Block in admin mode
-    if (adminMode !== 'self') return;
+    // STEP E: Show feedback before early return
+    if (adminMode !== 'self') {
+      Alert.alert('Låst indhold', 'Du kan kun redigere indhold, du selv har oprettet.');
+      return;
+    }
 
     if (!isAdmin) {
       Alert.alert('Ikke tilladt', 'Du kan ikke tildele denne øvelse');
@@ -820,8 +835,11 @@ export default function LibraryScreen() {
   };
 
   const handleCopyToTasks = async (exercise: Exercise) => {
-    // STEP D: Block in admin mode
-    if (adminMode !== 'self') return;
+    // STEP E: Show feedback before early return
+    if (adminMode !== 'self') {
+      Alert.alert('Låst indhold', 'Du kan kun redigere indhold, du selv har oprettet.');
+      return;
+    }
 
     setProcessing(true);
     try {
@@ -924,8 +942,11 @@ export default function LibraryScreen() {
   };
 
   const openRevokeModal = (exercise: Exercise) => {
-    // STEP D: Block in admin mode
-    if (adminMode !== 'self') return;
+    // STEP E: Show feedback before early return
+    if (adminMode !== 'self') {
+      Alert.alert('Låst indhold', 'Du kan kun redigere indhold, du selv har oprettet.');
+      return;
+    }
 
     if (!isAdmin) {
       Alert.alert('Ikke tilladt', 'Kun trænere kan tilbagekalde øvelser');

@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform, useColorScheme } from 'react-native';
+import { FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform, useColorScheme, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -399,9 +399,10 @@ export default function HomeScreen() {
         // 2️⃣ Determine if should dim
         const shouldDim = isAdminMode && !canManageActivity;
 
-        // 3️⃣ Activity press handler with early return
+        // 3️⃣ Activity press handler with early return + feedback
         const handleActivityPress = () => {
           if (isAdminMode && !canManageActivity) {
+            Alert.alert('Låst indhold', 'Du kan kun redigere indhold, du selv har oprettet.');
             return;
           }
           
