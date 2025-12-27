@@ -553,7 +553,6 @@ export default function TasksScreen() {
 
   const isManagingContext = isAdmin && selectedContext.type;
   const isPlayerAdmin = adminMode !== 'self' && adminTargetType === 'player';
-  const containerBgColor = isManagingContext ? themeColors.contextWarning : bgColor;
 
   const ListHeaderComponent = useMemo(() => (
     <>
@@ -639,10 +638,9 @@ export default function TasksScreen() {
 
   return (
     <AdminContextWrapper
-      isAdminMode={isPlayerAdmin}
+      isAdmin={isPlayerAdmin}
       contextName={selectedContext.name}
       contextType={selectedContext.type as 'player' | 'team'}
-      backgroundColor={containerBgColor}
     >
       <FlatList
         data={filteredFolders}

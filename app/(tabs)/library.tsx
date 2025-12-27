@@ -22,6 +22,7 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { useAdmin } from '@/contexts/AdminContext';
 import { useFocusEffect } from '@react-navigation/native';
 import SmartVideoPlayer from '@/components/SmartVideoPlayer';
+import { AdminContextWrapper } from '@/components/AdminContextWrapper';
 
 interface Exercise {
   id: string;
@@ -143,9 +144,8 @@ export default function LibraryScreen() {
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
 
-  // 4️⃣ Korrekt admin-visning på Bibliotek
-  const isAdminMode = adminMode !== 'self' && adminTargetType === 'player';
-  const containerBgColor = isAdminMode ? themeColors.contextWarning : bgColor;
+  // Admin-mode detection
+  const isPlayerAdmin = adminMode !== 'self' && adminTargetType === 'player';
 
   const isPlayer = userRole === 'player';
 
@@ -1370,7 +1370,38 @@ export default function LibraryScreen() {
   // Show skeleton UI on initial load
   if (initialLoad) {
     return (
-      <View style={[styles.container, { backgroundColor: containerBgColor }]}>
+      <AdminContextWrapper
+        isAdmin={isPlayerAdmin}
+        contextName={selectedContext.name}
+        contextType={selectedContext.type as 'player' | 'team'}
+      >
+        <View style={[styles.container, { backgroundColor: bgColor }]}>
+          <View style={styles.header}>
+            <View>
+              <Text style={[styles.headerTitle, { color: textColor }]}>
+                Øvelsesbibliotek
+              </Text>
+              <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
+                {isPlayer ? 'Øvelser fra dine trænere og inspiration' : 'Struktureret i mapper'}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={[styles.loadingText, { color: textColor }]}>Indlæser bibliotek...</Text>
+          </View>
+        </View>
+      </AdminContextWrapper>
+    );
+  }
+
+  return (
+    <AdminContextWrapper
+      isAdmin={isPlayerAdmin}
+      contextName={selectedContext.name}
+      contextType={selectedContext.type as 'player' | 'team'}
+    >
+      <View style={[styles.container, { backgroundColor: bgColor }]}>
         <View style={styles.header}>
           <View>
             <Text style={[styles.headerTitle, { color: textColor }]}>
@@ -1380,594 +1411,552 @@ export default function LibraryScreen() {
               {isPlayer ? 'Øvelser fra dine trænere og inspiration' : 'Struktureret i mapper'}
             </Text>
           </View>
-        </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[styles.loadingText, { color: textColor }]}>Indlæser bibliotek...</Text>
-        </View>
-      </View>
-    );
-  }
-
-  return (
-    <View style={[styles.container, { backgroundColor: containerBgColor }]}>
-      {/* Admin banner - Reused from Tasks screen */}
-      {isAdminMode && (
-        <View style={[styles.contextBanner, { backgroundColor: '#D4A574' }]}>
-          <IconSymbol
-            ios_icon_name="exclamationmark.triangle.fill"
-            android_material_icon_name="warning"
-            size={28}
-            color="#fff"
-          />
-          <View style={styles.contextBannerText}>
-            <Text style={styles.contextBannerTitle}>
-              ⚠️ DU ADMINISTRERER NU DATA FOR SPILLER
-            </Text>
-            <Text style={styles.contextBannerSubtitle}>
-              {selectedContext.name}
-            </Text>
-            <Text style={styles.contextBannerInfo}>
-              Alle ændringer påvirker denne spillers bibliotek
-            </Text>
-          </View>
-        </View>
-      )}
-
-      <View style={styles.header}>
-        <View>
-          <Text style={[styles.headerTitle, { color: textColor }]}>
-            Øvelsesbibliotek
-          </Text>
-          <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
-            {isPlayer ? 'Øvelser fra dine trænere og inspiration' : 'Struktureret i mapper'}
-          </Text>
-        </View>
-        {isAdmin && (
-          <TouchableOpacity
-            style={[styles.createButton, { backgroundColor: colors.primary }]}
-            onPress={openCreateModal}
-            activeOpacity={0.7}
-          >
-            <IconSymbol
-              ios_icon_name="plus.circle.fill"
-              android_material_icon_name="add_circle"
-              size={24}
-              color="#fff"
-            />
-            <Text style={styles.createButtonText}>Ny øvelse</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {isPlayer && (
-        <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
-          <IconSymbol
-            ios_icon_name="info.circle"
-            android_material_icon_name="info"
-            size={20}
-            color={colors.secondary}
-          />
-          <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
-            Her kan du se øvelser fra dine trænere og FootballCoach inspiration. Tryk på &quot;Kopiér til mine skabeloner&quot; for at tilføje dem til dine egne opgaver.
-          </Text>
-        </View>
-      )}
-
-      {loading && (
-        <View style={styles.refreshingIndicator}>
-          <ActivityIndicator size="small" color={colors.primary} />
-        </View>
-      )}
-
-      <ScrollView
-        style={styles.content}
-        contentContainerStyle={styles.contentContainer}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Personal Templates Folder */}
-        {isAdmin && (
-          <>
-            {renderFolder({
-              id: 'personal',
-              name: 'Personlige templates',
-              type: 'personal',
-              icon: 'person.crop.circle.fill',
-              androidIcon: 'account_circle',
-              exercises: personalExercises,
-            })}
-          </>
-        )}
-
-        {/* Templates from Trainers Folder */}
-        {!isAdmin && trainerFolders.length > 0 && (
-          <>
+          {isAdmin && (
             <TouchableOpacity
-              style={[styles.folderHeader, { backgroundColor: cardBgColor }]}
-              onPress={() => toggleFolder('trainers')}
+              style={[styles.createButton, { backgroundColor: colors.primary }]}
+              onPress={openCreateModal}
+              activeOpacity={0.7}
             >
-              <View style={styles.folderHeaderLeft}>
-                <IconSymbol
-                  ios_icon_name="person.2.fill"
-                  android_material_icon_name="groups"
-                  size={24}
-                  color={colors.secondary}
-                />
-                <Text style={[styles.folderName, { color: textColor }]}>
-                  Templates fra trænere
-                </Text>
-                <View style={[styles.countBadge, { backgroundColor: colors.secondary }]}>
-                  <Text style={styles.countBadgeText}>{trainerFolders.length}</Text>
-                </View>
-              </View>
               <IconSymbol
-                ios_icon_name={expandedFolders.has('trainers') ? 'chevron.down' : 'chevron.right'}
-                android_material_icon_name={expandedFolders.has('trainers') ? 'expand_more' : 'chevron_right'}
-                size={20}
-                color={textSecondaryColor}
-              />
-            </TouchableOpacity>
-
-            {expandedFolders.has('trainers') && (
-              <View style={styles.folderContent}>
-                {trainerFolders.map(folder => renderFolder(folder, 1))}
-              </View>
-            )}
-          </>
-        )}
-
-        {/* FootballCoach Focus Areas Folder */}
-        <TouchableOpacity
-          style={[styles.folderHeader, { backgroundColor: cardBgColor }]}
-          onPress={() => toggleFolder('footballcoach')}
-        >
-          <View style={styles.folderHeaderLeft}>
-            <IconSymbol
-              ios_icon_name="star.circle.fill"
-              android_material_icon_name="stars"
-              size={24}
-              color={colors.accent}
-            />
-            <Text style={[styles.folderName, { color: textColor }]}>
-              FootballCoach – Fokusområder
-            </Text>
-            <View style={[styles.readOnlyBadge, { backgroundColor: isDark ? '#444' : '#e0e0e0' }]}>
-              <Text style={[styles.readOnlyBadgeText, { color: textSecondaryColor }]}>Inspiration</Text>
-            </View>
-          </View>
-          <IconSymbol
-            ios_icon_name={expandedFolders.has('footballcoach') ? 'chevron.down' : 'chevron.right'}
-            android_material_icon_name={expandedFolders.has('footballcoach') ? 'expand_more' : 'chevron_right'}
-            size={20}
-            color={textSecondaryColor}
-          />
-        </TouchableOpacity>
-
-        {expandedFolders.has('footballcoach') && (
-          <View style={styles.folderContent}>
-            {footballCoachFolders.map(folder => renderFolder(folder, 1))}
-          </View>
-        )}
-
-        <View style={{ height: 100 }} />
-      </ScrollView>
-
-      {/* Create/Edit Exercise Modal */}
-      <Modal
-        visible={showModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => !processing && setShowModal(false)}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={[styles.modalContainer, { backgroundColor: bgColor }]}
-        >
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => !processing && setShowModal(false)} disabled={processing}>
-              <IconSymbol
-                ios_icon_name="xmark"
-                android_material_icon_name="close"
+                ios_icon_name="plus.circle.fill"
+                android_material_icon_name="add_circle"
                 size={24}
-                color={textColor}
+                color="#fff"
               />
+              <Text style={styles.createButtonText}>Ny øvelse</Text>
             </TouchableOpacity>
-            <Text style={[styles.modalTitle, { color: textColor }]}>
-              {isCreating ? 'Ny øvelse' : 'Rediger øvelse'}
+          )}
+        </View>
+
+        {isPlayer && (
+          <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
+            <IconSymbol
+              ios_icon_name="info.circle"
+              android_material_icon_name="info"
+              size={20}
+              color={colors.secondary}
+            />
+            <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
+              Her kan du se øvelser fra dine trænere og FootballCoach inspiration. Tryk på &quot;Kopiér til mine skabeloner&quot; for at tilføje dem til dine egne opgaver.
             </Text>
-            <View style={{ width: 24 }} />
           </View>
+        )}
 
-          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
-            <Text style={[styles.label, { color: textColor }]}>Titel *</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: cardBgColor, color: textColor }]}
-              value={title}
-              onChangeText={setTitle}
-              placeholder="F.eks. Dribling øvelse"
-              placeholderTextColor={textSecondaryColor}
-              editable={!processing}
-            />
+        {loading && (
+          <View style={styles.refreshingIndicator}>
+            <ActivityIndicator size="small" color={colors.primary} />
+          </View>
+        )}
 
-            <Text style={[styles.label, { color: textColor }]}>Beskrivelse</Text>
-            <TextInput
-              style={[styles.input, styles.textArea, { backgroundColor: cardBgColor, color: textColor }]}
-              value={description}
-              onChangeText={setDescription}
-              placeholder="Beskriv øvelsen..."
-              placeholderTextColor={textSecondaryColor}
-              multiline
-              numberOfLines={4}
-              editable={!processing}
-            />
+        <ScrollView
+          style={styles.content}
+          contentContainerStyle={styles.contentContainer}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Personal Templates Folder */}
+          {isAdmin && (
+            <>
+              {renderFolder({
+                id: 'personal',
+                name: 'Personlige templates',
+                type: 'personal',
+                icon: 'person.crop.circle.fill',
+                androidIcon: 'account_circle',
+                exercises: personalExercises,
+              })}
+            </>
+          )}
 
-            <View style={styles.videoSection}>
-              <View style={styles.videoLabelRow}>
-                <Text style={[styles.label, { color: textColor }]}>Video URL (YouTube eller Vimeo)</Text>
-                {videoUrl.trim() && (
-                  <TouchableOpacity
-                    style={styles.deleteVideoButton}
-                    onPress={handleDeleteVideo}
-                    disabled={processing}
-                  >
-                    <IconSymbol
-                      ios_icon_name="trash.fill"
-                      android_material_icon_name="delete"
-                      size={18}
-                      color={colors.error}
-                    />
-                    <Text style={[styles.deleteVideoText, { color: colors.error }]}>Slet video</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-              <TextInput
-                style={[styles.input, { backgroundColor: cardBgColor, color: textColor }]}
-                value={videoUrl}
-                onChangeText={setVideoUrl}
-                placeholder="https://youtube.com/... eller https://vimeo.com/..."
-                placeholderTextColor={textSecondaryColor}
-                editable={!processing}
-                autoCapitalize="none"
-              />
-              {videoUrl.trim() && (
-                <View style={styles.videoPreviewSmall}>
-                  <SmartVideoPlayer url={videoUrl} />
-                  <Text style={[styles.helperText, { color: colors.secondary }]}>
-                    ✓ Video URL gemt
+          {/* Templates from Trainers Folder */}
+          {!isAdmin && trainerFolders.length > 0 && (
+            <>
+              <TouchableOpacity
+                style={[styles.folderHeader, { backgroundColor: cardBgColor }]}
+                onPress={() => toggleFolder('trainers')}
+              >
+                <View style={styles.folderHeaderLeft}>
+                  <IconSymbol
+                    ios_icon_name="person.2.fill"
+                    android_material_icon_name="groups"
+                    size={24}
+                    color={colors.secondary}
+                  />
+                  <Text style={[styles.folderName, { color: textColor }]}>
+                    Templates fra trænere
                   </Text>
+                  <View style={[styles.countBadge, { backgroundColor: colors.secondary }]}>
+                    <Text style={styles.countBadgeText}>{trainerFolders.length}</Text>
+                  </View>
+                </View>
+                <IconSymbol
+                  ios_icon_name={expandedFolders.has('trainers') ? 'chevron.down' : 'chevron.right'}
+                  android_material_icon_name={expandedFolders.has('trainers') ? 'expand_more' : 'chevron_right'}
+                  size={20}
+                  color={textSecondaryColor}
+                />
+              </TouchableOpacity>
+
+              {expandedFolders.has('trainers') && (
+                <View style={styles.folderContent}>
+                  {trainerFolders.map(folder => renderFolder(folder, 1))}
                 </View>
               )}
+            </>
+          )}
+
+          {/* FootballCoach Focus Areas Folder */}
+          <TouchableOpacity
+            style={[styles.folderHeader, { backgroundColor: cardBgColor }]}
+            onPress={() => toggleFolder('footballcoach')}
+          >
+            <View style={styles.folderHeaderLeft}>
+              <IconSymbol
+                ios_icon_name="star.circle.fill"
+                android_material_icon_name="stars"
+                size={24}
+                color={colors.accent}
+              />
+              <Text style={[styles.folderName, { color: textColor }]}>
+                FootballCoach – Fokusområder
+              </Text>
+              <View style={[styles.readOnlyBadge, { backgroundColor: isDark ? '#444' : '#e0e0e0' }]}>
+                <Text style={[styles.readOnlyBadgeText, { color: textSecondaryColor }]}>Inspiration</Text>
+              </View>
+            </View>
+            <IconSymbol
+              ios_icon_name={expandedFolders.has('footballcoach') ? 'chevron.down' : 'chevron.right'}
+              android_material_icon_name={expandedFolders.has('footballcoach') ? 'expand_more' : 'chevron_right'}
+              size={20}
+              color={textSecondaryColor}
+            />
+          </TouchableOpacity>
+
+          {expandedFolders.has('footballcoach') && (
+            <View style={styles.folderContent}>
+              {footballCoachFolders.map(folder => renderFolder(folder, 1))}
+            </View>
+          )}
+
+          <View style={{ height: 100 }} />
+        </ScrollView>
+
+        {/* Create/Edit Exercise Modal */}
+        <Modal
+          visible={showModal}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => !processing && setShowModal(false)}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={[styles.modalContainer, { backgroundColor: bgColor }]}
+          >
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => !processing && setShowModal(false)} disabled={processing}>
+                <IconSymbol
+                  ios_icon_name="xmark"
+                  android_material_icon_name="close"
+                  size={24}
+                  color={textColor}
+                />
+              </TouchableOpacity>
+              <Text style={[styles.modalTitle, { color: textColor }]}>
+                {isCreating ? 'Ny øvelse' : 'Rediger øvelse'}
+              </Text>
+              <View style={{ width: 24 }} />
             </View>
 
-            <View style={styles.subtasksSection}>
-              <View style={styles.subtasksHeader}>
-                <Text style={[styles.label, { color: textColor }]}>Delopgaver</Text>
-                <TouchableOpacity
-                  style={[styles.addSubtaskButton, { backgroundColor: colors.primary }]}
-                  onPress={addSubtask}
-                  disabled={processing}
-                >
-                  <IconSymbol
-                    ios_icon_name="plus"
-                    android_material_icon_name="add"
-                    size={16}
-                    color="#fff"
-                  />
-                  <Text style={styles.addSubtaskText}>Tilføj</Text>
-                </TouchableOpacity>
-              </View>
+            <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+              <Text style={[styles.label, { color: textColor }]}>Titel *</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: cardBgColor, color: textColor }]}
+                value={title}
+                onChangeText={setTitle}
+                placeholder="F.eks. Dribling øvelse"
+                placeholderTextColor={textSecondaryColor}
+                editable={!processing}
+              />
 
-              {subtasks.map((subtask, index) => (
-                <View key={index} style={styles.subtaskInputRow}>
-                  <TextInput
-                    style={[styles.subtaskInput, { backgroundColor: cardBgColor, color: textColor }]}
-                    value={subtask}
-                    onChangeText={(value) => updateSubtask(index, value)}
-                    placeholder={`Delopgave ${index + 1}`}
-                    placeholderTextColor={textSecondaryColor}
-                    editable={!processing}
-                  />
-                  {subtasks.length > 1 && (
+              <Text style={[styles.label, { color: textColor }]}>Beskrivelse</Text>
+              <TextInput
+                style={[styles.input, styles.textArea, { backgroundColor: cardBgColor, color: textColor }]}
+                value={description}
+                onChangeText={setDescription}
+                placeholder="Beskriv øvelsen..."
+                placeholderTextColor={textSecondaryColor}
+                multiline
+                numberOfLines={4}
+                editable={!processing}
+              />
+
+              <View style={styles.videoSection}>
+                <View style={styles.videoLabelRow}>
+                  <Text style={[styles.label, { color: textColor }]}>Video URL (YouTube eller Vimeo)</Text>
+                  {videoUrl.trim() && (
                     <TouchableOpacity
-                      style={styles.removeSubtaskButton}
-                      onPress={() => removeSubtask(index)}
+                      style={styles.deleteVideoButton}
+                      onPress={handleDeleteVideo}
                       disabled={processing}
                     >
                       <IconSymbol
-                        ios_icon_name="minus.circle"
-                        android_material_icon_name="remove_circle"
-                        size={24}
+                        ios_icon_name="trash.fill"
+                        android_material_icon_name="delete"
+                        size={18}
                         color={colors.error}
                       />
+                      <Text style={[styles.deleteVideoText, { color: colors.error }]}>Slet video</Text>
                     </TouchableOpacity>
                   )}
                 </View>
-              ))}
-            </View>
-          </ScrollView>
-
-          <View style={styles.modalFooter}>
-            <TouchableOpacity
-              style={[styles.cancelButton, { backgroundColor: cardBgColor }]}
-              onPress={() => setShowModal(false)}
-              disabled={processing}
-            >
-              <Text style={[styles.cancelButtonText, { color: textColor }]}>Annuller</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.saveButton, { backgroundColor: colors.primary, opacity: processing ? 0.6 : 1 }]}
-              onPress={handleSaveExercise}
-              disabled={processing}
-            >
-              {processing ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Text style={styles.saveButtonText}>{processing ? 'Gemmer...' : 'Gem'}</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* Assign Exercise Modal */}
-      <Modal
-        visible={showAssignModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowAssignModal(false)}
-      >
-        <View style={[styles.modalContainer, { backgroundColor: bgColor }]}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowAssignModal(false)}>
-              <IconSymbol
-                ios_icon_name="xmark"
-                android_material_icon_name="close"
-                size={24}
-                color={textColor}
-              />
-            </TouchableOpacity>
-            <Text style={[styles.modalTitle, { color: textColor }]}>Tildel øvelse</Text>
-            <View style={{ width: 24 }} />
-          </View>
-
-          <ScrollView style={styles.modalContent}>
-            <Text style={[styles.sectionTitle, { color: textColor }]}>Spillere</Text>
-            {players.length === 0 ? (
-              <View style={[styles.emptySection, { backgroundColor: cardBgColor }]}>
-                <Text style={[styles.emptySectionText, { color: textSecondaryColor }]}>
-                  Ingen spillere tilgængelige
-                </Text>
-              </View>
-            ) : (
-              players.map((player) => (
-                <TouchableOpacity
-                  key={player.id}
-                  style={[styles.assignCard, { backgroundColor: cardBgColor }]}
-                  onPress={() => handleAssignToPlayer(player.id)}
-                  disabled={processing}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.assignIcon}>
-                    <IconSymbol
-                      ios_icon_name="person.fill"
-                      android_material_icon_name="person"
-                      size={24}
-                      color={colors.primary}
-                    />
+                <TextInput
+                  style={[styles.input, { backgroundColor: cardBgColor, color: textColor }]}
+                  value={videoUrl}
+                  onChangeText={setVideoUrl}
+                  placeholder="https://youtube.com/... eller https://vimeo.com/..."
+                  placeholderTextColor={textSecondaryColor}
+                  editable={!processing}
+                  autoCapitalize="none"
+                />
+                {videoUrl.trim() && (
+                  <View style={styles.videoPreviewSmall}>
+                    <SmartVideoPlayer url={videoUrl} />
+                    <Text style={[styles.helperText, { color: colors.secondary }]}>
+                      ✓ Video URL gemt
+                    </Text>
                   </View>
-                  <Text style={[styles.assignName, { color: textColor }]}>{player.full_name}</Text>
-                  <IconSymbol
-                    ios_icon_name="chevron.right"
-                    android_material_icon_name="chevron_right"
-                    size={20}
-                    color={textSecondaryColor}
-                  />
-                </TouchableOpacity>
-              ))
-            )}
-
-            <Text style={[styles.sectionTitle, { color: textColor, marginTop: 24 }]}>Teams</Text>
-            {teams.length === 0 ? (
-              <View style={[styles.emptySection, { backgroundColor: cardBgColor }]}>
-                <Text style={[styles.emptySectionText, { color: textSecondaryColor }]}>
-                  Ingen teams tilgængelige
-                </Text>
+                )}
               </View>
-            ) : (
-              teams.map((team) => (
-                <TouchableOpacity
-                  key={team.id}
-                  style={[styles.assignCard, { backgroundColor: cardBgColor }]}
-                  onPress={() => handleAssignToTeam(team.id)}
-                  disabled={processing}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.assignIcon}>
-                    <IconSymbol
-                      ios_icon_name="person.3.fill"
-                      android_material_icon_name="groups"
-                      size={24}
-                      color={colors.primary}
-                    />
-                  </View>
-                  <Text style={[styles.assignName, { color: textColor }]}>{team.name}</Text>
-                  <IconSymbol
-                    ios_icon_name="chevron.right"
-                    android_material_icon_name="chevron_right"
-                    size={20}
-                    color={textSecondaryColor}
-                  />
-                </TouchableOpacity>
-              ))
-            )}
-          </ScrollView>
-        </View>
-      </Modal>
 
-      {/* DEL 3: Revoke Exercise Modal */}
-      <Modal
-        visible={showRevokeModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowRevokeModal(false)}
-      >
-        <View style={[styles.modalContainer, { backgroundColor: bgColor }]}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowRevokeModal(false)}>
-              <IconSymbol
-                ios_icon_name="xmark"
-                android_material_icon_name="close"
-                size={24}
-                color={textColor}
-              />
-            </TouchableOpacity>
-            <Text style={[styles.modalTitle, { color: textColor }]}>Tilbagekald øvelse</Text>
-            <View style={{ width: 24 }} />
-          </View>
-
-          <ScrollView style={styles.modalContent}>
-            {selectedExercise && (
-              <>
-                <Text style={[styles.sectionTitle, { color: textColor }]}>
-                  {selectedExercise.title}
-                </Text>
-                <Text style={[styles.revokeSubtitle, { color: textSecondaryColor, marginBottom: 20 }]}>
-                  Vælg hvem du vil tilbagekalde øvelsen fra
-                </Text>
-
-                {/* Revoke from all button (if more than 1 assignment) */}
-                {selectedExercise.assignments.length > 1 && (
+              <View style={styles.subtasksSection}>
+                <View style={styles.subtasksHeader}>
+                  <Text style={[styles.label, { color: textColor }]}>Delopgaver</Text>
                   <TouchableOpacity
-                    style={[styles.revokeAllButton, { backgroundColor: colors.error }]}
-                    onPress={handleRevokeFromAll}
+                    style={[styles.addSubtaskButton, { backgroundColor: colors.primary }]}
+                    onPress={addSubtask}
+                    disabled={processing}
+                  >
+                    <IconSymbol
+                      ios_icon_name="plus"
+                      android_material_icon_name="add"
+                      size={16}
+                      color="#fff"
+                    />
+                    <Text style={styles.addSubtaskText}>Tilføj</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {subtasks.map((subtask, index) => (
+                  <View key={index} style={styles.subtaskInputRow}>
+                    <TextInput
+                      style={[styles.subtaskInput, { backgroundColor: cardBgColor, color: textColor }]}
+                      value={subtask}
+                      onChangeText={(value) => updateSubtask(index, value)}
+                      placeholder={`Delopgave ${index + 1}`}
+                      placeholderTextColor={textSecondaryColor}
+                      editable={!processing}
+                    />
+                    {subtasks.length > 1 && (
+                      <TouchableOpacity
+                        style={styles.removeSubtaskButton}
+                        onPress={() => removeSubtask(index)}
+                        disabled={processing}
+                      >
+                        <IconSymbol
+                          ios_icon_name="minus.circle"
+                          android_material_icon_name="remove_circle"
+                          size={24}
+                          color={colors.error}
+                        />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={[styles.cancelButton, { backgroundColor: cardBgColor }]}
+                onPress={() => setShowModal(false)}
+                disabled={processing}
+              >
+                <Text style={[styles.cancelButtonText, { color: textColor }]}>Annuller</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.saveButton, { backgroundColor: colors.primary, opacity: processing ? 0.6 : 1 }]}
+                onPress={handleSaveExercise}
+                disabled={processing}
+              >
+                {processing ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.saveButtonText}>{processing ? 'Gemmer...' : 'Gem'}</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+
+        {/* Assign Exercise Modal */}
+        <Modal
+          visible={showAssignModal}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => setShowAssignModal(false)}
+        >
+          <View style={[styles.modalContainer, { backgroundColor: bgColor }]}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => setShowAssignModal(false)}>
+                <IconSymbol
+                  ios_icon_name="xmark"
+                  android_material_icon_name="close"
+                  size={24}
+                  color={textColor}
+                />
+              </TouchableOpacity>
+              <Text style={[styles.modalTitle, { color: textColor }]}>Tildel øvelse</Text>
+              <View style={{ width: 24 }} />
+            </View>
+
+            <ScrollView style={styles.modalContent}>
+              <Text style={[styles.sectionTitle, { color: textColor }]}>Spillere</Text>
+              {players.length === 0 ? (
+                <View style={[styles.emptySection, { backgroundColor: cardBgColor }]}>
+                  <Text style={[styles.emptySectionText, { color: textSecondaryColor }]}>
+                    Ingen spillere tilgængelige
+                  </Text>
+                </View>
+              ) : (
+                players.map((player) => (
+                  <TouchableOpacity
+                    key={player.id}
+                    style={[styles.assignCard, { backgroundColor: cardBgColor }]}
+                    onPress={() => handleAssignToPlayer(player.id)}
                     disabled={processing}
                     activeOpacity={0.7}
                   >
+                    <View style={styles.assignIcon}>
+                      <IconSymbol
+                        ios_icon_name="person.fill"
+                        android_material_icon_name="person"
+                        size={24}
+                        color={colors.primary}
+                      />
+                    </View>
+                    <Text style={[styles.assignName, { color: textColor }]}>{player.full_name}</Text>
                     <IconSymbol
-                      ios_icon_name="person.2.slash"
-                      android_material_icon_name="group_remove"
-                      size={24}
-                      color="#fff"
+                      ios_icon_name="chevron.right"
+                      android_material_icon_name="chevron_right"
+                      size={20}
+                      color={textSecondaryColor}
                     />
-                    <Text style={styles.revokeAllButtonText}>
-                      Tilbagekald fra alle ({selectedExercise.assignments.length} spillere)
-                    </Text>
                   </TouchableOpacity>
-                )}
+                ))
+              )}
 
-                <Text style={[styles.sectionTitle, { color: textColor, marginTop: 24 }]}>
-                  Tildelt til
-                </Text>
+              <Text style={[styles.sectionTitle, { color: textColor, marginTop: 24 }]}>Teams</Text>
+              {teams.length === 0 ? (
+                <View style={[styles.emptySection, { backgroundColor: cardBgColor }]}>
+                  <Text style={[styles.emptySectionText, { color: textSecondaryColor }]}>
+                    Ingen teams tilgængelige
+                  </Text>
+                </View>
+              ) : (
+                teams.map((team) => (
+                  <TouchableOpacity
+                    key={team.id}
+                    style={[styles.assignCard, { backgroundColor: cardBgColor }]}
+                    onPress={() => handleAssignToTeam(team.id)}
+                    disabled={processing}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.assignIcon}>
+                      <IconSymbol
+                        ios_icon_name="person.3.fill"
+                        android_material_icon_name="groups"
+                        size={24}
+                        color={colors.primary}
+                      />
+                    </View>
+                    <Text style={[styles.assignName, { color: textColor }]}>{team.name}</Text>
+                    <IconSymbol
+                      ios_icon_name="chevron.right"
+                      android_material_icon_name="chevron_right"
+                      size={20}
+                      color={textSecondaryColor}
+                    />
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </Modal>
 
-                {/* List of assigned players */}
-                {selectedExercise.assignments
-                  .filter(a => a.player_id)
-                  .map((assignment) => {
-                    // DEL 4: Ensure we never show "ukendt" - always show "Spiller" as fallback
-                    const displayName = assignment.player_name || 'Spiller';
-                    
-                    return (
-                      <TouchableOpacity
+        {/* DEL 3: Revoke Exercise Modal */}
+        <Modal
+          visible={showRevokeModal}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => setShowRevokeModal(false)}
+        >
+          <View style={[styles.modalContainer, { backgroundColor: bgColor }]}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => setShowRevokeModal(false)}>
+                <IconSymbol
+                  ios_icon_name="xmark"
+                  android_material_icon_name="close"
+                  size={24}
+                  color={textColor}
+                />
+              </TouchableOpacity>
+              <Text style={[styles.modalTitle, { color: textColor }]}>Tilbagekald øvelse</Text>
+              <View style={{ width: 24 }} />
+            </View>
+
+            <ScrollView style={styles.modalContent}>
+              {selectedExercise && (
+                <>
+                  <Text style={[styles.sectionTitle, { color: textColor }]}>
+                    {selectedExercise.title}
+                  </Text>
+                  <Text style={[styles.revokeSubtitle, { color: textSecondaryColor, marginBottom: 20 }]}>
+                    Vælg hvem du vil tilbagekalde øvelsen fra
+                  </Text>
+
+                  {/* Revoke from all button (if more than 1 assignment) */}
+                  {selectedExercise.assignments.length > 1 && (
+                    <TouchableOpacity
+                      style={[styles.revokeAllButton, { backgroundColor: colors.error }]}
+                      onPress={handleRevokeFromAll}
+                      disabled={processing}
+                      activeOpacity={0.7}
+                    >
+                      <IconSymbol
+                        ios_icon_name="person.2.slash"
+                        android_material_icon_name="group_remove"
+                        size={24}
+                        color="#fff"
+                      />
+                      <Text style={styles.revokeAllButtonText}>
+                        Tilbagekald fra alle ({selectedExercise.assignments.length} spillere)
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+
+                  <Text style={[styles.sectionTitle, { color: textColor, marginTop: 24 }]}>
+                    Tildelt til
+                  </Text>
+
+                  {/* List of assigned players */}
+                  {selectedExercise.assignments
+                    .filter(a => a.player_id)
+                    .map((assignment) => {
+                      // DEL 4: Ensure we never show "ukendt" - always show "Spiller" as fallback
+                      const displayName = assignment.player_name || 'Spiller';
+                      
+                      return (
+                        <TouchableOpacity
+                          key={assignment.id}
+                          style={[styles.revokeCard, { backgroundColor: cardBgColor }]}
+                          onPress={() => handleRevokeFromPlayer(assignment.player_id!, displayName)}
+                          disabled={processing}
+                          activeOpacity={0.7}
+                        >
+                          <View style={styles.revokeCardLeft}>
+                            <View style={styles.assignIcon}>
+                              <IconSymbol
+                                ios_icon_name="person.fill"
+                                android_material_icon_name="person"
+                                size={24}
+                                color={colors.primary}
+                              />
+                            </View>
+                            <Text style={[styles.assignName, { color: textColor }]}>
+                              {displayName}
+                            </Text>
+                          </View>
+                          <IconSymbol
+                            ios_icon_name="xmark.circle.fill"
+                            android_material_icon_name="cancel"
+                            size={24}
+                            color={colors.error}
+                          />
+                        </TouchableOpacity>
+                      );
+                    })}
+
+                  {/* List of assigned teams */}
+                  {selectedExercise.assignments
+                    .filter(a => a.team_id)
+                    .map((assignment) => (
+                      <View
                         key={assignment.id}
                         style={[styles.revokeCard, { backgroundColor: cardBgColor }]}
-                        onPress={() => handleRevokeFromPlayer(assignment.player_id!, displayName)}
-                        disabled={processing}
-                        activeOpacity={0.7}
                       >
                         <View style={styles.revokeCardLeft}>
                           <View style={styles.assignIcon}>
                             <IconSymbol
-                              ios_icon_name="person.fill"
-                              android_material_icon_name="person"
+                              ios_icon_name="person.3.fill"
+                              android_material_icon_name="groups"
                               size={24}
                               color={colors.primary}
                             />
                           </View>
                           <Text style={[styles.assignName, { color: textColor }]}>
-                            {displayName}
+                            Team: {assignment.team_name || 'Ukendt'}
                           </Text>
                         </View>
-                        <IconSymbol
-                          ios_icon_name="xmark.circle.fill"
-                          android_material_icon_name="cancel"
-                          size={24}
-                          color={colors.error}
-                        />
-                      </TouchableOpacity>
-                    );
-                  })}
-
-                {/* List of assigned teams */}
-                {selectedExercise.assignments
-                  .filter(a => a.team_id)
-                  .map((assignment) => (
-                    <View
-                      key={assignment.id}
-                      style={[styles.revokeCard, { backgroundColor: cardBgColor }]}
-                    >
-                      <View style={styles.revokeCardLeft}>
-                        <View style={styles.assignIcon}>
-                          <IconSymbol
-                            ios_icon_name="person.3.fill"
-                            android_material_icon_name="groups"
-                            size={24}
-                            color={colors.primary}
-                          />
-                        </View>
-                        <Text style={[styles.assignName, { color: textColor }]}>
-                          Team: {assignment.team_name || 'Ukendt'}
+                        <Text style={[styles.teamNote, { color: textSecondaryColor }]}>
+                          (Team-tildelinger kan ikke tilbagekaldes individuelt)
                         </Text>
                       </View>
-                      <Text style={[styles.teamNote, { color: textSecondaryColor }]}>
-                        (Team-tildelinger kan ikke tilbagekaldes individuelt)
-                      </Text>
-                    </View>
-                  ))}
-              </>
-            )}
-          </ScrollView>
-        </View>
-      </Modal>
-
-      {/* Video Modal */}
-      {selectedVideoUrl && (
-        <Modal
-          visible={showVideoModal}
-          animationType="slide"
-          presentationStyle="fullScreen"
-          onRequestClose={() => setShowVideoModal(false)}
-        >
-          <View style={{ flex: 1, backgroundColor: '#000' }}>
-            <View style={{ 
-              flexDirection: 'row', 
-              alignItems: 'center', 
-              justifyContent: 'space-between',
-              paddingTop: Platform.OS === 'android' ? 48 : 60,
-              paddingBottom: 16,
-              paddingHorizontal: 20,
-              backgroundColor: 'rgba(0,0,0,0.9)'
-            }}>
-              <TouchableOpacity 
-                onPress={() => setShowVideoModal(false)}
-                style={{ padding: 4 }}
-              >
-                <IconSymbol
-                  ios_icon_name="xmark.circle.fill"
-                  android_material_icon_name="close"
-                  size={32}
-                  color="#fff"
-                />
-              </TouchableOpacity>
-              <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#fff' }}>
-                Video
-              </Text>
-              <View style={{ width: 32 }} />
-            </View>
-            <SmartVideoPlayer url={selectedVideoUrl} />
+                    ))}
+                </>
+              )}
+            </ScrollView>
           </View>
         </Modal>
-      )}
-    </View>
+
+        {/* Video Modal */}
+        {selectedVideoUrl && (
+          <Modal
+            visible={showVideoModal}
+            animationType="slide"
+            presentationStyle="fullScreen"
+            onRequestClose={() => setShowVideoModal(false)}
+          >
+            <View style={{ flex: 1, backgroundColor: '#000' }}>
+              <View style={{ 
+                flexDirection: 'row', 
+                alignItems: 'center', 
+                justifyContent: 'space-between',
+                paddingTop: Platform.OS === 'android' ? 48 : 60,
+                paddingBottom: 16,
+                paddingHorizontal: 20,
+                backgroundColor: 'rgba(0,0,0,0.9)'
+              }}>
+                <TouchableOpacity 
+                  onPress={() => setShowVideoModal(false)}
+                  style={{ padding: 4 }}
+                >
+                  <IconSymbol
+                    ios_icon_name="xmark.circle.fill"
+                    android_material_icon_name="close"
+                    size={32}
+                    color="#fff"
+                  />
+                </TouchableOpacity>
+                <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#fff' }}>
+                  Video
+                </Text>
+                <View style={{ width: 32 }} />
+              </View>
+              <SmartVideoPlayer url={selectedVideoUrl} />
+            </View>
+          </Modal>
+        )}
+      </View>
+    </AdminContextWrapper>
   );
 }
 
@@ -1988,44 +1977,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     alignItems: 'center',
   },
-
-  // Admin banner - Reused from Tasks screen
-  contextBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    paddingHorizontal: 20,
-    paddingVertical: 20,
-    marginBottom: 12,
-    borderRadius: 16,
-    borderWidth: 3,
-    borderColor: '#B8860B',
-    marginHorizontal: 16,
-    marginTop: Platform.OS === 'android' ? 60 : 70,
-  },
-  contextBannerText: {
-    flex: 1,
-  },
-  contextBannerTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 4,
-    letterSpacing: 0.5,
-  },
-  contextBannerSubtitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 4,
-  },
-  contextBannerInfo: {
-    fontSize: 13,
-    color: '#fff',
-    opacity: 0.95,
-    fontStyle: 'italic',
-  },
-
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',

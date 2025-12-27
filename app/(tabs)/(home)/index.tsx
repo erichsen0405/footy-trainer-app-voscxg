@@ -538,15 +538,11 @@ export default function HomeScreen() {
     <View style={styles.bottomSpacer} />
   );
 
-  // Apply background styling when in admin mode
-  const containerBgColor = isPlayerAdmin ? themeColors.contextWarning : (isDark ? '#1a1a1a' : colors.background);
-
   return (
     <AdminContextWrapper
-      isAdminMode={isPlayerAdmin}
+      isAdmin={isPlayerAdmin}
       contextName={selectedContext.name}
       contextType={selectedContext.type as 'player' | 'team'}
-      backgroundColor={containerBgColor}
     >
       <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
       

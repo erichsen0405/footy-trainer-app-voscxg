@@ -2,25 +2,24 @@
 import React from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { IconSymbol } from '@/components/IconSymbol';
+import { colors } from '@/styles/commonStyles';
 
 interface AdminContextWrapperProps {
-  isAdminMode: boolean;
-  contextName: string;
-  contextType: 'player' | 'team';
+  isAdmin: boolean;
+  contextName?: string;
+  contextType?: 'player' | 'team';
   children: React.ReactNode;
-  backgroundColor: string;
 }
 
 export function AdminContextWrapper({
-  isAdminMode,
-  contextName,
-  contextType,
+  isAdmin,
+  contextName = '',
+  contextType = 'player',
   children,
-  backgroundColor,
 }: AdminContextWrapperProps) {
   return (
-    <View style={[styles.container, { backgroundColor }]}>
-      {isAdminMode && (
+    <View style={[styles.container, isAdmin && styles.adminBackground]}>
+      {isAdmin && (
         <View style={styles.contextBanner}>
           <IconSymbol
             ios_icon_name="exclamationmark.triangle.fill"
@@ -49,6 +48,9 @@ export function AdminContextWrapper({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  adminBackground: {
+    backgroundColor: '#F5E6D3', // Dusty yellow background (themeColors.contextWarning)
   },
   contextBanner: {
     flexDirection: 'row',
