@@ -144,7 +144,7 @@ export default function LibraryScreen() {
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
 
-  // CRITICAL FIX: Check for both player AND team admin mode
+  // STEP D: Determine admin mode
   const isPlayerAdmin = adminMode !== 'self' && adminTargetType === 'player';
   const isTeamAdmin = adminMode !== 'self' && adminTargetType === 'team';
   const isAdminMode = isPlayerAdmin || isTeamAdmin;
@@ -153,22 +153,23 @@ export default function LibraryScreen() {
 
   const fetchLibraryData = useCallback(async (userId: string) => {
     console.log('🔄 Library: Fetching library data for user:', userId);
+    console.log('🔄 Library: Admin mode:', adminMode, 'Target ID:', adminTargetId, 'Target type:', adminTargetType);
 
     try {
       setLoading(true);
 
-      if (isAdmin) {
-        // TRAINERS: Parallel fetch for exercises and related data
+      // STEP D: In admin mode, fetch player's library instead of trainer's
+      if (isAdmin && !isAdminMode) {
+        // TRAINERS in SELF mode: Show their own personal templates
         const [exercisesResult, systemExercisesResult] = await Promise.all([
           // Fetch trainer's own exercises (personal templates)
-          // Personal templates are identified by: trainer_id = current user AND is_system != true
           supabase
             .from('exercise_library')
             .select('*')
             .eq('trainer_id', userId)
             .neq('is_system', true)
             .order('created_at', { ascending: false }),
-          // Fetch system exercises in parallel
+          // Fetch system exercises
           supabase
             .from('exercise_library')
             .select('*')
@@ -192,7 +193,7 @@ export default function LibraryScreen() {
         const systemExerciseIds = systemExercisesResult.data?.map(e => e.id) || [];
         const allExerciseIds = [...exerciseIds, ...systemExerciseIds];
         
-        // Fetch subtasks and assignments in parallel (WITHOUT profiles JOIN)
+        // Fetch subtasks and assignments in parallel
         const [subtasksResult, assignmentsResult] = await Promise.all([
           supabase
             .from('exercise_subtasks')
@@ -208,7 +209,7 @@ export default function LibraryScreen() {
         if (subtasksResult.error) throw subtasksResult.error;
         if (assignmentsResult.error) throw assignmentsResult.error;
 
-        // Fetch player names separately
+        // Fetch player names
         const playerIds = [...new Set((assignmentsResult.data || [])
           .filter(a => a.player_id)
           .map(a => a.player_id))];
@@ -231,7 +232,7 @@ export default function LibraryScreen() {
           }
         }
 
-        // DEL 2: Build assignment summary for each exercise
+        // Build exercises with assignment summary
         const exercisesWithDetails: Exercise[] = (exercisesResult.data || []).map(exercise => {
           const exerciseAssignments = (assignmentsResult.data || []).filter(a => a.exercise_id === exercise.id);
           
@@ -242,13 +243,11 @@ export default function LibraryScreen() {
             
             if (playerAssignments.length > 0) {
               if (playerAssignments.length <= 2) {
-                // Show names for 1-2 players
                 const names = playerAssignments
                   .map(a => playerNamesMap[a.player_id!] || 'Spiller')
                   .join(', ');
                 assignmentSummary = `Kopieret til: ${names}`;
               } else {
-                // Show count for 3+ players
                 assignmentSummary = `Kopieret til ${playerAssignments.length} spillere`;
               }
             }
@@ -261,7 +260,6 @@ export default function LibraryScreen() {
             }
           }
 
-          // DEL 3: Add player names to assignments for revoke modal
           const assignmentsWithNames = exerciseAssignments.map(assignment => ({
             ...assignment,
             player_name: assignment.player_id ? playerNamesMap[assignment.player_id] || 'Spiller' : undefined,
@@ -311,12 +309,24 @@ export default function LibraryScreen() {
         console.log('✅ Library: Loaded FootballCoach exercises');
 
       } else {
-        // PLAYERS: Parallel fetch for assignments and system exercises
+        // STEP D: PLAYERS (self mode) OR TRAINERS in ADMIN mode
+        // Both should see the same thing: exercises assigned to the player + system exercises
+        
+        // Determine which player ID to use
+        const targetPlayerId = isAdminMode ? adminTargetId : userId;
+        
+        if (!targetPlayerId) {
+          console.error('❌ Library: No target player ID available');
+          throw new Error('No target player ID');
+        }
+
+        console.log('🔄 Library: Fetching player library for:', targetPlayerId);
+
         const [assignmentsResult, systemExercisesResult] = await Promise.all([
           supabase
             .from('exercise_assignments')
             .select('*')
-            .eq('player_id', userId),
+            .eq('player_id', targetPlayerId),
           supabase
             .from('exercise_library')
             .select('*')
@@ -326,6 +336,8 @@ export default function LibraryScreen() {
 
         if (assignmentsResult.error) throw assignmentsResult.error;
         if (systemExercisesResult.error) throw systemExercisesResult.error;
+
+        console.log('✅ Library: Found assignments:', assignmentsResult.data?.length || 0);
 
         const exerciseIds = assignmentsResult.data?.map(a => a.exercise_id) || [];
         const systemExerciseIds = systemExercisesResult.data?.map(e => e.id) || [];
@@ -433,7 +445,7 @@ export default function LibraryScreen() {
       setLoading(false);
       setInitialLoad(false);
     }
-  }, [isAdmin]);
+  }, [isAdmin, adminMode, adminTargetId, adminTargetType, isAdminMode]);
 
   useEffect(() => {
     let isMounted = true;
@@ -504,6 +516,12 @@ export default function LibraryScreen() {
   };
 
   const openCreateModal = () => {
+    // STEP D: Block in admin mode
+    if (isAdminMode) {
+      console.log('🚫 Library: Create blocked in admin mode');
+      return;
+    }
+
     if (!isAdmin) {
       Alert.alert('Ikke tilladt', 'Kun trænere kan oprette øvelser');
       return;
@@ -519,6 +537,12 @@ export default function LibraryScreen() {
   };
 
   const openEditModal = (exercise: Exercise) => {
+    // STEP D: Block in admin mode
+    if (isAdminMode) {
+      console.log('🚫 Library: Edit blocked in admin mode');
+      return;
+    }
+
     if (!isAdmin) {
       Alert.alert('Ikke tilladt', 'Du kan ikke redigere denne øvelse');
       return;
@@ -650,6 +674,12 @@ export default function LibraryScreen() {
   };
 
   const handleDeleteExercise = (exercise: Exercise) => {
+    // STEP D: Block in admin mode
+    if (isAdminMode) {
+      console.log('🚫 Library: Delete blocked in admin mode');
+      return;
+    }
+
     if (!isAdmin) {
       Alert.alert('Ikke tilladt', 'Du kan ikke slette denne øvelse');
       return;
@@ -666,7 +696,7 @@ export default function LibraryScreen() {
           onPress: async () => {
             setProcessing(true);
             try {
-              // STEP 1: Delete all exercise_assignments first
+              // Delete all exercise_assignments first
               const { error: assignmentsError } = await supabase
                 .from('exercise_assignments')
                 .delete()
@@ -676,7 +706,7 @@ export default function LibraryScreen() {
                 throw assignmentsError;
               }
 
-              // STEP 2: Delete the exercise from exercise_library
+              // Delete the exercise
               const { error: exerciseError } = await supabase
                 .from('exercise_library')
                 .delete()
@@ -686,7 +716,7 @@ export default function LibraryScreen() {
                 throw exerciseError;
               }
 
-              // STEP 3: Optimistic local state update
+              // Optimistic local state update
               setPersonalExercises(prev => prev.filter(t => t.id !== exercise.id));
 
               setProcessing(false);
@@ -702,6 +732,12 @@ export default function LibraryScreen() {
   };
 
   const handleDuplicateExercise = async (exercise: Exercise) => {
+    // STEP D: Block in admin mode
+    if (isAdminMode) {
+      console.log('🚫 Library: Duplicate blocked in admin mode');
+      return;
+    }
+
     if (!isAdmin) {
       Alert.alert('Ikke tilladt', 'Du kan ikke duplikere denne øvelse');
       return;
@@ -752,6 +788,12 @@ export default function LibraryScreen() {
   };
 
   const openAssignModal = (exercise: Exercise) => {
+    // STEP D: Block in admin mode
+    if (isAdminMode) {
+      console.log('🚫 Library: Assign blocked in admin mode');
+      return;
+    }
+
     if (!isAdmin) {
       Alert.alert('Ikke tilladt', 'Du kan ikke tildele denne øvelse');
       return;
@@ -896,7 +938,6 @@ export default function LibraryScreen() {
     }
   };
 
-  // DEL 2: Handler for player to delete assigned exercise
   const handleRemoveAssignedExercise = (exercise: Exercise) => {
     if (isAdmin) {
       Alert.alert('Fejl', 'Denne funktion er kun for spillere');
@@ -918,7 +959,6 @@ export default function LibraryScreen() {
 
               console.log('🗑️ Library: Player removing assigned exercise:', exercise.id);
 
-              // Delete the assignment for this player
               const { error: deleteError } = await supabase
                 .from('exercise_assignments')
                 .delete()
@@ -933,7 +973,6 @@ export default function LibraryScreen() {
               console.log('✅ Library: Assignment deleted successfully');
               Alert.alert('Succes', 'Øvelse fjernet fra dit bibliotek');
 
-              // Refetch library data to update UI
               if (currentUserId) {
                 console.log('🔄 Library: Refreshing library data after delete');
                 await fetchLibraryData(currentUserId);
@@ -950,8 +989,13 @@ export default function LibraryScreen() {
     );
   };
 
-  // DEL 3: Open revoke modal to show assignments
   const openRevokeModal = (exercise: Exercise) => {
+    // STEP D: Block in admin mode
+    if (isAdminMode) {
+      console.log('🚫 Library: Revoke blocked in admin mode');
+      return;
+    }
+
     if (!isAdmin) {
       Alert.alert('Ikke tilladt', 'Kun trænere kan tilbagekalde øvelser');
       return;
@@ -966,11 +1010,9 @@ export default function LibraryScreen() {
     setShowRevokeModal(true);
   };
 
-  // DEL 3: Handler to revoke exercise from one player
   const handleRevokeFromPlayer = async (playerId: string, playerName: string) => {
     if (!selectedExercise || !currentUserId) return;
 
-    // DEL 4: Ensure we never show "ukendt" in the alert
     const displayName = playerName || 'Spiller';
 
     Alert.alert(
@@ -1000,13 +1042,11 @@ export default function LibraryScreen() {
               console.log('✅ Library: Assignment revoked successfully');
               Alert.alert('Succes', `Øvelse tilbagekaldt fra ${displayName}`);
 
-              // Refetch library data to update UI
               if (currentUserId) {
                 console.log('🔄 Library: Refreshing library data after revoke');
                 await fetchLibraryData(currentUserId);
               }
 
-              // Close modal if no more assignments
               const remainingAssignments = selectedExercise.assignments.filter(a => a.player_id !== playerId);
               if (remainingAssignments.length === 0) {
                 setShowRevokeModal(false);
@@ -1023,7 +1063,6 @@ export default function LibraryScreen() {
     );
   };
 
-  // DEL 3: Handler to revoke exercise from all players
   const handleRevokeFromAll = async () => {
     if (!selectedExercise || !currentUserId) return;
 
@@ -1055,7 +1094,6 @@ export default function LibraryScreen() {
               console.log('✅ Library: All assignments revoked successfully');
               Alert.alert('Succes', `Øvelse tilbagekaldt fra alle spillere`);
 
-              // Refetch library data to update UI
               if (currentUserId) {
                 console.log('🔄 Library: Refreshing library data after revoke all');
                 await fetchLibraryData(currentUserId);
@@ -1095,7 +1133,6 @@ export default function LibraryScreen() {
     }
   };
 
-  // DEL 1: Helper function to get source label
   const getSourceLabel = (exercise: Exercise): string => {
     if (exercise.is_system) {
       return 'Fra: FootballCoach';
@@ -1106,7 +1143,6 @@ export default function LibraryScreen() {
     }
   };
 
-  // DEL 1: Helper function to truncate text with ellipsis
   const truncateText = (text: string, maxLines: number): string => {
     const lines = text.split('\n');
     if (lines.length > maxLines) {
@@ -1118,23 +1154,19 @@ export default function LibraryScreen() {
   const renderExerciseCard = (exercise: Exercise, isReadOnly: boolean = false) => {
     // System exercises are always read-only
     const isSystemExercise = exercise.is_system === true;
-    const shouldBeReadOnly = isReadOnly || isSystemExercise;
+    const shouldBeReadOnly = isReadOnly || isSystemExercise || isAdminMode; // STEP D: Admin mode is always read-only
 
-    // DEL 1: Get source label
     const sourceLabel = getSourceLabel(exercise);
 
-    // DEL 1: Prepare description (max 3 lines)
     let displayDescription = '';
     if (exercise.description) {
       if (isSystemExercise) {
-        // For system exercises, show first 3 focus points
         const lines = exercise.description.split('\n').filter(line => line.trim());
         displayDescription = lines.slice(0, 3).join('\n');
         if (lines.length > 3) {
           displayDescription += '\n...';
         }
       } else {
-        // For regular exercises, truncate to 3 lines
         displayDescription = truncateText(exercise.description, 3);
       }
     }
@@ -1144,7 +1176,7 @@ export default function LibraryScreen() {
         key={exercise.id} 
         style={[styles.exerciseCard, { backgroundColor: cardBgColor }]}
       >
-        {/* DEL 1: HEADER - Title + Source */}
+        {/* HEADER - Title + Source */}
         <View style={styles.cardHeader}>
           <View style={styles.cardHeaderContent}>
             <Text 
@@ -1166,11 +1198,10 @@ export default function LibraryScreen() {
           />
         </View>
 
-        {/* DEL 1: BODY - Description (max 3 lines) */}
+        {/* BODY - Description (max 3 lines) */}
         {displayDescription && (
           <View style={styles.cardBody}>
             {isSystemExercise ? (
-              // For system exercises, render as bullet list
               displayDescription.split('\n').map((line, lineIndex) => {
                 if (!line.trim()) return null;
                 return (
@@ -1187,7 +1218,6 @@ export default function LibraryScreen() {
                 );
               })
             ) : (
-              // For regular exercises, render as text
               <Text 
                 style={[styles.cardDescription, { color: textSecondaryColor }]}
                 numberOfLines={3}
@@ -1199,10 +1229,10 @@ export default function LibraryScreen() {
           </View>
         )}
 
-        {/* DEL 1: FOOTER - CTA or Status */}
+        {/* FOOTER - CTA or Status */}
         <View style={styles.cardFooter}>
           {shouldBeReadOnly ? (
-            // Player view: Show copy button and delete button (for assigned exercises)
+            // Read-only view: Show copy button and delete button (for assigned exercises)
             <React.Fragment>
               <TouchableOpacity
                 style={[styles.ctaButton, { backgroundColor: colors.primary, flex: exercise.trainer_name ? 0.7 : 1 }]}
@@ -1217,8 +1247,8 @@ export default function LibraryScreen() {
                 />
                 <Text style={styles.ctaButtonText}>Kopiér til mine skabeloner</Text>
               </TouchableOpacity>
-              {/* DEL 2: Show delete button only for assigned exercises (not system exercises) */}
-              {exercise.trainer_name && !isSystemExercise && (
+              {/* Show delete button only for assigned exercises (not system exercises) and only in player self mode */}
+              {exercise.trainer_name && !isSystemExercise && !isAdminMode && (
                 <TouchableOpacity
                   style={[styles.deleteAssignmentButton, { backgroundColor: colors.error }]}
                   onPress={() => handleRemoveAssignedExercise(exercise)}
@@ -1373,9 +1403,9 @@ export default function LibraryScreen() {
   if (initialLoad) {
     return (
       <AdminContextWrapper
-        isAdmin={isPlayerAdmin}
+        isAdmin={isAdminMode}
         contextName={selectedContext?.name}
-        contextType="player"
+        contextType={adminTargetType || 'player'}
       >
         <View style={[styles.container, { backgroundColor: bgColor }]}>
           <View style={styles.header}>
@@ -1410,10 +1440,11 @@ export default function LibraryScreen() {
               Øvelsesbibliotek
             </Text>
             <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
-              {isPlayer ? 'Øvelser fra dine trænere og inspiration' : 'Struktureret i mapper'}
+              {isPlayer || isAdminMode ? 'Øvelser fra dine trænere og inspiration' : 'Struktureret i mapper'}
             </Text>
           </View>
-          {isAdmin && (
+          {/* STEP D: Hide create button in admin mode */}
+          {isAdmin && !isAdminMode && (
             <TouchableOpacity
               style={[styles.createButton, { backgroundColor: colors.primary }]}
               onPress={openCreateModal}
@@ -1430,7 +1461,7 @@ export default function LibraryScreen() {
           )}
         </View>
 
-        {isPlayer && (
+        {(isPlayer || isAdminMode) && (
           <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
             <IconSymbol
               ios_icon_name="info.circle"
@@ -1455,8 +1486,8 @@ export default function LibraryScreen() {
           contentContainerStyle={styles.contentContainer}
           showsVerticalScrollIndicator={false}
         >
-          {/* Personal Templates Folder */}
-          {isAdmin && (
+          {/* Personal Templates Folder - STEP D: Hide in admin mode */}
+          {isAdmin && !isAdminMode && (
             <>
               {renderFolder({
                 id: 'personal',
@@ -1470,7 +1501,7 @@ export default function LibraryScreen() {
           )}
 
           {/* Templates from Trainers Folder */}
-          {!isAdmin && trainerFolders.length > 0 && (
+          {(isPlayer || isAdminMode) && trainerFolders.length > 0 && (
             <>
               <TouchableOpacity
                 style={[styles.folderHeader, { backgroundColor: cardBgColor }]}
@@ -1794,7 +1825,7 @@ export default function LibraryScreen() {
           </View>
         </Modal>
 
-        {/* DEL 3: Revoke Exercise Modal */}
+        {/* Revoke Exercise Modal */}
         <Modal
           visible={showRevokeModal}
           animationType="slide"
@@ -1853,7 +1884,6 @@ export default function LibraryScreen() {
                   {selectedExercise.assignments
                     .filter(a => a.player_id)
                     .map((assignment) => {
-                      // DEL 4: Ensure we never show "ukendt" - always show "Spiller" as fallback
                       const displayName = assignment.player_name || 'Spiller';
                       
                       return (
@@ -2370,7 +2400,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  // DEL 3: Revoke modal styles
   revokeSubtitle: {
     fontSize: 15,
     lineHeight: 22,
