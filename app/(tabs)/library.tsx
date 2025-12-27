@@ -1391,23 +1391,23 @@ export default function LibraryScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: containerBgColor }]}>
-      {/* 4️⃣ Korrekt admin-visning på Bibliotek - Reused from Tasks screen */}
+      {/* Admin banner - Reused from Tasks screen */}
       {isAdminMode && (
-        <View style={[styles.adminBanner, { backgroundColor: '#D4A574' }]}>
+        <View style={[styles.contextBanner, { backgroundColor: '#D4A574' }]}>
           <IconSymbol
             ios_icon_name="exclamationmark.triangle.fill"
             android_material_icon_name="warning"
             size={28}
             color="#fff"
           />
-          <View style={styles.adminBannerTextContainer}>
-            <Text style={styles.adminBannerTitle}>
+          <View style={styles.contextBannerText}>
+            <Text style={styles.contextBannerTitle}>
               ⚠️ DU ADMINISTRERER NU DATA FOR SPILLER
             </Text>
-            <Text style={styles.adminBannerSubtitle}>
+            <Text style={styles.contextBannerSubtitle}>
               {selectedContext.name}
             </Text>
-            <Text style={styles.adminBannerInfo}>
+            <Text style={styles.contextBannerInfo}>
               Alle ændringer påvirker denne spillers bibliotek
             </Text>
           </View>
@@ -1989,34 +1989,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  // 4️⃣ Korrekt admin-visning på Bibliotek - Reused from Tasks screen
-  adminBanner: {
+  // Admin banner - Reused from Tasks screen
+  contextBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
     paddingHorizontal: 20,
     paddingVertical: 20,
-    marginBottom: 0,
-    borderBottomWidth: 3,
-    borderBottomColor: '#B8860B',
+    marginBottom: 12,
+    borderRadius: 16,
+    borderWidth: 3,
+    borderColor: '#B8860B',
+    marginHorizontal: 16,
+    marginTop: Platform.OS === 'android' ? 60 : 70,
   },
-  adminBannerTextContainer: {
+  contextBannerText: {
     flex: 1,
   },
-  adminBannerTitle: {
+  contextBannerTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#fff',
     marginBottom: 4,
     letterSpacing: 0.5,
   },
-  adminBannerSubtitle: {
+  contextBannerSubtitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#fff',
     marginBottom: 4,
   },
-  adminBannerInfo: {
+  contextBannerInfo: {
     fontSize: 13,
     color: '#fff',
     opacity: 0.95,

@@ -73,12 +73,13 @@ export default function HomeScreen() {
   const [currentTrainerId, setCurrentTrainerId] = useState<string | null>(null);
   const colorScheme = useColorScheme();
   const themeColors = getColors(colorScheme);
+  const isDark = colorScheme === 'dark';
 
   const currentWeekNumber = getWeek(new Date(), { weekStartsOn: 1, locale: da });
   const currentWeekLabel = getWeekLabel(new Date());
 
-  // 1️⃣ Admin-mode detektion
-  const isAdminMode = adminMode !== 'self' && adminTargetType === 'player';
+  // Admin-mode detection
+  const isPlayerAdmin = adminMode !== 'self' && adminTargetType === 'player';
 
   // Fetch current trainer ID (the logged-in user who is administering)
   useEffect(() => {
@@ -339,12 +340,12 @@ export default function HomeScreen() {
             <Pressable onPress={togglePreviousExpanded}>
               <View style={styles.sectionTitleContainer}>
                 <View style={styles.greenMarker} />
-                <Text style={styles.sectionTitle}>TIDLIGERE</Text>
+                <Text style={[styles.sectionTitle, { color: isDark ? '#e3e3e3' : colors.text }]}>TIDLIGERE</Text>
                 <IconSymbol
                   ios_icon_name={isPreviousExpanded ? "chevron.up" : "chevron.down"}
                   android_material_icon_name={isPreviousExpanded ? "keyboard-arrow-up" : "keyboard-arrow-down"}
                   size={18}
-                  color={colors.text}
+                  color={isDark ? '#e3e3e3' : colors.text}
                   style={styles.chevronIcon}
                 />
               </View>
@@ -357,7 +358,7 @@ export default function HomeScreen() {
           <View style={styles.section}>
             <View style={styles.sectionTitleContainer}>
               <View style={styles.greenMarker} />
-              <Text style={styles.sectionTitle}>I DAG</Text>
+              <Text style={[styles.sectionTitle, { color: isDark ? '#e3e3e3' : colors.text }]}>I DAG</Text>
             </View>
           </View>
         );
@@ -367,7 +368,7 @@ export default function HomeScreen() {
           <View style={styles.section}>
             <View style={styles.sectionTitleContainer}>
               <View style={styles.greenMarker} />
-              <Text style={styles.sectionTitle}>KOMMENDE</Text>
+              <Text style={[styles.sectionTitle, { color: isDark ? '#e3e3e3' : colors.text }]}>KOMMENDE</Text>
             </View>
           </View>
         );
@@ -375,29 +376,29 @@ export default function HomeScreen() {
       case 'weekHeader':
         return (
           <View style={styles.weekGroup}>
-            <Text style={styles.weekLabel}>
+            <Text style={[styles.weekLabel, { color: isDark ? '#e3e3e3' : colors.text }]}>
               Uge {getWeek(item.weekGroup.weekStart, { weekStartsOn: 1, locale: da })}
             </Text>
-            <Text style={styles.weekDateRange}>{getWeekLabel(item.weekGroup.weekStart)}</Text>
+            <Text style={[styles.weekDateRange, { color: isDark ? '#999' : colors.textSecondary }]}>{getWeekLabel(item.weekGroup.weekStart)}</Text>
           </View>
         );
 
       case 'activity':
         const activity = item.activity;
         
-        // 3️⃣ Permission-check (kun via helper)
+        // Permission-check (kun via helper)
         const isAllowed = canTrainerManageActivity({
           activity,
           trainerId: currentTrainerId || undefined,
           adminMode,
         });
         
-        // 4️⃣ Dimming (kun wrapper)
-        const shouldDim = isAdminMode && !isAllowed;
+        // Dimming (kun wrapper)
+        const shouldDim = isPlayerAdmin && !isAllowed;
 
-        // 5️⃣ Navigation-guard
+        // Navigation-guard
         const handleActivityPress = () => {
-          if (isAdminMode && !isAllowed) {
+          if (isPlayerAdmin && !isAllowed) {
             return;
           }
           
@@ -421,7 +422,7 @@ export default function HomeScreen() {
       case 'emptyToday':
         return (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>Ingen aktiviteter i dag</Text>
+            <Text style={[styles.emptyText, { color: isDark ? '#999' : colors.textSecondary }]}>Ingen aktiviteter i dag</Text>
           </View>
         );
 
@@ -429,10 +430,10 @@ export default function HomeScreen() {
         return (
           <View style={styles.loadMoreContainer}>
             <Pressable 
-              style={styles.loadMoreButton}
+              style={[styles.loadMoreButton, { backgroundColor: isDark ? '#2a2a2a' : colors.card, borderColor: isDark ? '#444' : colors.highlight }]}
               onPress={handleLoadMorePrevious}
             >
-              <Text style={styles.loadMoreButtonText}>
+              <Text style={[styles.loadMoreButtonText, { color: isDark ? '#e3e3e3' : colors.text }]}>
                 {showPreviousWeeks === 0 ? 'Hent tidligere uger' : 'Hent en uge mere'}
               </Text>
             </Pressable>
@@ -458,23 +459,23 @@ export default function HomeScreen() {
   // List header component
   const ListHeaderComponent = () => (
     <>
-      {/* 2️⃣ Fælles admin-UI (advarsel + baggrund) - Reused from Tasks screen */}
-      {isAdminMode && (
-        <View style={[styles.adminBanner, { backgroundColor: '#D4A574' }]}>
+      {/* Admin banner - Reused from Tasks screen */}
+      {isPlayerAdmin && (
+        <View style={[styles.contextBanner, { backgroundColor: '#D4A574' }]}>
           <IconSymbol
             ios_icon_name="exclamationmark.triangle.fill"
             android_material_icon_name="warning"
             size={28}
             color="#fff"
           />
-          <View style={styles.adminBannerTextContainer}>
-            <Text style={styles.adminBannerTitle}>
+          <View style={styles.contextBannerText}>
+            <Text style={styles.contextBannerTitle}>
               ⚠️ DU ADMINISTRERER NU DATA FOR SPILLER
             </Text>
-            <Text style={styles.adminBannerSubtitle}>
+            <Text style={styles.contextBannerSubtitle}>
               {selectedContext.name}
             </Text>
-            <Text style={styles.adminBannerInfo}>
+            <Text style={styles.contextBannerInfo}>
               Alle ændringer påvirker denne spillers aktiviteter
             </Text>
           </View>
@@ -495,12 +496,12 @@ export default function HomeScreen() {
       </View>
 
       {/* Week Header */}
-      <View style={styles.weekHeaderContainer}>
-        <Text style={styles.weekHeaderTitle}>UGE {currentWeekNumber}</Text>
-        <Text style={styles.weekHeaderSubtitle}>{currentWeekLabel}</Text>
+      <View style={[styles.weekHeaderContainer, { backgroundColor: isDark ? '#1a1a1a' : colors.background }]}>
+        <Text style={[styles.weekHeaderTitle, { color: isDark ? '#e3e3e3' : colors.text }]}>UGE {currentWeekNumber}</Text>
+        <Text style={[styles.weekHeaderSubtitle, { color: isDark ? '#999' : colors.textSecondary }]}>{currentWeekLabel}</Text>
       </View>
 
-      {/* ========== PERFORMANCE CARD - ALWAYS SHOW (for player's data) ========== */}
+      {/* Performance card */}
       <LinearGradient
         colors={performanceMetrics.gradientColors}
         start={{ x: 0, y: 0 }}
@@ -559,15 +560,12 @@ export default function HomeScreen() {
     <View style={styles.bottomSpacer} />
   );
 
-  // 2️⃣ Fælles admin-UI (baggrund) - Apply background styling when in admin mode
-  const containerBgColor = isAdminMode ? themeColors.contextWarning : colors.background;
+  // Apply background styling when in admin mode
+  const containerBgColor = isPlayerAdmin ? themeColors.contextWarning : (isDark ? '#1a1a1a' : colors.background);
 
   return (
-    <SafeAreaView
-      style={{ flex: 1, backgroundColor: containerBgColor }}
-      edges={['top']}
-    >
-      <StatusBar barStyle="dark-content" />
+    <View style={[styles.container, { backgroundColor: containerBgColor }]}>
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
       
       {loading ? (
         <HomeSkeleton />
@@ -603,47 +601,49 @@ export default function HomeScreen() {
           onRefreshCategories={refreshData}
         />
       ) : null}
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   contentContainer: {
     paddingTop: 0,
   },
 
-  // 2️⃣ Fælles admin-UI (advarsel + baggrund) - Reused from Tasks screen
-  adminBanner: {
+  // Admin banner - Reused from Tasks screen
+  contextBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
     paddingHorizontal: 20,
     paddingVertical: 20,
-    marginBottom: 0,
-    borderBottomWidth: 3,
-    borderBottomColor: '#B8860B',
+    marginBottom: 12,
+    borderRadius: 16,
+    borderWidth: 3,
+    borderColor: '#B8860B',
+    marginHorizontal: 16,
+    marginTop: Platform.OS === 'android' ? 60 : 70,
   },
-  adminBannerTextContainer: {
+  contextBannerText: {
     flex: 1,
   },
-  adminBannerTitle: {
+  contextBannerTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#fff',
     marginBottom: 4,
     letterSpacing: 0.5,
   },
-  adminBannerSubtitle: {
+  contextBannerSubtitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#fff',
     marginBottom: 4,
   },
-  adminBannerInfo: {
+  contextBannerInfo: {
     fontSize: 13,
     color: '#fff',
     opacity: 0.95,
@@ -694,7 +694,6 @@ const styles = StyleSheet.create({
 
   // Week Header
   weekHeaderContainer: {
-    backgroundColor: colors.background,
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 12,
@@ -702,18 +701,16 @@ const styles = StyleSheet.create({
   weekHeaderTitle: {
     fontSize: 24,
     fontWeight: '800',
-    color: colors.text,
     letterSpacing: 0.5,
     marginBottom: 4,
   },
   weekHeaderSubtitle: {
     fontSize: 15,
     fontWeight: '500',
-    color: colors.textSecondary,
     letterSpacing: 0.2,
   },
 
-  // ========== PERFORMANCE CARD - CLOSED VISUAL UNIT ==========
+  // Performance card
   performanceCard: {
     marginHorizontal: 16,
     marginTop: 8,
@@ -829,7 +826,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 22,
     fontWeight: '800',
-    color: colors.text,
     letterSpacing: 0.8,
   },
   chevronIcon: {
@@ -840,18 +836,15 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   loadMoreButton: {
-    backgroundColor: colors.cardBackground,
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: colors.border,
     alignItems: 'center',
   },
   loadMoreButtonText: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.text,
     letterSpacing: 0.3,
   },
   emptyContainer: {
@@ -859,7 +852,6 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 15,
-    color: colors.textSecondary,
     marginBottom: 16,
     lineHeight: 22,
   },
@@ -872,14 +864,12 @@ const styles = StyleSheet.create({
   weekLabel: {
     fontSize: 17,
     fontWeight: '800',
-    color: colors.text,
     marginBottom: 6,
     letterSpacing: 0.3,
   },
   weekDateRange: {
     fontSize: 14,
     fontWeight: '500',
-    color: colors.textSecondary,
     marginBottom: 18,
     letterSpacing: 0.2,
   },
