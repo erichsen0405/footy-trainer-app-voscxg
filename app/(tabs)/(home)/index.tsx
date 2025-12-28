@@ -1,4 +1,17 @@
 
+/**
+ * PERFORMANCE LOCK (STEP F)
+ * DO NOT:
+ * - Add fetch / async work in onPress, onOpen, or navigation handlers
+ * - Replace FlatList / SectionList with ScrollView for dynamic lists
+ * - Add inline handlers inside render
+ * - Remove memoization (useCallback, useMemo, React.memo)
+ * - Introduce blocking logic before first paint
+ *
+ * Any change here REQUIRES re-validation against STEP F.
+ * This file is PERFORMANCE-SENSITIVE.
+ */
+
 /*
  * ═══════════════════════════════════════════════════════════════════════════
  * PERFORMANCE BASELINE CHECKLIST (STEP F)
@@ -907,3 +920,5 @@ const styles = StyleSheet.create({
     height: 120,
   },
 });
+
+// Anti-patterns forbidden: fetch-on-press, inline renders, non-virtualized lists, unstable context values
