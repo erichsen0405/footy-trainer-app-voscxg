@@ -1342,7 +1342,6 @@ export default function LibraryScreen() {
 
     return (
       <View 
-        key={exercise.id} 
         style={[styles.exerciseCard, { backgroundColor: cardBgColor }]}
       >
         <View style={styles.cardHeader}>
@@ -1554,7 +1553,11 @@ export default function LibraryScreen() {
             
             {safeExercises.length > 0 && (
               <View style={styles.exercisesContainer}>
-                {safeExercises.map(exercise => renderExerciseCard(exercise, folder.type === 'trainer' || folder.type === 'footballcoach'))}
+                {safeExercises.map(exercise => (
+                  <React.Fragment key={exercise.id}>
+                    {renderExerciseCard(exercise, folder.type === 'trainer' || folder.type === 'footballcoach')}
+                  </React.Fragment>
+                ))}
               </View>
             )}
 
