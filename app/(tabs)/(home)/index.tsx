@@ -14,7 +14,6 @@ import CreateActivityModal from '@/components/CreateActivityModal';
 import HomeSkeleton from '@/components/HomeSkeleton';
 import { IconSymbol } from '@/components/IconSymbol';
 import { AdminContextWrapper } from '@/components/AdminContextWrapper';
-import InlineFeedback from '@/components/InlineFeedback';
 import { colors, getColors } from '@/styles/commonStyles';
 import { format, startOfWeek, endOfWeek, getWeek } from 'date-fns';
 import { da } from 'date-fns/locale';
@@ -73,7 +72,6 @@ export default function HomeScreen() {
   const [isPreviousExpanded, setIsPreviousExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [currentTrainerId, setCurrentTrainerId] = useState<string | null>(null);
-  const [showFeedback, setShowFeedback] = useState(false);
   const colorScheme = useColorScheme();
   const themeColors = getColors(colorScheme);
   const isDark = colorScheme === 'dark';
@@ -401,10 +399,9 @@ export default function HomeScreen() {
         // 2️⃣ Determine if should dim
         const shouldDim = isAdminMode && !canManageActivity;
 
-        // 3️⃣ Activity press handler with early return + feedback
+        // 3️⃣ Activity press handler with early return (no feedback)
         const handleActivityPress = () => {
           if (isAdminMode && !canManageActivity) {
-            setShowFeedback(true);
             return;
           }
           
@@ -528,6 +525,21 @@ export default function HomeScreen() {
         </Pressable>
       </LinearGradient>
 
+      {/* STEP E: Static inline info-box when adminMode !== 'self' */}
+      {adminMode !== 'self' && (
+        <View style={[styles.adminInfoBox, { backgroundColor: isDark ? '#3a2a1a' : '#FFF3E0', borderColor: isDark ? '#B8860B' : '#FF9800' }]}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle.fill"
+            android_material_icon_name="warning"
+            size={20}
+            color={isDark ? '#FFB74D' : '#F57C00'}
+          />
+          <Text style={[styles.adminInfoText, { color: isDark ? '#FFB74D' : '#E65100' }]}>
+            Du kan kun redigere indhold, du selv har oprettet.
+          </Text>
+        </View>
+      )}
+
       {/* Create Activity Button */}
       <Pressable 
         style={styles.createButton}
@@ -574,13 +586,6 @@ export default function HomeScreen() {
           }
         />
       )}
-
-      {/* Inline Feedback */}
-      <InlineFeedback
-        message="Du kan kun redigere indhold, du selv har oprettet."
-        visible={showFeedback}
-        onHide={() => setShowFeedback(false)}
-      />
 
       {/* Create Activity Modal */}
       {showCreateModal ? (
@@ -737,6 +742,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+
+  // Admin Info Box
+  adminInfoBox: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+  },
+  adminInfoText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
   },
 
   // Create Button

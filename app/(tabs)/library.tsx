@@ -23,7 +23,6 @@ import { useAdmin } from '@/contexts/AdminContext';
 import { useFocusEffect } from '@react-navigation/native';
 import SmartVideoPlayer from '@/components/SmartVideoPlayer';
 import { AdminContextWrapper } from '@/components/AdminContextWrapper';
-import InlineFeedback from '@/components/InlineFeedback';
 
 interface Exercise {
   id: string;
@@ -129,7 +128,6 @@ export default function LibraryScreen() {
   const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
-  const [showFeedback, setShowFeedback] = useState(false);
   
   // Form state
   const [title, setTitle] = useState('');
@@ -478,11 +476,7 @@ export default function LibraryScreen() {
   };
 
   const openCreateModal = () => {
-    // STEP E: Show feedback before early return
-    if (adminMode !== 'self') {
-      setShowFeedback(true);
-      return;
-    }
+    if (adminMode !== 'self') return;
 
     if (!isAdmin) {
       Alert.alert('Ikke tilladt', 'Kun trænere kan oprette øvelser');
@@ -499,11 +493,7 @@ export default function LibraryScreen() {
   };
 
   const openEditModal = (exercise: Exercise) => {
-    // STEP E: Show feedback before early return
-    if (adminMode !== 'self') {
-      setShowFeedback(true);
-      return;
-    }
+    if (adminMode !== 'self') return;
 
     if (!isAdmin) {
       Alert.alert('Ikke tilladt', 'Du kan ikke redigere denne øvelse');
@@ -634,11 +624,7 @@ export default function LibraryScreen() {
   };
 
   const handleDeleteExercise = (exercise: Exercise) => {
-    // STEP E: Show feedback before early return
-    if (adminMode !== 'self') {
-      setShowFeedback(true);
-      return;
-    }
+    if (adminMode !== 'self') return;
 
     if (!isAdmin) {
       Alert.alert('Ikke tilladt', 'Du kan ikke slette denne øvelse');
@@ -689,11 +675,7 @@ export default function LibraryScreen() {
   };
 
   const handleDuplicateExercise = async (exercise: Exercise) => {
-    // STEP E: Show feedback before early return
-    if (adminMode !== 'self') {
-      setShowFeedback(true);
-      return;
-    }
+    if (adminMode !== 'self') return;
 
     if (!isAdmin) {
       Alert.alert('Ikke tilladt', 'Du kan ikke duplikere denne øvelse');
@@ -745,11 +727,7 @@ export default function LibraryScreen() {
   };
 
   const openAssignModal = (exercise: Exercise) => {
-    // STEP E: Show feedback before early return
-    if (adminMode !== 'self') {
-      setShowFeedback(true);
-      return;
-    }
+    if (adminMode !== 'self') return;
 
     if (!isAdmin) {
       Alert.alert('Ikke tilladt', 'Du kan ikke tildele denne øvelse');
@@ -837,11 +815,7 @@ export default function LibraryScreen() {
   };
 
   const handleCopyToTasks = async (exercise: Exercise) => {
-    // STEP E: Show feedback before early return
-    if (adminMode !== 'self') {
-      setShowFeedback(true);
-      return;
-    }
+    if (adminMode !== 'self') return;
 
     setProcessing(true);
     try {
@@ -944,11 +918,7 @@ export default function LibraryScreen() {
   };
 
   const openRevokeModal = (exercise: Exercise) => {
-    // STEP E: Show feedback before early return
-    if (adminMode !== 'self') {
-      setShowFeedback(true);
-      return;
-    }
+    if (adminMode !== 'self') return;
 
     if (!isAdmin) {
       Alert.alert('Ikke tilladt', 'Kun trænere kan tilbagekalde øvelser');
@@ -1410,6 +1380,21 @@ export default function LibraryScreen() {
           </View>
         )}
 
+        {/* STEP E: Static inline info-box when adminMode !== 'self' */}
+        {adminMode !== 'self' && (
+          <View style={[styles.adminInfoBox, { backgroundColor: isDark ? '#3a2a1a' : '#FFF3E0', borderColor: isDark ? '#B8860B' : '#FF9800' }]}>
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle.fill"
+              android_material_icon_name="warning"
+              size={20}
+              color={isDark ? '#FFB74D' : '#F57C00'}
+            />
+            <Text style={[styles.adminInfoText, { color: isDark ? '#FFB74D' : '#E65100' }]}>
+              Du kan kun redigere indhold, du selv har oprettet.
+            </Text>
+          </View>
+        )}
+
         {loading && (
           <View style={styles.refreshingIndicator}>
             <ActivityIndicator size="small" color={colors.primary} />
@@ -1504,13 +1489,6 @@ export default function LibraryScreen() {
 
           <View style={{ height: 100 }} />
         </ScrollView>
-
-        {/* Inline Feedback */}
-        <InlineFeedback
-          message="Du kan kun redigere indhold, du selv har oprettet."
-          visible={showFeedback}
-          onHide={() => setShowFeedback(false)}
-        />
 
         <Modal
           visible={showModal}
@@ -1983,6 +1961,22 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     lineHeight: 20,
+  },
+  adminInfoBox: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginHorizontal: 20,
+    marginBottom: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+  },
+  adminInfoText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
   },
   content: {
     flex: 1,
