@@ -211,7 +211,18 @@ export default function LibraryScreen() {
 
   const isPlayer = userRole === 'player';
 
+  // STEP H: Safe array guard
+  const safeTeams = useMemo(() => Array.isArray(teams) ? teams : [], [teams]);
+  const safePlayers = useMemo(() => Array.isArray(players) ? players : [], [players]);
+
   const fetchLibraryData = useCallback(async (userId: string) => {
+    // STEP H: Guard against invalid userId
+    if (!userId || typeof userId !== 'string') {
+      console.error('fetchLibraryData: Invalid userId');
+      setInitialLoad(false);
+      return;
+    }
+
     try {
       setLoading(true);
 
@@ -237,27 +248,33 @@ export default function LibraryScreen() {
         if (exercisesResult.error) throw exercisesResult.error;
         if (systemExercisesResult.error) throw systemExercisesResult.error;
 
-        const exerciseIds = exercisesResult.data?.map(e => e.id) || [];
-        const systemExerciseIds = systemExercisesResult.data?.map(e => e.id) || [];
+        // STEP H: Safe array guards
+        const exerciseIds = Array.isArray(exercisesResult.data) ? exercisesResult.data.map(e => e.id) : [];
+        const systemExerciseIds = Array.isArray(systemExercisesResult.data) ? systemExercisesResult.data.map(e => e.id) : [];
         const allExerciseIds = [...exerciseIds, ...systemExerciseIds];
         
         const [subtasksResult, assignmentsResult] = await Promise.all([
-          supabase
-            .from('exercise_subtasks')
-            .select('*')
-            .in('exercise_id', allExerciseIds)
-            .order('sort_order', { ascending: true }),
-          supabase
-            .from('exercise_assignments')
-            .select('*')
-            .in('exercise_id', exerciseIds)
+          allExerciseIds.length > 0
+            ? supabase
+                .from('exercise_subtasks')
+                .select('*')
+                .in('exercise_id', allExerciseIds)
+                .order('sort_order', { ascending: true })
+            : Promise.resolve({ data: [], error: null }),
+          exerciseIds.length > 0
+            ? supabase
+                .from('exercise_assignments')
+                .select('*')
+                .in('exercise_id', exerciseIds)
+            : Promise.resolve({ data: [], error: null })
         ]);
 
         if (subtasksResult.error) throw subtasksResult.error;
         if (assignmentsResult.error) throw assignmentsResult.error;
 
-        const playerIds = [...new Set((assignmentsResult.data || [])
-          .filter(a => a.player_id)
+        // STEP H: Safe array guards
+        const playerIds = [...new Set((Array.isArray(assignmentsResult.data) ? assignmentsResult.data : [])
+          .filter(a => a && a.player_id)
           .map(a => a.player_id))];
 
         let playerNamesMap: Record<string, string> = {};
@@ -270,16 +287,23 @@ export default function LibraryScreen() {
 
           if (profilesError) {
             console.error('Error fetching profiles:', profilesError);
-          } else {
-            playerNamesMap = (profilesData || []).reduce((acc, profile) => {
-              acc[profile.id] = profile.full_name;
+          } else if (Array.isArray(profilesData)) {
+            playerNamesMap = profilesData.reduce((acc, profile) => {
+              if (profile && profile.id) {
+                acc[profile.id] = profile.full_name || 'Spiller';
+              }
               return acc;
             }, {} as Record<string, string>);
           }
         }
 
-        const exercisesWithDetails: Exercise[] = (exercisesResult.data || []).map(exercise => {
-          const exerciseAssignments = (assignmentsResult.data || []).filter(a => a.exercise_id === exercise.id);
+        // STEP H: Safe array guards
+        const safeExercises = Array.isArray(exercisesResult.data) ? exercisesResult.data : [];
+        const safeAssignments = Array.isArray(assignmentsResult.data) ? assignmentsResult.data : [];
+        const safeSubtasks = Array.isArray(subtasksResult.data) ? subtasksResult.data : [];
+
+        const exercisesWithDetails: Exercise[] = safeExercises.map(exercise => {
+          const exerciseAssignments = safeAssignments.filter(a => a && a.exercise_id === exercise.id);
           
           let assignmentSummary = '';
           if (exerciseAssignments.length > 0) {
@@ -314,7 +338,7 @@ export default function LibraryScreen() {
             ...exercise,
             created_at: new Date(exercise.created_at),
             updated_at: new Date(exercise.updated_at),
-            subtasks: (subtasksResult.data || []).filter(s => s.exercise_id === exercise.id),
+            subtasks: safeSubtasks.filter(s => s && s.exercise_id === exercise.id),
             assignments: assignmentsWithNames,
             isAssignedByCurrentTrainer: true,
             assignmentSummary,
@@ -324,15 +348,18 @@ export default function LibraryScreen() {
         setPersonalExercises(exercisesWithDetails);
         setTrainerFolders([]);
 
+        // STEP H: Safe array guards
+        const safeSystemExercises = Array.isArray(systemExercisesResult.data) ? systemExercisesResult.data : [];
+
         const updatedFootballCoachFolders = FOOTBALLCOACH_STRUCTURE.map(mainFolder => {
-          const updatedSubfolders = mainFolder.subfolders?.map(subfolder => {
-            const categoryExercises = (systemExercisesResult.data || [])
-              .filter(ex => ex.category_path === subfolder.id)
+          const updatedSubfolders = Array.isArray(mainFolder.subfolders) ? mainFolder.subfolders.map(subfolder => {
+            const categoryExercises = safeSystemExercises
+              .filter(ex => ex && ex.category_path === subfolder.id)
               .map(exercise => ({
                 ...exercise,
                 created_at: new Date(exercise.created_at),
                 updated_at: new Date(exercise.updated_at),
-                subtasks: (subtasksResult.data || []).filter(s => s.exercise_id === exercise.id),
+                subtasks: safeSubtasks.filter(s => s && s.exercise_id === exercise.id),
                 assignments: [],
               }));
 
@@ -340,7 +367,7 @@ export default function LibraryScreen() {
               ...subfolder,
               exercises: categoryExercises,
             };
-          });
+          }) : [];
 
           return {
             ...mainFolder,
@@ -367,28 +394,34 @@ export default function LibraryScreen() {
             .from('exercise_library')
             .select('*')
             .eq('is_system', true)
-            .order('created_at', { ascending: true })
+            .order('created_at', { ascending: true})
         ]);
 
         if (assignmentsResult.error) throw assignmentsResult.error;
         if (systemExercisesResult.error) throw systemExercisesResult.error;
 
-        const exerciseIds = assignmentsResult.data?.map(a => a.exercise_id) || [];
-        const systemExerciseIds = systemExercisesResult.data?.map(e => e.id) || [];
+        // STEP H: Safe array guards
+        const safeAssignments = Array.isArray(assignmentsResult.data) ? assignmentsResult.data : [];
+        const exerciseIds = safeAssignments.map(a => a.exercise_id);
+        const systemExerciseIds = Array.isArray(systemExercisesResult.data) ? systemExercisesResult.data.map(e => e.id) : [];
         const allExerciseIds = [...exerciseIds, ...systemExerciseIds];
         
-        const trainerIds = [...new Set(assignmentsResult.data?.map(a => a.trainer_id) || [])];
+        const trainerIds = [...new Set(safeAssignments.map(a => a.trainer_id).filter(Boolean))];
         
         const [exercisesResult, subtasksResult, trainersResult] = await Promise.all([
-          supabase
-            .from('exercise_library')
-            .select('*')
-            .in('id', exerciseIds),
-          supabase
-            .from('exercise_subtasks')
-            .select('*')
-            .in('exercise_id', allExerciseIds)
-            .order('sort_order', { ascending: true }),
+          exerciseIds.length > 0
+            ? supabase
+                .from('exercise_library')
+                .select('*')
+                .in('id', exerciseIds)
+            : Promise.resolve({ data: [], error: null }),
+          allExerciseIds.length > 0
+            ? supabase
+                .from('exercise_subtasks')
+                .select('*')
+                .in('exercise_id', allExerciseIds)
+                .order('sort_order', { ascending: true })
+            : Promise.resolve({ data: [], error: null }),
           trainerIds.length > 0 
             ? supabase
                 .from('profiles')
@@ -401,14 +434,23 @@ export default function LibraryScreen() {
         if (subtasksResult.error) throw subtasksResult.error;
         if (trainersResult.error) throw trainersResult.error;
 
+        // STEP H: Safe array guards
+        const safeExercises = Array.isArray(exercisesResult.data) ? exercisesResult.data : [];
+        const safeSubtasks = Array.isArray(subtasksResult.data) ? subtasksResult.data : [];
+        const safeTrainers = Array.isArray(trainersResult.data) ? trainersResult.data : [];
+
         const trainerMap = new Map<string, FolderItem>();
         
-        (assignmentsResult.data || []).forEach(assignment => {
-          const exercise = exercisesResult.data?.find(e => e.id === assignment.exercise_id);
+        safeAssignments.forEach(assignment => {
+          if (!assignment) return;
+          
+          const exercise = safeExercises.find(e => e && e.id === assignment.exercise_id);
           if (!exercise) return;
 
           const trainerId = assignment.trainer_id;
-          const trainerProfile = trainersResult.data?.find(t => t.user_id === trainerId);
+          if (!trainerId) return;
+
+          const trainerProfile = safeTrainers.find(t => t && t.user_id === trainerId);
           const trainerName = trainerProfile?.full_name || 'Ukendt træner';
 
           if (!trainerMap.has(trainerId)) {
@@ -428,7 +470,7 @@ export default function LibraryScreen() {
             ...exercise,
             created_at: new Date(exercise.created_at),
             updated_at: new Date(exercise.updated_at),
-            subtasks: (subtasksResult.data || []).filter(s => s.exercise_id === exercise.id),
+            subtasks: safeSubtasks.filter(s => s && s.exercise_id === exercise.id),
             assignments: [assignment],
             trainer_name: trainerName,
           };
@@ -440,15 +482,18 @@ export default function LibraryScreen() {
         setTrainerFolders(folders);
         setPersonalExercises([]);
 
+        // STEP H: Safe array guards
+        const safeSystemExercises = Array.isArray(systemExercisesResult.data) ? systemExercisesResult.data : [];
+
         const updatedFootballCoachFolders = FOOTBALLCOACH_STRUCTURE.map(mainFolder => {
-          const updatedSubfolders = mainFolder.subfolders?.map(subfolder => {
-            const categoryExercises = (systemExercisesResult.data || [])
-              .filter(ex => ex.category_path === subfolder.id)
+          const updatedSubfolders = Array.isArray(mainFolder.subfolders) ? mainFolder.subfolders.map(subfolder => {
+            const categoryExercises = safeSystemExercises
+              .filter(ex => ex && ex.category_path === subfolder.id)
               .map(exercise => ({
                 ...exercise,
                 created_at: new Date(exercise.created_at),
                 updated_at: new Date(exercise.updated_at),
-                subtasks: (subtasksResult.data || []).filter(s => s.exercise_id === exercise.id),
+                subtasks: safeSubtasks.filter(s => s && s.exercise_id === exercise.id),
                 assignments: [],
               }));
 
@@ -456,7 +501,7 @@ export default function LibraryScreen() {
               ...subfolder,
               exercises: categoryExercises,
             };
-          });
+          }) : [];
 
           return {
             ...mainFolder,
@@ -469,7 +514,10 @@ export default function LibraryScreen() {
 
     } catch (error) {
       console.error('Error fetching library data:', error);
-      Alert.alert('Fejl', 'Kunne ikke hente bibliotek');
+      // STEP H: Don't crash on error - show safe fallback
+      setPersonalExercises([]);
+      setTrainerFolders([]);
+      setFootballCoachFolders(FOOTBALLCOACH_STRUCTURE);
     } finally {
       setLoading(false);
       setInitialLoad(false);
@@ -561,12 +609,20 @@ export default function LibraryScreen() {
       return;
     }
     
+    // STEP H: Guard against invalid exercise
+    if (!exercise || !exercise.id) {
+      console.error('openEditModal: Invalid exercise');
+      return;
+    }
+
     setSelectedExercise(exercise);
     setIsCreating(false);
-    setTitle(exercise.title);
+    setTitle(exercise.title || '');
     setDescription(exercise.description || '');
     setVideoUrl(exercise.video_url || '');
-    setSubtasks(exercise.subtasks.length > 0 ? exercise.subtasks.map(s => s.title) : ['']);
+    // STEP H: Safe array guard
+    const safeSubtasks = Array.isArray(exercise.subtasks) ? exercise.subtasks : [];
+    setSubtasks(safeSubtasks.length > 0 ? safeSubtasks.map(s => s.title || '') : ['']);
     setShowModal(true);
   }, [adminMode, isAdmin]);
 
@@ -599,17 +655,20 @@ export default function LibraryScreen() {
       return;
     }
 
+    if (!currentUserId) {
+      Alert.alert('Fejl', 'Bruger ikke autentificeret');
+      return;
+    }
+
     setProcessing(true);
     try {
-      if (!currentUserId) throw new Error('Not authenticated');
-
       if (isCreating) {
         const { data: newExercise, error: exerciseError } = await supabase
           .from('exercise_library')
           .insert({
             trainer_id: currentUserId,
-            title,
-            description: description || null,
+            title: title.trim(),
+            description: description.trim() || null,
             video_url: videoUrl.trim() || null,
             is_system: false,
           })
@@ -618,11 +677,17 @@ export default function LibraryScreen() {
 
         if (exerciseError) throw exerciseError;
 
-        const validSubtasks = subtasks.filter(s => s.trim());
+        // STEP H: Guard against invalid response
+        if (!newExercise || !newExercise.id) {
+          throw new Error('Invalid response from database');
+        }
+
+        // STEP H: Safe array guard
+        const validSubtasks = Array.isArray(subtasks) ? subtasks.filter(s => s && s.trim()) : [];
         if (validSubtasks.length > 0) {
           const subtasksToInsert = validSubtasks.map((subtask, index) => ({
             exercise_id: newExercise.id,
-            title: subtask,
+            title: subtask.trim(),
             sort_order: index,
           }));
 
@@ -634,12 +699,12 @@ export default function LibraryScreen() {
         }
 
         Alert.alert('Succes', 'Øvelse oprettet');
-      } else if (selectedExercise) {
+      } else if (selectedExercise && selectedExercise.id) {
         const { error: updateError } = await supabase
           .from('exercise_library')
           .update({
-            title,
-            description: description || null,
+            title: title.trim(),
+            description: description.trim() || null,
             video_url: videoUrl.trim() || null,
             updated_at: new Date().toISOString(),
           })
@@ -654,11 +719,12 @@ export default function LibraryScreen() {
 
         if (deleteError) throw deleteError;
 
-        const validSubtasks = subtasks.filter(s => s.trim());
+        // STEP H: Safe array guard
+        const validSubtasks = Array.isArray(subtasks) ? subtasks.filter(s => s && s.trim()) : [];
         if (validSubtasks.length > 0) {
           const subtasksToInsert = validSubtasks.map((subtask, index) => ({
             exercise_id: selectedExercise.id,
-            title: subtask,
+            title: subtask.trim(),
             sort_order: index,
           }));
 
@@ -678,7 +744,7 @@ export default function LibraryScreen() {
       }
     } catch (error: any) {
       console.error('Error saving exercise:', error);
-      Alert.alert('Fejl', 'Kunne ikke gemme øvelse: ' + error.message);
+      Alert.alert('Fejl', 'Kunne ikke gemme øvelse: ' + (error?.message || 'Ukendt fejl'));
     } finally {
       setProcessing(false);
     }
@@ -689,6 +755,12 @@ export default function LibraryScreen() {
 
     if (!isAdmin) {
       Alert.alert('Ikke tilladt', 'Du kan ikke slette denne øvelse');
+      return;
+    }
+
+    // STEP H: Guard against invalid exercise
+    if (!exercise || !exercise.id) {
+      console.error('handleDeleteExercise: Invalid exercise');
       return;
     }
     
@@ -721,12 +793,12 @@ export default function LibraryScreen() {
                 throw exerciseError;
               }
 
-              setPersonalExercises(prev => prev.filter(t => t.id !== exercise.id));
+              setPersonalExercises(prev => Array.isArray(prev) ? prev.filter(t => t && t.id !== exercise.id) : []);
 
               setProcessing(false);
               Alert.alert('Succes', 'Øvelse slettet');
             } catch (error: any) {
-              Alert.alert('Fejl', 'Kunne ikke slette øvelse: ' + error.message);
+              Alert.alert('Fejl', 'Kunne ikke slette øvelse: ' + (error?.message || 'Ukendt fejl'));
               setProcessing(false);
             }
           },
@@ -743,10 +815,19 @@ export default function LibraryScreen() {
       return;
     }
 
+    // STEP H: Guard against invalid exercise
+    if (!exercise || !exercise.id) {
+      console.error('handleDuplicateExercise: Invalid exercise');
+      return;
+    }
+
+    if (!currentUserId) {
+      Alert.alert('Fejl', 'Bruger ikke autentificeret');
+      return;
+    }
+
     setProcessing(true);
     try {
-      if (!currentUserId) throw new Error('Not authenticated');
-
       const { data: newExercise, error: exerciseError } = await supabase
         .from('exercise_library')
         .insert({
@@ -761,11 +842,18 @@ export default function LibraryScreen() {
 
       if (exerciseError) throw exerciseError;
 
-      if (exercise.subtasks.length > 0) {
-        const subtasksToInsert = exercise.subtasks.map(subtask => ({
+      // STEP H: Guard against invalid response
+      if (!newExercise || !newExercise.id) {
+        throw new Error('Invalid response from database');
+      }
+
+      // STEP H: Safe array guard
+      const safeSubtasks = Array.isArray(exercise.subtasks) ? exercise.subtasks : [];
+      if (safeSubtasks.length > 0) {
+        const subtasksToInsert = safeSubtasks.map(subtask => ({
           exercise_id: newExercise.id,
-          title: subtask.title,
-          sort_order: subtask.sort_order,
+          title: subtask.title || '',
+          sort_order: subtask.sort_order || 0,
         }));
 
         const { error: subtasksError } = await supabase
@@ -781,7 +869,7 @@ export default function LibraryScreen() {
       }
     } catch (error: any) {
       console.error('Error duplicating exercise:', error);
-      Alert.alert('Fejl', 'Kunne ikke duplikere øvelse: ' + error.message);
+      Alert.alert('Fejl', 'Kunne ikke duplikere øvelse: ' + (error?.message || 'Ukendt fejl'));
     } finally {
       setProcessing(false);
     }
@@ -794,13 +882,27 @@ export default function LibraryScreen() {
       Alert.alert('Ikke tilladt', 'Du kan ikke tildele denne øvelse');
       return;
     }
+
+    // STEP H: Guard against invalid exercise
+    if (!exercise || !exercise.id) {
+      console.error('openAssignModal: Invalid exercise');
+      return;
+    }
     
     setSelectedExercise(exercise);
     setShowAssignModal(true);
   }, [adminMode, isAdmin]);
 
   const handleAssignToPlayer = useCallback(async (playerId: string) => {
-    if (!selectedExercise || !currentUserId) return;
+    if (!selectedExercise || !selectedExercise.id || !currentUserId) {
+      console.error('handleAssignToPlayer: Missing required data');
+      return;
+    }
+
+    if (!playerId || typeof playerId !== 'string') {
+      Alert.alert('Fejl', 'Ugyldig spiller ID');
+      return;
+    }
 
     setProcessing(true);
     try {
@@ -814,7 +916,7 @@ export default function LibraryScreen() {
         });
 
       if (assignmentError) {
-        if (assignmentError.message.includes('duplicate')) {
+        if (assignmentError.message && assignmentError.message.includes('duplicate')) {
           Alert.alert('Info', 'Denne øvelse er allerede tildelt denne spiller');
           setProcessing(false);
           return;
@@ -831,14 +933,22 @@ export default function LibraryScreen() {
       setShowAssignModal(false);
     } catch (error: any) {
       console.error('Error assigning exercise:', error);
-      Alert.alert('Fejl', 'Kunne ikke tildele øvelse: ' + error.message);
+      Alert.alert('Fejl', 'Kunne ikke tildele øvelse: ' + (error?.message || 'Ukendt fejl'));
     } finally {
       setProcessing(false);
     }
   }, [selectedExercise, currentUserId, fetchLibraryData]);
 
   const handleAssignToTeam = useCallback(async (teamId: string) => {
-    if (!selectedExercise || !currentUserId) return;
+    if (!selectedExercise || !selectedExercise.id || !currentUserId) {
+      console.error('handleAssignToTeam: Missing required data');
+      return;
+    }
+
+    if (!teamId || typeof teamId !== 'string') {
+      Alert.alert('Fejl', 'Ugyldig team ID');
+      return;
+    }
 
     setProcessing(true);
     try {
@@ -852,7 +962,7 @@ export default function LibraryScreen() {
         });
 
       if (assignmentError) {
-        if (assignmentError.message.includes('duplicate')) {
+        if (assignmentError.message && assignmentError.message.includes('duplicate')) {
           Alert.alert('Info', 'Denne øvelse er allerede tildelt dette team');
           setProcessing(false);
           return;
@@ -869,7 +979,7 @@ export default function LibraryScreen() {
       setShowAssignModal(false);
     } catch (error: any) {
       console.error('Error assigning exercise:', error);
-      Alert.alert('Fejl', 'Kunne ikke tildele øvelse: ' + error.message);
+      Alert.alert('Fejl', 'Kunne ikke tildele øvelse: ' + (error?.message || 'Ukendt fejl'));
     } finally {
       setProcessing(false);
     }
@@ -878,10 +988,19 @@ export default function LibraryScreen() {
   const handleCopyToTasks = useCallback(async (exercise: Exercise) => {
     if (adminMode !== 'self') return;
 
+    // STEP H: Guard against invalid exercise
+    if (!exercise || !exercise.id) {
+      console.error('handleCopyToTasks: Invalid exercise');
+      return;
+    }
+
+    if (!currentUserId) {
+      Alert.alert('Fejl', 'Bruger ikke autentificeret');
+      return;
+    }
+
     setProcessing(true);
     try {
-      if (!currentUserId) throw new Error('Not authenticated');
-
       let sourceFolder = null;
       if (exercise.is_system) {
         sourceFolder = 'FootballCoach Inspiration';
@@ -894,7 +1013,7 @@ export default function LibraryScreen() {
         .insert({
           user_id: currentUserId,
           player_id: currentUserId,
-          title: exercise.title,
+          title: exercise.title || 'Uden titel',
           description: exercise.description,
           video_url: exercise.video_url,
           reminder_minutes: null,
@@ -907,11 +1026,18 @@ export default function LibraryScreen() {
         throw taskTemplateError;
       }
 
-      if (exercise.subtasks.length > 0) {
-        const subtasksToInsert = exercise.subtasks.map(subtask => ({
+      // STEP H: Guard against invalid response
+      if (!taskTemplate || !taskTemplate.id) {
+        throw new Error('Invalid response from database');
+      }
+
+      // STEP H: Safe array guard
+      const safeSubtasks = Array.isArray(exercise.subtasks) ? exercise.subtasks : [];
+      if (safeSubtasks.length > 0) {
+        const subtasksToInsert = safeSubtasks.map(subtask => ({
           task_template_id: taskTemplate.id,
-          title: subtask.title,
-          sort_order: subtask.sort_order,
+          title: subtask.title || '',
+          sort_order: subtask.sort_order || 0,
         }));
 
         const { error: subtasksError } = await supabase
@@ -926,7 +1052,7 @@ export default function LibraryScreen() {
       Alert.alert('Succes', `Øvelse "${exercise.title}" er nu kopieret til dine opgaveskabeloner`);
     } catch (error: any) {
       console.error('Error copying exercise to tasks:', error);
-      Alert.alert('Fejl', 'Kunne ikke kopiere øvelse: ' + error.message);
+      Alert.alert('Fejl', 'Kunne ikke kopiere øvelse: ' + (error?.message || 'Ukendt fejl'));
     } finally {
       setProcessing(false);
     }
@@ -935,6 +1061,12 @@ export default function LibraryScreen() {
   const handleRemoveAssignedExercise = useCallback((exercise: Exercise) => {
     if (isAdmin) {
       Alert.alert('Fejl', 'Denne funktion er kun for spillere');
+      return;
+    }
+
+    // STEP H: Guard against invalid exercise
+    if (!exercise || !exercise.id) {
+      console.error('handleRemoveAssignedExercise: Invalid exercise');
       return;
     }
 
@@ -968,7 +1100,7 @@ export default function LibraryScreen() {
               }
             } catch (error: any) {
               console.error('Error removing assigned exercise:', error);
-              Alert.alert('Fejl', 'Kunne ikke fjerne øvelse: ' + error.message);
+              Alert.alert('Fejl', 'Kunne ikke fjerne øvelse: ' + (error?.message || 'Ukendt fejl'));
             } finally {
               setProcessing(false);
             }
@@ -986,7 +1118,15 @@ export default function LibraryScreen() {
       return;
     }
 
-    if (!exercise.assignments || exercise.assignments.length === 0) {
+    // STEP H: Guard against invalid exercise
+    if (!exercise || !exercise.id) {
+      console.error('openRevokeModal: Invalid exercise');
+      return;
+    }
+
+    // STEP H: Safe array guard
+    const safeAssignments = Array.isArray(exercise.assignments) ? exercise.assignments : [];
+    if (safeAssignments.length === 0) {
       Alert.alert('Info', 'Denne øvelse er ikke tildelt nogen spillere');
       return;
     }
@@ -996,7 +1136,15 @@ export default function LibraryScreen() {
   }, [adminMode, isAdmin]);
 
   const handleRevokeFromPlayer = useCallback(async (playerId: string, playerName: string) => {
-    if (!selectedExercise || !currentUserId) return;
+    if (!selectedExercise || !selectedExercise.id || !currentUserId) {
+      console.error('handleRevokeFromPlayer: Missing required data');
+      return;
+    }
+
+    if (!playerId || typeof playerId !== 'string') {
+      Alert.alert('Fejl', 'Ugyldig spiller ID');
+      return;
+    }
 
     const displayName = playerName || 'Spiller';
 
@@ -1027,13 +1175,15 @@ export default function LibraryScreen() {
                 await fetchLibraryData(currentUserId);
               }
 
-              const remainingAssignments = selectedExercise.assignments.filter(a => a.player_id !== playerId);
+              // STEP H: Safe array guard
+              const safeAssignments = Array.isArray(selectedExercise.assignments) ? selectedExercise.assignments : [];
+              const remainingAssignments = safeAssignments.filter(a => a && a.player_id !== playerId);
               if (remainingAssignments.length === 0) {
                 setShowRevokeModal(false);
               }
             } catch (error: any) {
               console.error('Error revoking exercise:', error);
-              Alert.alert('Fejl', 'Kunne ikke tilbagekalde øvelse: ' + error.message);
+              Alert.alert('Fejl', 'Kunne ikke tilbagekalde øvelse: ' + (error?.message || 'Ukendt fejl'));
             } finally {
               setProcessing(false);
             }
@@ -1044,9 +1194,14 @@ export default function LibraryScreen() {
   }, [selectedExercise, currentUserId, fetchLibraryData]);
 
   const handleRevokeFromAll = useCallback(async () => {
-    if (!selectedExercise || !currentUserId) return;
+    if (!selectedExercise || !selectedExercise.id || !currentUserId) {
+      console.error('handleRevokeFromAll: Missing required data');
+      return;
+    }
 
-    const assignmentCount = selectedExercise.assignments.length;
+    // STEP H: Safe array guard
+    const safeAssignments = Array.isArray(selectedExercise.assignments) ? selectedExercise.assignments : [];
+    const assignmentCount = safeAssignments.length;
 
     Alert.alert(
       'Tilbagekald fra alle',
@@ -1077,7 +1232,7 @@ export default function LibraryScreen() {
               setShowRevokeModal(false);
             } catch (error: any) {
               console.error('Error revoking exercise from all:', error);
-              Alert.alert('Fejl', 'Kunne ikke tilbagekalde øvelse: ' + error.message);
+              Alert.alert('Fejl', 'Kunne ikke tilbagekalde øvelse: ' + (error?.message || 'Ukendt fejl'));
             } finally {
               setProcessing(false);
             }
@@ -1088,27 +1243,52 @@ export default function LibraryScreen() {
   }, [selectedExercise, currentUserId, fetchLibraryData]);
 
   const openVideoModal = useCallback((url: string) => {
+    // STEP H: Guard against invalid URL
+    if (!url || typeof url !== 'string' || !url.trim()) {
+      console.error('openVideoModal: Invalid URL');
+      return;
+    }
+
     setSelectedVideoUrl(url);
     setShowVideoModal(true);
   }, []);
 
   const addSubtask = useCallback(() => {
-    setSubtasks([...subtasks, '']);
+    // STEP H: Safe array guard
+    const safeSubtasks = Array.isArray(subtasks) ? subtasks : [];
+    setSubtasks([...safeSubtasks, '']);
   }, [subtasks]);
 
   const updateSubtask = useCallback((index: number, value: string) => {
-    const newSubtasks = [...subtasks];
-    newSubtasks[index] = value;
+    // STEP H: Safe array guard
+    const safeSubtasks = Array.isArray(subtasks) ? subtasks : [];
+    if (index < 0 || index >= safeSubtasks.length) {
+      console.error('updateSubtask: Invalid index');
+      return;
+    }
+
+    const newSubtasks = [...safeSubtasks];
+    newSubtasks[index] = value || '';
     setSubtasks(newSubtasks);
   }, [subtasks]);
 
   const removeSubtask = useCallback((index: number) => {
-    if (subtasks.length > 1) {
-      setSubtasks(subtasks.filter((_, i) => i !== index));
+    // STEP H: Safe array guard
+    const safeSubtasks = Array.isArray(subtasks) ? subtasks : [];
+    if (index < 0 || index >= safeSubtasks.length) {
+      console.error('removeSubtask: Invalid index');
+      return;
+    }
+
+    if (safeSubtasks.length > 1) {
+      setSubtasks(safeSubtasks.filter((_, i) => i !== index));
     }
   }, [subtasks]);
 
   const getSourceLabel = useCallback((exercise: Exercise): string => {
+    // STEP H: Guard against invalid exercise
+    if (!exercise) return 'Fra: Ukendt';
+
     if (exercise.is_system) {
       return 'Fra: FootballCoach';
     } else if (exercise.trainer_name) {
@@ -1119,6 +1299,10 @@ export default function LibraryScreen() {
   }, []);
 
   const truncateText = useCallback((text: string, maxLines: number): string => {
+    // STEP H: Guard against invalid input
+    if (!text || typeof text !== 'string') return '';
+    if (typeof maxLines !== 'number' || maxLines < 1) return text;
+
     const lines = text.split('\n');
     if (lines.length > maxLines) {
       return lines.slice(0, maxLines).join('\n') + '...';
@@ -1127,15 +1311,21 @@ export default function LibraryScreen() {
   }, []);
 
   const renderExerciseCard = useCallback((exercise: Exercise, isReadOnly: boolean = false) => {
+    // STEP H: Guard against invalid exercise
+    if (!exercise || !exercise.id) {
+      console.error('renderExerciseCard: Invalid exercise');
+      return null;
+    }
+
     const isSystemExercise = exercise.is_system === true;
     const shouldBeReadOnly = isReadOnly || isSystemExercise || isAdminMode;
 
     const sourceLabel = getSourceLabel(exercise);
 
     let displayDescription = '';
-    if (exercise.description) {
+    if (exercise.description && typeof exercise.description === 'string') {
       if (isSystemExercise) {
-        const lines = exercise.description.split('\n').filter(line => line.trim());
+        const lines = exercise.description.split('\n').filter(line => line && line.trim());
         displayDescription = lines.slice(0, 3).join('\n');
         if (lines.length > 3) {
           displayDescription += '\n...';
@@ -1157,7 +1347,7 @@ export default function LibraryScreen() {
               numberOfLines={2}
               ellipsizeMode="tail"
             >
-              {exercise.title}
+              {exercise.title || 'Uden titel'}
             </Text>
             <Text style={[styles.cardSource, { color: textSecondaryColor }]}>
               {sourceLabel}
@@ -1175,7 +1365,7 @@ export default function LibraryScreen() {
           <View style={styles.cardBody}>
             {isSystemExercise ? (
               displayDescription.split('\n').map((line, lineIndex) => {
-                if (!line.trim()) return null;
+                if (!line || !line.trim()) return null;
                 return (
                   <View key={`${exercise.id}-line-${lineIndex}`} style={styles.focusPointItem}>
                     <Text style={[styles.focusPointBullet, { color: colors.primary }]}>•</Text>
@@ -1305,8 +1495,17 @@ export default function LibraryScreen() {
   }, [cardBgColor, textColor, textSecondaryColor, isAdminMode, getSourceLabel, truncateText, processing, handleCopyToTasks, handleRemoveAssignedExercise, openRevokeModal, openAssignModal, handleDuplicateExercise, openEditModal, handleDeleteExercise]);
 
   const renderFolder = useCallback((folder: FolderItem, level: number = 0) => {
+    // STEP H: Guard against invalid folder
+    if (!folder || !folder.id) {
+      console.error('renderFolder: Invalid folder');
+      return null;
+    }
+
     const isExpanded = expandedFolders.has(folder.id);
-    const hasContent = (folder.exercises && folder.exercises.length > 0) || (folder.subfolders && folder.subfolders.length > 0);
+    // STEP H: Safe array guards
+    const safeExercises = Array.isArray(folder.exercises) ? folder.exercises : [];
+    const safeSubfolders = Array.isArray(folder.subfolders) ? folder.subfolders : [];
+    const hasContent = safeExercises.length > 0 || safeSubfolders.length > 0;
     
     return (
       <React.Fragment key={folder.id}>
@@ -1322,17 +1521,17 @@ export default function LibraryScreen() {
         >
           <View style={styles.folderHeaderLeft}>
             <IconSymbol
-              ios_icon_name={folder.icon}
-              android_material_icon_name={folder.androidIcon}
+              ios_icon_name={folder.icon || 'folder.fill'}
+              android_material_icon_name={folder.androidIcon || 'folder'}
               size={24}
               color={colors.primary}
             />
             <Text style={[styles.folderName, { color: textColor }]}>
-              {folder.name}
+              {folder.name || 'Uden navn'}
             </Text>
-            {folder.exercises && folder.exercises.length > 0 && (
+            {safeExercises.length > 0 && (
               <View style={[styles.countBadge, { backgroundColor: colors.primary }]}>
-                <Text style={styles.countBadgeText}>{folder.exercises.length}</Text>
+                <Text style={styles.countBadgeText}>{safeExercises.length}</Text>
               </View>
             )}
           </View>
@@ -1346,15 +1545,15 @@ export default function LibraryScreen() {
 
         {isExpanded && (
           <View style={[styles.folderContent, { marginLeft: level * 16 }]}>
-            {folder.subfolders && folder.subfolders.map(subfolder => renderFolder(subfolder, level + 1))}
+            {safeSubfolders.map(subfolder => renderFolder(subfolder, level + 1))}
             
-            {folder.exercises && folder.exercises.length > 0 && (
+            {safeExercises.length > 0 && (
               <View style={styles.exercisesContainer}>
-                {folder.exercises.map(exercise => renderExerciseCard(exercise, folder.type === 'trainer' || folder.type === 'footballcoach'))}
+                {safeExercises.map(exercise => renderExerciseCard(exercise, folder.type === 'trainer' || folder.type === 'footballcoach'))}
               </View>
             )}
 
-            {folder.exercises && folder.exercises.length === 0 && !folder.subfolders && (
+            {safeExercises.length === 0 && safeSubfolders.length === 0 && (
               <View style={[styles.emptyFolder, { backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5' }]}>
                 <Text style={[styles.emptyFolderText, { color: textSecondaryColor }]}>
                   {folder.type === 'footballcoach' ? 'Kommer snart...' : 'Ingen øvelser endnu'}
@@ -1366,11 +1565,6 @@ export default function LibraryScreen() {
       </React.Fragment>
     );
   }, [expandedFolders, cardBgColor, textColor, textSecondaryColor, isDark, toggleFolder, renderExerciseCard]);
-
-  const safeCategories = useMemo(() => 
-    Array.isArray(categories) ? categories : [], 
-    [categories]
-  );
 
   if (initialLoad) {
     return (
