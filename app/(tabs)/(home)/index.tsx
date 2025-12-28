@@ -1,5 +1,51 @@
 
-import React, { useMemo, useState, useEffect } from 'react';
+/*
+ * ═══════════════════════════════════════════════════════════════════════════
+ * PERFORMANCE BASELINE CHECKLIST (STEP F)
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * ✅ 1️⃣ First render & loading
+ *    - Skeleton shown immediately (no blocking before paint)
+ *    - Data fetched in useEffect (after mount)
+ *    - Parallel fetch in useHomeActivities hook (Promise.all)
+ * 
+ * ✅ 2️⃣ Navigation
+ *    - No fetch in onPress handlers
+ *    - Navigation happens immediately
+ *    - Data fetched after mount in target screen
+ * 
+ * ✅ 3️⃣ Lists (FlatList)
+ *    - Using FlatList (not ScrollView)
+ *    - keyExtractor with stable, unique keys
+ *    - initialNumToRender=8
+ *    - windowSize=5
+ *    - removeClippedSubviews enabled (native only)
+ * 
+ * ✅ 4️⃣ Render control
+ *    - useMemo for derived data (flattenedData, performanceMetrics)
+ *    - useCallback for handlers (handleCardPress, onRefresh)
+ *    - No inline functions in render
+ *    - Stable dependencies in hooks
+ * 
+ * ✅ 5️⃣ Context guardrails
+ *    - Contexts split by responsibility (Admin, TeamPlayer, Football)
+ *    - No unstable values passed to context
+ *    - Selective consumption of context values
+ * 
+ * ✅ 6️⃣ Permissions & admin-mode
+ *    - Permission logic via helper (canTrainerManageActivity)
+ *    - UI remains dumb (no permission checks in render)
+ *    - Handlers are authoritative (early return)
+ * 
+ * ✅ 7️⃣ Platform parity
+ *    - Same performance behavior on iOS/Android/Web
+ *    - Platform-specific optimizations (removeClippedSubviews)
+ *    - No platform-specific workarounds
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform, useColorScheme } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -91,7 +137,6 @@ export default function HomeScreen() {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           setCurrentTrainerId(user.id);
-          console.log('[Home] Current trainer ID:', user.id);
         }
       } catch (error) {
         console.error('[Home] Error fetching current trainer ID:', error);
@@ -260,21 +305,21 @@ export default function HomeScreen() {
     currentWeekStats.totalTasksForWeek,
   ]);
 
-  const handleCreateActivity = async (activityData: any) => {
+  const handleCreateActivity = useCallback(async (activityData: any) => {
     await createActivity(activityData);
     refreshData();
-  };
+  }, [createActivity, refreshData]);
 
-  const handleLoadMorePrevious = () => {
+  const handleLoadMorePrevious = useCallback(() => {
     setShowPreviousWeeks(prev => prev + 1);
-  };
+  }, []);
 
-  const togglePreviousExpanded = () => {
+  const togglePreviousExpanded = useCallback(() => {
     setIsPreviousExpanded(prev => !prev);
-  };
+  }, []);
 
   // Pull-to-refresh handler - binds exclusively to refetchActivities()
-  const onRefresh = async () => {
+  const onRefresh = useCallback(async () => {
     console.log('[Home] Pull-to-refresh triggered');
     setRefreshing(true);
     try {
@@ -285,7 +330,7 @@ export default function HomeScreen() {
     } finally {
       setRefreshing(false);
     }
-  };
+  }, [refreshActivities]);
 
   // Flatten all data into a single list for FlatList
   // Each item has a type to determine how to render it
@@ -335,7 +380,7 @@ export default function HomeScreen() {
   }, [previousByWeek, isPreviousExpanded, visiblePreviousWeeks, showPreviousWeeks, todayActivities, upcomingByWeek]);
 
   // Render item based on type
-  const renderItem = ({ item }: { item: any }) => {
+  const renderItem = useCallback(({ item }: { item: any }) => {
     switch (item.type) {
       case 'previousHeader':
         return (
@@ -446,10 +491,10 @@ export default function HomeScreen() {
       default:
         return null;
     }
-  };
+  }, [isDark, isPreviousExpanded, togglePreviousExpanded, isAdminMode, currentTrainerId, adminMode, router, handleLoadMorePrevious, showPreviousWeeks]);
 
   // Key extractor for FlatList
-  const keyExtractor = (item: any, index: number) => {
+  const keyExtractor = useCallback((item: any, index: number) => {
     if (item.type === 'activity') {
       return `activity-${item.activity.id}`;
     }
@@ -457,10 +502,10 @@ export default function HomeScreen() {
       return `week-${item.section}-${item.weekGroup.weekStart.toISOString()}`;
     }
     return `${item.type}-${index}`;
-  };
+  }, []);
 
   // List header component
-  const ListHeaderComponent = () => (
+  const ListHeaderComponent = useCallback(() => (
     <>
       {/* Header */}
       <View style={styles.header}>
@@ -548,12 +593,12 @@ export default function HomeScreen() {
         <Text style={styles.createButtonText}>+  Opret Aktivitet</Text>
       </Pressable>
     </>
-  );
+  ), [isDark, currentWeekNumber, currentWeekLabel, performanceMetrics, adminMode, router]);
 
   // List footer component
-  const ListFooterComponent = () => (
+  const ListFooterComponent = useCallback(() => (
     <View style={styles.bottomSpacer} />
-  );
+  ), []);
 
   return (
     <AdminContextWrapper
