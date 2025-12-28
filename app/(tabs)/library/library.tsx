@@ -168,6 +168,10 @@ export default function LibraryScreen() {
   const { teams, players, selectedContext } = useTeamPlayer();
   const { isAdmin, userRole } = useUserRole();
   const { adminMode, adminTargetId, adminTargetType } = useAdmin();
+  
+  // P0 FIX: Ensure categories is always defined before any usage
+  const categories: any[] = [];
+  
   const [personalExercises, setPersonalExercises] = useState<Exercise[]>([]);
   const [trainerFolders, setTrainerFolders] = useState<FolderItem[]>([]);
   const [footballCoachFolders, setFootballCoachFolders] = useState<FolderItem[]>(FOOTBALLCOACH_STRUCTURE);
