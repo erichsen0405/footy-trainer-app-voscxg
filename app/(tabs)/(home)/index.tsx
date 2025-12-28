@@ -80,6 +80,9 @@ import { supabase } from '@/app/integrations/supabase/client';
 import { canTrainerManageActivity } from '@/utils/permissions';
 
 function resolveActivityDateTime(activity: any): Date | null {
+  // STEP H: Guard against null/undefined activity
+  if (!activity) return null;
+
   // Internal DB activities
   if (activity.activity_date) {
     const date = activity.activity_date;
@@ -99,18 +102,31 @@ function resolveActivityDateTime(activity: any): Date | null {
 }
 
 function getWeekLabel(date: Date): string {
-  const start = startOfWeek(date, { weekStartsOn: 1 });
-  const end = endOfWeek(date, { weekStartsOn: 1 });
-  return `${format(start, 'd. MMM', { locale: da })} – ${format(end, 'd. MMM', { locale: da })}`;
+  // STEP H: Guard against invalid date
+  if (!date || isNaN(date.getTime())) {
+    return '';
+  }
+
+  try {
+    const start = startOfWeek(date, { weekStartsOn: 1 });
+    const end = endOfWeek(date, { weekStartsOn: 1 });
+    return `${format(start, 'd. MMM', { locale: da })} – ${format(end, 'd. MMM', { locale: da })}`;
+  } catch (error) {
+    console.error('[Home] Error formatting week label:', error);
+    return '';
+  }
 }
 
 // Helper function to get gradient colors based on performance percentage
 // Matches the trophy thresholds from performance screen: ≥80% gold, ≥60% silver, <60% bronze
 function getPerformanceGradient(percentage: number): string[] {
-  if (percentage >= 80) {
+  // STEP H: Guard against invalid percentage
+  const safePercentage = typeof percentage === 'number' && !isNaN(percentage) ? percentage : 0;
+
+  if (safePercentage >= 80) {
     // Gold gradient
     return ['#FFD700', '#FFA500', '#FF8C00'];
-  } else if (percentage >= 60) {
+  } else if (safePercentage >= 60) {
     // Silver gradient
     return ['#E8E8E8', '#C0C0C0', '#A8A8A8'];
   } else {
@@ -153,6 +169,7 @@ export default function HomeScreen() {
         }
       } catch (error) {
         console.error('[Home] Error fetching current trainer ID:', error);
+        // STEP H: Safe fallback - no throw
       }
     }
 
@@ -168,9 +185,8 @@ export default function HomeScreen() {
   }, [loading]);
 
   const { todayActivities, upcomingByWeek, previousByWeek } = useMemo(() => {
-    if (!Array.isArray(activities)) {
-      return { todayActivities: [], upcomingByWeek: [], previousByWeek: [] };
-    }
+    // STEP H: Guard against non-array activities
+    const safeActivities = Array.isArray(activities) ? activities : [];
 
     const now = new Date();
     const todayStart = new Date(now);
@@ -179,8 +195,11 @@ export default function HomeScreen() {
     const todayEnd = new Date(todayStart);
     todayEnd.setHours(23, 59, 59, 999);
 
-    const resolved = activities
+    const resolved = safeActivities
       .map(activity => {
+        // STEP H: Guard against null activity
+        if (!activity) return null;
+
         const dateTime = resolveActivityDateTime(activity);
         if (!dateTime) return null;
 
@@ -222,12 +241,16 @@ export default function HomeScreen() {
     // Group upcoming activities by week
     const upcomingWeekGroups: { [key: string]: any[] } = {};
     upcomingActivities.forEach(activity => {
-      const weekStart = startOfWeek(activity.__resolvedDateTime, { weekStartsOn: 1 });
-      const weekKey = weekStart.toISOString();
-      if (!upcomingWeekGroups[weekKey]) {
-        upcomingWeekGroups[weekKey] = [];
+      try {
+        const weekStart = startOfWeek(activity.__resolvedDateTime, { weekStartsOn: 1 });
+        const weekKey = weekStart.toISOString();
+        if (!upcomingWeekGroups[weekKey]) {
+          upcomingWeekGroups[weekKey] = [];
+        }
+        upcomingWeekGroups[weekKey].push(activity);
+      } catch (error) {
+        console.error('[Home] Error grouping upcoming activity:', error);
       }
-      upcomingWeekGroups[weekKey].push(activity);
     });
 
     const upcomingByWeek = Object.entries(upcomingWeekGroups)
@@ -240,12 +263,16 @@ export default function HomeScreen() {
     // Group previous activities by week
     const previousWeekGroups: { [key: string]: any[] } = {};
     previousActivities.forEach(activity => {
-      const weekStart = startOfWeek(activity.__resolvedDateTime, { weekStartsOn: 1 });
-      const weekKey = weekStart.toISOString();
-      if (!previousWeekGroups[weekKey]) {
-        previousWeekGroups[weekKey] = [];
+      try {
+        const weekStart = startOfWeek(activity.__resolvedDateTime, { weekStartsOn: 1 });
+        const weekKey = weekStart.toISOString();
+        if (!previousWeekGroups[weekKey]) {
+          previousWeekGroups[weekKey] = [];
+        }
+        previousWeekGroups[weekKey].push(activity);
+      } catch (error) {
+        console.error('[Home] Error grouping previous activity:', error);
       }
-      previousWeekGroups[weekKey].push(activity);
     });
 
     const previousByWeek = Object.entries(previousWeekGroups)
@@ -260,16 +287,35 @@ export default function HomeScreen() {
 
   // Calculate how many previous weeks to display
   const visiblePreviousWeeks = useMemo(() => {
-    if (showPreviousWeeks === 0) return [];
-    return previousByWeek.slice(0, showPreviousWeeks);
+    // STEP H: Guard against invalid showPreviousWeeks
+    const safeShowPreviousWeeks = typeof showPreviousWeeks === 'number' && showPreviousWeeks >= 0 ? showPreviousWeeks : 0;
+    
+    if (safeShowPreviousWeeks === 0) return [];
+    
+    // STEP H: Guard against non-array previousByWeek
+    const safePreviousByWeek = Array.isArray(previousByWeek) ? previousByWeek : [];
+    
+    return safePreviousByWeek.slice(0, safeShowPreviousWeeks);
   }, [previousByWeek, showPreviousWeeks]);
 
   // CRITICAL FIX: Use individual properties as dependencies instead of the object
   // This ensures re-render when the actual values change, not just the object reference
   const performanceMetrics = useMemo(() => {
-    const percentageUpToToday = currentWeekStats.percentage;
-    const weekPercentage = currentWeekStats.totalTasksForWeek > 0 
-      ? Math.round((currentWeekStats.completedTasksForWeek / currentWeekStats.totalTasksForWeek) * 100) 
+    // STEP H: Guard against null/undefined currentWeekStats
+    const safeStats = currentWeekStats || {
+      percentage: 0,
+      completedTasks: 0,
+      totalTasks: 0,
+      completedTasksForWeek: 0,
+      totalTasksForWeek: 0,
+    };
+
+    const percentageUpToToday = typeof safeStats.percentage === 'number' ? safeStats.percentage : 0;
+    const totalTasksForWeek = typeof safeStats.totalTasksForWeek === 'number' ? safeStats.totalTasksForWeek : 0;
+    const completedTasksForWeek = typeof safeStats.completedTasksForWeek === 'number' ? safeStats.completedTasksForWeek : 0;
+    
+    const weekPercentage = totalTasksForWeek > 0 
+      ? Math.round((completedTasksForWeek / totalTasksForWeek) * 100) 
       : 0;
 
     // Determine trophy emoji based on percentage up to today (same thresholds as performance screen)
@@ -281,8 +327,11 @@ export default function HomeScreen() {
     }
 
     // Calculate remaining tasks
-    const remainingTasksToday = currentWeekStats.totalTasks - currentWeekStats.completedTasks;
-    const remainingTasksWeek = currentWeekStats.totalTasksForWeek - currentWeekStats.completedTasksForWeek;
+    const completedTasks = typeof safeStats.completedTasks === 'number' ? safeStats.completedTasks : 0;
+    const totalTasks = typeof safeStats.totalTasks === 'number' ? safeStats.totalTasks : 0;
+    
+    const remainingTasksToday = totalTasks - completedTasks;
+    const remainingTasksWeek = totalTasksForWeek - completedTasksForWeek;
 
     // Generate motivation text
     let motivationText = '';
@@ -304,27 +353,46 @@ export default function HomeScreen() {
       weekPercentage,
       trophyEmoji,
       motivationText,
-      completedTasksToday: currentWeekStats.completedTasks,
-      totalTasksToday: currentWeekStats.totalTasks,
-      completedTasksWeek: currentWeekStats.completedTasksForWeek,
-      totalTasksWeek: currentWeekStats.totalTasksForWeek,
+      completedTasksToday: completedTasks,
+      totalTasksToday: totalTasks,
+      completedTasksWeek: completedTasksForWeek,
+      totalTasksWeek: totalTasksForWeek,
       gradientColors,
     };
   }, [
-    currentWeekStats.percentage,
-    currentWeekStats.completedTasks,
-    currentWeekStats.totalTasks,
-    currentWeekStats.completedTasksForWeek,
-    currentWeekStats.totalTasksForWeek,
+    currentWeekStats?.percentage,
+    currentWeekStats?.completedTasks,
+    currentWeekStats?.totalTasks,
+    currentWeekStats?.completedTasksForWeek,
+    currentWeekStats?.totalTasksForWeek,
   ]);
 
   const handleCreateActivity = useCallback(async (activityData: any) => {
-    await createActivity(activityData);
-    refreshData();
+    try {
+      // STEP H: Guard against null/undefined functions
+      if (typeof createActivity !== 'function') {
+        console.error('[Home] createActivity is not a function');
+        return;
+      }
+      if (typeof refreshData !== 'function') {
+        console.error('[Home] refreshData is not a function');
+        return;
+      }
+
+      await createActivity(activityData);
+      refreshData();
+    } catch (error) {
+      console.error('[Home] Error creating activity:', error);
+      // STEP H: Safe fallback - no throw
+    }
   }, [createActivity, refreshData]);
 
   const handleLoadMorePrevious = useCallback(() => {
-    setShowPreviousWeeks(prev => prev + 1);
+    setShowPreviousWeeks(prev => {
+      // STEP H: Guard against invalid prev value
+      const safePrev = typeof prev === 'number' && prev >= 0 ? prev : 0;
+      return safePrev + 1;
+    });
   }, []);
 
   const togglePreviousExpanded = useCallback(() => {
@@ -336,10 +404,16 @@ export default function HomeScreen() {
     console.log('[Home] Pull-to-refresh triggered');
     setRefreshing(true);
     try {
-      await refreshActivities();
-      console.log('[Home] Pull-to-refresh completed');
+      // STEP H: Guard against null/undefined refreshActivities
+      if (typeof refreshActivities === 'function') {
+        await refreshActivities();
+        console.log('[Home] Pull-to-refresh completed');
+      } else {
+        console.error('[Home] refreshActivities is not a function');
+      }
     } catch (error) {
       console.error('[Home] Pull-to-refresh error:', error);
+      // STEP H: Safe fallback - no throw
     } finally {
       setRefreshing(false);
     }
@@ -350,19 +424,33 @@ export default function HomeScreen() {
   const flattenedData = useMemo(() => {
     const data: any[] = [];
 
+    // STEP H: Guard against non-array previousByWeek
+    const safePreviousByWeek = Array.isArray(previousByWeek) ? previousByWeek : [];
+    const safeTodayActivities = Array.isArray(todayActivities) ? todayActivities : [];
+    const safeUpcomingByWeek = Array.isArray(upcomingByWeek) ? upcomingByWeek : [];
+    const safeVisiblePreviousWeeks = Array.isArray(visiblePreviousWeeks) ? visiblePreviousWeeks : [];
+
     // Add TIDLIGERE section
-    if (previousByWeek.length > 0) {
+    if (safePreviousByWeek.length > 0) {
       data.push({ type: 'previousHeader' });
       
       if (isPreviousExpanded) {
-        visiblePreviousWeeks.forEach((weekGroup, weekIndex) => {
+        safeVisiblePreviousWeeks.forEach((weekGroup, weekIndex) => {
+          // STEP H: Guard against null weekGroup
+          if (!weekGroup) return;
+          
           data.push({ type: 'weekHeader', weekGroup, section: 'previous' });
-          weekGroup.activities.forEach((activity: any) => {
+          
+          // STEP H: Guard against non-array activities
+          const weekActivities = Array.isArray(weekGroup.activities) ? weekGroup.activities : [];
+          weekActivities.forEach((activity: any) => {
+            // STEP H: Guard against null activity
+            if (!activity) return;
             data.push({ type: 'activity', activity, section: 'previous' });
           });
         });
 
-        if (showPreviousWeeks < previousByWeek.length) {
+        if (showPreviousWeeks < safePreviousByWeek.length) {
           data.push({ type: 'loadMore' });
         }
       }
@@ -370,20 +458,30 @@ export default function HomeScreen() {
 
     // Add I DAG section
     data.push({ type: 'todayHeader' });
-    if (todayActivities.length === 0) {
+    if (safeTodayActivities.length === 0) {
       data.push({ type: 'emptyToday' });
     } else {
-      todayActivities.forEach((activity) => {
+      safeTodayActivities.forEach((activity) => {
+        // STEP H: Guard against null activity
+        if (!activity) return;
         data.push({ type: 'activity', activity, section: 'today' });
       });
     }
 
     // Add KOMMENDE section
-    if (upcomingByWeek.length > 0) {
+    if (safeUpcomingByWeek.length > 0) {
       data.push({ type: 'upcomingHeader' });
-      upcomingByWeek.forEach((weekGroup, weekIndex) => {
+      safeUpcomingByWeek.forEach((weekGroup, weekIndex) => {
+        // STEP H: Guard against null weekGroup
+        if (!weekGroup) return;
+        
         data.push({ type: 'weekHeader', weekGroup, section: 'upcoming' });
-        weekGroup.activities.forEach((activity: any) => {
+        
+        // STEP H: Guard against non-array activities
+        const weekActivities = Array.isArray(weekGroup.activities) ? weekGroup.activities : [];
+        weekActivities.forEach((activity: any) => {
+          // STEP H: Guard against null activity
+          if (!activity) return;
           data.push({ type: 'activity', activity, section: 'upcoming' });
         });
       });
@@ -394,6 +492,9 @@ export default function HomeScreen() {
 
   // Render item based on type
   const renderItem = useCallback(({ item }: { item: any }) => {
+    // STEP H: Guard against null item
+    if (!item || !item.type) return null;
+
     switch (item.type) {
       case 'previousHeader':
         return (
@@ -435,24 +536,38 @@ export default function HomeScreen() {
         );
 
       case 'weekHeader':
-        return (
-          <View style={styles.weekGroup}>
-            <Text style={[styles.weekLabel, { color: isDark ? '#e3e3e3' : colors.text }]}>
-              Uge {getWeek(item.weekGroup.weekStart, { weekStartsOn: 1, locale: da })}
-            </Text>
-            <Text style={[styles.weekDateRange, { color: isDark ? '#999' : colors.textSecondary }]}>{getWeekLabel(item.weekGroup.weekStart)}</Text>
-          </View>
-        );
+        // STEP H: Guard against null weekGroup
+        if (!item.weekGroup || !item.weekGroup.weekStart) return null;
+
+        try {
+          return (
+            <View style={styles.weekGroup}>
+              <Text style={[styles.weekLabel, { color: isDark ? '#e3e3e3' : colors.text }]}>
+                Uge {getWeek(item.weekGroup.weekStart, { weekStartsOn: 1, locale: da })}
+              </Text>
+              <Text style={[styles.weekDateRange, { color: isDark ? '#999' : colors.textSecondary }]}>{getWeekLabel(item.weekGroup.weekStart)}</Text>
+            </View>
+          );
+        } catch (error) {
+          console.error('[Home] Error rendering week header:', error);
+          return null;
+        }
 
       case 'activity':
+        // STEP H: Guard against null activity
+        if (!item.activity) return null;
+
         const activity = item.activity;
         
         // 1️⃣ Permission calculation (only via helper)
-        const canManageActivity = canTrainerManageActivity({
-          activity,
-          trainerId: currentTrainerId || undefined,
-          adminMode,
-        });
+        // STEP H: Defensive permission check with false as default
+        const canManageActivity = currentTrainerId && typeof canTrainerManageActivity === 'function'
+          ? canTrainerManageActivity({
+              activity,
+              trainerId: currentTrainerId,
+              adminMode: adminMode || 'self',
+            })
+          : false;
 
         // 2️⃣ Determine if should dim
         const shouldDim = isAdminMode && !canManageActivity;
@@ -463,10 +578,20 @@ export default function HomeScreen() {
             return;
           }
           
-          router.push({
-            pathname: '/activity-details',
-            params: { id: activity.id },
-          });
+          // STEP H: Guard against null router or activity.id
+          if (!router || !activity.id) {
+            console.error('[Home] Cannot navigate: router or activity.id is null');
+            return;
+          }
+
+          try {
+            router.push({
+              pathname: '/activity-details',
+              params: { id: activity.id },
+            });
+          } catch (error) {
+            console.error('[Home] Error navigating to activity details:', error);
+          }
         };
 
         return (
@@ -508,11 +633,17 @@ export default function HomeScreen() {
 
   // Key extractor for FlatList
   const keyExtractor = useCallback((item: any, index: number) => {
+    // STEP H: Guard against null item
+    if (!item) return `null-${index}`;
+
     if (item.type === 'activity') {
-      return `activity-${item.activity.id}`;
+      // STEP H: Guard against null activity or activity.id
+      return item.activity?.id ? `activity-${item.activity.id}` : `activity-${index}`;
     }
     if (item.type === 'weekHeader') {
-      return `week-${item.section}-${item.weekGroup.weekStart.toISOString()}`;
+      // STEP H: Guard against null weekGroup or weekStart
+      const weekKey = item.weekGroup?.weekStart ? item.weekGroup.weekStart.toISOString() : index;
+      return `week-${item.section}-${weekKey}`;
     }
     return `${item.type}-${index}`;
   }, []);
@@ -577,7 +708,18 @@ export default function HomeScreen() {
         {/* Se Performance Button - Inside Performance Card */}
         <Pressable 
           style={styles.performanceButton}
-          onPress={() => router.push('/(tabs)/performance')}
+          onPress={() => {
+            // STEP H: Guard against null router
+            if (!router) {
+              console.error('[Home] Cannot navigate: router is null');
+              return;
+            }
+            try {
+              router.push('/(tabs)/performance');
+            } catch (error) {
+              console.error('[Home] Error navigating to performance:', error);
+            }
+          }}
         >
           <Text style={styles.performanceButtonText}>Se performance</Text>
         </Pressable>
