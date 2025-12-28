@@ -37,13 +37,13 @@ export default function SubscriptionManager({
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
 
-  // Refresh subscription status when component mounts
+  // Refresh subscription status when component mounts - ONLY ONCE
   useEffect(() => {
     if (!isSignupFlow) {
       console.log('[SubscriptionManager] Component mounted, refreshing subscription');
       refreshSubscription();
     }
-  }, [isSignupFlow, refreshSubscription]);
+  }, [isSignupFlow]);
 
   // Log subscription status changes for debugging
   useEffect(() => {

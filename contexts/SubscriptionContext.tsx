@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { supabase } from '@/app/integrations/supabase/client';
 
 interface SubscriptionPlan {
@@ -34,7 +34,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchSubscriptionPlans = async () => {
+  const fetchSubscriptionPlans = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('subscription_plans')
@@ -51,9 +51,9 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.warn('[SubscriptionContext] Network error fetching subscription plans');
     }
-  };
+  }, []);
 
-  const fetchSubscriptionStatus = async () => {
+  const fetchSubscriptionStatus = useCallback(async () => {
     try {
       console.log('[SubscriptionContext] Fetching subscription status');
       setLoading(true);
@@ -150,9 +150,6 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       console.log('[SubscriptionContext] Setting subscription status to state');
       setSubscriptionStatus(statusData);
       
-      // Force a small delay to ensure state is updated
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
       console.log('[SubscriptionContext] Subscription status set successfully');
     } catch (error) {
       // Silent error handling - network failures are expected conditions
@@ -171,14 +168,14 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       console.log('[SubscriptionContext] Loading set to false');
     }
-  };
+  }, []);
 
-  const refreshSubscription = async () => {
+  const refreshSubscription = useCallback(async () => {
     console.log('[SubscriptionContext] Manual refresh requested');
     await fetchSubscriptionStatus();
-  };
+  }, [fetchSubscriptionStatus]);
 
-  const createSubscription = async (planId: string): Promise<{ success: boolean; error?: string; alreadyHasSubscription?: boolean }> => {
+  const createSubscription = useCallback(async (planId: string): Promise<{ success: boolean; error?: string; alreadyHasSubscription?: boolean }> => {
     try {
       console.log('[SubscriptionContext] Creating subscription');
       console.log('[SubscriptionContext] Plan ID:', planId);
@@ -290,13 +287,13 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         error: 'Der opstod en uventet fejl. Prøv igen om et øjeblik.' 
       };
     }
-  };
+  }, [fetchSubscriptionStatus]);
 
   useEffect(() => {
     console.log('[SubscriptionContext] Context initialized');
     fetchSubscriptionPlans();
     fetchSubscriptionStatus();
-  }, []);
+  }, [fetchSubscriptionPlans, fetchSubscriptionStatus]);
 
   // Log whenever subscription status changes
   useEffect(() => {
