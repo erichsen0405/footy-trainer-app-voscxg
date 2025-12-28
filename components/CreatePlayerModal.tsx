@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,27 @@ import {
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { supabase } from '@/app/integrations/supabase/client';
+
+/*
+ * ========================================
+ * PERFORMANCE CHECKLIST (STEP F)
+ * ========================================
+ * ✅ First render & loading:
+ *    - No blocking before paint
+ *    - Modal opens immediately
+ * 
+ * ✅ Navigation:
+ *    - No fetch in onPress/onOpen
+ *    - Search triggered by button press (not automatic)
+ * 
+ * ✅ Render control:
+ *    - useCallback for all handlers (stable deps)
+ *    - No inline handlers in render
+ * 
+ * ✅ Platform parity:
+ *    - Same behavior iOS/Android/Web
+ * ========================================
+ */
 
 interface CreatePlayerModalProps {
   visible: boolean;
@@ -40,12 +61,12 @@ export default function CreatePlayerModal({
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
 
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setSearchEmail('');
     setSearchResult(null);
-  };
+  }, []);
 
-  const handleSearch = async () => {
+  const handleSearch = useCallback(async () => {
     // Validation
     if (!searchEmail.trim()) {
       Alert.alert('Fejl', 'Indtast venligst en email-adresse');
@@ -106,9 +127,9 @@ export default function CreatePlayerModal({
     } finally {
       setSearching(false);
     }
-  };
+  }, [searchEmail]);
 
-  const handleAddPlayer = async () => {
+  const handleAddPlayer = useCallback(async () => {
     if (!searchResult) {
       Alert.alert('Fejl', 'Ingen bruger valgt');
       return;
@@ -164,7 +185,7 @@ export default function CreatePlayerModal({
     } finally {
       setLoading(false);
     }
-  };
+  }, [searchResult, resetForm, onPlayerCreated, onClose]);
 
   return (
     <Modal

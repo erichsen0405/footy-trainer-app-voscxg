@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,34 @@ import SmartVideoPlayer from '@/components/SmartVideoPlayer';
 import { colors } from '@/styles/commonStyles';
 import { supabase } from '@/app/integrations/supabase/client';
 import { taskService } from '@/services/taskService';
+
+/*
+ * ========================================
+ * PERFORMANCE CHECKLIST (STEP F)
+ * ========================================
+ * ✅ First render & loading:
+ *    - Hard gate: skeleton shown before first paint
+ *    - Data fetch deferred to useEffect (after mount)
+ *    - No blocking before paint
+ * 
+ * ✅ Navigation:
+ *    - No fetch in onPress/onOpen
+ *    - Modal opens immediately, data loads after
+ * 
+ * ✅ Render control:
+ *    - useCallback for handlers (stable deps)
+ *    - useMemo for derived data
+ *    - Skeleton/Content split to avoid heavy initial render
+ * 
+ * ✅ Media:
+ *    - Video only rendered when URL exists
+ *    - SmartVideoPlayer handles its own optimization
+ * 
+ * ✅ Platform parity:
+ *    - Same behavior iOS/Android/Web
+ *    - No platform-specific workarounds
+ * ========================================
+ */
 
 interface TaskDetailsModalProps {
   taskId: string;
@@ -34,7 +62,7 @@ interface TaskData {
 }
 
 // Skeleton component - renders immediately
-function TaskDetailsSkeleton() {
+const TaskDetailsSkeleton = React.memo(() => {
   return (
     <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
       {/* Title skeleton */}
@@ -55,10 +83,10 @@ function TaskDetailsSkeleton() {
       </View>
     </ScrollView>
   );
-}
+});
 
 // Content component - only renders when data is ready
-function TaskDetailsContent({ 
+const TaskDetailsContent = React.memo(({ 
   task, 
   completing, 
   onToggleCompletion 
@@ -66,8 +94,8 @@ function TaskDetailsContent({
   task: TaskData; 
   completing: boolean;
   onToggleCompletion: () => void;
-}) {
-  const formatReminderTime = (minutes: number) => {
+}) => {
+  const formatReminderTime = useCallback((minutes: number) => {
     if (minutes < 60) {
       return `${minutes} min før`;
     }
@@ -77,9 +105,9 @@ function TaskDetailsContent({
       return `${hours} time${hours > 1 ? 'r' : ''} før`;
     }
     return `${hours} time${hours > 1 ? 'r' : ''} og ${remainingMinutes} min før`;
-  };
+  }, []);
 
-  const videoUrl = task.video_url || null;
+  const videoUrl = useMemo(() => task.video_url || null, [task.video_url]);
 
   return (
     <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
@@ -163,7 +191,7 @@ function TaskDetailsContent({
       </View>
     </ScrollView>
   );
-}
+});
 
 export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalProps) {
   const [task, setTask] = useState<TaskData | null>(null);
@@ -241,7 +269,7 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
     fetchTask();
   }, [taskId]);
 
-  const handleToggleCompletion = async () => {
+  const handleToggleCompletion = useCallback(async () => {
     if (!task || completing) return;
 
     const previousCompleted = task.completed;
@@ -262,7 +290,7 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
     } finally {
       setCompleting(false);
     }
-  };
+  }, [task, completing, taskId]);
 
   return (
     <Modal

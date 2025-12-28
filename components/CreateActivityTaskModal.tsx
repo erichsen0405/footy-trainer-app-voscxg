@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,28 @@ import { colors } from '@/styles/commonStyles';
 import { Task } from '@/types';
 import { supabase } from '@/app/integrations/supabase/client';
 import { scheduleTaskReminderImmediate } from '@/utils/notificationScheduler';
+
+/*
+ * ========================================
+ * PERFORMANCE CHECKLIST (STEP F)
+ * ========================================
+ * ✅ First render & loading:
+ *    - No blocking before paint
+ *    - Activity verification deferred to useEffect
+ * 
+ * ✅ Navigation:
+ *    - No fetch in onPress/onOpen
+ *    - Modal opens immediately
+ * 
+ * ✅ Render control:
+ *    - useCallback for handlers (stable deps)
+ *    - No inline handlers in render
+ * 
+ * ✅ Platform parity:
+ *    - Same behavior iOS/Android/Web
+ *    - Platform-specific delay handled correctly
+ * ========================================
+ */
 
 interface CreateActivityTaskModalProps {
   visible: boolean;
@@ -101,7 +123,7 @@ export function CreateActivityTaskModal({
     }
   }, [activityId, visible]);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!title.trim()) {
       Alert.alert('Fejl', 'Opgavetitel er påkrævet');
       return;
@@ -256,7 +278,7 @@ export function CreateActivityTaskModal({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [title, userId, activityExists, activityId, activityTitle, activityDate, activityTime, hasReminder, reminderMinutes, description, onSave, onClose]);
 
   return (
     <Modal
