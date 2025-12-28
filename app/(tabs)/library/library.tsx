@@ -169,7 +169,8 @@ export default function LibraryScreen() {
   const { isAdmin, userRole } = useUserRole();
   const { adminMode, adminTargetId, adminTargetType } = useAdmin();
   
-  // P0 FIX: Ensure categories is always defined before any usage
+  // P0 FIX: Define categories as local variable with safe fallback
+  // This ensures the variable exists in scope before any useMemo, useEffect, or render
   const categories: any[] = [];
   
   const [personalExercises, setPersonalExercises] = useState<Exercise[]>([]);
