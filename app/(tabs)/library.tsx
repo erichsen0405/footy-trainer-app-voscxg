@@ -155,6 +155,11 @@ export default function LibraryScreen() {
   const { teams, players, selectedContext } = useTeamPlayer();
   const { isAdmin, userRole } = useUserRole();
   const { adminMode, adminTargetId, adminTargetType } = useAdmin();
+  
+  // P0 FIX: Define categories as local variable with safe fallback
+  // This ensures the variable exists in scope before any useMemo, useEffect, or render
+  const categories: any[] = [];
+  
   const [personalExercises, setPersonalExercises] = useState<Exercise[]>([]);
   const [trainerFolders, setTrainerFolders] = useState<FolderItem[]>([]);
   const [footballCoachFolders, setFootballCoachFolders] = useState<FolderItem[]>(FOOTBALLCOACH_STRUCTURE);
