@@ -42,6 +42,8 @@ export default function ProfileScreen() {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
+  const [originalName, setOriginalName] = useState('');
+  const [originalPhone, setOriginalPhone] = useState('');
   
   // Collapsible sections - Calendar Sync now collapsed by default
   const [isCalendarSyncExpanded, setIsCalendarSyncExpanded] = useState(false);
@@ -168,6 +170,8 @@ export default function ProfileScreen() {
         setProfile(data);
         setEditName(data.full_name || '');
         setEditPhone(data.phone_number || '');
+        setOriginalName(data.full_name || '');
+        setOriginalPhone(data.phone_number || '');
       }
     } catch (error) {
       console.error('Error in fetchUserProfile:', error);
@@ -217,8 +221,18 @@ export default function ProfileScreen() {
   const handleSaveProfile = async () => {
     if (!user) return;
 
+    setLoading(true);
+
     try {
-      setLoading(true);
+      // Check if there are any changes
+      const hasChanges = editName !== originalName || editPhone !== originalPhone;
+      
+      if (!hasChanges) {
+        console.log('[PROFILE] No changes detected, skipping API call');
+        setLoading(false);
+        setIsEditingProfile(false);
+        return;
+      }
 
       const { data: existingProfile } = await supabase
         .from('profiles')
@@ -746,7 +760,11 @@ export default function ProfileScreen() {
                   Profil Information
                 </Text>
                 {!isEditingProfile && (
-                  <TouchableOpacity onPress={() => setIsEditingProfile(true)}>
+                  <TouchableOpacity onPress={() => {
+                    setIsEditingProfile(true);
+                    setOriginalName(profile?.full_name || '');
+                    setOriginalPhone(profile?.phone_number || '');
+                  }}>
                     <IconSymbol
                       ios_icon_name="pencil"
                       android_material_icon_name="edit"
