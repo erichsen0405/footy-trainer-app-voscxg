@@ -4,12 +4,22 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, useCol
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
-import { GlassView } from 'expo-glass-effect';
 import { supabase } from '@/app/integrations/supabase/client';
 import ExternalCalendarManager from '@/components/ExternalCalendarManager';
 import SubscriptionManager from '@/components/SubscriptionManager';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { deleteAllExternalActivities } from '@/utils/deleteExternalActivities';
+
+// Conditionally import GlassView only on native platforms
+let GlassView: any = View;
+if (Platform.OS !== 'web') {
+  try {
+    const glassModule = require('expo-glass-effect');
+    GlassView = glassModule.GlassView;
+  } catch (error) {
+    console.log('expo-glass-effect not available, using View instead');
+  }
+}
 
 interface UserProfile {
   full_name: string;
