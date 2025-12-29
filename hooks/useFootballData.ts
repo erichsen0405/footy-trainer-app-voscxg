@@ -42,7 +42,8 @@ export const useFootballData = () => {
       const { data, error } = await supabase
         .from('activities')
         .select('*')
-        .order('start_time', { ascending: true });
+        .order('activity_date', { ascending: true })
+        .order('activity_time', { ascending: true });
 
       if (error) throw error;
       setActivities(data || []);
@@ -154,7 +155,8 @@ export const useFootballData = () => {
 
   const activitiesThisWeek = useMemo(() => {
     return activities.filter(activity => {
-      const start = new Date(activity.start_time);
+      const activityDateTime = `${activity.activity_date}T${activity.activity_time || '00:00:00'}`;
+      const start = new Date(activityDateTime);
       return start >= weekRange.start && start <= weekRange.end;
     });
   }, [activities, weekRange]);
