@@ -60,7 +60,7 @@
 
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
@@ -660,8 +660,8 @@ export default function HomeScreen() {
   // List header component
   const ListHeaderComponent = useCallback(() => (
     <>
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
+      {/* Header - with negative marginTop to compensate for SafeAreaView */}
+      <View style={[styles.header, { marginTop: -insets.top, paddingTop: insets.top + 16 }]}>
         <View style={styles.logoContainer}>
           <View style={styles.logo}>
             <Text style={styles.logoIcon}>⚽</Text>
@@ -751,9 +751,11 @@ export default function HomeScreen() {
         contextName={selectedContext?.name || null}
         contextType={adminTargetType || 'player'}
       >
-        <View style={styles.loading}>
-          <Text style={styles.loadingText}>Indlæser…</Text>
-        </View>
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }} edges={['top']}>
+          <View style={styles.loading}>
+            <Text style={styles.loadingText}>Indlæser…</Text>
+          </View>
+        </SafeAreaView>
       </AdminContextWrapper>
     );
   }
@@ -769,34 +771,27 @@ export default function HomeScreen() {
     >
       <StatusBar barStyle="dark-content" />
       
-      {/* iOS safe-area top background */}
-      <View
-        style={{
-          height: insets.top,
-          backgroundColor: HEADER_BG,
-        }}
-      />
-      
-      {/* Hero + rest of screen */}
-      <FlatList
-        data={flattenedData}
-        renderItem={renderItem}
-        keyExtractor={keyExtractor}
-        ListHeaderComponent={ListHeaderComponent}
-        ListFooterComponent={ListFooterComponent}
-        keyboardShouldPersistTaps="handled"
-        removeClippedSubviews={true}
-        initialNumToRender={8}
-        maxToRenderPerBatch={10}
-        windowSize={5}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.text}
-          />
-        }
-      />
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }} edges={['top']}>
+        <FlatList
+          data={flattenedData}
+          renderItem={renderItem}
+          keyExtractor={keyExtractor}
+          ListHeaderComponent={ListHeaderComponent}
+          ListFooterComponent={ListFooterComponent}
+          keyboardShouldPersistTaps="handled"
+          removeClippedSubviews={true}
+          initialNumToRender={8}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.text}
+            />
+          }
+        />
+      </SafeAreaView>
 
       {/* Create Activity Modal */}
       {showCreateModal ? (
