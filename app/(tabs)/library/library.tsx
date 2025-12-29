@@ -1549,7 +1549,11 @@ export default function LibraryScreen() {
 
         {isExpanded && (
           <View style={[styles.folderContent, { marginLeft: level * 16 }]}>
-            {safeSubfolders.map(subfolder => renderFolder(subfolder, level + 1))}
+            {safeSubfolders.map(subfolder => (
+              <React.Fragment key={subfolder.id}>
+                {renderFolder(subfolder, level + 1)}
+              </React.Fragment>
+            ))}
             
             {safeExercises.length > 0 && (
               <View style={styles.exercisesContainer}>
@@ -1717,7 +1721,11 @@ export default function LibraryScreen() {
 
               {expandedFolders.has('trainers') && (
                 <View style={styles.folderContent}>
-                  {trainerFolders.map(folder => renderFolder(folder, 1))}
+                  {trainerFolders.map(folder => (
+                    <React.Fragment key={folder.id}>
+                      {renderFolder(folder, 1)}
+                    </React.Fragment>
+                  ))}
                 </View>
               )}
             </>
@@ -1751,7 +1759,11 @@ export default function LibraryScreen() {
 
           {expandedFolders.has('footballcoach') && (
             <View style={styles.folderContent}>
-              {footballCoachFolders.map(folder => renderFolder(folder, 1))}
+              {footballCoachFolders.map(folder => (
+                <React.Fragment key={folder.id}>
+                  {renderFolder(folder, 1)}
+                </React.Fragment>
+              ))}
             </View>
           )}
 
