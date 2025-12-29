@@ -60,6 +60,7 @@
 
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
@@ -135,6 +136,7 @@ function getPerformanceGradient(percentage: number): string[] {
 
 export default function HomeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { userRole } = useUserRole();
   const { activities, loading, refresh: refreshActivities } = useHomeActivities();
   const { categories, createActivity, refreshData, currentWeekStats, toggleTaskCompletion } = useFootball();
@@ -657,7 +659,7 @@ export default function HomeScreen() {
   const ListHeaderComponent = useCallback(() => (
     <>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <View style={styles.logoContainer}>
           <View style={styles.logo}>
             <Text style={styles.logoIcon}>⚽</Text>
@@ -733,7 +735,7 @@ export default function HomeScreen() {
         <Text style={styles.createButtonText}>+  Opret Aktivitet</Text>
       </Pressable>
     </>
-  ), [currentWeekNumber, currentWeekLabel, performanceMetrics, router]);
+  ), [insets.top, currentWeekNumber, currentWeekLabel, performanceMetrics, router]);
 
   // List footer component
   const ListFooterComponent = useCallback(() => (
@@ -816,7 +818,6 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: '#2C3E50',
     paddingHorizontal: 20,
-    paddingTop: 16,
     paddingBottom: 32,
     flexDirection: 'row',
     alignItems: 'center',
