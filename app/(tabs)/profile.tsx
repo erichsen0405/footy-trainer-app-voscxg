@@ -219,21 +219,23 @@ export default function ProfileScreen() {
   };
 
   const handleSaveProfile = async () => {
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    // Check if there are any changes BEFORE setting loading
+    const hasChanges = editName !== originalName || editPhone !== originalPhone;
+    
+    if (!hasChanges) {
+      console.log('[PROFILE] No changes detected, skipping API call');
+      setIsEditingProfile(false);
+      return;
+    }
 
     setLoading(true);
 
     try {
-      // Check if there are any changes
-      const hasChanges = editName !== originalName || editPhone !== originalPhone;
-      
-      if (!hasChanges) {
-        console.log('[PROFILE] No changes detected, skipping API call');
-        setLoading(false);
-        setIsEditingProfile(false);
-        return;
-      }
-
       const { data: existingProfile } = await supabase
         .from('profiles')
         .select('id')

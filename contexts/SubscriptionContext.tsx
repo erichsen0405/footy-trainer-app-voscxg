@@ -72,6 +72,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
           currentPeriodEnd: null,
         };
         setSubscriptionStatus(emptyStatus);
+        setLoading(false);
         console.log('[SubscriptionContext] Set empty subscription status');
         return;
       }
@@ -93,6 +94,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
           currentPeriodEnd: null,
         };
         setSubscriptionStatus(emptyStatus);
+        setLoading(false);
         return;
       }
 
@@ -125,6 +127,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
           currentPeriodEnd: null,
         };
         setSubscriptionStatus(emptyStatus);
+        setLoading(false);
         return;
       }
 
