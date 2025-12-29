@@ -7,27 +7,33 @@ export function useUserRole() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let mounted = true;
+
     const fetchUserRole = async () => {
       try {
+        // First, check if user is authenticated
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         
         if (userError || !user) {
-          console.log('No user found or error:', userError);
-          setUserRole(null);
-          setLoading(false);
+          if (mounted) {
+            setUserRole(null);
+            setLoading(false);
+          }
           return;
         }
 
+        // User is authenticated, fetch their role
         const { data, error } = await supabase
           .from('user_roles')
           .select('role')
           .eq('user_id', user.id)
           .maybeSingle();
 
+        if (!mounted) return;
+
         if (error) {
           console.error('Error fetching user role:', error);
           // If there's an error, default to player for new users
-          // This ensures the app remains functional
           setUserRole('player');
         } else if (data) {
           setUserRole(data.role as 'admin' | 'trainer' | 'player');
@@ -48,9 +54,13 @@ export function useUserRole() {
         }
       } catch (error) {
         console.error('Error in fetchUserRole:', error);
-        setUserRole('player');
+        if (mounted) {
+          setUserRole('player');
+        }
       } finally {
-        setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
       }
     };
 
@@ -58,15 +68,21 @@ export function useUserRole() {
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!mounted) return;
+
       if (session?.user) {
-        fetchUserRole();
+        setLoading(true);
+        await fetchUserRole();
       } else {
         setUserRole(null);
         setLoading(false);
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   // Export isAdmin as a computed property - includes both admin and trainer roles

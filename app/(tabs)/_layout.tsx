@@ -1,43 +1,17 @@
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import { Stack } from 'expo-router';
 import { Platform, ActivityIndicator, View } from 'react-native';
 import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
 import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
 import { colors } from '@/styles/commonStyles';
 import { useUserRole } from '@/hooks/useUserRole';
-import { supabase } from '@/app/integrations/supabase/client';
 
 export default function TabLayout() {
-  const { userRole, loading: roleLoading } = useUserRole();
-  const [user, setUser] = useState<any>(null);
-  const [authLoading, setAuthLoading] = useState(true);
+  const { userRole, loading } = useUserRole();
 
-  useEffect(() => {
-    let mounted = true;
-
-    const checkUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (mounted) {
-        setUser(user);
-        setAuthLoading(false);
-      }
-    };
-    checkUser();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (mounted) {
-        setUser(session?.user || null);
-      }
-    });
-
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  if (roleLoading || authLoading) {
+  // Wait for auth to be fully resolved before rendering tabs
+  if (loading) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -45,11 +19,13 @@ export default function TabLayout() {
     );
   }
 
+  const isLoggedIn = !!userRole;
+
   // Platform-specific rendering
   if (Platform.OS === 'ios') {
     return (
       <IOSTabLayout
-        isLoggedIn={!!user}
+        isLoggedIn={isLoggedIn}
         userRole={userRole}
       />
     );
@@ -58,7 +34,7 @@ export default function TabLayout() {
   // Android/Web: Use FloatingTabBar
   return (
     <AndroidWebTabLayout
-      isLoggedIn={!!user}
+      isLoggedIn={isLoggedIn}
       userRole={userRole}
     />
   );
