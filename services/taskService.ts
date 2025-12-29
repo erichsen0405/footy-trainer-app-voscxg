@@ -8,7 +8,6 @@ export interface CreateTaskData {
   categoryIds: string[];
   reminder?: number;
   videoUrl?: string;
-  userId: string;
   playerId?: string | null;
   teamId?: string | null;
 }
@@ -23,19 +22,16 @@ export interface UpdateTaskData {
 
 export const taskService = {
   async createTask(data: CreateTaskData, signal?: AbortSignal): Promise<void> {
-    console.log('🆕 Creating task template...');
-    console.log('   User ID:', data.userId);
-    console.log('   Title:', data.title);
-    console.log('   Category IDs:', data.categoryIds);
-    console.log('   Player ID:', data.playerId);
-    console.log('   Team ID:', data.teamId);
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session?.user?.id) {
+      throw new Error('No active session');
+    }
 
-    // CRITICAL FIX: Insert with explicit user_id from session
-    // This ensures RLS policy "user_id = auth.uid()" is satisfied
     const { data: templateData, error: templateError } = await supabase
       .from('task_templates')
       .insert({
-        user_id: data.userId, // Explicit user_id from authenticated session
+        user_id: session.user.id,
         title: data.title,
         description: data.description,
         reminder_minutes: data.reminder,
@@ -43,21 +39,15 @@ export const taskService = {
         player_id: data.playerId,
         team_id: data.teamId,
       })
-      .select('id') // OPTIMIZATION: Only select the ID we need
+      .select('id')
       .single()
       .abortSignal(signal);
 
     if (templateError) {
-      console.error('❌ Error creating task template:', templateError);
       throw templateError;
     }
 
-    console.log('✅ Task template created:', templateData.id);
-
-    // Insert category associations if provided
     if (data.categoryIds && data.categoryIds.length > 0) {
-      console.log('🔗 Creating category associations...');
-      
       const categoryInserts = data.categoryIds.map(categoryId => ({
         task_template_id: templateData.id,
         category_id: categoryId,
@@ -69,14 +59,9 @@ export const taskService = {
         .abortSignal(signal);
 
       if (categoryError) {
-        console.error('❌ Error creating category associations:', categoryError);
         throw categoryError;
       }
-
-      console.log('✅ Category associations created');
     }
-
-    console.log('✅ Task template creation complete');
   },
 
   async updateTask(taskId: string, userId: string, updates: UpdateTaskData, signal?: AbortSignal): Promise<void> {
