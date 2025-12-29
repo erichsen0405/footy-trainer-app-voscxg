@@ -169,10 +169,6 @@ export default function LibraryScreen() {
   const { isAdmin, userRole } = useUserRole();
   const { adminMode, adminTargetId, adminTargetType } = useAdmin();
   
-  // P0 FIX: Define categories as local variable with safe fallback
-  // This ensures the variable exists in scope before any useMemo, useEffect, or render
-  const categories: any[] = [];
-  
   const [personalExercises, setPersonalExercises] = useState<Exercise[]>([]);
   const [trainerFolders, setTrainerFolders] = useState<FolderItem[]>([]);
   const [footballCoachFolders, setFootballCoachFolders] = useState<FolderItem[]>(FOOTBALLCOACH_STRUCTURE);
@@ -604,7 +600,7 @@ export default function LibraryScreen() {
     setVideoUrl('');
     setSubtasks(['']);
     setShowModal(true);
-  }, [adminMode, isAdmin]);
+  }, [isAdmin]);
 
   const openEditModal = useCallback((exercise: Exercise) => {
     if (adminMode !== 'self') return;
@@ -629,7 +625,7 @@ export default function LibraryScreen() {
     const safeSubtasks = Array.isArray(exercise.subtasks) ? exercise.subtasks : [];
     setSubtasks(safeSubtasks.length > 0 ? safeSubtasks.map(s => s.title || '') : ['']);
     setShowModal(true);
-  }, [adminMode, isAdmin]);
+  }, [isAdmin]);
 
   const handleDeleteVideo = useCallback(() => {
     Alert.alert(
@@ -810,7 +806,7 @@ export default function LibraryScreen() {
         },
       ]
     );
-  }, [adminMode, isAdmin]);
+  }, [isAdmin]);
 
   const handleDuplicateExercise = useCallback(async (exercise: Exercise) => {
     if (adminMode !== 'self') return;
@@ -878,7 +874,7 @@ export default function LibraryScreen() {
     } finally {
       setProcessing(false);
     }
-  }, [adminMode, isAdmin, currentUserId, fetchLibraryData]);
+  }, [isAdmin, currentUserId, fetchLibraryData]);
 
   const openAssignModal = useCallback((exercise: Exercise) => {
     if (adminMode !== 'self') return;
@@ -896,7 +892,7 @@ export default function LibraryScreen() {
     
     setSelectedExercise(exercise);
     setShowAssignModal(true);
-  }, [adminMode, isAdmin]);
+  }, [isAdmin]);
 
   const handleAssignToPlayer = useCallback(async (playerId: string) => {
     if (!selectedExercise || !selectedExercise.id || !currentUserId) {
@@ -1061,7 +1057,7 @@ export default function LibraryScreen() {
     } finally {
       setProcessing(false);
     }
-  }, [adminMode, currentUserId]);
+  }, [currentUserId]);
 
   const handleRemoveAssignedExercise = useCallback((exercise: Exercise) => {
     if (isAdmin) {
@@ -1138,7 +1134,7 @@ export default function LibraryScreen() {
 
     setSelectedExercise(exercise);
     setShowRevokeModal(true);
-  }, [adminMode, isAdmin]);
+  }, [isAdmin]);
 
   const handleRevokeFromPlayer = useCallback(async (playerId: string, playerName: string) => {
     if (!selectedExercise || !selectedExercise.id || !currentUserId) {

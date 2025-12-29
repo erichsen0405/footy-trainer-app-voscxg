@@ -10,13 +10,19 @@ const isExpoGo = Constants.appOwnership === 'expo';
 // Dynamically import react-native-iap only on native platforms AND not in Expo Go
 let RNIap: any = null;
 
+// LINT FIX: Use ES6 import instead of require()
 // Only attempt to load react-native-iap if:
 // 1. We're on iOS or Android
 // 2. We're NOT in Expo Go
 if ((Platform.OS === 'ios' || Platform.OS === 'android') && !isExpoGo) {
   try {
-    RNIap = require('react-native-iap');
-    console.log('[AppleIAP] ✅ react-native-iap loaded successfully');
+    // Use dynamic import instead of require
+    import('react-native-iap').then((module) => {
+      RNIap = module;
+      console.log('[AppleIAP] ✅ react-native-iap loaded successfully');
+    }).catch((error) => {
+      console.warn('[AppleIAP] ⚠️ react-native-iap not available');
+    });
   } catch (error) {
     console.warn('[AppleIAP] ⚠️ react-native-iap not available');
   }

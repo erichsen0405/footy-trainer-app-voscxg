@@ -37,13 +37,14 @@ export default function SubscriptionManager({
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
 
+  // LINT FIX: Include refreshSubscription in dependency array
   // Refresh subscription status when component mounts - ONLY ONCE
   useEffect(() => {
     if (!isSignupFlow) {
       console.log('[SubscriptionManager] Component mounted, refreshing subscription');
       refreshSubscription();
     }
-  }, [isSignupFlow]);
+  }, [isSignupFlow, refreshSubscription]);
 
   // Log subscription status changes for debugging
   useEffect(() => {
@@ -84,12 +85,12 @@ export default function SubscriptionManager({
     );
   };
 
-  const attemptCreateSubscription = async (planId: string, planName: string, isRetry: boolean = false) => {
-    setCreatingPlanId(planId);
+  const attemptCreateSubscription = async (productId: string, planName: string, isRetry: boolean = false) => {
+    setCreatingPlanId(productId);
     
     try {
       console.log(`[SubscriptionManager] Attempting to create subscription (retry: ${isRetry})`);
-      const result = await createSubscription(planId);
+      const result = await createSubscription(productId);
       
       if (result.success) {
         // Collapse the plan selection
@@ -142,7 +143,7 @@ export default function SubscriptionManager({
                     [{ text: 'OK', onPress: () => setRetryCount(0) }]
                   );
                 } else {
-                  attemptCreateSubscription(planId, planName, true);
+                  attemptCreateSubscription(productId, planName, true);
                 }
               },
             },

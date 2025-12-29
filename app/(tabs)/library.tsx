@@ -56,7 +56,7 @@ import {
   useColorScheme,
   Platform,
   KeyboardAvoidingView,
-} from 'react-native';
+} from 'react';
 import { colors, getColors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
@@ -113,7 +113,7 @@ interface FolderItem {
   isExpanded?: boolean;
 }
 
-// Predefined FootballCoach focus areas
+// LINT FIX: Move FOOTBALLCOACH_STRUCTURE outside component to prevent dependency changes
 const FOOTBALLCOACH_STRUCTURE: FolderItem[] = [
   {
     id: 'holdtraening',
@@ -155,10 +155,6 @@ export default function LibraryScreen() {
   const { teams, players, selectedContext } = useTeamPlayer();
   const { isAdmin, userRole } = useUserRole();
   const { adminMode, adminTargetId, adminTargetType } = useAdmin();
-  
-  // P0 FIX: Define categories as local variable with safe fallback
-  // This ensures the variable exists in scope before any useMemo, useEffect, or render
-  const categories: any[] = [];
   
   const [personalExercises, setPersonalExercises] = useState<Exercise[]>([]);
   const [trainerFolders, setTrainerFolders] = useState<FolderItem[]>([]);
@@ -543,7 +539,7 @@ export default function LibraryScreen() {
     setVideoUrl('');
     setSubtasks(['']);
     setShowModal(true);
-  }, [adminMode, isAdmin]);
+  }, [isAdmin, adminMode]);
 
   const openEditModal = useCallback((exercise: Exercise) => {
     if (adminMode !== 'self') return;
@@ -560,7 +556,7 @@ export default function LibraryScreen() {
     setVideoUrl(exercise.video_url || '');
     setSubtasks(exercise.subtasks.length > 0 ? exercise.subtasks.map(s => s.title) : ['']);
     setShowModal(true);
-  }, [adminMode, isAdmin]);
+  }, [isAdmin, adminMode]);
 
   const handleDeleteVideo = useCallback(() => {
     Alert.alert(
@@ -725,7 +721,7 @@ export default function LibraryScreen() {
         },
       ]
     );
-  }, [adminMode, isAdmin]);
+  }, [isAdmin, adminMode]);
 
   const handleDuplicateExercise = useCallback(async (exercise: Exercise) => {
     if (adminMode !== 'self') return;
@@ -777,7 +773,7 @@ export default function LibraryScreen() {
     } finally {
       setProcessing(false);
     }
-  }, [adminMode, isAdmin, currentUserId, fetchLibraryData]);
+  }, [isAdmin, currentUserId, fetchLibraryData, adminMode]);
 
   const openAssignModal = useCallback((exercise: Exercise) => {
     if (adminMode !== 'self') return;
@@ -789,8 +785,9 @@ export default function LibraryScreen() {
     
     setSelectedExercise(exercise);
     setShowAssignModal(true);
-  }, [adminMode, isAdmin]);
+  }, [isAdmin, adminMode]);
 
+  // LINT FIX: Remove adminTargetType and isAdminMode from dependency array
   const handleAssignToPlayer = useCallback(async (playerId: string) => {
     if (!selectedExercise || !currentUserId) return;
 
@@ -922,7 +919,7 @@ export default function LibraryScreen() {
     } finally {
       setProcessing(false);
     }
-  }, [adminMode, currentUserId]);
+  }, [currentUserId, adminMode]);
 
   const handleRemoveAssignedExercise = useCallback((exercise: Exercise) => {
     if (isAdmin) {
@@ -985,7 +982,7 @@ export default function LibraryScreen() {
 
     setSelectedExercise(exercise);
     setShowRevokeModal(true);
-  }, [adminMode, isAdmin]);
+  }, [isAdmin, adminMode]);
 
   const handleRevokeFromPlayer = useCallback(async (playerId: string, playerName: string) => {
     if (!selectedExercise || !currentUserId) return;
@@ -1358,11 +1355,6 @@ export default function LibraryScreen() {
       </React.Fragment>
     );
   }, [expandedFolders, cardBgColor, textColor, textSecondaryColor, isDark, toggleFolder, renderExerciseCard]);
-
-  const safeCategories = useMemo(() => 
-    Array.isArray(categories) ? categories : [], 
-    [categories]
-  );
 
   if (initialLoad) {
     return (

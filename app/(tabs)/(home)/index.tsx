@@ -298,8 +298,7 @@ export default function HomeScreen() {
     return safePreviousByWeek.slice(0, safeShowPreviousWeeks);
   }, [previousByWeek, showPreviousWeeks]);
 
-  // CRITICAL FIX: Use individual properties as dependencies instead of the object
-  // This ensures re-render when the actual values change, not just the object reference
+  // LINT FIX: Include currentWeekStats in dependency array
   const performanceMetrics = useMemo(() => {
     // STEP H: Guard against null/undefined currentWeekStats
     const safeStats = currentWeekStats || {
@@ -359,13 +358,7 @@ export default function HomeScreen() {
       totalTasksWeek: totalTasksForWeek,
       gradientColors,
     };
-  }, [
-    currentWeekStats?.percentage,
-    currentWeekStats?.completedTasks,
-    currentWeekStats?.totalTasks,
-    currentWeekStats?.completedTasksForWeek,
-    currentWeekStats?.totalTasksForWeek,
-  ]);
+  }, [currentWeekStats]);
 
   const handleCreateActivity = useCallback(async (activityData: any) => {
     try {

@@ -192,6 +192,39 @@ export default function CategoryManagementModal({
     }
   }, [selectedCategory, categoryName, selectedEmoji, selectedColor, onRefresh]);
 
+  const handleDeleteCategoryConfirm = useCallback(async (categoryId: string) => {
+    setIsLoading(true);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      const { error } = await supabase
+        .from('activity_categories')
+        .delete()
+        .eq('id', categoryId)
+        .eq('user_id', user.id);
+
+      if (error) {
+        console.error('Error deleting category:', error);
+        throw error;
+      }
+
+      Alert.alert('Succes', 'Kategori slettet!');
+      onRefresh();
+      setMode('list');
+      setSelectedCategory(null);
+      setActivitiesUsingCategory([]);
+    } catch (error) {
+      console.error('Failed to delete category:', error);
+      Alert.alert('Fejl', 'Kunne ikke slette kategori');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [onRefresh]);
+
   const handleDeleteCategoryCheck = useCallback(async (category: ActivityCategory) => {
     setIsLoading(true);
     setSelectedCategory(category);
@@ -280,7 +313,7 @@ export default function CategoryManagementModal({
         setMode('delete');
       } else {
         // No activities using this category, safe to delete
-        handleDeleteCategoryConfirm(category.id);
+        await handleDeleteCategoryConfirm(category.id);
       }
     } catch (error) {
       console.error('Failed to check category usage:', error);
@@ -288,41 +321,9 @@ export default function CategoryManagementModal({
     } finally {
       setIsLoading(false);
     }
-  }, [selectedContext]);
+  }, [selectedContext, handleDeleteCategoryConfirm]);
 
-  const handleDeleteCategoryConfirm = useCallback(async (categoryId: string) => {
-    setIsLoading(true);
-
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        throw new Error('User not authenticated');
-      }
-
-      const { error } = await supabase
-        .from('activity_categories')
-        .delete()
-        .eq('id', categoryId)
-        .eq('user_id', user.id);
-
-      if (error) {
-        console.error('Error deleting category:', error);
-        throw error;
-      }
-
-      Alert.alert('Succes', 'Kategori slettet!');
-      onRefresh();
-      setMode('list');
-      setSelectedCategory(null);
-      setActivitiesUsingCategory([]);
-    } catch (error) {
-      console.error('Failed to delete category:', error);
-      Alert.alert('Fejl', 'Kunne ikke slette kategori');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [onRefresh]);
-
+  // LINT FIX: Include handleDeleteCategoryConfirm in dependency array
   const handleReassignAndDelete = useCallback(async () => {
     if (!selectedCategory || !reassignCategoryId) {
       Alert.alert('Fejl', 'Vælg venligst en ny kategori');

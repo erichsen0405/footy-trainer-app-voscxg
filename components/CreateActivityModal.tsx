@@ -116,7 +116,6 @@ export default function CreateActivityModal({
   const [showCategoryManagement, setShowCategoryManagement] = useState(false);
 
   const isDark = colorScheme === 'dark';
-  const safeOnClose = typeof onClose === 'function' ? onClose : () => {};
   
   // P6 FIX: Ensure categories is always an array, never undefined
   const safeCategories: ActivityCategory[] = useMemo(() => {
@@ -150,7 +149,10 @@ export default function CreateActivityModal({
     }
   }, [safeCategories, selectedCategory]);
 
+  // LINT FIX: Move safeOnClose inside useCallback
   const handleClose = useCallback(() => {
+    const safeOnClose = typeof onClose === 'function' ? onClose : () => {};
+    
     setTitle('');
     setLocation('');
     setSelectedCategory(safeCategories[0]?.id || '');
@@ -162,7 +164,7 @@ export default function CreateActivityModal({
     setHasEndDate(false);
     setEndDate(new Date(Date.now() + 90 * 24 * 60 * 60 * 1000));
     safeOnClose();
-  }, [safeCategories, safeOnClose]);
+  }, [safeCategories, onClose]);
 
   const handleCreate = useCallback(async () => {
     if (!title.trim()) {

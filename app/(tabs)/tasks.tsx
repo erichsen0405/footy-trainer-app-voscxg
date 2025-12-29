@@ -180,6 +180,72 @@ const TaskCard = React.memo(({
   </TouchableOpacity>
 ));
 
+// Memoized FolderItem component
+const FolderItemComponent = React.memo(({ 
+  folder, 
+  isExpanded, 
+  onToggle,
+  renderTaskCard,
+  isDark,
+  textColor,
+  textSecondaryColor,
+  cardBgColor
+}: { 
+  folder: FolderItem; 
+  isExpanded: boolean; 
+  onToggle: () => void;
+  renderTaskCard: (task: Task) => React.ReactNode;
+  isDark: boolean;
+  textColor: string;
+  textSecondaryColor: string;
+  cardBgColor: string;
+}) => {
+  return (
+    <View>
+      <TouchableOpacity
+        style={[styles.folderHeader, { backgroundColor: cardBgColor }]}
+        onPress={onToggle}
+      >
+        <View style={styles.folderHeaderLeft}>
+          <IconSymbol
+            ios_icon_name={folder.icon}
+            android_material_icon_name={folder.androidIcon}
+            size={24}
+            color={colors.primary}
+          />
+          <Text style={[styles.folderName, { color: textColor }]}>
+            {folder.name}
+          </Text>
+          <View style={[styles.countBadge, { backgroundColor: colors.primary }]}>
+            <Text style={styles.countBadgeText}>{folder.tasks.length}</Text>
+          </View>
+        </View>
+        <IconSymbol
+          ios_icon_name={isExpanded ? 'chevron.down' : 'chevron.right'}
+          android_material_icon_name={isExpanded ? 'expand_more' : 'chevron_right'}
+          size={20}
+          color={textSecondaryColor}
+        />
+      </TouchableOpacity>
+
+      {isExpanded && (
+        <View style={styles.folderContent}>
+          <FlatList
+            data={folder.tasks}
+            renderItem={({ item }) => renderTaskCard(item)}
+            keyExtractor={(item) => item.id}
+            scrollEnabled={false}
+            removeClippedSubviews={Platform.OS !== 'web'}
+            initialNumToRender={5}
+            maxToRenderPerBatch={5}
+            windowSize={5}
+          />
+        </View>
+      )}
+    </View>
+  );
+});
+
 export default function TasksScreen() {
   const { tasks, categories, addTask, updateTask, deleteTask, duplicateTask, refreshData, isLoading } = useFootball();
   const { selectedContext } = useTeamPlayer();
@@ -474,66 +540,7 @@ export default function TasksScreen() {
     />
   ), [isDark, openTaskModal, handleDuplicateTask, handleDeleteTask, openVideoModal, getCategoryNames]);
 
-  // Memoized FolderItem component
-  const FolderItemComponent = React.memo(({ 
-    folder, 
-    isExpanded, 
-    onToggle 
-  }: { 
-    folder: FolderItem; 
-    isExpanded: boolean; 
-    onToggle: () => void;
-  }) => {
-    const textColor = isDark ? '#e3e3e3' : colors.text;
-    const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
-    const cardBgColor = isDark ? '#2a2a2a' : colors.card;
-
-    return (
-      <View>
-        <TouchableOpacity
-          style={[styles.folderHeader, { backgroundColor: cardBgColor }]}
-          onPress={onToggle}
-        >
-          <View style={styles.folderHeaderLeft}>
-            <IconSymbol
-              ios_icon_name={folder.icon}
-              android_material_icon_name={folder.androidIcon}
-              size={24}
-              color={colors.primary}
-            />
-            <Text style={[styles.folderName, { color: textColor }]}>
-              {folder.name}
-            </Text>
-            <View style={[styles.countBadge, { backgroundColor: colors.primary }]}>
-              <Text style={styles.countBadgeText}>{folder.tasks.length}</Text>
-            </View>
-          </View>
-          <IconSymbol
-            ios_icon_name={isExpanded ? 'chevron.down' : 'chevron.right'}
-            android_material_icon_name={isExpanded ? 'expand_more' : 'chevron_right'}
-            size={20}
-            color={textSecondaryColor}
-          />
-        </TouchableOpacity>
-
-        {isExpanded && (
-          <View style={styles.folderContent}>
-            <FlatList
-              data={folder.tasks}
-              renderItem={({ item }) => renderTaskCard(item)}
-              keyExtractor={(item) => item.id}
-              scrollEnabled={false}
-              removeClippedSubviews={Platform.OS !== 'web'}
-              initialNumToRender={5}
-              maxToRenderPerBatch={5}
-              windowSize={5}
-            />
-          </View>
-        )}
-      </View>
-    );
-  });
-
+  // LINT FIX: Include FolderItemComponent in dependency array
   const renderFolder = useCallback(({ item }: { item: FolderItem }) => {
     const isExpanded = expandedFolders.has(item.id);
     return (
@@ -541,9 +548,14 @@ export default function TasksScreen() {
         folder={item}
         isExpanded={isExpanded}
         onToggle={() => toggleFolder(item.id)}
+        renderTaskCard={renderTaskCard}
+        isDark={isDark}
+        textColor={textColor}
+        textSecondaryColor={textSecondaryColor}
+        cardBgColor={cardBgColor}
       />
     );
-  }, [expandedFolders, toggleFolder]);
+  }, [expandedFolders, toggleFolder, renderTaskCard, isDark, textColor, textSecondaryColor, cardBgColor]);
 
   const bgColor = isDark ? '#1a1a1a' : colors.background;
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
@@ -557,6 +569,7 @@ export default function TasksScreen() {
   const isTeamAdmin = adminMode !== 'self' && adminTargetType === 'team';
   const isAdminMode = isPlayerAdmin || isTeamAdmin;
 
+  // LINT FIX: Remove isManagingContext from dependency array
   const ListHeaderComponent = useMemo(() => (
     <>
       <View style={styles.header}>
@@ -619,7 +632,7 @@ export default function TasksScreen() {
         </Text>
       </View>
     </>
-  ), [templateTasks.length, isManagingContext, isAdmin, selectedContext, isDark, textColor, textSecondaryColor, searchQuery, openTaskModal]);
+  ), [templateTasks.length, isAdmin, selectedContext, isDark, textColor, textSecondaryColor, searchQuery, openTaskModal]);
 
   const ListEmptyComponent = useMemo(() => (
     <View style={[styles.emptyState, { backgroundColor: cardBgColor }]}>
