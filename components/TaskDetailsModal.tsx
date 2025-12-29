@@ -8,41 +8,12 @@ import {
   Pressable,
   ScrollView,
   Platform,
-  ActivityIndicator,
 } from 'react-native';
 import { IconSymbol } from '@/components/IconSymbol';
 import SmartVideoPlayer from '@/components/SmartVideoPlayer';
 import { colors } from '@/styles/commonStyles';
 import { supabase } from '@/app/integrations/supabase/client';
 import { taskService } from '@/services/taskService';
-
-/*
- * ========================================
- * PERFORMANCE CHECKLIST (STEP F)
- * ========================================
- * ✅ First render & loading:
- *    - Hard gate: skeleton shown before first paint
- *    - Data fetch deferred to useEffect (after mount)
- *    - No blocking before paint
- * 
- * ✅ Navigation:
- *    - No fetch in onPress/onOpen
- *    - Modal opens immediately, data loads after
- * 
- * ✅ Render control:
- *    - useCallback for handlers (stable deps)
- *    - useMemo for derived data
- *    - Skeleton/Content split to avoid heavy initial render
- * 
- * ✅ Media:
- *    - Video only rendered when URL exists
- *    - SmartVideoPlayer handles its own optimization
- * 
- * ✅ Platform parity:
- *    - Same behavior iOS/Android/Web
- *    - No platform-specific workarounds
- * ========================================
- */
 
 interface TaskDetailsModalProps {
   taskId: string;
@@ -196,33 +167,46 @@ const TaskDetailsContent = React.memo(({
 export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalProps) {
   const [task, setTask] = useState<TaskData | null>(null);
   const [completing, setCompleting] = useState(false);
-  const [isReady, setIsReady] = useState(false);
-  const [hasPainted, setHasPainted] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // Hard gate: ensure first paint before mounting TaskDetailsContent
+  // Fetch task data - PARALLELIZED with Promise.allSettled
   useEffect(() => {
-    requestAnimationFrame(() => {
-      setHasPainted(true);
-    });
-  }, []);
+    let isMounted = true;
 
-  // Fetch task data - deferred to useEffect after mount
-  useEffect(() => {
     const fetchTask = async () => {
+      setLoading(true);
+      
       try {
-        // Try fetching from activity_tasks first WITH task_templates JOIN to get video_url
-        const { data: activityTask } = await supabase
-          .from('activity_tasks')
-          .select(`
-            *,
-            task_templates!activity_tasks_task_template_id_fkey (
-              video_url
-            )
-          `)
-          .eq('id', taskId)
-          .maybeSingle();
+        // Parallelize both fetches - no sequential blocking
+        const [activityTaskResult, externalTaskResult] = await Promise.allSettled([
+          supabase
+            .from('activity_tasks')
+            .select(`
+              *,
+              task_templates!activity_tasks_task_template_id_fkey (
+                video_url
+              )
+            `)
+            .eq('id', taskId)
+            .maybeSingle(),
+          supabase
+            .from('external_event_tasks')
+            .select(`
+              *,
+              task_templates!external_event_tasks_task_template_id_fkey (
+                video_url
+              )
+            `)
+            .eq('id', taskId)
+            .maybeSingle()
+        ]);
 
-        if (activityTask) {
+        // Only update state if component is still mounted
+        if (!isMounted) return;
+
+        // Process activity_tasks result
+        if (activityTaskResult.status === 'fulfilled' && activityTaskResult.value.data) {
+          const activityTask = activityTaskResult.value.data;
           const videoUrl = activityTask.task_templates?.video_url || null;
           
           setTask({
@@ -230,23 +214,12 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
             video_url: videoUrl,
             is_external: false,
           });
-          setIsReady(true);
           return;
         }
 
-        // If not found, try external_event_tasks WITH task_templates JOIN
-        const { data: externalTask } = await supabase
-          .from('external_event_tasks')
-          .select(`
-            *,
-            task_templates!external_event_tasks_task_template_id_fkey (
-              video_url
-            )
-          `)
-          .eq('id', taskId)
-          .maybeSingle();
-
-        if (externalTask) {
+        // Process external_event_tasks result
+        if (externalTaskResult.status === 'fulfilled' && externalTaskResult.value.data) {
+          const externalTask = externalTaskResult.value.data;
           const videoUrl = externalTask.task_templates?.video_url || null;
           
           setTask({
@@ -254,19 +227,30 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
             video_url: videoUrl,
             is_external: true,
           });
-          setIsReady(true);
           return;
         }
 
-        // Task not found - still mark as ready to show error state
-        setIsReady(true);
+        // Task not found in either table
+        setTask(null);
       } catch (err) {
         console.error('TaskDetailsModal: Error fetching task:', err);
-        setIsReady(true);
+        if (isMounted) {
+          setTask(null);
+        }
+      } finally {
+        // Deterministic loading stop - always called
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
     fetchTask();
+
+    // Cleanup function to prevent state updates after unmount
+    return () => {
+      isMounted = false;
+    };
   }, [taskId]);
 
   const handleToggleCompletion = useCallback(async () => {
@@ -313,11 +297,11 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
           </Pressable>
         </View>
 
-        {/* Skeleton - shown before first paint */}
-        {!hasPainted && <TaskDetailsSkeleton />}
+        {/* Skeleton - shown while loading */}
+        {loading && <TaskDetailsSkeleton />}
 
-        {/* Content - only mounted after first paint AND data is ready */}
-        {hasPainted && isReady && task && (
+        {/* Content - only mounted when data is ready */}
+        {!loading && task && (
           <TaskDetailsContent 
             task={task} 
             completing={completing}
@@ -325,8 +309,8 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
           />
         )}
 
-        {/* Error state - only shown after first paint AND when task is not found */}
-        {hasPainted && isReady && !task && (
+        {/* Error state - only shown when task is not found */}
+        {!loading && !task && (
           <View style={styles.errorContainer}>
             <Text style={styles.errorText}>Opgave ikke fundet</Text>
           </View>
