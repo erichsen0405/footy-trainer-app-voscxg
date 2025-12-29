@@ -83,9 +83,15 @@ export default function PerformanceScreen() {
   const currentWeek = getWeek(new Date());
   const currentYear = new Date().getFullYear();
 
-  const weekPercentage = currentWeekStats.totalTasksForWeek > 0 
-    ? Math.round((currentWeekStats.completedTasksForWeek / currentWeekStats.totalTasksForWeek) * 100) 
+  const totalTasksForWeek = currentWeekStats?.totalTasksForWeek ?? 0;
+  const completedTasksForWeek = currentWeekStats?.completedTasksForWeek ?? 0;
+  const weekPercentage = totalTasksForWeek > 0 
+    ? Math.round((completedTasksForWeek / totalTasksForWeek) * 100) 
     : 0;
+
+  const currentPercentage = currentWeekStats?.percentage ?? 0;
+  const completedTasks = currentWeekStats?.completedTasks ?? 0;
+  const totalTasks = currentWeekStats?.totalTasks ?? 0;
 
   return (
     <ScrollView 
@@ -110,19 +116,19 @@ export default function PerformanceScreen() {
       <View style={[styles.currentWeekCard, { backgroundColor: colors.accent }]}>
         <View style={styles.currentWeekHeader}>
           <Text style={styles.currentWeekTitle}>Denne uge</Text>
-          <Text style={styles.trophyBadge}>{getTrophyEmoji(currentWeekStats.percentage >= 80 ? 'gold' : currentWeekStats.percentage >= 60 ? 'silver' : 'bronze')}</Text>
+          <Text style={styles.trophyBadge}>{getTrophyEmoji(currentPercentage >= 80 ? 'gold' : currentPercentage >= 60 ? 'silver' : 'bronze')}</Text>
         </View>
         <Text style={styles.currentWeekSubtitle}>Uge {currentWeek}, {currentYear}</Text>
         
         <View style={styles.statsRow}>
           <View style={styles.statBox}>
             <Text style={styles.statLabel}>Indtil i dag</Text>
-            <Text style={styles.statPercentage}>{currentWeekStats.percentage}%</Text>
+            <Text style={styles.statPercentage}>{currentPercentage}%</Text>
             <Text style={styles.statTasks}>
-              {currentWeekStats.completedTasks} / {currentWeekStats.totalTasks}
+              {completedTasks} / {totalTasks}
             </Text>
             <View style={styles.progressBarContainer}>
-              <View style={[styles.progressBar, { width: `${currentWeekStats.percentage}%` }]} />
+              <View style={[styles.progressBar, { width: `${currentPercentage}%` }]} />
             </View>
           </View>
           
@@ -130,7 +136,7 @@ export default function PerformanceScreen() {
             <Text style={styles.statLabel}>Hele ugen</Text>
             <Text style={styles.statPercentage}>{weekPercentage}%</Text>
             <Text style={styles.statTasks}>
-              {currentWeekStats.completedTasksForWeek} / {currentWeekStats.totalTasksForWeek}
+              {completedTasksForWeek} / {totalTasksForWeek}
             </Text>
             <View style={styles.progressBarContainer}>
               <View style={[styles.progressBar, { width: `${weekPercentage}%` }]} />
@@ -140,7 +146,7 @@ export default function PerformanceScreen() {
         
         <View style={styles.coachingBox}>
           <Text style={styles.coachingTitle}>💬 Coaching</Text>
-          <Text style={styles.coachingText}>{getCoachingMessage(currentWeekStats.percentage)}</Text>
+          <Text style={styles.coachingText}>{getCoachingMessage(currentPercentage)}</Text>
         </View>
       </View>
 
