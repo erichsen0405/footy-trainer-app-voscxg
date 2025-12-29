@@ -83,15 +83,20 @@ export default function PerformanceScreen() {
   const currentWeek = getWeek(new Date());
   const currentYear = new Date().getFullYear();
 
-  const totalTasksForWeek = currentWeekStats?.totalTasksForWeek ?? 0;
-  const completedTasksForWeek = currentWeekStats?.completedTasksForWeek ?? 0;
+  const safeWeekStats = currentWeekStats ?? {
+    totalTasksForWeek: 0,
+    completedTasksForWeek: 0,
+  };
+
+  const totalTasksForWeek = safeWeekStats.totalTasksForWeek;
+  const completedTasksForWeek = safeWeekStats.completedTasksForWeek;
   const weekPercentage = totalTasksForWeek > 0 
     ? Math.round((completedTasksForWeek / totalTasksForWeek) * 100) 
     : 0;
 
-  const currentPercentage = currentWeekStats?.percentage ?? 0;
-  const completedTasks = currentWeekStats?.completedTasks ?? 0;
-  const totalTasks = currentWeekStats?.totalTasks ?? 0;
+  const currentPercentage = currentWeekStats && currentWeekStats.percentage !== undefined ? currentWeekStats.percentage : 0;
+  const completedTasks = currentWeekStats && currentWeekStats.completedTasks !== undefined ? currentWeekStats.completedTasks : 0;
+  const totalTasks = currentWeekStats && currentWeekStats.totalTasks !== undefined ? currentWeekStats.totalTasks : 0;
 
   return (
     <ScrollView 
