@@ -1085,10 +1085,7 @@ export function useFootballData() {
   };
 
   const addTask = async (task: Omit<Task, 'id'>) => {
-    if (!userId) {
-      throw new Error('User not authenticated');
-    }
-
+    setIsLoading(true);
     try {
       let player_id = null;
       let team_id = null;
@@ -1118,8 +1115,8 @@ export function useFootballData() {
           // Error handled silently
         });
       }
-    } catch (error: any) {
-      throw error;
+    } finally {
+      setIsLoading(false);
     }
   };
 

@@ -22,16 +22,16 @@ export interface UpdateTaskData {
 
 export const taskService = {
   async createTask(data: CreateTaskData, signal?: AbortSignal): Promise<void> {
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { user } } = await supabase.auth.getUser();
     
-    if (!session?.user?.id) {
-      throw new Error('No active session');
+    if (!user) {
+      throw new Error('No authenticated user');
     }
 
     const { data: templateData, error: templateError } = await supabase
       .from('task_templates')
       .insert({
-        user_id: session.user.id,
+        user_id: user.id,
         title: data.title,
         description: data.description,
         reminder_minutes: data.reminder,
