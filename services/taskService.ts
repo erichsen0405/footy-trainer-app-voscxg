@@ -1,6 +1,5 @@
 
 import { supabase } from '@/app/integrations/supabase/client';
-import { Task } from '@/types';
 
 export interface CreateTaskData {
   title: string;
