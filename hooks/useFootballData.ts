@@ -1444,22 +1444,36 @@ export function useFootballData() {
       throw new Error('User not authenticated');
     }
 
+    console.log('🆕 ========== CREATING TASK TEMPLATE ==========');
+    console.log('   User ID:', userId);
+    console.log('   User role:', userRole);
+    console.log('   Selected context:', selectedContext);
+    console.log('   Task title:', task.title);
+    console.log('   Category IDs:', task.categoryIds);
+
     try {
+      // CRITICAL FIX: Determine player_id and team_id based on selected context
       let player_id = null;
       let team_id = null;
 
       if (userRole === 'trainer' || userRole === 'admin') {
         if (selectedContext.type === 'player' && selectedContext.id) {
           player_id = selectedContext.id;
+          console.log('   🎯 Creating task for player:', player_id);
         } else if (selectedContext.type === 'team' && selectedContext.id) {
           team_id = selectedContext.id;
+          console.log('   🎯 Creating task for team:', team_id);
         }
       }
 
+      // CRITICAL FIX: Insert with explicit user_id from authenticated session
+      // This ensures RLS policy "user_id = auth.uid()" is satisfied
+      console.log('📤 Inserting task template into database...');
+      
       const { data: templateData, error: templateError } = await supabase
         .from('task_templates')
         .insert({
-          user_id: userId,
+          user_id: userId, // CRITICAL: Explicit user_id from authenticated session
           title: task.title,
           description: task.description,
           reminder_minutes: task.reminder,
@@ -1467,14 +1481,23 @@ export function useFootballData() {
           player_id,
           team_id,
         })
-        .select()
+        .select('id') // OPTIMIZATION: Only select the ID we need
         .single();
 
       if (templateError) {
+        console.error('❌ Error creating task template:', templateError);
+        console.error('   Error code:', templateError.code);
+        console.error('   Error message:', templateError.message);
+        console.error('   Error details:', templateError.details);
         throw templateError;
       }
 
+      console.log('✅ Task template created:', templateData.id);
+
+      // OPTIMIZATION: Only insert category associations if provided
       if (task.categoryIds && task.categoryIds.length > 0) {
+        console.log('🔗 Creating category associations...');
+        
         const categoryInserts = task.categoryIds.map(categoryId => ({
           task_template_id: templateData.id,
           category_id: categoryId,
@@ -1485,16 +1508,27 @@ export function useFootballData() {
           .insert(categoryInserts);
 
         if (categoryError) {
+          console.error('❌ Error creating category associations:', categoryError);
           throw categoryError;
         }
+
+        console.log('✅ Category associations created');
       }
 
+      console.log('🔄 Triggering data refresh...');
       setRefreshTrigger(prev => prev + 1);
       
+      // OPTIMIZATION: Refresh notification queue in background (don't wait)
       if (notificationsEnabled) {
-        await refreshNotificationQueue(true);
+        refreshNotificationQueue(true).catch(err => {
+          console.error('❌ Error refreshing notification queue:', err);
+        });
       }
+
+      console.log('✅ ========== TASK TEMPLATE CREATION COMPLETE ==========');
     } catch (error: any) {
+      console.error('❌ ========== TASK TEMPLATE CREATION FAILED ==========');
+      console.error('   Error:', error);
       throw error;
     }
   };
