@@ -1290,70 +1290,72 @@ function ActivityDetailsContent({
 
           {activity.tasks && activity.tasks.length > 0 ? (
             <React.Fragment>
-              {activity.tasks.map((task, index) => (
-                <View key={`task-${task.id}-${index}`} style={[styles.taskRow, { backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5' }]}>
-                  <TouchableOpacity
-                    style={styles.taskCheckboxArea}
-                    onPress={() => handleToggleTask(task.id)}
-                    activeOpacity={0.7}
-                  >
-                    <View
-                      style={[
-                        styles.taskCheckbox,
-                        task.completed && { backgroundColor: colors.success, borderColor: colors.success },
-                      ]}
+              {activity.tasks.map(task => (
+                <React.Fragment key={task.id}>
+                  <View style={[styles.taskRow, { backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5' }]}>
+                    <TouchableOpacity
+                      style={styles.taskCheckboxArea}
+                      onPress={() => handleToggleTask(task.id)}
+                      activeOpacity={0.7}
                     >
-                      {task.completed && (
-                        <IconSymbol
-                          ios_icon_name="checkmark"
-                          android_material_icon_name="check"
-                          size={16}
-                          color="#fff"
-                        />
-                      )}
-                    </View>
-                    <View style={styles.taskContent}>
-                      <Text
+                      <View
                         style={[
-                          styles.taskTitle,
-                          { color: textColor },
-                          task.completed && styles.taskCompleted,
+                          styles.taskCheckbox,
+                          task.completed && { backgroundColor: colors.success, borderColor: colors.success },
                         ]}
                       >
-                        {task.title}
-                      </Text>
-                      {task.description && (
-                        <TaskDescriptionRenderer 
-                          description={task.description}
-                          textColor={textSecondaryColor}
-                        />
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                  
-                  {isAdmin && (
-                    <TouchableOpacity
-                      style={[
-                        styles.taskDeleteButton,
-                        { backgroundColor: isDark ? '#3a1a1a' : '#ffe5e5' }
-                      ]}
-                      onPress={() => handleDeleteTask(task.id)}
-                      activeOpacity={0.7}
-                      disabled={deletingTaskId === task.id}
-                    >
-                      {deletingTaskId === task.id ? (
-                        <ActivityIndicator size="small" color={colors.error} />
-                      ) : (
-                        <IconSymbol
-                          ios_icon_name="trash"
-                          android_material_icon_name="delete"
-                          size={22}
-                          color={colors.error}
-                        />
-                      )}
+                        {task.completed && (
+                          <IconSymbol
+                            ios_icon_name="checkmark"
+                            android_material_icon_name="check"
+                            size={16}
+                            color="#fff"
+                          />
+                        )}
+                      </View>
+                      <View style={styles.taskContent}>
+                        <Text
+                          style={[
+                            styles.taskTitle,
+                            { color: textColor },
+                            task.completed && styles.taskCompleted,
+                          ]}
+                        >
+                          {task.title}
+                        </Text>
+                        {task.description && (
+                          <TaskDescriptionRenderer 
+                            description={task.description}
+                            textColor={textSecondaryColor}
+                          />
+                        )}
+                      </View>
                     </TouchableOpacity>
-                  )}
-                </View>
+                    
+                    {isAdmin && (
+                      <TouchableOpacity
+                        style={[
+                          styles.taskDeleteButton,
+                          { backgroundColor: isDark ? '#3a1a1a' : '#ffe5e5' }
+                        ]}
+                        onPress={() => handleDeleteTask(task.id)}
+                        activeOpacity={0.7}
+                        disabled={deletingTaskId === task.id}
+                      >
+                        {deletingTaskId === task.id ? (
+                          <ActivityIndicator size="small" color={colors.error} />
+                        ) : (
+                          <IconSymbol
+                            ios_icon_name="trash"
+                            android_material_icon_name="delete"
+                            size={22}
+                            color={colors.error}
+                          />
+                        )}
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </React.Fragment>
               ))}
             </React.Fragment>
           ) : (
