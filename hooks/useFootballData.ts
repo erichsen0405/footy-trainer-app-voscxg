@@ -1444,10 +1444,23 @@ export function useFootballData() {
       throw new Error('User not authenticated');
     }
 
-    console.log('Creating task template:', task);
-    console.log('Selected context:', selectedContext);
+    console.log('🔄 Creating task template...');
+    console.log('   User ID:', userId);
+    console.log('   Selected context:', selectedContext);
+    console.log('   Task data:', task);
 
+    // P8 FIX: Wrap entire flow in try/catch/finally for deterministic state management
     try {
+      // P8 FIX: Verify session before insert to ensure RLS compliance
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        console.error('❌ No active session');
+        throw new Error('No active session. Please log in again.');
+      }
+
+      console.log('✅ Session verified, user:', session.user.id);
+
       // Determine player_id and team_id based on selected context
       let player_id = null;
       let team_id = null;
@@ -1455,37 +1468,45 @@ export function useFootballData() {
       if (userRole === 'trainer' || userRole === 'admin') {
         if (selectedContext.type === 'player' && selectedContext.id) {
           player_id = selectedContext.id;
-          console.log('Creating task template for player:', player_id);
+          console.log('   Creating task template for player:', player_id);
         } else if (selectedContext.type === 'team' && selectedContext.id) {
           team_id = selectedContext.id;
-          console.log('Creating task template for team:', team_id);
+          console.log('   Creating task template for team:', team_id);
         }
       }
+
+      // P8 FIX: Build RLS-compliant payload with explicit user_id
+      const insertPayload = {
+        user_id: userId, // CRITICAL: Must match auth.uid() for RLS
+        title: task.title,
+        description: task.description,
+        reminder_minutes: task.reminder,
+        video_url: task.videoUrl || null,
+        player_id,
+        team_id,
+      };
+
+      console.log('📤 Inserting task template with payload:', JSON.stringify(insertPayload, null, 2));
 
       // Insert the task template
       const { data: templateData, error: templateError } = await supabase
         .from('task_templates')
-        .insert({
-          user_id: userId,
-          title: task.title,
-          description: task.description,
-          reminder_minutes: task.reminder,
-          video_url: task.videoUrl || null,
-          player_id,
-          team_id,
-        })
+        .insert(insertPayload)
         .select()
         .single();
 
       if (templateError) {
-        console.error('Error creating task template:', templateError);
+        console.error('❌ Error creating task template:', templateError);
+        console.error('   Error details:', JSON.stringify(templateError, null, 2));
         throw templateError;
       }
 
-      console.log('Task template created:', templateData.id);
+      console.log('✅ Task template created:', templateData.id);
 
       // Insert category associations
       if (task.categoryIds && task.categoryIds.length > 0) {
+        console.log(`📤 Inserting ${task.categoryIds.length} category associations...`);
+        
         const categoryInserts = task.categoryIds.map(categoryId => ({
           task_template_id: templateData.id,
           category_id: categoryId,
@@ -1496,22 +1517,27 @@ export function useFootballData() {
           .insert(categoryInserts);
 
         if (categoryError) {
-          console.error('Error creating task template categories:', categoryError);
+          console.error('❌ Error creating task template categories:', categoryError);
           throw categoryError;
         }
 
-        console.log('Task template categories created - trigger will create tasks for activities');
+        console.log('✅ Task template categories created - trigger will create tasks for activities');
       }
 
       // Trigger refresh to reload tasks AND activities (to show new tasks)
+      console.log('🔄 Triggering data refresh...');
       setRefreshTrigger(prev => prev + 1);
       
       // Refresh notification queue after adding task template
       if (notificationsEnabled) {
         await refreshNotificationQueue(true);
       }
-    } catch (error) {
-      console.error('Failed to create task template:', error);
+
+      console.log('✅ Task template creation completed successfully');
+    } catch (error: any) {
+      console.error('❌ Failed to create task template:', error);
+      console.error('   Error message:', error.message);
+      console.error('   Error code:', error.code);
       throw error;
     }
   };
