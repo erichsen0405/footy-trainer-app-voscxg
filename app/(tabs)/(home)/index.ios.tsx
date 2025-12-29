@@ -769,9 +769,15 @@ export default function HomeScreen() {
     >
       <StatusBar barStyle="dark-content" />
       
-      {/* Top safe area background */}
-      <View style={[styles.safeAreaBackground, { height: insets.top }]} />
+      {/* iOS safe-area top background */}
+      <View
+        style={{
+          height: insets.top,
+          backgroundColor: HEADER_BG,
+        }}
+      />
       
+      {/* Hero + rest of screen */}
       <FlatList
         data={flattenedData}
         renderItem={renderItem}
@@ -807,14 +813,6 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeAreaBackground: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: HEADER_BG,
-    zIndex: 1,
-  },
   loading: {
     flex: 1,
     alignItems: 'center',
