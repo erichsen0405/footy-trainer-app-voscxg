@@ -328,7 +328,6 @@ export default function TasksScreen() {
 
       closeTaskModal();
     } catch (error: any) {
-      console.error('Error saving task:', error);
       Alert.alert('Fejl', 'Kunne ikke gemme opgave: ' + (error.message || 'Ukendt fejl'));
     } finally {
       setIsSaving(false);
