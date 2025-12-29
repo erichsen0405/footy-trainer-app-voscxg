@@ -1,7 +1,8 @@
+
 {
   "name": "Natively",
   "version": "1.0.0",
-  "main": "index.ts",
+  "main": "expo-router/entry",
   "scripts": {
     "dev": "EXPO_NO_TELEMETRY=1 expo start --clear --tunnel",
     "android": "EXPO_NO_TELEMETRY=1 expo start --android",

@@ -1,7 +1,7 @@
 
 import React, { useMemo } from 'react';
 import { Stack } from 'expo-router';
-import { Platform, ActivityIndicator, View } from 'react-native';
+import { Platform } from 'react-native';
 import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
 import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
 import { colors } from '@/styles/commonStyles';
@@ -10,18 +10,9 @@ import { useUserRole } from '@/hooks/useUserRole';
 export default function TabLayout() {
   const { userRole, loading } = useUserRole();
 
-  // Wait for auth to be fully resolved before rendering tabs
-  if (loading) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
-
   const isLoggedIn = !!userRole;
 
-  // Platform-specific rendering
+  // Platform-specific rendering - always render router component
   if (Platform.OS === 'ios') {
     return (
       <IOSTabLayout
