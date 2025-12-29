@@ -707,121 +707,122 @@ export default function ExternalCalendarManager() {
       ) : (
         <ScrollView style={styles.calendarsList} showsVerticalScrollIndicator={false}>
           {calendars.map((calendar) => (
-            <View
-              key={calendar.id}
-              style={[styles.calendarCard, { backgroundColor: isDark ? '#2a2a2a' : colors.card }]}
-            >
-              <View style={styles.calendarHeader}>
-                <View style={styles.calendarInfo}>
-                  <View style={styles.calendarTitleRow}>
-                    <IconSymbol
-                      ios_icon_name={calendar.enabled ? 'calendar.circle.fill' : 'calendar.circle'}
-                      android_material_icon_name={calendar.enabled ? 'event_available' : 'event_busy'}
-                      size={28}
-                      color={calendar.enabled ? colors.primary : textSecondaryColor}
-                    />
-                    <Text style={[styles.calendarName, { color: textColor }]}>
-                      {calendar.name}
-                    </Text>
-                  </View>
-                  <Text style={[styles.calendarUrl, { color: textSecondaryColor }]} numberOfLines={1}>
-                    {calendar.ics_url}
-                  </Text>
-                  <View style={styles.calendarStats}>
-                    <Text style={[styles.calendarStat, { color: textSecondaryColor }]}>
-                      {calendar.event_count} aktiviteter
-                    </Text>
-                    {calendar.last_fetched && (
-                      <Text style={[styles.calendarStat, { color: textSecondaryColor }]}>
-                        {' • Sidst synkroniseret: '}
-                        {new Date(calendar.last_fetched).toLocaleDateString('da-DK')}
+            <React.Fragment key={calendar.id}>
+              <View
+                style={[styles.calendarCard, { backgroundColor: isDark ? '#2a2a2a' : colors.card }]}
+              >
+                <View style={styles.calendarHeader}>
+                  <View style={styles.calendarInfo}>
+                    <View style={styles.calendarTitleRow}>
+                      <IconSymbol
+                        ios_icon_name={calendar.enabled ? 'calendar.circle.fill' : 'calendar.circle'}
+                        android_material_icon_name={calendar.enabled ? 'event_available' : 'event_busy'}
+                        size={28}
+                        color={calendar.enabled ? colors.primary : textSecondaryColor}
+                      />
+                      <Text style={[styles.calendarName, { color: textColor }]}>
+                        {calendar.name}
                       </Text>
-                    )}
-                  </View>
-                  
-                  <View style={styles.autoSyncToggle}>
-                    <Text style={[styles.autoSyncLabel, { color: textColor }]}>
-                      Auto-synkronisering
+                    </View>
+                    <Text style={[styles.calendarUrl, { color: textSecondaryColor }]} numberOfLines={1}>
+                      {calendar.ics_url}
                     </Text>
-                    <Switch
-                      value={calendar.auto_sync_enabled}
-                      onValueChange={() => handleToggleAutoSync(calendar.id, calendar.auto_sync_enabled)}
-                      trackColor={{ false: '#767577', true: colors.primary }}
-                      thumbColor="#fff"
-                    />
+                    <View style={styles.calendarStats}>
+                      <Text style={[styles.calendarStat, { color: textSecondaryColor }]}>
+                        {calendar.event_count} aktiviteter
+                      </Text>
+                      {calendar.last_fetched && (
+                        <Text style={[styles.calendarStat, { color: textSecondaryColor }]}>
+                          {' • Sidst synkroniseret: '}
+                          {new Date(calendar.last_fetched).toLocaleDateString('da-DK')}
+                        </Text>
+                      )}
+                    </View>
+                    
+                    <View style={styles.autoSyncToggle}>
+                      <Text style={[styles.autoSyncLabel, { color: textColor }]}>
+                        Auto-synkronisering
+                      </Text>
+                      <Switch
+                        value={calendar.auto_sync_enabled}
+                        onValueChange={() => handleToggleAutoSync(calendar.id, calendar.auto_sync_enabled)}
+                        trackColor={{ false: '#767577', true: colors.primary }}
+                        thumbColor="#fff"
+                      />
+                    </View>
                   </View>
                 </View>
-              </View>
 
-              <View style={styles.calendarActions}>
-                <TouchableOpacity
-                  style={[
-                    styles.actionButton,
-                    { backgroundColor: isDark ? '#1a2a3a' : '#e3f2fd' },
-                  ]}
-                  onPress={() => handleSyncCalendar(calendar.id, calendar.name)}
-                  disabled={syncing === calendar.id}
-                  activeOpacity={0.7}
-                >
-                  {syncing === calendar.id ? (
-                    <ActivityIndicator size="small" color={colors.secondary} />
-                  ) : (
-                    <React.Fragment>
-                      <IconSymbol
-                        ios_icon_name="arrow.triangle.2.circlepath"
-                        android_material_icon_name="sync"
-                        size={20}
-                        color={colors.secondary}
-                      />
-                      <Text style={[styles.actionButtonText, { color: colors.secondary }]}>
-                        Synkroniser
-                      </Text>
-                    </React.Fragment>
-                  )}
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.actionButton,
-                    { backgroundColor: isDark ? '#2a1a1a' : '#ffebee' },
-                  ]}
-                  onPress={() => handleToggleCalendar(calendar.id, calendar.enabled)}
-                  activeOpacity={0.7}
-                >
-                  <IconSymbol
-                    ios_icon_name={calendar.enabled ? 'eye.slash.fill' : 'eye.fill'}
-                    android_material_icon_name={calendar.enabled ? 'visibility_off' : 'visibility'}
-                    size={20}
-                    color={calendar.enabled ? colors.error : colors.success}
-                  />
-                  <Text
+                <View style={styles.calendarActions}>
+                  <TouchableOpacity
                     style={[
-                      styles.actionButtonText,
-                      { color: calendar.enabled ? colors.error : colors.success },
+                      styles.actionButton,
+                      { backgroundColor: isDark ? '#1a2a3a' : '#e3f2fd' },
                     ]}
+                    onPress={() => handleSyncCalendar(calendar.id, calendar.name)}
+                    disabled={syncing === calendar.id}
+                    activeOpacity={0.7}
                   >
-                    {calendar.enabled ? 'Deaktiver' : 'Aktiver'}
-                  </Text>
-                </TouchableOpacity>
+                    {syncing === calendar.id ? (
+                      <ActivityIndicator size="small" color={colors.secondary} />
+                    ) : (
+                      <React.Fragment>
+                        <IconSymbol
+                          ios_icon_name="arrow.triangle.2.circlepath"
+                          android_material_icon_name="sync"
+                          size={20}
+                          color={colors.secondary}
+                        />
+                        <Text style={[styles.actionButtonText, { color: colors.secondary }]}>
+                          Synkroniser
+                        </Text>
+                      </React.Fragment>
+                    )}
+                  </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[
-                    styles.actionButton,
-                    { backgroundColor: isDark ? '#3a1a1a' : '#ffebee' },
-                  ]}
-                  onPress={() => handleDeleteCalendar(calendar.id, calendar.name)}
-                  activeOpacity={0.7}
-                >
-                  <IconSymbol
-                    ios_icon_name="trash.fill"
-                    android_material_icon_name="delete"
-                    size={20}
-                    color={colors.error}
-                  />
-                  <Text style={[styles.actionButtonText, { color: colors.error }]}>Slet</Text>
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.actionButton,
+                      { backgroundColor: isDark ? '#2a1a1a' : '#ffebee' },
+                    ]}
+                    onPress={() => handleToggleCalendar(calendar.id, calendar.enabled)}
+                    activeOpacity={0.7}
+                  >
+                    <IconSymbol
+                      ios_icon_name={calendar.enabled ? 'eye.slash.fill' : 'eye.fill'}
+                      android_material_icon_name={calendar.enabled ? 'visibility_off' : 'visibility'}
+                      size={20}
+                      color={calendar.enabled ? colors.error : colors.success}
+                    />
+                    <Text
+                      style={[
+                        styles.actionButtonText,
+                        { color: calendar.enabled ? colors.error : colors.success },
+                      ]}
+                    >
+                      {calendar.enabled ? 'Deaktiver' : 'Aktiver'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.actionButton,
+                      { backgroundColor: isDark ? '#3a1a1a' : '#ffebee' },
+                    ]}
+                    onPress={() => handleDeleteCalendar(calendar.id, calendar.name)}
+                    activeOpacity={0.7}
+                  >
+                    <IconSymbol
+                      ios_icon_name="trash.fill"
+                      android_material_icon_name="delete"
+                      size={20}
+                      color={colors.error}
+                    />
+                    <Text style={[styles.actionButtonText, { color: colors.error }]}>Slet</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
+            </React.Fragment>
           ))}
         </ScrollView>
       )}
