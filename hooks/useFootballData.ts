@@ -1,3 +1,5 @@
+
+/* eslint-disable no-useless-catch */
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Activity, ActivityCategory, Task, Trophy, ExternalCalendar, ActivitySeries } from '@/types';
 import { fetchAndParseICalendar, formatTimeFromDate } from '@/utils/icalParser';
