@@ -23,10 +23,6 @@ export interface UpdateTaskData {
 export const taskService = {
   async createTask(data: CreateTaskData, signal?: AbortSignal): Promise<void> {
     const { data: { user } } = await supabase.auth.getUser();
-    
-    if (!user) {
-      throw new Error('No authenticated user');
-    }
 
     const { data: templateData, error: templateError } = await supabase
       .from('task_templates')
