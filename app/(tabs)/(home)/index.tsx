@@ -145,7 +145,7 @@ export default function HomeScreen() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showPreviousWeeks, setShowPreviousWeeks] = useState(0);
   const [isPreviousExpanded, setIsPreviousExpanded] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [currentTrainerId, setCurrentTrainerId] = useState<string | null>(null);
   const colorScheme = useColorScheme();
   const themeColors = getColors(colorScheme);
@@ -399,15 +399,22 @@ export default function HomeScreen() {
     setIsPreviousExpanded(prev => !prev);
   }, []);
 
-  // Pull-to-refresh handler - binds exclusively to refetchActivities()
+  // P4 FIX: Pull-to-refresh handler with deterministic stop
   const onRefresh = useCallback(async () => {
+    // Guard against double-trigger
+    if (isRefreshing) {
+      console.log('[Home] Pull-to-refresh already in progress, ignoring');
+      return;
+    }
+
     console.log('[Home] Pull-to-refresh triggered');
-    setRefreshing(true);
+    setIsRefreshing(true);
+    
     try {
       // STEP H: Guard against null/undefined refreshActivities
       if (typeof refreshActivities === 'function') {
         await refreshActivities();
-        console.log('[Home] Pull-to-refresh completed');
+        console.log('[Home] Pull-to-refresh completed successfully');
       } else {
         console.error('[Home] refreshActivities is not a function');
       }
@@ -415,9 +422,11 @@ export default function HomeScreen() {
       console.error('[Home] Pull-to-refresh error:', error);
       // STEP H: Safe fallback - no throw
     } finally {
-      setRefreshing(false);
+      // Deterministic stop - always called
+      setIsRefreshing(false);
+      console.log('[Home] Pull-to-refresh spinner stopped');
     }
-  }, [refreshActivities]);
+  }, [isRefreshing, refreshActivities]);
 
   // Flatten all data into a single list for FlatList
   // Each item has a type to determine how to render it
@@ -779,7 +788,7 @@ export default function HomeScreen() {
           windowSize={5}
           refreshControl={
             <RefreshControl
-              refreshing={refreshing}
+              refreshing={isRefreshing}
               onRefresh={onRefresh}
               tintColor={colors.text}
             />
