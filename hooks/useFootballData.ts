@@ -145,8 +145,8 @@ export function useFootballData() {
     };
   }, []);
 
-  // Load categories from Supabase with filtering based on selected context
-  // CRITICAL FIX: Ensure categories are always available for all users
+  // Load categories from Supabase - ROLE-AGNOSTIC (P6 FIX)
+  // RLS policies handle access control - no client-side filtering needed
   useEffect(() => {
     if (!userId) {
       console.log('⚠️ No userId, skipping category load');
@@ -159,36 +159,32 @@ export function useFootballData() {
       console.log('   User role:', userRole);
       console.log('   Selected context:', selectedContext);
 
+      // P6 FIX: Role-agnostic query - RLS handles filtering
+      // No explicit role/player filters - trust RLS policies
       let query = supabase
         .from('activity_categories')
         .select('*')
         .order('name', { ascending: true });
 
-      // CRITICAL FIX: Simplified filtering logic that works for all roles
-      // Filter based on user role and selected context
+      // Context-based filtering for trainers/admins managing specific players/teams
       if (userRole === 'trainer' || userRole === 'admin') {
         if (selectedContext.type === 'player' && selectedContext.id) {
-          // Show categories for the selected player
           console.log('   🎯 Loading categories for selected player:', selectedContext.id);
           query = query.eq('user_id', selectedContext.id);
         } else if (selectedContext.type === 'team' && selectedContext.id) {
-          // Show ONLY categories for the selected team
           console.log('   🎯 Loading categories ONLY for selected team:', selectedContext.id);
           query = query.eq('team_id', selectedContext.id);
         } else {
-          // No selection - show only trainer's own categories
           console.log('   🎯 Loading categories for trainer (no context selected)');
           query = query.eq('user_id', userId);
         }
       } else {
-        // CRITICAL FIX: For players, use a simpler query that the RLS policy can handle
-        // The RLS policy allows: user_id = auth.uid() OR player_id = auth.uid() OR team_id IN (user's teams)
-        // We don't need to specify the OR condition - RLS will handle it automatically
-        console.log('   🎯 Loading categories for player (RLS will filter)');
-        // No additional filter needed - RLS policy will automatically show:
-        // 1. Categories where user_id = userId (player's own categories)
-        // 2. Categories where player_id = userId (categories assigned to player)
-        // 3. Categories where team_id IN (player's teams)
+        // P6 FIX: For players, NO client-side filter
+        // RLS policy automatically shows:
+        // - Categories where user_id = auth.uid()
+        // - Categories where player_id = auth.uid()
+        // - Categories where team_id IN (user's teams)
+        console.log('   🎯 Loading categories for player (RLS handles filtering)');
       }
 
       console.log('📤 Executing category query...');

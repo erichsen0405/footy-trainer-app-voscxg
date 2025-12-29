@@ -118,7 +118,7 @@ export default function CreateActivityModal({
   const isDark = colorScheme === 'dark';
   const safeOnClose = typeof onClose === 'function' ? onClose : () => {};
   
-  // CRITICAL FIX P6: Ensure categories is always an array, never undefined
+  // P6 FIX: Ensure categories is always an array, never undefined
   const safeCategories: ActivityCategory[] = useMemo(() => {
     const cats = Array.isArray(categories) ? categories : [];
     console.log('📁 CreateActivityModal - Categories available:', cats.length);
@@ -142,7 +142,7 @@ export default function CreateActivityModal({
   const textColor = useMemo(() => isDark ? '#e3e3e3' : colors.text, [isDark]);
   const textSecondaryColor = useMemo(() => isDark ? '#999' : colors.textSecondary, [isDark]);
 
-  // CRITICAL FIX P6: Auto-select first category when categories become available
+  // P6 FIX: Auto-select first category when categories become available
   useEffect(() => {
     if (safeCategories.length > 0 && !selectedCategory) {
       console.log('📁 Auto-selecting first category:', safeCategories[0].name);
@@ -170,22 +170,13 @@ export default function CreateActivityModal({
       return;
     }
 
-    // CRITICAL FIX P6: Check if categories are available
+    // P6 FIX: Check if categories are available
     if (safeCategories.length === 0) {
       Alert.alert(
         'Ingen kategorier', 
-        'Du skal oprette mindst én kategori før du kan oprette en aktivitet. Vil du oprette en kategori nu?',
+        'Opret en kategori først',
         [
-          { text: 'Annuller', style: 'cancel' },
-          { 
-            text: 'Opret kategori', 
-            onPress: () => {
-              // Close this modal and open category management
-              handleClose();
-              // Note: Category management should be opened by parent component
-              // This is just a placeholder - the actual implementation depends on your app structure
-            }
-          }
+          { text: 'OK', style: 'default' }
         ]
       );
       return;
@@ -342,7 +333,7 @@ export default function CreateActivityModal({
                 placeholderTextColor={textSecondaryColor}
               />
 
-              {/* CRITICAL FIX P6: Category Selection with empty state handling */}
+              {/* P6 FIX: Category Selection with empty state handling */}
               {safeCategories.length > 0 ? (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScrollContainer}>
                   {safeCategories.map((cat) => (
@@ -378,11 +369,8 @@ export default function CreateActivityModal({
                     size={32}
                     color={textSecondaryColor}
                   />
-                  <Text style={[styles.emptyCategoryText, { color: textSecondaryColor }]}>
-                    Ingen kategorier tilgængelige
-                  </Text>
-                  <Text style={[styles.emptyCategorySubtext, { color: textSecondaryColor }]}>
-                    Opret en kategori for at kunne oprette aktiviteter
+                  <Text style={[styles.emptyCategoryText, { color: textColor }]}>
+                    Opret en kategori først
                   </Text>
                 </View>
               )}
@@ -632,7 +620,7 @@ export default function CreateActivityModal({
                 style={[
                   styles.modalButton, 
                   styles.saveButton,
-                  // CRITICAL FIX P6: Disable button if no categories available
+                  // P6 FIX: Disable button if no categories available
                   safeCategories.length === 0 && styles.disabledButton
                 ]}
                 onPress={handleCreate}
