@@ -146,45 +146,58 @@ export function useFootballData() {
   }, []);
 
   // Load categories from Supabase with filtering based on selected context
+  // CRITICAL FIX: Ensure categories are always available for all users
   useEffect(() => {
     if (!userId) {
+      console.log('⚠️ No userId, skipping category load');
       setIsLoading(false);
       return;
     }
 
     const loadCategories = async () => {
       console.log('🔄 Loading categories for user:', userId);
-      console.log('Selected context:', selectedContext);
+      console.log('   User role:', userRole);
+      console.log('   Selected context:', selectedContext);
 
       let query = supabase
         .from('activity_categories')
         .select('*')
         .order('name', { ascending: true });
 
+      // CRITICAL FIX: Simplified filtering logic that works for all roles
       // Filter based on user role and selected context
       if (userRole === 'trainer' || userRole === 'admin') {
         if (selectedContext.type === 'player' && selectedContext.id) {
-          // CRITICAL FIX: Show categories for the selected player
-          // Player's own categories have user_id = player_id
-          console.log('Loading categories for selected player:', selectedContext.id);
+          // Show categories for the selected player
+          console.log('   🎯 Loading categories for selected player:', selectedContext.id);
           query = query.eq('user_id', selectedContext.id);
         } else if (selectedContext.type === 'team' && selectedContext.id) {
-          // CRITICAL FIX: Show ONLY categories for the selected team
-          console.log('Loading categories ONLY for selected team:', selectedContext.id);
+          // Show ONLY categories for the selected team
+          console.log('   🎯 Loading categories ONLY for selected team:', selectedContext.id);
           query = query.eq('team_id', selectedContext.id);
         } else {
           // No selection - show only trainer's own categories
+          console.log('   🎯 Loading categories for trainer (no context selected)');
           query = query.eq('user_id', userId);
         }
       } else {
-        // Player - show own categories and those assigned to them
-        query = query.or(`user_id.eq.${userId},player_id.eq.${userId}`);
+        // CRITICAL FIX: For players, use a simpler query that the RLS policy can handle
+        // The RLS policy allows: user_id = auth.uid() OR player_id = auth.uid() OR team_id IN (user's teams)
+        // We don't need to specify the OR condition - RLS will handle it automatically
+        console.log('   🎯 Loading categories for player (RLS will filter)');
+        // No additional filter needed - RLS policy will automatically show:
+        // 1. Categories where user_id = userId (player's own categories)
+        // 2. Categories where player_id = userId (categories assigned to player)
+        // 3. Categories where team_id IN (player's teams)
       }
 
+      console.log('📤 Executing category query...');
       const { data, error } = await query;
 
       if (error) {
         console.error('❌ Error loading categories:', error);
+        console.error('   Error details:', JSON.stringify(error, null, 2));
+        setCategories([]);
         setIsLoading(false);
         return;
       }
@@ -196,10 +209,14 @@ export function useFootballData() {
           color: cat.color,
           emoji: cat.emoji,
         }));
-        console.log('✅ Loaded categories:', loadedCategories.length, loadedCategories.map(c => c.name));
+        console.log('✅ Loaded categories:', loadedCategories.length);
+        loadedCategories.forEach(cat => {
+          console.log(`   📁 ${cat.emoji} ${cat.name} (${cat.id})`);
+        });
         setCategories(loadedCategories);
       } else {
         console.log('⚠️ No categories found in database');
+        console.log('   This is expected for new users who haven\'t created categories yet');
         setCategories([]);
       }
     };

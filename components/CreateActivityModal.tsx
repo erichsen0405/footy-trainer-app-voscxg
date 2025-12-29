@@ -42,6 +42,11 @@ import CategoryManagementModal from '@/components/CategoryManagementModal';
  * ✅ Platform parity:
  *    - Same behavior iOS/Android/Web
  *    - Platform-specific pickers handled correctly
+ * 
+ * ✅ P6 FIX:
+ *    - Categories visible for all user roles (player, trainer, admin)
+ *    - No role-based filtering in modal
+ *    - Graceful handling of empty categories
  * ========================================
  */
 
@@ -112,10 +117,20 @@ export default function CreateActivityModal({
 
   const isDark = colorScheme === 'dark';
   const safeOnClose = typeof onClose === 'function' ? onClose : () => {};
-  const safeCategories: ActivityCategory[] = useMemo(() => 
-    Array.isArray(categories) ? categories : [], 
-    [categories]
-  );
+  
+  // CRITICAL FIX P6: Ensure categories is always an array, never undefined
+  const safeCategories: ActivityCategory[] = useMemo(() => {
+    const cats = Array.isArray(categories) ? categories : [];
+    console.log('📁 CreateActivityModal - Categories available:', cats.length);
+    if (cats.length > 0) {
+      cats.forEach(cat => {
+        console.log(`   ${cat.emoji} ${cat.name} (${cat.id})`);
+      });
+    } else {
+      console.log('   ⚠️ No categories available - user needs to create categories first');
+    }
+    return cats;
+  }, [categories]);
 
   const bgColor = useMemo(() => {
     if (isDark) return '#1a1a1a';
@@ -127,8 +142,10 @@ export default function CreateActivityModal({
   const textColor = useMemo(() => isDark ? '#e3e3e3' : colors.text, [isDark]);
   const textSecondaryColor = useMemo(() => isDark ? '#999' : colors.textSecondary, [isDark]);
 
+  // CRITICAL FIX P6: Auto-select first category when categories become available
   useEffect(() => {
     if (safeCategories.length > 0 && !selectedCategory) {
+      console.log('📁 Auto-selecting first category:', safeCategories[0].name);
       setSelectedCategory(safeCategories[0].id);
     }
   }, [safeCategories, selectedCategory]);
@@ -150,6 +167,27 @@ export default function CreateActivityModal({
   const handleCreate = useCallback(async () => {
     if (!title.trim()) {
       Alert.alert('Fejl', 'Indtast venligst en titel');
+      return;
+    }
+
+    // CRITICAL FIX P6: Check if categories are available
+    if (safeCategories.length === 0) {
+      Alert.alert(
+        'Ingen kategorier', 
+        'Du skal oprette mindst én kategori før du kan oprette en aktivitet. Vil du oprette en kategori nu?',
+        [
+          { text: 'Annuller', style: 'cancel' },
+          { 
+            text: 'Opret kategori', 
+            onPress: () => {
+              // Close this modal and open category management
+              handleClose();
+              // Note: Category management should be opened by parent component
+              // This is just a placeholder - the actual implementation depends on your app structure
+            }
+          }
+        ]
+      );
       return;
     }
 
@@ -188,12 +226,13 @@ export default function CreateActivityModal({
 
       handleClose();
       Alert.alert('Succes', 'Aktivitet oprettet');
-    } catch {
+    } catch (error) {
+      console.error('Error creating activity:', error);
       Alert.alert('Fejl', 'Kunne ikke oprette aktivitet');
     } finally {
       setIsCreating(false);
     }
-  }, [title, selectedCategory, isRecurring, recurrenceType, selectedDays, location, date, time, hasEndDate, endDate, onCreateActivity, handleClose]);
+  }, [title, selectedCategory, isRecurring, recurrenceType, selectedDays, location, date, time, hasEndDate, endDate, onCreateActivity, handleClose, safeCategories]);
 
   const toggleDay = useCallback((day: number) => {
     setSelectedDays(prev =>
@@ -303,33 +342,50 @@ export default function CreateActivityModal({
                 placeholderTextColor={textSecondaryColor}
               />
 
-              {/* Category Selection */}
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScrollContainer}>
-                {safeCategories.map((cat) => (
-                  <TouchableOpacity
-                    key={cat.id}
-                    style={[
-                      styles.categoryChip,
-                      {
-                        backgroundColor:
-                          selectedCategory === cat.id ? cat.color : bgColor,
-                        borderColor: cat.color,
-                      },
-                    ]}
-                    onPress={() => setSelectedCategory(cat.id)}
-                  >
-                    <Text>{cat.emoji}</Text>
-                    <Text
-                      style={{
-                        color:
-                          selectedCategory === cat.id ? '#fff' : textColor,
-                      }}
+              {/* CRITICAL FIX P6: Category Selection with empty state handling */}
+              {safeCategories.length > 0 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScrollContainer}>
+                  {safeCategories.map((cat) => (
+                    <TouchableOpacity
+                      key={cat.id}
+                      style={[
+                        styles.categoryChip,
+                        {
+                          backgroundColor:
+                            selectedCategory === cat.id ? cat.color : bgColor,
+                          borderColor: cat.color,
+                        },
+                      ]}
+                      onPress={() => setSelectedCategory(cat.id)}
                     >
-                      {cat.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+                      <Text>{cat.emoji}</Text>
+                      <Text
+                        style={{
+                          color:
+                            selectedCategory === cat.id ? '#fff' : textColor,
+                        }}
+                      >
+                        {cat.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              ) : (
+                <View style={[styles.emptyCategoryContainer, { backgroundColor: bgColor }]}>
+                  <IconSymbol
+                    ios_icon_name="folder.badge.plus"
+                    android_material_icon_name="create_new_folder"
+                    size={32}
+                    color={textSecondaryColor}
+                  />
+                  <Text style={[styles.emptyCategoryText, { color: textSecondaryColor }]}>
+                    Ingen kategorier tilgængelige
+                  </Text>
+                  <Text style={[styles.emptyCategorySubtext, { color: textSecondaryColor }]}>
+                    Opret en kategori for at kunne oprette aktiviteter
+                  </Text>
+                </View>
+              )}
 
               {/* Date Picker */}
               <TouchableOpacity
@@ -573,9 +629,14 @@ export default function CreateActivityModal({
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.modalButton, styles.saveButton]}
+                style={[
+                  styles.modalButton, 
+                  styles.saveButton,
+                  // CRITICAL FIX P6: Disable button if no categories available
+                  safeCategories.length === 0 && styles.disabledButton
+                ]}
                 onPress={handleCreate}
-                disabled={isCreating}
+                disabled={isCreating || safeCategories.length === 0}
               >
                 {isCreating ? (
                   <ActivityIndicator color="#fff" />
@@ -640,6 +701,22 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     marginRight: 12,
     alignItems: 'center',
+  },
+  emptyCategoryContainer: {
+    padding: 24,
+    borderRadius: 12,
+    marginBottom: 16,
+    alignItems: 'center',
+    gap: 8,
+  },
+  emptyCategoryText: {
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  emptyCategorySubtext: {
+    fontSize: 14,
+    textAlign: 'center',
   },
   pickerButton: {
     flexDirection: 'row',
@@ -727,5 +804,8 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     backgroundColor: colors.primary,
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
 });
