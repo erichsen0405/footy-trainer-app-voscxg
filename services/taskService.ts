@@ -108,13 +108,11 @@ export const taskService = {
       if (updateData.reminder_minutes !== undefined) activityUpdateData.reminder_minutes = updateData.reminder_minutes;
       
       if (Object.keys(activityUpdateData).length > 0) {
-        const { error: activityTaskError } = await supabase
+        await supabase
           .from('activity_tasks')
           .update(activityUpdateData)
           .eq('task_template_id', taskId)
           .abortSignal(signal);
-
-        if (activityTaskError) console.error('Error updating activity tasks:', activityTaskError);
       }
     }
   },
