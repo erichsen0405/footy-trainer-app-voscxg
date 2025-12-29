@@ -48,9 +48,11 @@ function IOSTabLayout({
   const isPlayer = userRole === 'player';
   const isTrainer = userRole === 'admin' || userRole === 'trainer';
 
-  // CRITICAL FIX: During loading, show all tabs as skeleton/placeholder
-  // This ensures deterministic rendering on first paint
-  const showAllDuringLoad = loading;
+  // P12-A FIX: Tabs must NOT be hidden while loading
+  // Only hide tabs when loading is complete AND user is not logged in
+  const hideForAuth = !loading && !isLoggedIn;
+  const hideForPlayer = !loading && (!isLoggedIn || !isPlayer);
+  const hideForTrainer = !loading && (!isLoggedIn || !isTrainer);
 
   return (
     <NativeTabs
@@ -73,19 +75,19 @@ function IOSTabLayout({
         tabBarInactiveTintColor: '#8E8E93',
       }}
     >
-      <NativeTabs.Trigger name="(home)" hidden={!showAllDuringLoad && !isLoggedIn}>
+      <NativeTabs.Trigger name="(home)" hidden={hideForAuth}>
         <Icon sf={{ default: 'house', selected: 'house.fill' }} color={colors.primary} />
         <Label style={{ fontSize: 10, fontWeight: '500', color: colors.primary }}>Hjem</Label>
       </NativeTabs.Trigger>
 
-      <NativeTabs.Trigger name="tasks" hidden={!showAllDuringLoad && !isLoggedIn}>
+      <NativeTabs.Trigger name="tasks" hidden={hideForAuth}>
         <Icon sf={{ default: 'checklist', selected: 'checklist' }} color={colors.primary} />
         <Label style={{ fontSize: 10, fontWeight: '500', color: colors.primary }}>Opgaver</Label>
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger
         name="performance"
-        hidden={!showAllDuringLoad && (!isLoggedIn || !isPlayer)}
+        hidden={hideForPlayer}
       >
         <Icon sf={{ default: 'trophy', selected: 'trophy.fill' }} color={colors.primary} />
         <Label style={{ fontSize: 10, fontWeight: '500', color: colors.primary }}>Performance</Label>
@@ -93,7 +95,7 @@ function IOSTabLayout({
 
       <NativeTabs.Trigger
         name="library"
-        hidden={!showAllDuringLoad && !isLoggedIn}
+        hidden={hideForAuth}
       >
         <Icon sf={{ default: 'book', selected: 'book.fill' }} color={colors.primary} />
         <Label style={{ fontSize: 10, fontWeight: '500', color: colors.primary }}>Bibliotek</Label>
@@ -101,7 +103,7 @@ function IOSTabLayout({
 
       <NativeTabs.Trigger
         name="trainer"
-        hidden={!showAllDuringLoad && (!isLoggedIn || !isTrainer)}
+        hidden={hideForTrainer}
       >
         <Icon sf={{ default: 'person.3', selected: 'person.3.fill' }} color={colors.primary} />
         <Label style={{ fontSize: 10, fontWeight: '500', color: colors.primary }}>Træner</Label>
