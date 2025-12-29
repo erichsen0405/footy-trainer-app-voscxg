@@ -78,6 +78,8 @@ import { da } from 'date-fns/locale';
 import { supabase } from '@/app/integrations/supabase/client';
 import { canTrainerManageActivity } from '@/utils/permissions';
 
+const HEADER_BG = '#2C3E50';
+
 function resolveActivityDateTime(activity: any): Date | null {
   // STEP H: Guard against null/undefined activity
   if (!activity) return null;
@@ -767,6 +769,9 @@ export default function HomeScreen() {
     >
       <StatusBar barStyle="dark-content" />
       
+      {/* Top safe area background */}
+      <View style={[styles.safeAreaBackground, { height: insets.top }]} />
+      
       <FlatList
         data={flattenedData}
         renderItem={renderItem}
@@ -802,6 +807,14 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  safeAreaBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: HEADER_BG,
+    zIndex: 1,
+  },
   loading: {
     flex: 1,
     alignItems: 'center',
@@ -816,7 +829,7 @@ const styles = StyleSheet.create({
 
   // Header
   header: {
-    backgroundColor: '#2C3E50',
+    backgroundColor: HEADER_BG,
     paddingHorizontal: 20,
     paddingBottom: 32,
     flexDirection: 'row',
