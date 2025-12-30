@@ -49,7 +49,6 @@ export async function getActivities(
     .select('*')
     .eq('user_id', userId)
     .order('activity_date', { ascending: false })
-    .order('activity_time', { ascending: false })
     .abortSignal(signal);
 
   if (error) {
