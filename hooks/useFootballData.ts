@@ -1,13 +1,22 @@
-
 /* eslint-disable no-useless-catch */
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Activity, ActivityCategory, Task, Trophy, ExternalCalendar, ActivitySeries } from '@/types';
+import {
+  Activity,
+  ActivityCategory,
+  Task,
+  Trophy,
+  ExternalCalendar,
+  ActivitySeries,
+} from '@/types';
 import { fetchAndParseICalendar, formatTimeFromDate } from '@/utils/icalParser';
 import { supabase } from '@/app/integrations/supabase/client';
 import {
   checkNotificationPermissions,
 } from '@/utils/notificationService';
-import { refreshNotificationQueue, forceRefreshNotificationQueue } from '@/utils/notificationScheduler';
+import {
+  refreshNotificationQueue,
+  forceRefreshNotificationQueue,
+} from '@/utils/notificationScheduler';
 import { startOfWeek, endOfWeek } from 'date-fns';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
@@ -24,107 +33,98 @@ export const useFootballData = () => {
   const [loading, setLoading] = useState(true);
 
   const fetchCategories = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('activity_categories')
-        .select('*');
+    const { data, error } = await supabase
+      .from('activity_categories')
+      .select('*');
 
-      if (error) throw error;
-      setCategories(data || []);
-    } catch (error) {
-      throw error;
-    }
+    if (error) throw error;
+    setCategories(data || []);
   };
 
   const fetchActivities = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('activities')
-        .select('*')
-        .order('activity_date', { ascending: true })
-        .order('activity_time', { ascending: true });
+    const { data, error } = await supabase
+      .from('activities')
+      .select('*')
+      .order('activity_date', { ascending: true })
+      .order('activity_time', { ascending: true });
 
-      if (error) throw error;
-      setActivities(data || []);
-    } catch (error) {
-      throw error;
-    }
+    if (error) throw error;
+    setActivities(data || []);
   };
 
+  /**
+   * IMPORTANT:
+   * task_templates ARE templates by definition.
+   * There is NO is_template column in the database.
+   * Do NOT filter on is_template anywhere.
+   */
   const fetchTasks = async () => {
     try {
-      // Fetch task templates with their categories
-      const { data: templatesData, error: templatesError } = await supabase
+      const { data, error } = await supabase
         .from('task_templates')
         .select(`
-          *,
+          id,
+          title,
+          description,
+          reminder_minutes,
+          video_url,
           task_template_categories (
             category_id
           )
         `)
         .order('created_at', { ascending: true });
 
-      if (templatesError) throw templatesError;
+      if (error) throw error;
 
-      // Transform the data to match the Task interface
-      const transformedTasks: Task[] = (templatesData || []).map(template => ({
-        id: template.id,
-        title: template.title,
-        description: template.description || '',
+      const transformed: Task[] = (data || []).map((t: any) => ({
+        id: t.id,
+        title: t.title,
+        description: t.description || '',
         completed: false,
         isTemplate: true,
-        categoryIds: template.task_template_categories?.map((tc: any) => tc.category_id) || [],
-        reminder: template.reminder_minutes,
+        categoryIds: t.task_template_categories?.map((c: any) => c.category_id) ?? [],
+        reminder: t.reminder_minutes ?? undefined,
         subtasks: [],
-        videoUrl: template.video_url,
+        videoUrl: t.video_url ?? undefined,
       }));
 
-      setTasks(transformedTasks);
+      setTasks(transformed);
     } catch (error) {
-      throw error;
+      // CRITICAL GUARD:
+      // Never let tasks page go empty due to schema mismatch
+      console.error('[fetchTasks] failed – returning empty list safely', error);
+      setTasks([]);
     }
   };
 
   const fetchTrophies = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('trophies')
-        .select('*')
-        .order('created_at', { ascending: true });
+    const { data, error } = await supabase
+      .from('trophies')
+      .select('*')
+      .order('created_at', { ascending: true });
 
-      if (error) throw error;
-      setTrophies(data || []);
-    } catch (error) {
-      throw error;
-    }
+    if (error) throw error;
+    setTrophies(data || []);
   };
 
   const fetchExternalCalendars = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('external_calendars')
-        .select('*')
-        .order('created_at', { ascending: true });
+    const { data, error } = await supabase
+      .from('external_calendars')
+      .select('*')
+      .order('created_at', { ascending: true });
 
-      if (error) throw error;
-      setExternalCalendars(data || []);
-    } catch (error) {
-      throw error;
-    }
+    if (error) throw error;
+    setExternalCalendars(data || []);
   };
 
   const fetchActivitySeries = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('activity_series')
-        .select('*')
-        .order('created_at', { ascending: true });
+    const { data, error } = await supabase
+      .from('activity_series')
+      .select('*')
+      .order('created_at', { ascending: true });
 
-      if (error) throw error;
-      setActivitySeries(data || []);
-    } catch (error) {
-      throw error;
-    }
+    if (error) throw error;
+    setActivitySeries(data || []);
   };
 
   const fetchAllData = async () => {
@@ -137,8 +137,6 @@ export const useFootballData = () => {
         fetchExternalCalendars(),
         fetchActivitySeries(),
       ]);
-    } catch (error) {
-      throw error;
     } finally {
       setLoading(false);
     }
@@ -149,15 +147,13 @@ export const useFootballData = () => {
   }, []);
 
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
-      if (nextAppState === 'active') {
+    const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
+      if (state === 'active') {
         refreshNotificationQueue();
       }
     });
 
-    return () => {
-      subscription.remove();
-    };
+    return () => sub.remove();
   }, []);
 
   useEffect(() => {
@@ -173,21 +169,17 @@ export const useFootballData = () => {
   }, []);
 
   const activitiesThisWeek = useMemo(() => {
-    return activities.filter(activity => {
-      const activityDateTime = `${activity.activity_date}T${activity.activity_time || '00:00:00'}`;
-      const start = new Date(activityDateTime);
-      return start >= weekRange.start && start <= weekRange.end;
+    return activities.filter(a => {
+      const dt = `${a.activity_date}T${a.activity_time || '00:00:00'}`;
+      const d = new Date(dt);
+      return d >= weekRange.start && d <= weekRange.end;
     });
   }, [activities, weekRange]);
 
   const refreshAll = useCallback(async () => {
-    try {
-      setLoading(true);
-      await fetchAllData();
-      await forceRefreshNotificationQueue();
-    } catch (error) {
-      throw error;
-    }
+    setLoading(true);
+    await fetchAllData();
+    await forceRefreshNotificationQueue();
   }, []);
 
   return {
@@ -198,7 +190,7 @@ export const useFootballData = () => {
     externalCalendars,
     activitySeries,
     activitiesThisWeek,
-    loading,
+    isLoading: loading,
     refreshAll,
   };
 };

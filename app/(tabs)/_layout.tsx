@@ -1,4 +1,3 @@
-
 import React, { useMemo } from 'react';
 import { Stack } from 'expo-router';
 import { Platform } from 'react-native';
@@ -7,12 +6,15 @@ import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
 import { colors } from '@/styles/commonStyles';
 import { useUserRole } from '@/hooks/useUserRole';
 
+/* ======================================================
+   ROOT TAB LAYOUT
+   ====================================================== */
+
 export default function TabLayout() {
   const { userRole, loading } = useUserRole();
 
   const isLoggedIn = !!userRole;
 
-  // Platform-specific rendering - always render router component
   if (Platform.OS === 'ios') {
     return (
       <IOSTabLayout
@@ -23,7 +25,6 @@ export default function TabLayout() {
     );
   }
 
-  // Android/Web: Use FloatingTabBar
   return (
     <AndroidWebTabLayout
       isLoggedIn={isLoggedIn}
@@ -32,9 +33,9 @@ export default function TabLayout() {
   );
 }
 
-/* =========================
-   iOS: NativeTabs
-   ========================= */
+/* ======================================================
+   iOS – Native Tabs
+   ====================================================== */
 
 function IOSTabLayout({
   isLoggedIn,
@@ -48,11 +49,11 @@ function IOSTabLayout({
   const isPlayer = userRole === 'player';
   const isTrainer = userRole === 'admin' || userRole === 'trainer';
 
-  // P12-A FIX: Tabs must NOT be hidden while loading
-  // Only hide tabs when loading is complete AND user is not logged in
+  // ❗ VIGTIGT:
+  // Tabs må ALDRIG skjules under loading
   const hideForAuth = !loading && !isLoggedIn;
-  const hideForPlayer = !loading && (!isLoggedIn || !isPlayer);
-  const hideForTrainer = !loading && (!isLoggedIn || !isTrainer);
+  const hideForPlayerOnly = !loading && (!isLoggedIn || !isPlayer);
+  const hideForTrainerOnly = !loading && (!isLoggedIn || !isTrainer);
 
   return (
     <NativeTabs
@@ -75,51 +76,48 @@ function IOSTabLayout({
         tabBarInactiveTintColor: '#8E8E93',
       }}
     >
+      {/* HOME */}
       <NativeTabs.Trigger name="(home)" hidden={hideForAuth}>
-        <Icon sf={{ default: 'house', selected: 'house.fill' }} color={colors.primary} />
-        <Label style={{ fontSize: 10, fontWeight: '500', color: colors.primary }}>Hjem</Label>
+        <Icon sf={{ default: 'house', selected: 'house.fill' }} />
+        <Label>Hjem</Label>
       </NativeTabs.Trigger>
 
+      {/* TASKS */}
       <NativeTabs.Trigger name="tasks" hidden={hideForAuth}>
-        <Icon sf={{ default: 'checklist', selected: 'checklist' }} color={colors.primary} />
-        <Label style={{ fontSize: 10, fontWeight: '500', color: colors.primary }}>Opgaver</Label>
+        <Icon sf={{ default: 'checklist', selected: 'checklist' }} />
+        <Label>Opgaver</Label>
       </NativeTabs.Trigger>
 
-      <NativeTabs.Trigger
-        name="performance"
-        hidden={hideForPlayer}
-      >
-        <Icon sf={{ default: 'trophy', selected: 'trophy.fill' }} color={colors.primary} />
-        <Label style={{ fontSize: 10, fontWeight: '500', color: colors.primary }}>Performance</Label>
+      {/* PERFORMANCE – KUN PLAYER */}
+      <NativeTabs.Trigger name="performance" hidden={hideForPlayerOnly}>
+        <Icon sf={{ default: 'trophy', selected: 'trophy.fill' }} />
+        <Label>Performance</Label>
       </NativeTabs.Trigger>
 
-      <NativeTabs.Trigger
-        name="library"
-        hidden={hideForAuth}
-      >
-        <Icon sf={{ default: 'book', selected: 'book.fill' }} color={colors.primary} />
-        <Label style={{ fontSize: 10, fontWeight: '500', color: colors.primary }}>Bibliotek</Label>
+      {/* LIBRARY */}
+      <NativeTabs.Trigger name="library" hidden={hideForAuth}>
+        <Icon sf={{ default: 'book', selected: 'book.fill' }} />
+        <Label>Bibliotek</Label>
       </NativeTabs.Trigger>
 
-      <NativeTabs.Trigger
-        name="trainer"
-        hidden={hideForTrainer}
-      >
-        <Icon sf={{ default: 'person.3', selected: 'person.3.fill' }} color={colors.primary} />
-        <Label style={{ fontSize: 10, fontWeight: '500', color: colors.primary }}>Træner</Label>
+      {/* TRAINER – KUN TRAINER / ADMIN */}
+      <NativeTabs.Trigger name="trainer" hidden={hideForTrainerOnly}>
+        <Icon sf={{ default: 'person.3', selected: 'person.3.fill' }} />
+        <Label>Træner</Label>
       </NativeTabs.Trigger>
 
+      {/* PROFILE – ALTID */}
       <NativeTabs.Trigger name="profile">
-        <Icon sf={{ default: 'person', selected: 'person.fill' }} color={colors.primary} />
-        <Label style={{ fontSize: 10, fontWeight: '500', color: colors.primary }}>Profil</Label>
+        <Icon sf={{ default: 'person', selected: 'person.fill' }} />
+        <Label>Profil</Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );
 }
 
-/* =========================
-   Android/Web: FloatingTabBar
-   ========================= */
+/* ======================================================
+   Android / Web – FloatingTabBar
+   ====================================================== */
 
 function AndroidWebTabLayout({
   isLoggedIn,
@@ -129,7 +127,6 @@ function AndroidWebTabLayout({
   userRole: string | null;
 }) {
   const tabs: TabBarItem[] = useMemo(() => {
-    // If user is not logged in, only show profile tab
     if (!isLoggedIn) {
       return [
         {
@@ -142,9 +139,7 @@ function AndroidWebTabLayout({
       ];
     }
 
-    // Check if user is a player (not admin/trainer)
     const isPlayer = userRole === 'player';
-    // Check if user is trainer/admin
     const isTrainer = userRole === 'admin' || userRole === 'trainer';
 
     const allTabs: TabBarItem[] = [
@@ -192,32 +187,30 @@ function AndroidWebTabLayout({
       },
     ];
 
-    // Filter tabs based on user role
     if (isPlayer) {
-      // Players can see: Home, Tasks, Performance, Library, Profile
-      return allTabs.filter(tab => 
-        tab.name === '(home)' || 
-        tab.name === 'tasks' ||
-        tab.name === 'performance' ||
-        tab.name === 'library' ||
-        tab.name === 'profile'
+      // ❗ Player ser ALDRIG trainer
+      return allTabs.filter(t =>
+        t.name === '(home)' ||
+        t.name === 'tasks' ||
+        t.name === 'performance' ||
+        t.name === 'library' ||
+        t.name === 'profile'
       );
     }
 
     if (isTrainer) {
-      // Trainers can see: Home, Tasks, Library, Trainer, Profile
-      return allTabs.filter(tab => 
-        tab.name === '(home)' || 
-        tab.name === 'tasks' ||
-        tab.name === 'library' ||
-        tab.name === 'trainer' ||
-        tab.name === 'profile'
+      // ❗ Trainer ser ALDRIG performance
+      return allTabs.filter(t =>
+        t.name === '(home)' ||
+        t.name === 'tasks' ||
+        t.name === 'library' ||
+        t.name === 'trainer' ||
+        t.name === 'profile'
       );
     }
 
-    // Default: show all tabs
     return allTabs;
-  }, [userRole, isLoggedIn]);
+  }, [isLoggedIn, userRole]);
 
   return (
     <>
@@ -227,13 +220,14 @@ function AndroidWebTabLayout({
           animation: 'none',
         }}
       >
-        <Stack.Screen key="home" name="(home)" />
-        <Stack.Screen key="tasks" name="tasks" />
-        <Stack.Screen key="performance" name="performance" />
-        <Stack.Screen key="library" name="library" />
-        <Stack.Screen key="trainer" name="trainer" />
-        <Stack.Screen key="profile" name="profile" />
+        <Stack.Screen name="(home)" />
+        <Stack.Screen name="tasks" />
+        <Stack.Screen name="performance" />
+        <Stack.Screen name="library" />
+        <Stack.Screen name="trainer" />
+        <Stack.Screen name="profile" />
       </Stack>
+
       <FloatingTabBar tabs={tabs} />
     </>
   );

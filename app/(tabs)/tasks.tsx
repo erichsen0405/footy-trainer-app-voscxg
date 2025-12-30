@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Modal, useColorScheme, KeyboardAvoidingView, Platform, RefreshControl, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Modal, Image, useColorScheme, KeyboardAvoidingView, Platform, RefreshControl, Alert, ActivityIndicator } from 'react-native';
 import { useFootball } from '@/contexts/FootballContext';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -12,7 +12,6 @@ import SmartVideoPlayer from '@/components/SmartVideoPlayer';
 import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { AdminContextWrapper } from '@/components/AdminContextWrapper';
 import { supabase } from '@/app/integrations/supabase/client';
-import { taskService } from '@/services/taskService';
 
 // Local helper function to validate video URLs
 function isValidVideoUrl(url?: string): boolean {
@@ -23,6 +22,29 @@ function isValidVideoUrl(url?: string): boolean {
     url.includes("youtu.be") ||
     url.includes("vimeo.com")
   );
+}
+function getYouTubeThumbnail(url: string): string | null {
+  try {
+    if (url.includes('youtu.be/')) {
+      return `https://img.youtube.com/vi/${url.split('youtu.be/')[1].split('?')[0]}/hqdefault.jpg`;
+    }
+
+    if (url.includes('watch?v=')) {
+      return `https://img.youtube.com/vi/${url.split('watch?v=')[1].split('&')[0]}/hqdefault.jpg`;
+    }
+
+    if (url.includes('/shorts/')) {
+      return `https://img.youtube.com/vi/${url.split('/shorts/')[1].split('?')[0]}/hqdefault.jpg`;
+    }
+
+    if (url.includes('/embed/')) {
+      return `https://img.youtube.com/vi/${url.split('/embed/')[1].split('?')[0]}/hqdefault.jpg`;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 interface FolderItem {
@@ -145,25 +167,34 @@ const TaskCard = React.memo(({
       </View>
     </View>
 
-    {task.videoUrl && isValidVideoUrl(task.videoUrl) && (
-      <View style={styles.videoPreviewContainer}>
-        <TouchableOpacity
-          style={styles.videoPreviewButton}
-          onPress={() => onVideoPress(task.videoUrl!)}
-          activeOpacity={0.8}
-        >
-          <IconSymbol
-            ios_icon_name="play.circle.fill"
-            android_material_icon_name="play_circle"
-            size={48}
-            color={colors.primary}
-          />
-          <Text style={[styles.videoPreviewText, { color: colors.primary }]}>
-            Afspil video
-          </Text>
-        </TouchableOpacity>
-      </View>
-    )}
+{task.videoUrl && isValidVideoUrl(task.videoUrl) && (
+  <TouchableOpacity
+    style={styles.videoThumbnailWrapper}
+    onPress={() => onVideoPress(task.videoUrl)}
+    activeOpacity={0.85}
+  >
+    <Image
+      source={
+        task.videoUrl.includes('youtu')
+          ? { uri: getYouTubeThumbnail(task.videoUrl) ?? undefined }
+          : undefined
+      }
+      style={styles.videoThumbnail}
+      resizeMode="cover"
+    />
+
+    <View style={styles.videoOverlay}>
+      <IconSymbol
+        ios_icon_name="play.circle.fill"
+        android_material_icon_name="play_circle"
+        size={56}
+        color="#fff"
+      />
+    </View>
+  </TouchableOpacity>
+)}
+
+
 
     {task.reminder && (
       <View style={styles.reminderBadge}>
@@ -248,7 +279,7 @@ const FolderItemComponent = React.memo(({
 });
 
 export default function TasksScreen() {
-  const { tasks, categories, updateTask, deleteTask, duplicateTask, refreshAll, isLoading } = useFootball();
+  const { tasks, categories, addTask, updateTask, deleteTask, duplicateTask, refreshData, isLoading } = useFootball();
   const { selectedContext } = useTeamPlayer();
   const { isAdmin } = useUserRole();
   const { adminMode, adminTargetId, adminTargetType } = useAdmin();
@@ -256,16 +287,15 @@ export default function TasksScreen() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState('');
-  const [subtasks, setSubtasks] = useState<Array<{ title: string }>>([{ title: '' }]);
+  const [subtasks, setSubtasks] = useState<string[]>(['']);
   const [isSaving, setIsSaving] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const themeColors = getColors(colorScheme);
   
   // Confirmation dialog state
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -274,7 +304,7 @@ export default function TasksScreen() {
     data?: any;
   } | null>(null);
 
-  const templateTasks = useMemo(() => tasks.filter(task => task.isTemplate), [tasks]);
+  const templateTasks = useMemo(() => tasks, [tasks]);
 
   // Use useMemo to compute folders from tasks - this prevents the render loop
   const folders = useMemo(() => {
@@ -290,17 +320,17 @@ export default function TasksScreen() {
     })).filter(folder => folder.tasks.length > 0);
   }, [folders, searchQuery]);
 
-  // B) Deduplicate categories locally using category.id
-  const uniqueCategories = useMemo(() => {
-    const seen = new Set<string>();
-    return categories.filter(category => {
-      if (seen.has(category.id)) {
-        return false;
-      }
-      seen.add(category.id);
-      return true;
-    });
-  }, [categories]);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    
+    try {
+      await refreshData();
+    } catch (error) {
+      console.error('Error refreshing tasks data:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshData]);
 
   const toggleFolder = useCallback((folderId: string) => {
     setExpandedFolders(prev => {
@@ -329,18 +359,18 @@ export default function TasksScreen() {
 
         if (error) {
           console.error('Error loading subtasks:', error);
-          setSubtasks([{ title: '' }]);
+          setSubtasks(['']);
         } else if (subtasksData && subtasksData.length > 0) {
-          setSubtasks(subtasksData.map(s => ({ title: s.title })));
+          setSubtasks(subtasksData.map(s => s.title));
         } else {
-          setSubtasks([{ title: '' }]);
+          setSubtasks(['']);
         }
       } catch (error) {
         console.error('Error loading subtasks:', error);
-        setSubtasks([{ title: '' }]);
+        setSubtasks(['']);
       }
     } else {
-      setSubtasks([{ title: '' }]);
+      setSubtasks(['']);
     }
     
     setIsModalVisible(true);
@@ -351,11 +381,10 @@ export default function TasksScreen() {
     setIsCreating(false);
     setIsModalVisible(false);
     setVideoUrl('');
-    setSubtasks([{ title: '' }]);
+    setSubtasks(['']);
     setIsSaving(false);
   }, []);
 
-  // A) Use existing template save function from P8
   const executeSaveTask = useCallback(async () => {
     if (!selectedTask) return;
 
@@ -363,37 +392,16 @@ export default function TasksScreen() {
 
     try {
       const taskToSave = {
-        ...selectedTask,
-        videoUrl: videoUrl.trim() ? videoUrl.trim() : null,
-      };
+  ...selectedTask,
+  id: selectedTask.id || undefined,
+  videoUrl: videoUrl.trim() ? videoUrl.trim() : null,
+  categoryIds: Array.from(new Set(selectedTask.categoryIds)),
+};
+
 
       if (isCreating) {
-        // Determine playerId and teamId based on admin context
-        let playerId: string | null = null;
-        let teamId: string | null = null;
-
-        if (adminMode !== 'self') {
-          if (adminTargetType === 'player') {
-            playerId = adminTargetId;
-          } else if (adminTargetType === 'team') {
-            teamId = adminTargetId;
-          }
-        }
-
-        // Call P8 save flow
-        await taskService.createTask({
-          title: taskToSave.title,
-          description: taskToSave.description,
-          categoryIds: taskToSave.categoryIds,
-          reminder: taskToSave.reminder,
-          videoUrl: taskToSave.videoUrl || undefined,
-          playerId,
-          teamId,
-        });
-
-        // Note: Subtasks are not handled by taskService.createTask
-        // They would need to be inserted separately if needed
-        // For now, we're following the requirement to only call taskService.createTask
+        await addTask(taskToSave);
+        Alert.alert('Succes', 'Opgaveskabelon oprettet');
       } else {
         await updateTask(selectedTask.id, taskToSave);
         
@@ -402,11 +410,11 @@ export default function TasksScreen() {
           .delete()
           .eq('task_template_id', selectedTask.id);
 
-        const validSubtasks = subtasks.filter(s => s.title.trim());
+        const validSubtasks = subtasks.filter(s => s.trim());
         if (validSubtasks.length > 0) {
           const subtasksToInsert = validSubtasks.map((subtask, index) => ({
             task_template_id: selectedTask.id,
-            title: subtask.title,
+            title: subtask,
             sort_order: index,
           }));
 
@@ -414,17 +422,17 @@ export default function TasksScreen() {
             .from('task_template_subtasks')
             .insert(subtasksToInsert);
         }
+
+        Alert.alert('Succes', 'Opgaveskabelon opdateret');
       }
 
-      // Refresh data to show the new/updated template
-      await refreshAll();
       closeTaskModal();
     } catch (error: any) {
       Alert.alert('Fejl', 'Kunne ikke gemme opgave: ' + (error.message || 'Ukendt fejl'));
     } finally {
       setIsSaving(false);
     }
-  }, [selectedTask, videoUrl, subtasks, isCreating, updateTask, closeTaskModal, refreshAll, adminMode, adminTargetType, adminTargetId]);
+  }, [selectedTask, videoUrl, subtasks, isCreating, addTask, updateTask, closeTaskModal]);
 
   const handleSaveTask = useCallback(async () => {
     if (!selectedTask) return;
@@ -484,21 +492,30 @@ export default function TasksScreen() {
   }, [duplicateTask]);
 
   const toggleCategory = useCallback((categoryId: string) => {
-    if (selectedTask) {
-      const categoryIds = selectedTask.categoryIds.includes(categoryId)
-        ? selectedTask.categoryIds.filter(id => id !== categoryId)
-        : [...selectedTask.categoryIds, categoryId];
-      
-      setSelectedTask({ ...selectedTask, categoryIds });
-    }
-  }, [selectedTask]);
+  if (!selectedTask) return;
+
+  const set = new Set(selectedTask.categoryIds);
+
+  if (set.has(categoryId)) {
+    set.delete(categoryId);
+  } else {
+    set.add(categoryId);
+  }
+
+  setSelectedTask({
+    ...selectedTask,
+    categoryIds: Array.from(set),
+  });
+}, [selectedTask]);
 
   const getCategoryNames = useCallback((categoryIds: string[]) => {
-    return categoryIds
-      .map(id => uniqueCategories.find(c => c.id === id)?.name.toLowerCase())
-      .filter(Boolean)
-      .join(', ');
-  }, [uniqueCategories]);
+  const uniqueIds = Array.from(new Set(categoryIds));
+
+  return uniqueIds
+    .map(id => categories.find(c => c.id === id)?.name.toLowerCase())
+    .filter(Boolean)
+    .join(', ');
+}, [categories]);
 
   const openVideoModal = useCallback((url: string) => {
     if (!isValidVideoUrl(url)) {
@@ -537,12 +554,12 @@ export default function TasksScreen() {
   }, []);
 
   const addSubtask = useCallback(() => {
-    setSubtasks([...subtasks, { title: '' }]);
+    setSubtasks([...subtasks, '']);
   }, [subtasks]);
 
   const updateSubtask = useCallback((index: number, value: string) => {
     const newSubtasks = [...subtasks];
-    newSubtasks[index] = { title: value };
+    newSubtasks[index] = value;
     setSubtasks(newSubtasks);
   }, [subtasks]);
 
@@ -555,7 +572,6 @@ export default function TasksScreen() {
   // Memoized render functions for FlatList
   const renderTaskCard = useCallback((task: Task) => (
     <TaskCard
-      key={task.id}
       task={task}
       isDark={isDark}
       onPress={() => openTaskModal(task)}
@@ -566,12 +582,12 @@ export default function TasksScreen() {
     />
   ), [isDark, openTaskModal, handleDuplicateTask, handleDeleteTask, openVideoModal, getCategoryNames]);
 
-  // Color declarations BEFORE renderFolder to fix initialization order
   const bgColor = isDark ? '#1a1a1a' : colors.background;
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
 
+  // LINT FIX: Include FolderItemComponent in dependency array
   const renderFolder = useCallback(({ item }: { item: FolderItem }) => {
     const isExpanded = expandedFolders.has(item.id);
     return (
@@ -588,12 +604,15 @@ export default function TasksScreen() {
     );
   }, [expandedFolders, toggleFolder, renderTaskCard, isDark, textColor, textSecondaryColor, cardBgColor]);
 
-  const isManagingContext = isAdmin && selectedContext.type;
+
+
   
+  // CRITICAL FIX: Check for both player AND team admin mode
   const isPlayerAdmin = adminMode !== 'self' && adminTargetType === 'player';
   const isTeamAdmin = adminMode !== 'self' && adminTargetType === 'team';
   const isAdminMode = isPlayerAdmin || isTeamAdmin;
 
+  // LINT FIX: Remove isManagingContext from dependency array
   const ListHeaderComponent = useMemo(() => (
     <>
       <View style={styles.header}>
@@ -706,7 +725,12 @@ export default function TasksScreen() {
         ListFooterComponent={ListFooterComponent}
         contentContainerStyle={styles.contentContainer}
         refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={refreshAll} />
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
         }
         removeClippedSubviews={Platform.OS !== 'web'}
         initialNumToRender={8}
@@ -831,10 +855,10 @@ export default function TasksScreen() {
                     </View>
 
                     {subtasks.map((subtask, index) => (
-                      <View key={`${subtask.title}-${index}`} style={styles.subtaskInputRow}>
+                      <View key={`${index}-${subtask}`} style={styles.subtaskInputRow}>
                         <TextInput
                           style={[styles.subtaskInput, { backgroundColor: bgColor, color: textColor }]}
-                          value={subtask.title}
+                          value={subtask}
                           onChangeText={(value) => updateSubtask(index, value)}
                           placeholder={`Delopgave ${index + 1}`}
                           placeholderTextColor={textSecondaryColor}
@@ -871,7 +895,7 @@ export default function TasksScreen() {
 
                   <Text style={[styles.label, { color: textColor }]}>Aktivitetskategorier</Text>
                   <View style={styles.categoriesGrid}>
-                    {uniqueCategories.map((category) => (
+                    {categories.map((category) => (
                       <TouchableOpacity
                         key={category.id}
                         style={[
@@ -1146,6 +1170,26 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  videoThumbnailWrapper: {
+  height: 180,
+  borderRadius: 12,
+  overflow: 'hidden',
+  marginBottom: 12,
+  backgroundColor: '#000',
+},
+
+videoThumbnail: {
+  width: '100%',
+  height: '100%',
+},
+
+videoOverlay: {
+  ...StyleSheet.absoluteFillObject,
+  justifyContent: 'center',
+  alignItems: 'center',
+  backgroundColor: 'rgba(0,0,0,0.25)',
+},
+
   videoSection: {
     marginBottom: 16,
   },
