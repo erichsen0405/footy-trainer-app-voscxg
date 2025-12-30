@@ -433,8 +433,6 @@ export default function TasksScreen() {
           adminTargetType,
           adminTargetId,
         });
-
-        Alert.alert('Succes', 'Opgaveskabelon oprettet');
       } else {
         await updateTask(selectedTask.id, taskToSave);
         
@@ -455,8 +453,6 @@ export default function TasksScreen() {
             .from('task_template_subtasks')
             .insert(subtasksToInsert);
         }
-
-        Alert.alert('Succes', 'Opgaveskabelon opdateret');
       }
 
       // Refresh data to show the new/updated template
