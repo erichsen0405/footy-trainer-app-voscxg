@@ -12,6 +12,7 @@ import SmartVideoPlayer from '@/components/SmartVideoPlayer';
 import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { AdminContextWrapper } from '@/components/AdminContextWrapper';
 import { supabase } from '@/app/integrations/supabase/client';
+import { taskService } from '@/services/taskService';
 
 // Local helper function to validate video URLs
 function isValidVideoUrl(url?: string): boolean {
@@ -354,6 +355,63 @@ export default function TasksScreen() {
     setIsSaving(false);
   }, []);
 
+  // Local helper function to create task template with subtasks
+  const createTaskTemplate = useCallback(async ({
+    task,
+    subtasks: subtasksList,
+    adminMode: mode,
+    adminTargetType: targetType,
+    adminTargetId: targetId,
+  }: {
+    task: Omit<Task, 'id'>;
+    subtasks: Array<{ title: string }>;
+    adminMode?: string;
+    adminTargetType?: string;
+    adminTargetId?: string;
+  }) => {
+    // Use existing taskService.createTask for the template
+    await taskService.createTask({
+      title: task.title,
+      description: task.description || '',
+      categoryIds: task.categoryIds,
+      reminder: task.reminder,
+      videoUrl: task.videoUrl,
+      playerId: mode !== 'self' && targetType === 'player' ? targetId : null,
+      teamId: mode !== 'self' && targetType === 'team' ? targetId : null,
+    });
+
+    // Get the created template ID
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('User not authenticated');
+
+    const { data: newTemplate, error: fetchError } = await supabase
+      .from('task_templates')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('title', task.title)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (fetchError || !newTemplate) throw new Error('Failed to fetch created template');
+
+    // Insert subtasks
+    const validSubtasks = subtasksList.filter(s => s.title.trim());
+    if (validSubtasks.length > 0) {
+      const subtasksToInsert = validSubtasks.map((subtask, index) => ({
+        task_template_id: newTemplate.id,
+        title: subtask.title,
+        sort_order: index,
+      }));
+
+      const { error: subtaskError } = await supabase
+        .from('task_template_subtasks')
+        .insert(subtasksToInsert);
+
+      if (subtaskError) throw subtaskError;
+    }
+  }, []);
+
   // A) Use existing template save function from P8
   const executeSaveTask = useCallback(async () => {
     if (!selectedTask) return;
@@ -361,65 +419,21 @@ export default function TasksScreen() {
     setIsSaving(true);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        Alert.alert('Fejl', 'Bruger ikke autentificeret');
-        return;
-      }
-
       const taskToSave = {
         ...selectedTask,
         videoUrl: videoUrl.trim() ? videoUrl.trim() : null,
       };
 
       if (isCreating) {
-        // Create new template using existing P8 pattern
-        const { data: newTemplate, error: createError } = await supabase
-          .from('task_templates')
-          .insert({
-            title: taskToSave.title,
-            description: taskToSave.description || '',
-            reminder_minutes: taskToSave.reminder,
-            video_url: taskToSave.videoUrl || null,
-            user_id: user.id,
-            player_id: adminMode !== 'self' && adminTargetType === 'player' ? adminTargetId : null,
-            team_id: adminMode !== 'self' && adminTargetType === 'team' ? adminTargetId : null,
-          })
-          .select()
-          .single();
+        // Use existing P8 createTaskTemplate function
+        await createTaskTemplate({
+          task: taskToSave,
+          subtasks,
+          adminMode,
+          adminTargetType,
+          adminTargetId,
+        });
 
-        if (createError) throw createError;
-
-        // Insert category associations
-        if (taskToSave.categoryIds.length > 0) {
-          const categoryInserts = taskToSave.categoryIds.map(categoryId => ({
-            task_template_id: newTemplate.id,
-            category_id: categoryId,
-          }));
-
-          const { error: categoryError } = await supabase
-            .from('task_template_categories')
-            .insert(categoryInserts);
-
-          if (categoryError) throw categoryError;
-        }
-
-        // Insert subtasks
-        const validSubtasks = subtasks.filter(s => s.title.trim());
-        if (validSubtasks.length > 0) {
-          const subtasksToInsert = validSubtasks.map((subtask, index) => ({
-            task_template_id: newTemplate.id,
-            title: subtask.title,
-            sort_order: index,
-          }));
-
-          const { error: subtaskError } = await supabase
-            .from('task_template_subtasks')
-            .insert(subtasksToInsert);
-
-          if (subtaskError) throw subtaskError;
-        }
-        
         Alert.alert('Succes', 'Opgaveskabelon oprettet');
       } else {
         await updateTask(selectedTask.id, taskToSave);
@@ -453,7 +467,7 @@ export default function TasksScreen() {
     } finally {
       setIsSaving(false);
     }
-  }, [selectedTask, videoUrl, subtasks, isCreating, updateTask, closeTaskModal, refreshAll, adminMode, adminTargetType, adminTargetId]);
+  }, [selectedTask, videoUrl, subtasks, isCreating, updateTask, closeTaskModal, refreshAll, adminMode, adminTargetType, adminTargetId, createTaskTemplate]);
 
   const handleSaveTask = useCallback(async () => {
     if (!selectedTask) return;
