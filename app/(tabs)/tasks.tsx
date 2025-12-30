@@ -540,6 +540,12 @@ export default function TasksScreen() {
     />
   ), [isDark, openTaskModal, handleDuplicateTask, handleDeleteTask, openVideoModal, getCategoryNames]);
 
+  // MOVED: Color declarations BEFORE renderFolder to fix initialization order
+  const bgColor = isDark ? '#1a1a1a' : colors.background;
+  const cardBgColor = isDark ? '#2a2a2a' : colors.card;
+  const textColor = isDark ? '#e3e3e3' : colors.text;
+  const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
+
   // LINT FIX: Include FolderItemComponent in dependency array
   const renderFolder = useCallback(({ item }: { item: FolderItem }) => {
     const isExpanded = expandedFolders.has(item.id);
@@ -556,11 +562,6 @@ export default function TasksScreen() {
       />
     );
   }, [expandedFolders, toggleFolder, renderTaskCard, isDark, textColor, textSecondaryColor, cardBgColor]);
-
-  const bgColor = isDark ? '#1a1a1a' : colors.background;
-  const cardBgColor = isDark ? '#2a2a2a' : colors.card;
-  const textColor = isDark ? '#e3e3e3' : colors.text;
-  const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
 
   const isManagingContext = isAdmin && selectedContext.type;
   
