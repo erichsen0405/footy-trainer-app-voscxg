@@ -27,8 +27,7 @@ export const useFootballData = () => {
     try {
       const { data, error } = await supabase
         .from('activity_categories')
-        .select('*')
-        .order('order', { ascending: true });
+        .select('*');
 
       if (error) throw error;
       setCategories(data || []);
