@@ -247,7 +247,7 @@ const FolderItemComponent = React.memo(({
 });
 
 export default function TasksScreen() {
-  const { tasks, categories, addTask, updateTask, deleteTask, duplicateTask, refreshData, isLoading } = useFootball();
+  const { tasks, categories, addTask, updateTask, deleteTask, duplicateTask, refreshAll, isLoading } = useFootball();
   const { selectedContext } = useTeamPlayer();
   const { isAdmin } = useUserRole();
   const { adminMode, adminTargetId, adminTargetType } = useAdmin();
@@ -255,7 +255,7 @@ export default function TasksScreen() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState('');
@@ -288,18 +288,6 @@ export default function TasksScreen() {
       ),
     })).filter(folder => folder.tasks.length > 0);
   }, [folders, searchQuery]);
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    
-    try {
-      await refreshData();
-    } catch (error) {
-      console.error('Error refreshing tasks data:', error);
-    } finally {
-      setRefreshing(false);
-    }
-  }, [refreshData]);
 
   const toggleFolder = useCallback((folderId: string) => {
     setExpandedFolders(prev => {
@@ -683,12 +671,7 @@ export default function TasksScreen() {
         ListFooterComponent={ListFooterComponent}
         contentContainerStyle={styles.contentContainer}
         refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
-            onRefresh={onRefresh}
-            tintColor={colors.primary}
-            colors={[colors.primary]}
-          />
+          <RefreshControl refreshing={isRefreshing} onRefresh={refreshAll} />
         }
         removeClippedSubviews={Platform.OS !== 'web'}
         initialNumToRender={8}
