@@ -57,6 +57,7 @@ interface FootballContextType {
   toggleTaskCompletion: (activityId: string, taskId: string) => void;
   deleteActivityTask: (activityId: string, taskId: string) => Promise<void>;
   refreshData: () => void;
+  refreshAll: () => Promise<void>;
   addExternalCalendar: (calendar: Omit<ExternalCalendar, 'id'>) => void;
   toggleCalendar: (id: string) => void;
   deleteExternalCalendar: (id: string) => void;

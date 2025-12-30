@@ -53,13 +53,33 @@ export const useFootballData = () => {
 
   const fetchTasks = async () => {
     try {
-      const { data, error } = await supabase
-        .from('tasks')
-        .select('*')
+      // Fetch task templates with their categories
+      const { data: templatesData, error: templatesError } = await supabase
+        .from('task_templates')
+        .select(`
+          *,
+          task_template_categories (
+            category_id
+          )
+        `)
         .order('created_at', { ascending: true });
 
-      if (error) throw error;
-      setTasks(data || []);
+      if (templatesError) throw templatesError;
+
+      // Transform the data to match the Task interface
+      const transformedTasks: Task[] = (templatesData || []).map(template => ({
+        id: template.id,
+        title: template.title,
+        description: template.description || '',
+        completed: false,
+        isTemplate: true,
+        categoryIds: template.task_template_categories?.map((tc: any) => tc.category_id) || [],
+        reminder: template.reminder_minutes,
+        subtasks: [],
+        videoUrl: template.video_url,
+      }));
+
+      setTasks(transformedTasks);
     } catch (error) {
       throw error;
     }
