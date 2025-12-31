@@ -1,4 +1,5 @@
 import { supabase } from '@/app/integrations/supabase/client';
+import { Task } from '@/types';
 
 export interface CreateTaskData {
   title: string;
@@ -22,7 +23,7 @@ export const taskService = {
   /* ======================================================
      CREATE (P8 – autoriseret entry point)
      ====================================================== */
-  async createTask(data: CreateTaskData): Promise<void> {
+  async createTask(data: CreateTaskData): Promise<Task> {
     console.log('[P8] createTask called', data);
 
     const {
@@ -50,7 +51,7 @@ export const taskService = {
         player_id: data.playerId ?? null,
         team_id: data.teamId ?? null,
       })
-      .select('id')
+      .select('id, title, description, reminder_minutes, video_url, source_folder')
       .single();
 
     if (templateError) {
@@ -74,6 +75,20 @@ export const taskService = {
         throw categoryError;
       }
     }
+
+    // Return the created task in the expected format
+    return {
+      id: template.id,
+      title: template.title,
+      description: template.description || '',
+      completed: false,
+      isTemplate: true,
+      categoryIds: data.categoryIds || [],
+      reminder: template.reminder_minutes ?? undefined,
+      subtasks: [],
+      videoUrl: template.video_url ?? undefined,
+      source_folder: template.source_folder ?? undefined,
+    };
   },
 
   /* ======================================================

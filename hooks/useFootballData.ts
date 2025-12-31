@@ -10,9 +10,7 @@ import {
 } from '@/types';
 import { fetchAndParseICalendar, formatTimeFromDate } from '@/utils/icalParser';
 import { supabase } from '@/app/integrations/supabase/client';
-import {
-  checkNotificationPermissions,
-} from '@/utils/notificationService';
+import { checkNotificationPermissions } from '@/utils/notificationService';
 import {
   refreshNotificationQueue,
   forceRefreshNotificationQueue,
@@ -36,10 +34,7 @@ export const useFootballData = () => {
   const [loading, setLoading] = useState(true);
 
   const fetchCategories = async () => {
-    const { data, error } = await supabase
-      .from('activity_categories')
-      .select('*');
-
+    const { data, error } = await supabase.from('activity_categories').select('*');
     if (error) throw error;
     setCategories(data || []);
   };
@@ -65,7 +60,8 @@ export const useFootballData = () => {
     try {
       const { data, error } = await supabase
         .from('task_templates')
-        .select(`
+        .select(
+          `
           id,
           title,
           description,
@@ -75,7 +71,8 @@ export const useFootballData = () => {
           task_template_categories (
             category_id
           )
-        `)
+        `
+        )
         .order('created_at', { ascending: true });
 
       if (error) throw error;
@@ -188,51 +185,66 @@ export const useFootballData = () => {
   }, []);
 
   // Task CRUD operations
-  const addTask = useCallback(async (task: Omit<Task, 'id'>) => {
-    try {
-      console.log('[addTask] Creating task with data:', task);
-      
-      // Determine admin scope
-      let playerId: string | null = null;
-      let teamId: string | null = null;
+  const addTask = useCallback(
+    async (task: Omit<Task, 'id'>) => {
+      try {
+        console.log('[addTask] Creating task with data:', task);
 
-      if (adminMode !== 'self' && adminTargetId) {
-        if (adminTargetType === 'player') {
-          playerId = adminTargetId;
-        } else if (adminTargetType === 'team') {
-          teamId = adminTargetId;
+        // Determine admin scope
+        let playerId: string | null = null;
+        let teamId: string | null = null;
+
+        if (adminMode !== 'self' && adminTargetId) {
+          if (adminTargetType === 'player') {
+            playerId = adminTargetId;
+          } else if (adminTargetType === 'team') {
+            teamId = adminTargetId;
+          }
         }
+
+        const created = await taskService.createTask({
+          title: task.title,
+          description: task.description || '',
+          categoryIds: task.categoryIds || [],
+          reminder: task.reminder,
+          videoUrl: task.videoUrl,
+          playerId,
+          teamId,
+        });
+
+        if (!created?.id) {
+          throw new Error('Failed to create task: no id returned');
+        }
+
+        // IMPORTANT: Always return a cleaned list (never re-introduce undefined)
+        setTasks(prevRaw => {
+          const prev = (prevRaw || []).filter(Boolean) as Task[];
+          if (prev.some(t => t?.id === created.id)) return prev;
+          return [created, ...prev];
+        });
+
+        console.log('[addTask] Task created successfully, refreshing tasks...');
+
+        // Refresh tasks after creation
+        await fetchTasks();
+        return created;
+      } catch (error) {
+        console.error('[addTask] Error adding task:', error);
+        throw error;
       }
-
-      const created = await taskService.createTask({
-        title: task.title,
-        description: task.description || '',
-        categoryIds: task.categoryIds || [],
-        reminder: task.reminder,
-        videoUrl: task.videoUrl,
-        playerId,
-        teamId,
-      });
-
-      setTasks(prev => prev.some(t => t.id === created.id) ? prev : [created, ...prev]);
-
-      console.log('[addTask] Task created successfully, refreshing tasks...');
-      
-      // Refresh tasks after creation
-      await fetchTasks();
-      return created;
-    } catch (error) {
-      console.error('[addTask] Error adding task:', error);
-      throw error;
-    }
-  }, [adminMode, adminTargetId, adminTargetType]);
+    },
+    [adminMode, adminTargetId, adminTargetType]
+  );
 
   const updateTask = useCallback(async (id: string, updates: Partial<Task>) => {
     try {
       console.log('[updateTask] Updating task:', id, updates);
-      
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
       if (userError || !user) {
         throw new Error('No authenticated user');
       }
@@ -246,7 +258,7 @@ export const useFootballData = () => {
       });
 
       console.log('[updateTask] Task updated successfully, refreshing tasks...');
-      
+
       // Refresh tasks after update
       await fetchTasks();
     } catch (error) {
@@ -258,9 +270,12 @@ export const useFootballData = () => {
   const deleteTask = useCallback(async (id: string) => {
     try {
       console.log('[deleteTask] Deleting task:', id);
-      
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
       if (userError || !user) {
         throw new Error('No authenticated user');
       }
@@ -268,7 +283,7 @@ export const useFootballData = () => {
       await taskService.deleteTask(id, user.id);
 
       console.log('[deleteTask] Task deleted successfully, refreshing tasks...');
-      
+
       // Refresh tasks after deletion
       await fetchTasks();
     } catch (error) {
@@ -277,28 +292,35 @@ export const useFootballData = () => {
     }
   }, []);
 
-  const duplicateTask = useCallback(async (id: string) => {
-    try {
-      console.log('[duplicateTask] Duplicating task:', id);
-      
-      const taskToDuplicate = tasks.find(t => t.id === id);
-      if (!taskToDuplicate) {
-        throw new Error('Task not found');
-      }
+  const duplicateTask = useCallback(
+    async (id: string) => {
+      try {
+        console.log('[duplicateTask] Duplicating task:', id);
 
-      // Create a copy with " (kopi)" appended to the title
-      const created = await addTask({
-        ...taskToDuplicate,
-        title: `${taskToDuplicate.title} (kopi)`,
-      });
-      
-      console.log('[duplicateTask] Task duplicated successfully');
-      return created;
-    } catch (error) {
-      console.error('[duplicateTask] Error duplicating task:', error);
-      throw error;
-    }
-  }, [tasks, addTask]);
+        const safeTasks = (tasks || []).filter(Boolean) as Task[];
+        const taskToDuplicate = safeTasks.find(t => t.id === id);
+
+        if (!taskToDuplicate) {
+          throw new Error('Task not found');
+        }
+
+        // Create a copy payload without id and unwanted fields
+        const copyPayload = {
+          title: `${taskToDuplicate.title} (kopi)`,
+          description: taskToDuplicate.description,
+          categoryIds: taskToDuplicate.categoryIds,
+          reminder: taskToDuplicate.reminder,
+          videoUrl: taskToDuplicate.videoUrl,
+        } as any;
+
+        return await addTask(copyPayload);
+      } catch (error) {
+        console.error('[duplicateTask] Error duplicating task:', error);
+        throw error;
+      }
+    },
+    [tasks, addTask]
+  );
 
   const refreshData = useCallback(async () => {
     console.log('[refreshData] Refreshing tasks data...');
