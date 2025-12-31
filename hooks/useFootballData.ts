@@ -1,4 +1,3 @@
-
 /* eslint-disable no-useless-catch */
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
@@ -205,7 +204,7 @@ export const useFootballData = () => {
         }
       }
 
-      await taskService.createTask({
+      const created = await taskService.createTask({
         title: task.title,
         description: task.description || '',
         categoryIds: task.categoryIds || [],
@@ -215,10 +214,13 @@ export const useFootballData = () => {
         teamId,
       });
 
+      setTasks(prev => prev.some(t => t.id === created.id) ? prev : [created, ...prev]);
+
       console.log('[addTask] Task created successfully, refreshing tasks...');
       
       // Refresh tasks after creation
       await fetchTasks();
+      return created;
     } catch (error) {
       console.error('[addTask] Error adding task:', error);
       throw error;
@@ -285,12 +287,13 @@ export const useFootballData = () => {
       }
 
       // Create a copy with " (kopi)" appended to the title
-      await addTask({
+      const created = await addTask({
         ...taskToDuplicate,
         title: `${taskToDuplicate.title} (kopi)`,
       });
       
       console.log('[duplicateTask] Task duplicated successfully');
+      return created;
     } catch (error) {
       console.error('[duplicateTask] Error duplicating task:', error);
       throw error;
