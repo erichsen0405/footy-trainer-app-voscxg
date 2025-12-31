@@ -362,6 +362,19 @@ async function ensureUnknownCategory(
   supabaseClient: any,
   userId: string
 ): Promise<string> {
+  // First, try to get the system "Ukendt" category
+  const { data: systemCategory } = await supabaseClient
+    .from('activity_categories')
+    .select('*')
+    .eq('is_system', true)
+    .ilike('name', 'ukendt')
+    .single();
+
+  if (systemCategory) {
+    return systemCategory.id;
+  }
+
+  // Fallback: check if user has their own "Ukendt" category
   const { data: existingCategory } = await supabaseClient
     .from('activity_categories')
     .select('*')
@@ -373,6 +386,7 @@ async function ensureUnknownCategory(
     return existingCategory.id;
   }
 
+  // Last resort: create a user-specific "Ukendt" category
   const { data: newCategory, error: categoryError } = await supabaseClient
     .from('activity_categories')
     .insert({
