@@ -12,6 +12,7 @@ import SmartVideoPlayer from '@/components/SmartVideoPlayer';
 import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { AdminContextWrapper } from '@/components/AdminContextWrapper';
 import { supabase } from '@/app/integrations/supabase/client';
+import { taskService } from '@/services/taskService';
 
 // Helper function to create unique local IDs
 const createLocalId = () =>
@@ -288,7 +289,7 @@ const FolderItemComponent = React.memo(({
 });
 
 export default function TasksScreen() {
-  const { tasks, categories, addTask, updateTask, deleteTask, duplicateTask, refreshData, isLoading } = useFootball();
+  const { tasks, categories, updateTask, deleteTask, duplicateTask, refreshData, isLoading } = useFootball();
   const { selectedContext } = useTeamPlayer();
   const { isAdmin } = useUserRole();
   const { adminMode, adminTargetId, adminTargetType } = useAdmin();
@@ -401,15 +402,34 @@ export default function TasksScreen() {
 
     try {
       const taskToSave = {
-  ...selectedTask,
-  id: selectedTask.id || undefined,
-  videoUrl: videoUrl.trim() ? videoUrl.trim() : null,
-  categoryIds: Array.from(new Set(selectedTask.categoryIds)),
-};
-
+        ...selectedTask,
+        id: selectedTask.id || undefined,
+        videoUrl: videoUrl.trim() ? videoUrl.trim() : null,
+        categoryIds: Array.from(new Set(selectedTask.categoryIds)),
+      };
 
       if (isCreating) {
-        await addTask(taskToSave);
+        let playerId: string | null = null;
+        let teamId: string | null = null;
+
+        if (adminMode !== 'self' && adminTargetId) {
+          if (adminTargetType === 'player') {
+            playerId = adminTargetId;
+          } else if (adminTargetType === 'team') {
+            teamId = adminTargetId;
+          }
+        }
+
+        await taskService.createTask({
+          title: selectedTask.title,
+          description: selectedTask.description,
+          categoryIds: selectedTask.categoryIds,
+          reminder: selectedTask.reminder,
+          videoUrl: selectedTask.videoUrl,
+          playerId,
+          teamId,
+        });
+
         Alert.alert('Succes', 'Opgaveskabelon oprettet');
       } else {
         await updateTask(selectedTask.id, taskToSave);
@@ -435,13 +455,14 @@ export default function TasksScreen() {
         Alert.alert('Succes', 'Opgaveskabelon opdateret');
       }
 
+      await refreshData();
       closeTaskModal();
     } catch (error: any) {
       Alert.alert('Fejl', 'Kunne ikke gemme opgave: ' + (error.message || 'Ukendt fejl'));
     } finally {
       setIsSaving(false);
     }
-  }, [selectedTask, videoUrl, subtasks, isCreating, addTask, updateTask, closeTaskModal]);
+  }, [selectedTask, videoUrl, subtasks, isCreating, updateTask, closeTaskModal, adminMode, adminTargetId, adminTargetType, refreshData]);
 
   const handleSaveTask = useCallback(async () => {
     if (!selectedTask) return;
