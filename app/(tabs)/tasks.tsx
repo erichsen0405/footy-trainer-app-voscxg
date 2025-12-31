@@ -13,6 +13,10 @@ import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { AdminContextWrapper } from '@/components/AdminContextWrapper';
 import { supabase } from '@/app/integrations/supabase/client';
 
+// Helper function to create unique local IDs
+const createLocalId = () =>
+  `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
 // Local helper function to validate video URLs
 function isValidVideoUrl(url?: string): boolean {
   if (!url) return false;
@@ -296,7 +300,7 @@ export default function TasksScreen() {
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState('');
-  const [subtasks, setSubtasks] = useState<Subtask[]>([{ id: crypto.randomUUID(), title: '' }]);
+  const [subtasks, setSubtasks] = useState<Subtask[]>([{ id: createLocalId(), title: '' }]);
   const [isSaving, setIsSaving] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const colorScheme = useColorScheme();
@@ -364,18 +368,18 @@ export default function TasksScreen() {
 
         if (error) {
           console.error('Error loading subtasks:', error);
-          setSubtasks([{ id: crypto.randomUUID(), title: '' }]);
+          setSubtasks([{ id: createLocalId(), title: '' }]);
         } else if (subtasksData && subtasksData.length > 0) {
-          setSubtasks(subtasksData.map(s => ({ id: s.id || crypto.randomUUID(), title: s.title })));
+          setSubtasks(subtasksData.map(s => ({ id: s.id || createLocalId(), title: s.title })));
         } else {
-          setSubtasks([{ id: crypto.randomUUID(), title: '' }]);
+          setSubtasks([{ id: createLocalId(), title: '' }]);
         }
       } catch (error) {
         console.error('Error loading subtasks:', error);
-        setSubtasks([{ id: crypto.randomUUID(), title: '' }]);
+        setSubtasks([{ id: createLocalId(), title: '' }]);
       }
     } else {
-      setSubtasks([{ id: crypto.randomUUID(), title: '' }]);
+      setSubtasks([{ id: createLocalId(), title: '' }]);
     }
     
     setIsModalVisible(true);
@@ -386,7 +390,7 @@ export default function TasksScreen() {
     setIsCreating(false);
     setIsModalVisible(false);
     setVideoUrl('');
-    setSubtasks([{ id: crypto.randomUUID(), title: '' }]);
+    setSubtasks([{ id: createLocalId(), title: '' }]);
     setIsSaving(false);
   }, []);
 
@@ -559,7 +563,7 @@ export default function TasksScreen() {
   }, []);
 
   const addSubtask = useCallback(() => {
-    setSubtasks([...subtasks, { id: crypto.randomUUID(), title: '' }]);
+    setSubtasks([...subtasks, { id: createLocalId(), title: '' }]);
   }, [subtasks]);
 
   const updateSubtask = useCallback((index: number, value: string) => {
