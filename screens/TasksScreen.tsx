@@ -88,9 +88,9 @@ function organizeFolders(templateTasks: Task[]): FolderItem[] {
 
 export default function TasksScreen() {
   const { tasks, duplicateTask, deleteTask, refreshData, isLoading } = useFootballData();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const themeColors = getColors(isDark);
+  const scheme = useColorScheme();
+  const isDark = scheme === 'dark';
+  const theme = getColors(isDark);
 
   const [refreshing, setRefreshing] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -196,9 +196,9 @@ export default function TasksScreen() {
   );
 
   const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: themeColors.background },
+    container: { flex: 1, backgroundColor: theme.background },
     content: { paddingHorizontal: 16, paddingVertical: 12 },
-    loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: themeColors.background },
+    loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.background },
 
     folderWrap: { marginBottom: 10 },
     folderHeader: {
@@ -206,22 +206,22 @@ export default function TasksScreen() {
       alignItems: 'center',
       padding: 14,
       borderRadius: 12,
-      backgroundColor: themeColors.cardBackground,
+      backgroundColor: theme.card,
     },
-    folderTitle: { flex: 1, fontSize: 16, fontWeight: '700', color: themeColors.text },
+    folderTitle: { flex: 1, fontSize: 16, fontWeight: '700', color: theme.text },
     badge: {
       paddingHorizontal: 8,
       paddingVertical: 3,
       borderRadius: 10,
-      backgroundColor: themeColors.primary,
+      backgroundColor: theme.primary,
       marginRight: 10,
     },
-    badgeText: { color: themeColors.onPrimary, fontSize: 12, fontWeight: '700' },
-    chevron: { fontSize: 16, fontWeight: '700', color: themeColors.text },
+    badgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+    chevron: { fontSize: 16, fontWeight: '700', color: theme.textSecondary },
     folderBody: { marginTop: 8 },
 
     empty: { padding: 24, alignItems: 'center' },
-    emptyText: { fontSize: 14, opacity: 0.7, color: themeColors.textSecondary },
+    emptyText: { fontSize: 14, opacity: 0.7, color: theme.textSecondary },
   });
 
   if (isLoading) {
@@ -255,32 +255,3 @@ export default function TasksScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  content: { paddingHorizontal: 16, paddingVertical: 12 },
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-
-  folderWrap: { marginBottom: 10 },
-  folderHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    borderRadius: 12,
-    backgroundColor: '#fff',
-  },
-  folderTitle: { flex: 1, fontSize: 16, fontWeight: '700' },
-  badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-    backgroundColor: '#111',
-    marginRight: 10,
-  },
-  badgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  chevron: { fontSize: 16, fontWeight: '700' },
-  folderBody: { marginTop: 8 },
-
-  empty: { padding: 24, alignItems: 'center' },
-  emptyText: { fontSize: 14, opacity: 0.7 },
-});
