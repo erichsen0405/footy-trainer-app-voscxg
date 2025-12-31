@@ -47,6 +47,11 @@ function getYouTubeThumbnail(url: string): string | null {
   }
 }
 
+interface Subtask {
+  id: string;
+  title: string;
+}
+
 interface FolderItem {
   id: string;
   name: string;
@@ -291,7 +296,7 @@ export default function TasksScreen() {
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState('');
-  const [subtasks, setSubtasks] = useState<string[]>(['']);
+  const [subtasks, setSubtasks] = useState<Subtask[]>([{ id: crypto.randomUUID(), title: '' }]);
   const [isSaving, setIsSaving] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const colorScheme = useColorScheme();
@@ -359,18 +364,18 @@ export default function TasksScreen() {
 
         if (error) {
           console.error('Error loading subtasks:', error);
-          setSubtasks(['']);
+          setSubtasks([{ id: crypto.randomUUID(), title: '' }]);
         } else if (subtasksData && subtasksData.length > 0) {
-          setSubtasks(subtasksData.map(s => s.title));
+          setSubtasks(subtasksData.map(s => ({ id: s.id || crypto.randomUUID(), title: s.title })));
         } else {
-          setSubtasks(['']);
+          setSubtasks([{ id: crypto.randomUUID(), title: '' }]);
         }
       } catch (error) {
         console.error('Error loading subtasks:', error);
-        setSubtasks(['']);
+        setSubtasks([{ id: crypto.randomUUID(), title: '' }]);
       }
     } else {
-      setSubtasks(['']);
+      setSubtasks([{ id: crypto.randomUUID(), title: '' }]);
     }
     
     setIsModalVisible(true);
@@ -381,7 +386,7 @@ export default function TasksScreen() {
     setIsCreating(false);
     setIsModalVisible(false);
     setVideoUrl('');
-    setSubtasks(['']);
+    setSubtasks([{ id: crypto.randomUUID(), title: '' }]);
     setIsSaving(false);
   }, []);
 
@@ -410,11 +415,11 @@ export default function TasksScreen() {
           .delete()
           .eq('task_template_id', selectedTask.id);
 
-        const validSubtasks = subtasks.filter(s => s.trim());
+        const validSubtasks = subtasks.filter(s => s.title.trim());
         if (validSubtasks.length > 0) {
           const subtasksToInsert = validSubtasks.map((subtask, index) => ({
             task_template_id: selectedTask.id,
-            title: subtask,
+            title: subtask.title,
             sort_order: index,
           }));
 
@@ -554,12 +559,12 @@ export default function TasksScreen() {
   }, []);
 
   const addSubtask = useCallback(() => {
-    setSubtasks([...subtasks, '']);
+    setSubtasks([...subtasks, { id: crypto.randomUUID(), title: '' }]);
   }, [subtasks]);
 
   const updateSubtask = useCallback((index: number, value: string) => {
     const newSubtasks = [...subtasks];
-    newSubtasks[index] = value;
+    newSubtasks[index] = { ...newSubtasks[index], title: value };
     setSubtasks(newSubtasks);
   }, [subtasks]);
 
@@ -694,6 +699,15 @@ export default function TasksScreen() {
   const ListFooterComponent = useMemo(() => (
     <View style={{ height: 100 }} />
   ), []);
+
+  // Render unique categories using Map
+  const uniqueCategories = useMemo(() => {
+    const categoryMap = new Map();
+    categories.forEach(category => {
+      categoryMap.set(category.id, category);
+    });
+    return Array.from(categoryMap.values());
+  }, [categories]);
 
   // Show loading spinner when data is being fetched
   if (isLoading) {
@@ -855,10 +869,10 @@ export default function TasksScreen() {
                     </View>
 
                     {subtasks.map((subtask, index) => (
-                      <View key={`${index}-${subtask}`} style={styles.subtaskInputRow}>
+                      <View key={subtask.id} style={styles.subtaskInputRow}>
                         <TextInput
                           style={[styles.subtaskInput, { backgroundColor: bgColor, color: textColor }]}
-                          value={subtask}
+                          value={subtask.title}
                           onChangeText={(value) => updateSubtask(index, value)}
                           placeholder={`Delopgave ${index + 1}`}
                           placeholderTextColor={textSecondaryColor}
@@ -895,7 +909,7 @@ export default function TasksScreen() {
 
                   <Text style={[styles.label, { color: textColor }]}>Aktivitetskategorier</Text>
                   <View style={styles.categoriesGrid}>
-                    {categories.map((category) => (
+                    {uniqueCategories.map((category) => (
                       <TouchableOpacity
                         key={category.id}
                         style={[
