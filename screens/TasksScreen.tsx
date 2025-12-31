@@ -14,7 +14,7 @@ import { useColorScheme } from 'react-native';
 import { useFootballData } from '@/hooks/useFootballData';
 import TaskCard from '@/components/TaskCard';
 import { Task } from '@/types';
-import { colors, getColors } from '@/styles/commonStyles';
+import { getColors } from '@/styles/commonStyles';
 
 type FolderType = 'personal' | 'trainer' | 'footballcoach';
 
