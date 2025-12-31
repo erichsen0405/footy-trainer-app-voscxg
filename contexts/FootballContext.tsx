@@ -50,13 +50,13 @@ interface FootballContextType {
   deleteActivitySingle: (activityId: string) => Promise<void>;
   deleteActivitySeries: (seriesId: string) => Promise<void>;
   duplicateActivity: (id: string) => void;
-  addTask: (task: Omit<Task, 'id'>) => void;
-  updateTask: (id: string, updates: Partial<Task>) => void;
-  deleteTask: (id: string) => void;
-  duplicateTask: (id: string) => void;
+  addTask: (task: Omit<Task, 'id'>) => Promise<void>;
+  updateTask: (id: string, updates: Partial<Task>) => Promise<void>;
+  deleteTask: (id: string) => Promise<void>;
+  duplicateTask: (id: string) => Promise<void>;
   toggleTaskCompletion: (activityId: string, taskId: string) => void;
   deleteActivityTask: (activityId: string, taskId: string) => Promise<void>;
-  refreshData: () => void;
+  refreshData: () => Promise<void>;
   refreshAll: () => Promise<void>;
   addExternalCalendar: (calendar: Omit<ExternalCalendar, 'id'>) => void;
   toggleCalendar: (id: string) => void;
@@ -76,7 +76,7 @@ export function FootballProvider({ children }: { children: ReactNode }) {
   const footballData = useFootballData();
 
   return (
-    <FootballContext.Provider value={footballData}>
+    <FootballContext.Provider value={footballData as any}>
       {children}
     </FootballContext.Provider>
   );
