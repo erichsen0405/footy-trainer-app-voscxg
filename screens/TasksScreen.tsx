@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState, useEffect } from 'react';
+import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import {
   View,
   FlatList,
@@ -94,6 +94,8 @@ export default function TasksScreen() {
 
   const [refreshing, setRefreshing] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [isDuplicating, setIsDuplicating] = useState(false);
+  const listRef = useRef<FlatList<FolderItem>>(null);
 
   const folders = useMemo(() => organizeFolders((tasks || []).filter(Boolean) as Task[]), [tasks]);
 
@@ -118,37 +120,47 @@ export default function TasksScreen() {
 
   const handleDuplicateTask = useCallback(
     async (taskId: string) => {
+      if (isDuplicating) return;
+      setIsDuplicating(true);
       try {
         await duplicateTask(taskId);
+        // Auto-expand personal folder to show the new task
+        setExpanded(prev => new Set([...prev, 'personal']));
+        // Scroll to top
+        listRef.current?.scrollToOffset({ offset: 0, animated: true });
       } catch (error: any) {
         Alert.alert(
           'Fejl',
           'Kunne ikke duplikere opgaven: ' + (error?.message || 'Ukendt fejl'),
         );
+      } finally {
+        setIsDuplicating(false);
       }
     },
-    [duplicateTask],
+    [duplicateTask, isDuplicating],
   );
 
   const handleDeleteTask = useCallback(
     async (taskId: string) => {
+      if (isDuplicating) return;
       try {
         await deleteTask(taskId);
       } catch (error: any) {
         Alert.alert('Fejl', 'Kunne ikke slette opgaven: ' + (error?.message || 'Ukendt fejl'));
       }
     },
-    [deleteTask],
+    [deleteTask, isDuplicating],
   );
 
   const toggleFolder = useCallback((folderId: string) => {
+    if (isDuplicating) return;
     setExpanded(prev => {
       const next = new Set(prev);
       if (next.has(folderId)) next.delete(folderId);
       else next.add(folderId);
       return next;
     });
-  }, []);
+  }, [isDuplicating]);
 
   const renderTask = useCallback(
     ({ item }: { item: Task }) => (
@@ -222,6 +234,19 @@ export default function TasksScreen() {
 
     empty: { padding: 24, alignItems: 'center' },
     emptyText: { fontSize: 14, opacity: 0.7, color: theme.textSecondary },
+
+    duplicatingOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 10,
+    },
+    duplicatingText: { marginTop: 10, fontSize: 16 },
   });
 
   if (isLoading) {
@@ -234,7 +259,14 @@ export default function TasksScreen() {
 
   return (
     <View style={styles.container}>
+      {isDuplicating && (
+        <View style={styles.duplicatingOverlay}>
+          <ActivityIndicator size="large" color={theme.primary} />
+          <Text style={[styles.duplicatingText, { color: theme.text }]}>Duplikerer opgave...</Text>
+        </View>
+      )}
       <FlatList
+        ref={listRef}
         data={folders}
         keyExtractor={(f) => f.id}
         renderItem={renderFolder}

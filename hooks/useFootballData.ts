@@ -216,7 +216,7 @@ export const useFootballData = () => {
           throw new Error('Failed to create task: no id returned');
         }
 
-        // IMPORTANT: Always return a cleaned list (never re-introduce undefined)
+        // Optimistic update: Add to state immediately
         setTasks(prevRaw => {
           const prev = (prevRaw || []).filter(Boolean) as Task[];
           if (prev.some(t => t?.id === created.id)) return prev;
@@ -225,7 +225,7 @@ export const useFootballData = () => {
 
         console.log('[addTask] Task created successfully, refreshing tasks...');
 
-        // Refresh tasks after creation
+        // Refresh tasks after creation to ensure consistency
         await fetchTasks();
         return created;
       } catch (error) {
