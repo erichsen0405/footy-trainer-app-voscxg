@@ -31,17 +31,77 @@ export const useFootballData = () => {
   const [loading, setLoading] = useState(true);
 
   const fetchCategories = async () => {
-    const { data, error } = await supabase.from('activity_categories').select('*');
-    if (error) throw error;
-    setCategories(data || []);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+
+      const { data: allCategories, error: catError } = await supabase
+        .from('activity_categories')
+        .select('*');
+
+      if (catError) {
+        console.error('[fetchCategories] failed:', catError);
+        setCategories([]);
+        return;
+      }
+
+      // If not authenticated, show all categories (no hard throw)
+      if (!user?.id) {
+        setCategories(allCategories || []);
+        return;
+      }
+
+      const { data: hiddenRows, error: hiddenError } = await supabase
+        .from('hidden_activity_categories')
+        .select('category_id')
+        .eq('user_id', user.id);
+
+      if (hiddenError) {
+        // Fail-soft: show all categories if hidden table fails
+        console.error('[fetchCategories] Failed to filter hidden categories:', hiddenError);
+        setCategories(allCategories || []);
+        return;
+      }
+
+      const hiddenIds = new Set((hiddenRows || []).map((r: any) => r.category_id));
+      const filtered = (allCategories || []).filter((c: any) => !hiddenIds.has(c.id));
+      setCategories(filtered);
+    } catch (e) {
+      console.error('[fetchCategories] failed:', e);
+      setCategories([]);
+    }
   };
 
   // ✅ Dedicated categories refresher (UI can call this after create/edit category)
   const refreshCategories = useCallback(async () => {
     try {
-      const { data, error } = await supabase.from('activity_categories').select('*');
-      if (error) throw error;
-      setCategories(data || []);
+      const { data: { user } } = await supabase.auth.getUser();
+
+      const { data: allCategories, error: catError } = await supabase
+        .from('activity_categories')
+        .select('*');
+
+      if (catError) throw catError;
+
+      // If not authenticated, show all categories (no hard throw)
+      if (!user?.id) {
+        setCategories(allCategories || []);
+        return;
+      }
+
+      const { data: hiddenRows, error: hiddenError } = await supabase
+        .from('hidden_activity_categories')
+        .select('category_id')
+        .eq('user_id', user.id);
+
+      if (hiddenError) {
+        console.error('[refreshCategories] Failed to filter hidden categories:', hiddenError);
+        setCategories(allCategories || []);
+        return;
+      }
+
+      const hiddenIds = new Set((hiddenRows || []).map((r: any) => r.category_id));
+      const filtered = (allCategories || []).filter((c: any) => !hiddenIds.has(c.id));
+      setCategories(filtered);
     } catch (e) {
       console.error('[refreshCategories] failed:', e);
       // fail-soft: keep existing categories

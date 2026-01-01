@@ -81,14 +81,38 @@ export default function CategoryManagementModal({
   const [activitiesUsingCategory, setActivitiesUsingCategory] = useState<any[]>([]);
   const [reassignCategoryId, setReassignCategoryId] = useState<string>('');
 
+  // Ownership checks
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  // In delete mode, are we deleting (owned) or removing/hiding (global)?
+  const [deleteModeAction, setDeleteModeAction] = useState<'delete' | 'remove'>('delete');
+
   const bgColor = useMemo(() => isDark ? '#1a1a1a' : colors.background, [isDark]);
   const cardBgColor = useMemo(() => isDark ? '#2a2a2a' : colors.card, [isDark]);
   const textColor = useMemo(() => isDark ? '#e3e3e3' : colors.text, [isDark]);
   const textSecondaryColor = useMemo(() => isDark ? '#999' : colors.textSecondary, [isDark]);
 
   useEffect(() => {
+    let isMounted = true;
+
+    const loadUser = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (isMounted) setCurrentUserId(user?.id ?? null);
+      } catch {
+        if (isMounted) setCurrentUserId(null);
+      }
+    };
+
+    loadUser();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!visible) {
-      // Reset state when modal closes
       setMode('list');
       setSelectedCategory(null);
       setCategoryName('');
@@ -96,8 +120,7 @@ export default function CategoryManagementModal({
       setSelectedColor(COLOR_OPTIONS[0]);
       setActivitiesUsingCategory([]);
       setReassignCategoryId('');
-    } else {
-      // removed debug log
+      setDeleteModeAction('delete');
     }
   }, [visible]);
 
@@ -115,7 +138,6 @@ export default function CategoryManagementModal({
         throw new Error('User not authenticated');
       }
 
-      // Determine player_id and team_id based on selected context
       let player_id = null;
       let team_id = null;
 
@@ -169,7 +191,7 @@ export default function CategoryManagementModal({
         throw new Error('User not authenticated');
       }
 
-      const { error } = await supabase
+      const { data: updatedRows, error } = await supabase
         .from('activity_categories')
         .update({
           name: categoryName.trim(),
@@ -178,11 +200,17 @@ export default function CategoryManagementModal({
           updated_at: new Date().toISOString(),
         })
         .eq('id', selectedCategory.id)
-        .eq('user_id', user.id);
+        .eq('user_id', user.id)
+        .select('id');
 
       if (error) {
         console.error('Error updating category:', error);
         throw error;
+      }
+
+      if (!updatedRows || updatedRows.length === 0) {
+        Alert.alert('Fejl', 'Du kan ikke redigere denne kategori');
+        return;
       }
 
       Alert.alert('Succes', 'Kategori opdateret!');
@@ -207,15 +235,21 @@ export default function CategoryManagementModal({
         throw new Error('User not authenticated');
       }
 
-      const { error } = await supabase
+      const { data: deletedRows, error } = await supabase
         .from('activity_categories')
         .delete()
         .eq('id', categoryId)
-        .eq('user_id', user.id);
+        .eq('user_id', user.id)
+        .select('id');
 
       if (error) {
         console.error('Error deleting category:', error);
         throw error;
+      }
+
+      if (!deletedRows || deletedRows.length === 0) {
+        Alert.alert('Fejl', 'Du kan ikke slette denne kategori');
+        return;
       }
 
       Alert.alert('Succes', 'Kategori slettet!');
@@ -223,6 +257,8 @@ export default function CategoryManagementModal({
       setMode('list');
       setSelectedCategory(null);
       setActivitiesUsingCategory([]);
+      setReassignCategoryId('');
+      setDeleteModeAction('delete');
     } catch (error) {
       console.error('Failed to delete category:', error);
       Alert.alert('Fejl', 'Kunne ikke slette kategori');
@@ -231,9 +267,8 @@ export default function CategoryManagementModal({
     }
   }, [onRefresh]);
 
-  const handleDeleteCategoryCheck = useCallback(async (category: ActivityCategory) => {
+  const handleHideCategoryConfirm = useCallback(async (categoryId: string) => {
     setIsLoading(true);
-    setSelectedCategory(category);
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -241,14 +276,50 @@ export default function CategoryManagementModal({
         throw new Error('User not authenticated');
       }
 
-      // Check for internal activities using this category
+      const { error } = await supabase
+        .from('hidden_activity_categories')
+        .upsert(
+          { user_id: user.id, category_id: categoryId },
+          { onConflict: 'user_id,category_id' }
+        );
+
+      if (error) {
+        console.error('Error hiding category:', error);
+        throw error;
+      }
+
+      Alert.alert('Succes', 'Kategori fjernet!');
+      onRefresh();
+      setMode('list');
+      setSelectedCategory(null);
+      setActivitiesUsingCategory([]);
+      setReassignCategoryId('');
+      setDeleteModeAction('delete');
+    } catch (error) {
+      console.error('Failed to hide category:', error);
+      Alert.alert('Fejl', 'Kunne ikke fjerne kategori');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [onRefresh]);
+
+  const handleDeleteCategoryCheck = useCallback(async (category: ActivityCategory) => {
+    setIsLoading(true);
+    setSelectedCategory(category);
+    setDeleteModeAction('delete');
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
       let internalQuery = supabase
         .from('activities')
         .select('id, title, activity_date, activity_time')
         .eq('category_id', category.id)
         .eq('is_external', false);
 
-      // Filter based on selected context
       if (selectedContext?.type === 'player' && selectedContext?.id) {
         internalQuery = internalQuery.eq('player_id', selectedContext.id);
       } else if (selectedContext?.type === 'team' && selectedContext?.id) {
@@ -264,7 +335,6 @@ export default function CategoryManagementModal({
         throw internalError;
       }
 
-      // Check for external activities using this category
       let externalQuery = supabase
         .from('events_local_meta')
         .select(`
@@ -277,7 +347,6 @@ export default function CategoryManagementModal({
         `)
         .eq('category_id', category.id);
 
-      // Filter based on selected context
       if (selectedContext?.type === 'player' && selectedContext?.id) {
         externalQuery = externalQuery.eq('player_id', selectedContext.id);
       } else if (selectedContext?.type === 'team' && selectedContext?.id) {
@@ -293,7 +362,6 @@ export default function CategoryManagementModal({
         throw externalError;
       }
 
-      // Combine both types of activities
       const allActivities = [
         ...(internalActivities || []).map(a => ({
           id: a.id,
@@ -316,6 +384,7 @@ export default function CategoryManagementModal({
       if (allActivities.length > 0) {
         // Show reassignment dialog
         setActivitiesUsingCategory(allActivities);
+        setDeleteModeAction('remove');
         setMode('delete');
       } else {
         // No activities using this category, safe to delete
@@ -328,6 +397,101 @@ export default function CategoryManagementModal({
       setIsLoading(false);
     }
   }, [selectedContext, handleDeleteCategoryConfirm]);
+
+  const handleRemoveCategoryCheck = useCallback(async (category: ActivityCategory) => {
+    setIsLoading(true);
+    setSelectedCategory(category);
+    setDeleteModeAction('remove');
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      let internalQuery = supabase
+        .from('activities')
+        .select('id, title, activity_date, activity_time')
+        .eq('category_id', category.id)
+        .eq('is_external', false);
+
+      if (selectedContext?.type === 'player' && selectedContext?.id) {
+        internalQuery = internalQuery.eq('player_id', selectedContext.id);
+      } else if (selectedContext?.type === 'team' && selectedContext?.id) {
+        internalQuery = internalQuery.eq('team_id', selectedContext.id);
+      } else {
+        internalQuery = internalQuery.eq('user_id', user.id);
+      }
+
+      const { data: internalActivities, error: internalError } = await internalQuery;
+
+      if (internalError) {
+        console.error('Error checking internal activities:', internalError);
+        throw internalError;
+      }
+
+      let externalQuery = supabase
+        .from('events_local_meta')
+        .select(`
+          id,
+          events_external!inner(
+            title,
+            start_date,
+            start_time
+          )
+        `)
+        .eq('category_id', category.id);
+
+      if (selectedContext?.type === 'player' && selectedContext?.id) {
+        externalQuery = externalQuery.eq('player_id', selectedContext.id);
+      } else if (selectedContext?.type === 'team' && selectedContext?.id) {
+        externalQuery = externalQuery.eq('team_id', selectedContext.id);
+      } else {
+        externalQuery = externalQuery.eq('user_id', user.id);
+      }
+
+      const { data: externalActivities, error: externalError } = await externalQuery;
+
+      if (externalError) {
+        console.error('Error checking external activities:', externalError);
+        throw externalError;
+      }
+
+      const allActivities = [
+        ...(internalActivities || []).map(a => ({
+          id: a.id,
+          title: a.title,
+          date: a.activity_date,
+          time: a.activity_time,
+          isExternal: false,
+        })),
+        ...(externalActivities || []).map((a: any) => ({
+          id: a.id,
+          title: a.events_external.title,
+          date: a.events_external.start_date,
+          time: a.events_external.start_time,
+          isExternal: true,
+        })),
+      ];
+
+      console.log(`Found ${allActivities.length} activities using category "${category.name}"`);
+
+      if (allActivities.length > 0) {
+        // Show reassignment dialog
+        setActivitiesUsingCategory(allActivities);
+        setDeleteModeAction('remove');
+        setMode('delete');
+      } else {
+        // No activities using this category, safe to delete
+        await handleHideCategoryConfirm(category.id);
+      }
+    } catch (error) {
+      console.error('Failed to check category usage:', error);
+      Alert.alert('Fejl', 'Kunne ikke kontrollere kategori');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [selectedContext, handleHideCategoryConfirm]);
 
   const handleReassignAndDelete = useCallback(async () => {
     if (!selectedCategory || !reassignCategoryId) {
@@ -348,7 +512,6 @@ export default function CategoryManagementModal({
         throw new Error('User not authenticated');
       }
 
-      // Update internal activities
       const internalActivityIds = (activitiesUsingCategory || [])
         .filter(a => !a.isExternal)
         .map(a => a.id);
@@ -368,7 +531,6 @@ export default function CategoryManagementModal({
         }
       }
 
-      // Update external activities (local metadata)
       const externalActivityIds = (activitiesUsingCategory || [])
         .filter(a => a.isExternal)
         .map(a => a.id);
@@ -392,7 +554,6 @@ export default function CategoryManagementModal({
 
       console.log(`Reassigned ${(activitiesUsingCategory || []).length} activities to new category`);
 
-      // Now delete the category
       await handleDeleteCategoryConfirm(selectedCategory.id);
     } catch (error) {
       console.error('Failed to reassign and delete:', error);
@@ -400,6 +561,75 @@ export default function CategoryManagementModal({
       setIsLoading(false);
     }
   }, [selectedCategory, reassignCategoryId, activitiesUsingCategory, handleDeleteCategoryConfirm]);
+
+  const handleReassignAndHide = useCallback(async () => {
+    if (!selectedCategory || !reassignCategoryId) {
+      Alert.alert('Fejl', 'Vælg venligst en ny kategori');
+      return;
+    }
+
+    if (reassignCategoryId === selectedCategory.id) {
+      Alert.alert('Fejl', 'Du kan ikke tildele samme kategori');
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      const internalActivityIds = (activitiesUsingCategory || [])
+        .filter(a => !a.isExternal)
+        .map(a => a.id);
+
+      if (internalActivityIds.length > 0) {
+        const { error: internalError } = await supabase
+          .from('activities')
+          .update({
+            category_id: reassignCategoryId,
+            updated_at: new Date().toISOString(),
+          })
+          .in('id', internalActivityIds);
+
+        if (internalError) {
+          console.error('Error updating internal activities:', internalError);
+          throw internalError;
+        }
+      }
+
+      const externalActivityIds = (activitiesUsingCategory || [])
+        .filter(a => a.isExternal)
+        .map(a => a.id);
+
+      if (externalActivityIds.length > 0) {
+        const { error: externalError } = await supabase
+          .from('events_local_meta')
+          .update({
+            category_id: reassignCategoryId,
+            manually_set_category: true,
+            category_updated_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .in('id', externalActivityIds);
+
+        if (externalError) {
+          console.error('Error updating external activities:', externalError);
+          throw externalError;
+        }
+      }
+
+      console.log(`Reassigned ${(activitiesUsingCategory || []).length} activities to new category`);
+
+      await handleHideCategoryConfirm(selectedCategory.id);
+    } catch (error) {
+      console.error('Failed to reassign and hide:', error);
+      Alert.alert('Fejl', 'Kunne ikke tildele aktiviteter til ny kategori');
+      setIsLoading(false);
+    }
+  }, [selectedCategory, reassignCategoryId, activitiesUsingCategory, handleHideCategoryConfirm]);
 
   const startEdit = useCallback((category: ActivityCategory) => {
     setSelectedCategory(category);
@@ -428,6 +658,7 @@ export default function CategoryManagementModal({
           style={[styles.createButton, { backgroundColor: colors.primary }]}
           onPress={() => setMode('create')}
           activeOpacity={0.7}
+          disabled={isLoading}
         >
           <IconSymbol
             ios_icon_name="plus.circle.fill"
@@ -439,53 +670,88 @@ export default function CategoryManagementModal({
         </TouchableOpacity>
 
         <View style={styles.categoriesList}>
-          {safeCategories.map((category) => (
-            <View
-              key={category.id}
-              style={[styles.categoryItem, { backgroundColor: bgColor }]}
-            >
-              <View style={styles.categoryInfo}>
-                <View style={[styles.categoryColorDot, { backgroundColor: category.color }]} />
-                <Text style={styles.categoryEmoji}>{category.emoji}</Text>
-                <Text style={[styles.categoryName, { color: textColor }]}>{category.name}</Text>
+          {safeCategories.map((category) => {
+            const isOwned = !!currentUserId && (category as any).user_id === currentUserId;
+
+            return (
+              <View
+                key={category.id}
+                style={[styles.categoryItem, { backgroundColor: bgColor }]}
+              >
+                <View style={styles.categoryInfo}>
+                  <View style={[styles.categoryColorDot, { backgroundColor: category.color }]} />
+                  <Text style={styles.categoryEmoji}>{category.emoji}</Text>
+                  <Text style={[styles.categoryName, { color: textColor }]}>{category.name}</Text>
+                </View>
+                <View style={styles.categoryActions}>
+                  {isOwned ? (
+                    <>
+                      <TouchableOpacity
+                        onPress={() => startEdit(category)}
+                        activeOpacity={0.7}
+                        style={styles.actionButton}
+                        disabled={isLoading}
+                      >
+                        <IconSymbol
+                          ios_icon_name="pencil.circle.fill"
+                          android_material_icon_name="edit"
+                          size={28}
+                          color={colors.primary}
+                        />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => handleDeleteCategoryCheck(category)}
+                        activeOpacity={0.7}
+                        style={styles.actionButton}
+                        disabled={isLoading}
+                      >
+                        <IconSymbol
+                          ios_icon_name="trash.circle.fill"
+                          android_material_icon_name="delete"
+                          size={28}
+                          color={colors.error}
+                        />
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={() => handleRemoveCategoryCheck(category)}
+                      activeOpacity={0.7}
+                      style={styles.actionButton}
+                      disabled={isLoading}
+                    >
+                      <IconSymbol
+                        ios_icon_name="minus.circle.fill"
+                        android_material_icon_name="remove_circle"
+                        size={28}
+                        color={colors.error}
+                      />
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
-              <View style={styles.categoryActions}>
-                <TouchableOpacity
-                  onPress={() => startEdit(category)}
-                  activeOpacity={0.7}
-                  style={styles.actionButton}
-                >
-                  <IconSymbol
-                    ios_icon_name="pencil.circle.fill"
-                    android_material_icon_name="edit"
-                    size={28}
-                    color={colors.primary}
-                  />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => handleDeleteCategoryCheck(category)}
-                  activeOpacity={0.7}
-                  style={styles.actionButton}
-                >
-                  <IconSymbol
-                    ios_icon_name="trash.circle.fill"
-                    android_material_icon_name="delete"
-                    size={28}
-                    color={colors.error}
-                  />
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))}
+            );
+          })}
         </View>
       </ScrollView>
     </React.Fragment>
-  ), [textColor, textSecondaryColor, onClose, safeCategories, bgColor, startEdit, handleDeleteCategoryCheck]);
+  ), [
+    textColor,
+    textSecondaryColor,
+    onClose,
+    safeCategories,
+    bgColor,
+    startEdit,
+    handleDeleteCategoryCheck,
+    handleRemoveCategoryCheck,
+    currentUserId,
+    isLoading,
+  ]);
 
   const renderCreateEditMode = useCallback(() => (
     <React.Fragment>
       <View style={styles.modalHeader}>
-        <TouchableOpacity onPress={() => setMode('list')} activeOpacity={0.7}>
+        <TouchableOpacity onPress={() => setMode('list')} activeOpacity={0.7} disabled={isLoading}>
           <IconSymbol
             ios_icon_name="chevron.left.circle.fill"
             android_material_icon_name="arrow_back"
@@ -526,6 +792,7 @@ export default function CategoryManagementModal({
                 ]}
                 onPress={() => setSelectedEmoji(emoji)}
                 activeOpacity={0.7}
+                disabled={isLoading}
               >
                 <Text style={styles.emojiText}>{emoji}</Text>
               </TouchableOpacity>
@@ -546,6 +813,7 @@ export default function CategoryManagementModal({
                 ]}
                 onPress={() => setSelectedColor(color)}
                 activeOpacity={0.7}
+                disabled={isLoading}
               >
                 {selectedColor === color && (
                   <IconSymbol
@@ -610,7 +878,18 @@ export default function CategoryManagementModal({
         </TouchableOpacity>
       </View>
     </React.Fragment>
-  ), [textSecondaryColor, textColor, mode, bgColor, categoryName, selectedEmoji, selectedColor, isLoading, handleCreateCategory, handleEditCategory]);
+  ), [
+    textSecondaryColor,
+    textColor,
+    mode,
+    bgColor,
+    categoryName,
+    selectedEmoji,
+    selectedColor,
+    isLoading,
+    handleCreateCategory,
+    handleEditCategory,
+  ]);
 
   const renderDeleteMode = useCallback(() => {
     const availableCategories = safeCategories.filter(c => c.id !== selectedCategory?.id);
@@ -618,7 +897,7 @@ export default function CategoryManagementModal({
     return (
       <React.Fragment>
         <View style={styles.modalHeader}>
-          <TouchableOpacity onPress={() => setMode('list')} activeOpacity={0.7}>
+          <TouchableOpacity onPress={() => setMode('list')} activeOpacity={0.7} disabled={isLoading}>
             <IconSymbol
               ios_icon_name="chevron.left.circle.fill"
               android_material_icon_name="arrow_back"
@@ -626,7 +905,9 @@ export default function CategoryManagementModal({
               color={textSecondaryColor}
             />
           </TouchableOpacity>
-          <Text style={[styles.modalTitle, { color: textColor }]}>Slet kategori</Text>
+          <Text style={[styles.modalTitle, { color: textColor }]}>
+            {deleteModeAction === 'remove' ? 'Fjern kategori' : 'Slet kategori'}
+          </Text>
           <View style={{ width: 32 }} />
         </View>
 
@@ -643,7 +924,7 @@ export default function CategoryManagementModal({
             </Text>
             <Text style={[styles.warningMessage, { color: textSecondaryColor }]}>
               Kategorien "{selectedCategory?.name}" bruges af {activitiesUsingCategory.length} aktivitet(er).
-              Du skal tildele disse aktiviteter til en anden kategori før du kan slette denne.
+              Du skal tildele disse aktiviteter til en anden kategori før du kan {deleteModeAction === 'remove' ? 'fjerne' : 'slette'} denne.
             </Text>
           </View>
 
@@ -689,6 +970,7 @@ export default function CategoryManagementModal({
                   ]}
                   onPress={() => setReassignCategoryId(cat.id)}
                   activeOpacity={0.7}
+                  disabled={isLoading}
                 >
                   <Text style={styles.categoryEmoji}>{cat.emoji}</Text>
                   <Text
@@ -724,7 +1006,7 @@ export default function CategoryManagementModal({
               styles.deleteButton,
               { backgroundColor: colors.error },
             ]}
-            onPress={handleReassignAndDelete}
+            onPress={deleteModeAction === 'remove' ? handleReassignAndHide : handleReassignAndDelete}
             activeOpacity={0.7}
             disabled={isLoading || !reassignCategoryId}
           >
@@ -732,14 +1014,26 @@ export default function CategoryManagementModal({
               <ActivityIndicator size="small" color="#fff" />
             ) : (
               <Text style={[styles.modalButtonText, { color: '#fff' }]}>
-                Tildel og slet
+                {deleteModeAction === 'remove' ? 'Tildel og fjern' : 'Tildel og slet'}
               </Text>
             )}
           </TouchableOpacity>
         </View>
       </React.Fragment>
     );
-  }, [safeCategories, selectedCategory, textSecondaryColor, textColor, activitiesUsingCategory, bgColor, reassignCategoryId, isLoading, handleReassignAndDelete]);
+  }, [
+    safeCategories,
+    selectedCategory,
+    textSecondaryColor,
+    textColor,
+    activitiesUsingCategory,
+    bgColor,
+    reassignCategoryId,
+    isLoading,
+    handleReassignAndDelete,
+    handleReassignAndHide,
+    deleteModeAction,
+  ]);
 
   return (
     <Modal
