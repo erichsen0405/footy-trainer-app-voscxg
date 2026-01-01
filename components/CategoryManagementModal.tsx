@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
@@ -25,20 +24,20 @@ import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
  * ✅ First render & loading:
  *    - No blocking before paint
  *    - Modal opens immediately
- * 
+ *
  * ✅ Navigation:
  *    - No fetch in onPress/onOpen
  *    - All data passed via props
- * 
+ *
  * ✅ Lists:
  *    - ScrollView acceptable (limited categories)
- *    - Keys provided via index
- * 
+ *    - Keys provided via stable ids/values
+ *
  * ✅ Render control:
  *    - useCallback for all handlers (stable deps)
  *    - useMemo for derived data
  *    - No inline handlers in render
- * 
+ *
  * ✅ Platform parity:
  *    - Same behavior iOS/Android/Web
  * ========================================
@@ -47,7 +46,7 @@ import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 interface CategoryManagementModalProps {
   visible: boolean;
   onClose: () => void;
-  categories: ActivityCategory[];
+  categories?: ActivityCategory[];
   onRefresh: () => void;
 }
 
@@ -61,12 +60,17 @@ const COLOR_OPTIONS = [
 export default function CategoryManagementModal({
   visible,
   onClose,
-  categories,
+  categories = [],
   onRefresh,
 }: CategoryManagementModalProps) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const { selectedContext } = useTeamPlayer();
+
+  const safeCategories = useMemo<ActivityCategory[]>(
+    () => (Array.isArray(categories) ? categories : []),
+    [categories]
+  );
 
   const [mode, setMode] = useState<'list' | 'create' | 'edit' | 'delete'>('list');
   const [selectedCategory, setSelectedCategory] = useState<ActivityCategory | null>(null);
@@ -113,9 +117,9 @@ export default function CategoryManagementModal({
       let player_id = null;
       let team_id = null;
 
-      if (selectedContext.type === 'player' && selectedContext.id) {
+      if (selectedContext?.type === 'player' && selectedContext?.id) {
         player_id = selectedContext.id;
-      } else if (selectedContext.type === 'team' && selectedContext.id) {
+      } else if (selectedContext?.type === 'team' && selectedContext?.id) {
         team_id = selectedContext.id;
       }
 
@@ -243,9 +247,9 @@ export default function CategoryManagementModal({
         .eq('is_external', false);
 
       // Filter based on selected context
-      if (selectedContext.type === 'player' && selectedContext.id) {
+      if (selectedContext?.type === 'player' && selectedContext?.id) {
         internalQuery = internalQuery.eq('player_id', selectedContext.id);
-      } else if (selectedContext.type === 'team' && selectedContext.id) {
+      } else if (selectedContext?.type === 'team' && selectedContext?.id) {
         internalQuery = internalQuery.eq('team_id', selectedContext.id);
       } else {
         internalQuery = internalQuery.eq('user_id', user.id);
@@ -272,9 +276,9 @@ export default function CategoryManagementModal({
         .eq('category_id', category.id);
 
       // Filter based on selected context
-      if (selectedContext.type === 'player' && selectedContext.id) {
+      if (selectedContext?.type === 'player' && selectedContext?.id) {
         externalQuery = externalQuery.eq('player_id', selectedContext.id);
-      } else if (selectedContext.type === 'team' && selectedContext.id) {
+      } else if (selectedContext?.type === 'team' && selectedContext?.id) {
         externalQuery = externalQuery.eq('team_id', selectedContext.id);
       } else {
         externalQuery = externalQuery.eq('user_id', user.id);
@@ -323,7 +327,6 @@ export default function CategoryManagementModal({
     }
   }, [selectedContext, handleDeleteCategoryConfirm]);
 
-  // LINT FIX: Include handleDeleteCategoryConfirm in dependency array
   const handleReassignAndDelete = useCallback(async () => {
     if (!selectedCategory || !reassignCategoryId) {
       Alert.alert('Fejl', 'Vælg venligst en ny kategori');
@@ -344,7 +347,7 @@ export default function CategoryManagementModal({
       }
 
       // Update internal activities
-      const internalActivityIds = activitiesUsingCategory
+      const internalActivityIds = (activitiesUsingCategory || [])
         .filter(a => !a.isExternal)
         .map(a => a.id);
 
@@ -364,7 +367,7 @@ export default function CategoryManagementModal({
       }
 
       // Update external activities (local metadata)
-      const externalActivityIds = activitiesUsingCategory
+      const externalActivityIds = (activitiesUsingCategory || [])
         .filter(a => a.isExternal)
         .map(a => a.id);
 
@@ -385,7 +388,7 @@ export default function CategoryManagementModal({
         }
       }
 
-      console.log(`Reassigned ${activitiesUsingCategory.length} activities to new category`);
+      console.log(`Reassigned ${(activitiesUsingCategory || []).length} activities to new category`);
 
       // Now delete the category
       await handleDeleteCategoryConfirm(selectedCategory.id);
@@ -434,9 +437,9 @@ export default function CategoryManagementModal({
         </TouchableOpacity>
 
         <View style={styles.categoriesList}>
-          {categories.map((category, index) => (
+          {safeCategories.map((category) => (
             <View
-              key={index}
+              key={category.id}
               style={[styles.categoryItem, { backgroundColor: bgColor }]}
             >
               <View style={styles.categoryInfo}>
@@ -475,7 +478,7 @@ export default function CategoryManagementModal({
         </View>
       </ScrollView>
     </React.Fragment>
-  ), [textColor, textSecondaryColor, onClose, categories, bgColor, startEdit, handleDeleteCategoryCheck]);
+  ), [textColor, textSecondaryColor, onClose, safeCategories, bgColor, startEdit, handleDeleteCategoryCheck]);
 
   const renderCreateEditMode = useCallback(() => (
     <React.Fragment>
@@ -509,9 +512,9 @@ export default function CategoryManagementModal({
         <View style={styles.fieldContainer}>
           <Text style={[styles.fieldLabel, { color: textColor }]}>Emoji</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.emojiScroll}>
-            {EMOJI_OPTIONS.map((emoji, index) => (
+            {EMOJI_OPTIONS.map((emoji) => (
               <TouchableOpacity
-                key={index}
+                key={emoji}
                 style={[
                   styles.emojiOption,
                   {
@@ -531,9 +534,9 @@ export default function CategoryManagementModal({
         <View style={styles.fieldContainer}>
           <Text style={[styles.fieldLabel, { color: textColor }]}>Farve</Text>
           <View style={styles.colorGrid}>
-            {COLOR_OPTIONS.map((color, index) => (
+            {COLOR_OPTIONS.map((color) => (
               <TouchableOpacity
-                key={index}
+                key={color}
                 style={[
                   styles.colorOption,
                   { backgroundColor: color },
@@ -608,7 +611,7 @@ export default function CategoryManagementModal({
   ), [textSecondaryColor, textColor, mode, bgColor, categoryName, selectedEmoji, selectedColor, isLoading, handleCreateCategory, handleEditCategory]);
 
   const renderDeleteMode = useCallback(() => {
-    const availableCategories = categories.filter(c => c.id !== selectedCategory?.id);
+    const availableCategories = safeCategories.filter(c => c.id !== selectedCategory?.id);
 
     return (
       <React.Fragment>
@@ -646,8 +649,11 @@ export default function CategoryManagementModal({
             <Text style={[styles.fieldLabel, { color: textColor }]}>
               Aktiviteter der bruger denne kategori:
             </Text>
-            {activitiesUsingCategory.slice(0, 5).map((activity, index) => (
-              <View key={index} style={[styles.activityItem, { backgroundColor: bgColor }]}>
+            {(activitiesUsingCategory || []).slice(0, 5).map((activity) => (
+              <View
+                key={`${activity.isExternal ? 'ext' : 'int'}-${activity.id}`}
+                style={[styles.activityItem, { backgroundColor: bgColor }]}
+              >
                 <Text style={[styles.activityTitle, { color: textColor }]}>
                   {activity.title}
                 </Text>
@@ -668,9 +674,9 @@ export default function CategoryManagementModal({
               Vælg ny kategori for disse aktiviteter *
             </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
-              {availableCategories.map((cat, index) => (
+              {availableCategories.map((cat) => (
                 <TouchableOpacity
-                  key={index}
+                  key={cat.id}
                   style={[
                     styles.categoryChip,
                     {
@@ -731,7 +737,7 @@ export default function CategoryManagementModal({
         </View>
       </React.Fragment>
     );
-  }, [categories, selectedCategory, textSecondaryColor, textColor, activitiesUsingCategory, bgColor, reassignCategoryId, isLoading, handleReassignAndDelete]);
+  }, [safeCategories, selectedCategory, textSecondaryColor, textColor, activitiesUsingCategory, bgColor, reassignCategoryId, isLoading, handleReassignAndDelete]);
 
   return (
     <Modal visible={visible} animationType="slide" transparent={true}>

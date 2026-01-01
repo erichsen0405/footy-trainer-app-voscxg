@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
@@ -20,35 +19,8 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { ActivityCategory } from '@/types';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useFootball } from '@/contexts/FootballContext';
 import CategoryManagementModal from '@/components/CategoryManagementModal';
-
-/*
- * ========================================
- * PERFORMANCE CHECKLIST (STEP F)
- * ========================================
- * ✅ First render & loading:
- *    - No blocking before paint
- *    - Modal opens immediately
- * 
- * ✅ Navigation:
- *    - No fetch in onPress/onOpen
- *    - Modal controlled by visible prop
- * 
- * ✅ Render control:
- *    - useCallback for all handlers (stable deps)
- *    - useMemo for derived data (bgColor, cardBgColor, etc.)
- *    - No inline handlers in render
- * 
- * ✅ Platform parity:
- *    - Same behavior iOS/Android/Web
- *    - Platform-specific pickers handled correctly
- * 
- * ✅ P6 FIX:
- *    - Categories visible for all user roles (player, trainer, admin)
- *    - No role-based filtering in modal
- *    - Graceful handling of empty categories
- * ========================================
- */
 
 interface CreateActivityModalProps {
   visible: boolean;
@@ -95,10 +67,9 @@ export default function CreateActivityModal({
   categories,
   onRefreshCategories,
 }: CreateActivityModalProps) {
-  // All hooks must be called unconditionally at the top level
   const colorScheme = useColorScheme();
   const scrollViewRef = useRef<ScrollView>(null);
-  
+
   const [title, setTitle] = useState('');
   const [location, setLocation] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
@@ -115,20 +86,19 @@ export default function CreateActivityModal({
   const [isCreating, setIsCreating] = useState(false);
   const [showCategoryManagement, setShowCategoryManagement] = useState(false);
 
+  const { refreshCategories } = useFootball();
+
   const isDark = colorScheme === 'dark';
-  
-  // P6 FIX: Ensure categories is always an array, never undefined
+
+  // Track interaction so auto-select doesn’t re-select after user toggles off
+  const userTouchedCategoryRef = useRef(false);
+
+  useEffect(() => {
+    if (visible) userTouchedCategoryRef.current = false;
+  }, [visible]);
+
   const safeCategories: ActivityCategory[] = useMemo(() => {
-    const cats = Array.isArray(categories) ? categories : [];
-    console.log('📁 CreateActivityModal - Categories available:', cats.length);
-    if (cats.length > 0) {
-      cats.forEach(cat => {
-        console.log(`   ${cat.emoji} ${cat.name} (${cat.id})`);
-      });
-    } else {
-      console.log('   ⚠️ No categories available - user needs to create categories first');
-    }
-    return cats;
+    return Array.isArray(categories) ? categories : [];
   }, [categories]);
 
   const bgColor = useMemo(() => {
@@ -137,22 +107,20 @@ export default function CreateActivityModal({
     return '#ffffff';
   }, [isDark]);
 
-  const cardBgColor = useMemo(() => isDark ? '#2a2a2a' : colors.card, [isDark]);
-  const textColor = useMemo(() => isDark ? '#e3e3e3' : colors.text, [isDark]);
-  const textSecondaryColor = useMemo(() => isDark ? '#999' : colors.textSecondary, [isDark]);
+  const cardBgColor = useMemo(() => (isDark ? '#2a2a2a' : colors.card), [isDark]);
+  const textColor = useMemo(() => (isDark ? '#e3e3e3' : colors.text), [isDark]);
+  const textSecondaryColor = useMemo(() => (isDark ? '#999' : colors.textSecondary), [isDark]);
 
-  // P6 FIX: Auto-select first category when categories become available
+  // Auto-select first category only if user hasn’t interacted
   useEffect(() => {
-    if (safeCategories.length > 0 && !selectedCategory) {
-      console.log('📁 Auto-selecting first category:', safeCategories[0].name);
+    if (safeCategories.length > 0 && !selectedCategory && !userTouchedCategoryRef.current) {
       setSelectedCategory(safeCategories[0].id);
     }
   }, [safeCategories, selectedCategory]);
 
-  // LINT FIX: Move safeOnClose inside useCallback
   const handleClose = useCallback(() => {
     const safeOnClose = typeof onClose === 'function' ? onClose : () => {};
-    
+
     setTitle('');
     setLocation('');
     setSelectedCategory(safeCategories[0]?.id || '');
@@ -163,6 +131,9 @@ export default function CreateActivityModal({
     setSelectedDays([]);
     setHasEndDate(false);
     setEndDate(new Date(Date.now() + 90 * 24 * 60 * 60 * 1000));
+    setShowCategoryManagement(false);
+    userTouchedCategoryRef.current = false;
+
     safeOnClose();
   }, [safeCategories, onClose]);
 
@@ -172,15 +143,8 @@ export default function CreateActivityModal({
       return;
     }
 
-    // P6 FIX: Check if categories are available
     if (safeCategories.length === 0) {
-      Alert.alert(
-        'Ingen kategorier', 
-        'Opret en kategori først',
-        [
-          { text: 'OK', style: 'default' }
-        ]
-      );
+      Alert.alert('Ingen kategorier', 'Opret en kategori først', [{ text: 'OK', style: 'default' }]);
       return;
     }
 
@@ -210,8 +174,7 @@ export default function CreateActivityModal({
         isRecurring,
         recurrenceType: isRecurring ? recurrenceType : undefined,
         recurrenceDays:
-          isRecurring &&
-          ['weekly', 'biweekly', 'triweekly'].includes(recurrenceType)
+          isRecurring && ['weekly', 'biweekly', 'triweekly'].includes(recurrenceType)
             ? selectedDays
             : undefined,
         endDate: isRecurring && hasEndDate ? endDate : undefined,
@@ -225,25 +188,35 @@ export default function CreateActivityModal({
     } finally {
       setIsCreating(false);
     }
-  }, [title, selectedCategory, isRecurring, recurrenceType, selectedDays, location, date, time, hasEndDate, endDate, onCreateActivity, handleClose, safeCategories]);
+  }, [
+    title,
+    selectedCategory,
+    isRecurring,
+    recurrenceType,
+    selectedDays,
+    location,
+    date,
+    time,
+    hasEndDate,
+    endDate,
+    onCreateActivity,
+    handleClose,
+    safeCategories,
+  ]);
 
   const toggleDay = useCallback((day: number) => {
     setSelectedDays(prev =>
-      prev.includes(day)
-        ? prev.filter(d => d !== day)
-        : [...prev, day].sort()
+      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort()
     );
   }, []);
 
-  const needsDaySelection = useMemo(() =>
-    recurrenceType === 'weekly' ||
-    recurrenceType === 'biweekly' ||
-    recurrenceType === 'triweekly',
+  const needsDaySelection = useMemo(
+    () => recurrenceType === 'weekly' || recurrenceType === 'biweekly' || recurrenceType === 'triweekly',
     [recurrenceType]
   );
 
-  const formatDate = useCallback((date: Date) => {
-    return date.toLocaleDateString('da-DK', {
+  const formatDate = useCallback((d: Date) => {
+    return d.toLocaleDateString('da-DK', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -251,18 +224,12 @@ export default function CreateActivityModal({
   }, []);
 
   const handleDateChange = useCallback((event: any, selectedDate?: Date) => {
-    if (Platform.OS === 'android') {
-      setShowDatePicker(false);
-    }
-    if (selectedDate) {
-      setDate(selectedDate);
-    }
+    if (Platform.OS === 'android') setShowDatePicker(false);
+    if (selectedDate) setDate(selectedDate);
   }, []);
 
   const handleTimeChange = useCallback((event: any, selectedTime?: Date) => {
-    if (Platform.OS === 'android') {
-      setShowTimePicker(false);
-    }
+    if (Platform.OS === 'android') setShowTimePicker(false);
     if (selectedTime) {
       const hours = selectedTime.getHours().toString().padStart(2, '0');
       const minutes = selectedTime.getMinutes().toString().padStart(2, '0');
@@ -271,12 +238,8 @@ export default function CreateActivityModal({
   }, []);
 
   const handleEndDateChange = useCallback((event: any, selectedDate?: Date) => {
-    if (Platform.OS === 'android') {
-      setShowEndDatePicker(false);
-    }
-    if (selectedDate) {
-      setEndDate(selectedDate);
-    }
+    if (Platform.OS === 'android') setShowEndDatePicker(false);
+    if (selectedDate) setEndDate(selectedDate);
   }, []);
 
   const getTimeAsDate = useCallback(() => {
@@ -287,7 +250,36 @@ export default function CreateActivityModal({
     return timeDate;
   }, [time]);
 
-  // Early return after all hooks have been called
+  const openCategoryManagement = useCallback(() => {
+    setShowCategoryManagement(true);
+  }, []);
+
+  const closeCategoryManagement = useCallback(() => {
+    setShowCategoryManagement(false);
+  }, []);
+
+  const handleRefreshCategories = useCallback(async () => {
+    if (typeof refreshCategories === 'function') {
+      await refreshCategories();
+    } else if (typeof onRefreshCategories === 'function') {
+      await onRefreshCategories();
+    }
+  }, [refreshCategories, onRefreshCategories]);
+
+  const handleCategoryToggle = useCallback((categoryId: string) => {
+    userTouchedCategoryRef.current = true;
+    setSelectedCategory(prev => (prev === categoryId ? '' : categoryId));
+  }, []);
+
+  // Avoid inline lambdas in render
+  const categoryPressHandlers = useMemo(() => {
+    const map: Record<string, () => void> = {};
+    for (const c of safeCategories) {
+      map[c.id] = () => handleCategoryToggle(c.id);
+    }
+    return map;
+  }, [safeCategories, handleCategoryToggle]);
+
   if (!visible) return null;
 
   return (
@@ -299,10 +291,8 @@ export default function CreateActivityModal({
         >
           <View style={[styles.modalContent, { backgroundColor: cardBgColor }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: textColor }]}>
-                Opret aktivitet
-              </Text>
-              <TouchableOpacity onPress={handleClose}>
+              <Text style={[styles.modalTitle, { color: textColor }]}>Opret aktivitet</Text>
+              <TouchableOpacity onPress={handleClose} activeOpacity={0.7}>
                 <IconSymbol
                   ios_icon_name="xmark.circle.fill"
                   android_material_icon_name="close"
@@ -317,7 +307,6 @@ export default function CreateActivityModal({
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.scrollContent}
             >
-              {/* Title Input */}
               <TextInput
                 style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
                 value={title}
@@ -326,7 +315,6 @@ export default function CreateActivityModal({
                 placeholderTextColor={textSecondaryColor}
               />
 
-              {/* Location Input */}
               <TextInput
                 style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
                 value={location}
@@ -335,52 +323,77 @@ export default function CreateActivityModal({
                 placeholderTextColor={textSecondaryColor}
               />
 
-              {/* P6 FIX: Category Selection with empty state handling */}
-              {safeCategories.length > 0 ? (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScrollContainer}>
-                  {safeCategories.map((cat) => (
-                    <TouchableOpacity
-                      key={cat.id}
-                      style={[
-                        styles.categoryChip,
-                        {
-                          backgroundColor:
-                            selectedCategory === cat.id ? cat.color : bgColor,
-                          borderColor: cat.color,
-                        },
-                      ]}
-                      onPress={() => setSelectedCategory(cat.id)}
-                    >
-                      <Text>{cat.emoji}</Text>
-                      <Text
-                        style={{
-                          color:
-                            selectedCategory === cat.id ? '#fff' : textColor,
-                        }}
-                      >
-                        {cat.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              ) : (
-                <View style={[styles.emptyCategoryContainer, { backgroundColor: bgColor }]}>
-                  <IconSymbol
-                    ios_icon_name="folder.badge.plus"
-                    android_material_icon_name="create_new_folder"
-                    size={32}
-                    color={textSecondaryColor}
-                  />
-                  <Text style={[styles.emptyCategoryText, { color: textColor }]}>
-                    Opret en kategori først
-                  </Text>
+              {/* Category */}
+              <View>
+                <View style={styles.categoryHeaderRow}>
+                  <Text style={[styles.categoryHeaderText, { color: textColor }]}>Kategori</Text>
+
+                  {/* ✅ P14: replace top-right button block 1:1 */}
+                  <TouchableOpacity
+                    onPress={() => {
+                      console.log('[P14] top-right add category pressed');
+                      setShowCategoryManagement(true);
+                    }}
+                    activeOpacity={0.7}
+                    style={styles.createCategoryTopRight}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  >
+                    <Text style={styles.createCategoryTopRightText}>+ Opret kategori</Text>
+                  </TouchableOpacity>
                 </View>
-              )}
+
+                {safeCategories.length === 0 ? (
+                  <TouchableOpacity onPress={openCategoryManagement} activeOpacity={0.7}>
+                    <View style={[styles.emptyCategoryContainer, { backgroundColor: bgColor }]}>
+                      <IconSymbol
+                        ios_icon_name="folder.badge.plus"
+                        android_material_icon_name="create_new_folder"
+                        size={32}
+                        color={textSecondaryColor}
+                      />
+                      <Text style={[styles.emptyCategoryText, { color: textColor }]}>
+                        Opret en kategori først
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.categoryWrapContainer}>
+                    {safeCategories.map((cat) => {
+                      const isSelected = selectedCategory === cat.id;
+                      return (
+                        <TouchableOpacity
+                          key={cat.id}
+                          style={[
+                            styles.categoryChip,
+                            {
+                              backgroundColor: isSelected ? cat.color : bgColor,
+                              borderColor: cat.color,
+                            },
+                          ]}
+                          onPress={categoryPressHandlers[cat.id]}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.categoryChipEmoji}>{cat.emoji}</Text>
+                          <Text
+                            style={[
+                              styles.categoryChipText,
+                              { color: isSelected ? '#fff' : textColor },
+                            ]}
+                          >
+                            {cat.name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
 
               {/* Date Picker */}
               <TouchableOpacity
                 style={[styles.pickerButton, { backgroundColor: bgColor }]}
                 onPress={() => setShowDatePicker(true)}
+                activeOpacity={0.7}
               >
                 <IconSymbol
                   ios_icon_name="calendar"
@@ -388,16 +401,16 @@ export default function CreateActivityModal({
                   size={20}
                   color={textColor}
                 />
-                <Text style={[styles.pickerButtonText, { color: textColor }]}>
-                  {formatDate(date)}
-                </Text>
+                <Text style={[styles.pickerButtonText, { color: textColor }]}>{formatDate(date)}</Text>
               </TouchableOpacity>
 
               {showDatePicker ? (
-                <View style={[
-                  Platform.OS === 'ios' ? styles.iosPickerContainer : undefined,
-                  { backgroundColor: isDark ? '#2a2a2a' : '#FFFFFF' }
-                ]}>
+                <View
+                  style={[
+                    Platform.OS === 'ios' ? styles.iosPickerContainer : undefined,
+                    { backgroundColor: isDark ? '#2a2a2a' : '#FFFFFF' },
+                  ]}
+                >
                   <DateTimePicker
                     value={date}
                     mode="date"
@@ -415,6 +428,7 @@ export default function CreateActivityModal({
                 <TouchableOpacity
                   style={[styles.doneButton, { backgroundColor: colors.primary }]}
                   onPress={() => setShowDatePicker(false)}
+                  activeOpacity={0.7}
                 >
                   <Text style={styles.doneButtonText}>Færdig</Text>
                 </TouchableOpacity>
@@ -424,6 +438,7 @@ export default function CreateActivityModal({
               <TouchableOpacity
                 style={[styles.pickerButton, { backgroundColor: bgColor }]}
                 onPress={() => setShowTimePicker(true)}
+                activeOpacity={0.7}
               >
                 <IconSymbol
                   ios_icon_name="clock"
@@ -431,16 +446,16 @@ export default function CreateActivityModal({
                   size={20}
                   color={textColor}
                 />
-                <Text style={[styles.pickerButtonText, { color: textColor }]}>
-                  {time}
-                </Text>
+                <Text style={[styles.pickerButtonText, { color: textColor }]}>{time}</Text>
               </TouchableOpacity>
 
               {showTimePicker ? (
-                <View style={[
-                  Platform.OS === 'ios' ? styles.iosPickerContainer : undefined,
-                  { backgroundColor: isDark ? '#2a2a2a' : '#FFFFFF' }
-                ]}>
+                <View
+                  style={[
+                    Platform.OS === 'ios' ? styles.iosPickerContainer : undefined,
+                    { backgroundColor: isDark ? '#2a2a2a' : '#FFFFFF' },
+                  ]}
+                >
                   <DateTimePicker
                     value={getTimeAsDate()}
                     mode="time"
@@ -458,6 +473,7 @@ export default function CreateActivityModal({
                 <TouchableOpacity
                   style={[styles.doneButton, { backgroundColor: colors.primary }]}
                   onPress={() => setShowTimePicker(false)}
+                  activeOpacity={0.7}
                 >
                   <Text style={styles.doneButtonText}>Færdig</Text>
                 </TouchableOpacity>
@@ -472,9 +488,7 @@ export default function CreateActivityModal({
                     size={20}
                     color={textColor}
                   />
-                  <Text style={[styles.switchLabel, { color: textColor }]}>
-                    Opret som serie
-                  </Text>
+                  <Text style={[styles.switchLabel, { color: textColor }]}>Opret som serie</Text>
                 </View>
                 <Switch
                   value={isRecurring}
@@ -484,33 +498,20 @@ export default function CreateActivityModal({
                 />
               </View>
 
-              {/* Recurrence Options */}
               {isRecurring ? (
-                <React.Fragment key="recurrence-options">
+                <>
                   <View style={styles.recurrenceTypeContainer}>
                     {RECURRENCE_TYPES.map((type) => (
                       <TouchableOpacity
                         key={type.value}
                         style={[
                           styles.recurrenceTypeButton,
-                          {
-                            backgroundColor:
-                              recurrenceType === type.value
-                                ? colors.primary
-                                : bgColor,
-                          },
+                          { backgroundColor: recurrenceType === type.value ? colors.primary : bgColor },
                         ]}
                         onPress={() => setRecurrenceType(type.value)}
+                        activeOpacity={0.7}
                       >
-                        <Text
-                          style={{
-                            color:
-                              recurrenceType === type.value
-                                ? '#fff'
-                                : textColor,
-                            fontSize: 14,
-                          }}
-                        >
+                        <Text style={{ color: recurrenceType === type.value ? '#fff' : textColor, fontSize: 14 }}>
                           {type.label}
                         </Text>
                       </TouchableOpacity>
@@ -524,21 +525,12 @@ export default function CreateActivityModal({
                           key={day.value}
                           style={[
                             styles.dayButton,
-                            {
-                              backgroundColor: selectedDays.includes(day.value)
-                                ? colors.primary
-                                : bgColor,
-                            },
+                            { backgroundColor: selectedDays.includes(day.value) ? colors.primary : bgColor },
                           ]}
                           onPress={() => toggleDay(day.value)}
+                          activeOpacity={0.7}
                         >
-                          <Text
-                            style={{
-                              color: selectedDays.includes(day.value)
-                                ? '#fff'
-                                : textColor,
-                            }}
-                          >
+                          <Text style={{ color: selectedDays.includes(day.value) ? '#fff' : textColor }}>
                             {day.label}
                           </Text>
                         </TouchableOpacity>
@@ -546,11 +538,8 @@ export default function CreateActivityModal({
                     </View>
                   ) : null}
 
-                  {/* End Date Toggle */}
                   <View style={[styles.switchContainer, { backgroundColor: bgColor }]}>
-                    <Text style={[styles.switchLabel, { color: textColor }]}>
-                      Slutdato
-                    </Text>
+                    <Text style={[styles.switchLabel, { color: textColor }]}>Slutdato</Text>
                     <Switch
                       value={hasEndDate}
                       onValueChange={setHasEndDate}
@@ -559,12 +548,12 @@ export default function CreateActivityModal({
                     />
                   </View>
 
-                  {/* End Date Picker */}
                   {hasEndDate ? (
-                    <React.Fragment key="end-date-picker">
+                    <>
                       <TouchableOpacity
                         style={[styles.pickerButton, { backgroundColor: bgColor }]}
                         onPress={() => setShowEndDatePicker(true)}
+                        activeOpacity={0.7}
                       >
                         <IconSymbol
                           ios_icon_name="calendar.badge.clock"
@@ -572,16 +561,16 @@ export default function CreateActivityModal({
                           size={20}
                           color={textColor}
                         />
-                        <Text style={[styles.pickerButtonText, { color: textColor }]}>
-                          {formatDate(endDate)}
-                        </Text>
+                        <Text style={[styles.pickerButtonText, { color: textColor }]}>{formatDate(endDate)}</Text>
                       </TouchableOpacity>
 
                       {showEndDatePicker ? (
-                        <View style={[
-                          Platform.OS === 'ios' ? styles.iosPickerContainer : undefined,
-                          { backgroundColor: isDark ? '#2a2a2a' : '#FFFFFF' }
-                        ]}>
+                        <View
+                          style={[
+                            Platform.OS === 'ios' ? styles.iosPickerContainer : undefined,
+                            { backgroundColor: isDark ? '#2a2a2a' : '#FFFFFF' },
+                          ]}
+                        >
                           <DateTimePicker
                             value={endDate}
                             mode="date"
@@ -599,13 +588,14 @@ export default function CreateActivityModal({
                         <TouchableOpacity
                           style={[styles.doneButton, { backgroundColor: colors.primary }]}
                           onPress={() => setShowEndDatePicker(false)}
+                          activeOpacity={0.7}
                         >
                           <Text style={styles.doneButtonText}>Færdig</Text>
                         </TouchableOpacity>
                       ) : null}
-                    </React.Fragment>
+                    </>
                   ) : null}
-                </React.Fragment>
+                </>
               ) : null}
             </ScrollView>
 
@@ -614,36 +604,36 @@ export default function CreateActivityModal({
                 style={[styles.modalButton, styles.cancelButton]}
                 onPress={handleClose}
                 disabled={isCreating}
+                activeOpacity={0.7}
               >
                 <Text>Annuller</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={[
-                  styles.modalButton, 
+                  styles.modalButton,
                   styles.saveButton,
-                  // P6 FIX: Disable button if no categories available
-                  safeCategories.length === 0 && styles.disabledButton
+                  safeCategories.length === 0 && styles.disabledButton,
                 ]}
                 onPress={handleCreate}
                 disabled={isCreating || safeCategories.length === 0}
+                activeOpacity={0.7}
               >
-                {isCreating ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={{ color: '#fff' }}>Opret</Text>
-                )}
+                {isCreating ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff' }}>Opret</Text>}
               </TouchableOpacity>
             </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
 
+      {/* ✅ P14 temporary render log */}
+      {console.log('[P14] CategoryManagementModal visible:', showCategoryManagement)}
+
       <CategoryManagementModal
         visible={showCategoryManagement}
-        onClose={() => setShowCategoryManagement(false)}
+        onClose={closeCategoryManagement}
         categories={safeCategories}
-        onRefresh={onRefreshCategories}
+        onRefresh={handleRefreshCategories}
       />
     </>
   );
@@ -680,44 +670,81 @@ const styles = StyleSheet.create({
     fontSize: 17,
     marginBottom: 16,
   },
-  categoryScrollContainer: {
+
+  categoryHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    zIndex: 10, // ✅ P14
+  },
+  categoryHeaderText: {
+    fontSize: 17,
+    fontWeight: '500',
+  },
+  createCategoryTopRight: {
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    position: 'relative', // ✅ P14
+    zIndex: 10, // ✅ P14
+  },
+  createCategoryTopRightText: {
+    color: colors.primary,
+    fontSize: 14,
+  },
+
+  // ✅ Key fix: row + wrap so chips don’t stretch full width
+  categoryWrapContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
     marginBottom: 16,
   },
   categoryChip: {
     flexDirection: 'row',
-    gap: 8,
-    padding: 12,
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     borderRadius: 20,
     borderWidth: 2,
-    marginRight: 12,
-    alignItems: 'center',
+    marginRight: 10,
+    marginBottom: 10,
+    alignSelf: 'flex-start',
+    flexGrow: 0,
+    flexShrink: 0,
+    maxWidth: '100%',
   },
+  categoryChipEmoji: {
+    marginRight: 8,
+  },
+  categoryChipText: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+
   emptyCategoryContainer: {
     padding: 24,
     borderRadius: 12,
     marginBottom: 16,
     alignItems: 'center',
-    gap: 8,
   },
   emptyCategoryText: {
     fontSize: 16,
     fontWeight: '600',
     textAlign: 'center',
+    marginTop: 8,
   },
-  emptyCategorySubtext: {
-    fontSize: 14,
-    textAlign: 'center',
-  },
+
   pickerButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
     padding: 16,
     borderRadius: 12,
     marginBottom: 16,
   },
   pickerButtonText: {
     fontSize: 17,
+    marginLeft: 12,
   },
   iosPickerContainer: {
     borderRadius: 12,
@@ -749,15 +776,15 @@ const styles = StyleSheet.create({
   switchLabelContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    marginRight: 12,
   },
   switchLabel: {
     fontSize: 17,
+    marginLeft: 12,
   },
   recurrenceTypeContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
     marginBottom: 16,
   },
   recurrenceTypeButton: {
@@ -766,10 +793,11 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: '#ddd',
+    marginRight: 8,
+    marginBottom: 8,
   },
   daysContainer: {
     flexDirection: 'row',
-    gap: 8,
     marginBottom: 16,
   },
   dayButton: {
@@ -777,10 +805,10 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 12,
     alignItems: 'center',
+    marginRight: 8,
   },
   modalFooter: {
     flexDirection: 'row',
-    gap: 12,
     padding: 24,
   },
   modalButton: {
@@ -791,6 +819,7 @@ const styles = StyleSheet.create({
   },
   cancelButton: {
     backgroundColor: '#ddd',
+    marginRight: 12,
   },
   saveButton: {
     backgroundColor: colors.primary,

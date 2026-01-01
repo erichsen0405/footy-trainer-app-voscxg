@@ -1,5 +1,4 @@
-
-import React, { createContext, useContext, ReactNode } from 'react';
+import React, { createContext, useContext, ReactNode, useMemo } from 'react';
 import { useFootballData } from '@/hooks/useFootballData';
 import { Activity, ActivityCategory, Task, Trophy, ExternalCalendar } from '@/types';
 
@@ -68,15 +67,123 @@ interface FootballContextType {
     onProgress?: (current: number, total: number) => void
   ) => Promise<{ successCount: number; failCount: number }>;
   fetchExternalCalendarEvents: (calendar: ExternalCalendar) => Promise<void>;
+  refreshCategories?: () => Promise<void>;
 }
 
 const FootballContext = createContext<FootballContextType | undefined>(undefined);
 
 export function FootballProvider({ children }: { children: ReactNode }) {
-  const footballData = useFootballData();
+  const {
+    categories,
+    tasks,
+    activities,
+    trophies,
+    externalCalendars,
+    externalActivities,
+    isLoading,
+    currentWeekStats,
+    todayActivities,
+    addActivity,
+    createActivity,
+    updateActivity,
+    updateActivitySingle,
+    updateActivitySeries,
+    deleteActivity,
+    deleteActivitySingle,
+    deleteActivitySeries,
+    duplicateActivity,
+    addTask,
+    updateTask,
+    deleteTask,
+    duplicateTask,
+    toggleTaskCompletion,
+    deleteActivityTask,
+    refreshData,
+    refreshAll,
+    addExternalCalendar,
+    toggleCalendar,
+    deleteExternalCalendar,
+    importExternalActivity,
+    importMultipleActivities,
+    fetchExternalCalendarEvents,
+    refreshCategories,
+  } = useFootballData();
+
+  const value = useMemo(
+    () => ({
+      categories,
+      tasks,
+      activities,
+      trophies,
+      externalCalendars,
+      externalActivities,
+      isLoading,
+      currentWeekStats,
+      todayActivities,
+      addActivity,
+      createActivity,
+      updateActivity,
+      updateActivitySingle,
+      updateActivitySeries,
+      deleteActivity,
+      deleteActivitySingle,
+      deleteActivitySeries,
+      duplicateActivity,
+      addTask,
+      updateTask,
+      deleteTask,
+      duplicateTask,
+      toggleTaskCompletion,
+      deleteActivityTask,
+      refreshData,
+      refreshAll,
+      addExternalCalendar,
+      toggleCalendar,
+      deleteExternalCalendar,
+      importExternalActivity,
+      importMultipleActivities,
+      fetchExternalCalendarEvents,
+      refreshCategories,
+    }),
+    [
+      categories,
+      tasks,
+      activities,
+      trophies,
+      externalCalendars,
+      externalActivities,
+      isLoading,
+      currentWeekStats,
+      todayActivities,
+      addActivity,
+      createActivity,
+      updateActivity,
+      updateActivitySingle,
+      updateActivitySeries,
+      deleteActivity,
+      deleteActivitySingle,
+      deleteActivitySeries,
+      duplicateActivity,
+      addTask,
+      updateTask,
+      deleteTask,
+      duplicateTask,
+      toggleTaskCompletion,
+      deleteActivityTask,
+      refreshData,
+      refreshAll,
+      addExternalCalendar,
+      toggleCalendar,
+      deleteExternalCalendar,
+      importExternalActivity,
+      importMultipleActivities,
+      fetchExternalCalendarEvents,
+      refreshCategories,
+    ]
+  );
 
   return (
-    <FootballContext.Provider value={footballData as any}>
+    <FootballContext.Provider value={value}>
       {children}
     </FootballContext.Provider>
   );

@@ -36,6 +36,19 @@ export const useFootballData = () => {
     setCategories(data || []);
   };
 
+  // ✅ P14: dedicated categories refresher (UI can call this after create/edit category)
+  // Minimal + deterministic: updates categories state only (no navigation / no onPress fetch for navigation)
+  const refreshCategories = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.from('activity_categories').select('*');
+      if (error) throw error;
+      setCategories(data || []);
+    } catch (e) {
+      console.error('[refreshCategories] failed:', e);
+      // fail-soft: keep existing categories
+    }
+  }, []);
+
   const fetchActivities = async () => {
     const { data, error } = await supabase
       .from('activities')
@@ -376,6 +389,7 @@ export const useFootballData = () => {
     activitiesThisWeek,
     isLoading: loading,
     refreshAll,
+    refreshCategories, // ✅ P14 export
     addTask,
     updateTask,
     deleteTask,
