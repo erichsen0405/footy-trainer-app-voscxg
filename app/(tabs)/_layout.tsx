@@ -49,10 +49,13 @@ function IOSTabLayout({
   const isPlayer = userRole === 'player';
   const isTrainer = userRole === 'admin' || userRole === 'trainer';
 
-  // ❗ VIGTIGT:
   // Tabs må ALDRIG skjules under loading
   const hideForAuth = !loading && !isLoggedIn;
-  const hideForPlayerOnly = !loading && (!isLoggedIn || !isPlayer);
+
+  // Performance tab should be visible for both players and trainers (coaches/admins).
+  // Hide only when not logged in or when role is neither player nor trainer/admin.
+  const hideForPlayerOrTrainer = !loading && (!isLoggedIn || !(isPlayer || isTrainer));
+
   const hideForTrainerOnly = !loading && (!isLoggedIn || !isTrainer);
 
   return (
@@ -88,8 +91,8 @@ function IOSTabLayout({
         <Label>Opgaver</Label>
       </NativeTabs.Trigger>
 
-      {/* PERFORMANCE – KUN PLAYER */}
-      <NativeTabs.Trigger name="performance" hidden={hideForPlayerOnly}>
+      {/* PERFORMANCE – PLAYER & TRAINER */}
+      <NativeTabs.Trigger name="performance" hidden={hideForPlayerOrTrainer}>
         <Icon sf={{ default: 'trophy', selected: 'trophy.fill' }} />
         <Label>Performance</Label>
       </NativeTabs.Trigger>
@@ -188,7 +191,7 @@ function AndroidWebTabLayout({
     ];
 
     if (isPlayer) {
-      // ❗ Player ser ALDRIG trainer
+      // Player ser aldrig trainer
       return allTabs.filter(t =>
         t.name === '(home)' ||
         t.name === 'tasks' ||
@@ -199,10 +202,11 @@ function AndroidWebTabLayout({
     }
 
     if (isTrainer) {
-      // ❗ Trainer ser ALDRIG performance
+      // Trainer/admin skal også se performance
       return allTabs.filter(t =>
         t.name === '(home)' ||
         t.name === 'tasks' ||
+        t.name === 'performance' ||
         t.name === 'library' ||
         t.name === 'trainer' ||
         t.name === 'profile'
