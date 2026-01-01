@@ -148,15 +148,44 @@ export const taskService = {
   /* ======================================================
      DELETE
      ====================================================== */
-  async deleteTask(taskId: string, userId: string): Promise<void> {
-    const { error } = await supabase
-      .from('task_templates')
-      .delete()
-      .eq('id', taskId)
+  async getHiddenTaskTemplateIds(userId: string): Promise<string[]> {
+    const { data, error } = await supabase
+      .from('hidden_task_templates')
+      .select('task_template_id')
       .eq('user_id', userId);
 
     if (error) {
       throw error;
+    }
+
+    return (data || []).map(d => d.task_template_id);
+  },
+
+  async deleteTask(taskId: string, userId: string): Promise<void> {
+    // Try hard delete for owned tasks
+    const { data: deleted, error: deleteError } = await supabase
+      .from('task_templates')
+      .delete()
+      .eq('id', taskId)
+      .eq('user_id', userId)
+      .select('id');
+
+    if (deleteError) {
+      throw deleteError;
+    }
+
+    if (deleted?.length) {
+      // Successfully hard deleted
+      return;
+    }
+
+    // Not owned, perform soft delete
+    const { error: insertError } = await supabase
+      .from('hidden_task_templates')
+      .upsert({ user_id: userId, task_template_id: taskId }, { onConflict: 'user_id,task_template_id' });
+
+    if (insertError) {
+      throw insertError;
     }
   },
 };

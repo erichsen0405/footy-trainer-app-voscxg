@@ -90,7 +90,20 @@ export const useFootballData = () => {
         source_folder: t.source_folder ?? undefined,
       }));
 
-      setTasks(transformed);
+      // Filter out hidden tasks
+      try {
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (userError || !user) {
+          throw new Error('No authenticated user');
+        }
+        const hiddenIds = await taskService.getHiddenTaskTemplateIds(user.id);
+        const filteredTasks = transformed.filter(t => !hiddenIds.includes(t.id));
+        setTasks(filteredTasks);
+      } catch (hiddenError) {
+        // Fail-soft: log error and show all tasks if hidden table fails
+        console.error('[fetchTasks] Failed to filter hidden tasks:', hiddenError);
+        setTasks(transformed);
+      }
     } catch (error) {
       // CRITICAL GUARD:
       // Never let tasks page go empty due to schema mismatch
