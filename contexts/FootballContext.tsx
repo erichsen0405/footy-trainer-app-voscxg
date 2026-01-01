@@ -109,6 +109,45 @@ export function FootballProvider({ children }: { children: ReactNode }) {
     refreshCategories,
   } = useFootballData();
 
+  // ✅ Runtime-safe wrapper: createActivity must always be a function
+  // If useFootballData() doesn't provide it, fall back to addActivity + refreshData (fail-soft).
+  const safeCreateActivity = useMemo<FootballContextType['createActivity']>(() => {
+    if (typeof createActivity === 'function') {
+      return createActivity;
+    }
+
+    return async (activityData) => {
+      console.error('[FootballProvider] createActivity is not a function. Using fallback.');
+
+      if (typeof addActivity !== 'function') {
+        throw new Error('[FootballProvider] createActivity/addActivity are unavailable');
+      }
+
+      const dateObj = activityData?.date instanceof Date ? activityData.date : new Date();
+      const isoDate = isNaN(dateObj.getTime()) ? new Date().toISOString().slice(0, 10) : dateObj.toISOString().slice(0, 10);
+      const timeStr = typeof activityData?.time === 'string' && activityData.time ? activityData.time : '12:00';
+
+      // Use a conservative payload shape; cast to any to avoid schema/type coupling here.
+      const payload: any = {
+        title: activityData?.title ?? '',
+        location: activityData?.location ?? 'Ingen lokation',
+        category_id: activityData?.categoryId ?? activityData?.category_id ?? '',
+        activity_date: isoDate,
+        activity_time: timeStr,
+        is_recurring: !!activityData?.isRecurring,
+        recurrence_type: activityData?.recurrenceType,
+        recurrence_days: activityData?.recurrenceDays,
+        end_date: activityData?.endDate instanceof Date ? activityData.endDate.toISOString().slice(0, 10) : undefined,
+      };
+
+      addActivity(payload);
+
+      if (typeof refreshData === 'function') {
+        await refreshData();
+      }
+    };
+  }, [createActivity, addActivity, refreshData]);
+
   const value = useMemo(
     () => ({
       categories,
@@ -121,7 +160,7 @@ export function FootballProvider({ children }: { children: ReactNode }) {
       currentWeekStats,
       todayActivities,
       addActivity,
-      createActivity,
+      createActivity: safeCreateActivity,
       updateActivity,
       updateActivitySingle,
       updateActivitySeries,
@@ -156,7 +195,7 @@ export function FootballProvider({ children }: { children: ReactNode }) {
       currentWeekStats,
       todayActivities,
       addActivity,
-      createActivity,
+      safeCreateActivity,
       updateActivity,
       updateActivitySingle,
       updateActivitySeries,

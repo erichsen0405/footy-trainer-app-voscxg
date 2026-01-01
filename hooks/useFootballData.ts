@@ -318,6 +318,106 @@ export const useFootballData = () => {
     [adminMode, adminTargetId, adminTargetType]
   );
 
+  // --- ACTIVITY CRUD ---
+
+  // Add activity (optimistic, local state only)
+  const addActivity = useCallback((activity: Omit<Activity, 'id'>) => {
+    setActivities(prev => {
+      // Generate a fake id for optimistic update
+      const fakeId = `tmp-${Date.now()}`;
+      const newActivity = { ...activity, id: fakeId };
+      return [newActivity, ...prev];
+    });
+  }, []);
+
+  // Create activity (async, inserts in DB, then refreshes)
+  const createActivity = useCallback(async (activityData: {
+    title: string;
+    location: string;
+    categoryId: string;
+    date: Date;
+    time: string;
+    isRecurring: boolean;
+    recurrenceType?: 'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly';
+    recurrenceDays?: number[];
+    endDate?: Date;
+  }) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      // Determine player_id and team_id based on admin context
+      let player_id = null;
+      let team_id = null;
+
+      if (adminMode !== 'self' && adminTargetId) {
+        if (adminTargetType === 'player') {
+          player_id = adminTargetId;
+        } else if (adminTargetType === 'team') {
+          team_id = adminTargetId;
+        }
+      }
+
+      const payload: Record<string, any> = {
+        // base (must stay)
+        title: activityData.title,
+        location: activityData.location,
+        category_id: activityData.categoryId,
+        activity_date: activityData.date instanceof Date ? activityData.date.toISOString().slice(0, 10) : activityData.date,
+        activity_time: activityData.time,
+        user_id: user.id,
+
+        // scope (existing behavior)
+        player_id,
+        team_id,
+
+        // optional recurrence fields (may be missing in schema; can be removed on retry)
+        is_recurring: !!activityData.isRecurring,
+        recurrence_type: activityData.recurrenceType,
+        recurrence_days: activityData.recurrenceDays,
+        end_date: activityData.endDate instanceof Date ? activityData.endDate.toISOString().slice(0, 10) : undefined,
+      };
+
+      const removableCols = new Set(['is_recurring', 'recurrence_type', 'recurrence_days', 'end_date']);
+      let lastError: any = null;
+
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const { error } = await supabase
+          .from('activities')
+          .insert(payload);
+
+        if (!error) {
+          await fetchActivities();
+          return;
+        }
+
+        lastError = error;
+
+        const msg = String((error as any)?.message ?? '');
+        const code = String((error as any)?.code ?? '');
+
+        if (code === 'PGRST204') {
+          const match = msg.match(/Could not find the '([^']+)' column/i);
+          const missingCol = match?.[1];
+
+          if (missingCol && removableCols.has(missingCol) && Object.prototype.hasOwnProperty.call(payload, missingCol)) {
+            delete payload[missingCol];
+            continue;
+          }
+        }
+
+        console.error('[createActivity] Error inserting activity:', error);
+        throw error;
+      }
+
+      console.error('[createActivity] exhausted retries:', lastError);
+      throw lastError ?? new Error('Failed to create activity');
+    } catch (error) {
+      console.error('[createActivity] Error:', error);
+      throw error;
+    }
+  }, [adminMode, adminTargetId, adminTargetType]);
+
   const updateTask = useCallback(async (id: string, updates: Partial<Task>) => {
     try {
       console.log('[updateTask] Updating task:', id, updates);
@@ -454,5 +554,8 @@ export const useFootballData = () => {
     deleteTask,
     duplicateTask,
     refreshData,
+    // --- ADDED: ACTIVITY CRUD ---
+    addActivity,
+    createActivity,
   };
 };
