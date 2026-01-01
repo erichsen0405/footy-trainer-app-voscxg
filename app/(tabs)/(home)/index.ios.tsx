@@ -1,4 +1,3 @@
-
 /**
  * PERFORMANCE LOCK (STEP F)
  * DO NOT:
@@ -14,53 +13,53 @@
 
 /*
  * ═══════════════════════════════════════════════════════════════════════════
- * PERFORMANCE BASELINE CHECKLIST (STEP F) - iOS
+ * PERFORMANCE BASELINE CHECKLIST (STEP F)
  * ═══════════════════════════════════════════════════════════════════════════
- * 
+ *
  * ✅ 1️⃣ First render & loading
  *    - Skeleton shown immediately (no blocking before paint)
  *    - Data fetched in useEffect (after mount)
  *    - Parallel fetch in useHomeActivities hook (Promise.all)
- * 
+ *
  * ✅ 2️⃣ Navigation
  *    - No fetch in onPress handlers
  *    - Navigation happens immediately
  *    - Data fetched after mount in target screen
- * 
+ *
  * ✅ 3️⃣ Lists (FlatList)
  *    - Using FlatList (not ScrollView)
  *    - keyExtractor with stable, unique keys
  *    - initialNumToRender=8
  *    - windowSize=5
- *    - removeClippedSubviews enabled (iOS native)
- * 
+ *    - removeClippedSubviews enabled (native only)
+ *
  * ✅ 4️⃣ Render control
  *    - useMemo for derived data (flattenedData, performanceMetrics)
  *    - useCallback for handlers (handleCardPress, onRefresh)
  *    - No inline functions in render
  *    - Stable dependencies in hooks
- * 
+ *
  * ✅ 5️⃣ Context guardrails
  *    - Contexts split by responsibility (Admin, TeamPlayer, Football)
  *    - No unstable values passed to context
  *    - Selective consumption of context values
- * 
+ *
  * ✅ 6️⃣ Permissions & admin-mode
  *    - Permission logic via helper (canTrainerManageActivity)
  *    - UI remains dumb (no permission checks in render)
  *    - Handlers are authoritative (early return)
- * 
+ *
  * ✅ 7️⃣ Platform parity
- *    - Same performance behavior as Android/Web
+ *    - Same performance behavior on iOS/Android/Web
  *    - Platform-specific optimizations (removeClippedSubviews)
  *    - No platform-specific workarounds
- * 
+ *
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform, useColorScheme } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
@@ -70,15 +69,14 @@ import { useAdmin } from '@/contexts/AdminContext';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import ActivityCard from '@/components/ActivityCard';
 import CreateActivityModal from '@/components/CreateActivityModal';
+import HomeSkeleton from '@/components/HomeSkeleton';
 import { IconSymbol } from '@/components/IconSymbol';
 import { AdminContextWrapper } from '@/components/AdminContextWrapper';
-import { colors } from '@/styles/commonStyles';
+import { colors, getColors } from '@/styles/commonStyles';
 import { format, startOfWeek, endOfWeek, getWeek } from 'date-fns';
 import { da } from 'date-fns/locale';
 import { supabase } from '@/app/integrations/supabase/client';
 import { canTrainerManageActivity } from '@/utils/permissions';
-
-const HEADER_BG = '#2C3E50';
 
 function resolveActivityDateTime(activity: any): Date | null {
   // STEP H: Guard against null/undefined activity
@@ -105,7 +103,7 @@ function resolveActivityDateTime(activity: any): Date | null {
 function getWeekLabel(date: Date): string {
   // STEP H: Guard against invalid date
   if (!date || isNaN(date.getTime())) {
-    return 'Ugyldig dato';
+    return '';
   }
 
   try {
@@ -113,8 +111,8 @@ function getWeekLabel(date: Date): string {
     const end = endOfWeek(date, { weekStartsOn: 1 });
     return `${format(start, 'd. MMM', { locale: da })} – ${format(end, 'd. MMM', { locale: da })}`;
   } catch (error) {
-    console.error('[Home iOS] Error formatting week label:', error);
-    return 'Ugyldig dato';
+    console.error('[Home] Error formatting week label:', error);
+    return '';
   }
 }
 
@@ -138,7 +136,6 @@ function getPerformanceGradient(percentage: number): string[] {
 
 export default function HomeScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { userRole } = useUserRole();
   const { activities, loading, refresh: refreshActivities } = useHomeActivities();
   const { categories, createActivity, refreshData, currentWeekStats, toggleTaskCompletion } = useFootball();
@@ -149,44 +146,42 @@ export default function HomeScreen() {
   const [isPreviousExpanded, setIsPreviousExpanded] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [currentTrainerId, setCurrentTrainerId] = useState<string | null>(null);
+  const colorScheme = useColorScheme();
+  const themeColors = getColors(colorScheme);
+  const isDark = colorScheme === 'dark';
 
-  // STEP H: Safe date operations with guards
-  const currentWeekNumber = useMemo(() => {
-    try {
-      return getWeek(new Date(), { weekStartsOn: 1, locale: da });
-    } catch (error) {
-      console.error('[Home iOS] Error getting week number:', error);
-      return 1;
-    }
-  }, []);
-
-  const currentWeekLabel = useMemo(() => {
-    try {
-      return getWeekLabel(new Date());
-    } catch (error) {
-      console.error('[Home iOS] Error getting week label:', error);
-      return 'Ugyldig dato';
-    }
-  }, []);
+  const currentWeekNumber = getWeek(new Date(), { weekStartsOn: 1, locale: da });
+  const currentWeekLabel = getWeekLabel(new Date());
 
   // CRITICAL FIX: Check for both player AND team admin mode
   const isPlayerAdmin = adminMode !== 'self' && adminTargetType === 'player';
   const isTeamAdmin = adminMode !== 'self' && adminTargetType === 'team';
   const isAdminMode = isPlayerAdmin || isTeamAdmin;
 
-  // Get current trainer ID
+  // ✅ GEN-3: category lookup keyed by ID (no fetch; uses cached categories from context)
+  const categoriesById = useMemo(() => {
+    const m = new Map<string, any>();
+    (Array.isArray(categories) ? categories : []).forEach((c: any) => {
+      const id = String(c?.id ?? '').trim();
+      if (id) m.set(id, c);
+    });
+    return m;
+  }, [categories]);
+
+  // Fetch current trainer ID (the logged-in user who is administering)
   useEffect(() => {
-    const fetchCurrentTrainerId = async () => {
+    async function fetchCurrentTrainerId() {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           setCurrentTrainerId(user.id);
         }
       } catch (error) {
-        console.error('[Home iOS] Error fetching current trainer ID:', error);
-        setCurrentTrainerId(null);
+        console.error('[Home] Error fetching current trainer ID:', error);
+        // STEP H: Safe fallback - no throw
       }
-    };
+    }
+
     fetchCurrentTrainerId();
   }, []);
 
@@ -199,10 +194,8 @@ export default function HomeScreen() {
   }, [loading]);
 
   const { todayActivities, upcomingByWeek, previousByWeek } = useMemo(() => {
-    // STEP H: Guard against null/undefined activities
-    if (!Array.isArray(activities)) {
-      return { todayActivities: [], upcomingByWeek: [], previousByWeek: [] };
-    }
+    // STEP H: Guard against non-array activities
+    const safeActivities = Array.isArray(activities) ? activities : [];
 
     const now = new Date();
     const todayStart = new Date(now);
@@ -211,16 +204,49 @@ export default function HomeScreen() {
     const todayEnd = new Date(todayStart);
     todayEnd.setHours(23, 59, 59, 999);
 
-    // STEP H: Filter out null activities and those without valid dates
-    const resolved = activities
-      .filter(activity => activity != null)
-      .map(activity => {
+    const resolved = safeActivities
+      .map((activity: any) => {
+        // STEP H: Guard against null activity
+        if (!activity) return null;
+
         const dateTime = resolveActivityDateTime(activity);
         if (!dateTime) return null;
+
+        // ✅ GEN-3: enrich activity with resolved category color (by category_id) for ActivityCard
+        const categoryId = String(
+          activity?.category_id ??
+            activity?.categoryId ??
+            activity?.activity_category_id ??
+            activity?.activityCategoryId ??
+            activity?.category ??
+            ''
+        ).trim();
+
+        const cat = categoryId ? categoriesById.get(categoryId) : null;
+
+        const resolvedColor =
+          activity?.categoryColor ??
+          activity?.category_color ??
+          cat?.color ??
+          undefined;
+
+        const resolvedEmoji =
+          activity?.activity_categories?.emoji ??
+          activity?.activity_category?.emoji ??
+          cat?.emoji ??
+          undefined;
+
+        const resolvedJoined =
+          activity?.activity_categories ??
+          activity?.activity_category ??
+          (cat ? { color: cat.color, emoji: resolvedEmoji } : undefined);
 
         return {
           ...activity,
           __resolvedDateTime: dateTime,
+          categoryColor: resolvedColor,
+          category_color: resolvedColor,
+          activity_categories: resolvedJoined,
         };
       })
       .filter(Boolean) as any[];
@@ -264,24 +290,16 @@ export default function HomeScreen() {
         }
         upcomingWeekGroups[weekKey].push(activity);
       } catch (error) {
-        console.error('[Home iOS] Error grouping upcoming activity:', error);
+        console.error('[Home] Error grouping upcoming activity:', error);
       }
     });
 
     const upcomingByWeek = Object.entries(upcomingWeekGroups)
-      .map(([weekKey, activities]) => {
-        try {
-          return {
-            weekStart: new Date(weekKey),
-            activities,
-          };
-        } catch (error) {
-          console.error('[Home iOS] Error creating week group:', error);
-          return null;
-        }
-      })
-      .filter(Boolean)
-      .sort((a, b) => a!.weekStart.getTime() - b!.weekStart.getTime()) as any[];
+      .map(([weekKey, activities]) => ({
+        weekStart: new Date(weekKey),
+        activities,
+      }))
+      .sort((a, b) => a.weekStart.getTime() - b.weekStart.getTime());
 
     // Group previous activities by week
     const previousWeekGroups: { [key: string]: any[] } = {};
@@ -294,67 +312,50 @@ export default function HomeScreen() {
         }
         previousWeekGroups[weekKey].push(activity);
       } catch (error) {
-        console.error('[Home iOS] Error grouping previous activity:', error);
+        console.error('[Home] Error grouping previous activity:', error);
       }
     });
 
     const previousByWeek = Object.entries(previousWeekGroups)
-      .map(([weekKey, activities]) => {
-        try {
-          return {
-            weekStart: new Date(weekKey),
-            activities,
-          };
-        } catch (error) {
-          console.error('[Home iOS] Error creating week group:', error);
-          return null;
-        }
-      })
-      .filter(Boolean)
-      .sort((a, b) => b!.weekStart.getTime() - a!.weekStart.getTime()) as any[];
+      .map(([weekKey, activities]) => ({
+        weekStart: new Date(weekKey),
+        activities,
+      }))
+      .sort((a, b) => b.weekStart.getTime() - a.weekStart.getTime());
 
     return { todayActivities, upcomingByWeek, previousByWeek };
-  }, [activities]);
+  }, [activities, categoriesById]);
 
   // Calculate how many previous weeks to display
   const visiblePreviousWeeks = useMemo(() => {
-    if (showPreviousWeeks === 0) return [];
-    // STEP H: Guard against invalid previousByWeek
-    if (!Array.isArray(previousByWeek)) return [];
-    return previousByWeek.slice(0, showPreviousWeeks);
+    // STEP H: Guard against invalid showPreviousWeeks
+    const safeShowPreviousWeeks = typeof showPreviousWeeks === 'number' && showPreviousWeeks >= 0 ? showPreviousWeeks : 0;
+
+    if (safeShowPreviousWeeks === 0) return [];
+
+    // STEP H: Guard against non-array previousByWeek
+    const safePreviousByWeek = Array.isArray(previousByWeek) ? previousByWeek : [];
+
+    return safePreviousByWeek.slice(0, safeShowPreviousWeeks);
   }, [previousByWeek, showPreviousWeeks]);
 
   // LINT FIX: Include currentWeekStats in dependency array
   const performanceMetrics = useMemo(() => {
     // STEP H: Guard against null/undefined currentWeekStats
-    if (!currentWeekStats) {
-      return {
-        percentageUpToToday: 0,
-        weekPercentage: 0,
-        trophyEmoji: '🥉',
-        motivationText: 'Ingen data tilgængelig',
-        completedTasksToday: 0,
-        totalTasksToday: 0,
-        completedTasksWeek: 0,
-        totalTasksWeek: 0,
-        gradientColors: getPerformanceGradient(0),
-      };
-    }
+    const safeStats = currentWeekStats || {
+      percentage: 0,
+      completedTasks: 0,
+      totalTasks: 0,
+      completedTasksForWeek: 0,
+      totalTasksForWeek: 0,
+    };
 
-    const percentageUpToToday = typeof currentWeekStats.percentage === 'number' && !isNaN(currentWeekStats.percentage)
-      ? currentWeekStats.percentage
-      : 0;
+    const percentageUpToToday = typeof safeStats.percentage === 'number' ? safeStats.percentage : 0;
+    const totalTasksForWeek = typeof safeStats.totalTasksForWeek === 'number' ? safeStats.totalTasksForWeek : 0;
+    const completedTasksForWeek = typeof safeStats.completedTasksForWeek === 'number' ? safeStats.completedTasksForWeek : 0;
 
-    const totalTasksForWeek = typeof currentWeekStats.totalTasksForWeek === 'number' && !isNaN(currentWeekStats.totalTasksForWeek)
-      ? currentWeekStats.totalTasksForWeek
-      : 0;
-
-    const completedTasksForWeek = typeof currentWeekStats.completedTasksForWeek === 'number' && !isNaN(currentWeekStats.completedTasksForWeek)
-      ? currentWeekStats.completedTasksForWeek
-      : 0;
-
-    const weekPercentage = totalTasksForWeek > 0 
-      ? Math.round((completedTasksForWeek / totalTasksForWeek) * 100) 
+    const weekPercentage = totalTasksForWeek > 0
+      ? Math.round((completedTasksForWeek / totalTasksForWeek) * 100)
       : 0;
 
     // Determine trophy emoji based on percentage up to today (same thresholds as performance screen)
@@ -366,13 +367,8 @@ export default function HomeScreen() {
     }
 
     // Calculate remaining tasks
-    const completedTasks = typeof currentWeekStats.completedTasks === 'number' && !isNaN(currentWeekStats.completedTasks)
-      ? currentWeekStats.completedTasks
-      : 0;
-
-    const totalTasks = typeof currentWeekStats.totalTasks === 'number' && !isNaN(currentWeekStats.totalTasks)
-      ? currentWeekStats.totalTasks
-      : 0;
+    const completedTasks = typeof safeStats.completedTasks === 'number' ? safeStats.completedTasks : 0;
+    const totalTasks = typeof safeStats.totalTasks === 'number' ? safeStats.totalTasks : 0;
 
     const remainingTasksToday = totalTasks - completedTasks;
     const remainingTasksWeek = totalTasksForWeek - completedTasksForWeek;
@@ -407,15 +403,30 @@ export default function HomeScreen() {
 
   const handleCreateActivity = useCallback(async (activityData: any) => {
     try {
+      // STEP H: Guard against null/undefined functions
+      if (typeof createActivity !== 'function') {
+        console.error('[Home] createActivity is not a function');
+        return;
+      }
+      if (typeof refreshData !== 'function') {
+        console.error('[Home] refreshData is not a function');
+        return;
+      }
+
       await createActivity(activityData);
       refreshData();
     } catch (error) {
-      console.error('[Home iOS] Error creating activity:', error);
+      console.error('[Home] Error creating activity:', error);
+      // STEP H: Safe fallback - no throw
     }
   }, [createActivity, refreshData]);
 
   const handleLoadMorePrevious = useCallback(() => {
-    setShowPreviousWeeks(prev => prev + 1);
+    setShowPreviousWeeks(prev => {
+      // STEP H: Guard against invalid prev value
+      const safePrev = typeof prev === 'number' && prev >= 0 ? prev : 0;
+      return safePrev + 1;
+    });
   }, []);
 
   const togglePreviousExpanded = useCallback(() => {
@@ -426,22 +437,28 @@ export default function HomeScreen() {
   const onRefresh = useCallback(async () => {
     // Guard against double-trigger
     if (isRefreshing) {
-      console.log('[Home iOS] Pull-to-refresh already in progress, ignoring');
+      console.log('[Home] Pull-to-refresh already in progress, ignoring');
       return;
     }
 
-    console.log('[Home iOS] Pull-to-refresh triggered');
+    console.log('[Home] Pull-to-refresh triggered');
     setIsRefreshing(true);
-    
+
     try {
-      await refreshActivities();
-      console.log('[Home iOS] Pull-to-refresh completed successfully');
+      // STEP H: Guard against null/undefined refreshActivities
+      if (typeof refreshActivities === 'function') {
+        await refreshActivities();
+        console.log('[Home] Pull-to-refresh completed successfully');
+      } else {
+        console.error('[Home] refreshActivities is not a function');
+      }
     } catch (error) {
-      console.error('[Home iOS] Pull-to-refresh error:', error);
+      console.error('[Home] Pull-to-refresh error:', error);
+      // STEP H: Safe fallback - no throw
     } finally {
       // Deterministic stop - always called
       setIsRefreshing(false);
-      console.log('[Home iOS] Pull-to-refresh spinner stopped');
+      console.log('[Home] Pull-to-refresh spinner stopped');
     }
   }, [isRefreshing, refreshActivities]);
 
@@ -450,26 +467,30 @@ export default function HomeScreen() {
   const flattenedData = useMemo(() => {
     const data: any[] = [];
 
-    // STEP H: Guard against invalid previousByWeek
+    // STEP H: Guard against non-array previousByWeek
     const safePreviousByWeek = Array.isArray(previousByWeek) ? previousByWeek : [];
-    const safeVisiblePreviousWeeks = Array.isArray(visiblePreviousWeeks) ? visiblePreviousWeeks : [];
     const safeTodayActivities = Array.isArray(todayActivities) ? todayActivities : [];
     const safeUpcomingByWeek = Array.isArray(upcomingByWeek) ? upcomingByWeek : [];
+    const safeVisiblePreviousWeeks = Array.isArray(visiblePreviousWeeks) ? visiblePreviousWeeks : [];
 
     // Add TIDLIGERE section
     if (safePreviousByWeek.length > 0) {
       data.push({ type: 'previousHeader' });
-      
+
       if (isPreviousExpanded) {
         safeVisiblePreviousWeeks.forEach((weekGroup, weekIndex) => {
-          if (weekGroup && weekGroup.weekStart && Array.isArray(weekGroup.activities)) {
-            data.push({ type: 'weekHeader', weekGroup, section: 'previous' });
-            weekGroup.activities.forEach((activity: any) => {
-              if (activity) {
-                data.push({ type: 'activity', activity, section: 'previous' });
-              }
-            });
-          }
+          // STEP H: Guard against null weekGroup
+          if (!weekGroup) return;
+
+          data.push({ type: 'weekHeader', weekGroup, section: 'previous' });
+
+          // STEP H: Guard against non-array activities
+          const weekActivities = Array.isArray(weekGroup.activities) ? weekGroup.activities : [];
+          weekActivities.forEach((activity: any) => {
+            // STEP H: Guard against null activity
+            if (!activity) return;
+            data.push({ type: 'activity', activity, section: 'previous' });
+          });
         });
 
         if (showPreviousWeeks < safePreviousByWeek.length) {
@@ -484,9 +505,9 @@ export default function HomeScreen() {
       data.push({ type: 'emptyToday' });
     } else {
       safeTodayActivities.forEach((activity) => {
-        if (activity) {
-          data.push({ type: 'activity', activity, section: 'today' });
-        }
+        // STEP H: Guard against null activity
+        if (!activity) return;
+        data.push({ type: 'activity', activity, section: 'today' });
       });
     }
 
@@ -494,14 +515,18 @@ export default function HomeScreen() {
     if (safeUpcomingByWeek.length > 0) {
       data.push({ type: 'upcomingHeader' });
       safeUpcomingByWeek.forEach((weekGroup, weekIndex) => {
-        if (weekGroup && weekGroup.weekStart && Array.isArray(weekGroup.activities)) {
-          data.push({ type: 'weekHeader', weekGroup, section: 'upcoming' });
-          weekGroup.activities.forEach((activity: any) => {
-            if (activity) {
-              data.push({ type: 'activity', activity, section: 'upcoming' });
-            }
-          });
-        }
+        // STEP H: Guard against null weekGroup
+        if (!weekGroup) return;
+
+        data.push({ type: 'weekHeader', weekGroup, section: 'upcoming' });
+
+        // STEP H: Guard against non-array activities
+        const weekActivities = Array.isArray(weekGroup.activities) ? weekGroup.activities : [];
+        weekActivities.forEach((activity: any) => {
+          // STEP H: Guard against null activity
+          if (!activity) return;
+          data.push({ type: 'activity', activity, section: 'upcoming' });
+        });
       });
     }
 
@@ -510,7 +535,7 @@ export default function HomeScreen() {
 
   // Render item based on type
   const renderItem = useCallback(({ item }: { item: any }) => {
-    // STEP H: Guard against null/undefined item
+    // STEP H: Guard against null item
     if (!item || !item.type) return null;
 
     switch (item.type) {
@@ -520,12 +545,12 @@ export default function HomeScreen() {
             <Pressable onPress={togglePreviousExpanded}>
               <View style={styles.sectionTitleContainer}>
                 <View style={styles.greenMarker} />
-                <Text style={styles.sectionTitle}>TIDLIGERE</Text>
+                <Text style={[styles.sectionTitle, { color: isDark ? '#e3e3e3' : colors.text }]}>TIDLIGERE</Text>
                 <IconSymbol
                   ios_icon_name={isPreviousExpanded ? "chevron.up" : "chevron.down"}
                   android_material_icon_name={isPreviousExpanded ? "keyboard-arrow-up" : "keyboard-arrow-down"}
                   size={18}
-                  color={colors.text}
+                  color={isDark ? '#e3e3e3' : colors.text}
                   style={styles.chevronIcon}
                 />
               </View>
@@ -538,7 +563,7 @@ export default function HomeScreen() {
           <View style={styles.section}>
             <View style={styles.sectionTitleContainer}>
               <View style={styles.greenMarker} />
-              <Text style={styles.sectionTitle}>I DAG</Text>
+              <Text style={[styles.sectionTitle, { color: isDark ? '#e3e3e3' : colors.text }]}>I DAG</Text>
             </View>
           </View>
         );
@@ -548,59 +573,67 @@ export default function HomeScreen() {
           <View style={styles.section}>
             <View style={styles.sectionTitleContainer}>
               <View style={styles.greenMarker} />
-              <Text style={styles.sectionTitle}>KOMMENDE</Text>
+              <Text style={[styles.sectionTitle, { color: isDark ? '#e3e3e3' : colors.text }]}>KOMMENDE</Text>
             </View>
           </View>
         );
 
       case 'weekHeader':
-        // STEP H: Guard against invalid weekGroup
+        // STEP H: Guard against null weekGroup
         if (!item.weekGroup || !item.weekGroup.weekStart) return null;
 
         try {
-          const weekNumber = getWeek(item.weekGroup.weekStart, { weekStartsOn: 1, locale: da });
-          const weekLabel = getWeekLabel(item.weekGroup.weekStart);
-
           return (
             <View style={styles.weekGroup}>
-              <Text style={styles.weekLabel}>Uge {weekNumber}</Text>
-              <Text style={styles.weekDateRange}>{weekLabel}</Text>
+              <Text style={[styles.weekLabel, { color: isDark ? '#e3e3e3' : colors.text }]}>
+                Uge {getWeek(item.weekGroup.weekStart, { weekStartsOn: 1, locale: da })}
+              </Text>
+              <Text style={[styles.weekDateRange, { color: isDark ? '#999' : colors.textSecondary }]}>{getWeekLabel(item.weekGroup.weekStart)}</Text>
             </View>
           );
         } catch (error) {
-          console.error('[Home iOS] Error rendering week header:', error);
+          console.error('[Home] Error rendering week header:', error);
           return null;
         }
 
       case 'activity':
-        // STEP H: Guard against invalid activity
-        if (!item.activity || !item.activity.id) return null;
+        // STEP H: Guard against null activity
+        if (!item.activity) return null;
 
         const activity = item.activity;
-        
+
         // 1️⃣ Permission calculation (only via helper)
-        const canManageActivity = canTrainerManageActivity({
-          activity,
-          trainerId: currentTrainerId || undefined,
-          adminMode,
-        });
-        
+        // STEP H: Defensive permission check with false as default
+        const canManageActivity = currentTrainerId && typeof canTrainerManageActivity === 'function'
+          ? canTrainerManageActivity({
+              activity,
+              trainerId: currentTrainerId,
+              adminMode: adminMode || 'self',
+            })
+          : false;
+
         // 2️⃣ Determine if should dim
         const shouldDim = isAdminMode && !canManageActivity;
 
-        // 3️⃣ Activity press handler with early return
+        // 3️⃣ Activity press handler with early return (no feedback)
         const handleActivityPress = () => {
           if (isAdminMode && !canManageActivity) {
             return;
           }
-          
+
+          // STEP H: Guard against null router or activity.id
+          if (!router || !activity.id) {
+            console.error('[Home] Cannot navigate: router or activity.id is null');
+            return;
+          }
+
           try {
             router.push({
               pathname: '/activity-details',
               params: { id: activity.id },
             });
           } catch (error) {
-            console.error('[Home iOS] Error navigating to activity details:', error);
+            console.error('[Home] Error navigating to activity details:', error);
           }
         };
 
@@ -618,18 +651,24 @@ export default function HomeScreen() {
       case 'emptyToday':
         return (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>Ingen aktiviteter i dag</Text>
+            <Text style={[styles.emptyText, { color: isDark ? '#999' : colors.textSecondary }]}>Ingen aktiviteter i dag</Text>
           </View>
         );
 
       case 'loadMore':
         return (
           <View style={styles.loadMoreContainer}>
-            <Pressable 
-              style={styles.loadMoreButton}
+            <Pressable
+              style={[
+                styles.loadMoreButton,
+                {
+                  backgroundColor: isDark ? '#2a2a2a' : colors.card,
+                  borderColor: isDark ? '#444' : colors.highlight,
+                },
+              ]}
               onPress={handleLoadMorePrevious}
             >
-              <Text style={styles.loadMoreButtonText}>
+              <Text style={[styles.loadMoreButtonText, { color: isDark ? '#e3e3e3' : colors.text }]}>
                 {showPreviousWeeks === 0 ? 'Hent tidligere uger' : 'Hent en uge mere'}
               </Text>
             </Pressable>
@@ -639,22 +678,21 @@ export default function HomeScreen() {
       default:
         return null;
     }
-  }, [isPreviousExpanded, togglePreviousExpanded, isAdminMode, currentTrainerId, adminMode, router, handleLoadMorePrevious, showPreviousWeeks]);
+  }, [isDark, isPreviousExpanded, togglePreviousExpanded, isAdminMode, currentTrainerId, adminMode, router, handleLoadMorePrevious, showPreviousWeeks]);
 
   // Key extractor for FlatList
   const keyExtractor = useCallback((item: any, index: number) => {
-    // STEP H: Guard against null/undefined item
-    if (!item) return `item-${index}`;
+    // STEP H: Guard against null item
+    if (!item) return `null-${index}`;
 
-    if (item.type === 'activity' && item.activity && item.activity.id) {
-      return `activity-${item.activity.id}`;
+    if (item.type === 'activity') {
+      // STEP H: Guard against null activity or activity.id
+      return item.activity?.id ? `activity-${item.activity.id}` : `activity-${index}`;
     }
-    if (item.type === 'weekHeader' && item.weekGroup && item.weekGroup.weekStart) {
-      try {
-        return `week-${item.section}-${item.weekGroup.weekStart.toISOString()}`;
-      } catch (error) {
-        return `week-${item.section}-${index}`;
-      }
+    if (item.type === 'weekHeader') {
+      // STEP H: Guard against null weekGroup or weekStart
+      const weekKey = item.weekGroup?.weekStart ? item.weekGroup.weekStart.toISOString() : index;
+      return `week-${item.section}-${weekKey}`;
     }
     return `${item.type}-${index}`;
   }, []);
@@ -662,8 +700,8 @@ export default function HomeScreen() {
   // List header component
   const ListHeaderComponent = useCallback(() => (
     <>
-      {/* Header - with negative marginTop to compensate for SafeAreaView */}
-      <View style={[styles.header, { marginTop: -insets.top, paddingTop: insets.top + 16 }]}>
+      {/* Header */}
+      <View style={styles.header}>
         <View style={styles.logoContainer}>
           <View style={styles.logo}>
             <Text style={styles.logoIcon}>⚽</Text>
@@ -676,9 +714,9 @@ export default function HomeScreen() {
       </View>
 
       {/* Week Header */}
-      <View style={styles.weekHeaderContainer}>
-        <Text style={styles.weekHeaderTitle}>UGE {currentWeekNumber}</Text>
-        <Text style={styles.weekHeaderSubtitle}>{currentWeekLabel}</Text>
+      <View style={[styles.weekHeaderContainer, { backgroundColor: isDark ? '#1a1a1a' : colors.background }]}>
+        <Text style={[styles.weekHeaderTitle, { color: isDark ? '#e3e3e3' : colors.text }]}>UGE {currentWeekNumber}</Text>
+        <Text style={[styles.weekHeaderSubtitle, { color: isDark ? '#999' : colors.textSecondary }]}>{currentWeekLabel}</Text>
       </View>
 
       {/* Performance card */}
@@ -694,9 +732,9 @@ export default function HomeScreen() {
             <Text style={styles.medalIcon}>{performanceMetrics.trophyEmoji}</Text>
           </View>
         </View>
-        
+
         <Text style={styles.progressPercentage}>{performanceMetrics.percentageUpToToday}%</Text>
-        
+
         <View style={styles.progressBar}>
           <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
         </View>
@@ -717,13 +755,18 @@ export default function HomeScreen() {
         </Text>
 
         {/* Se Performance Button - Inside Performance Card */}
-        <Pressable 
+        <Pressable
           style={styles.performanceButton}
           onPress={() => {
+            // STEP H: Guard against null router
+            if (!router) {
+              console.error('[Home] Cannot navigate: router is null');
+              return;
+            }
             try {
               router.push('/(tabs)/performance');
             } catch (error) {
-              console.error('[Home iOS] Error navigating to performance:', error);
+              console.error('[Home] Error navigating to performance:', error);
             }
           }}
         >
@@ -731,49 +774,47 @@ export default function HomeScreen() {
         </Pressable>
       </LinearGradient>
 
+      {/* STEP E: Static inline info-box when adminMode !== 'self' */}
+      {adminMode !== 'self' && (
+        <View style={[styles.adminInfoBox, { backgroundColor: isDark ? '#3a2a1a' : '#FFF3E0', borderColor: isDark ? '#B8860B' : '#FF9800' }]}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle.fill"
+            android_material_icon_name="warning"
+            size={20}
+            color={isDark ? '#FFB74D' : '#F57C00'}
+          />
+          <Text style={[styles.adminInfoText, { color: isDark ? '#FFB74D' : '#E65100' }]}>
+            Du kan kun redigere indhold, du selv har oprettet.
+          </Text>
+        </View>
+      )}
+
       {/* Create Activity Button */}
-      <Pressable 
+      <Pressable
         style={styles.createButton}
         onPress={() => setShowCreateModal(true)}
       >
         <Text style={styles.createButtonText}>+  Opret Aktivitet</Text>
       </Pressable>
     </>
-  ), [insets.top, currentWeekNumber, currentWeekLabel, performanceMetrics, router]);
+  ), [isDark, currentWeekNumber, currentWeekLabel, performanceMetrics, adminMode, router]);
 
   // List footer component
   const ListFooterComponent = useCallback(() => (
     <View style={styles.bottomSpacer} />
   ), []);
 
-  if (loading) {
-    return (
-      <AdminContextWrapper
-        isAdmin={isAdminMode}
-        contextName={selectedContext?.name || null}
-        contextType={adminTargetType || 'player'}
-      >
-        <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }} edges={['top']}>
-          <View style={styles.loading}>
-            <Text style={styles.loadingText}>Indlæser…</Text>
-          </View>
-        </SafeAreaView>
-      </AdminContextWrapper>
-    );
-  }
-
-  // STEP H: Guard against invalid categories
-  const safeCategories = Array.isArray(categories) ? categories : [];
-
   return (
     <AdminContextWrapper
       isAdmin={isAdminMode}
-      contextName={selectedContext?.name || null}
+      contextName={selectedContext?.name}
       contextType={adminTargetType || 'player'}
     >
-      <StatusBar barStyle="dark-content" />
-      
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }} edges={['top']}>
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
+
+      {loading ? (
+        <HomeSkeleton />
+      ) : (
         <FlatList
           data={flattenedData}
           renderItem={renderItem}
@@ -781,7 +822,7 @@ export default function HomeScreen() {
           ListHeaderComponent={ListHeaderComponent}
           ListFooterComponent={ListFooterComponent}
           keyboardShouldPersistTaps="handled"
-          removeClippedSubviews={true}
+          removeClippedSubviews={Platform.OS !== 'web'}
           initialNumToRender={8}
           maxToRenderPerBatch={10}
           windowSize={5}
@@ -793,7 +834,7 @@ export default function HomeScreen() {
             />
           }
         />
-      </SafeAreaView>
+      )}
 
       {/* Create Activity Modal */}
       {showCreateModal ? (
@@ -801,7 +842,7 @@ export default function HomeScreen() {
           visible={showCreateModal}
           onClose={() => setShowCreateModal(false)}
           onCreateActivity={handleCreateActivity}
-          categories={safeCategories}
+          categories={categories}
           onRefreshCategories={refreshData}
         />
       ) : null}
@@ -810,22 +851,15 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  loading: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-    backgroundColor: '#FFFFFF',
-  },
-  loadingText: {
-    fontSize: 16,
-    color: colors.textSecondary,
+  contentContainer: {
+    paddingTop: 0,
   },
 
   // Header
   header: {
-    backgroundColor: HEADER_BG,
+    backgroundColor: '#2C3E50',
     paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'android' ? 48 : 16,
     paddingBottom: 32,
     flexDirection: 'row',
     alignItems: 'center',
@@ -865,7 +899,6 @@ const styles = StyleSheet.create({
 
   // Week Header
   weekHeaderContainer: {
-    backgroundColor: colors.background,
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 12,
@@ -873,14 +906,12 @@ const styles = StyleSheet.create({
   weekHeaderTitle: {
     fontSize: 24,
     fontWeight: '800',
-    color: colors.text,
     letterSpacing: 0.5,
     marginBottom: 4,
   },
   weekHeaderSubtitle: {
     fontSize: 15,
     fontWeight: '500',
-    color: colors.textSecondary,
     letterSpacing: 0.2,
   },
 
@@ -962,6 +993,24 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
 
+  // Admin Info Box
+  adminInfoBox: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+  },
+  adminInfoText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
+  },
+
   // Create Button
   createButton: {
     backgroundColor: '#4CAF50',
@@ -1000,7 +1049,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 22,
     fontWeight: '800',
-    color: colors.text,
     letterSpacing: 0.8,
   },
   chevronIcon: {
@@ -1011,18 +1059,15 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   loadMoreButton: {
-    backgroundColor: colors.cardBackground,
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: colors.border,
     alignItems: 'center',
   },
   loadMoreButtonText: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.text,
     letterSpacing: 0.3,
   },
   emptyContainer: {
@@ -1030,7 +1075,6 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 15,
-    color: colors.textSecondary,
     marginBottom: 16,
     lineHeight: 22,
   },
@@ -1043,14 +1087,12 @@ const styles = StyleSheet.create({
   weekLabel: {
     fontSize: 17,
     fontWeight: '800',
-    color: colors.text,
     marginBottom: 6,
     letterSpacing: 0.3,
   },
   weekDateRange: {
     fontSize: 14,
     fontWeight: '500',
-    color: colors.textSecondary,
     marginBottom: 18,
     letterSpacing: 0.2,
   },

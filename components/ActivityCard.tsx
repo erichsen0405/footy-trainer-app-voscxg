@@ -1,12 +1,10 @@
-
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { View, Text, StyleSheet, Pressable, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { format } from 'date-fns';
 import { da } from 'date-fns/locale';
 import { IconSymbol } from '@/components/IconSymbol';
-import { colors } from '@/styles/commonStyles';
 import { useFootball } from '@/contexts/FootballContext';
 import TaskDetailsModal from '@/components/TaskDetailsModal';
 
@@ -41,28 +39,34 @@ function darkenColor(hex: string, percent: number): string {
   return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
 }
 
-// Category gradient mapping
-const getCategoryGradient = (category: any): string[] => {
-  if (!category || !category.color) {
-    console.warn('ActivityCard: No category or category color found, using fallback gradient');
+type CategoryMeta = {
+  color?: string;
+  emoji?: string;
+};
+
+// Category gradient mapping (color-based, supports new resolved fields)
+const getCategoryGradientFromColor = (color?: string): string[] => {
+  const baseColor = String(color ?? '').trim();
+  if (!baseColor) {
+    // Warn only when we truly have no usable color
+    console.warn('ActivityCard: No category color found, using fallback gradient');
     return ['#6B7280', '#4B5563'];
   }
-  const baseColor = category.color;
   const lighterColor = lightenColor(baseColor, 0.15);
   const darkerColor = darkenColor(baseColor, 0.2);
   return [lighterColor, darkerColor];
 };
 
 // Get emoji for category
-const getCategoryEmoji = (category: any): string => {
-  if (!category || !category.emoji) return '⚽';
-  return category.emoji;
+const getCategoryEmoji = (emoji?: string): string => {
+  if (!emoji) return '⚽';
+  return emoji;
 };
 
-export default function ActivityCard({ 
-  activity, 
-  resolvedDate, 
-  onPress, 
+export default function ActivityCard({
+  activity,
+  resolvedDate,
+  onPress,
   showTasks = false,
 }: ActivityCardProps) {
   const router = useRouter();
@@ -154,10 +158,42 @@ export default function ActivityCard({
     return `${hours}t ${remainingMinutes}m`;
   };
 
-  const category = activity.category || null;
-  const gradientColors = getCategoryGradient(category);
-  const categoryEmoji = getCategoryEmoji(category);
-  
+  // Resolve category meta (color + emoji) without relying on legacy activity.category
+  // Priority for color:
+  // a) activity.categoryColor
+  // b) activity.category_color
+  // c) activity.activity_categories?.color
+  // d) activity.activity_category?.color
+  // e) activity.category?.color (legacy)
+  const resolvedCategoryMeta: CategoryMeta = useMemo(() => {
+    const joinedCategory = activity?.activity_categories ?? activity?.activity_category ?? null;
+    const legacyCategory = activity?.category ?? null;
+
+    const color =
+      activity?.categoryColor ??
+      activity?.category_color ??
+      joinedCategory?.color ??
+      legacyCategory?.color ??
+      undefined;
+
+    const emoji =
+      joinedCategory?.emoji ??
+      legacyCategory?.emoji ??
+      undefined;
+
+    return { color, emoji };
+  }, [activity]);
+
+  const gradientColors = useMemo(
+    () => getCategoryGradientFromColor(resolvedCategoryMeta?.color),
+    [resolvedCategoryMeta?.color]
+  );
+
+  const categoryEmoji = useMemo(
+    () => getCategoryEmoji(resolvedCategoryMeta?.emoji),
+    [resolvedCategoryMeta?.emoji]
+  );
+
   const dayLabel = format(resolvedDate, 'EEE. d. MMM.', { locale: da });
   const timeLabel = format(resolvedDate, 'HH:mm');
   const location = activity.location || activity.category_location || '';
@@ -166,9 +202,7 @@ export default function ActivityCard({
     <>
       <Pressable
         onPress={handleCardPress}
-        style={({ pressed }) => [
-          pressed && styles.cardPressed,
-        ]}
+        style={({ pressed }) => [pressed && styles.cardPressed]}
       >
         <LinearGradient
           colors={gradientColors}
@@ -219,9 +253,14 @@ export default function ActivityCard({
           {showTasks && optimisticTasks && optimisticTasks.length > 0 && (
             <View style={styles.tasksSection}>
               <View style={styles.tasksDivider} />
-              {optimisticTasks.map((task, index) => {
+              {optimisticTasks.map((task: any) => {
+                const taskKey =
+                  String(task?.id ?? '').trim() ||
+                  String(task?.task_id ?? '').trim() ||
+                  `${String(activity?.id ?? 'activity')}-${String(task?.title ?? 'task')}`;
+
                 return (
-                  <React.Fragment key={index}>
+                  <React.Fragment key={taskKey}>
                     <View style={styles.taskRow}>
                       <TouchableOpacity
                         style={styles.taskCheckboxArea}
