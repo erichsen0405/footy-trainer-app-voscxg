@@ -36,8 +36,7 @@ export const useFootballData = () => {
     setCategories(data || []);
   };
 
-  // ✅ P14: dedicated categories refresher (UI can call this after create/edit category)
-  // Minimal + deterministic: updates categories state only (no navigation / no onPress fetch for navigation)
+  // ✅ Dedicated categories refresher (UI can call this after create/edit category)
   const refreshCategories = useCallback(async () => {
     try {
       const { data, error } = await supabase.from('activity_categories').select('*');

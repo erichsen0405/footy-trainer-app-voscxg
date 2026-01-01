@@ -86,6 +86,13 @@ export default function CreateActivityModal({
   const [isCreating, setIsCreating] = useState(false);
   const [showCategoryManagement, setShowCategoryManagement] = useState(false);
 
+  // (1) ✅ add ref + effect close to state hooks
+  const showCategoryManagementRef = useRef(false);
+
+  useEffect(() => {
+    showCategoryManagementRef.current = showCategoryManagement;
+  }, [showCategoryManagement]);
+
   const { refreshCategories } = useFootball();
 
   const isDark = colorScheme === 'dark';
@@ -250,10 +257,22 @@ export default function CreateActivityModal({
     return timeDate;
   }, [time]);
 
+  // (2) ✅ openCategoryManagement (no fetch, only state) — removed logs
   const openCategoryManagement = useCallback(() => {
+    const wasOpen = showCategoryManagementRef.current;
+
+    if (wasOpen) {
+      setShowCategoryManagement(false);
+      requestAnimationFrame(() => {
+        setShowCategoryManagement(true);
+      });
+      return;
+    }
+
     setShowCategoryManagement(true);
   }, []);
 
+  // (3) ✅ closeCategoryManagement — removed log
   const closeCategoryManagement = useCallback(() => {
     setShowCategoryManagement(false);
   }, []);
@@ -284,7 +303,13 @@ export default function CreateActivityModal({
 
   return (
     <>
-      <Modal visible animationType="slide" transparent>
+      <Modal
+        visible
+        animationType="slide"
+        transparent
+        presentationStyle="overFullScreen"
+        onRequestClose={handleClose}
+      >
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.modalOverlay}
@@ -330,10 +355,7 @@ export default function CreateActivityModal({
 
                   {/* ✅ P14: replace top-right button block 1:1 */}
                   <TouchableOpacity
-                    onPress={() => {
-                      console.log('[P14] top-right add category pressed');
-                      setShowCategoryManagement(true);
-                    }}
+                    onPress={openCategoryManagement}
                     activeOpacity={0.7}
                     style={styles.createCategoryTopRight}
                     hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -622,19 +644,17 @@ export default function CreateActivityModal({
                 {isCreating ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff' }}>Opret</Text>}
               </TouchableOpacity>
             </View>
+
+            {/* ✅ moved INSIDE Modal tree as the last child */}
+            <CategoryManagementModal
+              visible={showCategoryManagement}
+              onClose={closeCategoryManagement}
+              categories={safeCategories}
+              onRefresh={handleRefreshCategories}
+            />
           </View>
         </KeyboardAvoidingView>
       </Modal>
-
-      {/* ✅ P14 temporary render log */}
-      {console.log('[P14] CategoryManagementModal visible:', showCategoryManagement)}
-
-      <CategoryManagementModal
-        visible={showCategoryManagement}
-        onClose={closeCategoryManagement}
-        categories={safeCategories}
-        onRefresh={handleRefreshCategories}
-      />
     </>
   );
 }

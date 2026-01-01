@@ -96,6 +96,8 @@ export default function CategoryManagementModal({
       setSelectedColor(COLOR_OPTIONS[0]);
       setActivitiesUsingCategory([]);
       setReassignCategoryId('');
+    } else {
+      // removed debug log
     }
   }, [visible]);
 
@@ -740,7 +742,14 @@ export default function CategoryManagementModal({
   }, [safeCategories, selectedCategory, textSecondaryColor, textColor, activitiesUsingCategory, bgColor, reassignCategoryId, isLoading, handleReassignAndDelete]);
 
   return (
-    <Modal visible={visible} animationType="slide" transparent={true}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent={true}
+      presentationStyle="overFullScreen"
+      onRequestClose={onClose}
+      statusBarTranslucent={true}
+    >
       <View style={styles.modalOverlay}>
         <View style={[styles.modalContent, { backgroundColor: cardBgColor }]}>
           {mode === 'list' && renderListMode()}
