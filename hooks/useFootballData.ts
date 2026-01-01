@@ -8,7 +8,6 @@ import {
   ExternalCalendar,
   ActivitySeries,
 } from '@/types';
-import { fetchAndParseICalendar, formatTimeFromDate } from '@/utils/icalParser';
 import { supabase } from '@/app/integrations/supabase/client';
 import { checkNotificationPermissions } from '@/utils/notificationService';
 import {
@@ -17,12 +16,10 @@ import {
 } from '@/utils/notificationScheduler';
 import { startOfWeek, endOfWeek } from 'date-fns';
 import { AppState, AppStateStatus, Platform } from 'react-native';
-import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import { taskService } from '@/services/taskService';
 import { useAdmin } from '@/contexts/AdminContext';
 
 export const useFootballData = () => {
-  const { teamPlayerId } = useTeamPlayer();
   const { adminMode, adminTargetId, adminTargetType } = useAdmin();
 
   const [activities, setActivities] = useState<Activity[]>([]);

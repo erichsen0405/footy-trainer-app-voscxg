@@ -119,7 +119,7 @@ export default function LibraryScreen() {
   const [personalExercises, setPersonalExercises] = useState<Exercise[]>([]);
   const [trainerFolders, setTrainerFolders] = useState<FolderItem[]>([]);
   const [footballCoachFolders, setFootballCoachFolders] = useState<FolderItem[]>(FOOTBALLCOACH_STRUCTURE);
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['personal', 'trainers', 'footballcoach']));
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
@@ -382,6 +382,9 @@ export default function LibraryScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      // Always start collapsed on focus (before fetch)
+      setExpandedFolders(new Set());
+
       console.log('🔄 Library: Screen focused, refreshing data...');
       if (currentUserId) {
         fetchLibraryData(currentUserId);
@@ -734,6 +737,7 @@ export default function LibraryScreen() {
           description: exercise.description,
           video_url: exercise.video_url,
           reminder_minutes: null,
+          source_folder: getSourceFolderForExercise(exercise),
         })
         .select()
         .single();
@@ -788,6 +792,47 @@ export default function LibraryScreen() {
       setSubtasks(subtasks.filter((_, i) => i !== index));
     }
   };
+
+  // Map category_path -> "Holdtræning/Selvtræning" + subfolder navn
+  const footballCoachCategoryMap = React.useMemo(() => {
+    const map = new Map<string, { main: string; sub: string }>();
+    FOOTBALLCOACH_STRUCTURE.forEach((mainFolder) => {
+      (mainFolder.subfolders ?? []).forEach((sub) => {
+        map.set(sub.id, { main: mainFolder.name, sub: sub.name });
+      });
+    });
+    return map;
+  }, []);
+
+  const getSourceFolderForExercise = useCallback(
+    (exercise: Exercise) => {
+      // System (FootballCoach – Fokusområder)
+      if (exercise.is_system) {
+        const cat = exercise.category_path;
+        const mapped = cat ? footballCoachCategoryMap.get(cat) : undefined;
+
+        if (mapped) {
+          return `FootballCoach Inspiration > ${mapped.main} > ${mapped.sub}`;
+        }
+
+        // Fallback hvis category_path mangler
+        return 'FootballCoach Inspiration';
+      }
+
+      // Træner-templates (for spillere)
+      if (exercise.trainer_name) {
+        return `Fra træner: ${exercise.trainer_name}`;
+      }
+
+      // Personlige templates (for trænere)
+      if (isAdmin) {
+        return 'Personlige templates';
+      }
+
+      return 'Bibliotek';
+    },
+    [footballCoachCategoryMap, isAdmin]
+  );
 
   const renderExerciseCard = (exercise: Exercise, isReadOnly: boolean = false) => {
     // System exercises are always read-only
