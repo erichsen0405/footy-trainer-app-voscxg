@@ -120,7 +120,9 @@ export default function LibraryScreen() {
   const [trainerFolders, setTrainerFolders] = useState<FolderItem[]>([]);
   const [footballCoachFolders, setFootballCoachFolders] = useState<FolderItem[]>(FOOTBALLCOACH_STRUCTURE);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState<'loading' | 'success' | 'empty' | 'error'>('loading');
+  const [errorMessage, setErrorMessage] = useState<string>('');
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [showModal, setShowModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showVideoModal, setShowVideoModal] = useState(false);
@@ -153,7 +155,14 @@ export default function LibraryScreen() {
     console.log('🔄 Library: Fetching library data for user:', userId);
 
     try {
-      setLoading(true);
+      setStatus('loading');
+      setErrorMessage('');
+      setPersonalExercises([]);
+      setTrainerFolders([]);
+      setFootballCoachFolders(FOOTBALLCOACH_STRUCTURE);
+
+      let exercisesWithDetails: Exercise[] = [];
+      let folders: FolderItem[] = [];
 
       if (isAdmin) {
         // TRAINERS: Fetch their own exercises (personal templates)
@@ -167,25 +176,28 @@ export default function LibraryScreen() {
         if (exercisesError) throw exercisesError;
 
         const exerciseIds = exercisesData?.map(e => e.id) || [];
-        
-        // Fetch subtasks
-        const { data: subtasksData, error: subtasksError } = await supabase
-          .from('exercise_subtasks')
-          .select('*')
-          .in('exercise_id', exerciseIds)
-          .order('sort_order', { ascending: true });
+        let subtasksData: ExerciseSubtask[] = [];
+        if (exerciseIds.length) {
+          const { data, error } = await supabase
+            .from('exercise_subtasks')
+            .select('*')
+            .in('exercise_id', exerciseIds)
+            .order('sort_order', { ascending: true });
+          if (error) throw error;
+          subtasksData = data || [];
+        }
 
-        if (subtasksError) throw subtasksError;
+        let assignmentsData: ExerciseAssignment[] = [];
+        if (exerciseIds.length) {
+          const { data, error } = await supabase
+            .from('exercise_assignments')
+            .select('*')
+            .in('exercise_id', exerciseIds);
+          if (error) throw error;
+          assignmentsData = data || [];
+        }
 
-        // Fetch assignments
-        const { data: assignmentsData, error: assignmentsError } = await supabase
-          .from('exercise_assignments')
-          .select('*')
-          .in('exercise_id', exerciseIds);
-
-        if (assignmentsError) throw assignmentsError;
-
-        const exercisesWithDetails: Exercise[] = (exercisesData || []).map(exercise => ({
+        exercisesWithDetails = (exercisesData || []).map(exercise => ({
           ...exercise,
           created_at: new Date(exercise.created_at),
           updated_at: new Date(exercise.updated_at),
@@ -208,32 +220,37 @@ export default function LibraryScreen() {
         if (assignmentsError) throw assignmentsError;
 
         const exerciseIds = assignmentsData?.map(a => a.exercise_id) || [];
-        
-        // Fetch exercises separately
-        const { data: exercisesData, error: exercisesError } = await supabase
-          .from('exercise_library')
-          .select('*')
-          .in('id', exerciseIds);
+        let exercisesData: any[] = [];
+        if (exerciseIds.length) {
+          const { data, error } = await supabase
+            .from('exercise_library')
+            .select('*')
+            .in('id', exerciseIds);
+          if (error) throw error;
+          exercisesData = data || [];
+        }
 
-        if (exercisesError) throw exercisesError;
+        let subtasksData: ExerciseSubtask[] = [];
+        if (exerciseIds.length) {
+          const { data, error } = await supabase
+            .from('exercise_subtasks')
+            .select('*')
+            .in('exercise_id', exerciseIds)
+            .order('sort_order', { ascending: true });
+          if (error) throw error;
+          subtasksData = data || [];
+        }
 
-        // Fetch subtasks
-        const { data: subtasksData, error: subtasksError } = await supabase
-          .from('exercise_subtasks')
-          .select('*')
-          .in('exercise_id', exerciseIds)
-          .order('sort_order', { ascending: true });
-
-        if (subtasksError) throw subtasksError;
-
-        // Fetch trainer profiles
         const trainerIds = [...new Set(assignmentsData?.map(a => a.trainer_id) || [])];
-        const { data: trainersData, error: trainersError } = await supabase
-          .from('profiles')
-          .select('user_id, full_name')
-          .in('user_id', trainerIds);
-
-        if (trainersError) throw trainersError;
+        let trainersData: { user_id: string; full_name: string | null }[] = [];
+        if (trainerIds.length) {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('user_id, full_name')
+            .in('user_id', trainerIds);
+          if (error) throw error;
+          trainersData = data || [];
+        }
 
         // Group exercises by trainer
         const trainerMap = new Map<string, FolderItem>();
@@ -271,7 +288,7 @@ export default function LibraryScreen() {
           folder.exercises!.push(exerciseWithDetails);
         });
 
-        const folders = Array.from(trainerMap.values());
+        folders = Array.from(trainerMap.values());
         console.log('✅ Library: Loaded trainer folders:', folders.length);
         setTrainerFolders(folders);
         setPersonalExercises([]); // Players don't have personal exercises in this context
@@ -287,15 +304,16 @@ export default function LibraryScreen() {
       if (systemExercisesError) throw systemExercisesError;
 
       const systemExerciseIds = systemExercisesData?.map(e => e.id) || [];
-      
-      // Fetch subtasks for system exercises
-      const { data: systemSubtasksData, error: systemSubtasksError } = await supabase
-        .from('exercise_subtasks')
-        .select('*')
-        .in('exercise_id', systemExerciseIds)
-        .order('sort_order', { ascending: true });
-
-      if (systemSubtasksError) throw systemSubtasksError;
+      let systemSubtasksData: ExerciseSubtask[] = [];
+      if (systemExerciseIds.length) {
+        const { data, error } = await supabase
+          .from('exercise_subtasks')
+          .select('*')
+          .in('exercise_id', systemExerciseIds)
+          .order('sort_order', { ascending: true });
+        if (error) throw error;
+        systemSubtasksData = data || [];
+      }
 
       // Group system exercises by category_path
       const updatedFootballCoachFolders = FOOTBALLCOACH_STRUCTURE.map(mainFolder => {
@@ -325,11 +343,18 @@ export default function LibraryScreen() {
       setFootballCoachFolders(updatedFootballCoachFolders);
       console.log('✅ Library: Loaded FootballCoach exercises');
 
-    } catch (error) {
+      const hasPersonalContent = isAdmin ? exercisesWithDetails.length > 0 : false;
+      const hasTrainerContent = !isAdmin ? folders.length > 0 : false;
+      const hasSystemContent = updatedFootballCoachFolders.some(folder =>
+        (folder.subfolders || []).some(sub => (sub.exercises || []).length > 0)
+      );
+
+      const hasContent = hasPersonalContent || hasTrainerContent || hasSystemContent;
+      setStatus(hasContent ? 'success' : 'empty');
+    } catch (error: any) {
       console.error('❌ Library: Error fetching library data:', error);
-      Alert.alert('Fejl', 'Kunne ikke hente bibliotek');
-    } finally {
-      setLoading(false);
+      setErrorMessage(error?.message || 'Kunne ikke hente bibliotek');
+      setStatus('error');
     }
   }, [isAdmin]);
 
@@ -345,7 +370,8 @@ export default function LibraryScreen() {
         if (!user) {
           console.log('❌ Library: No user found');
           if (isMounted) {
-            setLoading(false);
+            setStatus('error');
+            setErrorMessage('Ingen bruger fundet');
           }
           return;
         }
@@ -358,7 +384,8 @@ export default function LibraryScreen() {
       } catch (error) {
         console.error('❌ Library: Error getting user:', error);
         if (isMounted) {
-          setLoading(false);
+          setStatus('error');
+          setErrorMessage(error?.message || 'Kunne ikke hente bruger');
         }
       }
     };
@@ -378,7 +405,7 @@ export default function LibraryScreen() {
 
     console.log('🔄 Library: User ID available, fetching library data...');
     fetchLibraryData(currentUserId);
-  }, [currentUserId, selectedContext, fetchLibraryData]);
+  }, [currentUserId, selectedContext, reloadNonce, fetchLibraryData]);
 
   useFocusEffect(
     useCallback(() => {
@@ -391,6 +418,10 @@ export default function LibraryScreen() {
       }
     }, [currentUserId, fetchLibraryData])
   );
+
+  const handleRetry = () => {
+    setReloadNonce((n) => n + 1);
+  };
 
   const toggleFolder = (folderId: string) => {
     setExpandedFolders(prev => {
@@ -1039,12 +1070,60 @@ export default function LibraryScreen() {
     );
   };
 
-  if (loading) {
+  if (status === 'loading') {
     return (
       <View style={[styles.container, { backgroundColor: containerBgColor }]}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={[styles.loadingText, { color: textColor }]}>Indlæser bibliotek...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (status === 'error') {
+    return (
+      <View style={[styles.container, { backgroundColor: containerBgColor }]}>        
+        <View style={styles.loadingContainer}>
+          <Text style={[styles.loadingText, { color: textColor, textAlign: 'center' }]}>
+            {errorMessage || 'Kunne ikke hente bibliotek'}
+          </Text>
+          <TouchableOpacity
+            style={[styles.createButton, { backgroundColor: colors.primary }]}
+            onPress={handleRetry}
+            activeOpacity={0.7}
+          >
+            <IconSymbol
+              ios_icon_name="arrow.clockwise"
+              android_material_icon_name="refresh"
+              size={20}
+              color="#fff"
+            />
+            <Text style={styles.createButtonText}>Prøv igen</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  if (status === 'empty') {
+    return (
+      <View style={[styles.container, { backgroundColor: containerBgColor }]}>        
+        <View style={styles.loadingContainer}>
+          <Text style={[styles.loadingText, { color: textColor, textAlign: 'center' }]}>Ingen indhold fundet i biblioteket.</Text>
+          <TouchableOpacity
+            style={[styles.createButton, { backgroundColor: colors.primary }]}
+            onPress={handleRetry}
+            activeOpacity={0.7}
+          >
+            <IconSymbol
+              ios_icon_name="arrow.clockwise"
+              android_material_icon_name="refresh"
+              size={20}
+              color="#fff"
+            />
+            <Text style={styles.createButtonText}>Opdater</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
