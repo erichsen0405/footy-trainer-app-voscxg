@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -18,15 +17,12 @@ import { useRouter } from 'expo-router';
 import CreatePlayerModal from '@/components/CreatePlayerModal';
 import PlayersList from '@/components/PlayersList';
 import TeamManagement from '@/components/TeamManagement';
-import TeamPlayerSelector from '@/components/TeamPlayerSelector';
-import { useFootball } from '@/contexts/FootballContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 
 export default function TrainerScreen() {
-  const { userRole, loading: roleLoading, isAdmin } = useUserRole();
-  const { refreshData } = useFootball();
-  const { subscriptionStatus, loading: subscriptionLoading } = useSubscription();
+  const { loading: roleLoading, isAdmin } = useUserRole();
+  const { subscriptionStatus } = useSubscription();
   const { refreshTeams, refreshPlayers } = useTeamPlayer();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -39,14 +35,11 @@ export default function TrainerScreen() {
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
 
-  // Redirect if not admin/trainer
   useEffect(() => {
     if (!roleLoading && !isAdmin) {
-      Alert.alert(
-        'Adgang nægtet',
-        'Du har ikke adgang til træner-siden',
-        [{ text: 'OK', onPress: () => router.replace('/(tabs)/(home)') }]
-      );
+      Alert.alert('Adgang nægtet', 'Du har ikke adgang til træner-siden', [
+        { text: 'OK', onPress: () => router.replace('/(tabs)/(home)') },
+      ]);
     }
   }, [roleLoading, isAdmin, router]);
 
@@ -56,7 +49,6 @@ export default function TrainerScreen() {
   };
 
   const handleCreatePlayer = () => {
-    // Check if user has subscription and player limit
     if (!subscriptionStatus?.hasSubscription) {
       Alert.alert(
         'Abonnement påkrævet',
@@ -114,25 +106,6 @@ export default function TrainerScreen() {
           </View>
         </View>
 
-        {/* Team/Player Selector */}
-        <View style={[styles.section, { backgroundColor: cardBgColor }]}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleContainer}>
-              <IconSymbol
-                ios_icon_name="person.crop.circle.badge.checkmark"
-                android_material_icon_name="how_to_reg"
-                size={28}
-                color={colors.primary}
-              />
-              <Text style={[styles.sectionTitle, { color: textColor }]}>Administrer data for</Text>
-            </View>
-          </View>
-          <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
-            Vælg hvilken spiller eller hvilket team du vil administrere aktiviteter for
-          </Text>
-          <TeamPlayerSelector />
-        </View>
-
         {/* Teams Section */}
         <View style={[styles.section, { backgroundColor: cardBgColor }]}>
           <View style={styles.sectionHeader}>
@@ -169,20 +142,12 @@ export default function TrainerScreen() {
               onPress={handleCreatePlayer}
               activeOpacity={0.7}
             >
-              <IconSymbol
-                ios_icon_name="plus"
-                android_material_icon_name="add"
-                size={20}
-                color="#fff"
-              />
+              <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={20} color="#fff" />
               <Text style={styles.addButtonText}>Tilføj spiller</Text>
             </TouchableOpacity>
           </View>
 
-          <PlayersList 
-            onCreatePlayer={handleCreatePlayer}
-            refreshTrigger={refreshTrigger}
-          />
+          <PlayersList onCreatePlayer={handleCreatePlayer} refreshTrigger={refreshTrigger} />
         </View>
 
         {/* Info Section */}
@@ -194,8 +159,7 @@ export default function TrainerScreen() {
             color={colors.secondary}
           />
           <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
-            Som træner har du adgang til at administrere teams, spillere og øvelsesbiblioteket. 
-            Husk at vælge en spiller eller et team før du administrerer aktiviteter.
+            Som træner har du adgang til at administrere teams, spillere og øvelsesbiblioteket.
             {'\n\n'}
             For at tilføje eksterne kalendere, gå til din Profil-side.
           </Text>
