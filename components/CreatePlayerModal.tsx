@@ -191,7 +191,8 @@ export default function CreatePlayerModal({
     <Modal
       visible={visible}
       animationType="slide"
-      presentationStyle="pageSheet"
+      presentationStyle="overFullScreen"
+      statusBarTranslucent
       onRequestClose={onClose}
     >
       <KeyboardAvoidingView
@@ -226,7 +227,7 @@ export default function CreatePlayerModal({
               </View>
             </View>
             <ActivityIndicator size="small" color={colors.primary} style={styles.successLoader} />
-            <Text style={styles.successRedirectText}>Returnerer til træner-siden...</Text>
+            <Text style={styles.successRedirectText}>Returnerer til profilen...</Text>
           </View>
         ) : (
           // Search and Add Player Form

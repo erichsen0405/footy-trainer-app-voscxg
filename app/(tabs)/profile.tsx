@@ -7,7 +7,11 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 import ExternalCalendarManager from '@/components/ExternalCalendarManager';
 import SubscriptionManager from '@/components/SubscriptionManager';
+import CreatePlayerModal from '@/components/CreatePlayerModal';
+import PlayersList from '@/components/PlayersList';
+import TeamManagement from '@/components/TeamManagement';
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import { deleteAllExternalActivities } from '@/utils/deleteExternalActivities';
 
 // Conditionally import GlassView only on native platforms
@@ -31,6 +35,8 @@ interface AdminInfo {
   phone_number: string;
   email: string;
 }
+
+type SubscriptionStatusType = ReturnType<typeof useSubscription>['subscriptionStatus'];
 
 export default function ProfileScreen() {
   const [user, setUser] = useState<any>(null);
@@ -67,6 +73,8 @@ export default function ProfileScreen() {
 
   // Get subscription status
   const { subscriptionStatus, refreshSubscription } = useSubscription();
+
+  const canManagePlayers = userRole === 'admin' || userRole === 'trainer';
 
   const fetchUserProfile = async (userId: string) => {
     try {
@@ -611,6 +619,9 @@ export default function ProfileScreen() {
   const cardBgColor = isDark ? (Platform.OS === 'ios' ? '#1a1a1a' : '#2a2a2a') : (Platform.OS === 'ios' ? '#fff' : colors.card);
   const textColor = isDark ? (Platform.OS === 'ios' ? '#fff' : '#e3e3e3') : (Platform.OS === 'ios' ? '#1a1a1a' : colors.text);
   const textSecondaryColor = isDark ? '#999' : (Platform.OS === 'ios' ? '#666' : colors.textSecondary);
+  const nestedCardBgColor = Platform.OS === 'ios'
+    ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)')
+    : (isDark ? '#1f1f1f' : '#f5f6f9');
 
   // Platform-specific wrapper component
   const CardWrapper = Platform.OS === 'ios' ? GlassView : View;
@@ -921,6 +932,18 @@ export default function ProfileScreen() {
                   )}
                 </View>
               </CardWrapper>
+            )}
+
+            {canManagePlayers && (
+              <ManagePlayersSection
+                CardWrapperComponent={CardWrapper}
+                cardWrapperProps={cardWrapperProps}
+                cardBgColor={cardBgColor}
+                nestedCardBgColor={nestedCardBgColor}
+                textColor={textColor}
+                textSecondaryColor={textSecondaryColor}
+                subscriptionStatus={subscriptionStatus}
+              />
             )}
 
             {/* Calendar Sync Section - Collapsible - Available for all users */}
@@ -1285,6 +1308,35 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginBottom: 20,
   },
+  manageBlock: {
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 16,
+    marginBottom: 8,
+    gap: 12,
+  },
+  manageBlockTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  manageBlockDescription: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  manageActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 24,
+  },
+  manageActionButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
   profileInfo: {
     gap: 12,
   },
@@ -1500,3 +1552,148 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+interface ManagePlayersSectionProps {
+  CardWrapperComponent: React.ComponentType<any>;
+  cardWrapperProps: Record<string, unknown>;
+  cardBgColor: string;
+  nestedCardBgColor: string;
+  textColor: string;
+  textSecondaryColor: string;
+  subscriptionStatus: SubscriptionStatusType;
+}
+
+function ManagePlayersSection({
+  CardWrapperComponent,
+  cardWrapperProps,
+  cardBgColor,
+  nestedCardBgColor,
+  textColor,
+  textSecondaryColor,
+  subscriptionStatus,
+}: ManagePlayersSectionProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [showCreatePlayerModal, setShowCreatePlayerModal] = useState(false);
+  const [playersRefreshTrigger, setPlayersRefreshTrigger] = useState(0);
+  const { refreshTeams, refreshPlayers } = useTeamPlayer();
+
+  const handleManagePlayerCreated = useCallback(() => {
+    setPlayersRefreshTrigger(prev => prev + 1);
+    refreshPlayers();
+    refreshTeams();
+  }, [refreshPlayers, refreshTeams]);
+
+  const handleOpenCreatePlayer = useCallback(() => {
+    if (!subscriptionStatus?.hasSubscription) {
+      Alert.alert(
+        'Abonnement påkrævet',
+        'Du skal have et aktivt abonnement for at oprette spillere. Start din 14-dages gratis prøveperiode nu!',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    const maxPlayers = subscriptionStatus?.maxPlayers;
+    const currentPlayers = subscriptionStatus?.currentPlayers;
+
+    if (
+      typeof maxPlayers === 'number' &&
+      typeof currentPlayers === 'number' &&
+      currentPlayers >= maxPlayers
+    ) {
+      Alert.alert(
+        'Spillergrænse nået',
+        `Din ${subscriptionStatus?.planName ?? 'nuværende'} plan tillader op til ${maxPlayers} spiller${maxPlayers > 1 ? 'e' : ''}. Opgrader din plan for at tilføje flere spillere.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    setShowCreatePlayerModal(true);
+  }, [subscriptionStatus]);
+
+  return (
+    <>
+      <CardWrapperComponent
+        style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]}
+        {...cardWrapperProps}
+      >
+        <TouchableOpacity
+          style={styles.collapsibleHeader}
+          onPress={() => setIsExpanded(prev => !prev)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.sectionTitleContainer}>
+            <IconSymbol
+              ios_icon_name="person.3.fill"
+              android_material_icon_name="groups"
+              size={28}
+              color={colors.primary}
+            />
+            <Text style={[styles.sectionTitle, { color: textColor }]}>Administrer spillere</Text>
+          </View>
+          <IconSymbol
+            ios_icon_name={isExpanded ? 'chevron.up' : 'chevron.down'}
+            android_material_icon_name={isExpanded ? 'expand_less' : 'expand_more'}
+            size={24}
+            color={textSecondaryColor}
+          />
+        </TouchableOpacity>
+
+        {isExpanded && (
+          <>
+            <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>Opret teams, tilføj spillere og administrer dine eksisterende relationer direkte fra din profil.</Text>
+
+            <View style={[styles.manageBlock, { backgroundColor: nestedCardBgColor }]}>
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionTitleContainer}>
+                  <IconSymbol
+                    ios_icon_name="person.3"
+                    android_material_icon_name="groups"
+                    size={24}
+                    color={colors.primary}
+                  />
+                  <Text style={[styles.manageBlockTitle, { color: textColor }]}>Teams</Text>
+                </View>
+              </View>
+              <Text style={[styles.manageBlockDescription, { color: textSecondaryColor }]}>Opret og administrer teams, og tilknyt spillere til de rigtige hold.</Text>
+              <TeamManagement />
+            </View>
+
+            <View style={[styles.manageBlock, { backgroundColor: nestedCardBgColor }]}>
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionTitleContainer}>
+                  <IconSymbol
+                    ios_icon_name="person.2.fill"
+                    android_material_icon_name="group"
+                    size={24}
+                    color={colors.primary}
+                  />
+                  <Text style={[styles.manageBlockTitle, { color: textColor }]}>Spillere</Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.manageActionButton, { backgroundColor: colors.primary }]}
+                  onPress={handleOpenCreatePlayer}
+                  activeOpacity={0.7}
+                >
+                  <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={18} color="#fff" />
+                  <Text style={styles.manageActionButtonText}>Tilføj spiller</Text>
+                </TouchableOpacity>
+              </View>
+              <PlayersList
+                onCreatePlayer={handleOpenCreatePlayer}
+                refreshTrigger={playersRefreshTrigger}
+              />
+            </View>
+          </>
+        )}
+      </CardWrapperComponent>
+
+      <CreatePlayerModal
+        visible={showCreatePlayerModal}
+        onClose={() => setShowCreatePlayerModal(false)}
+        onPlayerCreated={handleManagePlayerCreated}
+      />
+    </>
+  );
+}

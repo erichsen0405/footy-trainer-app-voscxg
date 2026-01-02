@@ -56,8 +56,6 @@ function IOSTabLayout({
   // Hide only when not logged in or when role is neither player nor trainer/admin.
   const hideForPlayerOrTrainer = !loading && (!isLoggedIn || !(isPlayer || isTrainer));
 
-  const hideForTrainerOnly = !loading && (!isLoggedIn || !isTrainer);
-
   return (
     <NativeTabs
       tintColor={colors.primary}
@@ -103,12 +101,6 @@ function IOSTabLayout({
         <Label>Bibliotek</Label>
       </NativeTabs.Trigger>
 
-      {/* TRAINER – KUN TRAINER / ADMIN */}
-      <NativeTabs.Trigger name="trainer" hidden={hideForTrainerOnly}>
-        <Icon sf={{ default: 'person.3', selected: 'person.3.fill' }} />
-        <Label>Træner</Label>
-      </NativeTabs.Trigger>
-
       {/* PROFILE – ALTID */}
       <NativeTabs.Trigger name="profile">
         <Icon sf={{ default: 'person', selected: 'person.fill' }} />
@@ -144,76 +136,55 @@ function AndroidWebTabLayout({
 
     const isPlayer = userRole === 'player';
     const isTrainer = userRole === 'admin' || userRole === 'trainer';
+    const homeTab: TabBarItem = {
+      name: '(home)',
+      route: '/(tabs)/(home)/',
+      icon: 'house.fill',
+      materialIcon: 'home',
+      label: 'Hjem',
+    };
 
-    const allTabs: TabBarItem[] = [
-      {
-        name: '(home)',
-        route: '/(tabs)/(home)/',
-        icon: 'house.fill',
-        materialIcon: 'home',
-        label: 'Hjem',
-      },
-      {
-        name: 'tasks',
-        route: '/(tabs)/tasks',
-        icon: 'checklist',
-        materialIcon: 'checklist',
-        label: 'Opgaver',
-      },
-      {
-        name: 'performance',
-        route: '/(tabs)/performance',
-        icon: 'trophy.fill',
-        materialIcon: 'stars',
-        label: 'Performance',
-      },
-      {
-        name: 'library',
-        route: '/(tabs)/library',
-        icon: 'book.fill',
-        materialIcon: 'menu_book',
-        label: 'Bibliotek',
-      },
-      {
-        name: 'trainer',
-        route: '/(tabs)/trainer',
-        icon: 'person.3.fill',
-        materialIcon: 'groups',
-        label: 'Træner',
-      },
-      {
-        name: 'profile',
-        route: '/(tabs)/profile',
-        icon: 'person.fill',
-        materialIcon: 'person',
-        label: 'Profil',
-      },
-    ];
+    const taskTab: TabBarItem = {
+      name: 'tasks',
+      route: '/(tabs)/tasks',
+      icon: 'checklist',
+      materialIcon: 'checklist',
+      label: 'Opgaver',
+    };
 
-    if (isPlayer) {
-      // Player ser aldrig trainer
-      return allTabs.filter(t =>
-        t.name === '(home)' ||
-        t.name === 'tasks' ||
-        t.name === 'performance' ||
-        t.name === 'library' ||
-        t.name === 'profile'
-      );
+    const performanceTab: TabBarItem = {
+      name: 'performance',
+      route: '/(tabs)/performance',
+      icon: 'trophy.fill',
+      materialIcon: 'stars',
+      label: 'Performance',
+    };
+
+    const libraryTab: TabBarItem = {
+      name: 'library',
+      route: '/(tabs)/library',
+      icon: 'book.fill',
+      materialIcon: 'menu_book',
+      label: 'Bibliotek',
+    };
+
+    const profileTab: TabBarItem = {
+      name: 'profile',
+      route: '/(tabs)/profile',
+      icon: 'person.fill',
+      materialIcon: 'person',
+      label: 'Profil',
+    };
+
+    const tabsForRole: TabBarItem[] = [homeTab, taskTab];
+
+    if (isPlayer || isTrainer) {
+      tabsForRole.push(performanceTab);
     }
 
-    if (isTrainer) {
-      // Trainer/admin skal også se performance
-      return allTabs.filter(t =>
-        t.name === '(home)' ||
-        t.name === 'tasks' ||
-        t.name === 'performance' ||
-        t.name === 'library' ||
-        t.name === 'trainer' ||
-        t.name === 'profile'
-      );
-    }
+    tabsForRole.push(libraryTab, profileTab);
 
-    return allTabs;
+    return tabsForRole;
   }, [isLoggedIn, userRole]);
 
   return (
@@ -228,7 +199,6 @@ function AndroidWebTabLayout({
         <Stack.Screen name="tasks" />
         <Stack.Screen name="performance" />
         <Stack.Screen name="library" />
-        <Stack.Screen name="trainer" />
         <Stack.Screen name="profile" />
       </Stack>
 
