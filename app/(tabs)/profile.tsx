@@ -12,6 +12,7 @@ import PlayersList from '@/components/PlayersList';
 import TeamManagement from '@/components/TeamManagement';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
+import { useFootball } from '@/contexts/FootballContext';
 import { deleteAllExternalActivities } from '@/utils/deleteExternalActivities';
 
 // Conditionally import GlassView only on native platforms
@@ -73,6 +74,7 @@ export default function ProfileScreen() {
 
   // Get subscription status
   const { subscriptionStatus, refreshSubscription } = useSubscription();
+  const { refreshAll } = useFootball();
 
   const canManagePlayers = userRole === 'admin' || userRole === 'trainer';
 
@@ -588,6 +590,14 @@ export default function ProfileScreen() {
                   'Slettet',
                   `${result.count} eksterne aktivitet${result.count === 1 ? '' : 'er'} er blevet slettet fra din app`
                 );
+              }
+
+              if (typeof refreshAll === 'function') {
+                try {
+                  await refreshAll();
+                } catch (refreshError) {
+                  console.error('[PROFILE] Failed to refresh data after deletion:', refreshError);
+                }
               }
             } catch (error: any) {
               console.error('Error deleting external activities:', error);

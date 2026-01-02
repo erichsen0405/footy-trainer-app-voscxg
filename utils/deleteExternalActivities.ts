@@ -9,6 +9,12 @@ export async function deleteAllExternalActivities(): Promise<{
   success: boolean;
   count: number;
   error?: string;
+  details?: {
+    targetedCalendarCount: number;
+    externalEventsDeleted: number;
+    localMetaDeleted: number;
+    legacyActivitiesDeleted: number;
+  };
 }> {
   try {
     const { data: { user } } = await supabase.auth.getUser();
@@ -23,52 +29,120 @@ export async function deleteAllExternalActivities(): Promise<{
 
     console.log('🗑️ Deleting all external activities for user:', user.id);
 
-    // First, count how many external activities exist
-    const { count: activityCount, error: countError } = await supabase
-      .from('activities')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id)
-      .eq('is_external', true);
+    const details = {
+      targetedCalendarCount: 0,
+      externalEventsDeleted: 0,
+      localMetaDeleted: 0,
+      legacyActivitiesDeleted: 0,
+    };
 
-    if (countError) {
-      console.error('❌ Error counting external activities:', countError);
+    // Fetch enabled calendars so we only touch active sources
+    const { data: calendars, error: calendarError } = await supabase
+      .from('external_calendars')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('enabled', true);
+
+    if (calendarError) {
+      console.error('❌ Error fetching active calendars:', calendarError);
       return {
         success: false,
         count: 0,
-        error: countError.message,
+        error: calendarError.message,
       };
     }
 
-    console.log(`📊 Found ${activityCount || 0} external activities to delete`);
+    const calendarIds = calendars?.map((calendar) => calendar.id) ?? [];
+    details.targetedCalendarCount = calendarIds.length;
+    console.log(`📅 Active calendars targeted: ${details.targetedCalendarCount}`);
 
-    if (!activityCount || activityCount === 0) {
-      return {
-        success: true,
-        count: 0,
-      };
+    let externalEventIds: string[] = [];
+
+    if (calendarIds.length > 0) {
+      const { data: externalEvents, error: eventsError } = await supabase
+        .from('events_external')
+        .select('id')
+        .in('provider_calendar_id', calendarIds);
+
+      if (eventsError) {
+        console.error('❌ Error fetching external events to delete:', eventsError);
+        return {
+          success: false,
+          count: 0,
+          error: eventsError.message,
+        };
+      }
+
+      externalEventIds = externalEvents?.map((event) => event.id) ?? [];
+      console.log(`🧹 External events queued for deletion: ${externalEventIds.length}`);
+
+      if (externalEventIds.length > 0) {
+        // Delete metadata first to satisfy FK constraints and keep tasks in sync
+        const { data: deletedMeta, error: metaDeleteError } = await supabase
+          .from('events_local_meta')
+          .delete()
+          .in('external_event_id', externalEventIds)
+          .eq('user_id', user.id)
+          .select('id');
+
+        if (metaDeleteError) {
+          console.error('❌ Error deleting events_local_meta rows:', metaDeleteError);
+          return {
+            success: false,
+            count: 0,
+            error: metaDeleteError.message,
+          };
+        }
+
+        details.localMetaDeleted = deletedMeta?.length ?? 0;
+        console.log(`🧼 Deleted ${details.localMetaDeleted} events_local_meta rows`);
+
+        const { data: deletedEvents, error: eventsDeleteError } = await supabase
+          .from('events_external')
+          .delete()
+          .in('id', externalEventIds)
+          .select('id');
+
+        if (eventsDeleteError) {
+          console.error('❌ Error deleting events_external rows:', eventsDeleteError);
+          return {
+            success: false,
+            count: 0,
+            error: eventsDeleteError.message,
+          };
+        }
+
+        details.externalEventsDeleted = deletedEvents?.length ?? 0;
+        console.log(`✅ Deleted ${details.externalEventsDeleted} events_external rows`);
+      }
     }
 
-    // Delete all external activities
-    const { error: deleteError } = await supabase
+    // Legacy fallback for activity rows that still live in the old table
+    const { data: legacyDeleted, error: legacyError } = await supabase
       .from('activities')
       .delete()
       .eq('user_id', user.id)
-      .eq('is_external', true);
+      .eq('is_external', true)
+      .select('id');
 
-    if (deleteError) {
-      console.error('❌ Error deleting external activities:', deleteError);
+    if (legacyError) {
+      console.error('❌ Error deleting legacy external activities:', legacyError);
       return {
         success: false,
         count: 0,
-        error: deleteError.message,
+        error: legacyError.message,
       };
     }
 
-    console.log(`✅ Successfully deleted ${activityCount} external activities`);
+    details.legacyActivitiesDeleted = legacyDeleted?.length ?? 0;
+    console.log(`🧹 Deleted ${details.legacyActivitiesDeleted} legacy activities`);
+
+    const totalCount = details.externalEventsDeleted + details.legacyActivitiesDeleted;
 
     return {
       success: true,
-      count: activityCount,
+      count: totalCount,
+      details,
     };
   } catch (error: any) {
     console.error('❌ Failed to delete external activities:', error);
