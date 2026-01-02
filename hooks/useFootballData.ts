@@ -17,6 +17,7 @@ import {
 import { startOfWeek, endOfWeek } from 'date-fns';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import { taskService } from '@/services/taskService';
+import { activityService } from '@/services/activityService';
 import { useAdmin } from '@/contexts/AdminContext';
 
 export const useFootballData = () => {
@@ -30,7 +31,20 @@ export const useFootballData = () => {
   const [activitySeries, setActivitySeries] = useState<ActivitySeries[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchCategories = async () => {
+  const getCurrentUserId = useCallback(async () => {
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
+
+    if (error || !user) {
+      throw new Error('User not authenticated');
+    }
+
+    return user.id;
+  }, []);
+
+  const fetchCategories = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
 
@@ -69,7 +83,7 @@ export const useFootballData = () => {
       console.error('[fetchCategories] failed:', e);
       setCategories([]);
     }
-  };
+  }, []);
 
   // ✅ Dedicated categories refresher (UI can call this after create/edit category)
   const refreshCategories = useCallback(async () => {
@@ -108,7 +122,7 @@ export const useFootballData = () => {
     }
   }, []);
 
-  const fetchActivities = async () => {
+  const fetchActivities = useCallback(async () => {
     const { data, error } = await supabase
       .from('activities')
       .select('*')
@@ -117,7 +131,7 @@ export const useFootballData = () => {
 
     if (error) throw error;
     setActivities(data || []);
-  };
+  }, []);
 
   /**
    * IMPORTANT:
@@ -125,7 +139,7 @@ export const useFootballData = () => {
    * There is NO is_template column in the database.
    * Do NOT filter on is_template anywhere.
    */
-  const fetchTasks = async () => {
+  const fetchTasks = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('task_templates')
@@ -179,9 +193,9 @@ export const useFootballData = () => {
       console.error('[fetchTasks] failed – returning empty list safely', error);
       setTasks([]);
     }
-  };
+  }, []);
 
-  const fetchTrophies = async () => {
+  const fetchTrophies = useCallback(async () => {
     const { data, error } = await supabase
       .from('trophies')
       .select('*')
@@ -189,9 +203,9 @@ export const useFootballData = () => {
 
     if (error) throw error;
     setTrophies(data || []);
-  };
+  }, []);
 
-  const fetchExternalCalendars = async () => {
+  const fetchExternalCalendars = useCallback(async () => {
     const { data, error } = await supabase
       .from('external_calendars')
       .select('*')
@@ -199,9 +213,9 @@ export const useFootballData = () => {
 
     if (error) throw error;
     setExternalCalendars(data || []);
-  };
+  }, []);
 
-  const fetchActivitySeries = async () => {
+  const fetchActivitySeries = useCallback(async () => {
     const { data, error } = await supabase
       .from('activity_series')
       .select('*')
@@ -209,9 +223,9 @@ export const useFootballData = () => {
 
     if (error) throw error;
     setActivitySeries(data || []);
-  };
+  }, []);
 
-  const fetchAllData = async () => {
+  const fetchAllData = useCallback(async () => {
     try {
       await Promise.all([
         fetchCategories(),
@@ -224,11 +238,18 @@ export const useFootballData = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [
+    fetchCategories,
+    fetchActivities,
+    fetchTasks,
+    fetchTrophies,
+    fetchExternalCalendars,
+    fetchActivitySeries,
+  ]);
 
   useEffect(() => {
     fetchAllData();
-  }, []);
+  }, [fetchAllData]);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
@@ -418,6 +439,32 @@ export const useFootballData = () => {
     }
   }, [adminMode, adminTargetId, adminTargetType]);
 
+  const deleteActivitySingle = useCallback(async (activityId: string) => {
+    const userId = await getCurrentUserId();
+
+    try {
+      await activityService.deleteActivitySingle(activityId, userId);
+      await fetchActivities();
+      await forceRefreshNotificationQueue();
+    } catch (error) {
+      console.error('[deleteActivitySingle] failed:', error);
+      throw error;
+    }
+  }, [getCurrentUserId, fetchActivities]);
+
+  const deleteActivitySeries = useCallback(async (seriesId: string) => {
+    const userId = await getCurrentUserId();
+
+    try {
+      await activityService.deleteActivitySeries(seriesId, userId);
+      await Promise.all([fetchActivities(), fetchActivitySeries()]);
+      await forceRefreshNotificationQueue();
+    } catch (error) {
+      console.error('[deleteActivitySeries] failed:', error);
+      throw error;
+    }
+  }, [getCurrentUserId, fetchActivities, fetchActivitySeries]);
+
   const updateTask = useCallback(async (id: string, updates: Partial<Task>) => {
     try {
       console.log('[updateTask] Updating task:', id, updates);
@@ -557,5 +604,7 @@ export const useFootballData = () => {
     // --- ADDED: ACTIVITY CRUD ---
     addActivity,
     createActivity,
+    deleteActivitySingle,
+    deleteActivitySeries,
   };
 };
