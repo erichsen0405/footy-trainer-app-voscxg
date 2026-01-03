@@ -12,7 +12,7 @@ export function stripAfterTrainingMarkers(value?: string | null): string {
     .trim();
 }
 
-export function extractAfterTrainingTemplateId(value?: string | null): string | null {
+export function parseTemplateIdFromMarker(value?: string | null): string | null {
   if (!value) {
     return null;
   }
@@ -20,3 +20,5 @@ export function extractAfterTrainingTemplateId(value?: string | null): string | 
   const match = value.match(AUTO_AFTER_TRAINING_CAPTURE_REGEX);
   return match && match[1] ? match[1] : null;
 }
+
+export const extractAfterTrainingTemplateId = parseTemplateIdFromMarker;

@@ -29,8 +29,7 @@ import { TaskDescriptionRenderer } from '@/components/TaskDescriptionRenderer';
 import { supabase } from '@/app/integrations/supabase/client';
 import { FeedbackTaskModal } from '@/components/FeedbackTaskModal';
 import { fetchSelfFeedbackForTemplates, upsertSelfFeedback } from '@/services/feedbackService';
-import { useAdmin } from '@/contexts/AdminContext';
-import { extractAfterTrainingTemplateId } from '@/utils/afterTrainingMarkers';
+import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 
 const DAYS_OF_WEEK = [
   { label: 'Søn', value: 0 },
@@ -102,7 +101,7 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
           emoji: '❓',
         },
         tasks: (internalActivity.activity_tasks || []).map((task: any) => {
-          const markerTemplateId = extractAfterTrainingTemplateId(task.description || '');
+          const markerTemplateId = parseTemplateIdFromMarker(task.description || '');
           const isFeedbackTask = !task.task_template_id && !!markerTemplateId;
 
           return {
@@ -184,16 +183,24 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
           color: '#999999',
           emoji: '❓',
         },
-        tasks: (localMeta.external_event_tasks || []).map((task: any) => ({
-          id: task.id,
-          title: task.title,
-          description: task.description || '',
-          completed: task.completed,
-          isTemplate: false,
-          categoryIds: [],
-          reminder: task.reminder_minutes,
-          subtasks: [],
-        })),
+        tasks: (localMeta.external_event_tasks || []).map((task: any) => {
+          const markerTemplateId = parseTemplateIdFromMarker(task.description || '');
+          const isFeedbackTask = !task.task_template_id && !!markerTemplateId;
+
+          return {
+            id: task.id,
+            title: task.title,
+            description: task.description || '',
+            completed: task.completed,
+            isTemplate: false,
+            categoryIds: [],
+            reminder: task.reminder_minutes,
+            subtasks: [],
+            taskTemplateId: task.task_template_id,
+            feedbackTemplateId: markerTemplateId,
+            isFeedbackTask,
+          } as Task;
+        }),
         isExternal: true,
         externalCalendarId: externalEvent.provider_calendar_id,
         externalEventId: localMeta.external_event_id,
@@ -258,6 +265,16 @@ interface ActivityDetailsContentProps {
   onRefresh: () => void;
 }
 
+interface TemplateFeedbackSummary {
+  current?: TaskTemplateSelfFeedback;
+  previous?: TaskTemplateSelfFeedback;
+}
+
+interface FeedbackModalTaskState {
+  task: Task;
+  templateId: string;
+}
+
 function ActivityDetailsContent({
   activity,
   categories,
@@ -289,6 +306,11 @@ function ActivityDetailsContent({
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [tasksState, setTasksState] = useState<Task[]>(activity.tasks || []);
+  const [selfFeedbackByTemplate, setSelfFeedbackByTemplate] = useState<Record<string, TemplateFeedbackSummary>>({});
+  const [feedbackModalTask, setFeedbackModalTask] = useState<FeedbackModalTaskState | null>(null);
+  const [isFeedbackSaving, setIsFeedbackSaving] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [isFeedbackLoading, setIsFeedbackLoading] = useState(false);
   
   // Edit state
   const [editTitle, setEditTitle] = useState(activity.title);
@@ -578,71 +600,300 @@ function ActivityDetailsContent({
 
   const taskListData = useMemo(() => (tasksState || []).filter(Boolean) as Task[], [tasksState]);
 
-  const renderTaskItem = useCallback(({ item }: { item: Task }) => (
-    <View style={[styles.taskRow, { backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5' }]}>
+  const templateIds = useMemo(() => {
+    const ids = new Set<string>();
+    (taskListData || []).forEach(task => {
+      if (task.taskTemplateId) {
+        ids.add(task.taskTemplateId);
+      }
+      if (task.feedbackTemplateId) {
+        ids.add(task.feedbackTemplateId);
+      }
+    });
+    return Array.from(ids);
+  }, [taskListData]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadFeedbackHistory() {
+      if (!activity?.id || !templateIds.length) {
+        if (isMounted) {
+          setSelfFeedbackByTemplate({});
+        }
+        return;
+      }
+
+      setIsFeedbackLoading(true);
+
+      try {
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
+
+        if (!isMounted) {
+          return;
+        }
+
+        if (userError) {
+          throw userError;
+        }
+
+        if (!user?.id) {
+          setCurrentUserId(null);
+          setSelfFeedbackByTemplate({});
+          return;
+        }
+
+        setCurrentUserId(user.id);
+
+        const rows = await fetchSelfFeedbackForTemplates(user.id, templateIds);
+
+        if (!isMounted) {
+          return;
+        }
+
+        const grouped: Record<string, TemplateFeedbackSummary> = {};
+
+        templateIds.forEach(id => {
+          grouped[id] = {};
+        });
+
+        rows.forEach(row => {
+          const entry = grouped[row.taskTemplateId] || {};
+
+          if (row.activityId === activity.id) {
+            if (!entry.current) {
+              entry.current = row;
+            }
+          } else if (!entry.previous) {
+            entry.previous = row;
+          }
+
+          grouped[row.taskTemplateId] = entry;
+        });
+
+        setSelfFeedbackByTemplate(grouped);
+      } catch (error) {
+        if (isMounted) {
+          console.error('❌ Error loading self feedback history:', error);
+        }
+      } finally {
+        if (isMounted) {
+          setIsFeedbackLoading(false);
+        }
+      }
+    }
+
+    loadFeedbackHistory();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activity.id, templateIds]);
+
+  const previousFeedbackEntries = useMemo(() => {
+    const entries: Array<{
+      templateId: string;
+      taskTitle: string;
+      feedback: TaskTemplateSelfFeedback;
+    }> = [];
+
+    const used = new Set<string>();
+
+    (taskListData || []).forEach(task => {
+      if (!task.taskTemplateId || used.has(task.taskTemplateId)) {
+        return;
+      }
+
+      const summary = selfFeedbackByTemplate[task.taskTemplateId];
+
+      if (summary?.previous) {
+        entries.push({
+          templateId: task.taskTemplateId,
+          taskTitle: task.title,
+          feedback: summary.previous,
+        });
+        used.add(task.taskTemplateId);
+      }
+    });
+
+    return entries;
+  }, [selfFeedbackByTemplate, taskListData]);
+
+  const activeFeedbackDefaults = feedbackModalTask?.templateId
+    ? selfFeedbackByTemplate[feedbackModalTask.templateId]?.current
+    : undefined;
+
+  const handleFeedbackTaskPress = useCallback((task: Task) => {
+    if (!task.feedbackTemplateId) {
+      return;
+    }
+
+    setFeedbackModalTask({ task, templateId: task.feedbackTemplateId });
+  }, []);
+
+  const handleFeedbackModalClose = useCallback(() => {
+    setFeedbackModalTask(null);
+  }, []);
+
+  const handleFeedbackSave = useCallback(
+    async ({ rating, note }: { rating: number | null; note: string }) => {
+      if (!feedbackModalTask?.templateId) {
+        return;
+      }
+
+      if (!currentUserId) {
+        Alert.alert('Ikke logget ind', 'Log ind for at gemme din feedback.');
+        return;
+      }
+
+      setIsFeedbackSaving(true);
+
+      try {
+        const saved = await upsertSelfFeedback({
+          userId: currentUserId,
+          templateId: feedbackModalTask.templateId,
+          activityId: activity.id,
+          rating,
+          note,
+        });
+
+        setSelfFeedbackByTemplate(prev => ({
+          ...prev,
+          [feedbackModalTask.templateId]: {
+            ...(prev[feedbackModalTask.templateId] || {}),
+            current: saved,
+          },
+        }));
+
+        setFeedbackModalTask(null);
+      } catch (error: any) {
+        console.error('❌ Error saving self feedback:', error);
+        Alert.alert('Fejl', error?.message || 'Kunne ikke gemme feedback.');
+      } finally {
+        setIsFeedbackSaving(false);
+      }
+    },
+    [activity.id, currentUserId, feedbackModalTask]
+  );
+
+  const handleTaskRowPress = useCallback(
+    (task: Task) => {
+      if (task.isFeedbackTask && task.feedbackTemplateId) {
+        handleFeedbackTaskPress(task);
+        return;
+      }
+
+      handleToggleTask(task.id);
+    },
+    [handleFeedbackTaskPress, handleToggleTask]
+  );
+
+  const renderTaskItem = useCallback(({ item }: { item: Task }) => {
+    const isFeedbackTask = item.isFeedbackTask && !!item.feedbackTemplateId;
+    const templateKey = item.feedbackTemplateId || item.taskTemplateId || null;
+    const templateSummary = templateKey ? selfFeedbackByTemplate[templateKey] : undefined;
+    const currentFeedback = templateSummary?.current;
+
+    const helperText = currentFeedback
+      ? `Seneste svar: ${currentFeedback.rating ? `${currentFeedback.rating}/10` : 'Ingen rating'}${currentFeedback.note ? ` – ${currentFeedback.note}` : ''}`
+      : 'Tryk for at give feedback';
+
+    return (
       <TouchableOpacity
-        style={styles.taskCheckboxArea}
-        onPress={() => handleToggleTask(item.id)}
-        activeOpacity={0.7}
+        style={[
+          styles.taskRow,
+          { backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5' },
+          isFeedbackTask && styles.feedbackTaskRow,
+        ]}
+        onPress={() => handleTaskRowPress(item)}
+        activeOpacity={isFeedbackTask ? 0.85 : 0.7}
       >
-        <View
-          style={[
-            styles.taskCheckbox,
-            item.completed && { backgroundColor: colors.success, borderColor: colors.success },
-          ]}
-        >
-          {item.completed && (
-            <IconSymbol
-              ios_icon_name="checkmark"
-              android_material_icon_name="check"
-              size={16}
-              color="#fff"
-            />
-          )}
-        </View>
-        <View style={styles.taskContent}>
-          <Text
+        <View style={styles.taskCheckboxArea}>
+          <View
             style={[
-              styles.taskTitle,
-              { color: textColor },
-              item.completed && styles.taskCompleted,
+              styles.taskCheckbox,
+              item.completed && !isFeedbackTask && { backgroundColor: colors.success, borderColor: colors.success },
+              isFeedbackTask && styles.feedbackTaskCheckbox,
             ]}
           >
-            {item.title}
-          </Text>
-          {item.description && (
-            <TaskDescriptionRenderer
-              description={item.description}
-              textColor={textSecondaryColor}
-            />
-          )}
+            {item.completed && !isFeedbackTask && (
+              <IconSymbol
+                ios_icon_name="checkmark"
+                android_material_icon_name="check"
+                size={16}
+                color="#fff"
+              />
+            )}
+            {isFeedbackTask && (
+              <IconSymbol
+                ios_icon_name="bubble.left"
+                android_material_icon_name="chat"
+                size={16}
+                color={colors.primary}
+              />
+            )}
+          </View>
+          <View style={styles.taskContent}>
+            <Text
+              style={[
+                styles.taskTitle,
+                { color: textColor },
+                item.completed && !isFeedbackTask && styles.taskCompleted,
+              ]}
+            >
+              {item.title}
+            </Text>
+            {!isFeedbackTask && item.description && (
+              <TaskDescriptionRenderer
+                description={item.description}
+                textColor={textSecondaryColor}
+              />
+            )}
+            {isFeedbackTask && (
+              <Text style={[styles.feedbackHelperText, { color: textSecondaryColor }]}>
+                {helperText}
+              </Text>
+            )}
+          </View>
         </View>
-      </TouchableOpacity>
 
-      {isAdmin && (
-        <TouchableOpacity
-          style={[
-            styles.taskDeleteButton,
-            { backgroundColor: isDark ? '#3a1a1a' : '#ffe5e5' }
-          ]}
-          onPress={() => handleDeleteTask(item.id)}
-          activeOpacity={0.7}
-          disabled={deletingTaskId === item.id}
-        >
-          {deletingTaskId === item.id ? (
-            <ActivityIndicator size="small" color={colors.error} />
-          ) : (
-            <IconSymbol
-              ios_icon_name="trash"
-              android_material_icon_name="delete"
-              size={22}
-              color={colors.error}
-            />
-          )}
-        </TouchableOpacity>
-      )}
-    </View>
-  ), [deletingTaskId, handleDeleteTask, handleToggleTask, isAdmin, isDark, textColor, textSecondaryColor]);
+        {isAdmin && !isFeedbackTask && (
+          <TouchableOpacity
+            style={[
+              styles.taskDeleteButton,
+              { backgroundColor: isDark ? '#3a1a1a' : '#ffe5e5' }
+            ]}
+            onPress={() => handleDeleteTask(item.id)}
+            activeOpacity={0.7}
+            disabled={deletingTaskId === item.id}
+          >
+            {deletingTaskId === item.id ? (
+              <ActivityIndicator size="small" color={colors.error} />
+            ) : (
+              <IconSymbol
+                ios_icon_name="trash"
+                android_material_icon_name="delete"
+                size={22}
+                color={colors.error}
+              />
+            )}
+          </TouchableOpacity>
+        )}
+      </TouchableOpacity>
+    );
+  }, [
+    deletingTaskId,
+    handleDeleteTask,
+    handleTaskRowPress,
+    isAdmin,
+    isDark,
+    selfFeedbackByTemplate,
+    textColor,
+    textSecondaryColor,
+  ]);
 
   const taskKeyExtractor = useCallback((item: Task) => String(item.id), []);
 
@@ -1370,6 +1621,44 @@ function ActivityDetailsContent({
           )}
         </View>
 
+        {previousFeedbackEntries.length > 0 && (
+          <View
+            style={[
+              styles.infoBox,
+              styles.feedbackInfoBox,
+              { backgroundColor: isDark ? '#2a2a2a' : '#f8f9fb' },
+            ]}
+          >
+            <View style={styles.feedbackInfoHeader}>
+              <IconSymbol
+                ios_icon_name="info.circle"
+                android_material_icon_name="info"
+                size={22}
+                color={colors.primary}
+              />
+              <Text style={[styles.feedbackInfoTitle, { color: textColor }]}>Sidste feedback</Text>
+            </View>
+            {isFeedbackLoading && (
+              <ActivityIndicator size="small" color={colors.primary} style={styles.feedbackInfoSpinner} />
+            )}
+            {previousFeedbackEntries.map(entry => (
+              <View key={entry.templateId} style={styles.feedbackInfoRow}>
+                <Text style={[styles.feedbackInfoTaskTitle, { color: textColor }]}>
+                  {entry.taskTitle}
+                </Text>
+                <Text style={[styles.feedbackInfoRating, { color: colors.primary }]}>
+                  {entry.feedback.rating ? `${entry.feedback.rating}/10` : 'Ingen rating'}
+                </Text>
+                {entry.feedback.note ? (
+                  <Text style={[styles.feedbackInfoNote, { color: textSecondaryColor }]}>
+                    {entry.feedback.note}
+                  </Text>
+                ) : null}
+              </View>
+            ))}
+          </View>
+        )}
+
         {/* Tasks Section */}
         <View style={[styles.section, { backgroundColor: cardBgColor }]}>
           <View style={styles.tasksSectionHeader}>
@@ -1540,6 +1829,16 @@ function ActivityDetailsContent({
           activityTime={activity.time}
         />
       )}
+
+      <FeedbackTaskModal
+        visible={!!feedbackModalTask}
+        taskTitle={feedbackModalTask?.task.title || ''}
+        defaultRating={activeFeedbackDefaults?.rating ?? null}
+        defaultNote={activeFeedbackDefaults?.note ?? ''}
+        isSaving={isFeedbackSaving}
+        onClose={handleFeedbackModalClose}
+        onSave={handleFeedbackSave}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -1957,6 +2256,10 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 12,
   },
+  feedbackTaskRow: {
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
   taskCheckboxArea: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1972,6 +2275,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  feedbackTaskCheckbox: {
+    borderColor: colors.primary,
+    backgroundColor: 'rgba(98, 0, 238, 0.12)',
+  },
   taskContent: {
     flex: 1,
   },
@@ -1983,6 +2290,11 @@ const styles = StyleSheet.create({
   taskCompleted: {
     textDecorationLine: 'line-through',
     opacity: 0.6,
+  },
+  feedbackHelperText: {
+    fontSize: 13,
+    marginTop: 4,
+    lineHeight: 18,
   },
   taskDeleteButton: {
     padding: 10,
@@ -2032,6 +2344,41 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     marginBottom: 20,
+  },
+  feedbackInfoBox: {
+    flexDirection: 'column',
+    gap: 12,
+  },
+  feedbackInfoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  feedbackInfoTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  feedbackInfoSpinner: {
+    marginTop: 4,
+  },
+  feedbackInfoRow: {
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(0,0,0,0.08)',
+  },
+  feedbackInfoTaskTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  feedbackInfoRating: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  feedbackInfoNote: {
+    fontSize: 13,
+    lineHeight: 18,
   },
   infoText: {
     flex: 1,
