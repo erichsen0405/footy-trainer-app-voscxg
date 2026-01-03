@@ -37,3 +37,6 @@ netlify.toml
 
 pnpm-lock.yaml
 package-lock.json
+
+# Supabase CLI temp
+supabase/.temp/
