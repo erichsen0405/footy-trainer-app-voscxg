@@ -4,6 +4,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { isValidVideoUrl, parseVideoUrl } from '@/utils/videoUrlParser';
 import { VideoModal, VideoThumbnail } from '@/components/VideoPlayer';
+import { stripAfterTrainingMarkers } from '@/utils/afterTrainingMarkers';
 
 interface TaskDescriptionRendererProps {
   description: string;
@@ -25,8 +26,7 @@ interface TaskDescriptionRendererProps {
 export function TaskDescriptionRenderer({ description, textColor }: TaskDescriptionRendererProps) {
   const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
   const sanitizedDescription = useMemo(() => {
-    if (!description) return '';
-    return description.replace(/\[auto-after-training\]/gi, '').trim();
+    return stripAfterTrainingMarkers(description);
   }, [description]);
 
   // CRITICAL FIX: Use useMemo to detect description changes and force re-render

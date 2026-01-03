@@ -48,6 +48,9 @@ export interface Task {
   subtasks: Subtask[];
   videoUrl?: string;
   afterTrainingEnabled?: boolean;
+  taskTemplateId?: string | null;
+  feedbackTemplateId?: string | null;
+  isFeedbackTask?: boolean;
 }
 
 export interface Subtask {
@@ -136,4 +139,15 @@ export interface TeamMember {
   team_id: string;
   player_id: string;
   created_at: Date;
+}
+
+export interface TaskTemplateSelfFeedback {
+  id: string;
+  userId: string;
+  taskTemplateId: string;
+  activityId: string;
+  rating?: number | null;
+  note?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }

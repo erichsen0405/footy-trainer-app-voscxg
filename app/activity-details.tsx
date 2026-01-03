@@ -18,7 +18,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useFootball } from '@/contexts/FootballContext';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
-import { Activity, ActivityCategory, Task } from '@/types';
+import { Activity, ActivityCategory, Task, TaskTemplateSelfFeedback } from '@/types';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import EditSeriesDialog from '@/components/EditSeriesDialog';
 import DeleteActivityDialog from '@/components/DeleteActivityDialog';
@@ -27,6 +27,10 @@ import { CreateActivityTaskModal } from '@/components/CreateActivityTaskModal';
 import { deleteSingleExternalActivity } from '@/utils/deleteExternalActivities';
 import { TaskDescriptionRenderer } from '@/components/TaskDescriptionRenderer';
 import { supabase } from '@/app/integrations/supabase/client';
+import { FeedbackTaskModal } from '@/components/FeedbackTaskModal';
+import { fetchSelfFeedbackForTemplates, upsertSelfFeedback } from '@/services/feedbackService';
+import { useAdmin } from '@/contexts/AdminContext';
+import { extractAfterTrainingTemplateId } from '@/utils/afterTrainingMarkers';
 
 const DAYS_OF_WEEK = [
   { label: 'Søn', value: 0 },
@@ -66,6 +70,7 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
         ),
         activity_tasks (
           id,
+          task_template_id,
           title,
           description,
           completed,
@@ -96,16 +101,24 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
           color: '#999999',
           emoji: '❓',
         },
-        tasks: (internalActivity.activity_tasks || []).map((task: any) => ({
-          id: task.id,
-          title: task.title,
-          description: task.description || '',
-          completed: task.completed,
-          isTemplate: false,
-          categoryIds: [],
-          reminder: task.reminder_minutes,
-          subtasks: [],
-        })),
+        tasks: (internalActivity.activity_tasks || []).map((task: any) => {
+          const markerTemplateId = extractAfterTrainingTemplateId(task.description || '');
+          const isFeedbackTask = !task.task_template_id && !!markerTemplateId;
+
+          return {
+            id: task.id,
+            title: task.title,
+            description: task.description || '',
+            completed: task.completed,
+            isTemplate: false,
+            categoryIds: [],
+            reminder: task.reminder_minutes,
+            subtasks: [],
+            taskTemplateId: task.task_template_id,
+            feedbackTemplateId: markerTemplateId,
+            isFeedbackTask,
+          } as Task;
+        }),
         isExternal: internalActivity.is_external,
         externalCalendarId: internalActivity.external_calendar_id,
         externalEventId: internalActivity.external_event_id,
@@ -139,6 +152,7 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
         ),
         external_event_tasks (
           id,
+          task_template_id,
           title,
           description,
           completed,
