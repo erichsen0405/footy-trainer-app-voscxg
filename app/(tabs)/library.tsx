@@ -757,13 +757,6 @@ export default function LibraryScreen() {
     try {
       if (!currentUserId) throw new Error('Not authenticated');
 
-      const afterTrainingEnabled = false;
-      const afterTrainingDelayMinutes = null;
-      console.log('[F2] Copying exercise with after-training defaults', {
-        after_training_enabled: afterTrainingEnabled,
-        after_training_delay_minutes: afterTrainingDelayMinutes,
-      });
-
       const { data: taskTemplate, error: taskTemplateError } = await supabase
         .from('task_templates')
         .insert({
@@ -774,16 +767,9 @@ export default function LibraryScreen() {
           video_url: exercise.video_url,
           reminder_minutes: null,
           source_folder: getSourceFolderForExercise(exercise),
-          after_training_enabled: afterTrainingEnabled,
-          after_training_delay_minutes: afterTrainingDelayMinutes,
         })
         .select()
         .single();
-
-      console.log('[F2] Saved task template after-training fields', {
-        after_training_enabled: taskTemplate?.after_training_enabled,
-        after_training_delay_minutes: taskTemplate?.after_training_delay_minutes,
-      });
 
       if (exercise.subtasks.length > 0) {
         const subtasksToInsert = exercise.subtasks.map(subtask => ({

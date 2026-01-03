@@ -14,6 +14,7 @@ import {
   RefreshControl,
   Alert,
   ActivityIndicator,
+  Switch,
 } from 'react-native';
 
 import { useFootball } from '@/contexts/FootballContext';
@@ -488,6 +489,7 @@ export default function TasksScreen() {
           categoryIds,
           reminder: (selectedTask as any).reminder,
           videoUrl: videoUrl.trim() ? videoUrl.trim() : null,
+            afterTrainingEnabled: !!(selectedTask as any)?.afterTrainingEnabled,
           playerId,
           teamId,
         });
@@ -500,6 +502,7 @@ export default function TasksScreen() {
           ...selectedTask,
           videoUrl: videoUrl.trim() ? videoUrl.trim() : null,
           categoryIds,
+          afterTrainingEnabled: (selectedTask as any)?.afterTrainingEnabled ?? false,
         };
 
         await updateTask(String((selectedTask as any).id), taskToSave);
@@ -635,6 +638,10 @@ export default function TasksScreen() {
     ]);
   }, []);
 
+  const handleAfterTrainingToggle = useCallback((value: boolean) => {
+    setSelectedTask(prev => (prev ? ({ ...(prev as any), afterTrainingEnabled: value } as any) : prev));
+  }, []);
+
   const addSubtask = useCallback(() => setSubtasks((prev) => [...prev, { id: createLocalId(), title: '' }]), []);
   const updateSubtask = useCallback((index: number, value: string) => {
     setSubtasks((prev) => {
@@ -733,6 +740,7 @@ export default function TasksScreen() {
                     categoryIds: [],
                     subtasks: [],
                     videoUrl: undefined,
+                    afterTrainingEnabled: false,
                   } as any,
                   true,
                 )
@@ -924,7 +932,22 @@ export default function TasksScreen() {
                     keyboardType="numeric"
                     editable={!isSaving}
                   />
-
+                  <View style={[styles.toggleCard, { backgroundColor: bgColor }]}>
+                    <View style={styles.toggleTextWrapper}>
+                      <Text style={[styles.toggleLabel, { color: textColor }]}>Opret efter-træning feedback</Text>
+                      <Text style={[styles.toggleHelperText, { color: textSecondaryColor }]}>
+                        Når denne skabelon bruges på en aktivitet, oprettes automatisk en efter-træning feedback-opgave til aktiviteten.
+                      </Text>
+                    </View>
+                    <Switch
+                      value={!!(selectedTask as any)?.afterTrainingEnabled}
+                      onValueChange={handleAfterTrainingToggle}
+                      trackColor={{ false: isDark ? '#555' : '#d0d7e3', true: colors.primary }}
+                      thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
+                      ios_backgroundColor={isDark ? '#555' : '#d0d7e3'}
+                      disabled={isSaving}
+                    />
+                  </View>
                   <Text style={[styles.label, { color: textColor }]}>Aktivitetskategorier</Text>
                   <View style={styles.categoriesGrid}>
                     {uniqueCategories.map((category: any) => {
@@ -1055,6 +1078,10 @@ const styles = StyleSheet.create({
   videoPreviewButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 16, backgroundColor: colors.highlight, borderRadius: 12 },
   videoPreviewText: { fontSize: 16, fontWeight: '600' },
   helperText: { fontSize: 14, marginTop: 4 },
+  toggleCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: 12, padding: 16, marginBottom: 20, gap: 12 },
+  toggleTextWrapper: { flex: 1, marginRight: 12 },
+  toggleLabel: { fontSize: 16, fontWeight: '600' },
+  toggleHelperText: { fontSize: 14, lineHeight: 20, marginTop: 6 },
 
   reminderBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8 },
   reminderText: { fontSize: 12, fontWeight: '600' },

@@ -24,29 +24,33 @@ interface TaskDescriptionRendererProps {
  */
 export function TaskDescriptionRenderer({ description, textColor }: TaskDescriptionRendererProps) {
   const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
+  const sanitizedDescription = useMemo(() => {
+    if (!description) return '';
+    return description.replace(/\[auto-after-training\]/gi, '').trim();
+  }, [description]);
 
   // CRITICAL FIX: Use useMemo to detect description changes and force re-render
   const videoUrl = useMemo(() => {
-    if (!description || !description.trim()) {
+    if (!sanitizedDescription) {
       return null;
     }
 
     // CRITICAL FIX: Broader regex that matches ANY http(s) URL
     // This will match Supabase storage URLs, CDN URLs, YouTube, Vimeo, signed URLs, etc.
     const videoUrlRegex = /(https?:\/\/[^\s]+)/i;
-    const match = description.match(videoUrlRegex);
+    const match = sanitizedDescription.match(videoUrlRegex);
     
     console.log('🔍 TaskDescriptionRenderer - Checking for video URL');
-    console.log('📝 Description:', description.substring(0, 100));
+    console.log('📝 Description:', sanitizedDescription.substring(0, 100));
     console.log('🎯 Regex match:', match ? match[0] : 'No match');
     
     return match ? match[0] : null;
-  }, [description]);
+  }, [sanitizedDescription]);
 
   console.log('🎬 TaskDescriptionRenderer rendering');
   console.log('📹 Video URL found:', videoUrl);
 
-  if (!description || !description.trim()) {
+  if (!sanitizedDescription) {
     return null;
   }
 
@@ -86,7 +90,7 @@ export function TaskDescriptionRenderer({ description, textColor }: TaskDescript
   return (
     <View style={styles.container}>
       <Text style={[styles.text, { color: textColor }]}>
-        {description}
+        {sanitizedDescription}
       </Text>
     </View>
   );

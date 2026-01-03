@@ -7,6 +7,7 @@ export interface CreateTaskData {
   categoryIds: string[];
   reminder?: number;
   videoUrl?: string;
+  afterTrainingEnabled?: boolean;
   playerId?: string | null;
   teamId?: string | null;
 }
@@ -17,6 +18,7 @@ export interface UpdateTaskData {
   categoryIds?: string[];
   reminder?: number;
   videoUrl?: string | null;
+  afterTrainingEnabled?: boolean;
 }
 
 export const taskService = {
@@ -46,6 +48,7 @@ export const taskService = {
         description: data.description ?? '',
         reminder_minutes: data.reminder ?? null,
         video_url: data.videoUrl ?? null,
+        after_training_enabled: data.afterTrainingEnabled ?? false,
 
         // admin-scope
         player_id: data.playerId ?? null,
@@ -88,6 +91,7 @@ export const taskService = {
       subtasks: [],
       videoUrl: template.video_url ?? undefined,
       source_folder: template.source_folder ?? undefined,
+      afterTrainingEnabled: template.after_training_enabled ?? false,
     };
   },
 
@@ -107,6 +111,10 @@ export const taskService = {
 
     if ('videoUrl' in updates) {
       updateData.video_url = updates.videoUrl ?? null;
+    }
+
+    if (updates.afterTrainingEnabled !== undefined) {
+      updateData.after_training_enabled = updates.afterTrainingEnabled;
     }
 
     updateData.updated_at = new Date().toISOString();

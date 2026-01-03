@@ -1,10 +1,11 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
+  FlatList,
   TouchableOpacity,
   TextInput,
   useColorScheme,
@@ -17,7 +18,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useFootball } from '@/contexts/FootballContext';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
-import { Activity, ActivityCategory } from '@/types';
+import { Activity, ActivityCategory, Task } from '@/types';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import EditSeriesDialog from '@/components/EditSeriesDialog';
 import DeleteActivityDialog from '@/components/DeleteActivityDialog';
@@ -273,6 +274,7 @@ function ActivityDetailsContent({
   const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
+  const [tasksState, setTasksState] = useState<Task[]>(activity.tasks || []);
   
   // Edit state
   const [editTitle, setEditTitle] = useState(activity.title);
@@ -299,6 +301,10 @@ function ActivityDetailsContent({
       }, 100);
     }
   }, [showDatePicker, showTimePicker, showEndDatePicker]);
+
+  useEffect(() => {
+    setTasksState(activity.tasks || []);
+  }, [activity.tasks]);
 
   const handleEditClick = () => {
     if (activity?.seriesId) {
@@ -485,20 +491,27 @@ function ActivityDetailsContent({
     );
   };
 
-  const handleToggleTask = async (taskId: string) => {
+  const handleToggleTask = useCallback(async (taskId: string) => {
     if (!activity) return;
-    
+
+    let snapshot: Task[] = [];
+    setTasksState(prev => {
+      snapshot = prev.map(task => ({ ...task }));
+      return prev.map(task =>
+        task.id === taskId ? { ...task, completed: !task.completed } : task
+      );
+    });
+
     try {
       await toggleTaskCompletion(activity.id, taskId);
-      
-      refreshData();
     } catch (error) {
       console.error('Error toggling task:', error);
+      setTasksState(snapshot);
       Alert.alert('Fejl', 'Kunne ikke opdatere opgaven');
     }
-  };
+  }, [activity?.id, toggleTaskCompletion]);
 
-  const handleDeleteTask = async (taskId: string) => {
+  const handleDeleteTask = useCallback((taskId: string) => {
     if (!activity || !isAdmin) return;
 
     Alert.alert(
@@ -514,11 +527,9 @@ function ActivityDetailsContent({
             try {
               console.log('🗑️ Attempting to delete task:', taskId, 'from activity:', activity.id);
               await deleteActivityTask(activity.id, taskId);
-              
               console.log('✅ Task deleted successfully');
-              
+              setTasksState(prev => prev.filter(task => task.id !== taskId));
               refreshData();
-              
               Alert.alert('Slettet', 'Opgaven er blevet slettet fra denne aktivitet');
             } catch (error: any) {
               console.error('❌ Error deleting task:', error);
@@ -530,18 +541,96 @@ function ActivityDetailsContent({
         }
       ]
     );
-  };
+  }, [activity?.id, deleteActivityTask, isAdmin, refreshData]);
 
   const handleAddTask = () => {
     console.log('Opening create task modal for activity:', activity?.id);
     setShowCreateTaskModal(true);
   };
 
-  const handleTaskCreated = async () => {
+  const handleTaskCreated = useCallback(async () => {
     console.log('Task created successfully, refreshing activity data');
     setShowCreateTaskModal(false);
+    try {
+      const refreshedActivity = await fetchActivityFromDatabase(activity.id);
+      if (refreshedActivity?.tasks) {
+        setTasksState(refreshedActivity.tasks);
+      }
+    } catch (error) {
+      console.error('Error refreshing tasks after creation:', error);
+    }
     refreshData();
-  };
+  }, [activity.id, refreshData]);
+
+  const taskListData = useMemo(() => (tasksState || []).filter(Boolean) as Task[], [tasksState]);
+
+  const renderTaskItem = useCallback(({ item }: { item: Task }) => (
+    <View style={[styles.taskRow, { backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5' }]}>
+      <TouchableOpacity
+        style={styles.taskCheckboxArea}
+        onPress={() => handleToggleTask(item.id)}
+        activeOpacity={0.7}
+      >
+        <View
+          style={[
+            styles.taskCheckbox,
+            item.completed && { backgroundColor: colors.success, borderColor: colors.success },
+          ]}
+        >
+          {item.completed && (
+            <IconSymbol
+              ios_icon_name="checkmark"
+              android_material_icon_name="check"
+              size={16}
+              color="#fff"
+            />
+          )}
+        </View>
+        <View style={styles.taskContent}>
+          <Text
+            style={[
+              styles.taskTitle,
+              { color: textColor },
+              item.completed && styles.taskCompleted,
+            ]}
+          >
+            {item.title}
+          </Text>
+          {item.description && (
+            <TaskDescriptionRenderer
+              description={item.description}
+              textColor={textSecondaryColor}
+            />
+          )}
+        </View>
+      </TouchableOpacity>
+
+      {isAdmin && (
+        <TouchableOpacity
+          style={[
+            styles.taskDeleteButton,
+            { backgroundColor: isDark ? '#3a1a1a' : '#ffe5e5' }
+          ]}
+          onPress={() => handleDeleteTask(item.id)}
+          activeOpacity={0.7}
+          disabled={deletingTaskId === item.id}
+        >
+          {deletingTaskId === item.id ? (
+            <ActivityIndicator size="small" color={colors.error} />
+          ) : (
+            <IconSymbol
+              ios_icon_name="trash"
+              android_material_icon_name="delete"
+              size={22}
+              color={colors.error}
+            />
+          )}
+        </TouchableOpacity>
+      )}
+    </View>
+  ), [deletingTaskId, handleDeleteTask, handleToggleTask, isAdmin, isDark, textColor, textSecondaryColor]);
+
+  const taskKeyExtractor = useCallback((item: Task) => String(item.id), []);
 
   const handleDeleteClick = () => {
     if (activity?.isExternal) {
@@ -1288,88 +1377,25 @@ function ActivityDetailsContent({
             )}
           </View>
 
-          {activity.tasks && activity.tasks.length > 0 ? (
-            <React.Fragment>
-              {activity.tasks.map(task => (
-                <React.Fragment key={task.id}>
-                  <View style={[styles.taskRow, { backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5' }]}>
-                    <TouchableOpacity
-                      style={styles.taskCheckboxArea}
-                      onPress={() => handleToggleTask(task.id)}
-                      activeOpacity={0.7}
-                    >
-                      <View
-                        style={[
-                          styles.taskCheckbox,
-                          task.completed && { backgroundColor: colors.success, borderColor: colors.success },
-                        ]}
-                      >
-                        {task.completed && (
-                          <IconSymbol
-                            ios_icon_name="checkmark"
-                            android_material_icon_name="check"
-                            size={16}
-                            color="#fff"
-                          />
-                        )}
-                      </View>
-                      <View style={styles.taskContent}>
-                        <Text
-                          style={[
-                            styles.taskTitle,
-                            { color: textColor },
-                            task.completed && styles.taskCompleted,
-                          ]}
-                        >
-                          {task.title}
-                        </Text>
-                        {task.description && (
-                          <TaskDescriptionRenderer 
-                            description={task.description}
-                            textColor={textSecondaryColor}
-                          />
-                        )}
-                      </View>
-                    </TouchableOpacity>
-                    
-                    {isAdmin && (
-                      <TouchableOpacity
-                        style={[
-                          styles.taskDeleteButton,
-                          { backgroundColor: isDark ? '#3a1a1a' : '#ffe5e5' }
-                        ]}
-                        onPress={() => handleDeleteTask(task.id)}
-                        activeOpacity={0.7}
-                        disabled={deletingTaskId === task.id}
-                      >
-                        {deletingTaskId === task.id ? (
-                          <ActivityIndicator size="small" color={colors.error} />
-                        ) : (
-                          <IconSymbol
-                            ios_icon_name="trash"
-                            android_material_icon_name="delete"
-                            size={22}
-                            color={colors.error}
-                          />
-                        )}
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </React.Fragment>
-              ))}
-            </React.Fragment>
-          ) : (
-            <View style={styles.emptyTasksContainer}>
-              <Text style={[styles.emptyTasksText, { color: textSecondaryColor }]}>
-                Ingen opgaver endnu
-              </Text>
-              {isAdmin && !activity.isExternal && (
-                <Text style={[styles.emptyTasksHint, { color: textSecondaryColor }]}>
-                  Tryk på &quot;Tilføj opgave&quot; for at oprette en opgave
+          <FlatList
+            data={taskListData}
+            keyExtractor={taskKeyExtractor}
+            renderItem={renderTaskItem}
+            scrollEnabled={false}
+            ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
+            ListEmptyComponent={() => (
+              <View style={styles.emptyTasksContainer}>
+                <Text style={[styles.emptyTasksText, { color: textSecondaryColor }]}>
+                  Ingen opgaver endnu
                 </Text>
-              )}
-            </View>
-          )}
+                {isAdmin && !activity.isExternal && (
+                  <Text style={[styles.emptyTasksHint, { color: textSecondaryColor }]}>
+                    Tryk på &quot;Tilføj opgave&quot; for at oprette en opgave
+                  </Text>
+                )}
+              </View>
+            )}
+          />
         </View>
 
         {/* Action Buttons */}
@@ -1457,7 +1483,7 @@ function ActivityDetailsContent({
           </View>
         )}
 
-        {isAdmin && activity.tasks && activity.tasks.length > 0 && (
+        {isAdmin && tasksState && tasksState.length > 0 && (
           <View style={[styles.infoBox, { backgroundColor: isDark ? '#3a2a2a' : '#fff3cd' }]}>
             <IconSymbol
               ios_icon_name="shield.checkered"

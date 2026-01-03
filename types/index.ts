@@ -47,6 +47,7 @@ export interface Task {
   reminder?: number;
   subtasks: Subtask[];
   videoUrl?: string;
+  afterTrainingEnabled?: boolean;
 }
 
 export interface Subtask {

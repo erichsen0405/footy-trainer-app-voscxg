@@ -53,7 +53,7 @@ interface FootballContextType {
   updateTask: (id: string, updates: Partial<Task>) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
   duplicateTask: (id: string) => Promise<void>;
-  toggleTaskCompletion: (activityId: string, taskId: string) => void;
+  toggleTaskCompletion: (activityId: string, taskId: string) => Promise<void>;
   deleteActivityTask: (activityId: string, taskId: string) => Promise<void>;
   refreshData: () => Promise<void>;
   refreshAll: () => Promise<void>;

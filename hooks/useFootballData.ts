@@ -18,6 +18,7 @@ import { startOfWeek, endOfWeek } from 'date-fns';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import { taskService } from '@/services/taskService';
 import { activityService } from '@/services/activityService';
+import { calendarService } from '@/services/calendarService';
 import { useAdmin } from '@/contexts/AdminContext';
 
 export const useFootballData = () => {
@@ -29,6 +30,15 @@ export const useFootballData = () => {
   const [trophies, setTrophies] = useState<Trophy[]>([]);
   const [externalCalendars, setExternalCalendars] = useState<ExternalCalendar[]>([]);
   const [activitySeries, setActivitySeries] = useState<ActivitySeries[]>([]);
+  const [externalActivities] = useState<Activity[]>([]);
+  const [currentWeekStats, setCurrentWeekStats] = useState({
+    percentage: 0,
+    completedTasks: 0,
+    totalTasks: 0,
+    completedTasksForWeek: 0,
+    totalTasksForWeek: 0,
+    weekActivities: [] as Activity[],
+  });
   const [loading, setLoading] = useState(true);
 
   const getCurrentUserId = useCallback(async () => {
@@ -151,6 +161,7 @@ export const useFootballData = () => {
           reminder_minutes,
           video_url,
           source_folder,
+          after_training_enabled,
           task_template_categories (
             category_id
           )
@@ -171,6 +182,7 @@ export const useFootballData = () => {
         subtasks: [],
         videoUrl: t.video_url ?? undefined,
         source_folder: t.source_folder ?? undefined,
+        afterTrainingEnabled: !!t.after_training_enabled,
       }));
 
       // Filter out hidden tasks
@@ -206,10 +218,27 @@ export const useFootballData = () => {
   }, []);
 
   const fetchExternalCalendars = useCallback(async () => {
-    const { data, error } = await supabase
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError) {
+      console.error('[fetchExternalCalendars] auth error:', authError);
+      setExternalCalendars([]);
+      return;
+    }
+
+    const query = supabase
       .from('external_calendars')
       .select('*')
       .order('created_at', { ascending: true });
+
+    if (user?.id) {
+      query.eq('user_id', user.id);
+    }
+
+    const { data, error } = await query;
 
     if (error) throw error;
     setExternalCalendars(data || []);
@@ -225,6 +254,75 @@ export const useFootballData = () => {
     setActivitySeries(data || []);
   }, []);
 
+  const weekRange = useMemo(() => {
+    const start = startOfWeek(new Date(), { weekStartsOn: 1 });
+    const end = endOfWeek(new Date(), { weekStartsOn: 1 });
+    return { start, end };
+  }, []);
+
+  const activitiesThisWeek = useMemo(() => {
+    return activities.filter(a => {
+      const dt = `${(a as any).activity_date}T${(a as any).activity_time || '00:00:00'}`;
+      const d = new Date(dt);
+      return d >= weekRange.start && d <= weekRange.end;
+    });
+  }, [activities, weekRange]);
+
+  const fetchCurrentWeekStats = useCallback(async () => {
+    try {
+      const startIso = weekRange.start.toISOString().slice(0, 10);
+      const endIso = weekRange.end.toISOString().slice(0, 10);
+      const todayIso = new Date().toISOString().slice(0, 10);
+
+      const { data, error } = await supabase
+        .from('activity_tasks')
+        .select('id, completed, activities!inner(activity_date)')
+        .gte('activities.activity_date', startIso)
+        .lte('activities.activity_date', endIso);
+
+      if (error) throw error;
+
+      const weeklyTasks = data || [];
+      const totalWeek = weeklyTasks.length;
+      const completedWeek = weeklyTasks.filter(task => task.completed).length;
+
+      const tasksUpToToday = weeklyTasks.filter(task => {
+        const activityDate = (task as any)?.activities?.activity_date as string | undefined;
+        return activityDate ? activityDate <= todayIso : false;
+      });
+
+      const totalToday = tasksUpToToday.length;
+      const completedToday = tasksUpToToday.filter(task => task.completed).length;
+      const percentage = totalToday > 0 ? Math.round((completedToday / totalToday) * 100) : 0;
+
+      setCurrentWeekStats(prev => ({
+        ...prev,
+        percentage,
+        completedTasks: completedToday,
+        totalTasks: totalToday,
+        completedTasksForWeek: completedWeek,
+        totalTasksForWeek: totalWeek,
+      }));
+    } catch (error) {
+      console.error('[fetchCurrentWeekStats] failed:', error);
+      setCurrentWeekStats(prev => ({
+        ...prev,
+        percentage: 0,
+        completedTasks: 0,
+        totalTasks: 0,
+        completedTasksForWeek: 0,
+        totalTasksForWeek: 0,
+      }));
+    }
+  }, [weekRange]);
+
+  useEffect(() => {
+    setCurrentWeekStats(prev => ({
+      ...prev,
+      weekActivities: activitiesThisWeek as Activity[],
+    }));
+  }, [activitiesThisWeek]);
+
   const fetchAllData = useCallback(async () => {
     try {
       await Promise.all([
@@ -234,6 +332,7 @@ export const useFootballData = () => {
         fetchTrophies(),
         fetchExternalCalendars(),
         fetchActivitySeries(),
+        fetchCurrentWeekStats(),
       ]);
     } finally {
       setLoading(false);
@@ -245,6 +344,7 @@ export const useFootballData = () => {
     fetchTrophies,
     fetchExternalCalendars,
     fetchActivitySeries,
+    fetchCurrentWeekStats,
   ]);
 
   useEffect(() => {
@@ -267,25 +367,16 @@ export const useFootballData = () => {
     }
   }, []);
 
-  const weekRange = useMemo(() => {
-    const start = startOfWeek(new Date(), { weekStartsOn: 1 });
-    const end = endOfWeek(new Date(), { weekStartsOn: 1 });
-    return { start, end };
-  }, []);
-
-  const activitiesThisWeek = useMemo(() => {
-    return activities.filter(a => {
-      const dt = `${a.activity_date}T${a.activity_time || '00:00:00'}`;
-      const d = new Date(dt);
-      return d >= weekRange.start && d <= weekRange.end;
-    });
-  }, [activities, weekRange]);
+  const todayActivities = useMemo(() => {
+    const todayIso = new Date().toISOString().slice(0, 10);
+    return activities.filter(a => (a as any).activity_date === todayIso) as Activity[];
+  }, [activities]);
 
   const refreshAll = useCallback(async () => {
     setLoading(true);
     await fetchAllData();
     await forceRefreshNotificationQueue();
-  }, []);
+  }, [fetchAllData]);
 
   // Task CRUD operations
   const addTask = useCallback(
@@ -311,6 +402,7 @@ export const useFootballData = () => {
           categoryIds: task.categoryIds || [],
           reminder: task.reminder,
           videoUrl: task.videoUrl,
+          afterTrainingEnabled: !!task.afterTrainingEnabled,
           playerId,
           teamId,
         });
@@ -484,6 +576,7 @@ export const useFootballData = () => {
         categoryIds: updates.categoryIds,
         reminder: updates.reminder,
         videoUrl: updates.videoUrl,
+        afterTrainingEnabled: updates.afterTrainingEnabled,
       });
 
       console.log('[updateTask] Task updated successfully, refreshing tasks...');
@@ -580,9 +673,328 @@ export const useFootballData = () => {
     [tasks, addTask]
   );
 
+  const toggleTaskCompletion = useCallback(
+    async (activityId: string, taskId: string) => {
+      const logPrefix = `[toggleTaskCompletion] activity=${activityId} task=${taskId}`;
+      console.log(`${logPrefix} - start`);
+
+      const nowIso = new Date().toISOString();
+
+      try {
+        const { data: internalTask, error: internalError } = await supabase
+          .from('activity_tasks')
+          .select('id, completed')
+          .eq('id', taskId)
+          .eq('activity_id', activityId)
+          .maybeSingle();
+
+        if (internalError) {
+          throw internalError;
+        }
+
+        if (internalTask) {
+          const { error: updateError } = await supabase
+            .from('activity_tasks')
+            .update({
+              completed: !internalTask.completed,
+              updated_at: nowIso,
+            })
+            .eq('id', taskId)
+            .eq('activity_id', activityId);
+
+          if (updateError) {
+            throw updateError;
+          }
+        } else {
+          const { data: externalTask, error: externalError } = await supabase
+            .from('external_event_tasks')
+            .select('id, completed')
+            .eq('id', taskId)
+            .eq('local_meta_id', activityId)
+            .maybeSingle();
+
+          if (externalError) {
+            throw externalError;
+          }
+
+          if (!externalTask) {
+            throw new Error('Task not found for this activity');
+          }
+
+          const { error: updateExternalError } = await supabase
+            .from('external_event_tasks')
+            .update({
+              completed: !externalTask.completed,
+              updated_at: nowIso,
+            })
+            .eq('id', taskId)
+            .eq('local_meta_id', activityId);
+
+          if (updateExternalError) {
+            throw updateExternalError;
+          }
+        }
+
+        refreshNotificationQueue(true).catch(queueError => {
+          console.error('[toggleTaskCompletion] Notification refresh failed:', queueError);
+        });
+
+        console.log(`${logPrefix} - done`);
+      } catch (error) {
+        console.error(`${logPrefix} - failed`, error);
+        throw error;
+      }
+    },
+    []
+  );
+
+  const deleteActivityTask = useCallback(
+    async (activityId: string, taskId: string) => {
+      const logPrefix = `[deleteActivityTask] activity=${activityId} task=${taskId}`;
+      console.log(`${logPrefix} - start`);
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      try {
+        let removedCount = 0;
+
+        const { error: internalError, count: internalCount } = await supabase
+          .from('activity_tasks')
+          .delete({ count: 'exact' })
+          .eq('id', taskId)
+          .eq('activity_id', activityId);
+
+        if (internalError) {
+          throw internalError;
+        }
+
+        removedCount += internalCount ?? 0;
+
+        if (removedCount === 0) {
+          const { error: externalError, count: externalCount } = await supabase
+            .from('external_event_tasks')
+            .delete({ count: 'exact' })
+            .eq('id', taskId)
+            .eq('local_meta_id', activityId);
+
+          if (externalError) {
+            throw externalError;
+          }
+
+          removedCount += externalCount ?? 0;
+        }
+
+        if (removedCount === 0) {
+          throw new Error('Task not found or already deleted');
+        }
+
+        await forceRefreshNotificationQueue();
+
+        console.log(`${logPrefix} - removed ${removedCount}`);
+      } catch (error) {
+        console.error(`${logPrefix} - failed`, error);
+        throw error;
+      }
+    },
+    []
+  );
+
   const refreshData = useCallback(async () => {
-    console.log('[refreshData] Refreshing tasks data...');
-    await fetchTasks();
+    console.log('[refreshData] Refreshing core datasets...');
+    await Promise.all([
+      fetchCategories(),
+      fetchActivities(),
+      fetchTasks(),
+      fetchTrophies(),
+      fetchExternalCalendars(),
+      fetchActivitySeries(),
+      fetchCurrentWeekStats(),
+    ]);
+  }, [
+    fetchCategories,
+    fetchActivities,
+    fetchTasks,
+    fetchTrophies,
+    fetchExternalCalendars,
+    fetchActivitySeries,
+    fetchCurrentWeekStats,
+  ]);
+
+  const updateActivity = useCallback((id: string, updates: Partial<Activity>) => {
+    setActivities(prev => prev.map(activity => (activity.id === id ? { ...activity, ...updates } : activity)));
+  }, []);
+
+  const resolveIsExternal = useCallback(async (activityId: string) => {
+    const { data: internalActivity, error: internalError } = await supabase
+      .from('activities')
+      .select('id')
+      .eq('id', activityId)
+      .maybeSingle();
+
+    if (internalError) {
+      throw internalError;
+    }
+
+    if (internalActivity) {
+      return false;
+    }
+
+    const { data: externalMeta, error: externalError } = await supabase
+      .from('events_local_meta')
+      .select('id')
+      .eq('id', activityId)
+      .maybeSingle();
+
+    if (externalError) {
+      throw externalError;
+    }
+
+    if (!externalMeta) {
+      throw new Error('Activity not found');
+    }
+
+    return true;
+  }, []);
+
+  const updateActivitySingle = useCallback(async (
+    activityId: string,
+    updates: {
+      title?: string;
+      location?: string;
+      categoryId?: string;
+      date?: Date;
+      time?: string;
+    }
+  ) => {
+    try {
+      const isExternal = await resolveIsExternal(activityId);
+      await activityService.updateActivitySingle(activityId, updates, isExternal);
+      await fetchActivities();
+
+      if (updates.date || updates.time) {
+        await forceRefreshNotificationQueue();
+      }
+    } catch (error) {
+      console.error('[updateActivitySingle] failed:', error);
+      throw error;
+    }
+  }, [resolveIsExternal, fetchActivities]);
+
+  const updateActivitySeries = useCallback(async (
+    seriesId: string,
+    updates: {
+      title?: string;
+      location?: string;
+      categoryId?: string;
+      time?: string;
+    }
+  ) => {
+    try {
+      const userId = await getCurrentUserId();
+      await activityService.updateActivitySeries(seriesId, userId, updates);
+      await Promise.all([fetchActivities(), fetchActivitySeries()]);
+
+      if (updates.time) {
+        await forceRefreshNotificationQueue();
+      }
+    } catch (error) {
+      console.error('[updateActivitySeries] failed:', error);
+      throw error;
+    }
+  }, [getCurrentUserId, fetchActivities, fetchActivitySeries]);
+
+  const deleteActivity = useCallback((id: string) => {
+    setActivities(prev => prev.filter(activity => activity.id !== id));
+  }, []);
+
+  const duplicateActivity = useCallback(async (activityId: string) => {
+    try {
+      const userId = await getCurrentUserId();
+      let playerId: string | null = null;
+      let teamId: string | null = null;
+
+      if (adminMode !== 'self' && adminTargetId) {
+        if (adminTargetType === 'player') {
+          playerId = adminTargetId;
+        } else if (adminTargetType === 'team') {
+          teamId = adminTargetId;
+        }
+      }
+
+      await activityService.duplicateActivity(activityId, userId, playerId, teamId);
+      await fetchActivities();
+    } catch (error) {
+      console.error('[duplicateActivity] failed:', error);
+      throw error;
+    }
+  }, [getCurrentUserId, adminMode, adminTargetId, adminTargetType, fetchActivities]);
+
+  const addExternalCalendar = useCallback(async (calendar: Omit<ExternalCalendar, 'id'>) => {
+    try {
+      const userId = await getCurrentUserId();
+      await calendarService.addExternalCalendar(userId, calendar.name, calendar.icsUrl, calendar.enabled ?? true);
+      await fetchExternalCalendars();
+    } catch (error) {
+      console.error('[addExternalCalendar] failed:', error);
+      throw error;
+    }
+  }, [getCurrentUserId, fetchExternalCalendars]);
+
+  const toggleCalendar = useCallback(async (calendarId: string) => {
+    try {
+      const userId = await getCurrentUserId();
+      const target = externalCalendars.find(cal => cal.id === calendarId);
+      if (!target) {
+        throw new Error('Calendar not found');
+      }
+      await calendarService.toggleCalendar(calendarId, userId, !target.enabled);
+      await fetchExternalCalendars();
+    } catch (error) {
+      console.error('[toggleCalendar] failed:', error);
+      throw error;
+    }
+  }, [externalCalendars, getCurrentUserId, fetchExternalCalendars]);
+
+  const deleteExternalCalendar = useCallback(async (calendarId: string) => {
+    try {
+      const userId = await getCurrentUserId();
+      await calendarService.deleteExternalCalendar(calendarId, userId);
+      await fetchExternalCalendars();
+    } catch (error) {
+      console.error('[deleteExternalCalendar] failed:', error);
+      throw error;
+    }
+  }, [getCurrentUserId, fetchExternalCalendars]);
+
+  const fetchExternalCalendarEvents = useCallback(async (calendar: ExternalCalendar) => {
+    try {
+      await calendarService.syncCalendar(calendar.id);
+      await fetchActivities();
+    } catch (error) {
+      // Silent per iOS requirement – swallow errors
+    }
+  }, [fetchActivities]);
+
+  const importExternalActivity = useCallback(async () => {
+    return;
+  }, []);
+
+  const importMultipleActivities = useCallback(async (
+    activityIds: string[],
+    _categoryId: string,
+    onProgress?: (current: number, total: number) => void
+  ) => {
+    const total = activityIds.length;
+    if (onProgress) {
+      onProgress(0, total);
+    }
+    return { successCount: 0, failCount: 0 };
   }, []);
 
   return {
@@ -591,8 +1003,11 @@ export const useFootballData = () => {
     tasks,
     trophies,
     externalCalendars,
+     externalActivities,
     activitySeries,
     activitiesThisWeek,
+     currentWeekStats,
+     todayActivities,
     isLoading: loading,
     refreshAll,
     refreshCategories, // ✅ P14 export
@@ -600,11 +1015,24 @@ export const useFootballData = () => {
     updateTask,
     deleteTask,
     duplicateTask,
+    toggleTaskCompletion,
+    deleteActivityTask,
     refreshData,
     // --- ADDED: ACTIVITY CRUD ---
     addActivity,
+    updateActivity,
+    updateActivitySingle,
+    updateActivitySeries,
+    deleteActivity,
     createActivity,
     deleteActivitySingle,
     deleteActivitySeries,
+    duplicateActivity,
+    addExternalCalendar,
+    toggleCalendar,
+    deleteExternalCalendar,
+    importExternalActivity,
+    importMultipleActivities,
+    fetchExternalCalendarEvents,
   };
 };

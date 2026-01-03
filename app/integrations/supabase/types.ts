@@ -294,27 +294,45 @@ export type Database = {
           description: string | null
           id: string
           reminder_minutes: number | null
+          after_training_delay_minutes: number | null
+          after_training_enabled: boolean
+          player_id: string | null
+          team_id: string | null
           title: string
           updated_at: string
           user_id: string
+          video_url: string | null
+          source_folder: string | null
         }
         Insert: {
           created_at?: string
           description?: string | null
           id?: string
           reminder_minutes?: number | null
+          after_training_delay_minutes?: number | null
+          after_training_enabled?: boolean
+          player_id?: string | null
+          team_id?: string | null
           title: string
           updated_at?: string
           user_id: string
+          video_url?: string | null
+          source_folder?: string | null
         }
         Update: {
           created_at?: string
           description?: string | null
           id?: string
           reminder_minutes?: number | null
+          after_training_delay_minutes?: number | null
+          after_training_enabled?: boolean
+          player_id?: string | null
+          team_id?: string | null
           title?: string
           updated_at?: string
           user_id?: string
+          video_url?: string | null
+          source_folder?: string | null
         }
         Relationships: []
       }
