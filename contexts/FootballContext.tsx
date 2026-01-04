@@ -26,7 +26,7 @@ interface FootballContextType {
     categoryId: string;
     date: Date;
     time: string;
-    endTime: string;
+    endTime?: string;
     isRecurring: boolean;
     recurrenceType?: 'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly';
     recurrenceDays?: number[];

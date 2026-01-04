@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
@@ -39,6 +38,17 @@ const DAYS_OF_WEEK = [
   { label: 'Tor', value: 4 },
   { label: 'Fre', value: 5 },
   { label: 'Lør', value: 6 },
+];
+
+const RECURRENCE_OPTIONS: Array<{
+  label: string;
+  value: 'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly';
+}> = [
+  { label: 'Dagligt', value: 'daily' },
+  { label: 'Hver uge', value: 'weekly' },
+  { label: 'Hver anden uge', value: 'biweekly' },
+  { label: 'Hver tredje uge', value: 'triweekly' },
+  { label: 'Månedligt', value: 'monthly' },
 ];
 
 // Helper function to fetch activity directly from database
@@ -149,7 +159,8 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
           location,
           start_date,
           start_time,
-          end_time
+          end_time,
+          provider_calendar_id
         ),
         external_event_tasks (
           id,
@@ -266,6 +277,7 @@ interface ActivityDetailsContentProps {
   isDark: boolean;
   onBack: () => void;
   onRefresh: () => void;
+  onActivityUpdated: (activity: Activity) => void;
 }
 
 interface TemplateFeedbackSummary {
@@ -285,7 +297,33 @@ function ActivityDetailsContent({
   isDark,
   onBack,
   onRefresh,
+  onActivityUpdated,
 }: ActivityDetailsContentProps) {
+  const bgColor = isDark ? '#1a1a1a' : colors.background;
+  const cardBgColor = isDark ? '#2a2a2a' : colors.card;
+  const textColor = isDark ? '#e3e3e3' : colors.text;
+  const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
+
+  const normalizeOptionalTime = (value: string | undefined | null): string | undefined => {
+    const trimmed = typeof value === 'string' ? value.trim() : '';
+    return trimmed ? trimmed : undefined;
+  };
+
+  const toMinutes = (value: string): number | null => {
+    if (typeof value !== 'string') return null;
+    const segments = value.split(':');
+    if (segments.length < 2) return null;
+
+    const hours = Number(segments[0]);
+    const minutes = Number(segments[1]);
+
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+    if (hours < 0 || hours > 23) return null;
+    if (minutes < 0 || minutes > 59) return null;
+
+    return hours * 60 + minutes;
+  };
+
   const router = useRouter();
   const { 
     updateActivitySingle, 
@@ -325,6 +363,7 @@ function ActivityDetailsContent({
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
+  const [editScope, setEditScope] = useState<'single' | 'series'>('single');
   
   // Recurring event conversion state
   const [convertToRecurring, setConvertToRecurring] = useState(false);
@@ -347,19 +386,38 @@ function ActivityDetailsContent({
     setTasksState(activity.tasks || []);
   }, [activity.tasks]);
 
+  useEffect(() => {
+    setEditTitle(activity.title);
+    setEditLocation(activity.location);
+    setEditDate(activity.date);
+    setEditTime(activity.time);
+    setEditEndTime(activity.endTime);
+    setEditCategory(activity.category);
+  }, [activity]);
+
+  useEffect(() => {
+    setEditScope('single');
+  }, [activity.id]);
+
   const handleEditClick = () => {
     if (activity?.seriesId) {
+      setEditScope('single');
       setShowSeriesDialog(true);
     } else {
+      setEditScope('single');
       setIsEditing(true);
     }
   };
 
   const handleEditSingle = () => {
+    setEditScope('single');
+    setShowSeriesDialog(false);
     setIsEditing(true);
   };
 
   const handleEditAll = () => {
+    setEditScope('series');
+    setShowSeriesDialog(false);
     setIsEditing(true);
   };
 
@@ -402,17 +460,33 @@ function ActivityDetailsContent({
   const handleSave = async () => {
     if (!activity) return;
 
+    const endTimePayload = activity.isExternal
+      ? undefined
+      : normalizeOptionalTime(editEndTime);
+
+    if (endTimePayload) {
+      const startMinutes = toMinutes(editTime);
+      const endMinutes = toMinutes(endTimePayload);
+
+      if (startMinutes == null || endMinutes == null) {
+        Alert.alert('Fejl', 'Ugyldigt tidspunkt. Benyt formatet HH:MM.');
+        return;
+      }
+
+      if (endMinutes <= startMinutes) {
+        Alert.alert('Fejl', 'Sluttidspunkt skal være efter starttidspunkt');
+        return;
+      }
+    }
+
     setIsSaving(true);
 
     try {
       if (convertToRecurring && !activity.seriesId && !activity.isExternal) {
         if ((recurrenceType === 'weekly' || recurrenceType === 'biweekly' || recurrenceType === 'triweekly') && selectedDays.length === 0) {
           Alert.alert('Fejl', 'Vælg venligst mindst én dag for gentagelse');
-          setIsSaving(false);
           return;
         }
-
-        await deleteActivitySingle(activity.id);
 
         await createActivity({
           title: editTitle,
@@ -420,14 +494,19 @@ function ActivityDetailsContent({
           categoryId: editCategory?.id || activity.category.id,
           date: editDate,
           time: editTime,
-          endTime: editEndTime || undefined,
+          endTime: endTimePayload,
           isRecurring: true,
           recurrenceType,
           recurrenceDays: (recurrenceType === 'weekly' || recurrenceType === 'biweekly' || recurrenceType === 'triweekly') ? selectedDays : undefined,
           endDate: hasEndDate ? endDate : undefined,
         });
 
+        await deleteActivitySingle(activity.id);
+        await refreshData();
+
         Alert.alert('Succes', 'Aktiviteten er blevet konverteret til en gentagende serie');
+        setIsEditing(false);
+        setEditScope('single');
         router.replace('/(tabs)/(home)');
         return;
       }
@@ -437,43 +516,68 @@ function ActivityDetailsContent({
         
         await updateActivitySingle(activity.id, {
           categoryId: editCategory?.id,
-          endTime: editEndTime || undefined,
         });
 
         console.log('✅ External activity category updated');
 
-        refreshData();
+        applyActivityUpdates({
+          category: editCategory || activity.category,
+        });
+
+        await refreshData();
 
         Alert.alert('Gemt', 'Kategorien er blevet opdateret');
         setIsEditing(false);
-      } else if (activity.seriesId && showSeriesDialog) {
+        setEditScope('single');
+        return;
+      }
+
+      if (activity.seriesId && editScope === 'series') {
         await updateActivitySeries(activity.seriesId, {
           title: editTitle,
           location: editLocation,
           categoryId: editCategory?.id,
           time: editTime,
-          endTime: editEndTime || undefined,
+          endTime: endTimePayload,
+        });
+
+        applyActivityUpdates({
+          title: editTitle,
+          location: editLocation,
+          category: editCategory || activity.category,
+          time: editTime,
+          endTime: endTimePayload,
         });
 
         Alert.alert('Gemt', 'Hele serien er blevet opdateret');
         setIsEditing(false);
-        
-        refreshData();
-      } else {
-        await updateActivitySingle(activity.id, {
-          title: editTitle,
-          location: editLocation,
-          categoryId: editCategory?.id,
-          date: editDate,
-          time: editTime,
-          endTime: editEndTime || undefined,
-        });
-
-        Alert.alert('Gemt', 'Aktiviteten er blevet opdateret');
-        setIsEditing(false);
-        
-        refreshData();
+        setEditScope('single');
+        await refreshData();
+        return;
       }
+
+      await updateActivitySingle(activity.id, {
+        title: editTitle,
+        location: editLocation,
+        categoryId: editCategory?.id,
+        date: editDate,
+        time: editTime,
+        endTime: endTimePayload,
+      });
+
+      applyActivityUpdates({
+        title: editTitle,
+        location: editLocation,
+        category: editCategory || activity.category,
+        date: editDate,
+        time: editTime,
+        endTime: endTimePayload,
+      });
+
+      Alert.alert('Gemt', 'Aktiviteten er blevet opdateret');
+      setIsEditing(false);
+      setEditScope('single');
+      await refreshData();
     } catch (error) {
       console.error('Error saving activity:', error);
       Alert.alert('Fejl', 'Der opstod en fejl ved gemning');
@@ -493,6 +597,7 @@ function ActivityDetailsContent({
     setEditCategory(activity.category);
     setConvertToRecurring(false);
     setIsEditing(false);
+    setEditScope('single');
   };
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
@@ -625,6 +730,19 @@ function ActivityDetailsContent({
     }
     refreshData();
   }, [activity.id, refreshData]);
+
+  const applyActivityUpdates = useCallback(
+    (updates: Partial<Activity>) => {
+      const nextActivity: Activity = {
+        ...activity,
+        ...updates,
+        category: updates.category ?? activity.category,
+        tasks: updates.tasks ?? activity.tasks,
+      };
+      onActivityUpdated(nextActivity);
+    },
+    [activity, onActivityUpdated]
+  );
 
   const taskListData = useMemo(() => (tasksState || []).filter(Boolean) as Task[], [tasksState]);
 
@@ -819,100 +937,101 @@ function ActivityDetailsContent({
     [handleFeedbackTaskPress, handleToggleTask]
   );
 
-  const renderTaskItem = useCallback(({ item }: { item: Task }) => {
-    const isFeedbackTask = item.isFeedbackTask && !!item.feedbackTemplateId;
-    const templateKey = item.feedbackTemplateId || item.taskTemplateId || null;
-    const templateSummary = templateKey ? selfFeedbackByTemplate[templateKey] : undefined;
-    const currentFeedback = templateSummary?.current;
+  const renderTaskItem = useCallback(
+    ({ item }: { item: Task }) => {
+      const isFeedbackTask = item.isFeedbackTask && !!item.feedbackTemplateId;
+      const templateKey = item.feedbackTemplateId || item.taskTemplateId || null;
+      const templateSummary = templateKey ? selfFeedbackByTemplate[templateKey] : undefined;
+      const currentFeedback = templateSummary?.current;
 
-    const helperText = currentFeedback
-      ? `Seneste svar: ${currentFeedback.rating ? `${currentFeedback.rating}/10` : 'Ingen rating'}${currentFeedback.note ? ` – ${currentFeedback.note}` : ''}`
-      : 'Tryk for at give feedback';
+      const helperText = currentFeedback
+        ? `Seneste svar: ${currentFeedback.rating ? `${currentFeedback.rating}/10` : 'Ingen rating'}${currentFeedback.note ? ` – ${currentFeedback.note}` : ''}`
+        : 'Tryk for at give feedback';
 
-    return (
-      <TouchableOpacity
-        style={[
-          styles.taskRow,
-          { backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5' },
-          isFeedbackTask && styles.feedbackTaskRow,
-        ]}
-        onPress={() => handleTaskRowPress(item)}
-        activeOpacity={isFeedbackTask ? 0.85 : 0.7}
-      >
-        <View style={styles.taskCheckboxArea}>
-          <View
-            style={[
-              styles.taskCheckbox,
-              item.completed && !isFeedbackTask && { backgroundColor: colors.success, borderColor: colors.success },
-              isFeedbackTask && styles.feedbackTaskCheckbox,
-            ]}
-          >
-            {item.completed && !isFeedbackTask && (
-              <IconSymbol
-                ios_icon_name="checkmark"
-                android_material_icon_name="check"
-                size={16}
-                color="#fff"
-              />
-            )}
-            {isFeedbackTask && (
-              <IconSymbol
-                ios_icon_name="bubble.left"
-                android_material_icon_name="chat"
-                size={16}
-                color={colors.primary}
-              />
-            )}
-          </View>
-          <View style={styles.taskContent}>
-            <Text
+      return (
+        <TouchableOpacity
+          style={[
+            styles.taskRow,
+            { backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5' },
+            isFeedbackTask && styles.feedbackTaskRow,
+          ]}
+          onPress={() => handleTaskRowPress(item)}
+          activeOpacity={isFeedbackTask ? 0.85 : 0.7}
+        >
+          <View style={styles.taskCheckboxArea}>
+            <View
               style={[
-                styles.taskTitle,
-                { color: textColor },
-                item.completed && !isFeedbackTask && styles.taskCompleted,
+                styles.taskCheckbox,
+                item.completed && !isFeedbackTask && { backgroundColor: colors.success, borderColor: colors.success },
+                isFeedbackTask && styles.feedbackTaskCheckbox,
               ]}
             >
-              {item.title}
-            </Text>
-            {!isFeedbackTask && item.description && (
-              <TaskDescriptionRenderer
-                description={item.description}
-                textColor={textSecondaryColor}
-              />
-            )}
-            {isFeedbackTask && (
-              <Text style={[styles.feedbackHelperText, { color: textSecondaryColor }]}>
-                {helperText}
+              {item.completed && !isFeedbackTask && (
+                <IconSymbol
+                  ios_icon_name="checkmark"
+                  android_material_icon_name="check"
+                  size={16}
+                  color="#fff"
+                />
+              )}
+              {isFeedbackTask && (
+                <IconSymbol
+                  ios_icon_name="bubble.left"
+                  android_material_icon_name="chat"
+                  size={16}
+                  color={colors.primary}
+                />
+              )}
+            </View>
+            <View style={styles.taskContent}>
+              <Text
+                style={[
+                  styles.taskTitle,
+                  { color: textColor },
+                  item.completed && !isFeedbackTask && styles.taskCompleted,
+                ]}
+              >
+                {item.title}
               </Text>
-            )}
+              {!isFeedbackTask && item.description && (
+                <TaskDescriptionRenderer
+                  description={item.description}
+                  textColor={textSecondaryColor}
+                />
+              )}
+              {isFeedbackTask && (
+                <Text style={[styles.feedbackHelperText, { color: textSecondaryColor }]}>
+                  {helperText}
+                </Text>
+              )}
+            </View>
           </View>
-        </View>
 
-        {isAdmin && !isFeedbackTask && (
-          <TouchableOpacity
-            style={[
-              styles.taskDeleteButton,
-              { backgroundColor: isDark ? '#3a1a1a' : '#ffe5e5' }
-            ]}
-            onPress={() => handleDeleteTask(item.id)}
-            activeOpacity={0.7}
-            disabled={deletingTaskId === item.id}
-          >
-            {deletingTaskId === item.id ? (
-              <ActivityIndicator size="small" color={colors.error} />
-            ) : (
-              <IconSymbol
-                ios_icon_name="trash"
-                android_material_icon_name="delete"
-                size={22}
-                color={colors.error}
-              />
-            )}
-          </TouchableOpacity>
-        )}
-      </TouchableOpacity>
-    );
-  }, [
+          {isAdmin && !isFeedbackTask && (
+            <TouchableOpacity
+              style={[
+                styles.taskDeleteButton,
+                { backgroundColor: isDark ? '#3a1a1a' : '#ffe5e5' }
+              ]}
+              onPress={() => handleDeleteTask(item.id)}
+              activeOpacity={0.7}
+              disabled={deletingTaskId === item.id}
+            >
+              {deletingTaskId === item.id ? (
+                <ActivityIndicator size="small" color={colors.error} />
+              ) : (
+                <IconSymbol
+                  ios_icon_name="trash"
+                  android_material_icon_name="delete"
+                  size={22}
+                  color={colors.error}
+                />
+              )}
+            </TouchableOpacity>
+          )}
+        </TouchableOpacity>
+      );
+    }, [
     deletingTaskId,
     handleDeleteTask,
     handleTaskRowPress,
@@ -1023,12 +1142,8 @@ function ActivityDetailsContent({
     return `${formatDate(date)} kl. ${timeDisplay}`;
   };
 
-  const bgColor = isDark ? '#1a1a1a' : colors.background;
-  const cardBgColor = isDark ? '#2a2a2a' : colors.card;
-  const textColor = isDark ? '#e3e3e3' : colors.text;
-  const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
-
-  const needsDaySelection = recurrenceType === 'weekly' || recurrenceType === 'biweekly' || recurrenceType === 'triweekly';
+  const needsDaySelection =
+    recurrenceType === 'weekly' || recurrenceType === 'biweekly' || recurrenceType === 'triweekly';
 
   return (
     <KeyboardAvoidingView 
@@ -1455,21 +1570,18 @@ function ActivityDetailsContent({
                         </TouchableOpacity>
                       </View>
                     )}
-                    {Platform.OS === 'android' && showEndTimePicker && (
-                      <DateTimePicker
-                        value={editEndTime ? new Date(`2000-01-01T${editEndTime}`) : new Date()}
-                        mode="time"
-                        display="default"
-                        onChange={handleEndTimeChange}
-                      />
-                    )}
                   </React.Fragment>
                 )}
               </View>
 
-              <Text style={[styles.infoNote, { color: textSecondaryColor }]}>
-                Dato kan ikke ændres for aktiviteter i en serie
-              </Text>
+              {Platform.OS === 'android' && showEndTimePicker && (
+                <DateTimePicker
+                  value={editEndTime ? new Date(`2000-01-01T${editEndTime}`) : new Date()}
+                  mode="time"
+                  display="default"
+                  onChange={handleEndTimeChange}
+                />
+              )}
             </View>
           ) : (
             <View style={styles.detailRow}>
@@ -1529,9 +1641,9 @@ function ActivityDetailsContent({
                 showsHorizontalScrollIndicator={false}
                 style={styles.categoryScroll}
               >
-                {categories.map((cat, index) => (
+                {categories.map((cat) => (
                   <TouchableOpacity
-                    key={`category-${cat.id}-${index}`}
+                    key={`category-${cat.id}`}
                     style={[
                       styles.categoryChip,
                       {
@@ -1577,7 +1689,7 @@ function ActivityDetailsContent({
 
           {/* Convert to Recurring Option */}
           {isEditing && !activity.seriesId && !activity.isExternal && (
-            <React.Fragment>
+            <>
               <View style={styles.fieldContainer}>
                 <TouchableOpacity
                   style={styles.recurringToggle}
@@ -1612,19 +1724,13 @@ function ActivityDetailsContent({
               </View>
 
               {convertToRecurring && (
-                <React.Fragment>
+                <>
                   <View style={styles.fieldContainer}>
                     <Text style={[styles.fieldLabel, { color: textColor }]}>Gentagelsesmønster</Text>
                     <View style={styles.recurrenceOptions}>
-                      {[
-                        { label: 'Dagligt', value: 'daily' as const },
-                        { label: 'Hver uge', value: 'weekly' as const },
-                        { label: 'Hver anden uge', value: 'biweekly' as const },
-                        { label: 'Hver tredje uge', value: 'triweekly' as const },
-                        { label: 'Månedligt', value: 'monthly' as const },
-                      ].map((option, index) => (
+                      {RECURRENCE_OPTIONS.map((option) => (
                         <TouchableOpacity
-                          key={index}
+                          key={option.value}
                           style={[
                             styles.recurrenceOption,
                             {
@@ -1636,7 +1742,11 @@ function ActivityDetailsContent({
                           ]}
                           onPress={() => {
                             setRecurrenceType(option.value);
-                            if (option.value !== 'weekly' && option.value !== 'biweekly' && option.value !== 'triweekly') {
+                            if (
+                              option.value !== 'weekly' &&
+                              option.value !== 'biweekly' &&
+                              option.value !== 'triweekly'
+                            ) {
                               setSelectedDays([]);
                             }
                           }}
@@ -1645,9 +1755,7 @@ function ActivityDetailsContent({
                           <Text
                             style={[
                               styles.recurrenceOptionText,
-                              {
-                                color: recurrenceType === option.value ? '#fff' : textColor,
-                              },
+                              { color: recurrenceType === option.value ? '#fff' : textColor },
                             ]}
                           >
                             {option.label}
@@ -1663,9 +1771,9 @@ function ActivityDetailsContent({
                         Vælg dage *
                       </Text>
                       <View style={styles.daysContainer}>
-                        {DAYS_OF_WEEK.map((day, index) => (
+                        {DAYS_OF_WEEK.map((day) => (
                           <TouchableOpacity
-                            key={index}
+                            key={day.value}
                             style={[
                               styles.dayButton,
                               {
@@ -1778,9 +1886,9 @@ function ActivityDetailsContent({
                       minimumDate={editDate}
                     />
                   )}
-                </React.Fragment>
+                </>
               )}
-            </React.Fragment>
+            </>
           )}
         </View>
 
@@ -2118,6 +2226,7 @@ export default function ActivityDetailsScreen() {
       isDark={isDark}
       onBack={handleBack}
       onRefresh={handleRefresh}
+      onActivityUpdated={(updatedActivity) => setActivity(updatedActivity)}
     />
   );
 }
@@ -2184,7 +2293,7 @@ const styles = StyleSheet.create({
   },
   seriesBadgeText: {
     fontSize: 14,
-    fontWeight: '600',
+       fontWeight: '600',
     color: '#fff',
   },
   headerButtons: {
@@ -2215,7 +2324,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 12,
-    marginBottom: 20,
+    marginBottom:  20,
     alignSelf: 'flex-start',
   },
   externalBadgeText: {

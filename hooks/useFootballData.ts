@@ -468,7 +468,7 @@ export const useFootballData = () => {
         throw error;
       }
     },
-    [adminMode, adminTargetId, adminTargetType]
+    [adminMode, adminTargetId, adminTargetType, fetchTasks]
   );
 
   // --- ACTIVITY CRUD ---
@@ -490,7 +490,7 @@ export const useFootballData = () => {
     categoryId: string;
     date: Date;
     time: string;
-    endTime: string;
+    endTime?: string;
     isRecurring: boolean;
     recurrenceType?: 'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly';
     recurrenceDays?: number[];
@@ -500,78 +500,40 @@ export const useFootballData = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
 
-      // Determine player_id and team_id based on admin context
-      let player_id = null;
-      let team_id = null;
+      let playerId: string | null = null;
+      let teamId: string | null = null;
 
       if (adminMode !== 'self' && adminTargetId) {
         if (adminTargetType === 'player') {
-          player_id = adminTargetId;
+          playerId = adminTargetId;
         } else if (adminTargetType === 'team') {
-          team_id = adminTargetId;
+          teamId = adminTargetId;
         }
       }
 
-      const payload: Record<string, any> = {
-        // base (must stay)
+      await activityService.createActivity({
         title: activityData.title,
         location: activityData.location,
-        category_id: activityData.categoryId,
-        activity_date: activityData.date instanceof Date ? activityData.date.toISOString().slice(0, 10) : activityData.date,
-        activity_time: activityData.time,
-        activity_end_time: activityData.endTime,
-        user_id: user.id,
+        categoryId: activityData.categoryId,
+        date: activityData.date,
+        time: activityData.time,
+        endTime: activityData.endTime,
+        isRecurring: activityData.isRecurring,
+        recurrenceType: activityData.recurrenceType,
+        recurrenceDays: activityData.recurrenceDays,
+        endDate: activityData.endDate,
+        userId: user.id,
+        playerId,
+        teamId,
+      });
 
-        // scope (existing behavior)
-        player_id,
-        team_id,
-
-        // optional recurrence fields (may be missing in schema; can be removed on retry)
-        is_recurring: !!activityData.isRecurring,
-        recurrence_type: activityData.recurrenceType,
-        recurrence_days: activityData.recurrenceDays,
-        end_date: activityData.endDate instanceof Date ? activityData.endDate.toISOString().slice(0, 10) : undefined,
-      };
-
-      const removableCols = new Set(['is_recurring', 'recurrence_type', 'recurrence_days', 'end_date', 'activity_end_time']);
-      let lastError: any = null;
-
-      for (let attempt = 0; attempt < 5; attempt++) {
-        const { error } = await supabase
-          .from('activities')
-          .insert(payload);
-
-        if (!error) {
-          await fetchActivities();
-          return;
-        }
-
-        lastError = error;
-
-        const msg = String((error as any)?.message ?? '');
-        const code = String((error as any)?.code ?? '');
-
-        if (code === 'PGRST204') {
-          const match = msg.match(/Could not find the '([^']+)' column/i);
-          const missingCol = match?.[1];
-
-          if (missingCol && removableCols.has(missingCol) && Object.prototype.hasOwnProperty.call(payload, missingCol)) {
-            delete payload[missingCol];
-            continue;
-          }
-        }
-
-        console.error('[createActivity] Error inserting activity:', error);
-        throw error;
-      }
-
-      console.error('[createActivity] exhausted retries:', lastError);
-      throw lastError ?? new Error('Failed to create activity');
+      await Promise.all([fetchActivities(), fetchActivitySeries()]);
+      await forceRefreshNotificationQueue();
     } catch (error) {
       console.error('[createActivity] Error:', error);
       throw error;
     }
-  }, [adminMode, adminTargetId, adminTargetType]);
+  }, [adminMode, adminTargetId, adminTargetType, fetchActivities, fetchActivitySeries]);
 
   const deleteActivitySingle = useCallback(async (activityId: string) => {
     const userId = await getCurrentUserId();
@@ -629,7 +591,7 @@ export const useFootballData = () => {
       console.error('[updateTask] Error updating task:', error);
       throw error;
     }
-  }, []);
+  }, [fetchTasks]);
 
   const deleteTask = useCallback(async (id: string) => {
     try {
@@ -654,7 +616,7 @@ export const useFootballData = () => {
       console.error('[deleteTask] Error deleting task:', error);
       throw error;
     }
-  }, []);
+  }, [fetchTasks]);
 
   const duplicateTask = useCallback(
     async (id: string) => {
@@ -662,7 +624,7 @@ export const useFootballData = () => {
         console.log('[duplicateTask] Duplicating task:', id);
 
         const safeTasks = (tasks || []).filter(Boolean) as Task[];
-        const taskToDuplicate = safeTasks.find(t => t.id === id);
+        const taskToDuplicate = safeTasks.find(task => task.id === id);
 
         if (!taskToDuplicate) {
           throw new Error('Task not found');
@@ -942,7 +904,7 @@ export const useFootballData = () => {
   const toggleCalendar = useCallback(async (calendarId: string) => {
     try {
       const userId = await getCurrentUserId();
-      const target = externalCalendars.find(cal => cal.id === calendarId);
+      const target = externalCalendars.find(calendar => calendar.id === calendarId);
       if (!target) {
         throw new Error('Calendar not found');
       }
@@ -996,11 +958,11 @@ export const useFootballData = () => {
     tasks,
     trophies,
     externalCalendars,
-     externalActivities,
+    externalActivities,
     activitySeries,
     activitiesThisWeek,
-     currentWeekStats,
-     todayActivities,
+    currentWeekStats,
+    todayActivities,
     isLoading: loading,
     refreshAll,
     refreshCategories, // ✅ P14 export

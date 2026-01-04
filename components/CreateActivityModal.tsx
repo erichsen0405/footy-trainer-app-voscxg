@@ -61,6 +61,19 @@ const RECURRENCE_TYPES = [
   { label: 'Månedlig', value: 'monthly' as const },
 ];
 
+const timeToMinutes = (timeStr: string | null | undefined): number | null => {
+  if (!timeStr) return null;
+  const parts = timeStr.split(':');
+  if (parts.length < 2) return null;
+
+  const [hoursStr, minutesStr] = parts;
+  const hours = Number(hoursStr);
+  const minutes = Number(minutesStr);
+
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+  return hours * 60 + minutes;
+};
+
 export default function CreateActivityModal({
   visible,
   onClose,
@@ -77,6 +90,7 @@ export default function CreateActivityModal({
   const [date, setDate] = useState(new Date());
   const [time, setTime] = useState('18:00');
   const [endTime, setEndTime] = useState('19:00');
+  const [endTimeError, setEndTimeError] = useState<string | null>(null);
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrenceType, setRecurrenceType] = useState<'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly'>('weekly');
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
@@ -88,6 +102,28 @@ export default function CreateActivityModal({
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [showCategoryManagement, setShowCategoryManagement] = useState(false);
+
+  // validate end time whenever time / endTime changes
+  useEffect(() => {
+    if (!endTime) {
+      setEndTimeError(null);
+      return;
+    }
+
+    const startMinutes = timeToMinutes(time);
+    const endMinutes = timeToMinutes(endTime);
+
+    if (startMinutes == null || endMinutes == null) {
+      setEndTimeError(null);
+      return;
+    }
+
+    if (endMinutes <= startMinutes) {
+      setEndTimeError('Sluttidspunkt skal være efter starttidspunktet');
+    } else {
+      setEndTimeError(null);
+    }
+  }, [time, endTime]);
 
   // (1) ✅ add ref + effect close to state hooks
   const showCategoryManagementRef = useRef(false);
@@ -137,6 +173,7 @@ export default function CreateActivityModal({
     setDate(new Date());
     setTime('18:00');
     setEndTime('19:00');
+    setEndTimeError(null);
     setIsRecurring(false);
     setRecurrenceType('weekly');
     setSelectedDays([]);
@@ -164,14 +201,9 @@ export default function CreateActivityModal({
       return;
     }
 
-    // Validate end time is after start time
-    const timeToMinutes = (timeStr: string) => {
-      const [hours, minutes] = timeStr.split(':').map(Number);
-      return hours * 60 + minutes;
-    };
-    
-    if (timeToMinutes(endTime) <= timeToMinutes(time)) {
-      Alert.alert('Fejl', 'Sluttidspunkt skal være efter starttidspunktet');
+    // Hvis der er en valideringsfejl på sluttidspunkt, stop
+    if (endTimeError) {
+      Alert.alert('Fejl', endTimeError);
       return;
     }
 
@@ -193,7 +225,8 @@ export default function CreateActivityModal({
         categoryId: selectedCategory,
         date,
         time,
-        endTime,
+        // gør sluttid valgfri – hvis tom/whitespace, send undefined
+        endTime: endTime?.trim() ? endTime.trim() : undefined,
         isRecurring,
         recurrenceType: isRecurring ? recurrenceType : undefined,
         recurrenceDays:
@@ -220,6 +253,8 @@ export default function CreateActivityModal({
     location,
     date,
     time,
+    endTime,
+    endTimeError,
     hasEndDate,
     endDate,
     onCreateActivity,
@@ -258,9 +293,10 @@ export default function CreateActivityModal({
       const minutes = selectedTime.getMinutes().toString().padStart(2, '0');
       const newTime = `${hours}:${minutes}`;
       setTime(newTime);
-      // Auto-adjust end time if it's before start time
-      if (endTime <= newTime) {
-        const startMinutes = hours * 60 + minutes;
+
+      // Auto-adjust end time only if endTime is set
+      if (endTime && endTime <= newTime) {
+        const startMinutes = parseInt(hours, 10) * 60 + parseInt(minutes, 10);
         const endMinutes = Math.min(startMinutes + 60, 23 * 60 + 59);
         const endHours = Math.floor(endMinutes / 60).toString().padStart(2, '0');
         const endMins = (endMinutes % 60).toString().padStart(2, '0');
@@ -732,13 +768,17 @@ export default function CreateActivityModal({
                 style={[
                   styles.modalButton,
                   styles.saveButton,
-                  safeCategories.length === 0 && styles.disabledButton,
+                  (safeCategories.length === 0 || !!endTimeError) && styles.disabledButton,
                 ]}
                 onPress={handleCreate}
-                disabled={isCreating || safeCategories.length === 0}
+                disabled={isCreating || safeCategories.length === 0 || !!endTimeError}
                 activeOpacity={0.7}
               >
-                {isCreating ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff' }}>Opret</Text>}
+                {isCreating ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={{ color: '#fff' }}>Opret</Text>
+                )}
               </TouchableOpacity>
             </View>
 

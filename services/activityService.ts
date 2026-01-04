@@ -185,17 +185,12 @@ export const activityService = {
       if (updates.location !== undefined) updateData.location = updates.location;
       if (updates.date !== undefined) updateData.activity_date = updates.date.toISOString().split('T')[0];
       if (updates.time !== undefined) updateData.activity_time = updates.time;
-      if (updates.endTime !== undefined) updateData.activity_end_time = updates.endTime;
+      if (updates.endTime !== undefined) updateData.activity_end_time = updates.endTime ?? null;
       
       if (updates.categoryId !== undefined) {
         updateData.category_id = updates.categoryId;
         updateData.manually_set_category = true;
         updateData.category_updated_at = new Date().toISOString();
-      }
-      
-      if (updates.title !== undefined || updates.location !== undefined || updates.date !== undefined || updates.time !== undefined || updates.endTime !== undefined) {
-        updateData.series_id = null;
-        updateData.series_instance_date = null;
       }
       
       updateData.updated_at = new Date().toISOString();
@@ -211,23 +206,49 @@ export const activityService = {
   },
 
   async updateActivitySeries(seriesId: string, userId: string, updates: UpdateActivityData, signal?: AbortSignal): Promise<void> {
-    const updateData: any = {};
-    
-    if (updates.title) updateData.title = updates.title;
-    if (updates.location) updateData.location = updates.location;
-    if (updates.categoryId) updateData.category_id = updates.categoryId;
-    if (updates.time) updateData.activity_time = updates.time;
-    if (updates.endTime) updateData.activity_end_time = updates.endTime;
-    updateData.updated_at = new Date().toISOString();
+    const seriesUpdate: any = {
+      updated_at: new Date().toISOString(),
+    };
 
-    const { error } = await supabase
+    if (updates.title !== undefined) seriesUpdate.title = updates.title;
+    if (updates.location !== undefined) seriesUpdate.location = updates.location;
+    if (updates.categoryId !== undefined) seriesUpdate.category_id = updates.categoryId;
+    if (updates.time !== undefined) seriesUpdate.activity_time = updates.time;
+    if (updates.endTime !== undefined) seriesUpdate.activity_end_time = updates.endTime ?? null;
+
+    const { error: seriesError } = await supabase
       .from('activity_series')
-      .update(updateData)
+      .update(seriesUpdate)
       .eq('id', seriesId)
       .eq('user_id', userId)
       .abortSignal(signal);
 
-    if (error) throw error;
+    if (seriesError) throw seriesError;
+
+    const activityUpdate: any = {};
+
+    if (updates.title !== undefined) activityUpdate.title = updates.title;
+    if (updates.location !== undefined) activityUpdate.location = updates.location;
+    if (updates.categoryId !== undefined) {
+      activityUpdate.category_id = updates.categoryId;
+      activityUpdate.manually_set_category = true;
+      activityUpdate.category_updated_at = new Date().toISOString();
+    }
+    if (updates.time !== undefined) activityUpdate.activity_time = updates.time;
+    if (updates.endTime !== undefined) activityUpdate.activity_end_time = updates.endTime ?? null;
+
+    if (Object.keys(activityUpdate).length > 0) {
+      activityUpdate.updated_at = new Date().toISOString();
+
+      const { error: activitiesError } = await supabase
+        .from('activities')
+        .update(activityUpdate)
+        .eq('series_id', seriesId)
+        .eq('user_id', userId)
+        .abortSignal(signal);
+
+      if (activitiesError) throw activitiesError;
+    }
   },
 
   async deleteActivitySingle(activityId: string, userId: string, signal?: AbortSignal): Promise<void> {
@@ -289,6 +310,7 @@ export const activityService = {
         title: duplicateTitle,
         activity_date: activity.activity_date,
         activity_time: activity.activity_time,
+        activity_end_time: activity.activity_end_time,
         location: activity.location,
         category_id: activity.category_id,
         is_external: false,
