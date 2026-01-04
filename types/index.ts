@@ -4,6 +4,7 @@ export interface Activity {
   title: string;
   date: Date;
   time: string;
+  endTime?: string | null;
   location: string;
   category: ActivityCategory;
   tasks: Task[];
@@ -33,6 +34,7 @@ export interface ActivitySeries {
   startDate: Date;
   endDate?: Date;
   activityTime: string;
+  activityEndTime?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -48,6 +50,7 @@ export interface Task {
   subtasks: Subtask[];
   videoUrl?: string;
   afterTrainingEnabled?: boolean;
+  afterTrainingDelayMinutes?: number | null;
   taskTemplateId?: string | null;
   feedbackTemplateId?: string | null;
   isFeedbackTask?: boolean;

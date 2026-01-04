@@ -1,4 +1,6 @@
 import { supabase } from '@/app/integrations/supabase/client';
+import { emitTaskCompletionEvent } from '@/utils/taskEvents';
+import type { TaskCompletionEvent } from '@/utils/taskEvents';
 import { Task } from '@/types';
 
 export interface CreateTaskData {
@@ -8,6 +10,7 @@ export interface CreateTaskData {
   reminder?: number;
   videoUrl?: string;
   afterTrainingEnabled?: boolean;
+  afterTrainingDelayMinutes?: number | null;
   playerId?: string | null;
   teamId?: string | null;
 }
@@ -19,13 +22,14 @@ export interface UpdateTaskData {
   reminder?: number;
   videoUrl?: string | null;
   afterTrainingEnabled?: boolean;
+  afterTrainingDelayMinutes?: number | null;
 }
 
 export const taskService = {
   /* ======================================================
      CREATE (P8 – autoriseret entry point)
      ====================================================== */
-  async createTask(data: CreateTaskData): Promise<Task> {
+  async createTask(data: CreateTaskData, signal?: AbortSignal): Promise<Task> {
     console.log('[P8] createTask called', data);
 
     const {
@@ -49,12 +53,14 @@ export const taskService = {
         reminder_minutes: data.reminder ?? null,
         video_url: data.videoUrl ?? null,
         after_training_enabled: data.afterTrainingEnabled ?? false,
+        after_training_delay_minutes: data.afterTrainingDelayMinutes ?? null,
 
         // admin-scope
         player_id: data.playerId ?? null,
         team_id: data.teamId ?? null,
       })
-      .select('id, title, description, reminder_minutes, video_url, source_folder')
+      .select('id, title, description, reminder_minutes, video_url, source_folder, after_training_enabled, after_training_delay_minutes')
+      .abortSignal(signal)
       .single();
 
     if (templateError) {
@@ -72,7 +78,8 @@ export const taskService = {
 
       const { error: categoryError } = await supabase
         .from('task_template_categories')
-        .insert(rows);
+        .insert(rows)
+        .abortSignal(signal);
 
       if (categoryError) {
         throw categoryError;
@@ -92,6 +99,7 @@ export const taskService = {
       videoUrl: template.video_url ?? undefined,
       source_folder: template.source_folder ?? undefined,
       afterTrainingEnabled: template.after_training_enabled ?? false,
+      afterTrainingDelayMinutes: template.after_training_delay_minutes ?? null,
     };
   },
 
@@ -102,6 +110,7 @@ export const taskService = {
     taskId: string,
     userId: string,
     updates: UpdateTaskData,
+    signal?: AbortSignal,
   ): Promise<void> {
     const updateData: Record<string, any> = {};
 
@@ -117,13 +126,18 @@ export const taskService = {
       updateData.after_training_enabled = updates.afterTrainingEnabled;
     }
 
+    if (updates.afterTrainingDelayMinutes !== undefined) {
+      updateData.after_training_delay_minutes = updates.afterTrainingDelayMinutes;
+    }
+
     updateData.updated_at = new Date().toISOString();
 
     const { error: templateError } = await supabase
       .from('task_templates')
       .update(updateData)
       .eq('id', taskId)
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .abortSignal(signal);
 
     if (templateError) {
       throw templateError;
@@ -136,7 +150,8 @@ export const taskService = {
       await supabase
         .from('task_template_categories')
         .delete()
-        .eq('task_template_id', taskId);
+        .eq('task_template_id', taskId)
+        .abortSignal(signal);
 
       if (updates.categoryIds.length) {
         const rows = updates.categoryIds.map(categoryId => ({
@@ -146,7 +161,8 @@ export const taskService = {
 
         const { error } = await supabase
           .from('task_template_categories')
-          .insert(rows);
+          .insert(rows)
+          .abortSignal(signal);
 
         if (error) throw error;
       }
@@ -169,14 +185,15 @@ export const taskService = {
     return (data || []).map(d => d.task_template_id);
   },
 
-  async deleteTask(taskId: string, userId: string): Promise<void> {
+  async deleteTask(taskId: string, userId: string, signal?: AbortSignal): Promise<void> {
     // Try hard delete for owned tasks
     const { data: deleted, error: deleteError } = await supabase
       .from('task_templates')
       .delete()
       .eq('id', taskId)
       .eq('user_id', userId)
-      .select('id');
+      .select('id')
+      .abortSignal(signal);
 
     if (deleteError) {
       throw deleteError;
@@ -190,10 +207,97 @@ export const taskService = {
     // Not owned, perform soft delete
     const { error: insertError } = await supabase
       .from('hidden_task_templates')
-      .upsert({ user_id: userId, task_template_id: taskId }, { onConflict: 'user_id,task_template_id' });
+      .upsert({ user_id: userId, task_template_id: taskId }, { onConflict: 'user_id,task_template_id' })
+      .abortSignal(signal);
 
     if (insertError) {
       throw insertError;
     }
+  },
+
+  async deleteActivityTask(
+    activityId: string,
+    taskId: string,
+    userId: string,
+    isExternal: boolean,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    if (!userId) {
+      throw new Error('User not authenticated');
+    }
+
+    const table = isExternal ? 'external_event_tasks' : 'activity_tasks';
+    const activityColumn = isExternal ? 'local_meta_id' : 'activity_id';
+
+    const { error, count } = await supabase
+      .from(table)
+      .delete({ count: 'exact' })
+      .eq('id', taskId)
+      .eq(activityColumn, activityId)
+      .abortSignal(signal);
+
+    if (error) {
+      throw error;
+    }
+
+    if (!count) {
+      throw new Error('Task not found or already deleted');
+    }
+  },
+
+  async toggleTaskCompletion(taskId: string, signal?: AbortSignal): Promise<TaskCompletionEvent> {
+    const nowIso = new Date().toISOString();
+    const lookups: Array<{ table: 'activity_tasks' | 'external_event_tasks'; activityColumn: 'activity_id' | 'local_meta_id'; }> = [
+      { table: 'activity_tasks', activityColumn: 'activity_id' },
+      { table: 'external_event_tasks', activityColumn: 'local_meta_id' },
+    ];
+
+    for (const lookup of lookups) {
+      const { data, error } = await supabase
+        .from(lookup.table)
+        .select(`id, completed, ${lookup.activityColumn}`)
+        .eq('id', taskId)
+        .abortSignal(signal)
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data) {
+        continue;
+      }
+
+      const nextCompleted = !data.completed;
+      const activityId = (data as any)?.[lookup.activityColumn];
+
+      if (!activityId) {
+        throw new Error('Task missing activity reference');
+      }
+
+      const { error: updateError } = await supabase
+        .from(lookup.table)
+        .update({
+          completed: nextCompleted,
+          updated_at: nowIso,
+        })
+        .eq('id', taskId)
+        .abortSignal(signal);
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      const event: TaskCompletionEvent = {
+        activityId,
+        taskId,
+        completed: nextCompleted,
+      };
+
+      emitTaskCompletionEvent(event);
+      return event;
+    }
+
+    throw new Error('Task not found in activity or external task tables');
   },
 };

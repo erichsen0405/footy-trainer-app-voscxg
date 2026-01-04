@@ -266,7 +266,7 @@ export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalPr
     setCompleting(true);
 
     try {
-      await taskService.toggleTaskCompletion(taskId, task.is_external, newCompleted);
+      await taskService.toggleTaskCompletion(taskId);
     } catch (err) {
       console.error('TaskDetailsModal: Error toggling completion:', err);
       // Rollback on error

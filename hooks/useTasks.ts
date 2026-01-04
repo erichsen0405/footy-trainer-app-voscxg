@@ -24,7 +24,7 @@ export function useTasks(
     };
   }, []);
 
-  const createTask = useCallback(async (data: Omit<CreateTaskData, 'userId'>) => {
+  const createTask = useCallback(async (data: CreateTaskData) => {
     if (!userId) throw new Error('User not authenticated');
 
     const controller = new AbortController();
@@ -32,7 +32,7 @@ export function useTasks(
 
     setIsCreating(true);
     try {
-      await taskService.createTask({ ...data, userId }, controller.signal);
+      await taskService.createTask(data, controller.signal);
       onRefresh();
       
       if (notificationsEnabled) {
@@ -92,16 +92,15 @@ export function useTasks(
 
   const toggleTaskCompletion = useCallback(async (
     taskId: string,
-    isExternal: boolean,
-    currentCompleted: boolean
+    _isExternal: boolean,
+    _currentCompleted: boolean
   ) => {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
     setIsTogglingCompletion(true);
     try {
-      const newCompleted = !currentCompleted;
-      await taskService.toggleTaskCompletion(taskId, isExternal, newCompleted, controller.signal);
+      await taskService.toggleTaskCompletion(taskId, controller.signal);
       
       if (notificationsEnabled) {
         refreshNotificationQueue(true).catch(err => {

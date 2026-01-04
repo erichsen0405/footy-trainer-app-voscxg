@@ -26,6 +26,7 @@ interface FootballContextType {
     categoryId: string;
     date: Date;
     time: string;
+    endTime: string;
     isRecurring: boolean;
     recurrenceType?: 'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly';
     recurrenceDays?: number[];
@@ -38,12 +39,14 @@ interface FootballContextType {
     categoryId?: string;
     date?: Date;
     time?: string;
+    endTime?: string;
   }) => Promise<void>;
   updateActivitySeries: (seriesId: string, updates: {
     title?: string;
     location?: string;
     categoryId?: string;
     time?: string;
+    endTime?: string;
   }) => Promise<void>;
   deleteActivity: (id: string) => void;
   deleteActivitySingle: (activityId: string) => Promise<void>;

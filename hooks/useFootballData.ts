@@ -20,6 +20,7 @@ import { taskService } from '@/services/taskService';
 import { activityService } from '@/services/activityService';
 import { calendarService } from '@/services/calendarService';
 import { useAdmin } from '@/contexts/AdminContext';
+import { subscribeToTaskCompletion } from '@/utils/taskEvents';
 
 export const useFootballData = () => {
   const { adminMode, adminTargetId, adminTargetType } = useAdmin();
@@ -162,6 +163,7 @@ export const useFootballData = () => {
           video_url,
           source_folder,
           after_training_enabled,
+          after_training_delay_minutes,
           task_template_categories (
             category_id
           )
@@ -183,6 +185,7 @@ export const useFootballData = () => {
         videoUrl: t.video_url ?? undefined,
         source_folder: t.source_folder ?? undefined,
         afterTrainingEnabled: !!t.after_training_enabled,
+        afterTrainingDelayMinutes: t.after_training_delay_minutes ?? null,
       }));
 
       // Filter out hidden tasks
@@ -352,6 +355,43 @@ export const useFootballData = () => {
   }, [fetchAllData]);
 
   useEffect(() => {
+    const unsubscribe = subscribeToTaskCompletion(({ activityId, taskId, completed }) => {
+      setActivities(prevActivities => {
+        let mutated = false;
+
+        const nextActivities = prevActivities.map(activity => {
+          if (activity.id !== activityId) {
+            return activity;
+          }
+
+          const tasks = Array.isArray(activity.tasks) ? activity.tasks : [];
+          let taskMutated = false;
+
+          const nextTasks = tasks.map(task => {
+            if (task.id !== taskId) {
+              return task;
+            }
+
+            taskMutated = true;
+            return { ...task, completed };
+          });
+
+          if (!taskMutated) {
+            return activity;
+          }
+
+          mutated = true;
+          return { ...activity, tasks: nextTasks };
+        });
+
+        return mutated ? nextActivities : prevActivities;
+      });
+    });
+
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
     const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
       if (state === 'active') {
         refreshNotificationQueue();
@@ -450,6 +490,7 @@ export const useFootballData = () => {
     categoryId: string;
     date: Date;
     time: string;
+    endTime: string;
     isRecurring: boolean;
     recurrenceType?: 'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly';
     recurrenceDays?: number[];
@@ -478,6 +519,7 @@ export const useFootballData = () => {
         category_id: activityData.categoryId,
         activity_date: activityData.date instanceof Date ? activityData.date.toISOString().slice(0, 10) : activityData.date,
         activity_time: activityData.time,
+        activity_end_time: activityData.endTime,
         user_id: user.id,
 
         // scope (existing behavior)
@@ -491,7 +533,7 @@ export const useFootballData = () => {
         end_date: activityData.endDate instanceof Date ? activityData.endDate.toISOString().slice(0, 10) : undefined,
       };
 
-      const removableCols = new Set(['is_recurring', 'recurrence_type', 'recurrence_days', 'end_date']);
+      const removableCols = new Set(['is_recurring', 'recurrence_type', 'recurrence_days', 'end_date', 'activity_end_time']);
       let lastError: any = null;
 
       for (let attempt = 0; attempt < 5; attempt++) {
@@ -677,62 +719,11 @@ export const useFootballData = () => {
     async (activityId: string, taskId: string) => {
       const logPrefix = `[toggleTaskCompletion] activity=${activityId} task=${taskId}`;
       console.log(`${logPrefix} - start`);
-
-      const nowIso = new Date().toISOString();
-
       try {
-        const { data: internalTask, error: internalError } = await supabase
-          .from('activity_tasks')
-          .select('id, completed')
-          .eq('id', taskId)
-          .eq('activity_id', activityId)
-          .maybeSingle();
+        const event = await taskService.toggleTaskCompletion(taskId);
 
-        if (internalError) {
-          throw internalError;
-        }
-
-        if (internalTask) {
-          const { error: updateError } = await supabase
-            .from('activity_tasks')
-            .update({
-              completed: !internalTask.completed,
-              updated_at: nowIso,
-            })
-            .eq('id', taskId)
-            .eq('activity_id', activityId);
-
-          if (updateError) {
-            throw updateError;
-          }
-        } else {
-          const { data: externalTask, error: externalError } = await supabase
-            .from('external_event_tasks')
-            .select('id, completed')
-            .eq('id', taskId)
-            .eq('local_meta_id', activityId)
-            .maybeSingle();
-
-          if (externalError) {
-            throw externalError;
-          }
-
-          if (!externalTask) {
-            throw new Error('Task not found for this activity');
-          }
-
-          const { error: updateExternalError } = await supabase
-            .from('external_event_tasks')
-            .update({
-              completed: !externalTask.completed,
-              updated_at: nowIso,
-            })
-            .eq('id', taskId)
-            .eq('local_meta_id', activityId);
-
-          if (updateExternalError) {
-            throw updateExternalError;
-          }
+        if (event.activityId !== activityId) {
+          console.warn(`${logPrefix} - activity mismatch (expected ${activityId}, got ${event.activityId})`);
         }
 
         refreshNotificationQueue(true).catch(queueError => {
@@ -870,6 +861,7 @@ export const useFootballData = () => {
       categoryId?: string;
       date?: Date;
       time?: string;
+      endTime?: string;
     }
   ) => {
     try {
@@ -877,7 +869,7 @@ export const useFootballData = () => {
       await activityService.updateActivitySingle(activityId, updates, isExternal);
       await fetchActivities();
 
-      if (updates.date || updates.time) {
+      if (updates.date || updates.time || updates.endTime) {
         await forceRefreshNotificationQueue();
       }
     } catch (error) {
@@ -893,6 +885,7 @@ export const useFootballData = () => {
       location?: string;
       categoryId?: string;
       time?: string;
+      endTime?: string;
     }
   ) => {
     try {
@@ -900,7 +893,7 @@ export const useFootballData = () => {
       await activityService.updateActivitySeries(seriesId, userId, updates);
       await Promise.all([fetchActivities(), fetchActivitySeries()]);
 
-      if (updates.time) {
+      if (updates.time || updates.endTime) {
         await forceRefreshNotificationQueue();
       }
     } catch (error) {
