@@ -8,6 +8,7 @@ export interface CreateActivityData {
   categoryId: string;
   date: Date;
   time: string;
+  endTime?: string;
   isRecurring: boolean;
   recurrenceType?: 'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly';
   recurrenceDays?: number[];
@@ -23,6 +24,7 @@ export interface UpdateActivityData {
   categoryId?: string;
   date?: Date;
   time?: string;
+  endTime?: string;
 }
 
 // Helper function to generate dates for recurring activities
@@ -93,6 +95,7 @@ export const activityService = {
           start_date: data.date.toISOString().split('T')[0],
           end_date: data.endDate ? data.endDate.toISOString().split('T')[0] : null,
           activity_time: data.time,
+          activity_end_time: data.endTime,
           player_id: data.playerId,
           team_id: data.teamId,
         })
@@ -114,6 +117,7 @@ export const activityService = {
         title: data.title,
         activity_date: date.toISOString().split('T')[0],
         activity_time: data.time,
+        activity_end_time: data.endTime,
         location: data.location,
         category_id: data.categoryId,
         series_id: seriesData.id,
@@ -137,6 +141,7 @@ export const activityService = {
           title: data.title,
           activity_date: data.date.toISOString().split('T')[0],
           activity_time: data.time,
+          activity_end_time: data.endTime,
           location: data.location,
           category_id: data.categoryId,
           is_external: false,
@@ -180,6 +185,7 @@ export const activityService = {
       if (updates.location !== undefined) updateData.location = updates.location;
       if (updates.date !== undefined) updateData.activity_date = updates.date.toISOString().split('T')[0];
       if (updates.time !== undefined) updateData.activity_time = updates.time;
+      if (updates.endTime !== undefined) updateData.activity_end_time = updates.endTime;
       
       if (updates.categoryId !== undefined) {
         updateData.category_id = updates.categoryId;
@@ -187,7 +193,7 @@ export const activityService = {
         updateData.category_updated_at = new Date().toISOString();
       }
       
-      if (updates.title !== undefined || updates.location !== undefined || updates.date !== undefined || updates.time !== undefined) {
+      if (updates.title !== undefined || updates.location !== undefined || updates.date !== undefined || updates.time !== undefined || updates.endTime !== undefined) {
         updateData.series_id = null;
         updateData.series_instance_date = null;
       }
@@ -211,6 +217,7 @@ export const activityService = {
     if (updates.location) updateData.location = updates.location;
     if (updates.categoryId) updateData.category_id = updates.categoryId;
     if (updates.time) updateData.activity_time = updates.time;
+    if (updates.endTime) updateData.activity_end_time = updates.endTime;
     updateData.updated_at = new Date().toISOString();
 
     const { error } = await supabase

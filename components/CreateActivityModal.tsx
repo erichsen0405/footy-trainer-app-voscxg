@@ -36,6 +36,7 @@ export interface ActivityCreationData {
   categoryId: string;
   date: Date;
   time: string;
+  endTime?: string;
   isRecurring: boolean;
   recurrenceType?: 'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly';
   recurrenceDays?: number[];
@@ -75,6 +76,7 @@ export default function CreateActivityModal({
   const [selectedCategory, setSelectedCategory] = useState('');
   const [date, setDate] = useState(new Date());
   const [time, setTime] = useState('18:00');
+  const [endTime, setEndTime] = useState('19:00');
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrenceType, setRecurrenceType] = useState<'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly'>('weekly');
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
@@ -82,6 +84,7 @@ export default function CreateActivityModal({
   const [endDate, setEndDate] = useState(new Date(Date.now() + 90 * 24 * 60 * 60 * 1000));
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [showCategoryManagement, setShowCategoryManagement] = useState(false);
@@ -133,6 +136,7 @@ export default function CreateActivityModal({
     setSelectedCategory(safeCategories[0]?.id || '');
     setDate(new Date());
     setTime('18:00');
+    setEndTime('19:00');
     setIsRecurring(false);
     setRecurrenceType('weekly');
     setSelectedDays([]);
@@ -160,6 +164,17 @@ export default function CreateActivityModal({
       return;
     }
 
+    // Validate end time is after start time
+    const timeToMinutes = (timeStr: string) => {
+      const [hours, minutes] = timeStr.split(':').map(Number);
+      return hours * 60 + minutes;
+    };
+    
+    if (timeToMinutes(endTime) <= timeToMinutes(time)) {
+      Alert.alert('Fejl', 'Sluttidspunkt skal være efter starttidspunktet');
+      return;
+    }
+
     if (
       isRecurring &&
       ['weekly', 'biweekly', 'triweekly'].includes(recurrenceType) &&
@@ -178,6 +193,7 @@ export default function CreateActivityModal({
         categoryId: selectedCategory,
         date,
         time,
+        endTime,
         isRecurring,
         recurrenceType: isRecurring ? recurrenceType : undefined,
         recurrenceDays:
@@ -240,7 +256,25 @@ export default function CreateActivityModal({
     if (selectedTime) {
       const hours = selectedTime.getHours().toString().padStart(2, '0');
       const minutes = selectedTime.getMinutes().toString().padStart(2, '0');
-      setTime(`${hours}:${minutes}`);
+      const newTime = `${hours}:${minutes}`;
+      setTime(newTime);
+      // Auto-adjust end time if it's before start time
+      if (endTime <= newTime) {
+        const startMinutes = hours * 60 + minutes;
+        const endMinutes = Math.min(startMinutes + 60, 23 * 60 + 59);
+        const endHours = Math.floor(endMinutes / 60).toString().padStart(2, '0');
+        const endMins = (endMinutes % 60).toString().padStart(2, '0');
+        setEndTime(`${endHours}:${endMins}`);
+      }
+    }
+  }, [endTime]);
+
+  const handleEndTimeChange = useCallback((event: any, selectedTime?: Date) => {
+    if (Platform.OS === 'android') setShowEndTimePicker(false);
+    if (selectedTime) {
+      const hours = selectedTime.getHours().toString().padStart(2, '0');
+      const minutes = selectedTime.getMinutes().toString().padStart(2, '0');
+      setEndTime(`${hours}:${minutes}`);
     }
   }, []);
 
@@ -256,6 +290,15 @@ export default function CreateActivityModal({
     timeDate.setMinutes(minutes);
     return timeDate;
   }, [time]);
+
+  const getEndTimeAsDate = useCallback(() => {
+    if (!endTime) return new Date();
+    const [hours, minutes] = endTime.split(':').map(Number);
+    const timeDate = new Date();
+    timeDate.setHours(hours);
+    timeDate.setMinutes(minutes);
+    return timeDate;
+  }, [endTime]);
 
   // (2) ✅ openCategoryManagement (no fetch, only state) — removed logs
   const openCategoryManagement = useCallback(() => {
@@ -499,6 +542,60 @@ export default function CreateActivityModal({
                 >
                   <Text style={styles.doneButtonText}>Færdig</Text>
                 </TouchableOpacity>
+              ) : null}
+
+              {/* End Time Picker */}
+              <TouchableOpacity
+                style={[styles.pickerButton, { backgroundColor: bgColor }]}
+                onPress={() => setShowEndTimePicker(true)}
+                activeOpacity={0.7}
+              >
+                <IconSymbol
+                  ios_icon_name="clock.fill"
+                  android_material_icon_name="schedule"
+                  size={20}
+                  color={textColor}
+                />
+                <Text style={[styles.pickerButtonText, { color: textColor }]}>
+                  {endTime || 'Vælg sluttidspunkt'}
+                </Text>
+              </TouchableOpacity>
+
+              {showEndTimePicker ? (
+                <View
+                  style={[
+                    Platform.OS === 'ios' ? styles.iosPickerContainer : undefined,
+                    { backgroundColor: isDark ? '#2a2a2a' : '#FFFFFF' },
+                  ]}
+                >
+                  <DateTimePicker
+                    value={getEndTimeAsDate()}
+                    mode="time"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onChange={handleEndTimeChange}
+                    is24Hour={true}
+                    themeVariant={isDark ? 'dark' : 'light'}
+                    textColor={Platform.OS === 'ios' ? (isDark ? '#FFFFFF' : '#000000') : undefined}
+                    style={Platform.OS === 'ios' ? styles.iosPicker : undefined}
+                  />
+                </View>
+              ) : null}
+
+              {Platform.OS === 'ios' && showEndTimePicker ? (
+                <TouchableOpacity
+                  style={[styles.doneButton, { backgroundColor: colors.primary }]}
+                  onPress={() => setShowEndTimePicker(false)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.doneButtonText}>Færdig</Text>
+                </TouchableOpacity>
+              ) : null}
+
+              {/* Validation Error for End Time */}
+              {endTimeError ? (
+                <View style={styles.errorContainer}>
+                  <Text style={styles.errorText}>{endTimeError}</Text>
+                </View>
               ) : null}
 
               {/* Series Toggle */}
@@ -846,5 +943,14 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     opacity: 0.5,
+  },
+  errorContainer: {
+    marginBottom: 16,
+    paddingHorizontal: 4,
+  },
+  errorText: {
+    color: '#FF6B6B',
+    fontSize: 14,
+    fontWeight: '500',
   },
 });

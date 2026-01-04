@@ -54,6 +54,7 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
         title,
         activity_date,
         activity_time,
+        activity_end_time,
         location,
         category_id,
         is_external,
@@ -88,6 +89,7 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
         title: internalActivity.title,
         date: new Date(internalActivity.activity_date),
         time: internalActivity.activity_time,
+        endTime: internalActivity.activity_end_time,
         location: internalActivity.location || '',
         category: internalActivity.activity_categories ? {
           id: internalActivity.activity_categories.id,
@@ -147,7 +149,7 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
           location,
           start_date,
           start_time,
-          provider_calendar_id
+          end_time
         ),
         external_event_tasks (
           id,
@@ -171,6 +173,7 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
         title: localMeta.local_title_override || externalEvent.title,
         date: new Date(externalEvent.start_date),
         time: externalEvent.start_time,
+        endTime: externalEvent.end_time,
         location: externalEvent.location || '',
         category: localMeta.activity_categories ? {
           id: localMeta.activity_categories.id,
@@ -317,9 +320,11 @@ function ActivityDetailsContent({
   const [editLocation, setEditLocation] = useState(activity.location);
   const [editDate, setEditDate] = useState(activity.date);
   const [editTime, setEditTime] = useState(activity.time);
+  const [editEndTime, setEditEndTime] = useState(activity.endTime);
   const [editCategory, setEditCategory] = useState<ActivityCategory | null>(activity.category);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
   
   // Recurring event conversion state
   const [convertToRecurring, setConvertToRecurring] = useState(false);
@@ -331,12 +336,12 @@ function ActivityDetailsContent({
 
   // Scroll to bottom when picker is shown
   useEffect(() => {
-    if (showDatePicker || showTimePicker || showEndDatePicker) {
+    if (showDatePicker || showTimePicker || showEndTimePicker || showEndDatePicker) {
       setTimeout(() => {
         scrollViewRef.current?.scrollToEnd({ animated: true });
       }, 100);
     }
-  }, [showDatePicker, showTimePicker, showEndDatePicker]);
+  }, [showDatePicker, showTimePicker, showEndTimePicker, showEndDatePicker]);
 
   useEffect(() => {
     setTasksState(activity.tasks || []);
@@ -415,6 +420,7 @@ function ActivityDetailsContent({
           categoryId: editCategory?.id || activity.category.id,
           date: editDate,
           time: editTime,
+          endTime: editEndTime || undefined,
           isRecurring: true,
           recurrenceType,
           recurrenceDays: (recurrenceType === 'weekly' || recurrenceType === 'biweekly' || recurrenceType === 'triweekly') ? selectedDays : undefined,
@@ -431,6 +437,7 @@ function ActivityDetailsContent({
         
         await updateActivitySingle(activity.id, {
           categoryId: editCategory?.id,
+          endTime: editEndTime || undefined,
         });
 
         console.log('✅ External activity category updated');
@@ -445,6 +452,7 @@ function ActivityDetailsContent({
           location: editLocation,
           categoryId: editCategory?.id,
           time: editTime,
+          endTime: editEndTime || undefined,
         });
 
         Alert.alert('Gemt', 'Hele serien er blevet opdateret');
@@ -458,6 +466,7 @@ function ActivityDetailsContent({
           categoryId: editCategory?.id,
           date: editDate,
           time: editTime,
+          endTime: editEndTime || undefined,
         });
 
         Alert.alert('Gemt', 'Aktiviteten er blevet opdateret');
@@ -480,6 +489,7 @@ function ActivityDetailsContent({
     setEditLocation(activity.location);
     setEditDate(new Date(activity.date));
     setEditTime(activity.time);
+    setEditEndTime(activity.endTime);
     setEditCategory(activity.category);
     setConvertToRecurring(false);
     setIsEditing(false);
@@ -509,6 +519,24 @@ function ActivityDetailsContent({
     const value = event.target.value;
     if (value) {
       setEditTime(value);
+    }
+  };
+
+  const handleEndTimeChange = (event: any, selectedTime?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowEndTimePicker(false);
+    }
+    if (selectedTime) {
+      const hours = selectedTime.getHours().toString().padStart(2, '0');
+      const minutes = selectedTime.getMinutes().toString().padStart(2, '0');
+      setEditEndTime(`${hours}:${minutes}`);
+    }
+  };
+
+  const handleWebEndTimeChange = (event: any) => {
+    const value = event.target.value;
+    if (value) {
+      setEditEndTime(value);
     }
   };
 
@@ -1241,6 +1269,73 @@ function ActivityDetailsContent({
                   onChange={handleTimeChange}
                 />
               )}
+
+              <View style={styles.fieldContainer}>
+                <Text style={[styles.fieldLabel, { color: textColor }]}>Sluttidspunkt</Text>
+                {Platform.OS === 'web' ? (
+                  <input
+                    type="time"
+                    value={editEndTime ? editEndTime.substring(0, 5) : ''}
+                    onChange={handleWebEndTimeChange}
+                    style={{
+                      backgroundColor: bgColor,
+                      color: textColor,
+                      borderRadius: 12,
+                      padding: 16,
+                      fontSize: 17,
+                      border: 'none',
+                      width: '100%',
+                      fontFamily: 'inherit',
+                    }}
+                  />
+                ) : (
+                  <React.Fragment>
+                    <TouchableOpacity
+                      style={[styles.dateTimeButton, { backgroundColor: bgColor }]}
+                      onPress={() => setShowEndTimePicker(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.dateTimeText, { color: textColor }]}>
+                        {editEndTime ? editEndTime.substring(0, 5) : 'Vælg sluttidspunkt'}
+                      </Text>
+                      <IconSymbol
+                        ios_icon_name="clock.fill"
+                        android_material_icon_name="schedule"
+                        size={20}
+                        color={colors.primary}
+                      />
+                    </TouchableOpacity>
+                    {Platform.OS === 'ios' && showEndTimePicker && (
+                      <View style={[styles.pickerContainer, { backgroundColor: bgColor }]}>
+                        <DateTimePicker
+                          value={editEndTime ? new Date(`2000-01-01T${editEndTime}`) : new Date()}
+                          mode="time"
+                          display="spinner"
+                          onChange={handleEndTimeChange}
+                          textColor={textColor}
+                          style={styles.iosPicker}
+                        />
+                        <TouchableOpacity
+                          style={[styles.pickerDoneButton, { backgroundColor: colors.primary }]}
+                          onPress={() => setShowEndTimePicker(false)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.pickerDoneText}>Færdig</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </React.Fragment>
+                )}
+              </View>
+
+              {Platform.OS === 'android' && showEndTimePicker && (
+                <DateTimePicker
+                  value={editEndTime ? new Date(`2000-01-01T${editEndTime}`) : new Date()}
+                  mode="time"
+                  display="default"
+                  onChange={handleEndTimeChange}
+                />
+              )}
             </React.Fragment>
           ) : isEditing && activity.seriesId ? (
             <View style={styles.fieldContainer}>
@@ -1305,6 +1400,73 @@ function ActivityDetailsContent({
                   )}
                 </React.Fragment>
               )}
+
+              <View style={styles.fieldContainer}>
+                <Text style={[styles.fieldLabel, { color: textColor }]}>Sluttidspunkt</Text>
+                {Platform.OS === 'web' ? (
+                  <input
+                    type="time"
+                    value={editEndTime ? editEndTime.substring(0, 5) : ''}
+                    onChange={handleWebEndTimeChange}
+                    style={{
+                      backgroundColor: bgColor,
+                      color: textColor,
+                      borderRadius: 12,
+                      padding: 16,
+                      fontSize: 17,
+                      border: 'none',
+                      width: '100%',
+                      fontFamily: 'inherit',
+                    }}
+                  />
+                ) : (
+                  <React.Fragment>
+                    <TouchableOpacity
+                      style={[styles.dateTimeButton, { backgroundColor: bgColor }]}
+                      onPress={() => setShowEndTimePicker(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.dateTimeText, { color: textColor }]}>
+                        {editEndTime ? editEndTime.substring(0, 5) : 'Vælg sluttidspunkt'}
+                      </Text>
+                      <IconSymbol
+                        ios_icon_name="clock.fill"
+                        android_material_icon_name="schedule"
+                        size={20}
+                        color={colors.primary}
+                      />
+                    </TouchableOpacity>
+                    {Platform.OS === 'ios' && showEndTimePicker && (
+                      <View style={[styles.pickerContainer, { backgroundColor: bgColor }]}>
+                        <DateTimePicker
+                          value={editEndTime ? new Date(`2000-01-01T${editEndTime}`) : new Date()}
+                          mode="time"
+                          display="spinner"
+                          onChange={handleEndTimeChange}
+                          textColor={textColor}
+                          style={styles.iosPicker}
+                        />
+                        <TouchableOpacity
+                          style={[styles.pickerDoneButton, { backgroundColor: colors.primary }]}
+                          onPress={() => setShowEndTimePicker(false)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.pickerDoneText}>Færdig</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                    {Platform.OS === 'android' && showEndTimePicker && (
+                      <DateTimePicker
+                        value={editEndTime ? new Date(`2000-01-01T${editEndTime}`) : new Date()}
+                        mode="time"
+                        display="default"
+                        onChange={handleEndTimeChange}
+                      />
+                    )}
+                  </React.Fragment>
+                )}
+              </View>
+
               <Text style={[styles.infoNote, { color: textSecondaryColor }]}>
                 Dato kan ikke ændres for aktiviteter i en serie
               </Text>
@@ -1323,6 +1485,7 @@ function ActivityDetailsContent({
                 </Text>
                 <Text style={[styles.detailValue, { color: textColor }]}>
                   {formatDateTime(activity.date, activity.time)}
+                  {activity.endTime && ` - ${activity.endTime.substring(0, 5)}`}
                 </Text>
               </View>
             </View>
