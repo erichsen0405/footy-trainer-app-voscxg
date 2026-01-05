@@ -25,6 +25,16 @@ export interface UpdateTaskData {
   afterTrainingDelayMinutes?: number | null;
 }
 
+type SeriesFeedbackSummary = {
+  templateId?: string;
+  seriesCount?: number;
+  directActivityUpdates?: number;
+  seriesActivityUpdates?: number;
+  totalActivityUpdates?: number;
+  externalEventUpdates?: number;
+  dryRun?: boolean;
+};
+
 export const taskService = {
   /* ======================================================
      CREATE (P8 – autoriseret entry point)
@@ -122,6 +132,9 @@ export const taskService = {
       updateData.video_url = updates.videoUrl ?? null;
     }
 
+    const shouldSyncSeriesFeedback =
+      updates.afterTrainingEnabled !== undefined || updates.afterTrainingDelayMinutes !== undefined;
+
     if (updates.afterTrainingEnabled !== undefined) {
       updateData.after_training_enabled = updates.afterTrainingEnabled;
     }
@@ -167,6 +180,37 @@ export const taskService = {
         if (error) throw error;
       }
     }
+
+    if (shouldSyncSeriesFeedback) {
+      try {
+        const { data: syncSummary, error: syncError } = await supabase.rpc<SeriesFeedbackSummary>(
+          'update_all_tasks_from_template',
+          {
+            p_template_id: taskId,
+            p_dry_run: true,
+          }
+        );
+
+        if (syncError) {
+          console.error('[SERIES_FEEDBACK_SYNC] Summary RPC failed', {
+            templateId: taskId,
+            error: syncError.message,
+          });
+        } else if (syncSummary) {
+          console.log('[SERIES_FEEDBACK_SYNC]', {
+            templateId: syncSummary.templateId ?? taskId,
+            seriesCount: syncSummary.seriesCount ?? 0,
+            totalActivityUpdates: syncSummary.totalActivityUpdates ?? 0,
+            externalEventUpdates: syncSummary.externalEventUpdates ?? 0,
+            directActivityUpdates: syncSummary.directActivityUpdates ?? 0,
+            seriesActivityUpdates: syncSummary.seriesActivityUpdates ?? 0,
+            dryRun: true,
+          });
+        }
+      } catch (logError) {
+        console.error('[SERIES_FEEDBACK_SYNC] Unexpected logging failure', logError);
+      }
+    }
   },
 
   /* ======================================================
@@ -186,6 +230,27 @@ export const taskService = {
   },
 
   async deleteTask(taskId: string, userId: string, signal?: AbortSignal): Promise<void> {
+    const runCleanup = async () => {
+      try {
+        const { error } = await supabase.rpc('cleanup_tasks_for_template', {
+          p_user_id: userId,
+          p_template_id: taskId,
+        });
+
+        if (error) {
+          console.error('[taskService.deleteTask] cleanup RPC error', {
+            taskId,
+            userId,
+            message: error.message,
+          });
+        }
+      } catch (cleanupError) {
+        console.error('[taskService.deleteTask] cleanup RPC failed unexpectedly', cleanupError);
+      }
+    };
+
+    await runCleanup();
+
     // Try hard delete for owned tasks
     const { data: deleted, error: deleteError } = await supabase
       .from('task_templates')
@@ -200,7 +265,6 @@ export const taskService = {
     }
 
     if (deleted?.length) {
-      // Successfully hard deleted
       return;
     }
 
@@ -213,6 +277,7 @@ export const taskService = {
     if (insertError) {
       throw insertError;
     }
+
   },
 
   async deleteActivityTask(

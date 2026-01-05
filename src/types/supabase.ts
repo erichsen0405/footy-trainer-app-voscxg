@@ -1557,6 +1557,10 @@ export type Database = {
           trophy_type: string
         }[]
       }
+      cleanup_tasks_for_template: {
+        Args: { p_user_id: string; p_template_id: string }
+        Returns: undefined
+      }
       create_admin_player_relationship: {
         Args: { p_admin_id: string; p_player_id: string }
         Returns: undefined
@@ -1619,8 +1623,8 @@ export type Database = {
         Returns: undefined
       }
       update_all_tasks_from_template: {
-        Args: { p_template_id: string }
-        Returns: undefined
+        Args: { p_template_id: string; p_dry_run?: boolean }
+        Returns: Json
       }
       update_weekly_performance: {
         Args: { p_user_id: string; p_week_number: number; p_year: number }
@@ -1657,7 +1661,7 @@ export type Tables<
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
