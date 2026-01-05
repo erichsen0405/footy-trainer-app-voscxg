@@ -1558,7 +1558,11 @@ export type Database = {
         }[]
       }
       cleanup_tasks_for_template: {
-        Args: { p_user_id: string; p_template_id: string }
+        Args: {
+          p_user_id: string
+          p_template_id: string
+          p_template_title?: string | null
+        }
         Returns: undefined
       }
       create_admin_player_relationship: {

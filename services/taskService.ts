@@ -230,11 +230,36 @@ export const taskService = {
   },
 
   async deleteTask(taskId: string, userId: string, signal?: AbortSignal): Promise<void> {
+    let templateTitle: string | null = null;
+
+    try {
+      const { data: templateRow, error: templateLookupError } = await supabase
+        .from('task_templates')
+        .select('title')
+        .eq('id', taskId)
+        .eq('user_id', userId)
+        .abortSignal(signal)
+        .maybeSingle();
+
+      if (templateLookupError) {
+        console.error('[taskService.deleteTask] template lookup error', {
+          taskId,
+          userId,
+          message: templateLookupError.message,
+        });
+      } else {
+        templateTitle = templateRow?.title ?? null;
+      }
+    } catch (templateLookupUnexpected) {
+      console.error('[taskService.deleteTask] template lookup failed unexpectedly', templateLookupUnexpected);
+    }
+
     const runCleanup = async () => {
       try {
         const { error } = await supabase.rpc('cleanup_tasks_for_template', {
           p_user_id: userId,
           p_template_id: taskId,
+          p_template_title: templateTitle,
         });
 
         if (error) {
