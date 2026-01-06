@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
@@ -105,7 +104,7 @@ const TaskDetailsContent = React.memo(({
       )}
 
       {/* Reminder - read-only, hidden if missing */}
-      {task.reminder_minutes && (
+      {task.reminder_minutes !== null && task.reminder_minutes !== undefined && (
         <View style={styles.section}>
           <View style={styles.reminderContainer}>
             <IconSymbol

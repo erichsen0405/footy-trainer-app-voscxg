@@ -145,8 +145,8 @@ export default function ActivityCard({
     refreshData();
   }, [refreshData]);
 
-  const formatReminderTime = (reminderMinutes: number) => {
-    if (!reminderMinutes) return null;
+  const formatReminderTime = (reminderMinutes: number | null | undefined) => {
+    if (reminderMinutes === null || reminderMinutes === undefined) return null;
     if (reminderMinutes < 60) {
       return `${reminderMinutes}m`;
     }
@@ -300,7 +300,7 @@ export default function ActivityCard({
                             {task.title}
                           </Text>
                           
-                          {task.reminder_minutes && (
+                          {task.reminder_minutes !== null && task.reminder_minutes !== undefined && (
                             <View style={styles.reminderBadge}>
                               <IconSymbol
                                 ios_icon_name="bell.fill"

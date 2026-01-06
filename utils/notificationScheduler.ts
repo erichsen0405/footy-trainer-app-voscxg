@@ -172,13 +172,19 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
       for (const task of tasks) {
         const activity = (task as any).activities;
         if (!activity) continue;
-        
+
+        const reminderMinutes = Number(task.reminder_minutes);
+        if (!Number.isFinite(reminderMinutes)) {
+          console.log('⚠️ Skipping task with invalid reminder value:', task.id);
+          continue;
+        }
+
         const notificationTime = calculateNotificationTime(
           activity.activity_date,
           activity.activity_time,
-          task.reminder_minutes!
+          reminderMinutes
         );
-        
+
         if (notificationTime) {
           reminders.push({
             id: `${task.id}_${activity.id}`,
@@ -189,7 +195,7 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
             activityTitle: activity.title,
             activityDate: activity.activity_date,
             activityTime: activity.activity_time,
-            reminderMinutes: task.reminder_minutes!,
+            reminderMinutes,
             notificationTime,
             kind: 'task-reminder',
           });

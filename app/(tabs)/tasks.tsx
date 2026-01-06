@@ -52,6 +52,12 @@ const colors: any =
 const createLocalId = () =>
   `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
+const normalizeReminderValue = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
 // Local helper function to validate video URLs
 function isValidVideoUrl(url?: string | null): boolean {
   if (!url) return false;
@@ -371,7 +377,7 @@ export default function TasksScreen() {
   const scheme = useColorScheme();
   const isDark = scheme === 'dark';
 
-  const AFTER_TRAINING_DELAY_OPTIONS: Array<{ label: string; value: number }> = [
+  const REMINDER_DELAY_OPTIONS: Array<{ label: string; value: number }> = [
     { label: '0', value: 0 },
     { label: '15', value: 15 },
     { label: '30', value: 30 },
@@ -436,7 +442,11 @@ export default function TasksScreen() {
   }, []);
 
   const openTaskModal = useCallback(async (task: Task | null, creating: boolean = false) => {
-    setSelectedTask(task);
+    const normalizedTask = task
+      ? ({ ...(task as any), reminder: normalizeReminderValue((task as any).reminder) } as Task)
+      : task;
+
+    setSelectedTask(normalizedTask);
     setIsCreating(creating);
     setIsSaving(false);
     setVideoUrl(String((task as any)?.videoUrl ?? ''));
@@ -477,6 +487,7 @@ export default function TasksScreen() {
   const executeSaveTask = useCallback(async () => {
     if (!selectedTask) return;
 
+    const normalizedReminder = normalizeReminderValue((selectedTask as any).reminder);
     setIsSaving(true);
 
     try {
@@ -495,7 +506,7 @@ export default function TasksScreen() {
           title: String((selectedTask as any).title ?? ''),
           description: String((selectedTask as any).description ?? ''),
           categoryIds,
-          reminder: (selectedTask as any).reminder,
+          reminder: normalizedReminder,
           videoUrl: videoUrl.trim() ? videoUrl.trim() : null,
           afterTrainingEnabled: !!selectedTask.afterTrainingEnabled,
           afterTrainingDelayMinutes: selectedTask.afterTrainingEnabled ? (selectedTask.afterTrainingDelayMinutes ?? 0) : null,
@@ -509,6 +520,7 @@ export default function TasksScreen() {
 
         const taskToSave = {
           ...selectedTask,
+          reminder: normalizedReminder,
           videoUrl: videoUrl.trim() ? videoUrl.trim() : null,
           categoryIds,
           afterTrainingEnabled: selectedTask.afterTrainingEnabled ?? false,
@@ -661,6 +673,23 @@ export default function TasksScreen() {
         afterTrainingEnabled: true,
         afterTrainingDelayMinutes: existingDelay ?? 0,
       };
+    });
+  }, []);
+
+  const reminderEnabled =
+    !!selectedTask && (selectedTask as any).reminder !== null && (selectedTask as any).reminder !== undefined;
+
+  const handleReminderToggle = useCallback((value: boolean) => {
+    setSelectedTask(prev => {
+      if (!prev) return prev;
+      if (!value) {
+        return { ...(prev as any), reminder: null } as Task;
+      }
+
+      const current = normalizeReminderValue((prev as any).reminder);
+      const fallback = REMINDER_DELAY_OPTIONS[1]?.value ?? REMINDER_DELAY_OPTIONS[0]?.value ?? 0;
+
+      return { ...(prev as any), reminder: current ?? fallback } as Task;
     });
   }, []);
 
@@ -939,74 +968,139 @@ export default function TasksScreen() {
                     ))}
                   </View>
 
-                  <Text style={[styles.label, { color: textColor }]}>Påmindelse (minutter før)</Text>
-                  <TextInput
-                    style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
-                    value={String((selectedTask as any)?.reminder ?? '')}
-                    onChangeText={(text) =>
-                      setSelectedTask(
-                        selectedTask
-                          ? ({ ...(selectedTask as any), reminder: text.trim() ? Number.parseInt(text, 10) || undefined : undefined } as any)
-                          : null,
-                      )
-                    }
-                    placeholder="15"
-                    placeholderTextColor={textSecondaryColor}
-                    keyboardType="numeric"
-                    editable={!isSaving}
-                  />
-                  <View style={[styles.toggleCard, { backgroundColor: bgColor }]}>
-                    <View style={styles.toggleTextWrapper}>
-                      <Text style={[styles.toggleLabel, { color: textColor }]}>Opret efter-træning feedback</Text>
-                      <Text style={[styles.toggleHelperText, { color: textSecondaryColor }]}>
-                        Når denne skabelon bruges på en aktivitet, oprettes automatisk en efter-træning feedback-opgave til aktiviteten.
-                      </Text>
+                  <View
+                    style={[
+                      styles.reminderSectionCard,
+                      {
+                        backgroundColor: bgColor,
+                        borderColor: isDark ? '#333' : '#dfe5f2',
+                      },
+                    ]}
+                  >
+                    <View style={styles.reminderSectionHeader}>
+                      <View style={styles.toggleTextWrapper}>
+                        <Text style={[styles.toggleLabel, { color: textColor }]}>Påmindelse før start</Text>
+                        <Text style={[styles.toggleHelperText, { color: textSecondaryColor }]}>
+                          Slå til for at vise en påmindelse inden aktiviteten starter.
+                        </Text>
+                      </View>
+                      <Switch
+                        value={reminderEnabled}
+                        onValueChange={handleReminderToggle}
+                        trackColor={{ false: isDark ? '#555' : '#d0d7e3', true: colors.primary }}
+                        thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
+                        ios_backgroundColor={isDark ? '#555' : '#d0d7e3'}
+                        disabled={isSaving}
+                      />
                     </View>
-                    <Switch
-                      value={!!(selectedTask as any)?.afterTrainingEnabled}
-                      onValueChange={handleAfterTrainingToggle}
-                      trackColor={{ false: isDark ? '#555' : '#d0d7e3', true: colors.primary }}
-                      thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
-                      ios_backgroundColor={isDark ? '#555' : '#d0d7e3'}
-                      disabled={isSaving}
-                    />
+
+                    {reminderEnabled && (
+                      <View style={styles.reminderSectionBody}>
+                        <Text style={[styles.label, { color: textColor }]}>Minutter før start</Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                          {REMINDER_DELAY_OPTIONS.map(option => {
+                            const current = normalizeReminderValue((selectedTask as any)?.reminder);
+                            const selected = current === option.value;
+
+                            return (
+                              <TouchableOpacity
+                                key={`before-delay-${option.value}`}
+                                style={{
+                                  paddingVertical: 8,
+                                  paddingHorizontal: 12,
+                                  borderRadius: 10,
+                                  backgroundColor: selected ? colors.primary : bgColor,
+                                  borderWidth: 1,
+                                  borderColor: selected ? colors.primary : (isDark ? '#444' : '#d0d7e3'),
+                                  opacity: isSaving ? 0.6 : 1,
+                                }}
+                                onPress={() =>
+                                  setSelectedTask(prev =>
+                                    prev ? ({ ...(prev as any), reminder: option.value } as Task) : prev
+                                  )
+                                }
+                                disabled={isSaving}
+                              >
+                                <Text style={{ color: selected ? '#fff' : textColor, fontWeight: selected ? '700' : '600' }}>
+                                  {option.label}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                        <Text style={[styles.helperText, { color: textSecondaryColor, marginTop: 6 }]}>
+                          0 = på starttidspunktet. Påmindelsen vises før aktivitetens starttid.
+                        </Text>
+                      </View>
+                    )}
                   </View>
 
-                  {!!selectedTask?.afterTrainingEnabled && (
-                    <View style={{ marginTop: 10 }}>
-                      <Text style={[styles.label, { color: textColor }]}>Påmindelse efter slut (minutter)</Text>
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-                        {AFTER_TRAINING_DELAY_OPTIONS.map((option) => {
-                          const current = selectedTask.afterTrainingDelayMinutes ?? 0;
-                          const selected = current === option.value;
+                  <View style={styles.reminderSectionSpacing} />
 
-                          return (
-                            <TouchableOpacity
-                              key={String(option.value)}
-                              style={{
-                                paddingVertical: 8,
-                                paddingHorizontal: 12,
-                                borderRadius: 10,
-                                backgroundColor: selected ? colors.primary : bgColor,
-                                borderWidth: 1,
-                                borderColor: selected ? colors.primary : (isDark ? '#444' : '#d0d7e3'),
-                                opacity: isSaving ? 0.6 : 1,
-                              }}
-                              onPress={() =>
-                                setSelectedTask(prev => (prev ? ({ ...prev, afterTrainingDelayMinutes: option.value } as Task) : prev))
-                              }
-                              disabled={isSaving}
-                            >
-                              <Text style={{ color: selected ? '#fff' : textColor, fontWeight: selected ? '700' : '600' }}>
-                                {option.label}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
+                  <View
+                    style={[
+                      styles.reminderSectionCard,
+                      {
+                        backgroundColor: bgColor,
+                        borderColor: isDark ? '#333' : '#dfe5f2',
+                      },
+                    ]}
+                  >
+                    <View style={styles.reminderSectionHeader}>
+                      <View style={styles.toggleTextWrapper}>
+                        <Text style={[styles.toggleLabel, { color: textColor }]}>Opret efter-træning feedback</Text>
+                        <Text style={[styles.toggleHelperText, { color: textSecondaryColor }]} >
+                          Når denne skabelon bruges på en aktivitet, oprettes automatisk en efter-træning feedback-opgave til aktiviteten.
+                        </Text>
                       </View>
-                      <Text style={[styles.helperText, { color: textSecondaryColor, marginTop: 6 }]}>Vises efter aktivitetens sluttidspunkt + valgt delay.</Text>
+                      <Switch
+                        value={!!(selectedTask as any)?.afterTrainingEnabled}
+                        onValueChange={handleAfterTrainingToggle}
+                        trackColor={{ false: isDark ? '#555' : '#d0d7e3', true: colors.primary }}
+                        thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
+                        ios_backgroundColor={isDark ? '#555' : '#d0d7e3'}
+                        disabled={isSaving}
+                      />
                     </View>
-                  )}
+
+                    {!!selectedTask?.afterTrainingEnabled && (
+                      <View style={styles.reminderSectionBody}>
+                        <Text style={[styles.label, { color: textColor }]}>Påmindelse efter slut (minutter)</Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                          {REMINDER_DELAY_OPTIONS.map(option => {
+                            const current = selectedTask.afterTrainingDelayMinutes ?? 0;
+                            const selected = current === option.value;
+
+                            return (
+                              <TouchableOpacity
+                                key={`after-delay-${option.value}`}
+                                style={{
+                                  paddingVertical: 8,
+                                  paddingHorizontal: 12,
+                                  borderRadius: 10,
+                                  backgroundColor: selected ? colors.primary : bgColor,
+                                  borderWidth: 1,
+                                  borderColor: selected ? colors.primary : (isDark ? '#444' : '#d0d7e3'),
+                                  opacity: isSaving ? 0.6 : 1,
+                                }}
+                                onPress={() =>
+                                  setSelectedTask(prev => (prev ? ({ ...prev, afterTrainingDelayMinutes: option.value } as Task) : prev))
+                                }
+                                disabled={isSaving}
+                              >
+                                <Text style={{ color: selected ? '#fff' : textColor, fontWeight: selected ? '700' : '600' }}>
+                                  {option.label}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                        <Text style={[styles.helperText, { color: textSecondaryColor, marginTop: 6 }]}>
+                          Vises efter aktivitetens sluttidspunkt + valgt delay.
+                        </Text>
+                      </View>
+                    )}
+                  </View>
 
                   <Text style={[styles.label, { color: textColor }]}>Aktivitetskategorier</Text>
                   <View style={styles.categoriesGrid}>
@@ -1176,4 +1270,22 @@ const styles = StyleSheet.create({
   cancelButton: { borderWidth: 1, borderColor: colors.highlight },
   saveButton: {},
   modalButtonText: { fontSize: 16, fontWeight: '600' },
+
+  reminderSectionCard: {
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  reminderSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  reminderSectionBody: {
+    marginTop: 16,
+  },
+  reminderSectionSpacing: {
+    height: 12,
+  },
 });

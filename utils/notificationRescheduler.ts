@@ -1,4 +1,3 @@
-
 import { Activity } from '@/types';
 import { scheduleTaskReminder, checkNotificationPermissions, getAllScheduledNotifications, cancelAllNotifications } from './notificationService';
 
@@ -36,9 +35,19 @@ export async function rescheduleAllNotifications(activities: Activity[]): Promis
     console.log(`  Tasks count: ${activity.tasks.length}`);
     
     for (const task of activity.tasks) {
-      if (task.reminder && !task.completed) {
+      const reminderValue = (task as any)?.reminder;
+      const hasReminder = reminderValue !== null && reminderValue !== undefined;
+
+      if (hasReminder && !task.completed) {
         totalTasksWithReminders++;
-        console.log(`  📝 Task "${task.title}" has reminder: ${task.reminder} minutes`);
+        const reminderMinutes = Number(reminderValue);
+
+        if (!Number.isFinite(reminderMinutes)) {
+          console.log(`  ⚠️ Invalid reminder for task "${task.title}", skipping`);
+          continue;
+        }
+
+        console.log(`  📝 Task "${task.title}" has reminder: ${reminderMinutes} minutes`);
         console.log(`     Task ID: ${task.id}`);
         console.log(`     Task completed: ${task.completed}`);
         
@@ -48,9 +57,9 @@ export async function rescheduleAllNotifications(activities: Activity[]): Promis
           const identifier = await scheduleTaskReminder(
             task.title,
             activity.title,
-            activity.date, // Pass as-is
+            activity.date,
             activity.time,
-            task.reminder,
+            reminderMinutes,
             task.id,
             activity.id
           );
