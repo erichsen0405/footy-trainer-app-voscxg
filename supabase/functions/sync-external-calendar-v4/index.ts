@@ -532,17 +532,63 @@ serve(async (req) => {
       .select('external_category, internal_category_id')
       .eq('user_id', user.id);
 
+    const categoriesList = ((userCategories || []) as ActivityCategoryRow[]).slice();
+    const hadAnyCategories = categoriesList.length > 0;
     const unknownCategoryId = await ensureUnknownCategory(supabaseClient, user.id);
 
+    if (!categoriesList.some((category) => category.id === unknownCategoryId)) {
+      categoriesList.push({
+        id: unknownCategoryId,
+        name: 'Ukendt',
+        color: '#9E9E9E',
+        emoji: '❓',
+        user_id: user.id,
+        is_system: false,
+      });
+    }
+
+    const unknownCategoryIds = new Set(
+      categoriesList
+        .filter((category) => (category.name || '').toLowerCase().trim() === 'ukendt')
+        .map((category) => category.id)
+    );
+    unknownCategoryIds.add(unknownCategoryId);
+
+    let missingCategoryWarningLogged = false;
+    const warnMissingCategories = () => {
+      if (!missingCategoryWarningLogged) {
+        console.warn(
+          `⚠️ No categories loaded for user ${user.id}. Falling back to 'Ukendt' for this sync run.`
+        );
+        missingCategoryWarningLogged = true;
+      }
+    };
+
     const determineCategoryId = (eventSummary: string, externalCategories?: string[]) => {
+      if (categoriesList.length === 0) {
+        warnMissingCategories();
+        return unknownCategoryId;
+      }
+
       const resolution = resolveActivityCategory({
         title: eventSummary,
-        categories: (userCategories || []) as ActivityCategoryRow[],
+        categories: categoriesList,
         externalCategories,
         categoryMappings: (categoryMappings || []) as CategoryMappingRecord[],
       });
 
       return resolution?.category.id ?? unknownCategoryId;
+    };
+
+    if (!hadAnyCategories) {
+      warnMissingCategories();
+    }
+
+    const isUnknownCategory = (categoryId?: string | null) => {
+      if (!categoryId) {
+        return true;
+      }
+      return unknownCategoryIds.has(categoryId);
     };
 
     // Fetch existing external events for this calendar
@@ -580,6 +626,10 @@ serve(async (req) => {
     let eventsImmediatelyDeleted = 0;
     let metadataCreated = 0;
     let metadataPreserved = 0;
+    let metadataAlreadyResolved = 0;
+    let metadataAutoUpdated = 0;
+    let metadataBackfilled = 0;
+    let metadataCreatedDuringBackfill = 0;
     let eventsFailed = 0;
     const failedEvents: Array<{ title: string; error: string }> = [];
 
@@ -716,11 +766,13 @@ serve(async (req) => {
           if (existingMeta.manually_set_category) {
             metadataPreserved++;
             console.log(`   🔒 Category preserved (manually set)`);
+          } else if (!isUnknownCategory(existingMeta.category_id)) {
+            metadataAlreadyResolved++;
+            console.log(`   ✅ Category already resolved, skipping auto-update`);
           } else {
-            // Auto-update category
             const newCategoryId = determineCategoryId(event.summary, event.categories);
-            
-            if (newCategoryId !== existingMeta.category_id) {
+
+            if (newCategoryId && newCategoryId !== existingMeta.category_id) {
               await supabaseClient
                 .from('events_local_meta')
                 .update({
@@ -728,8 +780,9 @@ serve(async (req) => {
                   updated_at: new Date().toISOString(),
                 })
                 .eq('id', existingMeta.id);
-              
-              console.log(`   🎯 Category auto-updated`);
+
+              metadataAutoUpdated++;
+              console.log(`   🎯 Category auto-backfilled`);
             }
           }
         } else {
@@ -901,6 +954,122 @@ serve(async (req) => {
       }
     }
 
+    console.log('\n🔍 Auditing metadata for missing or unknown categories...');
+    const { data: activeEvents, error: activeEventsError } = await supabaseClient
+      .from('events_external')
+      .select('id, title, raw_payload')
+      .eq('provider_calendar_id', calendarId)
+      .eq('deleted', false);
+
+    if (activeEventsError) {
+      console.error('   ❌ Failed to load active events for category audit:', activeEventsError);
+    } else if (!activeEvents || activeEvents.length === 0) {
+      console.log('   ℹ️ No active events to audit for categories.');
+    } else {
+      const activeEventIds = activeEvents.map((event) => event.id);
+      const { data: metaRows, error: metaRowsError } = await supabaseClient
+        .from('events_local_meta')
+        .select('id, external_event_id, category_id, manually_set_category')
+        .eq('user_id', user.id)
+        .in('external_event_id', activeEventIds);
+
+      if (metaRowsError) {
+        console.error('   ❌ Failed to load metadata for category audit:', metaRowsError);
+      } else {
+        const metaList = metaRows || [];
+        const eventsById = new Map(activeEvents.map((event) => [event.id, event]));
+        const nowIso = new Date().toISOString();
+
+        const metaUpdates: Array<{ id: string; category_id: string; updated_at: string }> = [];
+        metaList.forEach((meta) => {
+          if (meta.manually_set_category || !isUnknownCategory(meta.category_id)) {
+            return;
+          }
+
+          const relatedEvent = eventsById.get(meta.external_event_id);
+          if (!relatedEvent) {
+            return;
+          }
+
+          const providerCategories = Array.isArray(relatedEvent.raw_payload?.categories)
+            ? relatedEvent.raw_payload.categories.filter(
+                (category: unknown): category is string =>
+                  typeof category === 'string' && category.trim().length > 0
+              )
+            : undefined;
+
+          const resolvedCategoryId = determineCategoryId(
+            relatedEvent.title,
+            providerCategories
+          );
+
+          if (resolvedCategoryId && resolvedCategoryId !== meta.category_id) {
+            metaUpdates.push({
+              id: meta.id,
+              category_id: resolvedCategoryId,
+              updated_at: nowIso,
+            });
+          }
+        });
+
+        if (metaUpdates.length > 0) {
+          const { error: backfillError } = await supabaseClient
+            .from('events_local_meta')
+            .upsert(metaUpdates);
+
+          if (backfillError) {
+            console.error('   ❌ Failed to backfill metadata categories:', backfillError);
+          } else {
+            metadataBackfilled += metaUpdates.length;
+            console.log(
+              `   ✅ Backfilled categories for ${metaUpdates.length} metadata entr${
+                metaUpdates.length === 1 ? 'y' : 'ies'
+              }.`
+            );
+          }
+        } else {
+          console.log('   ℹ️ No metadata rows required category backfill.');
+        }
+
+        const metaByEventId = new Map(metaList.map((meta) => [meta.external_event_id, meta]));
+        const missingMetaInserts = activeEvents
+          .filter((event) => !metaByEventId.has(event.id))
+          .map((event) => {
+            const providerCategories = Array.isArray(event.raw_payload?.categories)
+              ? event.raw_payload.categories.filter(
+                  (category: unknown): category is string =>
+                    typeof category === 'string' && category.trim().length > 0
+                )
+              : undefined;
+
+            return {
+              external_event_id: event.id,
+              user_id: user.id,
+              category_id: determineCategoryId(event.title, providerCategories),
+              manually_set_category: false,
+            };
+          });
+
+        if (missingMetaInserts.length > 0) {
+          const { error: missingMetaError } = await supabaseClient
+            .from('events_local_meta')
+            .insert(missingMetaInserts);
+
+          if (missingMetaError) {
+            console.error('   ❌ Failed to create missing metadata rows:', missingMetaError);
+          } else {
+            metadataCreated += missingMetaInserts.length;
+            metadataCreatedDuringBackfill += missingMetaInserts.length;
+            console.log(
+              `   ✅ Created ${missingMetaInserts.length} missing metadata entr${
+                missingMetaInserts.length === 1 ? 'y' : 'ies'
+              }.`
+            );
+          }
+        }
+      }
+    }
+
     console.log('\n📊 ========== SYNC SUMMARY (computeSyncOps v4) ==========');
     console.log(`   📥 Total events in iCal feed: ${events.length}`);
     console.log(`   ➕ NEW external events created: ${eventsCreated}`);
@@ -910,6 +1079,10 @@ serve(async (req) => {
     console.log(`   ❌ Events immediately deleted (cancelled): ${eventsImmediatelyDeleted}`);
     console.log(`   ➕ NEW local metadata created: ${metadataCreated}`);
     console.log(`   🔒 Local metadata preserved (manually set): ${metadataPreserved}`);
+    console.log(`   ✅ Metadata already resolved (skipped): ${metadataAlreadyResolved}`);
+    console.log(`   🎯 Metadata auto-updated during sync: ${metadataAutoUpdated}`);
+    console.log(`   ♻️ Metadata backfilled post-sync: ${metadataBackfilled}`);
+    console.log(`   ➕ Metadata created during backfill: ${metadataCreatedDuringBackfill}`);
     console.log(`   ❌ Events FAILED to process: ${eventsFailed}`);
     
     if (failedEvents.length > 0) {
@@ -947,9 +1120,13 @@ serve(async (req) => {
         eventsImmediatelyDeleted,
         metadataCreated,
         metadataPreserved,
+        metadataAlreadyResolved,
+        metadataAutoUpdated,
+        metadataBackfilled,
+        metadataCreatedDuringBackfill,
         eventsFailed,
         failedEvents: failedEvents.length > 0 ? failedEvents : undefined,
-        message: `Successfully synced ${events.length} events using computeSyncOps. ${eventsCreated} created, ${eventsUpdated} updated, ${eventsRestored} restored, ${eventsSoftDeleted} soft-deleted, ${eventsImmediatelyDeleted} immediately deleted (cancelled). ${metadataPreserved} manually set categories preserved.${eventsFailed > 0 ? ` WARNING: ${eventsFailed} events failed to process.` : ''}`,
+        message: `Successfully synced ${events.length} events using computeSyncOps. ${eventsCreated} created, ${eventsUpdated} updated, ${eventsRestored} restored, ${eventsSoftDeleted} soft-deleted, ${eventsImmediatelyDeleted} immediately deleted (cancelled). ${metadataPreserved} manually set categories preserved, ${metadataAutoUpdated} categories auto-backfilled during sync, ${metadataBackfilled} categories backfilled post-sync.${eventsFailed > 0 ? ` WARNING: ${eventsFailed} events failed to process.` : ''}`,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
