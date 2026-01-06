@@ -28,6 +28,7 @@ import { TaskDescriptionRenderer } from '@/components/TaskDescriptionRenderer';
 import { supabase } from '@/app/integrations/supabase/client';
 import { FeedbackTaskModal } from '@/components/FeedbackTaskModal';
 import { fetchSelfFeedbackForTemplates, upsertSelfFeedback } from '@/services/feedbackService';
+import { taskService } from '@/services/taskService';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { getCategories } from '@/services/activities';
 import { resolveActivityCategory, type CategoryMappingRecord } from '@/shared/activityCategoryResolver';
@@ -977,6 +978,21 @@ function ActivityDetailsContent({
           },
         }));
 
+        if (feedbackModalTask?.task?.id) {
+          const feedbackTaskId = feedbackModalTask.task.id;
+
+          try {
+            await taskService.setTaskCompletion(feedbackTaskId, true);
+            setTasksState(prev =>
+              prev.map(task =>
+                task.id === feedbackTaskId ? { ...task, completed: true } : task
+              )
+            );
+          } catch (completeError) {
+            console.warn('[Feedback] Failed to mark task completed', completeError);
+          }
+        }
+
         setFeedbackModalTask(null);
       } catch (error: any) {
         console.error('❌ Error saving self feedback:', error);
@@ -1003,10 +1019,10 @@ function ActivityDetailsContent({
   const renderTaskItem = useCallback(
     ({ item }: { item: Task }) => {
       const isFeedbackTask = item.isFeedbackTask && !!item.feedbackTemplateId;
+      const isFeedbackCompleted = isFeedbackTask && !!item.completed;
       const templateKey = item.feedbackTemplateId || item.taskTemplateId || null;
       const templateSummary = templateKey ? selfFeedbackByTemplate[templateKey] : undefined;
       const currentFeedback = templateSummary?.current;
-
       const helperText = currentFeedback
         ? `Seneste svar: ${currentFeedback.rating ? `${currentFeedback.rating}/10` : 'Ingen rating'}${currentFeedback.note ? ` – ${currentFeedback.note}` : ''}`
         : 'Tryk for at give feedback';
@@ -1027,41 +1043,35 @@ function ActivityDetailsContent({
                 styles.taskCheckbox,
                 item.completed && !isFeedbackTask && { backgroundColor: colors.success, borderColor: colors.success },
                 isFeedbackTask && styles.feedbackTaskCheckbox,
+                isFeedbackCompleted && { backgroundColor: colors.success, borderColor: colors.success },
               ]}
             >
-              {item.completed && !isFeedbackTask && (
-                <IconSymbol
-                  ios_icon_name="checkmark"
-                  android_material_icon_name="check"
-                  size={16}
-                  color="#fff"
-                />
+              {!isFeedbackTask && item.completed && (
+                <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
               )}
-              {isFeedbackTask && (
-                <IconSymbol
-                  ios_icon_name="bubble.left"
-                  android_material_icon_name="chat"
-                  size={16}
-                  color={colors.primary}
-                />
-              )}
+              {isFeedbackTask &&
+                (isFeedbackCompleted ? (
+                  <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
+                ) : (
+                  <IconSymbol ios_icon_name="bubble.left" android_material_icon_name="chat" size={16} color={colors.primary} />
+                ))}
             </View>
+
             <View style={styles.taskContent}>
               <Text
                 style={[
                   styles.taskTitle,
                   { color: textColor },
-                  item.completed && !isFeedbackTask && styles.taskCompleted,
+                  item.completed && styles.taskCompleted,
                 ]}
               >
                 {item.title}
               </Text>
+
               {!isFeedbackTask && item.description && (
-                <TaskDescriptionRenderer
-                  description={item.description}
-                  textColor={textSecondaryColor}
-                />
+                <TaskDescriptionRenderer description={item.description} textColor={textSecondaryColor} />
               )}
+
               {isFeedbackTask && (
                 <Text style={[styles.feedbackHelperText, { color: textSecondaryColor }]}>
                   {helperText}
@@ -1072,10 +1082,7 @@ function ActivityDetailsContent({
 
           {isAdmin && !isFeedbackTask && (
             <TouchableOpacity
-              style={[
-                styles.taskDeleteButton,
-                { backgroundColor: isDark ? '#3a1a1a' : '#ffe5e5' }
-              ]}
+              style={[styles.taskDeleteButton, { backgroundColor: isDark ? '#3a1a1a' : '#ffe5e5' }]}
               onPress={() => handleDeleteTask(item.id)}
               activeOpacity={0.7}
               disabled={deletingTaskId === item.id}
@@ -1083,27 +1090,15 @@ function ActivityDetailsContent({
               {deletingTaskId === item.id ? (
                 <ActivityIndicator size="small" color={colors.error} />
               ) : (
-                <IconSymbol
-                  ios_icon_name="trash"
-                  android_material_icon_name="delete"
-                  size={22}
-                  color={colors.error}
-                />
+                <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={22} color={colors.error} />
               )}
             </TouchableOpacity>
           )}
         </TouchableOpacity>
       );
-    }, [
-    deletingTaskId,
-    handleDeleteTask,
-    handleTaskRowPress,
-    isAdmin,
-    isDark,
-    selfFeedbackByTemplate,
-    textColor,
-    textSecondaryColor,
-  ]);
+    },
+    [deletingTaskId, handleDeleteTask, handleTaskRowPress, isAdmin, isDark, selfFeedbackByTemplate, textColor, textSecondaryColor]
+  );
 
   const taskKeyExtractor = useCallback((item: Task) => String(item.id), []);
 
@@ -1430,24 +1425,6 @@ function ActivityDetailsContent({
                 )}
               </View>
 
-              {Platform.OS === 'android' && showDatePicker && (
-                <DateTimePicker
-                  value={editDate}
-                  mode="date"
-                  display="default"
-                  onChange={handleDateChange}
-                />
-              )}
-
-              {Platform.OS === 'android' && showTimePicker && (
-                <DateTimePicker
-                  value={new Date(`2000-01-01T${editTime}`)}
-                  mode="time"
-                  display="default"
-                  onChange={handleTimeChange}
-                />
-              )}
-
               <View style={styles.fieldContainer}>
                 <Text style={[styles.fieldLabel, { color: textColor }]}>Sluttidspunkt</Text>
                 {Platform.OS === 'web' ? (
@@ -1505,6 +1482,24 @@ function ActivityDetailsContent({
                   </React.Fragment>
                 )}
               </View>
+
+              {Platform.OS === 'android' && showDatePicker && (
+                <DateTimePicker
+                  value={editDate}
+                  mode="date"
+                  display="default"
+                  onChange={handleDateChange}
+                />
+              )}
+
+              {Platform.OS === 'android' && showTimePicker && (
+                <DateTimePicker
+                  value={new Date(`2000-01-01T${editTime}`)}
+                  mode="time"
+                  display="default"
+                  onChange={handleTimeChange}
+                />
+              )}
 
               {Platform.OS === 'android' && showEndTimePicker && (
                 <DateTimePicker
@@ -2198,11 +2193,13 @@ export default function ActivityDetailsScreen() {
     });
   }, []);
 
+ 
   // Fetch activity after mount
   useEffect(() => {
     if (!hasPainted) return;
 
     let isMounted = true;
+
 
     async function loadActivity() {
       if (!id) {

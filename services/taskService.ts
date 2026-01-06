@@ -337,7 +337,7 @@ export const taskService = {
 
   async toggleTaskCompletion(taskId: string, signal?: AbortSignal): Promise<TaskCompletionEvent> {
     const nowIso = new Date().toISOString();
-    const lookups: Array<{ table: 'activity_tasks' | 'external_event_tasks'; activityColumn: 'activity_id' | 'local_meta_id'; }> = [
+    const lookups: Array<{ table: 'activity_tasks' | 'external_event_tasks'; activityColumn: 'activity_id' | 'local_meta_id' }> = [
       { table: 'activity_tasks', activityColumn: 'activity_id' },
       { table: 'external_event_tasks', activityColumn: 'local_meta_id' },
     ];
@@ -384,6 +384,45 @@ export const taskService = {
         completed: nextCompleted,
       };
 
+      emitTaskCompletionEvent(event);
+      return event;
+    }
+
+    throw new Error('Task not found in activity or external task tables');
+  },
+
+  async setTaskCompletion(taskId: string, completed: boolean, signal?: AbortSignal): Promise<TaskCompletionEvent> {
+    const nowIso = new Date().toISOString();
+    const lookups: Array<{ table: 'activity_tasks' | 'external_event_tasks'; activityColumn: 'activity_id' | 'local_meta_id' }> = [
+      { table: 'activity_tasks', activityColumn: 'activity_id' },
+      { table: 'external_event_tasks', activityColumn: 'local_meta_id' },
+    ];
+
+    for (const lookup of lookups) {
+      const { data, error } = await supabase
+        .from(lookup.table)
+        .select(`id, completed, ${lookup.activityColumn}`)
+        .eq('id', taskId)
+        .abortSignal(signal)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!data) continue;
+
+      const activityId = (data as any)?.[lookup.activityColumn];
+      if (!activityId) throw new Error('Task missing activity reference');
+
+      if ((data as any).completed !== completed) {
+        const { error: updateError } = await supabase
+          .from(lookup.table)
+          .update({ completed, updated_at: nowIso })
+          .eq('id', taskId)
+          .abortSignal(signal);
+
+        if (updateError) throw updateError;
+      }
+
+      const event: TaskCompletionEvent = { activityId, taskId, completed };
       emitTaskCompletionEvent(event);
       return event;
     }
