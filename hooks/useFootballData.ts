@@ -44,21 +44,19 @@ export const useFootballData = () => {
 
   const getCurrentUserId = useCallback(async () => {
     const {
-      data: { user },
+      data: { session },
       error,
-    } = await supabase.auth.getUser();
+    } = await supabase.auth.getSession();
 
-    if (error || !user) {
+    if (error || !session?.user?.id) {
       throw new Error('User not authenticated');
     }
 
-    return user.id;
+    return session.user.id;
   }, []);
 
   const fetchCategories = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-
       const { data: allCategories, error: catError } = await supabase
         .from('activity_categories')
         .select('*');
@@ -69,8 +67,19 @@ export const useFootballData = () => {
         return;
       }
 
-      // If not authenticated, show all categories (no hard throw)
-      if (!user?.id) {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        console.error('[fetchCategories] session lookup failed:', sessionError);
+        setCategories(allCategories || []);
+        return;
+      }
+
+      const userId = session?.user?.id;
+      if (!userId) {
         setCategories(allCategories || []);
         return;
       }
@@ -78,10 +87,9 @@ export const useFootballData = () => {
       const { data: hiddenRows, error: hiddenError } = await supabase
         .from('hidden_activity_categories')
         .select('category_id')
-        .eq('user_id', user.id);
+        .eq('user_id', userId);
 
       if (hiddenError) {
-        // Fail-soft: show all categories if hidden table fails
         console.error('[fetchCategories] Failed to filter hidden categories:', hiddenError);
         setCategories(allCategories || []);
         return;
@@ -99,16 +107,25 @@ export const useFootballData = () => {
   // ✅ Dedicated categories refresher (UI can call this after create/edit category)
   const refreshCategories = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-
       const { data: allCategories, error: catError } = await supabase
         .from('activity_categories')
         .select('*');
 
       if (catError) throw catError;
 
-      // If not authenticated, show all categories (no hard throw)
-      if (!user?.id) {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        console.error('[refreshCategories] session lookup failed:', sessionError);
+        setCategories(allCategories || []);
+        return;
+      }
+
+      const userId = session?.user?.id;
+      if (!userId) {
         setCategories(allCategories || []);
         return;
       }
@@ -116,7 +133,7 @@ export const useFootballData = () => {
       const { data: hiddenRows, error: hiddenError } = await supabase
         .from('hidden_activity_categories')
         .select('category_id')
-        .eq('user_id', user.id);
+        .eq('user_id', userId);
 
       if (hiddenError) {
         console.error('[refreshCategories] Failed to filter hidden categories:', hiddenError);
@@ -129,7 +146,6 @@ export const useFootballData = () => {
       setCategories(filtered);
     } catch (e) {
       console.error('[refreshCategories] failed:', e);
-      // fail-soft: keep existing categories
     }
   }, []);
 
@@ -190,11 +206,25 @@ export const useFootballData = () => {
 
       // Filter out hidden tasks
       try {
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        if (userError || !user) {
-          throw new Error('No authenticated user');
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (sessionError) {
+          console.error('[fetchTasks] session lookup failed for hidden filter:', sessionError);
+          setTasks(transformed);
+          return;
         }
-        const hiddenIds = await taskService.getHiddenTaskTemplateIds(user.id);
+
+        const userId = session?.user?.id;
+        if (!userId) {
+          console.log('[fetchTasks] no active session - skipping hidden filter');
+          setTasks(transformed);
+          return;
+        }
+
+        const hiddenIds = await taskService.getHiddenTaskTemplateIds(userId);
         const filteredTasks = transformed.filter(t => !hiddenIds.includes(t.id));
         setTasks(filteredTasks);
       } catch (hiddenError) {
@@ -221,30 +251,42 @@ export const useFootballData = () => {
   }, []);
 
   const fetchExternalCalendars = useCallback(async () => {
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
-    if (authError) {
-      console.error('[fetchExternalCalendars] auth error:', authError);
+      if (sessionError) {
+        console.error('[fetchExternalCalendars] session lookup failed:', sessionError);
+        setExternalCalendars([]);
+        return;
+      }
+
+      const userId = session?.user?.id;
+      if (!userId) {
+        console.log('[fetchExternalCalendars] no active session - returning empty list');
+        setExternalCalendars([]);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('external_calendars')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error('[fetchExternalCalendars] query failed:', error);
+        setExternalCalendars([]);
+        return;
+      }
+
+      setExternalCalendars(data || []);
+    } catch (error) {
+      console.error('[fetchExternalCalendars] unexpected failure:', error);
       setExternalCalendars([]);
-      return;
     }
-
-    const query = supabase
-      .from('external_calendars')
-      .select('*')
-      .order('created_at', { ascending: true });
-
-    if (user?.id) {
-      query.eq('user_id', user.id);
-    }
-
-    const { data, error } = await query;
-
-    if (error) throw error;
-    setExternalCalendars(data || []);
   }, []);
 
   const fetchActivitySeries = useCallback(async () => {
@@ -328,15 +370,22 @@ export const useFootballData = () => {
 
   const fetchAllData = useCallback(async () => {
     try {
-      await Promise.all([
-        fetchCategories(),
-        fetchActivities(),
-        fetchTasks(),
-        fetchTrophies(),
-        fetchExternalCalendars(),
-        fetchActivitySeries(),
-        fetchCurrentWeekStats(),
-      ]);
+      const operations = [
+        { name: 'categories', promise: fetchCategories() },
+        { name: 'activities', promise: fetchActivities() },
+        { name: 'tasks', promise: fetchTasks() },
+        { name: 'trophies', promise: fetchTrophies() },
+        { name: 'calendars', promise: fetchExternalCalendars() },
+        { name: 'activitySeries', promise: fetchActivitySeries() },
+        { name: 'currentWeekStats', promise: fetchCurrentWeekStats() },
+      ];
+
+      const results = await Promise.allSettled(operations.map(op => op.promise));
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          console.error(`[fetchAllData] ${operations[index].name} failed:`, result.reason);
+        }
+      });
     } finally {
       setLoading(false);
     }
