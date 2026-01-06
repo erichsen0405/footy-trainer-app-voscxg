@@ -29,6 +29,8 @@ import { supabase } from '@/app/integrations/supabase/client';
 import { FeedbackTaskModal } from '@/components/FeedbackTaskModal';
 import { fetchSelfFeedbackForTemplates, upsertSelfFeedback } from '@/services/feedbackService';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
+import { getCategories } from '@/services/activities';
+import { resolveActivityCategory, type CategoryMappingRecord } from '@/shared/activityCategoryResolver';
 
 const DAYS_OF_WEEK = [
   { label: 'Søn', value: 0 },
@@ -55,6 +57,52 @@ const RECURRENCE_OPTIONS: Array<{
 async function fetchActivityFromDatabase(activityId: string): Promise<Activity | null> {
   try {
     console.log('🔍 Fetching activity from database:', activityId);
+
+    const resolveCategoryWithFallback = async (
+      activityTitle: string,
+      providerCategories?: string[]
+    ): Promise<ActivityCategory | null> => {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (!user) {
+          return null;
+        }
+
+        const [categories, mappingsResponse] = await Promise.all([
+          getCategories(user.id),
+          supabase
+            .from('category_mappings')
+            .select('external_category, internal_category_id')
+            .eq('user_id', user.id),
+        ]);
+
+        const mappings = (mappingsResponse?.data || []) as CategoryMappingRecord[];
+
+        const resolution = resolveActivityCategory({
+          title: activityTitle,
+          categories,
+          externalCategories: providerCategories,
+          categoryMappings: mappings,
+        });
+
+        if (!resolution) {
+          return null;
+        }
+
+        return {
+          id: resolution.category.id,
+          name: resolution.category.name,
+          color: resolution.category.color || '#9E9E9E',
+          emoji: resolution.category.emoji || '❓',
+        };
+      } catch (fallbackError) {
+        console.error('❌ Error resolving fallback category:', fallbackError);
+        return null;
+      }
+    };
 
     // First, try to fetch from internal activities table
     const { data: internalActivity, error: internalError } = await supabase
@@ -160,7 +208,8 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
           start_date,
           start_time,
           end_time,
-          provider_calendar_id
+          provider_calendar_id,
+          raw_payload
         ),
         external_event_tasks (
           id,
@@ -178,25 +227,39 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
       console.log('✅ Found external activity:', localMeta.events_external.title);
       
       const externalEvent = localMeta.events_external;
-      
-      return {
-        id: localMeta.id,
-        title: localMeta.local_title_override || externalEvent.title,
-        date: new Date(externalEvent.start_date),
-        time: externalEvent.start_time,
-        endTime: externalEvent.end_time,
-        location: externalEvent.location || '',
-        category: localMeta.activity_categories ? {
+      const eventTitle = localMeta.local_title_override || externalEvent.title;
+      const providerCategories = Array.isArray(externalEvent.raw_payload?.categories)
+        ? (externalEvent.raw_payload.categories as string[]).filter((cat) => typeof cat === 'string' && cat.trim().length > 0)
+        : undefined;
+
+      let resolvedCategory: ActivityCategory | null = null;
+
+      if (localMeta.activity_categories) {
+        resolvedCategory = {
           id: localMeta.activity_categories.id,
           name: localMeta.activity_categories.name,
           color: localMeta.activity_categories.color,
           emoji: localMeta.activity_categories.emoji,
-        } : {
-          id: '',
-          name: 'Unknown',
-          color: '#999999',
-          emoji: '❓',
-        },
+        };
+      } else {
+        resolvedCategory = await resolveCategoryWithFallback(eventTitle, providerCategories);
+      }
+
+      const fallbackCategory: ActivityCategory = resolvedCategory ?? {
+        id: '',
+        name: 'Unknown',
+        color: '#999999',
+        emoji: '❓',
+      };
+      
+      return {
+        id: localMeta.id,
+        title: eventTitle,
+        date: new Date(externalEvent.start_date),
+        time: externalEvent.start_time,
+        endTime: externalEvent.end_time,
+        location: externalEvent.location || '',
+        category: fallbackCategory,
         tasks: (localMeta.external_event_tasks || []).map((task: any) => {
           const markerTemplateId = parseTemplateIdFromMarker(task.description || '');
           const isFeedbackTask = !task.task_template_id && !!markerTemplateId;
@@ -296,7 +359,7 @@ function ActivityDetailsContent({
   isAdmin,
   isDark,
   onBack,
-  onRefresh,
+  onRefresh: _onRefresh,
   onActivityUpdated,
 }: ActivityDetailsContentProps) {
   const bgColor = isDark ? '#1a1a1a' : colors.background;
@@ -2159,7 +2222,7 @@ export default function ActivityDetailsScreen() {
         setActivity(fetchedActivity);
       } else {
         console.log('❌ Activity not found');
-      }
+           }
       
       setIsReady(true);
     }

@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Platform } from 'react-native';
 import { supabase } from '@/app/integrations/supabase/client';
 import { getCategories, DatabaseActivityCategory } from '@/services/activities';
+import { resolveActivityCategory, type CategoryMappingRecord } from '@/shared/activityCategoryResolver';
 
 interface ActivityTask {
   id: string;
@@ -78,10 +79,10 @@ export function useHomeActivities(): UseHomeActivitiesResult {
     try {
       console.log('[useHomeActivities] Fetching activities for user:', userId);
       
-      // ✅ PARALLEL FETCH GROUP 1: Categories + Internal Activities + External Calendars
+      // ✅ PARALLEL FETCH GROUP 1: Categories + Internal Activities + External Calendars + Category Mappings
       // These are independent and can run in parallel
-      const [categoriesData, internalData, calendarsData] = await Promise.all([
-        // 1. Fetch categories
+      const [categoriesData, internalData, calendarsData, categoryMappingsData] = await Promise.all([
+        // 1. Fetch categories (user + system)
         getCategories(userId),
         
         // 2. Fetch internal activities WITH TASKS
@@ -127,22 +128,64 @@ export function useHomeActivities(): UseHomeActivitiesResult {
             }
             return data;
           }),
+
+        // 4. Fetch user-defined external category mappings
+        supabase
+          .from('category_mappings')
+          .select('external_category, internal_category_id')
+          .eq('user_id', userId)
+          .then(({ data, error }) => {
+            if (error) {
+              console.error('[useHomeActivities] Error fetching category mappings:', error);
+              return null;
+            }
+            return data;
+          }),
       ]);
       
       console.log('[useHomeActivities] Categories fetched:', categoriesData?.length ?? 0);
       console.log('[useHomeActivities] Internal activities:', internalData?.length ?? 0);
+      console.log('[useHomeActivities] Category mappings:', categoryMappingsData?.length ?? 0);
       
       // Create a map for quick category lookup
       const categoryMap = new Map<string, DatabaseActivityCategory>();
       (categoriesData || []).forEach(cat => {
         categoryMap.set(cat.id, cat);
       });
+      const categoriesList = categoriesData || [];
+      const categoryMappings = (categoryMappingsData || []) as CategoryMappingRecord[];
+
+      const resolveCategory = (
+        title: string,
+        categoryId?: string | null,
+        externalCategories?: string[]
+      ): DatabaseActivityCategory | null => {
+        if (categoryId) {
+          const knownCategory = categoryMap.get(categoryId);
+          if (knownCategory) {
+            return knownCategory;
+          }
+        }
+
+        const resolution = resolveActivityCategory({
+          title,
+          categories: categoriesList,
+          externalCategories,
+          categoryMappings,
+        });
+
+        if (resolution) {
+          return resolution.category as DatabaseActivityCategory;
+        }
+
+        return null;
+      };
       
       console.log('[useHomeActivities] Category map size:', categoryMap.size);
       
       // Map internal activities with tasks and resolved category
       const internalActivities: ActivityWithCategory[] = (internalData || []).map(activity => {
-        const resolvedCategory = activity.category_id ? categoryMap.get(activity.category_id) || null : null;
+        const resolvedCategory = resolveCategory(activity.title, activity.category_id);
         
         // Map tasks to the expected format
         const tasks: ActivityTask[] = (activity.activity_tasks || []).map((task: any) => ({
@@ -178,7 +221,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         // ✅ SEQUENTIAL FETCH GROUP 2: External Events (depends on calendar IDs)
         const { data: eventsData, error: eventsError } = await supabase
           .from('events_external')
-          .select('id, title, start_date, start_time, location, provider_calendar_id, provider_event_uid')
+          .select('id, title, start_date, start_time, location, provider_calendar_id, provider_event_uid, raw_payload')
           .in('provider_calendar_id', calendarIds)
           .eq('deleted', false);
         
@@ -216,7 +259,14 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           externalActivities = eventsData.map(event => {
             const meta = metaData?.find(m => m.external_event_id === event.id);
             const categoryId = meta?.category_id || null;
-            const resolvedCategory = categoryId ? categoryMap.get(categoryId) || null : null;
+            const providerCategories = Array.isArray(event.raw_payload?.categories)
+              ? (event.raw_payload.categories as string[]).filter((cat) => typeof cat === 'string' && cat.trim().length > 0)
+              : undefined;
+            const resolvedCategory = resolveCategory(
+              meta?.local_title_override || event.title,
+              categoryId,
+              providerCategories,
+            );
             
             // Map tasks to the expected format
             const tasks: ActivityTask[] = (meta?.external_event_tasks || []).map((task: any) => ({

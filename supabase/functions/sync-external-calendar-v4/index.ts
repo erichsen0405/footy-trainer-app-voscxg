@@ -2,6 +2,11 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
 import ICAL from 'https://esm.sh/ical.js@2.0.0';
+import {
+  resolveActivityCategory,
+  type ActivityCategoryCandidate,
+  type CategoryMappingRecord,
+} from '../../../shared/activityCategoryResolver.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -27,134 +32,7 @@ interface ParsedEvent {
   method?: string;
 }
 
-interface CategoryKeywords {
-  categoryName: string;
-  keywords: string[];
-  priority: number;
-}
-
-const DEFAULT_CATEGORY_KEYWORDS: CategoryKeywords[] = [
-  {
-    categoryName: 'Kamp',
-    keywords: ['kamp', 'match', 'game', 'turnering', 'tournament', 'finale', 'semifinale', 'kvartfinale', 'vs', '-'],
-    priority: 10,
-  },
-  {
-    categoryName: 'Træning',
-    keywords: ['træning', 'training', 'practice', 'øvelse', 'drill', 'session'],
-    priority: 9,
-  },
-  {
-    categoryName: 'Fysisk træning',
-    keywords: ['fysisk', 'fitness', 'kondition', 'styrke', 'cardio', 'løb', 'gym', 'vægt'],
-    priority: 8,
-  },
-  {
-    categoryName: 'Taktik',
-    keywords: ['taktik', 'tactics', 'strategi', 'strategy', 'analyse', 'video', 'gennemgang'],
-    priority: 8,
-  },
-  {
-    categoryName: 'Møde',
-    keywords: ['møde', 'meeting', 'samtale', 'briefing', 'debriefing', 'evaluering', 'forældremøde', 'spillermøde'],
-    priority: 7,
-  },
-  {
-    categoryName: 'Holdsamling',
-    keywords: ['holdsamling', 'team building', 'social', 'sammenkomst', 'event', 'fest'],
-    priority: 7,
-  },
-  {
-    categoryName: 'Lægebesøg',
-    keywords: ['læge', 'doctor', 'fysioterapi', 'physio', 'behandling', 'skade', 'injury', 'sundhed'],
-    priority: 6,
-  },
-  {
-    categoryName: 'Rejse',
-    keywords: ['rejse', 'travel', 'transport', 'bus', 'fly', 'flight', 'afgang', 'departure'],
-    priority: 6,
-  },
-];
-
-function parseActivityNameForCategory(
-  activityName: string,
-  userCategories: any[]
-): { categoryId: string; categoryName: string; confidence: number } | null {
-  if (!activityName || !userCategories || userCategories.length === 0) {
-    return null;
-  }
-
-  const normalizedName = activityName.toLowerCase().trim();
-  const sortedKeywords = [...DEFAULT_CATEGORY_KEYWORDS].sort((a, b) => b.priority - a.priority);
-
-  const matches: Array<{
-    category: any;
-    score: number;
-    matchedKeyword: string;
-  }> = [];
-
-  for (const keywordSet of sortedKeywords) {
-    const matchingCategory = userCategories.find(
-      (cat) => cat.name.toLowerCase().trim() === keywordSet.categoryName.toLowerCase().trim()
-    );
-
-    if (!matchingCategory) {
-      continue;
-    }
-
-    for (const keyword of keywordSet.keywords) {
-      const normalizedKeyword = keyword.toLowerCase();
-      
-      const wordBoundaryRegex = new RegExp(`\\b${normalizedKeyword}\\b`, 'i');
-      if (wordBoundaryRegex.test(normalizedName)) {
-        matches.push({
-          category: matchingCategory,
-          score: keywordSet.priority * 10 + 5,
-          matchedKeyword: keyword,
-        });
-        continue;
-      }
-
-      if (normalizedName.includes(normalizedKeyword)) {
-        matches.push({
-          category: matchingCategory,
-          score: keywordSet.priority * 10,
-          matchedKeyword: keyword,
-        });
-      }
-    }
-  }
-
-  if (matches.length === 0) {
-    for (const category of userCategories) {
-      const categoryNameLower = category.name.toLowerCase().trim();
-      
-      if (normalizedName.includes(categoryNameLower)) {
-        matches.push({
-          category: category,
-          score: 50,
-          matchedKeyword: category.name,
-        });
-      }
-    }
-  }
-
-  if (matches.length > 0) {
-    matches.sort((a, b) => b.score - a.score);
-    const bestMatch = matches[0];
-
-    const maxPossibleScore = 100;
-    const confidence = Math.min(100, Math.round((bestMatch.score / maxPossibleScore) * 100));
-
-    return {
-      categoryId: bestMatch.category.id,
-      categoryName: bestMatch.category.name,
-      confidence: confidence,
-    };
-  }
-
-  return null;
-}
+type ActivityCategoryRow = ActivityCategoryCandidate & { user_id?: string | null; is_system?: boolean | null };
 
 function formatTimeFromICALTime(icalTime: any): { date: string; time: string; isAllDay: boolean } {
   try {
@@ -647,9 +525,25 @@ serve(async (req) => {
     const { data: userCategories } = await supabaseClient
       .from('activity_categories')
       .select('*')
+      .or(`user_id.eq.${user.id},is_system.eq.true`);
+
+    const { data: categoryMappings } = await supabaseClient
+      .from('category_mappings')
+      .select('external_category, internal_category_id')
       .eq('user_id', user.id);
 
     const unknownCategoryId = await ensureUnknownCategory(supabaseClient, user.id);
+
+    const determineCategoryId = (eventSummary: string, externalCategories?: string[]) => {
+      const resolution = resolveActivityCategory({
+        title: eventSummary,
+        categories: (userCategories || []) as ActivityCategoryRow[],
+        externalCategories,
+        categoryMappings: (categoryMappings || []) as CategoryMappingRecord[],
+      });
+
+      return resolution?.category.id ?? unknownCategoryId;
+    };
 
     // Fetch existing external events for this calendar
     const { data: existingExternalEvents } = await supabaseClient
@@ -734,8 +628,7 @@ serve(async (req) => {
         eventsCreated++;
         
         // Create local metadata with auto-detected category
-        const categoryMatch = parseActivityNameForCategory(event.summary, userCategories || []);
-        const categoryId = categoryMatch ? categoryMatch.categoryId : unknownCategoryId;
+        const categoryId = determineCategoryId(event.summary, event.categories);
         
         const { error: insertMetaError } = await supabaseClient
           .from('events_local_meta')
@@ -825,8 +718,7 @@ serve(async (req) => {
             console.log(`   🔒 Category preserved (manually set)`);
           } else {
             // Auto-update category
-            const categoryMatch = parseActivityNameForCategory(event.summary, userCategories || []);
-            const newCategoryId = categoryMatch ? categoryMatch.categoryId : unknownCategoryId;
+            const newCategoryId = determineCategoryId(event.summary, event.categories);
             
             if (newCategoryId !== existingMeta.category_id) {
               await supabaseClient
@@ -842,8 +734,7 @@ serve(async (req) => {
           }
         } else {
           // Create metadata if it doesn't exist
-          const categoryMatch = parseActivityNameForCategory(event.summary, userCategories || []);
-          const categoryId = categoryMatch ? categoryMatch.categoryId : unknownCategoryId;
+          const categoryId = determineCategoryId(event.summary, event.categories);
           
           await supabaseClient
             .from('events_local_meta')

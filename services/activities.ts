@@ -33,6 +33,7 @@ export interface DatabaseActivityCategory {
   updated_at: string;
   team_id?: string;
   player_id?: string;
+  is_system?: boolean | null;
 }
 
 /**
@@ -71,7 +72,7 @@ export async function getCategories(
   const { data, error } = await supabase
     .from('activity_categories')
     .select('*')
-    .eq('user_id', userId)
+    .or(`user_id.eq.${userId},is_system.eq.true`)
     .order('name', { ascending: true })
     .abortSignal(signal);
 
