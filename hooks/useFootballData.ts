@@ -492,6 +492,7 @@ export const useFootballData = () => {
           reminder: task.reminder,
           videoUrl: task.videoUrl,
           afterTrainingEnabled: !!task.afterTrainingEnabled,
+          afterTrainingDelayMinutes: task.afterTrainingEnabled ? (task.afterTrainingDelayMinutes ?? 0) : null,
           playerId,
           teamId,
         });
@@ -630,6 +631,7 @@ export const useFootballData = () => {
         reminder: updates.reminder,
         videoUrl: updates.videoUrl,
         afterTrainingEnabled: updates.afterTrainingEnabled,
+        afterTrainingDelayMinutes: updates.afterTrainingEnabled ? (updates.afterTrainingDelayMinutes ?? 0) : null,
       });
 
       console.log('[updateTask] Task updated successfully, refreshing tasks...');
@@ -686,6 +688,8 @@ export const useFootballData = () => {
           categoryIds: taskToDuplicate.categoryIds,
           reminder: taskToDuplicate.reminder,
           videoUrl: taskToDuplicate.videoUrl,
+          afterTrainingEnabled: !!taskToDuplicate.afterTrainingEnabled,
+          afterTrainingDelayMinutes: taskToDuplicate.afterTrainingEnabled ? (taskToDuplicate.afterTrainingDelayMinutes ?? 0) : null,
         } as any;
 
         const created = await addTask(copyPayload);

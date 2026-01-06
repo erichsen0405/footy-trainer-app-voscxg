@@ -371,6 +371,14 @@ export default function TasksScreen() {
   const scheme = useColorScheme();
   const isDark = scheme === 'dark';
 
+  const AFTER_TRAINING_DELAY_OPTIONS: Array<{ label: string; value: number }> = [
+    { label: '0', value: 0 },
+    { label: '15', value: 15 },
+    { label: '30', value: 30 },
+    { label: '60', value: 60 },
+    { label: '120', value: 120 },
+  ];
+
   const listRef = useRef<FlatList<FolderItem> | null>(null);
 
   // ✅ VIGTIGT: alle state hooks før callbacks/memos der bruger dem
@@ -489,7 +497,8 @@ export default function TasksScreen() {
           categoryIds,
           reminder: (selectedTask as any).reminder,
           videoUrl: videoUrl.trim() ? videoUrl.trim() : null,
-            afterTrainingEnabled: !!(selectedTask as any)?.afterTrainingEnabled,
+          afterTrainingEnabled: !!selectedTask.afterTrainingEnabled,
+          afterTrainingDelayMinutes: selectedTask.afterTrainingEnabled ? (selectedTask.afterTrainingDelayMinutes ?? 0) : null,
           playerId,
           teamId,
         });
@@ -502,7 +511,8 @@ export default function TasksScreen() {
           ...selectedTask,
           videoUrl: videoUrl.trim() ? videoUrl.trim() : null,
           categoryIds,
-          afterTrainingEnabled: (selectedTask as any)?.afterTrainingEnabled ?? false,
+          afterTrainingEnabled: selectedTask.afterTrainingEnabled ?? false,
+          afterTrainingDelayMinutes: selectedTask.afterTrainingEnabled ? (selectedTask.afterTrainingDelayMinutes ?? 0) : null,
         };
 
         await updateTask(String((selectedTask as any).id), taskToSave);
@@ -639,7 +649,19 @@ export default function TasksScreen() {
   }, []);
 
   const handleAfterTrainingToggle = useCallback((value: boolean) => {
-    setSelectedTask(prev => (prev ? ({ ...(prev as any), afterTrainingEnabled: value } as any) : prev));
+    setSelectedTask(prev => {
+      if (!prev) return prev;
+      if (!value) {
+        return { ...prev, afterTrainingEnabled: false, afterTrainingDelayMinutes: null };
+      }
+
+      const existingDelay = prev.afterTrainingDelayMinutes;
+      return {
+        ...prev,
+        afterTrainingEnabled: true,
+        afterTrainingDelayMinutes: existingDelay ?? 0,
+      };
+    });
   }, []);
 
   const addSubtask = useCallback(() => setSubtasks((prev) => [...prev, { id: createLocalId(), title: '' }]), []);
@@ -741,6 +763,7 @@ export default function TasksScreen() {
                     subtasks: [],
                     videoUrl: undefined,
                     afterTrainingEnabled: false,
+                    afterTrainingDelayMinutes: 0,
                   } as any,
                   true,
                 )
@@ -948,6 +971,43 @@ export default function TasksScreen() {
                       disabled={isSaving}
                     />
                   </View>
+
+                  {!!selectedTask?.afterTrainingEnabled && (
+                    <View style={{ marginTop: 10 }}>
+                      <Text style={[styles.label, { color: textColor }]}>Påmindelse efter slut (minutter)</Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                        {AFTER_TRAINING_DELAY_OPTIONS.map((option) => {
+                          const current = selectedTask.afterTrainingDelayMinutes ?? 0;
+                          const selected = current === option.value;
+
+                          return (
+                            <TouchableOpacity
+                              key={String(option.value)}
+                              style={{
+                                paddingVertical: 8,
+                                paddingHorizontal: 12,
+                                borderRadius: 10,
+                                backgroundColor: selected ? colors.primary : bgColor,
+                                borderWidth: 1,
+                                borderColor: selected ? colors.primary : (isDark ? '#444' : '#d0d7e3'),
+                                opacity: isSaving ? 0.6 : 1,
+                              }}
+                              onPress={() =>
+                                setSelectedTask(prev => (prev ? ({ ...prev, afterTrainingDelayMinutes: option.value } as Task) : prev))
+                              }
+                              disabled={isSaving}
+                            >
+                              <Text style={{ color: selected ? '#fff' : textColor, fontWeight: selected ? '700' : '600' }}>
+                                {option.label}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                      <Text style={[styles.helperText, { color: textSecondaryColor, marginTop: 6 }]}>Vises efter aktivitetens sluttidspunkt + valgt delay.</Text>
+                    </View>
+                  )}
+
                   <Text style={[styles.label, { color: textColor }]}>Aktivitetskategorier</Text>
                   <View style={styles.categoriesGrid}>
                     {uniqueCategories.map((category: any) => {
