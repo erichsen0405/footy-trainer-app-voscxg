@@ -56,7 +56,8 @@ interface FootballContextType {
   updateTask: (id: string, updates: Partial<Task>) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
   duplicateTask: (id: string) => Promise<void>;
-  toggleTaskCompletion: (activityId: string, taskId: string) => Promise<void>;
+  toggleTaskCompletion: (activityId: string, taskId: string, nextState?: boolean) => Promise<void>;
+  setTaskCompletion: (activityId: string, taskId: string, completed: boolean) => Promise<void>;
   deleteActivityTask: (activityId: string, taskId: string) => Promise<void>;
   refreshData: () => Promise<void>;
   refreshAll: () => Promise<void>;
@@ -100,6 +101,7 @@ export function FootballProvider({ children }: { children: ReactNode }) {
     deleteTask,
     duplicateTask,
     toggleTaskCompletion,
+    setTaskCompletion,
     deleteActivityTask,
     refreshData,
     refreshAll,
@@ -176,6 +178,7 @@ export function FootballProvider({ children }: { children: ReactNode }) {
       deleteTask,
       duplicateTask,
       toggleTaskCompletion,
+      setTaskCompletion,
       deleteActivityTask,
       refreshData,
       refreshAll,
@@ -211,6 +214,7 @@ export function FootballProvider({ children }: { children: ReactNode }) {
       deleteTask,
       duplicateTask,
       toggleTaskCompletion,
+      setTaskCompletion,
       deleteActivityTask,
       refreshData,
       refreshAll,

@@ -20,7 +20,8 @@ import { taskService } from '@/services/taskService';
 import { activityService } from '@/services/activityService';
 import { calendarService } from '@/services/calendarService';
 import { useAdmin } from '@/contexts/AdminContext';
-import { subscribeToTaskCompletion } from '@/utils/taskEvents';
+import { subscribeToTaskCompletion, emitTaskCompletionEvent } from '@/utils/taskEvents';
+import { emitActivityPatch } from '@/utils/activityEvents';
 
 export const useFootballData = () => {
   const { adminMode, adminTargetId, adminTargetType } = useAdmin();
@@ -41,6 +42,128 @@ export const useFootballData = () => {
     weekActivities: [] as Activity[],
   });
   const [loading, setLoading] = useState(true);
+
+  const findTaskCompletionState = useCallback(
+    (activityId: string, taskId: string): boolean | null => {
+      const targetActivity = activities.find(activity => String((activity as any).id) === String(activityId));
+      if (!targetActivity) {
+        return null;
+      }
+
+      const tasks = Array.isArray((targetActivity as any).tasks) ? (targetActivity as any).tasks : [];
+      const targetTask = tasks.find((task: any) => String(task.id) === String(taskId));
+
+      if (typeof targetTask?.completed === 'boolean') {
+        return !!targetTask.completed;
+      }
+
+      return null;
+    },
+    [activities]
+  );
+
+  const applyActivityPatch = useCallback(
+    (activityId: string, updates: Record<string, any>): (() => void) | undefined => {
+      if (!updates || !Object.keys(updates).length) {
+        return undefined;
+      }
+
+      let previousSnapshot: any = null;
+      let applied = false;
+
+      setActivities(prevActivities => {
+        let mutated = false;
+
+        const nextActivities = prevActivities.map(activity => {
+          if (String((activity as any).id) !== String(activityId)) {
+            return activity;
+          }
+
+          previousSnapshot = activity;
+          mutated = true;
+          applied = true;
+          return { ...activity, ...updates };
+        });
+
+        return mutated ? nextActivities : prevActivities;
+      });
+
+      emitActivityPatch({ activityId, updates });
+
+      if (!applied || !previousSnapshot) {
+        return undefined;
+      }
+
+      const rollbackUpdates: Record<string, any> = {};
+      Object.keys(updates).forEach(key => {
+        rollbackUpdates[key] = previousSnapshot[key];
+      });
+
+      return () => {
+        setActivities(prevActivities =>
+          prevActivities.map(activity =>
+            String((activity as any).id) === String(activityId)
+              ? { ...activity, ...rollbackUpdates }
+              : activity
+          )
+        );
+
+        emitActivityPatch({ activityId, updates: rollbackUpdates });
+      };
+    },
+    []
+  );
+
+  const buildOptimisticActivityUpdates = useCallback(
+    (updates: {
+      title?: string;
+      location?: string;
+      categoryId?: string;
+      date?: Date;
+      time?: string;
+      endTime?: string;
+    }) => {
+      const payload: Record<string, any> = {};
+
+      if (updates.title !== undefined) {
+        payload.title = updates.title;
+      }
+
+      if (updates.location !== undefined) {
+        payload.location = updates.location;
+      }
+
+      if (updates.date instanceof Date) {
+        payload.activity_date = updates.date.toISOString().slice(0, 10);
+      }
+
+      if (updates.time !== undefined) {
+        payload.activity_time = updates.time;
+      }
+
+      if (updates.endTime !== undefined) {
+        payload.activity_end_time = updates.endTime ?? null;
+      }
+
+      if (updates.categoryId !== undefined) {
+        payload.category_id = updates.categoryId;
+
+        const categoryMeta = categories.find(cat => String(cat.id) === String(updates.categoryId));
+        if (categoryMeta) {
+          payload.category = categoryMeta;
+          payload.activity_categories = {
+            id: categoryMeta.id,
+            name: categoryMeta.name,
+            color: categoryMeta.color,
+            emoji: categoryMeta.emoji,
+          };
+        }
+      }
+
+      return payload;
+    },
+    [categories]
+  );
 
   const getCurrentUserId = useCallback(async () => {
     const {
@@ -413,11 +536,14 @@ export const useFootballData = () => {
 
   useEffect(() => {
     const unsubscribe = subscribeToTaskCompletion(({ activityId, taskId, completed }) => {
+      const activityIdStr = String(activityId);
+      const taskIdStr = String(taskId);
+
       setActivities(prevActivities => {
         let mutated = false;
 
         const nextActivities = prevActivities.map(activity => {
-          if (activity.id !== activityId) {
+          if (String((activity as any).id) !== activityIdStr) {
             return activity;
           }
 
@@ -425,7 +551,7 @@ export const useFootballData = () => {
           let taskMutated = false;
 
           const nextTasks = tasks.map(task => {
-            if (task.id !== taskId) {
+            if (String(task.id) !== taskIdStr) {
               return task;
             }
 
@@ -475,7 +601,6 @@ export const useFootballData = () => {
     await forceRefreshNotificationQueue();
   }, [fetchAllData]);
 
-  // Task CRUD operations
   const addTask = useCallback(
     async (task: Omit<Task, 'id'>) => {
       try {
@@ -559,8 +684,16 @@ export const useFootballData = () => {
     endDate?: Date;
   }) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('User not authenticated');
+      const {
+        data: { session },
+        error,
+      } = await supabase.auth.getSession();
+
+      if (error || !session?.user?.id) {
+        throw new Error('User not authenticated');
+      }
+
+      const user = session.user;
 
       let playerId: string | null = null;
       let teamId: string | null = null;
@@ -628,15 +761,15 @@ export const useFootballData = () => {
       console.log('[updateTask] Updating task:', id, updates);
 
       const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
-      if (userError || !user) {
+      if (sessionError || !session?.user?.id) {
         throw new Error('No authenticated user');
       }
 
-      await taskService.updateTask(id, user.id, {
+      await taskService.updateTask(id, session.user.id, {
         title: updates.title,
         description: updates.description,
         categoryIds: updates.categoryIds,
@@ -651,8 +784,6 @@ export const useFootballData = () => {
       });
 
       console.log('[updateTask] Task updated successfully, refreshing tasks...');
-
-      // Refresh tasks after update
       await fetchTasks();
     } catch (error) {
       console.error('[updateTask] Error updating task:', error);
@@ -665,19 +796,17 @@ export const useFootballData = () => {
       console.log('[deleteTask] Deleting task:', id);
 
       const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
-      if (userError || !user) {
+      if (sessionError || !session?.user?.id) {
         throw new Error('No authenticated user');
       }
 
-      await taskService.deleteTask(id, user.id);
+      await taskService.deleteTask(id, session.user.id);
 
       console.log('[deleteTask] Task deleted successfully, refreshing tasks...');
-
-      // Refresh tasks after deletion
       await fetchTasks();
     } catch (error) {
       console.error('[deleteTask] Error deleting task:', error);
@@ -697,7 +826,6 @@ export const useFootballData = () => {
           throw new Error('Task not found');
         }
 
-        // Create a copy payload without id and unwanted fields
         const copyPayload = {
           title: `${taskToDuplicate.title} (kopi)`,
           description: taskToDuplicate.description,
@@ -714,7 +842,6 @@ export const useFootballData = () => {
 
         const created = await addTask(copyPayload);
 
-        // Copy subtasks to the new task
         const { data: subtasks, error: subtaskError } = await supabase
           .from('task_template_subtasks')
           .select('title, sort_order')
@@ -750,15 +877,53 @@ export const useFootballData = () => {
     [tasks, addTask]
   );
 
+  const refreshData = useCallback(async () => {
+    console.log('[refreshData] Refreshing core datasets...');
+    await Promise.all([
+      fetchCategories(),
+      fetchActivities(),
+      fetchTasks(),
+      fetchTrophies(),
+      fetchExternalCalendars(),
+      fetchActivitySeries(),
+      fetchCurrentWeekStats(),
+    ]);
+  }, [
+    fetchCategories,
+    fetchActivities,
+    fetchTasks,
+    fetchTrophies,
+    fetchExternalCalendars,
+    fetchActivitySeries,
+    fetchCurrentWeekStats,
+  ]);
+
   const toggleTaskCompletion = useCallback(
-    async (activityId: string, taskId: string) => {
+    async (activityId: string, taskId: string, nextState?: boolean) => {
       const logPrefix = `[toggleTaskCompletion] activity=${activityId} task=${taskId}`;
       console.log(`${logPrefix} - start`);
-      try {
-        const event = await taskService.toggleTaskCompletion(taskId);
 
-        if (event.activityId !== activityId) {
-          console.warn(`${logPrefix} - activity mismatch (expected ${activityId}, got ${event.activityId})`);
+      const previousState = findTaskCompletionState(activityId, taskId);
+      const targetState =
+        typeof nextState === 'boolean'
+          ? nextState
+          : previousState === null
+            ? true
+            : !previousState;
+
+      emitTaskCompletionEvent({ activityId, taskId, completed: targetState });
+
+      try {
+        if (typeof nextState === 'boolean') {
+          const event = await taskService.setTaskCompletion(taskId, targetState);
+          if (event.activityId !== activityId) {
+            console.warn(`${logPrefix} - activity mismatch (expected ${activityId}, got ${event.activityId})`);
+          }
+        } else {
+          const event = await taskService.toggleTaskCompletion(taskId);
+          if (event.activityId !== activityId) {
+            console.warn(`${logPrefix} - activity mismatch (expected ${activityId}, got ${event.activityId})`);
+          }
         }
 
         refreshNotificationQueue(true).catch(queueError => {
@@ -768,10 +933,21 @@ export const useFootballData = () => {
         console.log(`${logPrefix} - done`);
       } catch (error) {
         console.error(`${logPrefix} - failed`, error);
+        if (typeof previousState === 'boolean') {
+          emitTaskCompletionEvent({ activityId, taskId, completed: previousState });
+        } else {
+          Promise.resolve(refreshData()).catch(() => {});
+        }
         throw error;
       }
     },
-    []
+    [findTaskCompletionState, refreshData]
+  );
+
+  const setTaskCompletion = useCallback(
+    (activityId: string, taskId: string, completed: boolean) =>
+      toggleTaskCompletion(activityId, taskId, completed),
+    [toggleTaskCompletion]
   );
 
   const deleteActivityTask = useCallback(
@@ -780,10 +956,11 @@ export const useFootballData = () => {
       console.log(`${logPrefix} - start`);
 
       const {
-        data: { user },
-      } = await supabase.auth.getUser();
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
-      if (!user) {
+      if (sessionError || !session?.user?.id) {
         throw new Error('User not authenticated');
       }
 
@@ -830,27 +1007,6 @@ export const useFootballData = () => {
     },
     []
   );
-
-  const refreshData = useCallback(async () => {
-    console.log('[refreshData] Refreshing core datasets...');
-    await Promise.all([
-      fetchCategories(),
-      fetchActivities(),
-      fetchTasks(),
-      fetchTrophies(),
-      fetchExternalCalendars(),
-      fetchActivitySeries(),
-      fetchCurrentWeekStats(),
-    ]);
-  }, [
-    fetchCategories,
-    fetchActivities,
-    fetchTasks,
-    fetchTrophies,
-    fetchExternalCalendars,
-    fetchActivitySeries,
-    fetchCurrentWeekStats,
-  ]);
 
   const updateActivity = useCallback((id: string, updates: Partial<Activity>) => {
     setActivities(prev => prev.map(activity => (activity.id === id ? { ...activity, ...updates } : activity)));
@@ -899,8 +1055,12 @@ export const useFootballData = () => {
       endTime?: string;
     }
   ) => {
+    const optimisticUpdates = buildOptimisticActivityUpdates(updates);
+    let rollback: (() => void) | undefined;
+
     try {
       const isExternal = await resolveIsExternal(activityId);
+      rollback = applyActivityPatch(activityId, optimisticUpdates);
       await activityService.updateActivitySingle(activityId, updates, isExternal);
       await fetchActivities();
 
@@ -909,9 +1069,14 @@ export const useFootballData = () => {
       }
     } catch (error) {
       console.error('[updateActivitySingle] failed:', error);
+      if (rollback) {
+        rollback();
+      } else {
+        Promise.resolve(refreshData()).catch(() => {});
+      }
       throw error;
     }
-  }, [resolveIsExternal, fetchActivities]);
+  }, [applyActivityPatch, buildOptimisticActivityUpdates, fetchActivities, refreshData, resolveIsExternal]);
 
   const updateActivitySeries = useCallback(async (
     seriesId: string,
@@ -1044,6 +1209,7 @@ export const useFootballData = () => {
     deleteTask,
     duplicateTask,
     toggleTaskCompletion,
+    setTaskCompletion,
     deleteActivityTask,
     refreshData,
     // --- ADDED: ACTIVITY CRUD ---

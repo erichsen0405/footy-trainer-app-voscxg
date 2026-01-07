@@ -1,9 +1,9 @@
-
-import { useEffect, useState, useCallback } from 'react';
-import { Platform } from 'react-native';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/app/integrations/supabase/client';
 import { getCategories, DatabaseActivityCategory } from '@/services/activities';
 import { resolveActivityCategory, type CategoryMappingRecord } from '@/shared/activityCategoryResolver';
+import { subscribeToTaskCompletion } from '@/utils/taskEvents';
+import { subscribeToActivityPatch } from '@/utils/activityEvents';
 
 interface ActivityTask {
   id: string;
@@ -41,28 +41,150 @@ export function useHomeActivities(): UseHomeActivitiesResult {
   const [userId, setUserId] = useState<string | null>(null);
   const [activities, setActivities] = useState<ActivityWithCategory[]>([]);
   const [loading, setLoading] = useState(true);
+  const categoryMapRef = useRef<Map<string, DatabaseActivityCategory>>(new Map());
+
+  const patchActivityTasks = useCallback((activityId: string, taskId: string, completed: boolean) => {
+    setActivities(prev => {
+      let mutated = false;
+
+      const next = prev.map(activity => {
+        if (String(activity.id) !== String(activityId)) {
+          return activity;
+        }
+
+        const tasks = Array.isArray(activity.tasks) ? activity.tasks : [];
+        let taskMutated = false;
+        const nextTasks = tasks.map(task => {
+          if (String(task.id) !== String(taskId)) {
+            return task;
+          }
+
+          if (task.completed === completed) {
+            return task;
+          }
+
+          taskMutated = true;
+          return { ...task, completed };
+        });
+
+        if (!taskMutated) {
+          return activity;
+        }
+
+        mutated = true;
+        return { ...activity, tasks: nextTasks };
+      });
+
+      return mutated ? next : prev;
+    });
+  }, []);
+
+  const enrichCategoryPatch = useCallback((updates: Record<string, any>) => {
+    if (!updates) {
+      return updates;
+    }
+
+    const nextUpdates = { ...updates };
+    const hasCategoryObject = typeof updates.category === 'object' && updates.category !== null;
+    const hasActivityCategoryObject =
+      typeof updates.activity_categories === 'object' && updates.activity_categories !== null;
+    const hasActivityCategoryAliasObject =
+      typeof updates.activity_category === 'object' && updates.activity_category !== null;
+
+    const rawCategoryId =
+      updates.category_id ??
+      updates.categoryId ??
+      (hasCategoryObject ? updates.category.id : undefined) ??
+      (hasActivityCategoryObject ? updates.activity_categories.id : undefined);
+
+    if (rawCategoryId === null) {
+      nextUpdates.category_id = null;
+      nextUpdates.category = null;
+      nextUpdates.activity_categories = null;
+      nextUpdates.activity_category = null;
+      nextUpdates.categoryColor = null;
+      nextUpdates.category_color = null;
+      return nextUpdates;
+    }
+
+    if (rawCategoryId !== undefined) {
+      const normalizedId = String(rawCategoryId);
+      nextUpdates.category_id = normalizedId;
+
+      const categoryObj = hasCategoryObject
+        ? updates.category
+        : categoryMapRef.current.get(normalizedId) ?? null;
+
+      nextUpdates.category = categoryObj;
+
+      if (hasActivityCategoryObject) {
+        nextUpdates.activity_categories = updates.activity_categories;
+      } else {
+        nextUpdates.activity_categories = categoryObj;
+      }
+
+      if (hasActivityCategoryAliasObject) {
+        nextUpdates.activity_category = updates.activity_category;
+      } else {
+        nextUpdates.activity_category = categoryObj;
+      }
+
+      const resolvedColor = categoryObj?.color ?? null; // ActivityCard prefers categoryColor/category_color first
+      nextUpdates.categoryColor = resolvedColor;
+      nextUpdates.category_color = resolvedColor;
+    }
+
+    return nextUpdates;
+  }, []); // Keep card visuals in sync when category_id patches arrive without refetch
+
+  const patchActivityFields = useCallback((activityId: string, updates: Record<string, any>) => {
+    if (!updates || !Object.keys(updates).length) {
+      return;
+    }
+
+    const enrichedUpdates = enrichCategoryPatch(updates);
+
+    setActivities(prev => {
+      let mutated = false;
+      const next = prev.map(activity => {
+        if (String(activity.id) !== String(activityId)) {
+          return activity;
+        }
+
+        mutated = true;
+        return { ...activity, ...enrichedUpdates };
+      });
+
+      return mutated ? next : prev;
+    });
+  }, [enrichCategoryPatch]);
 
   // Get user ID
   useEffect(() => {
     const fetchUser = async () => {
       try {
         const {
-          data: { user },
-        } = await supabase.auth.getUser();
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
 
-        const isWeb = Platform.OS === 'web';
-
-        if (!user) {
-          // 🔐 Programkritisk: ingen bruger = ingen aktiviteter
-          // 🌐 Web preview må ikke crashe før auth er klar
+        if (error) {
+          console.error('Failed to fetch session:', error);
           setActivities([]);
           setLoading(false);
           return;
         }
 
-        setUserId(user.id);
+        const userIdFromSession = session?.user?.id;
+        if (!userIdFromSession) {
+          setActivities([]);
+          setLoading(false);
+          return;
+        }
+
+        setUserId(userIdFromSession);
       } catch (err) {
-        console.error('Failed to fetch user:', err);
+        console.error('Failed to fetch session:', err);
         setActivities([]);
         setLoading(false);
       }
@@ -150,8 +272,9 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       // Create a map for quick category lookup
       const categoryMap = new Map<string, DatabaseActivityCategory>();
       (categoriesData || []).forEach(cat => {
-        categoryMap.set(cat.id, cat);
+        categoryMap.set(String(cat.id), cat);
       });
+      categoryMapRef.current = categoryMap;
       const categoriesList = categoriesData || [];
       const categoryMappings = (categoryMappingsData || []) as CategoryMappingRecord[];
 
@@ -161,7 +284,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         externalCategories?: string[]
       ): DatabaseActivityCategory | null => {
         if (categoryId) {
-          const knownCategory = categoryMap.get(categoryId);
+          const knownCategory = categoryMap.get(String(categoryId));
           if (knownCategory) {
             return knownCategory;
           }
@@ -392,6 +515,21 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       mounted = false;
     };
   }, [userId, refetchActivities]);
+
+  useEffect(() => {
+    const unsubscribeTask = subscribeToTaskCompletion(({ activityId, taskId, completed }) => {
+      patchActivityTasks(activityId, taskId, completed);
+    });
+
+    const unsubscribePatch = subscribeToActivityPatch(({ activityId, updates }) => {
+      patchActivityFields(activityId, updates);
+    });
+
+    return () => {
+      unsubscribeTask();
+      unsubscribePatch();
+    };
+  }, [patchActivityFields, patchActivityTasks]);
 
   return {
     activities,

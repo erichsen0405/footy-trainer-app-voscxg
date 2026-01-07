@@ -28,7 +28,6 @@ import { TaskDescriptionRenderer } from '@/components/TaskDescriptionRenderer';
 import { supabase } from '@/app/integrations/supabase/client';
 import { FeedbackTaskModal } from '@/components/FeedbackTaskModal';
 import { fetchSelfFeedbackForTemplates, upsertSelfFeedback } from '@/services/feedbackService';
-import { taskService } from '@/services/taskService';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { getCategories } from '@/services/activities';
 import { resolveActivityCategory, type CategoryMappingRecord } from '@/shared/activityCategoryResolver';
@@ -477,6 +476,7 @@ function ActivityDetailsContent({
     updateActivitySingle, 
     updateActivitySeries, 
     toggleTaskCompletion, 
+    setTaskCompletion,
     deleteActivityTask, 
     deleteActivitySingle, 
     deleteActivitySeries, 
@@ -824,15 +824,23 @@ function ActivityDetailsContent({
     if (!activity) return;
 
     let snapshot: Task[] = [];
+    let previousCompleted: boolean | null = null;
+
     setTasksState(prev => {
       snapshot = prev.map(task => ({ ...task }));
-      return prev.map(task =>
-        task.id === taskId ? { ...task, completed: !task.completed } : task
-      );
+      return prev.map(task => {
+        if (task.id !== taskId) {
+          return task;
+        }
+        previousCompleted = task.completed;
+        return { ...task, completed: !task.completed };
+      });
     });
 
+    const desiredState = previousCompleted === null ? undefined : !previousCompleted;
+
     try {
-      await toggleTaskCompletion(activity.id, taskId);
+      await toggleTaskCompletion(activity.id, taskId, desiredState);
       Promise.resolve(refreshData()).catch(() => {});
     } catch (error) {
       console.error('Error toggling task:', error);
@@ -1125,7 +1133,7 @@ function ActivityDetailsContent({
           const feedbackTaskId = feedbackModalTask.task.id;
 
           try {
-            await taskService.setTaskCompletion(feedbackTaskId, true);
+            await setTaskCompletion(activity.id, feedbackTaskId, true);
             setTasksState(prev =>
               prev.map(task =>
                 task.id === feedbackTaskId ? { ...task, completed: true } : task
@@ -1145,7 +1153,7 @@ function ActivityDetailsContent({
         setIsFeedbackSaving(false);
       }
     },
-    [activity.id, currentUserId, feedbackModalTask, refreshData]
+    [activity.id, currentUserId, feedbackModalTask, refreshData, setTaskCompletion]
   );
 
   const handleTaskRowPress = useCallback(

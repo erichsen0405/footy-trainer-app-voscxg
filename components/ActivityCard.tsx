@@ -195,7 +195,7 @@ export default function ActivityCard({
       setOptimisticTasks(newTasks);
       
       try {
-        await toggleTaskCompletion(activity.id, String(taskId));
+        await toggleTaskCompletion(activity.id, String(taskId), !previousCompleted);
         refreshData();
       } catch (error) {
         console.error('❌ Error toggling task, rolling back:', error);
