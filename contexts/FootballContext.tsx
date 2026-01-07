@@ -27,6 +27,7 @@ interface FootballContextType {
     date: Date;
     time: string;
     endTime?: string;
+    intensity?: number | null;
     isRecurring: boolean;
     recurrenceType?: 'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly';
     recurrenceDays?: number[];
@@ -40,6 +41,7 @@ interface FootballContextType {
     date?: Date;
     time?: string;
     endTime?: string;
+    intensity?: number | null;
   }) => Promise<void>;
   updateActivitySeries: (seriesId: string, updates: {
     title?: string;
@@ -47,6 +49,7 @@ interface FootballContextType {
     categoryId?: string;
     time?: string;
     endTime?: string;
+    intensity?: number | null;
   }) => Promise<void>;
   deleteActivity: (id: string) => void;
   deleteActivitySingle: (activityId: string) => Promise<void>;
@@ -139,6 +142,7 @@ export function FootballProvider({ children }: { children: ReactNode }) {
         category_id: activityData?.categoryId ?? activityData?.category_id ?? '',
         activity_date: isoDate,
         activity_time: timeStr,
+        intensity: activityData?.intensity ?? null,
         is_recurring: !!activityData?.isRecurring,
         recurrence_type: activityData?.recurrenceType,
         recurrence_days: activityData?.recurrenceDays,

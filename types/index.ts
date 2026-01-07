@@ -8,6 +8,7 @@ export interface Activity {
   location: string;
   category: ActivityCategory;
   tasks: Task[];
+  intensity?: number | null;
   isExternal?: boolean;
   externalCalendarId?: string;
   externalEventId?: string;
@@ -154,7 +155,6 @@ export interface TaskTemplateSelfFeedback {
   taskTemplateId: string;
   activityId: string;
   rating?: number | null;
-  intensity?: number | null;
   note?: string | null;
   createdAt: string;
   updatedAt: string;

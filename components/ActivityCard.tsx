@@ -268,6 +268,10 @@ export default function ActivityCard({
   const dayLabel = format(resolvedDate, 'EEE. d. MMM.', { locale: da });
   const timeLabel = format(resolvedDate, 'HH:mm');
   const location = activity.location || activity.category_location || '';
+  const intensityValue = useMemo(() => {
+    const raw = activity?.intensity ?? activity?.activity_intensity;
+    return typeof raw === 'number' ? raw : null;
+  }, [activity]);
 
   return (
     <>
@@ -304,6 +308,18 @@ export default function ActivityCard({
                 <View style={styles.detailRow}>
                   <Text style={styles.detailIcon}>📍</Text>
                   <Text style={styles.detailText} numberOfLines={1}>{location}</Text>
+                </View>
+              )}
+
+              {intensityValue !== null && (
+                <View style={styles.intensityBadge}>
+                  <IconSymbol
+                    ios_icon_name="flame.fill"
+                    android_material_icon_name="local_fire_department"
+                    size={14}
+                    color="#FFEDD5"
+                  />
+                  <Text style={styles.intensityBadgeText}>Intensitet {intensityValue}/10</Text>
                 </View>
               )}
 
@@ -474,6 +490,22 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: 'rgba(255, 255, 255, 0.95)',
     flex: 1,
+  },
+  intensityBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    marginTop: 6,
+  },
+  intensityBadgeText: {
+    color: '#FFEDD5',
+    fontSize: 13,
+    fontWeight: '600',
+    marginLeft: 6,
   },
   externalBadge: {
     marginTop: 6,

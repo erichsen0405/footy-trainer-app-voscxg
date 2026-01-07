@@ -26,6 +26,7 @@ export type Database = {
           external_category: string | null
           external_event_id: string | null
           id: string
+          intensity: number | null
           is_external: boolean
           location: string | null
           manually_set_category: boolean | null
@@ -48,6 +49,7 @@ export type Database = {
           external_category?: string | null
           external_event_id?: string | null
           id?: string
+          intensity?: number | null
           is_external?: boolean
           location?: string | null
           manually_set_category?: boolean | null
@@ -70,6 +72,7 @@ export type Database = {
           external_category?: string | null
           external_event_id?: string | null
           id?: string
+          intensity?: number | null
           is_external?: boolean
           location?: string | null
           manually_set_category?: boolean | null
@@ -155,6 +158,7 @@ export type Database = {
       activity_series: {
         Row: {
           activity_time: string
+          activity_end_time: string | null
           category_id: string | null
           created_at: string
           end_date: string | null
@@ -171,6 +175,7 @@ export type Database = {
         }
         Insert: {
           activity_time: string
+          activity_end_time?: string | null
           category_id?: string | null
           created_at?: string
           end_date?: string | null
@@ -187,6 +192,7 @@ export type Database = {
         }
         Update: {
           activity_time?: string
+          activity_end_time?: string | null
           category_id?: string | null
           created_at?: string
           end_date?: string | null
@@ -1217,6 +1223,10 @@ export type Database = {
         Row: {
           after_training_delay_minutes: number | null
           after_training_enabled: boolean
+          after_training_feedback_enable_score: boolean
+          after_training_feedback_score_explanation: string | null
+          after_training_feedback_enable_intensity: boolean
+          after_training_feedback_enable_note: boolean
           created_at: string
           description: string | null
           id: string
@@ -1232,6 +1242,10 @@ export type Database = {
         Insert: {
           after_training_delay_minutes?: number | null
           after_training_enabled?: boolean
+          after_training_feedback_enable_score?: boolean | null
+          after_training_feedback_score_explanation?: string | null
+          after_training_feedback_enable_intensity?: boolean | null
+          after_training_feedback_enable_note?: boolean | null
           created_at?: string
           description?: string | null
           id?: string
@@ -1247,6 +1261,10 @@ export type Database = {
         Update: {
           after_training_delay_minutes?: number | null
           after_training_enabled?: boolean
+          after_training_feedback_enable_score?: boolean
+          after_training_feedback_score_explanation?: string | null
+          after_training_feedback_enable_intensity?: boolean
+          after_training_feedback_enable_note?: boolean
           created_at?: string
           description?: string | null
           id?: string

@@ -50,16 +50,13 @@ export const taskService = {
   async createTask(data: CreateTaskData, signal?: AbortSignal): Promise<Task> {
     console.log('[P8] createTask called', data);
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    const { data: sessionData, error: authError } = await supabase.auth.getSession();
+    const user = sessionData?.session?.user ?? null;
+    if (authError) throw authError;
+    if (!user) throw new Error('No authenticated user');
 
-    if (userError || !user) {
-      throw new Error('No authenticated user');
-    }
-
-    const trimmedScoreExplanation = data.afterTrainingFeedbackScoreExplanation?.trim();
+    const enableScore = data.afterTrainingFeedbackEnableScore ?? true;
+    const trimmedScoreExplanation = enableScore ? data.afterTrainingFeedbackScoreExplanation?.trim() : null;
 
     /* ----------------------------------
        1. Insert task template
@@ -74,7 +71,7 @@ export const taskService = {
         video_url: data.videoUrl ?? null,
         after_training_enabled: data.afterTrainingEnabled ?? false,
         after_training_delay_minutes: data.afterTrainingDelayMinutes ?? null,
-        after_training_feedback_enable_score: data.afterTrainingFeedbackEnableScore ?? true,
+        after_training_feedback_enable_score: enableScore,
         after_training_feedback_score_explanation: trimmedScoreExplanation?.length ? trimmedScoreExplanation : null,
         after_training_feedback_enable_intensity: data.afterTrainingFeedbackEnableIntensity ?? false,
         after_training_feedback_enable_note: data.afterTrainingFeedbackEnableNote ?? true,
@@ -151,7 +148,12 @@ export const taskService = {
     }
 
     const shouldSyncSeriesFeedback =
-      updates.afterTrainingEnabled !== undefined || updates.afterTrainingDelayMinutes !== undefined;
+      updates.afterTrainingEnabled !== undefined ||
+      updates.afterTrainingDelayMinutes !== undefined ||
+      updates.afterTrainingFeedbackEnableScore !== undefined ||
+      updates.afterTrainingFeedbackEnableIntensity !== undefined ||
+      updates.afterTrainingFeedbackEnableNote !== undefined ||
+      updates.afterTrainingFeedbackScoreExplanation !== undefined;
 
     if (updates.afterTrainingEnabled !== undefined) {
       updateData.after_training_enabled = updates.afterTrainingEnabled;
@@ -163,15 +165,23 @@ export const taskService = {
 
     if (updates.afterTrainingFeedbackEnableScore !== undefined) {
       updateData.after_training_feedback_enable_score = updates.afterTrainingFeedbackEnableScore;
-    }
-
-    if (updates.afterTrainingFeedbackScoreExplanation !== undefined) {
-      const trimmed = updates.afterTrainingFeedbackScoreExplanation?.trim();
-      updateData.after_training_feedback_score_explanation = trimmed?.length ? trimmed : null;
+      if (!updates.afterTrainingFeedbackEnableScore) {
+        updateData.after_training_feedback_score_explanation = null;
+      }
     }
 
     if (updates.afterTrainingFeedbackEnableIntensity !== undefined) {
       updateData.after_training_feedback_enable_intensity = updates.afterTrainingFeedbackEnableIntensity;
+    }
+
+    if (updates.afterTrainingFeedbackScoreExplanation !== undefined) {
+      const trimmed = updates.afterTrainingFeedbackScoreExplanation?.trim();
+      const scoreDisabled = updates.afterTrainingFeedbackEnableScore === false;
+      updateData.after_training_feedback_score_explanation = scoreDisabled
+        ? null
+        : trimmed?.length
+          ? trimmed
+          : null;
     }
 
     if (updates.afterTrainingFeedbackEnableNote !== undefined) {
@@ -232,13 +242,30 @@ export const taskService = {
             error: syncError.message,
           });
         } else if (syncSummary) {
+          const rawAny: any = syncSummary;
+          const raw =
+            rawAny && typeof rawAny === 'object' && !Array.isArray(rawAny) ? rawAny : {};
+
+          const templateId = raw.templateId ?? raw.template_id ?? taskId;
+          const seriesCount = raw.seriesCount ?? raw.series_count ?? 0;
+          const directActivityUpdates =
+            raw.directActivityUpdates ?? raw.direct_activity_updates ?? 0;
+          const seriesActivityUpdates =
+            raw.seriesActivityUpdates ?? raw.series_activity_updates ?? 0;
+          const totalActivityUpdates =
+            raw.totalActivityUpdates ??
+            raw.total_activity_updates ??
+            (directActivityUpdates + seriesActivityUpdates);
+          const externalEventUpdates =
+            raw.externalEventUpdates ?? raw.external_event_updates ?? 0;
+
           console.log('[SERIES_FEEDBACK_SYNC]', {
-            templateId: syncSummary.templateId ?? taskId,
-            seriesCount: syncSummary.seriesCount ?? 0,
-            totalActivityUpdates: syncSummary.totalActivityUpdates ?? 0,
-            externalEventUpdates: syncSummary.externalEventUpdates ?? 0,
-            directActivityUpdates: syncSummary.directActivityUpdates ?? 0,
-            seriesActivityUpdates: syncSummary.seriesActivityUpdates ?? 0,
+            templateId,
+            seriesCount,
+            totalActivityUpdates,
+            externalEventUpdates,
+            directActivityUpdates,
+            seriesActivityUpdates,
             dryRun: true,
           });
         }

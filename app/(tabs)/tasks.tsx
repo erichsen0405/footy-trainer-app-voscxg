@@ -510,6 +510,10 @@ export default function TasksScreen() {
           videoUrl: videoUrl.trim() ? videoUrl.trim() : null,
           afterTrainingEnabled: !!selectedTask.afterTrainingEnabled,
           afterTrainingDelayMinutes: selectedTask.afterTrainingEnabled ? (selectedTask.afterTrainingDelayMinutes ?? 0) : null,
+          afterTrainingFeedbackEnableScore: selectedTask.afterTrainingFeedbackEnableScore ?? true,
+          afterTrainingFeedbackScoreExplanation: selectedTask.afterTrainingFeedbackScoreExplanation ?? null,
+          afterTrainingFeedbackEnableIntensity: selectedTask.afterTrainingFeedbackEnableIntensity ?? false,
+          afterTrainingFeedbackEnableNote: selectedTask.afterTrainingFeedbackEnableNote ?? true,
           playerId,
           teamId,
         });
@@ -525,6 +529,7 @@ export default function TasksScreen() {
           categoryIds,
           afterTrainingEnabled: selectedTask.afterTrainingEnabled ?? false,
           afterTrainingDelayMinutes: selectedTask.afterTrainingEnabled ? (selectedTask.afterTrainingDelayMinutes ?? 0) : null,
+          afterTrainingFeedbackEnableIntensity: selectedTask.afterTrainingFeedbackEnableIntensity ?? false,
         };
 
         await updateTask(String((selectedTask as any).id), taskToSave);
@@ -664,7 +669,12 @@ export default function TasksScreen() {
     setSelectedTask(prev => {
       if (!prev) return prev;
       if (!value) {
-        return { ...prev, afterTrainingEnabled: false, afterTrainingDelayMinutes: null };
+        return {
+          ...prev,
+          afterTrainingEnabled: false,
+          afterTrainingDelayMinutes: null,
+          afterTrainingFeedbackEnableIntensity: false,
+        };
       }
 
       const existingDelay = prev.afterTrainingDelayMinutes;
@@ -673,8 +683,8 @@ export default function TasksScreen() {
         afterTrainingEnabled: true,
         afterTrainingDelayMinutes: existingDelay ?? 0,
         afterTrainingFeedbackEnableScore: prev.afterTrainingFeedbackEnableScore ?? true,
-        afterTrainingFeedbackEnableNote: prev.afterTrainingFeedbackEnableNote ?? true,
         afterTrainingFeedbackEnableIntensity: prev.afterTrainingFeedbackEnableIntensity ?? false,
+        afterTrainingFeedbackEnableNote: prev.afterTrainingFeedbackEnableNote ?? true,
       };
     });
   }, []);
@@ -1127,6 +1137,9 @@ export default function TasksScreen() {
                                     ? ({
                                         ...(prev as any),
                                         afterTrainingFeedbackEnableScore: value,
+                                        afterTrainingFeedbackScoreExplanation: value
+                                          ? prev.afterTrainingFeedbackScoreExplanation ?? ''
+                                          : '',
                                       } as Task)
                                     : prev,
                                 )
@@ -1169,9 +1182,9 @@ export default function TasksScreen() {
 
                           <View style={styles.feedbackToggleRow}>
                             <View style={styles.toggleTextWrapper}>
-                              <Text style={[styles.toggleLabel, { color: textColor }]}>Intensitet (1-10)</Text>
+                              <Text style={[styles.toggleLabel, { color: textColor }]}>Intensitet</Text>
                               <Text style={[styles.toggleHelperText, { color: textSecondaryColor }]}>
-                                Tilføj ekstra felt hvor spilleren vurderer belastningen.
+                                Slå til for at registrere aktivitetens intensitet (1-10) i næste feedback-modal.
                               </Text>
                             </View>
                             <Switch

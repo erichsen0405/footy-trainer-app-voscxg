@@ -29,6 +29,7 @@ interface ActivityWithCategory {
   location?: string;
   category_id?: string;
   category?: DatabaseActivityCategory | null;
+  intensity?: number | null;
   is_external: boolean;
   external_calendar_id?: string;
   external_event_id?: string;
@@ -228,6 +229,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
             activity_time,
             location,
             category_id,
+            intensity,
             created_at,
             updated_at,
             activity_tasks (
@@ -338,6 +340,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           location: activity.location || '',
           category_id: activity.category_id,
           category: resolvedCategory,
+          intensity: activity.intensity ?? null,
           is_external: false,
           created_at: activity.created_at,
           updated_at: activity.updated_at,
@@ -419,6 +422,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
               location: event.location || '',
               category_id: categoryId,
               category: resolvedCategory,
+              intensity: null,
               is_external: true,
               external_calendar_id: event.provider_calendar_id,
               external_event_id: event.provider_event_uid,

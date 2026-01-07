@@ -9,6 +9,7 @@ export interface CreateActivityData {
   date: Date;
   time: string;
   endTime?: string;
+  intensity?: number | null;
   isRecurring: boolean;
   recurrenceType?: 'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly';
   recurrenceDays?: number[];
@@ -25,7 +26,24 @@ export interface UpdateActivityData {
   date?: Date;
   time?: string;
   endTime?: string;
+  intensity?: number | null;
 }
+
+const normalizeEndTime = (value?: string | null): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+};
+
+const normalizeIntensity = (value?: number | null): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  return null;
+};
 
 // Helper function to generate dates for recurring activities
 function generateRecurringDates(
@@ -82,6 +100,9 @@ export const activityService = {
   async createActivity(data: CreateActivityData, signal?: AbortSignal): Promise<void> {
     console.log('Creating activity:', data);
 
+    const normalizedEndTime = normalizeEndTime(data.endTime);
+    const normalizedIntensity = normalizeIntensity(data.intensity);
+
     if (data.isRecurring) {
       const { data: seriesData, error: seriesError } = await supabase
         .from('activity_series')
@@ -95,7 +116,7 @@ export const activityService = {
           start_date: data.date.toISOString().split('T')[0],
           end_date: data.endDate ? data.endDate.toISOString().split('T')[0] : null,
           activity_time: data.time,
-          activity_end_time: data.endTime,
+          activity_end_time: normalizedEndTime,
           player_id: data.playerId,
           team_id: data.teamId,
         })
@@ -120,6 +141,7 @@ export const activityService = {
         activity_end_time: data.endTime,
         location: data.location,
         category_id: data.categoryId,
+        intensity: normalizedIntensity,
         series_id: seriesData.id,
         series_instance_date: date.toISOString().split('T')[0],
         is_external: false,
@@ -141,9 +163,10 @@ export const activityService = {
           title: data.title,
           activity_date: data.date.toISOString().split('T')[0],
           activity_time: data.time,
-          activity_end_time: data.endTime,
+          activity_end_time: normalizedEndTime,
           location: data.location,
           category_id: data.categoryId,
+          intensity: normalizedIntensity,
           is_external: false,
           player_id: data.playerId,
           team_id: data.teamId,
@@ -185,7 +208,8 @@ export const activityService = {
       if (updates.location !== undefined) updateData.location = updates.location;
       if (updates.date !== undefined) updateData.activity_date = updates.date.toISOString().split('T')[0];
       if (updates.time !== undefined) updateData.activity_time = updates.time;
-      if (updates.endTime !== undefined) updateData.activity_end_time = updates.endTime ?? null;
+      if (updates.endTime !== undefined) updateData.activity_end_time = normalizeEndTime(updates.endTime);
+      if (updates.intensity !== undefined) updateData.intensity = normalizeIntensity(updates.intensity);
       
       if (updates.categoryId !== undefined) {
         updateData.category_id = updates.categoryId;
@@ -214,7 +238,7 @@ export const activityService = {
     if (updates.location !== undefined) seriesUpdate.location = updates.location;
     if (updates.categoryId !== undefined) seriesUpdate.category_id = updates.categoryId;
     if (updates.time !== undefined) seriesUpdate.activity_time = updates.time;
-    if (updates.endTime !== undefined) seriesUpdate.activity_end_time = updates.endTime ?? null;
+    if (updates.endTime !== undefined) seriesUpdate.activity_end_time = normalizeEndTime(updates.endTime);
 
     const { error: seriesError } = await supabase
       .from('activity_series')
@@ -235,7 +259,8 @@ export const activityService = {
       activityUpdate.category_updated_at = new Date().toISOString();
     }
     if (updates.time !== undefined) activityUpdate.activity_time = updates.time;
-    if (updates.endTime !== undefined) activityUpdate.activity_end_time = updates.endTime ?? null;
+    if (updates.endTime !== undefined) activityUpdate.activity_end_time = normalizeEndTime(updates.endTime);
+    if (updates.intensity !== undefined) activityUpdate.intensity = normalizeIntensity(updates.intensity);
 
     if (Object.keys(activityUpdate).length > 0) {
       activityUpdate.updated_at = new Date().toISOString();
@@ -310,9 +335,10 @@ export const activityService = {
         title: duplicateTitle,
         activity_date: activity.activity_date,
         activity_time: activity.activity_time,
-        activity_end_time: activity.activity_end_time,
+        activity_end_time: normalizeEndTime(activity.activity_end_time),
         location: activity.location,
         category_id: activity.category_id,
+        intensity: normalizeIntensity(activity.intensity),
         is_external: false,
         player_id: playerId,
         team_id: teamId,

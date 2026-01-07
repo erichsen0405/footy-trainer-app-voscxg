@@ -6,7 +6,6 @@ export interface UpsertSelfFeedbackPayload {
   templateId: string;
   activityId: string;
   rating: number | null;
-  intensity: number | null;
   note: string;
 }
 
@@ -17,7 +16,6 @@ function mapRow(row: any): TaskTemplateSelfFeedback {
     taskTemplateId: row.task_template_id,
     activityId: row.activity_id,
     rating: row.rating,
-    intensity: row.intensity,
     note: row.note,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -59,7 +57,6 @@ export async function upsertSelfFeedback(
         task_template_id: payload.templateId,
         activity_id: payload.activityId,
         rating: payload.rating,
-        intensity: payload.intensity,
         note: trimmedNote.length ? trimmedNote : null,
       },
       { onConflict: 'user_id,task_template_id,activity_id' }

@@ -19,7 +19,7 @@ const CHIP_HIT_SLOP = { top: 8, right: 8, bottom: 8, left: 8 };
 interface FeedbackFieldsConfig {
   enableScore: boolean;
   scoreExplanation?: string | null;
-  enableIntensity: boolean;
+  enableIntensity?: boolean;
   enableNote: boolean;
 }
 
@@ -30,9 +30,10 @@ interface FeedbackTaskModalProps {
   defaultNote?: string | null;
   defaultIntensity?: number | null;
   feedbackConfig?: FeedbackFieldsConfig;
+  showIntensityField?: boolean;
   isSaving?: boolean;
   onClose: () => void;
-  onSave: (payload: { rating: number | null; intensity: number | null; note: string }) => void;
+  onSave: (payload: { rating: number | null; note: string; intensity?: number | null }) => void;
 }
 
 export function FeedbackTaskModal({
@@ -42,6 +43,7 @@ export function FeedbackTaskModal({
   defaultNote = '',
   defaultIntensity = null,
   feedbackConfig,
+  showIntensityField = false,
   isSaving = false,
   onClose,
   onSave,
@@ -63,11 +65,13 @@ export function FeedbackTaskModal({
     };
   }, [feedbackConfig]);
 
+  const showIntensity = resolvedConfig.enableIntensity && showIntensityField;
+
   useEffect(() => {
     if (visible) {
       setRating(defaultRating ?? null);
-      setIntensity(defaultIntensity ?? null);
       setNote(defaultNote ?? '');
+      setIntensity(typeof defaultIntensity === 'number' ? defaultIntensity : null);
     }
   }, [defaultIntensity, defaultNote, defaultRating, visible]);
 
@@ -77,8 +81,8 @@ export function FeedbackTaskModal({
     if (disabled) return;
     onSave({
       rating: resolvedConfig.enableScore ? rating : null,
-      intensity: resolvedConfig.enableIntensity ? intensity : null,
       note: resolvedConfig.enableNote ? note : '',
+      intensity: showIntensity ? intensity ?? null : undefined,
     });
   };
 
@@ -149,9 +153,10 @@ export function FeedbackTaskModal({
               </View>
             )}
 
-            {resolvedConfig.enableIntensity && (
+            {showIntensity && (
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Intensitet (1-10)</Text>
+                <Text style={styles.scoreExplanation}>Gælder for hele aktiviteten</Text>
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -208,7 +213,7 @@ export function FeedbackTaskModal({
               </View>
             )}
 
-            {!resolvedConfig.enableScore && !resolvedConfig.enableIntensity && !resolvedConfig.enableNote && (
+            {!resolvedConfig.enableScore && !resolvedConfig.enableNote && !showIntensity && (
               <View style={styles.inputGroup}>
                 <Text style={[styles.label, { color: colors.textSecondary }]}>
                   Ingen feedbackfelter er aktiveret for denne opgave.

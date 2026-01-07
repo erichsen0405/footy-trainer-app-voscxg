@@ -122,6 +122,7 @@ export const useFootballData = () => {
       date?: Date;
       time?: string;
       endTime?: string;
+      intensity?: number | null;
     }) => {
       const payload: Record<string, any> = {};
 
@@ -174,6 +175,10 @@ export const useFootballData = () => {
           payload.categoryColor = null;
           payload.category_color = null;
         }
+      }
+
+      if (updates.intensity !== undefined) {
+        payload.intensity = updates.intensity;
       }
 
       return payload;
@@ -694,6 +699,7 @@ export const useFootballData = () => {
     date: Date;
     time: string;
     endTime?: string;
+    intensity?: number | null;
     isRecurring: boolean;
     recurrenceType?: 'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly';
     recurrenceDays?: number[];
@@ -729,6 +735,7 @@ export const useFootballData = () => {
         date: activityData.date,
         time: activityData.time,
         endTime: activityData.endTime,
+        intensity: activityData.intensity ?? null,
         isRecurring: activityData.isRecurring,
         recurrenceType: activityData.recurrenceType,
         recurrenceDays: activityData.recurrenceDays,
@@ -1070,6 +1077,7 @@ export const useFootballData = () => {
       date?: Date;
       time?: string;
       endTime?: string;
+      intensity?: number | null;
     }
   ) => {
     const optimisticUpdates = buildOptimisticActivityUpdates(updates);
@@ -1105,6 +1113,7 @@ export const useFootballData = () => {
       categoryId?: string;
       time?: string;
       endTime?: string;
+      intensity?: number | null;
     }
   ) => {
     const optimisticUpdates = buildOptimisticActivityUpdates(updates);

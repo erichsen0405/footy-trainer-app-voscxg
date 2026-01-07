@@ -37,6 +37,7 @@ export interface ActivityCreationData {
   date: Date;
   time: string;
   endTime?: string;
+  intensity?: number | null;
   isRecurring: boolean;
   recurrenceType?: 'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly';
   recurrenceDays?: number[];
@@ -102,6 +103,8 @@ export default function CreateActivityModal({
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [showCategoryManagement, setShowCategoryManagement] = useState(false);
+  const [intensityEnabled, setIntensityEnabled] = useState(false);
+  const [intensityValue, setIntensityValue] = useState<number | null>(null);
 
   // validate end time whenever time / endTime changes
   useEffect(() => {
@@ -147,6 +150,8 @@ export default function CreateActivityModal({
     return Array.isArray(categories) ? categories : [];
   }, [categories]);
 
+  const intensityOptions = useMemo(() => Array.from({ length: 10 }, (_, index) => index + 1), []);
+
   const bgColor = useMemo(() => {
     if (isDark) return '#1a1a1a';
     if (typeof colors.background === 'string') return colors.background;
@@ -180,6 +185,8 @@ export default function CreateActivityModal({
     setHasEndDate(false);
     setEndDate(new Date(Date.now() + 90 * 24 * 60 * 60 * 1000));
     setShowCategoryManagement(false);
+    setIntensityEnabled(false);
+    setIntensityValue(null);
     userTouchedCategoryRef.current = false;
 
     safeOnClose();
@@ -216,6 +223,12 @@ export default function CreateActivityModal({
       return;
     }
 
+    const normalizedIntensity = intensityEnabled ? intensityValue ?? null : null;
+    if (intensityEnabled && normalizedIntensity === null) {
+      Alert.alert('Fejl', 'Vælg intensitet (1-10)');
+      return;
+    }
+
     setIsCreating(true);
 
     try {
@@ -227,6 +240,7 @@ export default function CreateActivityModal({
         time,
         // gør sluttid valgfri – hvis tom/whitespace, send undefined
         endTime: endTime?.trim() ? endTime.trim() : undefined,
+        intensity: normalizedIntensity,
         isRecurring,
         recurrenceType: isRecurring ? recurrenceType : undefined,
         recurrenceDays:
@@ -255,6 +269,8 @@ export default function CreateActivityModal({
     time,
     endTime,
     endTimeError,
+    intensityEnabled,
+    intensityValue,
     hasEndDate,
     endDate,
     onCreateActivity,
@@ -367,6 +383,17 @@ export default function CreateActivityModal({
   const handleCategoryToggle = useCallback((categoryId: string) => {
     userTouchedCategoryRef.current = true;
     setSelectedCategory(prev => (prev === categoryId ? '' : categoryId));
+  }, []);
+
+  const handleIntensityToggle = useCallback((enabled: boolean) => {
+    setIntensityEnabled(enabled);
+    if (!enabled) {
+      setIntensityValue(null);
+    }
+  }, []);
+
+  const handleIntensitySelect = useCallback((value: number) => {
+    setIntensityValue(value);
   }, []);
 
   // Avoid inline lambdas in render
@@ -632,6 +659,48 @@ export default function CreateActivityModal({
                 <View style={styles.errorContainer}>
                   <Text style={styles.errorText}>{endTimeError}</Text>
                 </View>
+              ) : null}
+
+              {/* Intensity */}
+              <View style={[styles.switchContainer, { backgroundColor: bgColor }]}>
+                <View style={styles.switchLabelContainer}>
+                  <IconSymbol
+                    ios_icon_name="flame"
+                    android_material_icon_name="local_fire_department"
+                    size={20}
+                    color={textColor}
+                  />
+                  <Text style={[styles.switchLabel, { color: textColor }]}>Tilføj intensitet</Text>
+                </View>
+                <Switch
+                  value={intensityEnabled}
+                  onValueChange={handleIntensityToggle}
+                  trackColor={{ false: '#767577', true: colors.primary }}
+                  thumbColor={intensityEnabled ? '#fff' : '#f4f3f4'}
+                />
+              </View>
+
+              {intensityEnabled ? (
+                <>
+                  <Text style={[styles.intensityLabel, { color: textSecondaryColor }]}>1 = let · 10 = maks</Text>
+                  <View style={styles.intensityChipsRow}>
+                    {intensityOptions.map(option => {
+                      const isSelected = intensityValue === option;
+                      return (
+                        <TouchableOpacity
+                          key={option}
+                          style={[styles.intensityChip, isSelected && styles.intensityChipSelected]}
+                          onPress={() => handleIntensitySelect(option)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.intensityChipText, isSelected && styles.intensityChipTextSelected]}>
+                            {option}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </>
               ) : null}
 
               {/* Series Toggle */}
@@ -938,6 +1007,39 @@ const styles = StyleSheet.create({
   switchLabel: {
     fontSize: 17,
     marginLeft: 12,
+  },
+  intensityLabel: {
+    fontSize: 15,
+    marginLeft: 4,
+    marginBottom: 8,
+  },
+  intensityChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 16,
+  },
+  intensityChip: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#d9d9d9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  intensityChipSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  intensityChipText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#555',
+  },
+  intensityChipTextSelected: {
+    color: '#fff',
   },
   recurrenceTypeContainer: {
     flexDirection: 'row',

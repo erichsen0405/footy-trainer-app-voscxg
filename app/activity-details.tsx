@@ -12,6 +12,7 @@ import {
   Platform,
   ActivityIndicator,
   KeyboardAvoidingView,
+  Switch,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useFootball } from '@/contexts/FootballContext';
@@ -122,6 +123,7 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
         activity_end_time,
         location,
         category_id,
+        intensity,
         is_external,
         external_calendar_id,
         external_event_id,
@@ -190,6 +192,7 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
         externalEventId: internalActivity.external_event_id,
         seriesId: internalActivity.series_id,
         seriesInstanceDate: internalActivity.series_instance_date ? new Date(internalActivity.series_instance_date) : undefined,
+        intensity: typeof internalActivity.intensity === 'number' ? internalActivity.intensity : null,
       };
     }
 
@@ -288,6 +291,7 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
         isExternal: true,
         externalCalendarId: externalEvent.provider_calendar_id,
         externalEventId: localMeta.external_event_id,
+        intensity: null,
       };
     }
 
@@ -413,14 +417,6 @@ function buildFeedbackSummary(
     );
   }
 
-  if (config?.enableIntensity) {
-    parts.push(
-      typeof feedback.intensity === 'number'
-        ? `Intensitet ${feedback.intensity}/10`
-        : 'Intensitet mangler',
-    );
-  }
-
   return parts.length ? parts.join(' · ') : null;
 }
 
@@ -520,6 +516,13 @@ function ActivityDetailsContent({
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
   const [editScope, setEditScope] = useState<'single' | 'series'>('single');
+  const [editIntensityEnabled, setEditIntensityEnabled] = useState(
+    typeof activity.intensity === 'number'
+  );
+  const [editIntensity, setEditIntensity] = useState<number | null>(
+    typeof activity.intensity === 'number' ? activity.intensity : null
+  );
+  const intensityOptions = useMemo(() => Array.from({ length: 10 }, (_, idx) => idx + 1), []);
   
   // Recurring event conversion state
   const [convertToRecurring, setConvertToRecurring] = useState(false);
@@ -549,6 +552,9 @@ function ActivityDetailsContent({
     setEditTime(activity.time);
     setEditEndTime(activity.endTime);
     setEditCategory(activity.category);
+    const hasIntensity = typeof activity.intensity === 'number';
+    setEditIntensityEnabled(hasIntensity);
+    setEditIntensity(hasIntensity ? activity.intensity! : null);
   }, [activity]);
 
   useEffect(() => {
@@ -617,6 +623,17 @@ function ActivityDetailsContent({
     );
   };
 
+  const handleIntensityToggle = useCallback((value: boolean) => {
+    setEditIntensityEnabled(value);
+    if (!value) {
+      setEditIntensity(null);
+    }
+  }, []);
+
+  const handleIntensitySelect = useCallback((value: number) => {
+    setEditIntensity(value);
+  }, []);
+
   const handleSave = async () => {
     if (!activity) return;
 
@@ -639,6 +656,15 @@ function ActivityDetailsContent({
       }
     }
 
+    const normalizedIntensity = editIntensityEnabled ? editIntensity : null;
+    if (
+      editIntensityEnabled &&
+      (normalizedIntensity === null || normalizedIntensity < 1 || normalizedIntensity > 10)
+    ) {
+      Alert.alert('Fejl', 'Vælg intensitet mellem 1 og 10');
+      return;
+    }
+
     setIsSaving(true);
 
     try {
@@ -655,6 +681,7 @@ function ActivityDetailsContent({
           date: editDate,
           time: editTime,
           endTime: endTimePayload,
+          intensity: normalizedIntensity,
           isRecurring: true,
           recurrenceType,
           recurrenceDays: (recurrenceType === 'weekly' || recurrenceType === 'biweekly' || recurrenceType === 'triweekly') ? selectedDays : undefined,
@@ -699,6 +726,7 @@ function ActivityDetailsContent({
           categoryId: editCategory?.id,
           time: editTime,
           endTime: endTimePayload,
+          intensity: normalizedIntensity,
         });
 
         applyActivityUpdates({
@@ -707,6 +735,7 @@ function ActivityDetailsContent({
           category: editCategory || activity.category,
           time: editTime,
           endTime: endTimePayload,
+          intensity: normalizedIntensity,
         });
 
         Alert.alert('Gemt', 'Hele serien er blevet opdateret');
@@ -723,6 +752,7 @@ function ActivityDetailsContent({
         date: editDate,
         time: editTime,
         endTime: endTimePayload,
+        intensity: normalizedIntensity,
       });
 
       applyActivityUpdates({
@@ -732,6 +762,7 @@ function ActivityDetailsContent({
         date: editDate,
         time: editTime,
         endTime: endTimePayload,
+        intensity: normalizedIntensity,
       });
 
       Alert.alert('Gemt', 'Aktiviteten er blevet opdateret');
@@ -907,6 +938,7 @@ function ActivityDetailsContent({
         ...updates,
         category: updates.category ?? activity.category,
         tasks: updates.tasks ?? activity.tasks,
+        intensity: updates.intensity !== undefined ? updates.intensity : activity.intensity,
       };
       onActivityUpdated(nextActivity);
     },
@@ -928,6 +960,18 @@ function ActivityDetailsContent({
     });
     return Array.from(ids);
   }, [resolveFeedbackTemplateId, taskListData]);
+
+  const intensityOwnerTemplateId = useMemo(() => {
+    for (const task of taskListData) {
+      const templateId = resolveFeedbackTemplateId(task);
+      if (!templateId) continue;
+      const config = feedbackConfigByTemplate[templateId];
+      if (config?.enableIntensity) {
+        return templateId;
+      }
+    }
+    return null;
+  }, [feedbackConfigByTemplate, resolveFeedbackTemplateId, taskListData]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1085,6 +1129,15 @@ function ActivityDetailsContent({
     ? selfFeedbackByTemplate[feedbackModalTask.templateId]?.current
     : undefined;
 
+  const currentActivityIntensity = typeof activity.intensity === 'number' ? activity.intensity : null;
+
+  const shouldShowIntensityField = Boolean(
+    feedbackModalTask?.templateId &&
+      feedbackModalTask.templateId === intensityOwnerTemplateId &&
+      feedbackConfigByTemplate[feedbackModalTask.templateId]?.enableIntensity &&
+      !activity.isExternal,
+  );
+
   const handleFeedbackTaskPress = useCallback(
     (task: Task) => {
       const templateId = resolveFeedbackTemplateId(task);
@@ -1099,7 +1152,7 @@ function ActivityDetailsContent({
   }, []);
 
   const handleFeedbackSave = useCallback(
-    async ({ rating, note, intensity }: { rating: number | null; note: string; intensity: number | null }) => {
+    async ({ rating, note, intensity }: { rating: number | null; note: string; intensity?: number | null }) => {
       if (!feedbackModalTask?.templateId) {
         return;
       }
@@ -1112,14 +1165,32 @@ function ActivityDetailsContent({
       setIsFeedbackSaving(true);
 
       try {
+        const canPersistIntensity =
+          !activity.isExternal &&
+          typeof intensity !== 'undefined' &&
+          feedbackModalTask.templateId === intensityOwnerTemplateId &&
+          feedbackConfigByTemplate[feedbackModalTask.templateId]?.enableIntensity;
+
+        if (canPersistIntensity && intensity !== null) {
+          if (intensity < 1 || intensity > 10) {
+            Alert.alert('Fejl', 'Intensitet skal være mellem 1 og 10.');
+            setIsFeedbackSaving(false);
+            return;
+          }
+        }
+
         const saved = await upsertSelfFeedback({
           userId: currentUserId,
           templateId: feedbackModalTask.templateId,
           activityId: activity.id,
           rating,
-          intensity,
           note,
         });
+
+        if (canPersistIntensity && intensity !== activity.intensity) {
+          await updateActivitySingle(activity.id, { intensity: intensity ?? null });
+          applyActivityUpdates({ intensity: intensity ?? null });
+        }
 
         setSelfFeedbackByTemplate(prev => ({
           ...prev,
@@ -1153,7 +1224,7 @@ function ActivityDetailsContent({
         setIsFeedbackSaving(false);
       }
     },
-    [activity.id, currentUserId, feedbackModalTask, refreshData, setTaskCompletion]
+    [activity.id, activity.intensity, activity.isExternal, applyActivityUpdates, currentUserId, feedbackConfigByTemplate, feedbackModalTask, intensityOwnerTemplateId, refreshData, setTaskCompletion, updateActivitySingle]
   );
 
   const handleTaskRowPress = useCallback(
@@ -1936,6 +2007,74 @@ function ActivityDetailsContent({
             )}
           </View>
 
+          {/* Intensity */}
+          {!activity.isExternal && (
+            <View style={styles.fieldContainer}>
+              <Text style={[styles.fieldLabel, { color: textColor }]}>Intensitet</Text>
+              {isEditing ? (
+                <>
+                  <View style={[styles.intensityToggleRow, { backgroundColor: bgColor }]}>
+                    <View style={styles.intensityToggleLabel}>
+                      <IconSymbol
+                        ios_icon_name="flame"
+                        android_material_icon_name="local_fire_department"
+                        size={20}
+                        color={textColor}
+                      />
+                      <Text style={[styles.switchLabel, { color: textColor }]}>Tilføj intensitet</Text>
+                    </View>
+                    <Switch
+                      value={editIntensityEnabled}
+                      onValueChange={handleIntensityToggle}
+                      trackColor={{ false: '#767577', true: colors.primary }}
+                      thumbColor={editIntensityEnabled ? '#fff' : '#f4f3f4'}
+                    />
+                  </View>
+
+                  {editIntensityEnabled && (
+                    <>
+                      <Text style={[styles.intensityHint, { color: textSecondaryColor }]}>1 = let · 10 = maks</Text>
+                      <View style={styles.intensityPickerRow}>
+                        {intensityOptions.map(option => {
+                          const isSelected = editIntensity === option;
+                          return (
+                            <TouchableOpacity
+                              key={`intensity-${option}`}
+                              style={[styles.intensityPickerChip, isSelected && styles.intensityPickerChipSelected]}
+                              onPress={() => handleIntensitySelect(option)}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={[styles.intensityPickerText, isSelected && styles.intensityPickerTextSelected]}>
+                                {option}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </>
+                  )}
+                </>
+              ) : (
+                <View style={styles.detailRow}>
+                  <IconSymbol
+                    ios_icon_name="flame.fill"
+                    android_material_icon_name="local_fire_department"
+                    size={24}
+                    color={activity.category.color}
+                  />
+                  <View style={styles.detailContent}>
+                    <Text style={[styles.detailLabel, { color: textSecondaryColor }]}>Intensitet</Text>
+                    {typeof activity.intensity === 'number' ? (
+                      <Text style={[styles.detailValue, { color: textColor }]}>Level {activity.intensity}/10</Text>
+                    ) : (
+                      <Text style={[styles.detailValue, { color: textSecondaryColor }]}>Ikke angivet</Text>
+                    )}
+                  </View>
+                </View>
+              )}
+            </View>
+          )}
+
           {/* Convert to Recurring Option */}
           {isEditing && !activity.seriesId && !activity.isExternal && (
             <>
@@ -2361,8 +2500,9 @@ function ActivityDetailsContent({
         taskTitle={feedbackModalTask?.task.title || ''}
         defaultRating={activeFeedbackDefaults?.rating ?? null}
         defaultNote={activeFeedbackDefaults?.note ?? ''}
-        defaultIntensity={activeFeedbackDefaults?.intensity ?? null}
+        defaultIntensity={currentActivityIntensity}
         feedbackConfig={feedbackModalTask?.templateId ? feedbackConfigByTemplate[feedbackModalTask.templateId] : undefined}
+        showIntensityField={shouldShowIntensityField}
         isSaving={isFeedbackSaving}
         onClose={handleFeedbackModalClose}
         onSave={handleFeedbackSave}
@@ -2657,6 +2797,55 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 10,
+  },
+  switchLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+  intensityToggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  intensityToggleLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  intensityHint: {
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  intensityPickerRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  intensityPickerChip: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#d9d9d9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  intensityPickerChipSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  intensityPickerText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#555',
+  },
+  intensityPickerTextSelected: {
+    color: '#fff',
   },
   input: {
     borderRadius: 12,
