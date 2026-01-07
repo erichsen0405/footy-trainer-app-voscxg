@@ -1,13 +1,29 @@
-
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, useColorScheme, RefreshControl } from 'react-native';
 import { useFootball } from '@/contexts/FootballContext';
-import { colors } from '@/styles/commonStyles';
+import * as CommonStyles from '@/styles/commonStyles';
+import { ProgressionSection } from '@/components/ProgressionSection';
 import { getWeek } from 'date-fns';
 
 export default function PerformanceScreen() {
-  const { trophies, currentWeekStats, externalCalendars, fetchExternalCalendarEvents } = useFootball();
+  const { trophies, currentWeekStats, externalCalendars, fetchExternalCalendarEvents, categories } = useFootball();
   const colorScheme = useColorScheme();
+  const palette = useMemo(() => {
+    const fromHelper = typeof CommonStyles.getColors === 'function' ? CommonStyles.getColors(colorScheme as any) : undefined;
+    const base = (fromHelper || (CommonStyles as any).colors || {}) as Record<string, string>;
+    return {
+      primary: base.primary ?? '#4CAF50',
+      secondary: base.secondary ?? '#2196F3',
+      accent: base.accent ?? '#FF9800',
+      background: base.background ?? '#FFFFFF',
+      card: base.card ?? '#F5F5F5',
+      text: base.text ?? '#333333',
+      textSecondary: base.textSecondary ?? '#666666',
+      gold: base.gold ?? '#FFD700',
+      silver: base.silver ?? '#C0C0C0',
+      bronze: base.bronze ?? '#CD7F32',
+    };
+  }, [colorScheme]);
   const isDark = colorScheme === 'dark';
   const [refreshing, setRefreshing] = useState(false);
 
@@ -40,11 +56,11 @@ export default function PerformanceScreen() {
   const getTrophyColor = (type: 'gold' | 'silver' | 'bronze') => {
     switch (type) {
       case 'gold':
-        return colors.gold;
+        return palette.gold;
       case 'silver':
-        return colors.silver;
+        return palette.silver;
       case 'bronze':
-        return colors.bronze;
+        return palette.bronze;
     }
   };
 
@@ -75,10 +91,10 @@ export default function PerformanceScreen() {
   const silverTrophies = trophies.filter(t => t.type === 'silver').length;
   const bronzeTrophies = trophies.filter(t => t.type === 'bronze').length;
 
-  const bgColor = isDark ? '#1a1a1a' : colors.background;
-  const cardBgColor = isDark ? '#2a2a2a' : colors.card;
-  const textColor = isDark ? '#e3e3e3' : colors.text;
-  const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
+  const bgColor = isDark ? '#1a1a1a' : palette.background;
+  const cardBgColor = isDark ? '#2a2a2a' : palette.card;
+  const textColor = isDark ? '#e3e3e3' : palette.text;
+  const textSecondaryColor = isDark ? '#999' : palette.textSecondary;
 
   const currentWeek = getWeek(new Date());
   const currentYear = new Date().getFullYear();
@@ -106,8 +122,8 @@ export default function PerformanceScreen() {
         <RefreshControl
           refreshing={refreshing}
           onRefresh={onRefresh}
-          tintColor={colors.primary}
-          colors={[colors.primary]}
+            tintColor={palette.primary}
+            colors={[palette.primary]}
         />
       }
     >
@@ -118,7 +134,9 @@ export default function PerformanceScreen() {
         </Text>
       </View>
 
-      <View style={[styles.currentWeekCard, { backgroundColor: colors.accent }]}>
+      <ProgressionSection categories={categories} />
+
+      <View style={[styles.currentWeekCard, { backgroundColor: palette.accent }]}> 
         <View style={styles.currentWeekHeader}>
           <Text style={styles.currentWeekTitle}>Denne uge</Text>
           <Text style={styles.trophyBadge}>{getTrophyEmoji(currentPercentage >= 80 ? 'gold' : currentPercentage >= 60 ? 'silver' : 'bronze')}</Text>
@@ -155,7 +173,7 @@ export default function PerformanceScreen() {
         </View>
       </View>
 
-      <View style={[styles.trophiesCard, { backgroundColor: colors.gold }]}>
+      <View style={[styles.trophiesCard, { backgroundColor: palette.gold }]}> 
         <View style={styles.trophiesContent}>
           <Text style={styles.trophiesTitle}>Guld pokaler</Text>
           <Text style={styles.trophiesCount}>{goldTrophies}</Text>
@@ -163,7 +181,7 @@ export default function PerformanceScreen() {
         <Text style={styles.trophiesEmoji}>🥇</Text>
       </View>
 
-      <View style={[styles.trophiesCard, { backgroundColor: colors.silver }]}>
+      <View style={[styles.trophiesCard, { backgroundColor: palette.silver }]}> 
         <View style={styles.trophiesContent}>
           <Text style={styles.trophiesTitle}>Sølv pokaler</Text>
           <Text style={styles.trophiesCount}>{silverTrophies}</Text>
@@ -171,7 +189,7 @@ export default function PerformanceScreen() {
         <Text style={styles.trophiesEmoji}>🥈</Text>
       </View>
 
-      <View style={[styles.trophiesCard, { backgroundColor: colors.bronze }]}>
+      <View style={[styles.trophiesCard, { backgroundColor: palette.bronze }]}> 
         <View style={styles.trophiesContent}>
           <Text style={styles.trophiesTitle}>Bronze pokaler</Text>
           <Text style={styles.trophiesCount}>{bronzeTrophies}</Text>
@@ -187,8 +205,8 @@ export default function PerformanceScreen() {
             <Text style={[styles.emptyText, { color: textSecondaryColor }]}>Ingen historik endnu</Text>
           </View>
         ) : (
-          trophies.map((trophy, index) => (
-            <View key={index} style={[styles.historyCard, { backgroundColor: cardBgColor }]}>
+          trophies.map(trophy => (
+            <View key={`${trophy.year}-${trophy.week}-${trophy.type}`} style={[styles.historyCard, { backgroundColor: cardBgColor }]}> 
               <View style={styles.historyHeader}>
                 <View style={styles.historyLeft}>
                   <Text style={styles.historyEmoji}>{getTrophyEmoji(trophy.type)}</Text>
