@@ -1,9 +1,15 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '@/app/integrations/supabase/client';
 import { getCategories, DatabaseActivityCategory } from '@/services/activities';
 import { resolveActivityCategory, type CategoryMappingRecord } from '@/shared/activityCategoryResolver';
 import { subscribeToTaskCompletion } from '@/utils/taskEvents';
-import { subscribeToActivityPatch } from '@/utils/activityEvents';
+import {
+  subscribeToActivityPatch,
+  subscribeToActivitiesRefreshRequested,
+  getActivitiesRefreshRequestedVersion,
+  getLastActivitiesRefreshRequestedEvent,
+} from '@/utils/activityEvents';
 
 interface ActivityTask {
   id: string;
@@ -42,6 +48,10 @@ export function useHomeActivities(): UseHomeActivitiesResult {
   const [activities, setActivities] = useState<ActivityWithCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const categoryMapRef = useRef<Map<string, DatabaseActivityCategory>>(new Map());
+  const refetchInFlightRef = useRef(false);
+  const pendingRefreshReasonRef = useRef<string | null>(null);
+  const lastSeenRefreshVersionRef = useRef<number>(0);
+  const hasLoadedOnceRef = useRef(false);
 
   const patchActivityTasks = useCallback((activityId: string, taskId: string, completed: boolean) => {
     setActivities(prev => {
@@ -485,26 +495,56 @@ export function useHomeActivities(): UseHomeActivitiesResult {
     }
   }, [userId]);
 
-  // Exposed refresh function for pull-to-refresh
+  const triggerRefetch = useCallback(
+    async (reason: string = 'unspecified') => {
+      if (!userId) {
+        return;
+      }
+
+      if (refetchInFlightRef.current) {
+        pendingRefreshReasonRef.current = reason;
+        return;
+      }
+
+      refetchInFlightRef.current = true;
+      try {
+        console.log(`[useHomeActivities] Refetch triggered (${reason})`);
+        await refetchActivities();
+      } catch (error) {
+        console.error(`[useHomeActivities] Refetch failed (${reason}):`, error);
+      } finally {
+        refetchInFlightRef.current = false;
+        if (pendingRefreshReasonRef.current) {
+          const nextReason = pendingRefreshReasonRef.current;
+          pendingRefreshReasonRef.current = null;
+          void triggerRefetch(`${nextReason}|pending`);
+        }
+      }
+    },
+    [userId, refetchActivities]
+  );
+
   const refresh = useCallback(async () => {
     console.log('[useHomeActivities] Manual refresh triggered');
-    await refetchActivities();
-  }, [refetchActivities]);
+    await triggerRefetch('manual_refresh');
+  }, [triggerRefetch]);
 
   useEffect(() => {
     let mounted = true;
 
     async function load() {
       if (!userId) {
+        setActivities([]);
         setLoading(false);
         return;
       }
 
       try {
-        await refetchActivities();
+        await triggerRefetch('initial_load');
       } catch (err) {
         console.error('Failed to load home activities:', err);
       } finally {
+        hasLoadedOnceRef.current = true;
         if (mounted) setLoading(false);
       }
     }
@@ -514,7 +554,16 @@ export function useHomeActivities(): UseHomeActivitiesResult {
     return () => {
       mounted = false;
     };
-  }, [userId, refetchActivities]);
+  }, [userId, triggerRefetch]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!hasLoadedOnceRef.current) {
+        return;
+      }
+      triggerRefetch('home_focus');
+    }, [triggerRefetch])
+  );
 
   useEffect(() => {
     const unsubscribeTask = subscribeToTaskCompletion(({ activityId, taskId, completed }) => {
@@ -530,6 +579,39 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       unsubscribePatch();
     };
   }, [patchActivityFields, patchActivityTasks]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToActivitiesRefreshRequested(event => {
+      const currentVersion = getActivitiesRefreshRequestedVersion();
+      if (currentVersion <= lastSeenRefreshVersionRef.current) {
+        return;
+      }
+
+      if (!userId) {
+        return;
+      }
+
+      lastSeenRefreshVersionRef.current = currentVersion;
+      triggerRefetch(event?.reason || 'refresh_event');
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [userId, triggerRefetch]);
+
+  useEffect(() => {
+    if (!userId) {
+      return;
+    }
+
+    const currentVersion = getActivitiesRefreshRequestedVersion();
+    if (currentVersion > lastSeenRefreshVersionRef.current) {
+      lastSeenRefreshVersionRef.current = currentVersion;
+      const lastEvent = getLastActivitiesRefreshRequestedEvent();
+      triggerRefetch(lastEvent?.reason || 'missed_refresh_event');
+    }
+  }, [userId, triggerRefetch]);
 
   return {
     activities,

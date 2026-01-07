@@ -21,7 +21,7 @@ import { activityService } from '@/services/activityService';
 import { calendarService } from '@/services/calendarService';
 import { useAdmin } from '@/contexts/AdminContext';
 import { subscribeToTaskCompletion, emitTaskCompletionEvent } from '@/utils/taskEvents';
-import { emitActivityPatch } from '@/utils/activityEvents';
+import { emitActivityPatch, emitActivitiesRefreshRequested } from '@/utils/activityEvents';
 
 export const useFootballData = () => {
   const { adminMode, adminTargetId, adminTargetType } = useAdmin();
@@ -146,17 +146,33 @@ export const useFootballData = () => {
       }
 
       if (updates.categoryId !== undefined) {
-        payload.category_id = updates.categoryId;
+        const normalizedId = updates.categoryId === null ? null : String(updates.categoryId);
+        payload.category_id = normalizedId;
 
-        const categoryMeta = categories.find(cat => String(cat.id) === String(updates.categoryId));
+        const categoryMeta =
+          normalizedId === null
+            ? null
+            : categories.find(cat => String(cat.id) === normalizedId) ?? null;
+
         if (categoryMeta) {
-          payload.category = categoryMeta;
-          payload.activity_categories = {
+          const sharedCategory = {
             id: categoryMeta.id,
             name: categoryMeta.name,
             color: categoryMeta.color,
             emoji: categoryMeta.emoji,
           };
+
+          payload.category = categoryMeta;
+          payload.activity_categories = sharedCategory;
+          payload.activity_category = sharedCategory;
+          payload.categoryColor = categoryMeta.color ?? null;
+          payload.category_color = categoryMeta.color ?? null;
+        } else {
+          payload.category = null;
+          payload.activity_categories = null;
+          payload.activity_category = null;
+          payload.categoryColor = null;
+          payload.category_color = null;
         }
       }
 
@@ -724,6 +740,7 @@ export const useFootballData = () => {
 
       await Promise.all([fetchActivities(), fetchActivitySeries()]);
       await forceRefreshNotificationQueue();
+      emitActivitiesRefreshRequested({ reason: 'activity_created' });
     } catch (error) {
       console.error('[createActivity] Error:', error);
       throw error;
@@ -1064,6 +1081,8 @@ export const useFootballData = () => {
       await activityService.updateActivitySingle(activityId, updates, isExternal);
       await fetchActivities();
 
+      emitActivitiesRefreshRequested({ reason: 'activity_single_updated' });
+
       if (updates.date || updates.time || updates.endTime) {
         await forceRefreshNotificationQueue();
       }
@@ -1088,19 +1107,60 @@ export const useFootballData = () => {
       endTime?: string;
     }
   ) => {
+    const optimisticUpdates = buildOptimisticActivityUpdates(updates);
+    const targetActivityIds = activities
+      .filter(activity => {
+        const seriesRef = (activity as any)?.series_id ?? (activity as any)?.seriesId;
+        return seriesRef && String(seriesRef) === String(seriesId);
+      })
+      .map(activity => String((activity as any).id))
+      .filter(Boolean);
+
+    const rollbacks: Array<() => void> = [];
+
     try {
+      if (targetActivityIds.length && Object.keys(optimisticUpdates).length) {
+        targetActivityIds.forEach(activityId => {
+          const rollback = applyActivityPatch(activityId, optimisticUpdates);
+          if (rollback) {
+            rollbacks.push(rollback);
+          }
+        });
+      }
+
       const userId = await getCurrentUserId();
       await activityService.updateActivitySeries(seriesId, userId, updates);
       await Promise.all([fetchActivities(), fetchActivitySeries()]);
+
+      emitActivitiesRefreshRequested({ reason: 'activity_series_updated' });
 
       if (updates.time || updates.endTime) {
         await forceRefreshNotificationQueue();
       }
     } catch (error) {
+      rollbacks
+        .splice(0)
+        .reverse()
+        .forEach(rollback => {
+          try {
+            rollback();
+          } catch (rollbackError) {
+            console.error('[updateActivitySeries] rollback failed:', rollbackError);
+          }
+        });
+
       console.error('[updateActivitySeries] failed:', error);
       throw error;
     }
-  }, [getCurrentUserId, fetchActivities, fetchActivitySeries]);
+  }, [
+    activities,
+    applyActivityPatch,
+    buildOptimisticActivityUpdates,
+    getCurrentUserId,
+    fetchActivities,
+    fetchActivitySeries,
+    forceRefreshNotificationQueue,
+  ]);
 
   const deleteActivity = useCallback((id: string) => {
     setActivities(prev => prev.filter(activity => activity.id !== id));
