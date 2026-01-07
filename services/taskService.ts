@@ -11,6 +11,10 @@ export interface CreateTaskData {
   videoUrl?: string;
   afterTrainingEnabled?: boolean;
   afterTrainingDelayMinutes?: number | null;
+  afterTrainingFeedbackEnableScore?: boolean;
+  afterTrainingFeedbackScoreExplanation?: string | null;
+  afterTrainingFeedbackEnableIntensity?: boolean;
+  afterTrainingFeedbackEnableNote?: boolean;
   playerId?: string | null;
   teamId?: string | null;
 }
@@ -23,6 +27,10 @@ export interface UpdateTaskData {
   videoUrl?: string | null;
   afterTrainingEnabled?: boolean;
   afterTrainingDelayMinutes?: number | null;
+  afterTrainingFeedbackEnableScore?: boolean;
+  afterTrainingFeedbackScoreExplanation?: string | null;
+  afterTrainingFeedbackEnableIntensity?: boolean;
+  afterTrainingFeedbackEnableNote?: boolean;
 }
 
 type SeriesFeedbackSummary = {
@@ -51,6 +59,8 @@ export const taskService = {
       throw new Error('No authenticated user');
     }
 
+    const trimmedScoreExplanation = data.afterTrainingFeedbackScoreExplanation?.trim();
+
     /* ----------------------------------
        1. Insert task template
        ---------------------------------- */
@@ -64,12 +74,16 @@ export const taskService = {
         video_url: data.videoUrl ?? null,
         after_training_enabled: data.afterTrainingEnabled ?? false,
         after_training_delay_minutes: data.afterTrainingDelayMinutes ?? null,
+        after_training_feedback_enable_score: data.afterTrainingFeedbackEnableScore ?? true,
+        after_training_feedback_score_explanation: trimmedScoreExplanation?.length ? trimmedScoreExplanation : null,
+        after_training_feedback_enable_intensity: data.afterTrainingFeedbackEnableIntensity ?? false,
+        after_training_feedback_enable_note: data.afterTrainingFeedbackEnableNote ?? true,
 
         // admin-scope
         player_id: data.playerId ?? null,
         team_id: data.teamId ?? null,
       })
-      .select('id, title, description, reminder_minutes, video_url, source_folder, after_training_enabled, after_training_delay_minutes')
+      .select('id, title, description, reminder_minutes, video_url, source_folder, after_training_enabled, after_training_delay_minutes, after_training_feedback_enable_score, after_training_feedback_score_explanation, after_training_feedback_enable_intensity, after_training_feedback_enable_note')
       .abortSignal(signal)
       .single();
 
@@ -110,6 +124,10 @@ export const taskService = {
       source_folder: template.source_folder ?? undefined,
       afterTrainingEnabled: template.after_training_enabled ?? false,
       afterTrainingDelayMinutes: template.after_training_delay_minutes ?? null,
+      afterTrainingFeedbackEnableScore: template.after_training_feedback_enable_score ?? true,
+      afterTrainingFeedbackScoreExplanation: template.after_training_feedback_score_explanation ?? null,
+      afterTrainingFeedbackEnableIntensity: template.after_training_feedback_enable_intensity ?? false,
+      afterTrainingFeedbackEnableNote: template.after_training_feedback_enable_note ?? true,
     };
   },
 
@@ -141,6 +159,23 @@ export const taskService = {
 
     if (updates.afterTrainingDelayMinutes !== undefined) {
       updateData.after_training_delay_minutes = updates.afterTrainingDelayMinutes;
+    }
+
+    if (updates.afterTrainingFeedbackEnableScore !== undefined) {
+      updateData.after_training_feedback_enable_score = updates.afterTrainingFeedbackEnableScore;
+    }
+
+    if (updates.afterTrainingFeedbackScoreExplanation !== undefined) {
+      const trimmed = updates.afterTrainingFeedbackScoreExplanation?.trim();
+      updateData.after_training_feedback_score_explanation = trimmed?.length ? trimmed : null;
+    }
+
+    if (updates.afterTrainingFeedbackEnableIntensity !== undefined) {
+      updateData.after_training_feedback_enable_intensity = updates.afterTrainingFeedbackEnableIntensity;
+    }
+
+    if (updates.afterTrainingFeedbackEnableNote !== undefined) {
+      updateData.after_training_feedback_enable_note = updates.afterTrainingFeedbackEnableNote;
     }
 
     updateData.updated_at = new Date().toISOString();

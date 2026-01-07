@@ -65,19 +65,26 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
     ): Promise<ActivityCategory | null> => {
       try {
         const {
-          data: { user },
-        } = await supabase.auth.getUser();
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
 
-        if (!user) {
+        if (sessionError) {
+          console.error('❌ Failed to resolve session for fallback category lookup:', sessionError);
+          return null;
+        }
+
+        const userId = session?.user?.id;
+        if (!userId) {
           return null;
         }
 
         const [categories, mappingsResponse] = await Promise.all([
-          getCategories(user.id),
+          getCategories(userId),
           supabase
             .from('category_mappings')
             .select('external_category, internal_category_id')
-            .eq('user_id', user.id),
+            .eq('user_id', userId),
         ]);
 
         const mappings = (mappingsResponse?.data || []) as CategoryMappingRecord[];
@@ -342,6 +349,7 @@ interface ActivityDetailsContentProps {
   onBack: () => void;
   onRefresh: () => void;
   onActivityUpdated: (activity: Activity) => void;
+  initialFeedbackTaskId?: string | null;
 }
 
 interface TemplateFeedbackSummary {
@@ -354,6 +362,81 @@ interface FeedbackModalTaskState {
   templateId: string;
 }
 
+interface AfterTrainingFeedbackConfig {
+  enableScore: boolean;
+  scoreExplanation?: string | null;
+  enableIntensity: boolean;
+  enableNote: boolean;
+}
+
+function normalizeScoreExplanation(value?: string | null): string | null {
+  if (typeof value !== 'string') {
+    return value ?? null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+}
+
+function buildFeedbackConfig(row?: any): AfterTrainingFeedbackConfig {
+  if (!row) {
+    return {
+      enableScore: true,
+      scoreExplanation: null,
+      enableIntensity: false,
+      enableNote: true,
+    };
+  }
+
+  return {
+    enableScore: row.after_training_feedback_enable_score ?? true,
+    scoreExplanation: normalizeScoreExplanation(row.after_training_feedback_score_explanation),
+    enableIntensity: row.after_training_feedback_enable_intensity ?? false,
+    enableNote: row.after_training_feedback_enable_note ?? true,
+  };
+}
+
+function buildFeedbackSummary(
+  feedback?: TaskTemplateSelfFeedback,
+  config?: AfterTrainingFeedbackConfig,
+): string | null {
+  if (!feedback) {
+    return null;
+  }
+
+  const parts: string[] = [];
+
+  if (config?.enableScore !== false) {
+    parts.push(
+      typeof feedback.rating === 'number'
+        ? `Score ${feedback.rating}/10`
+        : 'Score mangler',
+    );
+  }
+
+  if (config?.enableIntensity) {
+    parts.push(
+      typeof feedback.intensity === 'number'
+        ? `Intensitet ${feedback.intensity}/10`
+        : 'Intensitet mangler',
+    );
+  }
+
+  return parts.length ? parts.join(' · ') : null;
+}
+
+function extractFeedbackNote(
+  feedback?: TaskTemplateSelfFeedback,
+  config?: AfterTrainingFeedbackConfig,
+): string | null {
+  if (!feedback || config?.enableNote === false) {
+    return null;
+  }
+
+  const trimmed = feedback.note?.trim() ?? '';
+  return trimmed.length ? trimmed : null;
+}
+
 function ActivityDetailsContent({
   activity,
   categories,
@@ -362,6 +445,7 @@ function ActivityDetailsContent({
   onBack,
   onRefresh: _onRefresh,
   onActivityUpdated,
+  initialFeedbackTaskId,
 }: ActivityDetailsContentProps) {
   const bgColor = isDark ? '#1a1a1a' : colors.background;
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
@@ -412,11 +496,19 @@ function ActivityDetailsContent({
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [tasksState, setTasksState] = useState<Task[]>(activity.tasks || []);
   const [selfFeedbackByTemplate, setSelfFeedbackByTemplate] = useState<Record<string, TemplateFeedbackSummary>>({});
+  const [feedbackConfigByTemplate, setFeedbackConfigByTemplate] = useState<Record<string, AfterTrainingFeedbackConfig>>({});
   const [feedbackModalTask, setFeedbackModalTask] = useState<FeedbackModalTaskState | null>(null);
   const [isFeedbackSaving, setIsFeedbackSaving] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isFeedbackLoading, setIsFeedbackLoading] = useState(false);
-  
+  const [pendingFeedbackTaskId, setPendingFeedbackTaskId] = useState<string | null>(initialFeedbackTaskId ?? null);
+
+  const resolveFeedbackTemplateId = useCallback(
+    (task: Task | null | undefined): string | null =>
+      task ? task.feedbackTemplateId ?? parseTemplateIdFromMarker(task.description || '') ?? null : null,
+    []
+  );
+
   // Edit state
   const [editTitle, setEditTitle] = useState(activity.title);
   const [editLocation, setEditLocation] = useState(activity.location);
@@ -462,6 +554,10 @@ function ActivityDetailsContent({
   useEffect(() => {
     setEditScope('single');
   }, [activity.id]);
+
+  useEffect(() => {
+    setPendingFeedbackTaskId(initialFeedbackTaskId ?? null);
+  }, [activity.id, initialFeedbackTaskId]);
 
   const handleEditClick = () => {
     if (activity?.seriesId) {
@@ -737,12 +833,13 @@ function ActivityDetailsContent({
 
     try {
       await toggleTaskCompletion(activity.id, taskId);
+      Promise.resolve(refreshData()).catch(() => {});
     } catch (error) {
       console.error('Error toggling task:', error);
       setTasksState(snapshot);
       Alert.alert('Fejl', 'Kunne ikke opdatere opgaven');
     }
-  }, [activity?.id, toggleTaskCompletion]);
+  }, [activity?.id, refreshData, toggleTaskCompletion]);
 
   const handleDeleteTask = useCallback((taskId: string) => {
     if (!activity || !isAdmin) return;
@@ -816,12 +913,13 @@ function ActivityDetailsContent({
       if (task.taskTemplateId) {
         ids.add(task.taskTemplateId);
       }
-      if (task.feedbackTemplateId) {
-        ids.add(task.feedbackTemplateId);
+      const resolvedId = resolveFeedbackTemplateId(task);
+      if (resolvedId) {
+        ids.add(resolvedId);
       }
     });
     return Array.from(ids);
-  }, [taskListData]);
+  }, [resolveFeedbackTemplateId, taskListData]);
 
   useEffect(() => {
     let isMounted = true;
@@ -830,6 +928,7 @@ function ActivityDetailsContent({
       if (!activity?.id || !templateIds.length) {
         if (isMounted) {
           setSelfFeedbackByTemplate({});
+          setFeedbackConfigByTemplate({});
         }
         return;
       }
@@ -838,27 +937,65 @@ function ActivityDetailsContent({
 
       try {
         const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser();
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
 
         if (!isMounted) {
           return;
         }
 
-        if (userError) {
-          throw userError;
-        }
-
-        if (!user?.id) {
+        if (sessionError) {
+          console.error('❌ Failed to load session for feedback history:', sessionError);
           setCurrentUserId(null);
           setSelfFeedbackByTemplate({});
+          setFeedbackConfigByTemplate({});
           return;
         }
 
-        setCurrentUserId(user.id);
+        const sessionUserId = session?.user?.id;
+        if (!sessionUserId) {
+          setCurrentUserId(null);
+          setSelfFeedbackByTemplate({});
+          setFeedbackConfigByTemplate({});
+          return;
+        }
 
-        const rows = await fetchSelfFeedbackForTemplates(user.id, templateIds);
+        setCurrentUserId(sessionUserId);
+
+        const rows = await fetchSelfFeedbackForTemplates(sessionUserId, templateIds);
+
+        let configMap: Record<string, AfterTrainingFeedbackConfig> = {};
+        try {
+          const { data: configRows, error: configError } = await supabase
+            .from('task_templates')
+            .select(`
+              id,
+              after_training_feedback_enable_score,
+              after_training_feedback_score_explanation,
+              after_training_feedback_enable_intensity,
+              after_training_feedback_enable_note
+            `)
+            .in('id', templateIds);
+
+          if (configError) {
+            throw configError;
+          }
+
+          (configRows || []).forEach(row => {
+            if (row?.id) {
+              configMap[row.id] = buildFeedbackConfig(row);
+            }
+          });
+        } catch (configError) {
+          console.error('❌ Error loading feedback config:', configError);
+        }
+
+        templateIds.forEach(id => {
+          if (!configMap[id]) {
+            configMap[id] = buildFeedbackConfig();
+          }
+        });
 
         if (!isMounted) {
           return;
@@ -884,10 +1021,14 @@ function ActivityDetailsContent({
           grouped[row.taskTemplateId] = entry;
         });
 
+        setFeedbackConfigByTemplate(configMap);
         setSelfFeedbackByTemplate(grouped);
       } catch (error) {
         if (isMounted) {
           console.error('❌ Error loading self feedback history:', error);
+          setCurrentUserId(null);
+          setSelfFeedbackByTemplate({});
+          setFeedbackConfigByTemplate({});
         }
       } finally {
         if (isMounted) {
@@ -936,20 +1077,21 @@ function ActivityDetailsContent({
     ? selfFeedbackByTemplate[feedbackModalTask.templateId]?.current
     : undefined;
 
-  const handleFeedbackTaskPress = useCallback((task: Task) => {
-    if (!task.feedbackTemplateId) {
-      return;
-    }
-
-    setFeedbackModalTask({ task, templateId: task.feedbackTemplateId });
-  }, []);
+  const handleFeedbackTaskPress = useCallback(
+    (task: Task) => {
+      const templateId = resolveFeedbackTemplateId(task);
+      if (!templateId) return;
+      setFeedbackModalTask({ task, templateId });
+    },
+    [resolveFeedbackTemplateId]
+  );
 
   const handleFeedbackModalClose = useCallback(() => {
     setFeedbackModalTask(null);
   }, []);
 
   const handleFeedbackSave = useCallback(
-    async ({ rating, note }: { rating: number | null; note: string }) => {
+    async ({ rating, note, intensity }: { rating: number | null; note: string; intensity: number | null }) => {
       if (!feedbackModalTask?.templateId) {
         return;
       }
@@ -967,6 +1109,7 @@ function ActivityDetailsContent({
           templateId: feedbackModalTask.templateId,
           activityId: activity.id,
           rating,
+          intensity,
           note,
         });
 
@@ -994,6 +1137,7 @@ function ActivityDetailsContent({
         }
 
         setFeedbackModalTask(null);
+        Promise.resolve(refreshData()).catch(() => {});
       } catch (error: any) {
         console.error('❌ Error saving self feedback:', error);
         Alert.alert('Fejl', error?.message || 'Kunne ikke gemme feedback.');
@@ -1001,31 +1145,52 @@ function ActivityDetailsContent({
         setIsFeedbackSaving(false);
       }
     },
-    [activity.id, currentUserId, feedbackModalTask]
+    [activity.id, currentUserId, feedbackModalTask, refreshData]
   );
 
   const handleTaskRowPress = useCallback(
     (task: Task) => {
-      if (task.isFeedbackTask && task.feedbackTemplateId) {
+      const templateId = resolveFeedbackTemplateId(task);
+      if (templateId) {
         handleFeedbackTaskPress(task);
         return;
       }
-
       handleToggleTask(task.id);
     },
-    [handleFeedbackTaskPress, handleToggleTask]
+    [handleFeedbackTaskPress, handleToggleTask, resolveFeedbackTemplateId]
   );
+
+  useEffect(() => {
+    if (!pendingFeedbackTaskId) return;
+
+    const targetTask = taskListData.find(task => String(task.id) === String(pendingFeedbackTaskId));
+    const templateId = resolveFeedbackTemplateId(targetTask);
+
+    if (targetTask && templateId) {
+      handleFeedbackTaskPress(targetTask);
+      setPendingFeedbackTaskId(null);
+    }
+  }, [handleFeedbackTaskPress, pendingFeedbackTaskId, resolveFeedbackTemplateId, taskListData]);
 
   const renderTaskItem = useCallback(
     ({ item }: { item: Task }) => {
-      const isFeedbackTask = item.isFeedbackTask && !!item.feedbackTemplateId;
+      const resolvedFeedbackTemplateId = resolveFeedbackTemplateId(item);
+      const isFeedbackTask = !!resolvedFeedbackTemplateId;
+      const templateKey = resolvedFeedbackTemplateId || item.taskTemplateId || null;
       const isFeedbackCompleted = isFeedbackTask && !!item.completed;
-      const templateKey = item.feedbackTemplateId || item.taskTemplateId || null;
       const templateSummary = templateKey ? selfFeedbackByTemplate[templateKey] : undefined;
       const currentFeedback = templateSummary?.current;
+      const templateConfig = templateKey ? feedbackConfigByTemplate[templateKey] : undefined;
+      const summaryText = buildFeedbackSummary(currentFeedback, templateConfig);
+      const noteSnippet = extractFeedbackNote(currentFeedback, templateConfig);
       const helperText = currentFeedback
-        ? `Seneste svar: ${currentFeedback.rating ? `${currentFeedback.rating}/10` : 'Ingen rating'}${currentFeedback.note ? ` – ${currentFeedback.note}` : ''}`
+        ? summaryText
+          ? `Seneste svar: ${summaryText}${noteSnippet ? ` – ${noteSnippet}` : ''}`
+          : noteSnippet
+            ? `Seneste note: ${noteSnippet}`
+            : 'Seneste svar registreret'
         : 'Tryk for at give feedback';
+      const scoreExplanation = templateConfig?.enableScore !== false ? templateConfig?.scoreExplanation : null;
 
       return (
         <TouchableOpacity
@@ -1073,9 +1238,16 @@ function ActivityDetailsContent({
               )}
 
               {isFeedbackTask && (
+                <>
+                  {scoreExplanation ? (
+                    <Text style={[styles.feedbackExplanationText, { color: textSecondaryColor }]}>
+                      {scoreExplanation}
+                    </Text>
+                  ) : null}
                 <Text style={[styles.feedbackHelperText, { color: textSecondaryColor }]}>
                   {helperText}
                 </Text>
+                </>
               )}
             </View>
           </View>
@@ -1097,7 +1269,18 @@ function ActivityDetailsContent({
         </TouchableOpacity>
       );
     },
-    [deletingTaskId, handleDeleteTask, handleTaskRowPress, isAdmin, isDark, selfFeedbackByTemplate, textColor, textSecondaryColor]
+    [
+      deletingTaskId,
+      feedbackConfigByTemplate,
+      handleDeleteTask,
+      handleTaskRowPress,
+      isAdmin,
+      isDark,
+      resolveFeedbackTemplateId,
+      selfFeedbackByTemplate,
+      textColor,
+      textSecondaryColor,
+    ]
   );
 
   const taskKeyExtractor = useCallback((item: Task) => String(item.id), []);
@@ -1970,21 +2153,27 @@ function ActivityDetailsContent({
             {isFeedbackLoading && (
               <ActivityIndicator size="small" color={colors.primary} style={styles.feedbackInfoSpinner} />
             )}
-            {previousFeedbackEntries.map(entry => (
-              <View key={entry.templateId} style={styles.feedbackInfoRow}>
-                <Text style={[styles.feedbackInfoTaskTitle, { color: textColor }]}>
-                  {entry.taskTitle}
-                </Text>
-                <Text style={[styles.feedbackInfoRating, { color: colors.primary }]}>
-                  {entry.feedback.rating ? `${entry.feedback.rating}/10` : 'Ingen rating'}
-                </Text>
-                {entry.feedback.note ? (
-                  <Text style={[styles.feedbackInfoNote, { color: textSecondaryColor }]}>
-                    {entry.feedback.note}
+            {previousFeedbackEntries.map(entry => {
+              const config = feedbackConfigByTemplate[entry.templateId];
+              const summaryText = buildFeedbackSummary(entry.feedback, config) || 'Ingen svar registreret';
+              const noteText = extractFeedbackNote(entry.feedback, config);
+
+              return (
+                <View key={entry.templateId} style={styles.feedbackInfoRow}>
+                  <Text style={[styles.feedbackInfoTaskTitle, { color: textColor }] }>
+                    {entry.taskTitle}
                   </Text>
-                ) : null}
-              </View>
-            ))}
+                  <Text style={[styles.feedbackInfoRating, { color: colors.primary }]}>
+                    {summaryText}
+                  </Text>
+                  {noteText ? (
+                    <Text style={[styles.feedbackInfoNote, { color: textSecondaryColor }]}>
+                      {noteText}
+                    </Text>
+                  ) : null}
+                </View>
+              );
+            })}
           </View>
         )}
 
@@ -2164,6 +2353,8 @@ function ActivityDetailsContent({
         taskTitle={feedbackModalTask?.task.title || ''}
         defaultRating={activeFeedbackDefaults?.rating ?? null}
         defaultNote={activeFeedbackDefaults?.note ?? ''}
+        defaultIntensity={activeFeedbackDefaults?.intensity ?? null}
+        feedbackConfig={feedbackModalTask?.templateId ? feedbackConfigByTemplate[feedbackModalTask.templateId] : undefined}
         isSaving={isFeedbackSaving}
         onClose={handleFeedbackModalClose}
         onSave={handleFeedbackSave}
@@ -2174,7 +2365,7 @@ function ActivityDetailsContent({
 
 // Main component with hard gate
 export default function ActivityDetailsScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, openFeedbackTaskId } = useLocalSearchParams<{ id: string; openFeedbackTaskId?: string }>();
   const router = useRouter();
   const { categories } = useFootball();
   const { isAdmin } = useUserRole();
@@ -2287,6 +2478,7 @@ export default function ActivityDetailsScreen() {
       onBack={handleBack}
       onRefresh={handleRefresh}
       onActivityUpdated={(updatedActivity) => setActivity(updatedActivity)}
+      initialFeedbackTaskId={openFeedbackTaskId ? String(openFeedbackTaskId) : null}
     />
   );
 }
@@ -2627,6 +2819,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 4,
     lineHeight: 18,
+  },
+  feedbackExplanationText: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginTop: 2,
+    marginBottom: 2,
   },
   taskDeleteButton: {
     padding: 10,

@@ -7,6 +7,7 @@ import { da } from 'date-fns/locale';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useFootball } from '@/contexts/FootballContext';
 import TaskDetailsModal from '@/components/TaskDetailsModal';
+import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 
 interface ActivityCardProps {
   activity: any;
@@ -88,6 +89,54 @@ export default function ActivityCard({
     }
   }, [activity.tasks, activity.id]);
 
+  const resolveFeedbackTemplateId = useCallback((task: any): string | null => {
+    if (!task) return null;
+
+    const directTemplateId = task.feedbackTemplateId ?? task.feedback_template_id;
+    if (directTemplateId) {
+      return String(directTemplateId);
+    }
+
+    const fromMarker = typeof task.description === 'string'
+      ? parseTemplateIdFromMarker(task.description)
+      : null;
+
+    return fromMarker ?? null;
+  }, []);
+
+  const isFeedbackTask = useCallback(
+    (task: any): boolean => {
+      if (!task) return false;
+      if (task.isFeedbackTask || task.is_feedback_task) {
+        return true;
+      }
+
+      return !!resolveFeedbackTemplateId(task);
+    },
+    [resolveFeedbackTemplateId]
+  );
+
+  const navigateToFeedbackTask = useCallback(
+    (task: any): boolean => {
+      if (!isFeedbackTask(task)) {
+        return false;
+      }
+
+      const taskId = task?.id ?? task?.task_id;
+
+      router.push({
+        pathname: '/activity-details',
+        params: {
+          id: activity.id,
+          openFeedbackTaskId: taskId ? String(taskId) : undefined,
+        },
+      });
+
+      return true;
+    },
+    [activity.id, isFeedbackTask, router]
+  );
+
   // Memoized card press handler - only navigates, no async work
   const handleCardPress = useCallback(() => {
     if (onPress) {
@@ -101,42 +150,64 @@ export default function ActivityCard({
   }, [onPress, router, activity.id]);
 
   // Task press handler
-  const handleTaskPress = useCallback((task: any, event: any) => {
-    event.stopPropagation();
-    setActiveTaskId(task.id);
-    setIsTaskModalOpen(true);
-  }, []);
+  const handleTaskPress = useCallback(
+    (task: any, event: any) => {
+      event.stopPropagation();
+
+      if (navigateToFeedbackTask(task)) {
+        return;
+      }
+
+      const taskId = task?.id ?? task?.task_id;
+      if (!taskId) {
+        return;
+      }
+
+      setActiveTaskId(String(taskId));
+      setIsTaskModalOpen(true);
+    },
+    [navigateToFeedbackTask]
+  );
 
   // Toggle task handler
-  const handleToggleTask = useCallback(async (taskId: string, event: any) => {
-    event.stopPropagation();
-    
-    const taskIndex = optimisticTasks.findIndex(t => t.id === taskId);
-    if (taskIndex === -1) {
-      console.error('Task not found:', taskId);
-      return;
-    }
-    
-    const task = optimisticTasks[taskIndex];
-    const previousCompleted = task.completed;
-    
-    // Optimistic update
-    const newTasks = [...optimisticTasks];
-    newTasks[taskIndex] = { ...task, completed: !previousCompleted };
-    setOptimisticTasks(newTasks);
-    
-    try {
-      await toggleTaskCompletion(activity.id, taskId);
-      refreshData();
-    } catch (error) {
-      console.error('❌ Error toggling task, rolling back:', error);
+  const handleToggleTask = useCallback(
+    async (task: any, event: any) => {
+      event.stopPropagation();
+
+      if (navigateToFeedbackTask(task)) {
+        return;
+      }
       
-      // Rollback on error
-      const rollbackTasks = [...optimisticTasks];
-      rollbackTasks[taskIndex] = { ...task, completed: previousCompleted };
-      setOptimisticTasks(rollbackTasks);
-    }
-  }, [optimisticTasks, activity.id, toggleTaskCompletion, refreshData]);
+      const taskId = task?.id ?? task?.task_id;
+      const taskIndex = optimisticTasks.findIndex(
+        t => t.id === taskId || t.task_id === taskId
+      );
+      if (taskIndex === -1) {
+        console.error('Task not found:', taskId);
+        return;
+      }
+      
+      const previousCompleted = optimisticTasks[taskIndex].completed;
+      
+      // Optimistic update
+      const newTasks = [...optimisticTasks];
+      newTasks[taskIndex] = { ...optimisticTasks[taskIndex], completed: !previousCompleted };
+      setOptimisticTasks(newTasks);
+      
+      try {
+        await toggleTaskCompletion(activity.id, String(taskId));
+        refreshData();
+      } catch (error) {
+        console.error('❌ Error toggling task, rolling back:', error);
+        
+        // Rollback on error
+        const rollbackTasks = [...optimisticTasks];
+        rollbackTasks[taskIndex] = { ...optimisticTasks[taskIndex], completed: previousCompleted };
+        setOptimisticTasks(rollbackTasks);
+      }
+    },
+    [activity.id, navigateToFeedbackTask, optimisticTasks, refreshData, toggleTaskCompletion]
+  );
 
   // Memoized modal close handler
   const handleModalClose = useCallback(() => {
@@ -264,7 +335,7 @@ export default function ActivityCard({
                     <View style={styles.taskRow}>
                       <TouchableOpacity
                         style={styles.taskCheckboxArea}
-                        onPress={(e) => handleToggleTask(task.id, e)}
+                        onPress={(e) => handleToggleTask(task, e)}
                         activeOpacity={0.7}
                       >
                         <View

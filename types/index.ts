@@ -51,6 +51,10 @@ export interface Task {
   videoUrl?: string;
   afterTrainingEnabled?: boolean;
   afterTrainingDelayMinutes?: number | null;
+  afterTrainingFeedbackEnableScore?: boolean;
+  afterTrainingFeedbackScoreExplanation?: string | null;
+  afterTrainingFeedbackEnableIntensity?: boolean;
+  afterTrainingFeedbackEnableNote?: boolean;
   taskTemplateId?: string | null;
   feedbackTemplateId?: string | null;
   isFeedbackTask?: boolean;
@@ -150,6 +154,7 @@ export interface TaskTemplateSelfFeedback {
   taskTemplateId: string;
   activityId: string;
   rating?: number | null;
+  intensity?: number | null;
   note?: string | null;
   createdAt: string;
   updatedAt: string;

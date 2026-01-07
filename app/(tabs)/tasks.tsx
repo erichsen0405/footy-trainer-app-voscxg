@@ -672,12 +672,20 @@ export default function TasksScreen() {
         ...prev,
         afterTrainingEnabled: true,
         afterTrainingDelayMinutes: existingDelay ?? 0,
+        afterTrainingFeedbackEnableScore: prev.afterTrainingFeedbackEnableScore ?? true,
+        afterTrainingFeedbackEnableNote: prev.afterTrainingFeedbackEnableNote ?? true,
+        afterTrainingFeedbackEnableIntensity: prev.afterTrainingFeedbackEnableIntensity ?? false,
       };
     });
   }, []);
 
   const reminderEnabled =
     !!selectedTask && (selectedTask as any).reminder !== null && (selectedTask as any).reminder !== undefined;
+
+  const afterTrainingScoreEnabled = selectedTask?.afterTrainingFeedbackEnableScore ?? true;
+  const afterTrainingIntensityEnabled = selectedTask?.afterTrainingFeedbackEnableIntensity ?? false;
+  const afterTrainingNoteEnabled = selectedTask?.afterTrainingFeedbackEnableNote ?? true;
+  const afterTrainingScoreExplanation = selectedTask?.afterTrainingFeedbackScoreExplanation ?? '';
 
   const handleReminderToggle = useCallback((value: boolean) => {
     setSelectedTask(prev => {
@@ -793,6 +801,10 @@ export default function TasksScreen() {
                     videoUrl: undefined,
                     afterTrainingEnabled: false,
                     afterTrainingDelayMinutes: 0,
+                    afterTrainingFeedbackEnableScore: true,
+                    afterTrainingFeedbackScoreExplanation: '',
+                    afterTrainingFeedbackEnableIntensity: false,
+                    afterTrainingFeedbackEnableNote: true,
                   } as any,
                   true,
                 )
@@ -1098,6 +1110,115 @@ export default function TasksScreen() {
                         <Text style={[styles.helperText, { color: textSecondaryColor, marginTop: 6 }]}>
                           Vises efter aktivitetens sluttidspunkt + valgt delay.
                         </Text>
+
+                        <View style={styles.feedbackConfigGroup}>
+                          <View style={styles.feedbackToggleRow}>
+                            <View style={styles.toggleTextWrapper}>
+                              <Text style={[styles.toggleLabel, { color: textColor }]}>Score (1-10)</Text>
+                              <Text style={[styles.toggleHelperText, { color: textSecondaryColor }]}>
+                                Viser spilleren et klassisk ratingfelt og hjælpetekst.
+                              </Text>
+                            </View>
+                            <Switch
+                              value={afterTrainingScoreEnabled}
+                              onValueChange={value =>
+                                setSelectedTask(prev =>
+                                  prev
+                                    ? ({
+                                        ...(prev as any),
+                                        afterTrainingFeedbackEnableScore: value,
+                                      } as Task)
+                                    : prev,
+                                )
+                              }
+                              trackColor={{ false: isDark ? '#555' : '#d0d7e3', true: colors.primary }}
+                              thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
+                              ios_backgroundColor={isDark ? '#555' : '#d0d7e3'}
+                              disabled={isSaving}
+                            />
+                          </View>
+
+                          {afterTrainingScoreEnabled && (
+                            <TextInput
+                              style={[
+                                styles.feedbackExplanationInput,
+                                {
+                                  backgroundColor: bgColor,
+                                  color: textColor,
+                                  borderColor: isDark ? '#444' : colors.border,
+                                },
+                              ]}
+                              value={afterTrainingScoreExplanation}
+                              onChangeText={text =>
+                                setSelectedTask(prev =>
+                                  prev
+                                    ? ({
+                                        ...(prev as any),
+                                        afterTrainingFeedbackScoreExplanation: text,
+                                      } as Task)
+                                    : prev,
+                                )
+                              }
+                              placeholder="Forklaring til spilleren (valgfrit)"
+                              placeholderTextColor={textSecondaryColor}
+                              editable={!isSaving}
+                              multiline
+                              numberOfLines={3}
+                            />
+                          )}
+
+                          <View style={styles.feedbackToggleRow}>
+                            <View style={styles.toggleTextWrapper}>
+                              <Text style={[styles.toggleLabel, { color: textColor }]}>Intensitet (1-10)</Text>
+                              <Text style={[styles.toggleHelperText, { color: textSecondaryColor }]}>
+                                Tilføj ekstra felt hvor spilleren vurderer belastningen.
+                              </Text>
+                            </View>
+                            <Switch
+                              value={afterTrainingIntensityEnabled}
+                              onValueChange={value =>
+                                setSelectedTask(prev =>
+                                  prev
+                                    ? ({
+                                        ...(prev as any),
+                                        afterTrainingFeedbackEnableIntensity: value,
+                                      } as Task)
+                                    : prev,
+                                )
+                              }
+                              trackColor={{ false: isDark ? '#555' : '#d0d7e3', true: colors.primary }}
+                              thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
+                              ios_backgroundColor={isDark ? '#555' : '#d0d7e3'}
+                              disabled={isSaving}
+                            />
+                          </View>
+
+                          <View style={styles.feedbackToggleRow}>
+                            <View style={styles.toggleTextWrapper}>
+                              <Text style={[styles.toggleLabel, { color: textColor }]}>Note</Text>
+                              <Text style={[styles.toggleHelperText, { color: textSecondaryColor }]}>
+                                Slå til for at give spilleren et frit tekstfelt.
+                              </Text>
+                            </View>
+                            <Switch
+                              value={afterTrainingNoteEnabled}
+                              onValueChange={value =>
+                                setSelectedTask(prev =>
+                                  prev
+                                    ? ({
+                                        ...(prev as any),
+                                        afterTrainingFeedbackEnableNote: value,
+                                      } as Task)
+                                    : prev,
+                                )
+                              }
+                              trackColor={{ false: isDark ? '#555' : '#d0d7e3', true: colors.primary }}
+                              thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
+                              ios_backgroundColor={isDark ? '#555' : '#d0d7e3'}
+                              disabled={isSaving}
+                            />
+                          </View>
+                        </View>
                       </View>
                     )}
                   </View>
@@ -1284,6 +1405,23 @@ const styles = StyleSheet.create({
   },
   reminderSectionBody: {
     marginTop: 16,
+  },
+  feedbackConfigGroup: {
+    marginTop: 20,
+    gap: 18,
+  },
+  feedbackToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  feedbackExplanationInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    minHeight: 72,
+    textAlignVertical: 'top',
   },
   reminderSectionSpacing: {
     height: 12,

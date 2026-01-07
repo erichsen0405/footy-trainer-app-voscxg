@@ -180,6 +180,10 @@ export const useFootballData = () => {
           source_folder,
           after_training_enabled,
           after_training_delay_minutes,
+          after_training_feedback_enable_score,
+          after_training_feedback_score_explanation,
+          after_training_feedback_enable_intensity,
+          after_training_feedback_enable_note,
           task_template_categories (
             category_id
           )
@@ -202,6 +206,10 @@ export const useFootballData = () => {
         source_folder: t.source_folder ?? undefined,
         afterTrainingEnabled: !!t.after_training_enabled,
         afterTrainingDelayMinutes: t.after_training_delay_minutes ?? null,
+        afterTrainingFeedbackEnableScore: t.after_training_feedback_enable_score ?? true,
+        afterTrainingFeedbackScoreExplanation: t.after_training_feedback_score_explanation ?? null,
+        afterTrainingFeedbackEnableIntensity: t.after_training_feedback_enable_intensity ?? false,
+        afterTrainingFeedbackEnableNote: t.after_training_feedback_enable_note ?? true,
       }));
 
       // Filter out hidden tasks
@@ -493,6 +501,10 @@ export const useFootballData = () => {
           videoUrl: task.videoUrl,
           afterTrainingEnabled: !!task.afterTrainingEnabled,
           afterTrainingDelayMinutes: task.afterTrainingEnabled ? (task.afterTrainingDelayMinutes ?? 0) : null,
+          afterTrainingFeedbackEnableScore: task.afterTrainingFeedbackEnableScore ?? true,
+          afterTrainingFeedbackScoreExplanation: task.afterTrainingFeedbackScoreExplanation ?? null,
+          afterTrainingFeedbackEnableIntensity: task.afterTrainingFeedbackEnableIntensity ?? false,
+          afterTrainingFeedbackEnableNote: task.afterTrainingFeedbackEnableNote ?? true,
           playerId,
           teamId,
         });
@@ -632,6 +644,10 @@ export const useFootballData = () => {
         videoUrl: updates.videoUrl,
         afterTrainingEnabled: updates.afterTrainingEnabled,
         afterTrainingDelayMinutes: updates.afterTrainingEnabled ? (updates.afterTrainingDelayMinutes ?? 0) : null,
+        afterTrainingFeedbackEnableScore: updates.afterTrainingFeedbackEnableScore,
+        afterTrainingFeedbackScoreExplanation: updates.afterTrainingFeedbackScoreExplanation,
+        afterTrainingFeedbackEnableIntensity: updates.afterTrainingFeedbackEnableIntensity,
+        afterTrainingFeedbackEnableNote: updates.afterTrainingFeedbackEnableNote,
       });
 
       console.log('[updateTask] Task updated successfully, refreshing tasks...');
@@ -690,6 +706,10 @@ export const useFootballData = () => {
           videoUrl: taskToDuplicate.videoUrl,
           afterTrainingEnabled: !!taskToDuplicate.afterTrainingEnabled,
           afterTrainingDelayMinutes: taskToDuplicate.afterTrainingEnabled ? (taskToDuplicate.afterTrainingDelayMinutes ?? 0) : null,
+          afterTrainingFeedbackEnableScore: taskToDuplicate.afterTrainingFeedbackEnableScore ?? true,
+          afterTrainingFeedbackScoreExplanation: taskToDuplicate.afterTrainingFeedbackScoreExplanation ?? null,
+          afterTrainingFeedbackEnableIntensity: taskToDuplicate.afterTrainingFeedbackEnableIntensity ?? false,
+          afterTrainingFeedbackEnableNote: taskToDuplicate.afterTrainingFeedbackEnableNote ?? true,
         } as any;
 
         const created = await addTask(copyPayload);
