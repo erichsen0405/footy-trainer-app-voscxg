@@ -7,8 +7,8 @@ export interface CreateTaskData {
   title: string;
   description: string;
   categoryIds: string[];
-  reminder?: number;
-  videoUrl?: string;
+  reminder?: number | null;
+  videoUrl?: string | null;
   afterTrainingEnabled?: boolean;
   afterTrainingDelayMinutes?: number | null;
   afterTrainingFeedbackEnableScore?: boolean;
@@ -23,7 +23,7 @@ export interface UpdateTaskData {
   title?: string;
   description?: string;
   categoryIds?: string[];
-  reminder?: number;
+  reminder?: number | null;
   videoUrl?: string | null;
   afterTrainingEnabled?: boolean;
   afterTrainingDelayMinutes?: number | null;
@@ -73,7 +73,8 @@ export const taskService = {
         after_training_delay_minutes: data.afterTrainingDelayMinutes ?? null,
         after_training_feedback_enable_score: enableScore,
         after_training_feedback_score_explanation: trimmedScoreExplanation?.length ? trimmedScoreExplanation : null,
-        after_training_feedback_enable_intensity: data.afterTrainingFeedbackEnableIntensity ?? false,
+        // Force intensity feedback to be enabled for consistency
+        after_training_feedback_enable_intensity: true,
         after_training_feedback_enable_note: data.afterTrainingFeedbackEnableNote ?? true,
 
         // admin-scope
@@ -123,7 +124,8 @@ export const taskService = {
       afterTrainingDelayMinutes: template.after_training_delay_minutes ?? null,
       afterTrainingFeedbackEnableScore: template.after_training_feedback_enable_score ?? true,
       afterTrainingFeedbackScoreExplanation: template.after_training_feedback_score_explanation ?? null,
-      afterTrainingFeedbackEnableIntensity: template.after_training_feedback_enable_intensity ?? false,
+      // Always return true so UI/clients see a consistent state
+      afterTrainingFeedbackEnableIntensity: true,
       afterTrainingFeedbackEnableNote: template.after_training_feedback_enable_note ?? true,
     };
   },
@@ -151,9 +153,9 @@ export const taskService = {
       updates.afterTrainingEnabled !== undefined ||
       updates.afterTrainingDelayMinutes !== undefined ||
       updates.afterTrainingFeedbackEnableScore !== undefined ||
-      updates.afterTrainingFeedbackEnableIntensity !== undefined ||
       updates.afterTrainingFeedbackEnableNote !== undefined ||
-      updates.afterTrainingFeedbackScoreExplanation !== undefined;
+      updates.afterTrainingFeedbackScoreExplanation !== undefined ||
+      updates.afterTrainingFeedbackEnableIntensity !== undefined;
 
     if (updates.afterTrainingEnabled !== undefined) {
       updateData.after_training_enabled = updates.afterTrainingEnabled;
@@ -170,8 +172,9 @@ export const taskService = {
       }
     }
 
-    if (updates.afterTrainingFeedbackEnableIntensity !== undefined) {
-      updateData.after_training_feedback_enable_intensity = updates.afterTrainingFeedbackEnableIntensity;
+    // Do not allow disabling intensity – enforce true on relevant updates
+    if (shouldSyncSeriesFeedback) {
+      updateData.after_training_feedback_enable_intensity = true;
     }
 
     if (updates.afterTrainingFeedbackScoreExplanation !== undefined) {

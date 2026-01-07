@@ -512,7 +512,8 @@ export default function TasksScreen() {
           afterTrainingDelayMinutes: selectedTask.afterTrainingEnabled ? (selectedTask.afterTrainingDelayMinutes ?? 0) : null,
           afterTrainingFeedbackEnableScore: selectedTask.afterTrainingFeedbackEnableScore ?? true,
           afterTrainingFeedbackScoreExplanation: selectedTask.afterTrainingFeedbackScoreExplanation ?? null,
-          afterTrainingFeedbackEnableIntensity: selectedTask.afterTrainingFeedbackEnableIntensity ?? false,
+          // Always enable intensity at create (UI no longer exposes a toggle)
+          afterTrainingFeedbackEnableIntensity: true,
           afterTrainingFeedbackEnableNote: selectedTask.afterTrainingFeedbackEnableNote ?? true,
           playerId,
           teamId,
@@ -529,7 +530,8 @@ export default function TasksScreen() {
           categoryIds,
           afterTrainingEnabled: selectedTask.afterTrainingEnabled ?? false,
           afterTrainingDelayMinutes: selectedTask.afterTrainingEnabled ? (selectedTask.afterTrainingDelayMinutes ?? 0) : null,
-          afterTrainingFeedbackEnableIntensity: selectedTask.afterTrainingFeedbackEnableIntensity ?? false,
+          // Force intensity to remain enabled on updates
+          afterTrainingFeedbackEnableIntensity: true,
         };
 
         await updateTask(String((selectedTask as any).id), taskToSave);
@@ -673,7 +675,6 @@ export default function TasksScreen() {
           ...prev,
           afterTrainingEnabled: false,
           afterTrainingDelayMinutes: null,
-          afterTrainingFeedbackEnableIntensity: false,
         };
       }
 
@@ -683,9 +684,18 @@ export default function TasksScreen() {
         afterTrainingEnabled: true,
         afterTrainingDelayMinutes: existingDelay ?? 0,
         afterTrainingFeedbackEnableScore: prev.afterTrainingFeedbackEnableScore ?? true,
-        afterTrainingFeedbackEnableIntensity: prev.afterTrainingFeedbackEnableIntensity ?? false,
         afterTrainingFeedbackEnableNote: prev.afterTrainingFeedbackEnableNote ?? true,
+        // Always enable intensity when turning on after-training feedback
+        afterTrainingFeedbackEnableIntensity: true,
       };
+    });
+  }, []);
+
+  const handleReminderToggle = useCallback((value: boolean) => {
+    setSelectedTask(prev => {
+      if (!prev) return prev;
+      const current = normalizeReminderValue((prev as any).reminder);
+      return { ...(prev as any), reminder: value ? (current ?? 0) : null } as Task;
     });
   }, []);
 
@@ -693,23 +703,8 @@ export default function TasksScreen() {
     !!selectedTask && (selectedTask as any).reminder !== null && (selectedTask as any).reminder !== undefined;
 
   const afterTrainingScoreEnabled = selectedTask?.afterTrainingFeedbackEnableScore ?? true;
-  const afterTrainingIntensityEnabled = selectedTask?.afterTrainingFeedbackEnableIntensity ?? false;
   const afterTrainingNoteEnabled = selectedTask?.afterTrainingFeedbackEnableNote ?? true;
   const afterTrainingScoreExplanation = selectedTask?.afterTrainingFeedbackScoreExplanation ?? '';
-
-  const handleReminderToggle = useCallback((value: boolean) => {
-    setSelectedTask(prev => {
-      if (!prev) return prev;
-      if (!value) {
-        return { ...(prev as any), reminder: null } as Task;
-      }
-
-      const current = normalizeReminderValue((prev as any).reminder);
-      const fallback = REMINDER_DELAY_OPTIONS[1]?.value ?? REMINDER_DELAY_OPTIONS[0]?.value ?? 0;
-
-      return { ...(prev as any), reminder: current ?? fallback } as Task;
-    });
-  }, []);
 
   const addSubtask = useCallback(() => setSubtasks((prev) => [...prev, { id: createLocalId(), title: '' }]), []);
   const updateSubtask = useCallback((index: number, value: string) => {
@@ -813,7 +808,6 @@ export default function TasksScreen() {
                     afterTrainingDelayMinutes: 0,
                     afterTrainingFeedbackEnableScore: true,
                     afterTrainingFeedbackScoreExplanation: '',
-                    afterTrainingFeedbackEnableIntensity: false,
                     afterTrainingFeedbackEnableNote: true,
                   } as any,
                   true,
@@ -1050,7 +1044,7 @@ export default function TasksScreen() {
                             );
                           })}
                         </View>
-                        <Text style={[styles.helperText, { color: textSecondaryColor, marginTop: 6 }]}>
+                        <Text style={[styles.helperText, { color: colors.secondary, marginTop: 6 }]}>
                           0 = på starttidspunktet. Påmindelsen vises før aktivitetens starttid.
                         </Text>
                       </View>
@@ -1071,7 +1065,8 @@ export default function TasksScreen() {
                     <View style={styles.reminderSectionHeader}>
                       <View style={styles.toggleTextWrapper}>
                         <Text style={[styles.toggleLabel, { color: textColor }]}>Opret efter-træning feedback</Text>
-                        <Text style={[styles.toggleHelperText, { color: textSecondaryColor }]} >
+                        <Text style={[styles.toggleHelperText, { color: textSecondaryColor }]}
+                        >
                           Når denne skabelon bruges på en aktivitet, oprettes automatisk en efter-træning feedback-opgave til aktiviteten.
                         </Text>
                       </View>
@@ -1120,118 +1115,6 @@ export default function TasksScreen() {
                         <Text style={[styles.helperText, { color: textSecondaryColor, marginTop: 6 }]}>
                           Vises efter aktivitetens sluttidspunkt + valgt delay.
                         </Text>
-
-                        <View style={styles.feedbackConfigGroup}>
-                          <View style={styles.feedbackToggleRow}>
-                            <View style={styles.toggleTextWrapper}>
-                              <Text style={[styles.toggleLabel, { color: textColor }]}>Score (1-10)</Text>
-                              <Text style={[styles.toggleHelperText, { color: textSecondaryColor }]}>
-                                Viser spilleren et klassisk ratingfelt og hjælpetekst.
-                              </Text>
-                            </View>
-                            <Switch
-                              value={afterTrainingScoreEnabled}
-                              onValueChange={value =>
-                                setSelectedTask(prev =>
-                                  prev
-                                    ? ({
-                                        ...(prev as any),
-                                        afterTrainingFeedbackEnableScore: value,
-                                        afterTrainingFeedbackScoreExplanation: value
-                                          ? prev.afterTrainingFeedbackScoreExplanation ?? ''
-                                          : '',
-                                      } as Task)
-                                    : prev,
-                                )
-                              }
-                              trackColor={{ false: isDark ? '#555' : '#d0d7e3', true: colors.primary }}
-                              thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
-                              ios_backgroundColor={isDark ? '#555' : '#d0d7e3'}
-                              disabled={isSaving}
-                            />
-                          </View>
-
-                          {afterTrainingScoreEnabled && (
-                            <TextInput
-                              style={[
-                                styles.feedbackExplanationInput,
-                                {
-                                  backgroundColor: bgColor,
-                                  color: textColor,
-                                  borderColor: isDark ? '#444' : colors.border,
-                                },
-                              ]}
-                              value={afterTrainingScoreExplanation}
-                              onChangeText={text =>
-                                setSelectedTask(prev =>
-                                  prev
-                                    ? ({
-                                        ...(prev as any),
-                                        afterTrainingFeedbackScoreExplanation: text,
-                                      } as Task)
-                                    : prev,
-                                )
-                              }
-                              placeholder="Forklaring til spilleren (valgfrit)"
-                              placeholderTextColor={textSecondaryColor}
-                              editable={!isSaving}
-                              multiline
-                              numberOfLines={3}
-                            />
-                          )}
-
-                          <View style={styles.feedbackToggleRow}>
-                            <View style={styles.toggleTextWrapper}>
-                              <Text style={[styles.toggleLabel, { color: textColor }]}>Intensitet</Text>
-                              <Text style={[styles.toggleHelperText, { color: textSecondaryColor }]}>
-                                Slå til for at registrere aktivitetens intensitet (1-10) i næste feedback-modal.
-                              </Text>
-                            </View>
-                            <Switch
-                              value={afterTrainingIntensityEnabled}
-                              onValueChange={value =>
-                                setSelectedTask(prev =>
-                                  prev
-                                    ? ({
-                                        ...(prev as any),
-                                        afterTrainingFeedbackEnableIntensity: value,
-                                      } as Task)
-                                    : prev,
-                                )
-                              }
-                              trackColor={{ false: isDark ? '#555' : '#d0d7e3', true: colors.primary }}
-                              thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
-                              ios_backgroundColor={isDark ? '#555' : '#d0d7e3'}
-                              disabled={isSaving}
-                            />
-                          </View>
-
-                          <View style={styles.feedbackToggleRow}>
-                            <View style={styles.toggleTextWrapper}>
-                              <Text style={[styles.toggleLabel, { color: textColor }]}>Note</Text>
-                              <Text style={[styles.toggleHelperText, { color: textSecondaryColor }]}>
-                                Slå til for at give spilleren et frit tekstfelt.
-                              </Text>
-                            </View>
-                            <Switch
-                              value={afterTrainingNoteEnabled}
-                              onValueChange={value =>
-                                setSelectedTask(prev =>
-                                  prev
-                                    ? ({
-                                        ...(prev as any),
-                                        afterTrainingFeedbackEnableNote: value,
-                                      } as Task)
-                                    : prev,
-                                )
-                              }
-                              trackColor={{ false: isDark ? '#555' : '#d0d7e3', true: colors.primary }}
-                              thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
-                              ios_backgroundColor={isDark ? '#555' : '#d0d7e3'}
-                              disabled={isSaving}
-                            />
-                          </View>
-                        </View>
                       </View>
                     )}
                   </View>

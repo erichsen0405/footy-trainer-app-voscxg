@@ -961,18 +961,6 @@ function ActivityDetailsContent({
     return Array.from(ids);
   }, [resolveFeedbackTemplateId, taskListData]);
 
-  const intensityOwnerTemplateId = useMemo(() => {
-    for (const task of taskListData) {
-      const templateId = resolveFeedbackTemplateId(task);
-      if (!templateId) continue;
-      const config = feedbackConfigByTemplate[templateId];
-      if (config?.enableIntensity) {
-        return templateId;
-      }
-    }
-    return null;
-  }, [feedbackConfigByTemplate, resolveFeedbackTemplateId, taskListData]);
-
   useEffect(() => {
     let isMounted = true;
 
@@ -1131,12 +1119,8 @@ function ActivityDetailsContent({
 
   const currentActivityIntensity = typeof activity.intensity === 'number' ? activity.intensity : null;
 
-  const shouldShowIntensityField = Boolean(
-    feedbackModalTask?.templateId &&
-      feedbackModalTask.templateId === intensityOwnerTemplateId &&
-      feedbackConfigByTemplate[feedbackModalTask.templateId]?.enableIntensity &&
-      !activity.isExternal,
-  );
+  // Always show intensity input for feedback on internal activities
+  const shouldShowIntensityField = !activity.isExternal;
 
   const handleFeedbackTaskPress = useCallback(
     (task: Task) => {
@@ -1165,11 +1149,8 @@ function ActivityDetailsContent({
       setIsFeedbackSaving(true);
 
       try {
-        const canPersistIntensity =
-          !activity.isExternal &&
-          typeof intensity !== 'undefined' &&
-          feedbackModalTask.templateId === intensityOwnerTemplateId &&
-          feedbackConfigByTemplate[feedbackModalTask.templateId]?.enableIntensity;
+        // Persist intensity for internal activities whenever provided
+        const canPersistIntensity = !activity.isExternal && typeof intensity !== 'undefined';
 
         if (canPersistIntensity && intensity !== null) {
           if (intensity < 1 || intensity > 10) {
@@ -1224,7 +1205,7 @@ function ActivityDetailsContent({
         setIsFeedbackSaving(false);
       }
     },
-    [activity.id, activity.intensity, activity.isExternal, applyActivityUpdates, currentUserId, feedbackConfigByTemplate, feedbackModalTask, intensityOwnerTemplateId, refreshData, setTaskCompletion, updateActivitySingle]
+    [activity.id, activity.intensity, activity.isExternal, applyActivityUpdates, currentUserId, feedbackModalTask, refreshData, setTaskCompletion, updateActivitySingle]
   );
 
   const handleTaskRowPress = useCallback(
@@ -2229,6 +2210,7 @@ function ActivityDetailsContent({
                       <Text style={[styles.fieldLabel, { color: textColor }]}>Slutdato</Text>
                       <TouchableOpacity
                         style={[styles.dateTimeButton, { backgroundColor: bgColor }]}
+                       
                         onPress={() => setShowEndDatePicker(true)}
                         activeOpacity={0.7}
                       >
