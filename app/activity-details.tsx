@@ -30,8 +30,6 @@ import { supabase } from '@/app/integrations/supabase/client';
 import { FeedbackTaskModal } from '@/components/FeedbackTaskModal';
 import { fetchSelfFeedbackForTemplates, upsertSelfFeedback } from '@/services/feedbackService';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
-import { getCategories } from '@/services/activities';
-import { resolveActivityCategory, type CategoryMappingRecord } from '@/shared/activityCategoryResolver';
 
 const DAYS_OF_WEEK = [
   { label: 'Søn', value: 0 },
@@ -54,65 +52,28 @@ const RECURRENCE_OPTIONS: Array<{
   { label: 'Månedligt', value: 'monthly' },
 ];
 
+const normalizeOptionalTime = (value?: string | null): string | undefined => {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : undefined;
+};
+
+const timeToMinutes = (value?: string | null): number | null => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const [hoursStr, minutesStr] = trimmed.split(':');
+  if (hoursStr === undefined || minutesStr === undefined) return null;
+  const hours = Number(hoursStr);
+  const minutes = Number(minutesStr);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+  return hours * 60 + minutes;
+};
+
 // Helper function to fetch activity directly from database
 async function fetchActivityFromDatabase(activityId: string): Promise<Activity | null> {
   try {
-    console.log('🔍 Fetching activity from database:', activityId);
-
-    const resolveCategoryWithFallback = async (
-      activityTitle: string,
-      providerCategories?: string[]
-    ): Promise<ActivityCategory | null> => {
-      try {
-        const {
-          data: { session },
-          error: sessionError,
-        } = await supabase.auth.getSession();
-
-        if (sessionError) {
-          console.error('❌ Failed to resolve session for fallback category lookup:', sessionError);
-          return null;
-        }
-
-        const userId = session?.user?.id;
-        if (!userId) {
-          return null;
-        }
-
-        const [categories, mappingsResponse] = await Promise.all([
-          getCategories(userId),
-          supabase
-            .from('category_mappings')
-            .select('external_category, internal_category_id')
-            .eq('user_id', userId),
-        ]);
-
-        const mappings = (mappingsResponse?.data || []) as CategoryMappingRecord[];
-
-        const resolution = resolveActivityCategory({
-          title: activityTitle,
-          categories,
-          externalCategories: providerCategories,
-          categoryMappings: mappings,
-        });
-
-        if (!resolution) {
-          return null;
-        }
-
-        return {
-          id: resolution.category.id,
-          name: resolution.category.name,
-          color: resolution.category.color || '#9E9E9E',
-          emoji: resolution.category.emoji || '❓',
-        };
-      } catch (fallbackError) {
-        console.error('❌ Error resolving fallback category:', fallbackError);
-        return null;
-      }
-    };
-
-    // First, try to fetch from internal activities table
     const { data: internalActivity, error: internalError } = await supabase
       .from('activities')
       .select(`
@@ -124,47 +85,75 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
         location,
         category_id,
         intensity,
+        intensity_enabled,
         is_external,
         external_calendar_id,
         external_event_id,
         series_id,
-        endTime: internalActivity.activity_end_time,
-        location: internalActivity.location || '',
-        category: internalActivity.activity_categories ? {
-          id: internalActivity.activity_categories.id,
-          name: internalActivity.activity_categories.name,
-          color: internalActivity.activity_categories.color,
-          emoji: internalActivity.activity_categories.emoji,
-        } : {
-          id: '',
-          name: 'Unknown',
-          color: '#999999',
-          emoji: '❓',
-        },
-        tasks: (internalActivity.activity_tasks || []).map((task: any) => {
-          const markerTemplateId = parseTemplateIdFromMarker(task.description || '');
-          const isFeedbackTask = !task.task_template_id && !!markerTemplateId;
+        series_instance_date,
+        activity_categories (
+          id,
+          name,
+          color,
+          emoji
+        ),
+        activity_tasks (
+          id,
+          title,
+          description,
+          completed,
+          reminder_minutes,
+          task_template_id
+        )
+      `)
+      .eq('id', activityId)
+      .single();
 
-          return {
-            id: task.id,
-            title: task.title,
-            description: task.description || '',
-            completed: task.completed,
-            isTemplate: false,
-            categoryIds: [],
-            reminder: task.reminder_minutes,
-            subtasks: [],
-            taskTemplateId: task.task_template_id,
-            feedbackTemplateId: markerTemplateId,
-            isFeedbackTask,
-          } as Task;
-        }),
-        isExternal: internalActivity.is_external,
-        externalCalendarId: internalActivity.external_calendar_id,
-        externalEventId: internalActivity.external_event_id,
-        seriesId: internalActivity.series_id,
-        seriesInstanceDate: internalActivity.series_instance_date ? new Date(internalActivity.series_instance_date) : undefined,
+    if (!internalError && internalActivity) {
+      const category: ActivityCategory = {
+        id: internalActivity.activity_categories?.id || internalActivity.category_id || '',
+        name: internalActivity.activity_categories?.name || 'Ukendt kategori',
+        color: internalActivity.activity_categories?.color || '#999999',
+        emoji: internalActivity.activity_categories?.emoji || '❓',
+      };
+
+      const tasks: Task[] = (internalActivity.activity_tasks ?? []).map((task: any) => {
+        const markerTemplateId = parseTemplateIdFromMarker(task.description || '');
+        const isFeedbackTask = !task.task_template_id && !!markerTemplateId;
+
+        return {
+          id: task.id,
+          title: task.title,
+          description: task.description || '',
+          completed: task.completed,
+          isTemplate: false,
+          categoryIds: [],
+          reminder: task.reminder_minutes,
+          subtasks: [],
+          taskTemplateId: task.task_template_id,
+          feedbackTemplateId: markerTemplateId,
+          isFeedbackTask,
+        };
+      });
+
+      return {
+        id: internalActivity.id,
+        title: internalActivity.title,
+        date: new Date(internalActivity.activity_date),
+        time: internalActivity.activity_time,
+        endTime: internalActivity.activity_end_time ?? undefined,
+        location: internalActivity.location || '',
+        category,
+        tasks,
+        isExternal: false,
+        externalCalendarId: internalActivity.external_calendar_id ?? undefined,
+        externalEventId: internalActivity.external_event_id ?? undefined,
+        seriesId: internalActivity.series_id ?? undefined,
+        seriesInstanceDate: internalActivity.series_instance_date
+          ? new Date(internalActivity.series_instance_date)
+          : undefined,
         intensity: typeof internalActivity.intensity === 'number' ? internalActivity.intensity : null,
+        intensityEnabled: Boolean(internalActivity.intensity_enabled),
       };
     }
 
@@ -207,7 +196,7 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
 
     if (!metaError && localMeta && localMeta.events_external) {
       console.log('✅ Found external activity:', localMeta.events_external.title);
-      
+
       const externalEvent = localMeta.events_external;
       const eventTitle = localMeta.local_title_override || externalEvent.title;
       const providerCategories = Array.isArray(externalEvent.raw_payload?.categories)
@@ -224,7 +213,7 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
           emoji: localMeta.activity_categories.emoji,
         };
       } else {
-        resolvedCategory = await resolveCategoryWithFallback(eventTitle, providerCategories);
+        resolvedCategory = null;
       }
 
       const fallbackCategory: ActivityCategory = resolvedCategory ?? {
@@ -233,7 +222,7 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
         color: '#999999',
         emoji: '❓',
       };
-      
+
       return {
         id: localMeta.id,
         title: eventTitle,
@@ -416,99 +405,21 @@ function ActivityDetailsContent({
 }: ActivityDetailsContentProps) {
   const bgColor = isDark ? '#1a1a1a' : colors.background;
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
-        // Persist intensity only when the activity allows it
-        const canPersistIntensity =
-          !activity.isExternal &&
-          !!activity.intensityEnabled &&
-          typeof intensity !== 'undefined';
-
-        if (canPersistIntensity) {
-          if (intensity !== null && (intensity < 1 || intensity > 10)) {
-
-function normalizeOptionalTime(value?: string | null): string | undefined {
-  if (typeof value !== 'string') {
-    return undefined;
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed.length) {
-    return undefined;
-  }
-
-  const [hoursRaw, minutesRaw] = trimmed.split(':');
-  if (hoursRaw === undefined || minutesRaw === undefined) {
-    return undefined;
-  }
-
-  const hours = Number(hoursRaw);
-  const minutes = Number(minutesRaw);
-
-  if (
-    !Number.isFinite(hours) ||
-    !Number.isFinite(minutes) ||
-    hours < 0 ||
-    hours > 23 ||
-    minutes < 0 ||
-    minutes > 59
-  ) {
-    return undefined;
-  }
-
-  const normalizedHours = hours.toString().padStart(2, '0');
-  const normalizedMinutes = minutes.toString().padStart(2, '0');
-
-  return `${normalizedHours}:${normalizedMinutes}`;
-}
-
-function toMinutes(value?: string | null): number | null {
-  const normalized = normalizeOptionalTime(value);
-  if (!normalized) {
-    return null;
-  }
-
-  const [hoursStr, minutesStr] = normalized.split(':');
-  const hours = Number(hoursStr);
-  const minutes = Number(minutesStr);
-
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
-    return null;
-  }
-
-  return hours * 60 + minutes;
-}
-            Alert.alert('Fejl', 'Intensitet skal være mellem 1 og 10.');
-            setIsFeedbackSaving(false);
-            return;
-          }
-
-          await updateActivitySingle(activity.id, {
-            intensity,
-            intensityEnabled: true,
-          });
-          applyActivityUpdates({ intensity: intensity ?? null, intensityEnabled: true });
-
-    const hours = Number(segments[0]);
-    const minutes = Number(segments[1]);
-
-    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
-    if (hours < 0 || hours > 23) return null;
-    if (minutes < 0 || minutes > 59) return null;
-
-    return hours * 60 + minutes;
-  };
+  const textColor = isDark ? '#e3e3e3' : colors.text;
+  const textSecondaryColor = isDark ? '#9aa0a6' : colors.textSecondary;
 
   const router = useRouter();
-  const { 
-    updateActivitySingle, 
-    updateActivitySeries, 
-    toggleTaskCompletion, 
+  const {
+    updateActivitySingle,
+    updateActivitySeries,
+    toggleTaskCompletion,
     setTaskCompletion,
-    deleteActivityTask, 
-    deleteActivitySingle, 
-    deleteActivitySeries, 
-    refreshData, 
-    createActivity, 
-    duplicateActivity 
+    deleteActivityTask,
+    deleteActivitySingle,
+    deleteActivitySeries,
+    refreshData,
+    createActivity,
+    duplicateActivity
   } = useFootball();
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -556,15 +467,21 @@ function toMinutes(value?: string | null): number | null {
   );
   const intensityOptions = useMemo(() => Array.from({ length: 10 }, (_, idx) => idx + 1), []);
   const [isInlineIntensitySaving, setIsInlineIntensitySaving] = useState(false);
-  const activityIntensityEnabled = useMemo(() => (
-    typeof activity.intensityEnabled === 'boolean'
-      ? activity.intensityEnabled
-      : typeof activity.intensity === 'number'
-  ), [activity]);
-  const inlineIntensityValue = useMemo(() => (
-    typeof activity.intensity === 'number' ? activity.intensity : null
-  ), [activity]);
-  
+  const activityIntensityEnabled = useMemo(
+    () =>
+      typeof activity.intensityEnabled === 'boolean'
+        ? activity.intensityEnabled
+        : typeof activity.intensity === 'number',
+    [activity]
+  );
+  const inlineIntensityValue = useMemo(
+    () => (typeof activity.intensity === 'number' ? activity.intensity : null),
+    [activity]
+  );
+  const isInternalActivity = !activity.isExternal;
+  const currentActivityIntensity = typeof activity.intensity === 'number' ? activity.intensity : null;
+  const shouldShowActivityIntensityField = isInternalActivity && !!activityIntensityEnabled;
+
   // Recurring event conversion state
   const [convertToRecurring, setConvertToRecurring] = useState(false);
   const [recurrenceType, setRecurrenceType] = useState<'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly'>('weekly');
@@ -674,32 +591,55 @@ function toMinutes(value?: string | null): number | null {
     }
   }, []);
 
+  const handleIntensitySelect = useCallback(
+    (value: number) => {
+      if (!editIntensityEnabled) return;
+      setEditIntensity(value);
+    },
+    [editIntensityEnabled]
+  );
+
   const handleSave = async () => {
     if (!activity) return;
 
-    const endTimePayload = activity.isExternal
-      ? undefined
-      : normalizeOptionalTime(editEndTime);
+    const endTimePayload = isInternalActivity ? normalizeOptionalTime(editEndTime) : undefined;
+    const intensityPayload = editIntensityEnabled ? editIntensity ?? null : null;
+    const trimmedTime = (editTime ?? '').trim();
+    let safeTime: string | null = null;
 
-    if (endTimePayload) {
-      const startMinutes = toMinutes(editTime);
-      const endMinutes = toMinutes(endTimePayload);
-
-      if (startMinutes == null || endMinutes == null) {
-        Alert.alert('Fejl', 'Ugyldigt tidspunkt. Benyt formatet HH:MM.');
+    if (isInternalActivity) {
+      if (!trimmedTime) {
+        Alert.alert('Fejl', 'Starttidspunkt er påkrævet.');
         return;
       }
 
-      if (endMinutes <= startMinutes) {
-        Alert.alert('Fejl', 'Sluttidspunkt skal være efter starttidspunkt');
+      const startMinutes = timeToMinutes(trimmedTime);
+      if (startMinutes === null) {
+        Alert.alert('Fejl', 'Ugyldigt starttidspunkt. Benyt formatet HH:MM.');
         return;
       }
+
+      if (endTimePayload) {
+        const endMinutes = timeToMinutes(endTimePayload);
+        if (endMinutes === null) {
+          Alert.alert('Fejl', 'Ugyldigt sluttidspunkt. Benyt formatet HH:MM.');
+          return;
+        }
+        if (endMinutes <= startMinutes) {
+          Alert.alert('Fejl', 'Sluttidspunkt skal være efter starttidspunkt.');
+          return;
+        }
+      }
+
+      safeTime = trimmedTime;
     }
+
+    const effectiveTime = safeTime ?? activity.time;
 
     setIsSaving(true);
 
     try {
-      if (convertToRecurring && !activity.seriesId && !activity.isExternal) {
+      if (convertToRecurring && isInternalActivity && !activity.seriesId) {
         if ((recurrenceType === 'weekly' || recurrenceType === 'biweekly' || recurrenceType === 'triweekly') && selectedDays.length === 0) {
           Alert.alert('Fejl', 'Vælg venligst mindst én dag for gentagelse');
           return;
@@ -710,13 +650,16 @@ function toMinutes(value?: string | null): number | null {
           location: editLocation,
           categoryId: editCategory?.id || activity.category.id,
           date: editDate,
-          time: editTime,
+          time: effectiveTime,
           endTime: endTimePayload,
-          intensity: null,
+          intensity: intensityPayload,
           intensityEnabled: editIntensityEnabled,
           isRecurring: true,
           recurrenceType,
-          recurrenceDays: (recurrenceType === 'weekly' || recurrenceType === 'biweekly' || recurrenceType === 'triweekly') ? selectedDays : undefined,
+          recurrenceDays:
+            recurrenceType === 'weekly' || recurrenceType === 'biweekly' || recurrenceType === 'triweekly'
+              ? selectedDays
+              : undefined,
           endDate: hasEndDate ? endDate : undefined,
         });
 
@@ -731,13 +674,9 @@ function toMinutes(value?: string | null): number | null {
       }
 
       if (activity.isExternal) {
-        console.log('🔄 Updating external activity category');
-        
         await updateActivitySingle(activity.id, {
           categoryId: editCategory?.id,
         });
-
-        console.log('✅ External activity category updated');
 
         applyActivityUpdates({
           category: editCategory || activity.category,
@@ -756,20 +695,20 @@ function toMinutes(value?: string | null): number | null {
           title: editTitle,
           location: editLocation,
           categoryId: editCategory?.id,
-          time: editTime,
+          time: effectiveTime,
           endTime: endTimePayload,
           intensityEnabled: editIntensityEnabled,
-          ...(editIntensityEnabled ? {} : { intensity: null }),
+          intensity: intensityPayload,
         });
 
         applyActivityUpdates({
           title: editTitle,
           location: editLocation,
           category: editCategory || activity.category,
-          time: editTime,
+          time: effectiveTime,
           endTime: endTimePayload,
           intensityEnabled: editIntensityEnabled,
-          ...(editIntensityEnabled ? {} : { intensity: null }),
+          intensity: intensityPayload,
         });
 
         Alert.alert('Gemt', 'Hele serien er blevet opdateret');
@@ -784,10 +723,10 @@ function toMinutes(value?: string | null): number | null {
         location: editLocation,
         categoryId: editCategory?.id,
         date: editDate,
-        time: editTime,
+        time: effectiveTime,
         endTime: endTimePayload,
         intensityEnabled: editIntensityEnabled,
-        ...(editIntensityEnabled ? {} : { intensity: null }),
+        intensity: intensityPayload,
       });
 
       applyActivityUpdates({
@@ -795,10 +734,10 @@ function toMinutes(value?: string | null): number | null {
         location: editLocation,
         category: editCategory || activity.category,
         date: editDate,
-        time: editTime,
+        time: effectiveTime,
         endTime: endTimePayload,
         intensityEnabled: editIntensityEnabled,
-        ...(editIntensityEnabled ? {} : { intensity: null }),
+        intensity: intensityPayload,
       });
 
       Alert.alert('Gemt', 'Aktiviteten er blevet opdateret');
@@ -815,7 +754,14 @@ function toMinutes(value?: string | null): number | null {
 
   const handleCancel = () => {
     if (!activity) return;
-    
+
+    const hasIntensityValue = typeof activity.intensity === 'number';
+    const resolvedFlag =
+      typeof activity.intensityEnabled === 'boolean'
+        ? activity.intensityEnabled
+        : hasIntensityValue;
+    const resolvedValue = hasIntensityValue ? activity.intensity : null;
+
     setEditTitle(activity.title);
     setEditLocation(activity.location);
     setEditDate(new Date(activity.date));
@@ -825,6 +771,8 @@ function toMinutes(value?: string | null): number | null {
     setConvertToRecurring(false);
     setIsEditing(false);
     setEditScope('single');
+    setEditIntensityEnabled(resolvedFlag);
+    setEditIntensity(resolvedValue);
   };
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
@@ -908,7 +856,7 @@ function toMinutes(value?: string | null): number | null {
 
     try {
       await toggleTaskCompletion(activity.id, taskId, desiredState);
-      Promise.resolve(refreshData()).catch(() => {});
+      Promise.resolve(refreshData()).catch(() => { });
     } catch (error) {
       console.error('Error toggling task:', error);
       setTasksState(snapshot);
@@ -1078,61 +1026,58 @@ function toMinutes(value?: string | null): number | null {
 
         const rows = await fetchSelfFeedbackForTemplates(sessionUserId, templateIds);
 
-        let configMap: Record<string, AfterTrainingFeedbackConfig> = {};
-        try {
-          const { data: configRows, error: configError } = await supabase
-            .from('task_templates')
-            .select(`
-              id,
-              after_training_feedback_enable_score,
-              after_training_feedback_score_explanation,
-              after_training_feedback_enable_intensity,
-              after_training_feedback_enable_note
-            `)
-            .in('id', templateIds);
-
-          if (configError) {
-            throw configError;
-          }
-
-          (configRows || []).forEach(row => {
-            if (row?.id) {
-              configMap[row.id] = buildFeedbackConfig(row);
-            }
-          });
-        } catch (configError) {
-          console.error('❌ Error loading feedback config:', configError);
-        }
-
-        templateIds.forEach(id => {
-          if (!configMap[id]) {
-            configMap[id] = buildFeedbackConfig();
-          }
+        const groupedRows: Record<string, any[]> = {};
+        (rows || []).forEach((row: any) => {
+          const templateId =
+            row?.taskTemplateId ??
+            row?.task_template_id ??
+            row?.templateId ??
+            row?.template_id ??
+            null;
+          if (!templateId) return;
+          (groupedRows[templateId] ??= []).push(row);
         });
 
-        if (!isMounted) {
-          return;
-        }
+        const getRowTimestamp = (row: any): number | null => {
+          const ts = row?.created_at ?? row?.createdAt ?? row?.updated_at ?? row?.updatedAt ?? null;
+          if (!ts) return null;
+          const date = new Date(ts);
+          return Number.isNaN(date.getTime()) ? null : date.getTime();
+        };
 
         const grouped: Record<string, TemplateFeedbackSummary> = {};
-
-        templateIds.forEach(id => {
-          grouped[id] = {};
-        });
-
-        rows.forEach(row => {
-          const entry = grouped[row.taskTemplateId] || {};
-
-          if (row.activityId === activity.id) {
-            if (!entry.current) {
-              entry.current = row;
-            }
-          } else if (!entry.previous) {
-            entry.previous = row;
+        Object.entries(groupedRows).forEach(([templateId, templateRows]) => {
+          const sorted = [...templateRows];
+          const hasTimestamps = sorted.some((row) => getRowTimestamp(row) !== null);
+          if (hasTimestamps) {
+            sorted.sort((a, b) => (getRowTimestamp(b) ?? 0) - (getRowTimestamp(a) ?? 0));
           }
-
-          grouped[row.taskTemplateId] = entry;
+          const summary: TemplateFeedbackSummary = {};
+          if (sorted[0]) summary.current = sorted[0];
+          if (sorted[1]) summary.previous = sorted[1];
+          grouped[templateId] = summary;
         });
+
+        let configMap: Record<string, AfterTrainingFeedbackConfig> = {};
+        const { data: configRows, error: configError } = await supabase
+          .from('task_templates')
+          .select(`
+            id,
+            after_training_feedback_enable_score,
+            after_training_feedback_score_explanation,
+            after_training_feedback_enable_intensity,
+            after_training_feedback_enable_note
+          `)
+          .in('id', templateIds);
+
+        if (configError) {
+          console.error('❌ Failed to load feedback config:', configError);
+        } else if (Array.isArray(configRows)) {
+          configRows.forEach((row: any) => {
+            if (!row?.id) return;
+            configMap[row.id] = buildFeedbackConfig(row);
+          });
+        }
 
         setFeedbackConfigByTemplate(configMap);
         setSelfFeedbackByTemplate(grouped);
@@ -1167,33 +1112,36 @@ function toMinutes(value?: string | null): number | null {
     const used = new Set<string>();
 
     (taskListData || []).forEach(task => {
-      if (!task.taskTemplateId || used.has(task.taskTemplateId)) {
+      const templateKey = resolveFeedbackTemplateId(task) ?? task.taskTemplateId;
+      if (!templateKey || used.has(templateKey)) {
         return;
       }
 
-      const summary = selfFeedbackByTemplate[task.taskTemplateId];
+      const summary = selfFeedbackByTemplate[templateKey];
 
       if (summary?.previous) {
         entries.push({
-          templateId: task.taskTemplateId,
+          templateId: templateKey,
           taskTitle: task.title,
           feedback: summary.previous,
         });
-        used.add(task.taskTemplateId);
+        used.add(templateKey);
       }
     });
 
     return entries;
-  }, [selfFeedbackByTemplate, taskListData]);
+  }, [resolveFeedbackTemplateId, selfFeedbackByTemplate, taskListData]);
 
   const activeFeedbackDefaults = feedbackModalTask?.templateId
     ? selfFeedbackByTemplate[feedbackModalTask.templateId]?.current
     : undefined;
 
-  const currentActivityIntensity = typeof activity.intensity === 'number' ? activity.intensity : null;
+  const activeFeedbackConfig = feedbackModalTask?.templateId
+    ? feedbackConfigByTemplate[feedbackModalTask.templateId]
+    : undefined;
 
-  // Only show intensity input when activity has intensity tracking enabled
-  const shouldShowIntensityField = !activity.isExternal && !!activity.intensityEnabled;
+  const shouldShowFeedbackIntensityField =
+    isInternalActivity && (activeFeedbackConfig?.enableIntensity ?? false);
 
   const handleFeedbackTaskPress = useCallback(
     (task: Task) => {
@@ -1222,14 +1170,23 @@ function toMinutes(value?: string | null): number | null {
       setIsFeedbackSaving(true);
 
       try {
-        // Persist intensity for internal activities whenever provided
-        const canPersistIntensity = !activity.isExternal && typeof intensity !== 'undefined';
+        const activeConfig = feedbackConfigByTemplate[feedbackModalTask.templateId];
+        const canPersistIntensity =
+          isInternalActivity && (activeConfig?.enableIntensity ?? false) && typeof intensity !== 'undefined';
 
         if (canPersistIntensity && intensity !== null) {
           if (intensity < 1 || intensity > 10) {
             Alert.alert('Fejl', 'Intensitet skal være mellem 1 og 10.');
             setIsFeedbackSaving(false);
             return;
+          }
+
+          if (intensity !== activity.intensity) {
+            await updateActivitySingle(activity.id, {
+              intensity,
+              intensityEnabled: true,
+            });
+            applyActivityUpdates({ intensity, intensityEnabled: true });
           }
         }
 
@@ -1241,18 +1198,55 @@ function toMinutes(value?: string | null): number | null {
           note,
         });
 
-        if (canPersistIntensity && intensity !== activity.intensity) {
-          await updateActivitySingle(activity.id, { intensity: intensity ?? null });
-          applyActivityUpdates({ intensity: intensity ?? null });
-        }
+        setSelfFeedbackByTemplate(prev => {
+          const templateId = feedbackModalTask.templateId;
+          const prevEntry = prev[templateId] ?? {};
+          const prevCurrent = prevEntry.current;
 
-        setSelfFeedbackByTemplate(prev => ({
-          ...prev,
-          [feedbackModalTask.templateId]: {
-            ...(prev[feedbackModalTask.templateId] || {}),
-            current: saved,
-          },
-        }));
+          const getRowId = (row: any): string | null => {
+            const id = row?.id ?? row?.feedback_id ?? row?.self_feedback_id ?? null;
+            return id ? String(id) : null;
+          };
+
+          const getRowActivityId = (row: any): string | null => {
+            const id = row?.activity_id ?? row?.activityId ?? null;
+            return id ? String(id) : null;
+          };
+
+          const getRowCreatedAtMs = (row: any): number | null => {
+            const ts = row?.created_at ?? row?.createdAt ?? null;
+            if (!ts) return null;
+            const ms = new Date(ts).getTime();
+            return Number.isNaN(ms) ? null : ms;
+          };
+
+          const prevId = getRowId(prevCurrent);
+          const savedId = getRowId(saved);
+          const prevActivityId = getRowActivityId(prevCurrent);
+          const savedActivityId = getRowActivityId(saved);
+          const prevCreatedAt = getRowCreatedAtMs(prevCurrent);
+          const savedCreatedAt = getRowCreatedAtMs(saved);
+
+          let isDifferentRow = false;
+
+          if (prevCurrent) {
+            if (prevId && savedId) {
+              isDifferentRow = prevId !== savedId;
+            } else if (prevActivityId && savedActivityId) {
+              isDifferentRow = prevActivityId !== savedActivityId;
+            } else if (prevCreatedAt !== null && savedCreatedAt !== null) {
+              isDifferentRow = prevCreatedAt !== savedCreatedAt;
+            }
+          }
+
+          return {
+            ...prev,
+            [templateId]: {
+              current: saved,
+              previous: isDifferentRow ? prevCurrent : prevEntry.previous,
+            },
+          };
+        });
 
         if (feedbackModalTask?.task?.id) {
           const feedbackTaskId = feedbackModalTask.task.id;
@@ -1278,7 +1272,7 @@ function toMinutes(value?: string | null): number | null {
         setIsFeedbackSaving(false);
       }
     },
-    [activity.id, activity.intensity, activity.isExternal, applyActivityUpdates, currentUserId, feedbackModalTask, refreshData, setTaskCompletion, updateActivitySingle]
+    [activity.id, activity.intensity, applyActivityUpdates, currentUserId, feedbackConfigByTemplate, feedbackModalTask, isInternalActivity, refreshData, setTaskCompletion, updateActivitySingle]
   );
 
   const handleTaskRowPress = useCallback(
@@ -2118,8 +2112,10 @@ function toMinutes(value?: string | null): number | null {
                   />
                   <View style={styles.detailContent}>
                     <Text style={[styles.detailLabel, { color: textSecondaryColor }]}>Intensitet</Text>
-                    {typeof activity.intensity === 'number' ? (
-                      <Text style={[styles.detailValue, { color: textColor }]}>Level {activity.intensity}/10</Text>
+                    {shouldShowActivityIntensityField && typeof activity.intensity === 'number' ? (
+                      <Text style={[styles.detailValue, { color: textColor }]}>
+                        Level {activity.intensity}/10
+                      </Text>
                     ) : (
                       <Text style={[styles.detailValue, { color: textSecondaryColor }]}>Ikke angivet</Text>
                     )}
@@ -2283,7 +2279,6 @@ function toMinutes(value?: string | null): number | null {
                       <Text style={[styles.fieldLabel, { color: textColor }]}>Slutdato</Text>
                       <TouchableOpacity
                         style={[styles.dateTimeButton, { backgroundColor: bgColor }]}
-                       
                         onPress={() => setShowEndDatePicker(true)}
                         activeOpacity={0.7}
                       >
@@ -2362,7 +2357,7 @@ function toMinutes(value?: string | null): number | null {
 
               return (
                 <View key={entry.templateId} style={styles.feedbackInfoRow}>
-                  <Text style={[styles.feedbackInfoTaskTitle, { color: textColor }] }>
+                  <Text style={[styles.feedbackInfoTaskTitle, { color: textColor }]}>
                     {entry.taskTitle}
                   </Text>
                   <Text style={[styles.feedbackInfoRating, { color: colors.primary }]}>
@@ -2557,7 +2552,7 @@ function toMinutes(value?: string | null): number | null {
         defaultNote={activeFeedbackDefaults?.note ?? ''}
         defaultIntensity={currentActivityIntensity}
         feedbackConfig={feedbackModalTask?.templateId ? feedbackConfigByTemplate[feedbackModalTask.templateId] : undefined}
-        showIntensityField={shouldShowIntensityField}
+        showIntensityField={shouldShowFeedbackIntensityField}
         isSaving={isFeedbackSaving}
         onClose={handleFeedbackModalClose}
         onSave={handleFeedbackSave}
@@ -2587,7 +2582,7 @@ export default function ActivityDetailsScreen() {
     });
   }, []);
 
- 
+
   // Fetch activity after mount
   useEffect(() => {
     if (!hasPainted) return;
@@ -2603,9 +2598,9 @@ export default function ActivityDetailsScreen() {
       }
 
       console.log('🔍 Loading activity with ID:', id);
-      
+
       const fetchedActivity = await fetchActivityFromDatabase(id);
-      
+
       if (!isMounted) return;
 
       if (fetchedActivity) {
@@ -2613,8 +2608,8 @@ export default function ActivityDetailsScreen() {
         setActivity(fetchedActivity);
       } else {
         console.log('❌ Activity not found');
-           }
-      
+      }
+
       setIsReady(true);
     }
 

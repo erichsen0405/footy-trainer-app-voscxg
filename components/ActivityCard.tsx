@@ -282,7 +282,8 @@ export default function ActivityCard({
     return typeof activity?.intensity === 'number';
   }, [activity]);
 
-  const shouldShowIntensityCTA = intensityEnabled && intensityValue === null;
+  const isExternalActivity = Boolean(activity?.is_external ?? activity?.isExternal);
+  const shouldShowIntensityCTA = !isExternalActivity && intensityEnabled && intensityValue === null;
 
   const handleIntensityCtaPress = useCallback(() => {
     handleCardPress();

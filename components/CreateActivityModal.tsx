@@ -209,7 +209,6 @@ export default function CreateActivityModal({
       return;
     }
 
-    // Hvis der er en valideringsfejl på sluttidspunkt, stop
     if (endTimeError) {
       Alert.alert('Fejl', endTimeError);
       return;
@@ -225,10 +224,6 @@ export default function CreateActivityModal({
     }
 
     const normalizedIntensity = intensityEnabled ? intensityValue ?? null : null;
-    if (intensityEnabled && normalizedIntensity === null) {
-      Alert.alert('Fejl', 'Vælg intensitet (1-10)');
-      return;
-    }
 
     setIsCreating(true);
 
@@ -395,8 +390,9 @@ export default function CreateActivityModal({
   }, []);
 
   const handleIntensitySelect = useCallback((value: number) => {
-    setIntensityValue(value);
-  }, []);
+    if (!intensityEnabled) return;
+    setIntensityValue(prev => (prev === value ? null : value));
+  }, [intensityEnabled]);
 
   // Avoid inline lambdas in render
   const categoryPressHandlers = useMemo(() => {
