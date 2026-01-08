@@ -1,4 +1,3 @@
-
 /**
  * PERFORMANCE LOCK (STEP F)
  * DO NOT:
@@ -59,7 +58,7 @@
  */
 
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform, useColorScheme } from 'react-native';
+import { FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform, useColorScheme, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -78,6 +77,7 @@ import { format, startOfWeek, endOfWeek, getWeek } from 'date-fns';
 import { da } from 'date-fns/locale';
 import { supabase } from '@/app/integrations/supabase/client';
 import { canTrainerManageActivity } from '@/utils/permissions';
+import { IntensityPickerModal } from '@/components/IntensityPickerModal';
 
 function resolveActivityDateTime(activity: any): Date | null {
   // STEP H: Guard against null/undefined activity
@@ -135,11 +135,46 @@ function getPerformanceGradient(percentage: number): string[] {
   }
 }
 
+const INTENSITY_CHOICES = Array.from({ length: 10 }, (_, idx) => idx + 1);
+
+function getActivityIntensityValue(activity: any): number | null {
+  if (!activity) {
+    return null;
+  }
+  if (typeof activity?.intensity === 'number') {
+    return activity.intensity;
+  }
+  if (typeof activity?.activity_intensity === 'number') {
+    return activity.activity_intensity;
+  }
+  return null;
+}
+
+function getActivityIntensityEnabled(activity: any): boolean {
+  if (!activity) {
+    return false;
+  }
+  if (typeof activity?.intensityEnabled === 'boolean') {
+    return activity.intensityEnabled;
+  }
+  if (typeof activity?.intensity_enabled === 'boolean') {
+    return activity.intensity_enabled;
+  }
+  if (typeof activity?.activity_intensity_enabled === 'boolean') {
+    return activity.activity_intensity_enabled;
+  }
+  return false;
+}
+
+function isExternalActivity(activity: any): boolean {
+  return Boolean(activity?.is_external ?? activity?.isExternal);
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const { userRole } = useUserRole();
   const { activities, loading, refresh: refreshActivities } = useHomeActivities();
-  const { categories, createActivity, refreshData, currentWeekStats, toggleTaskCompletion } = useFootball();
+  const { categories, createActivity, refreshData, currentWeekStats, toggleTaskCompletion, updateActivitySingle } = useFootball();
   const { adminMode, adminTargetId, adminTargetType } = useAdmin();
   const { selectedContext } = useTeamPlayer();
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -147,6 +182,11 @@ export default function HomeScreen() {
   const [isPreviousExpanded, setIsPreviousExpanded] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [currentTrainerId, setCurrentTrainerId] = useState<string | null>(null);
+  const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
+  const [currentIntensityDraft, setCurrentIntensityDraft] = useState<number | null>(null);
+  const [isSavingIntensity, setIsSavingIntensity] = useState(false);
+  const [intensityTargetActivity, setIntensityTargetActivity] = useState<any | null>(null);
+  const [intensityOverrides, setIntensityOverrides] = useState<Record<string, number | null>>({});
   const colorScheme = useColorScheme();
   const themeColors = getColors(colorScheme);
   const isDark = colorScheme === 'dark';
@@ -156,14 +196,17 @@ export default function HomeScreen() {
 
   // CRITICAL FIX: Check for both player AND team admin mode
   const isPlayerAdmin = adminMode !== 'self' && adminTargetType === 'player';
-  const isTeamAdmin = adminMode !== 'self' && adminTargetType === 'team';
+  const isTeamAdmin = adminMode !== 'self' && adminTargetId === 'team';
   const isAdminMode = isPlayerAdmin || isTeamAdmin;
 
   // Fetch current trainer ID (the logged-in user who is administering)
   useEffect(() => {
     async function fetchCurrentTrainerId() {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        const user = session?.user;
         if (user) {
           setCurrentTrainerId(user.id);
         }
@@ -184,6 +227,17 @@ export default function HomeScreen() {
     }
   }, [loading]);
 
+  useEffect(() => {
+    if (!selectedActivityId) {
+      return;
+    }
+    const safeActivities = Array.isArray(activities) ? activities : [];
+    const nextTarget = safeActivities.find(activity => String(activity?.id) === String(selectedActivityId));
+    if (nextTarget) {
+      setIntensityTargetActivity(nextTarget);
+    }
+  }, [activities, selectedActivityId]);
+
   const { todayActivities, upcomingByWeek, previousByWeek } = useMemo(() => {
     // STEP H: Guard against non-array activities
     const safeActivities = Array.isArray(activities) ? activities : [];
@@ -197,14 +251,24 @@ export default function HomeScreen() {
 
     const resolved = safeActivities
       .map(activity => {
-        // STEP H: Guard against null activity
         if (!activity) return null;
 
-        const dateTime = resolveActivityDateTime(activity);
+        const overrideKey = activity.id ? String(activity.id) : null;
+        const override = overrideKey ? intensityOverrides[overrideKey] : undefined;
+        const patchedActivity =
+          typeof override !== 'undefined'
+            ? {
+                ...activity,
+                intensity: override,
+                activity_intensity: override,
+              }
+            : activity;
+
+        const dateTime = resolveActivityDateTime(patchedActivity);
         if (!dateTime) return null;
 
         return {
-          ...activity,
+          ...patchedActivity,
           __resolvedDateTime: dateTime,
         };
       })
@@ -283,7 +347,7 @@ export default function HomeScreen() {
       .sort((a, b) => b.weekStart.getTime() - a.weekStart.getTime());
 
     return { todayActivities, upcomingByWeek, previousByWeek };
-  }, [activities]);
+  }, [activities, intensityOverrides]);
 
   // Calculate how many previous weeks to display
   const visiblePreviousWeeks = useMemo(() => {
@@ -421,6 +485,117 @@ export default function HomeScreen() {
     }
   }, [isRefreshing, refreshActivities]);
 
+  const getActivityIntensityValueById = useCallback((activityId: string) => {
+    if (!activityId) {
+      return null;
+    }
+    const safeActivities = Array.isArray(activities) ? activities : [];
+    const target = safeActivities.find(activity => String(activity?.id) === String(activityId));
+    return getActivityIntensityValue(target);
+  }, [activities]);
+
+  const getActivitySnapshot = useCallback((activityId: string) => {
+    if (!activityId) {
+      return { intensity: null, intensityEnabled: false };
+    }
+    const safeActivities = Array.isArray(activities) ? activities : [];
+    const target = safeActivities.find(activity => String(activity?.id) === String(activityId));
+    return {
+      intensity: getActivityIntensityValue(target),
+      intensityEnabled: getActivityIntensityEnabled(target),
+    };
+  }, [activities]);
+
+  const handleOpenIntensityModal = useCallback((activity: any) => {
+    if (!activity || isExternalActivity(activity)) {
+      return;
+    }
+    const activityId = String(activity.id);
+    setSelectedActivityId(activityId);
+    setCurrentIntensityDraft(getActivityIntensityValue(activity));
+    setIntensityTargetActivity(activity);
+  }, []);
+
+  const handleCloseIntensityModal = useCallback(() => {
+    if (isSavingIntensity) {
+      return;
+    }
+    setSelectedActivityId(null);
+    setCurrentIntensityDraft(null);
+    setIntensityTargetActivity(null);
+  }, [isSavingIntensity]);
+
+  const persistIntensity = useCallback(
+    async (value: number | null) => {
+      if (!selectedActivityId || isSavingIntensity) {
+        return;
+      }
+      const activityId = selectedActivityId;
+      const hadLocalOverride = Object.prototype.hasOwnProperty.call(intensityOverrides, activityId);
+      const rollbackValue = hadLocalOverride
+        ? intensityOverrides[activityId]
+        : getActivityIntensityValueById(activityId);
+
+      setCurrentIntensityDraft(value);
+      setIntensityOverrides(prev => ({
+        ...prev,
+        [activityId]: value,
+      }));
+      setIsSavingIntensity(true);
+
+      try {
+        await updateActivitySingle(activityId, {
+          intensity: value,
+          intensity_enabled: value !== null,
+        });
+        if (typeof refreshActivities === 'function') {
+          await refreshActivities();
+        }
+        setIntensityOverrides(prev => {
+          const next = { ...prev };
+          delete next[activityId];
+          return next;
+        });
+        setIsSavingIntensity(false);
+        handleCloseIntensityModal();
+      } catch (error) {
+        console.error('[Home] Error saving intensity:', error);
+        setIntensityOverrides(prev => {
+          const next = { ...prev };
+          if (hadLocalOverride) {
+            next[activityId] = rollbackValue ?? null;
+          } else {
+            delete next[activityId];
+          }
+          return next;
+        });
+        setCurrentIntensityDraft(rollbackValue ?? null);
+        setIsSavingIntensity(false);
+        Alert.alert('Kunne ikke gemme', 'Der opstod en fejl. Prøv igen om lidt.');
+      }
+    },
+    [
+      getActivityIntensityValueById,
+      handleCloseIntensityModal,
+      intensityOverrides,
+      refreshActivities,
+      selectedActivityId,
+      updateActivitySingle,
+      isSavingIntensity,
+    ]
+  );
+
+  const handleSelectIntensity = useCallback(
+    (value: number) => {
+      persistIntensity(value);
+    },
+    [persistIntensity]
+  );
+
+  const handleRemoveIntensity = useCallback(() => {
+    persistIntensity(null);
+  }, [persistIntensity]);
+
   // Flatten all data into a single list for FlatList
   // Each item has a type to determine how to render it
   const flattenedData = useMemo(() => {
@@ -555,11 +730,12 @@ export default function HomeScreen() {
           return null;
         }
 
-      case 'activity':
+      case 'activity': {
         // STEP H: Guard against null activity
         if (!item.activity) return null;
 
         const activity = item.activity;
+        const activityIsExternal = isExternalActivity(activity);
         
         // 1️⃣ Permission calculation (only via helper)
         // STEP H: Defensive permission check with false as default
@@ -596,6 +772,14 @@ export default function HomeScreen() {
           }
         };
 
+        const intensityFeatureEnabled = getActivityIntensityEnabled(activity);
+        const shouldAllowIntensityEdit =
+          !activityIsExternal && (!isAdminMode || canManageActivity);
+
+        const intensityPressHandler = shouldAllowIntensityEdit
+          ? () => handleOpenIntensityModal(activity)
+          : undefined;
+
         return (
           <View style={[styles.activityWrapper, shouldDim && styles.activityWrapperDimmed]}>
             <ActivityCard
@@ -603,9 +787,11 @@ export default function HomeScreen() {
               resolvedDate={activity.__resolvedDateTime}
               showTasks={item.section === 'today' || item.section === 'previous'}
               onPress={handleActivityPress}
+              onPressIntensity={intensityPressHandler}
             />
           </View>
         );
+      }
 
       case 'emptyToday':
         return (
@@ -631,7 +817,7 @@ export default function HomeScreen() {
       default:
         return null;
     }
-  }, [isDark, isPreviousExpanded, togglePreviousExpanded, isAdminMode, currentTrainerId, adminMode, router, handleLoadMorePrevious, showPreviousWeeks]);
+  }, [isDark, isPreviousExpanded, togglePreviousExpanded, isAdminMode, currentTrainerId, adminMode, router, handleLoadMorePrevious, showPreviousWeeks, handleOpenIntensityModal]);
 
   // Key extractor for FlatList
   const keyExtractor = useCallback((item: any, index: number) => {
@@ -799,6 +985,16 @@ export default function HomeScreen() {
           onRefreshCategories={refreshData}
         />
       ) : null}
+
+      <IntensityPickerModal
+        visible={Boolean(selectedActivityId)}
+        subtitle={intensityTargetActivity?.title}
+        currentValue={currentIntensityDraft}
+        isSaving={isSavingIntensity}
+        onSelect={handleSelectIntensity}
+        onRemove={handleRemoveIntensity}
+        onClose={handleCloseIntensityModal}
+      />
     </AdminContextWrapper>
   );
 }
@@ -1057,6 +1253,101 @@ const styles = StyleSheet.create({
   },
   activityWrapperDimmed: {
     opacity: 0.4,
+  },
+
+  // Intensity Modal
+  intensityModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  intensityModalContent: {
+    backgroundColor: '#1F2933',
+    borderRadius: 20,
+    padding: 24,
+    shadowColor: '#000000',
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+  intensityModalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  intensityModalSubtitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#E5E7EB',
+    marginTop: 6,
+  },
+  intensityModalHelper: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginTop: 10,
+    marginBottom: 16,
+  },
+  intensityModalLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  intensityModalLoadingText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  intensityOptions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 12,
+  },
+  intensityOption: {
+    minWidth: 54,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  intensityOptionSelected: {
+    backgroundColor: '#4CAF50',
+    borderColor: '#4CAF50',
+  },
+  intensityOptionDisabled: {
+    opacity: 0.6,
+  },
+  intensityOptionText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  intensityOptionTextSelected: {
+    color: '#FFFFFF',
+  },
+  intensityModalButton: {
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  intensityModalRemoveButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderColor: '#F87171',
+  },
+  intensityModalCloseButton: {
+    backgroundColor: '#4CAF50',
+  },
+  intensityModalButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 
   // Bottom Spacer

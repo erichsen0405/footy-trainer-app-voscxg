@@ -30,6 +30,8 @@ import { supabase } from '@/app/integrations/supabase/client';
 import { FeedbackTaskModal } from '@/components/FeedbackTaskModal';
 import { fetchSelfFeedbackForTemplates, upsertSelfFeedback } from '@/services/feedbackService';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
+import { IntensityPickerModal } from '@/components/IntensityPickerModal';
+import { resolveActivityIntensityEnabled } from '@/utils/activityIntensity';
 
 const DAYS_OF_WEEK = [
   { label: 'Søn', value: 0 },
@@ -329,7 +331,6 @@ interface FeedbackModalTaskState {
 interface AfterTrainingFeedbackConfig {
   enableScore: boolean;
   scoreExplanation?: string | null;
-  enableIntensity: boolean;
   enableNote: boolean;
 }
 
@@ -347,7 +348,6 @@ function buildFeedbackConfig(row?: any): AfterTrainingFeedbackConfig {
     return {
       enableScore: true,
       scoreExplanation: null,
-      enableIntensity: false,
       enableNote: true,
     };
   }
@@ -355,7 +355,6 @@ function buildFeedbackConfig(row?: any): AfterTrainingFeedbackConfig {
   return {
     enableScore: row.after_training_feedback_enable_score ?? true,
     scoreExplanation: normalizeScoreExplanation(row.after_training_feedback_score_explanation),
-    enableIntensity: row.after_training_feedback_enable_intensity ?? false,
     enableNote: row.after_training_feedback_enable_note ?? true,
   };
 }
@@ -439,6 +438,11 @@ function ActivityDetailsContent({
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isFeedbackLoading, setIsFeedbackLoading] = useState(false);
   const [pendingFeedbackTaskId, setPendingFeedbackTaskId] = useState<string | null>(initialFeedbackTaskId ?? null);
+  const [isIntensityModalVisible, setIsIntensityModalVisible] = useState(false);
+  const [intensityModalDraft, setIntensityModalDraft] = useState<number | null>(
+    typeof activity.intensity === 'number' ? activity.intensity : null
+  );
+  const [isIntensityModalSaving, setIsIntensityModalSaving] = useState(false);
 
   const resolveFeedbackTemplateId = useCallback(
     (task: Task | null | undefined): string | null =>
@@ -457,23 +461,13 @@ function ActivityDetailsContent({
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
   const [editScope, setEditScope] = useState<'single' | 'series'>('single');
-  const [editIntensityEnabled, setEditIntensityEnabled] = useState(
-    typeof activity.intensityEnabled === 'boolean'
-      ? activity.intensityEnabled
-      : typeof activity.intensity === 'number'
-  );
+  const [editIntensityEnabled, setEditIntensityEnabled] = useState(resolveActivityIntensityEnabled(activity));
   const [editIntensity, setEditIntensity] = useState<number | null>(
     typeof activity.intensity === 'number' ? activity.intensity : null
   );
   const intensityOptions = useMemo(() => Array.from({ length: 10 }, (_, idx) => idx + 1), []);
   const [isInlineIntensitySaving, setIsInlineIntensitySaving] = useState(false);
-  const activityIntensityEnabled = useMemo(
-    () =>
-      typeof activity.intensityEnabled === 'boolean'
-        ? activity.intensityEnabled
-        : typeof activity.intensity === 'number',
-    [activity]
-  );
+  const activityIntensityEnabled = useMemo(() => resolveActivityIntensityEnabled(activity), [activity]);
   const inlineIntensityValue = useMemo(
     () => (typeof activity.intensity === 'number' ? activity.intensity : null),
     [activity]
@@ -481,6 +475,12 @@ function ActivityDetailsContent({
   const isInternalActivity = !activity.isExternal;
   const currentActivityIntensity = typeof activity.intensity === 'number' ? activity.intensity : null;
   const shouldShowActivityIntensityField = isInternalActivity && !!activityIntensityEnabled;
+  const showIntensityTaskRow = isInternalActivity && activityIntensityEnabled;
+  const intensityTaskCompleted = showIntensityTaskRow && typeof activity.intensity === 'number';
+
+  useEffect(() => {
+    setIntensityModalDraft(currentActivityIntensity);
+  }, [currentActivityIntensity]);
 
   // Recurring event conversion state
   const [convertToRecurring, setConvertToRecurring] = useState(false);
@@ -510,12 +510,9 @@ function ActivityDetailsContent({
     setEditTime(activity.time);
     setEditEndTime(activity.endTime);
     setEditCategory(activity.category);
-    const hasIntensityValue = typeof activity.intensity === 'number';
-    const resolvedFlag = typeof activity.intensityEnabled === 'boolean'
-      ? activity.intensityEnabled
-      : hasIntensityValue;
+    const resolvedFlag = resolveActivityIntensityEnabled(activity);
     setEditIntensityEnabled(resolvedFlag);
-    setEditIntensity(hasIntensityValue ? activity.intensity! : null);
+    setEditIntensity(typeof activity.intensity === 'number' ? activity.intensity : null);
   }, [activity]);
 
   useEffect(() => {
@@ -755,12 +752,8 @@ function ActivityDetailsContent({
   const handleCancel = () => {
     if (!activity) return;
 
-    const hasIntensityValue = typeof activity.intensity === 'number';
-    const resolvedFlag =
-      typeof activity.intensityEnabled === 'boolean'
-        ? activity.intensityEnabled
-        : hasIntensityValue;
-    const resolvedValue = hasIntensityValue ? activity.intensity : null;
+    const resolvedFlag = resolveActivityIntensityEnabled(activity);
+    const resolvedValue = typeof activity.intensity === 'number' ? activity.intensity : null;
 
     setEditTitle(activity.title);
     setEditLocation(activity.location);
@@ -933,401 +926,114 @@ function ActivityDetailsContent({
     [activity, onActivityUpdated]
   );
 
-  const handleInlineIntensitySelect = useCallback(async (value: number | null) => {
-    if (!activity || activity.isExternal || isInlineIntensitySaving) {
-      return;
-    }
+  const closeIntensityModal = useCallback(() => {
+    if (isIntensityModalSaving) return;
+    setIsIntensityModalVisible(false);
+  }, [isIntensityModalSaving]);
 
-    const currentValue = typeof activity.intensity === 'number' ? activity.intensity : null;
-    if (currentValue === value) {
-      return;
-    }
+  const persistActivityIntensity = useCallback(
+    async (value: number | null) => {
+      if (!showIntensityTaskRow) return;
+      setIntensityModalDraft(value);
+      setIsIntensityModalSaving(true);
+      const previousIntensity = typeof activity.intensity === 'number' ? activity.intensity : null;
 
-    setIsInlineIntensitySaving(true);
-    applyActivityUpdates({ intensity: value ?? null, intensityEnabled: true });
-
-    try {
-      await updateActivitySingle(activity.id, {
+      applyActivityUpdates({
         intensity: value,
-        intensityEnabled: true,
       });
-      setEditIntensity(value ?? null);
-    } catch (error) {
-      console.error('Failed to save intensity inline:', error);
-      applyActivityUpdates({ intensity: currentValue });
-      setEditIntensity(currentValue);
-      Alert.alert('Fejl', 'Kunne ikke gemme intensitet. Prøv igen.');
-    } finally {
-      setIsInlineIntensitySaving(false);
-    }
-  }, [activity, applyActivityUpdates, isInlineIntensitySaving, updateActivitySingle]);
-
-  const handleInlineIntensityClear = useCallback(() => {
-    handleInlineIntensitySelect(null);
-  }, [handleInlineIntensitySelect]);
-
-  const taskListData = useMemo(() => (tasksState || []).filter(Boolean) as Task[], [tasksState]);
-
-  const templateIds = useMemo(() => {
-    const ids = new Set<string>();
-    (taskListData || []).forEach(task => {
-      if (task.taskTemplateId) {
-        ids.add(task.taskTemplateId);
-      }
-      const resolvedId = resolveFeedbackTemplateId(task);
-      if (resolvedId) {
-        ids.add(resolvedId);
-      }
-    });
-    return Array.from(ids);
-  }, [resolveFeedbackTemplateId, taskListData]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadFeedbackHistory() {
-      if (!activity?.id || !templateIds.length) {
-        if (isMounted) {
-          setSelfFeedbackByTemplate({});
-          setFeedbackConfigByTemplate({});
-        }
-        return;
-      }
-
-      setIsFeedbackLoading(true);
 
       try {
-        const {
-          data: { session },
-          error: sessionError,
-        } = await supabase.auth.getSession();
-
-        if (!isMounted) {
-          return;
-        }
-
-        if (sessionError) {
-          console.error('❌ Failed to load session for feedback history:', sessionError);
-          setCurrentUserId(null);
-          setSelfFeedbackByTemplate({});
-          setFeedbackConfigByTemplate({});
-          return;
-        }
-
-        const sessionUserId = session?.user?.id;
-        if (!sessionUserId) {
-          setCurrentUserId(null);
-          setSelfFeedbackByTemplate({});
-          setFeedbackConfigByTemplate({});
-          return;
-        }
-
-        setCurrentUserId(sessionUserId);
-
-        const rows = await fetchSelfFeedbackForTemplates(sessionUserId, templateIds);
-
-        const groupedRows: Record<string, any[]> = {};
-        (rows || []).forEach((row: any) => {
-          const templateId =
-            row?.taskTemplateId ??
-            row?.task_template_id ??
-            row?.templateId ??
-            row?.template_id ??
-            null;
-          if (!templateId) return;
-          (groupedRows[templateId] ??= []).push(row);
+        await updateActivitySingle(activity.id, {
+          intensity: value,
+          intensity_enabled: true,
         });
-
-        const getRowTimestamp = (row: any): number | null => {
-          const ts = row?.created_at ?? row?.createdAt ?? row?.updated_at ?? row?.updatedAt ?? null;
-          if (!ts) return null;
-          const date = new Date(ts);
-          return Number.isNaN(date.getTime()) ? null : date.getTime();
-        };
-
-        const grouped: Record<string, TemplateFeedbackSummary> = {};
-        Object.entries(groupedRows).forEach(([templateId, templateRows]) => {
-          const sorted = [...templateRows];
-          const hasTimestamps = sorted.some((row) => getRowTimestamp(row) !== null);
-          if (hasTimestamps) {
-            sorted.sort((a, b) => (getRowTimestamp(b) ?? 0) - (getRowTimestamp(a) ?? 0));
-          }
-          const summary: TemplateFeedbackSummary = {};
-          if (sorted[0]) summary.current = sorted[0];
-          if (sorted[1]) summary.previous = sorted[1];
-          grouped[templateId] = summary;
-        });
-
-        let configMap: Record<string, AfterTrainingFeedbackConfig> = {};
-        const { data: configRows, error: configError } = await supabase
-          .from('task_templates')
-          .select(`
-            id,
-            after_training_feedback_enable_score,
-            after_training_feedback_score_explanation,
-            after_training_feedback_enable_intensity,
-            after_training_feedback_enable_note
-          `)
-          .in('id', templateIds);
-
-        if (configError) {
-          console.error('❌ Failed to load feedback config:', configError);
-        } else if (Array.isArray(configRows)) {
-          configRows.forEach((row: any) => {
-            if (!row?.id) return;
-            configMap[row.id] = buildFeedbackConfig(row);
-          });
-        }
-
-        setFeedbackConfigByTemplate(configMap);
-        setSelfFeedbackByTemplate(grouped);
+        setIsIntensityModalSaving(false);
+        setIsIntensityModalVisible(false);
+        refreshData();
       } catch (error) {
-        if (isMounted) {
-          console.error('❌ Error loading self feedback history:', error);
-          setCurrentUserId(null);
-          setSelfFeedbackByTemplate({});
-          setFeedbackConfigByTemplate({});
-        }
-      } finally {
-        if (isMounted) {
-          setIsFeedbackLoading(false);
-        }
-      }
-    }
-
-    loadFeedbackHistory();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [activity.id, templateIds]);
-
-  const previousFeedbackEntries = useMemo(() => {
-    const entries: Array<{
-      templateId: string;
-      taskTitle: string;
-      feedback: TaskTemplateSelfFeedback;
-    }> = [];
-
-    const used = new Set<string>();
-
-    (taskListData || []).forEach(task => {
-      const templateKey = resolveFeedbackTemplateId(task) ?? task.taskTemplateId;
-      if (!templateKey || used.has(templateKey)) {
-        return;
-      }
-
-      const summary = selfFeedbackByTemplate[templateKey];
-
-      if (summary?.previous) {
-        entries.push({
-          templateId: templateKey,
-          taskTitle: task.title,
-          feedback: summary.previous,
+        console.error('[Details] Error saving intensity:', error);
+        applyActivityUpdates({
+          intensity: previousIntensity,
         });
-        used.add(templateKey);
-      }
-    });
-
-    return entries;
-  }, [resolveFeedbackTemplateId, selfFeedbackByTemplate, taskListData]);
-
-  const activeFeedbackDefaults = feedbackModalTask?.templateId
-    ? selfFeedbackByTemplate[feedbackModalTask.templateId]?.current
-    : undefined;
-
-  const activeFeedbackConfig = feedbackModalTask?.templateId
-    ? feedbackConfigByTemplate[feedbackModalTask.templateId]
-    : undefined;
-
-  const shouldShowFeedbackIntensityField =
-    isInternalActivity && (activeFeedbackConfig?.enableIntensity ?? false);
-
-  const handleFeedbackTaskPress = useCallback(
-    (task: Task) => {
-      const templateId = resolveFeedbackTemplateId(task);
-      if (!templateId) return;
-      setFeedbackModalTask({ task, templateId });
-    },
-    [resolveFeedbackTemplateId]
-  );
-
-  const handleFeedbackModalClose = useCallback(() => {
-    setFeedbackModalTask(null);
-  }, []);
-
-  const handleFeedbackSave = useCallback(
-    async ({ rating, note, intensity }: { rating: number | null; note: string; intensity?: number | null }) => {
-      if (!feedbackModalTask?.templateId) {
-        return;
-      }
-
-      if (!currentUserId) {
-        Alert.alert('Ikke logget ind', 'Log ind for at gemme din feedback.');
-        return;
-      }
-
-      setIsFeedbackSaving(true);
-
-      try {
-        const activeConfig = feedbackConfigByTemplate[feedbackModalTask.templateId];
-        const canPersistIntensity =
-          isInternalActivity && (activeConfig?.enableIntensity ?? false) && typeof intensity !== 'undefined';
-
-        if (canPersistIntensity && intensity !== null) {
-          if (intensity < 1 || intensity > 10) {
-            Alert.alert('Fejl', 'Intensitet skal være mellem 1 og 10.');
-            setIsFeedbackSaving(false);
-            return;
-          }
-
-          if (intensity !== activity.intensity) {
-            await updateActivitySingle(activity.id, {
-              intensity,
-              intensityEnabled: true,
-            });
-            applyActivityUpdates({ intensity, intensityEnabled: true });
-          }
-        }
-
-        const saved = await upsertSelfFeedback({
-          userId: currentUserId,
-          templateId: feedbackModalTask.templateId,
-          activityId: activity.id,
-          rating,
-          note,
-        });
-
-        setSelfFeedbackByTemplate(prev => {
-          const templateId = feedbackModalTask.templateId;
-          const prevEntry = prev[templateId] ?? {};
-          const prevCurrent = prevEntry.current;
-
-          const getRowId = (row: any): string | null => {
-            const id = row?.id ?? row?.feedback_id ?? row?.self_feedback_id ?? null;
-            return id ? String(id) : null;
-          };
-
-          const getRowActivityId = (row: any): string | null => {
-            const id = row?.activity_id ?? row?.activityId ?? null;
-            return id ? String(id) : null;
-          };
-
-          const getRowCreatedAtMs = (row: any): number | null => {
-            const ts = row?.created_at ?? row?.createdAt ?? null;
-            if (!ts) return null;
-            const ms = new Date(ts).getTime();
-            return Number.isNaN(ms) ? null : ms;
-          };
-
-          const prevId = getRowId(prevCurrent);
-          const savedId = getRowId(saved);
-          const prevActivityId = getRowActivityId(prevCurrent);
-          const savedActivityId = getRowActivityId(saved);
-          const prevCreatedAt = getRowCreatedAtMs(prevCurrent);
-          const savedCreatedAt = getRowCreatedAtMs(saved);
-
-          let isDifferentRow = false;
-
-          if (prevCurrent) {
-            if (prevId && savedId) {
-              isDifferentRow = prevId !== savedId;
-            } else if (prevActivityId && savedActivityId) {
-              isDifferentRow = prevActivityId !== savedActivityId;
-            } else if (prevCreatedAt !== null && savedCreatedAt !== null) {
-              isDifferentRow = prevCreatedAt !== savedCreatedAt;
-            }
-          }
-
-          return {
-            ...prev,
-            [templateId]: {
-              current: saved,
-              previous: isDifferentRow ? prevCurrent : prevEntry.previous,
-            },
-          };
-        });
-
-        if (feedbackModalTask?.task?.id) {
-          const feedbackTaskId = feedbackModalTask.task.id;
-
-          try {
-            await setTaskCompletion(activity.id, feedbackTaskId, true);
-            setTasksState(prev =>
-              prev.map(task =>
-                task.id === feedbackTaskId ? { ...task, completed: true } : task
-              )
-            );
-          } catch (completeError) {
-            console.warn('[Feedback] Failed to mark task completed', completeError);
-          }
-        }
-
-        setFeedbackModalTask(null);
-        Promise.resolve(refreshData()).catch(() => {});
-      } catch (error: any) {
-        console.error('❌ Error saving self feedback:', error);
-        Alert.alert('Fejl', error?.message || 'Kunne ikke gemme feedback.');
-      } finally {
-        setIsFeedbackSaving(false);
+        setIsIntensityModalSaving(false);
+        Alert.alert('Fejl', 'Kunne ikke gemme intensitet. Prøv igen.');
       }
     },
-    [activity.id, activity.intensity, applyActivityUpdates, currentUserId, feedbackConfigByTemplate, feedbackModalTask, isInternalActivity, refreshData, setTaskCompletion, updateActivitySingle]
+    [activity.id, activity.intensity, applyActivityUpdates, refreshData, showIntensityTaskRow, updateActivitySingle]
   );
 
-  const handleTaskRowPress = useCallback(
-    (task: Task) => {
-      const templateId = resolveFeedbackTemplateId(task);
-      if (templateId) {
-        handleFeedbackTaskPress(task);
-        return;
-      }
-      handleToggleTask(task.id);
+  const handleIntensityModalSelect = useCallback(
+    (value: number) => {
+      persistActivityIntensity(value);
     },
-    [handleFeedbackTaskPress, handleToggleTask, resolveFeedbackTemplateId]
+    [persistActivityIntensity]
   );
 
-  useEffect(() => {
-    if (!pendingFeedbackTaskId) return;
-
-    const targetTask = taskListData.find(task => String(task.id) === String(pendingFeedbackTaskId));
-    const templateId = resolveFeedbackTemplateId(targetTask);
-
-    if (targetTask && templateId) {
-      handleFeedbackTaskPress(targetTask);
-      setPendingFeedbackTaskId(null);
-    }
-  }, [handleFeedbackTaskPress, pendingFeedbackTaskId, resolveFeedbackTemplateId, taskListData]);
+  const handleIntensityModalRemove = useCallback(() => {
+    persistActivityIntensity(null);
+  }, [persistActivityIntensity]);
 
   const renderTaskItem = useCallback(
-    ({ item }: { item: Task }) => {
-      const resolvedFeedbackTemplateId = resolveFeedbackTemplateId(item);
-      const isFeedbackTask = !!resolvedFeedbackTemplateId;
-      const templateKey = resolvedFeedbackTemplateId || item.taskTemplateId || null;
-      const isFeedbackCompleted = isFeedbackTask && !!item.completed;
-      const templateSummary = templateKey ? selfFeedbackByTemplate[templateKey] : undefined;
-      const currentFeedback = templateSummary?.current;
-      const templateConfig = templateKey ? feedbackConfigByTemplate[templateKey] : undefined;
-      const summaryText = buildFeedbackSummary(currentFeedback, templateConfig);
-      const noteSnippet = extractFeedbackNote(currentFeedback, templateConfig);
-      const helperText = currentFeedback
-        ? summaryText
-          ? `Seneste svar: ${summaryText}${noteSnippet ? ` – ${noteSnippet}` : ''}`
-          : noteSnippet
-            ? `Seneste note: ${noteSnippet}`
-            : 'Seneste svar registreret'
-        : 'Tryk for at give feedback';
-      const scoreExplanation = templateConfig?.enableScore !== false ? templateConfig?.scoreExplanation : null;
+    ({ item }: { item: TaskListItem }) => {
+      if ('__type' in item) {
+        return (
+          <TouchableOpacity
+            style={[
+              styles.taskRow,
+              { backgroundColor: isDark ? '#1f1f1f' : '#f8f9fb' },
+            ]}
+            onPress={(event) => {
+              event.stopPropagation();
+              handleIntensityRowPress();
+            }}
+            activeOpacity={0.7}
+            disabled={isIntensityModalSaving}
+          >
+            <View style={styles.taskCheckboxArea}>
+              <View
+                style={[
+                  styles.taskCheckbox,
+                  intensityTaskCompleted && { backgroundColor: colors.success, borderColor: colors.success },
+                ]}
+              >
+                {intensityTaskCompleted && (
+                  <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
+                )}
+              </View>
+              <View style={styles.taskContent}>
+                <View style={styles.taskTitleRow}>
+                  <Text
+                    style={[
+                      styles.taskTitle,
+                      { color: textColor },
+                      intensityTaskCompleted && styles.taskCompleted,
+                    ]}
+                  >
+                    Intensitet
+                  </Text>
+                  {intensityTaskCompleted && (
+                    <Text style={[styles.intensityTaskValue, { color: textSecondaryColor }]}>
+                      {`${activity.intensity}/10`}
+                    </Text>
+                  )}
+                </View>
+                {!intensityTaskCompleted && (
+                  <Text style={[styles.intensityTaskHelper, { color: textSecondaryColor }]}>
+                    Tryk for at angive intensitet
+                  </Text>
+                )}
+              </View>
+            </View>
+          </TouchableOpacity>
+        );
+      }
 
+      const task = item;
       return (
         <TouchableOpacity
-          style={[
-            styles.taskRow,
-            { backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5' },
-            isFeedbackTask && styles.feedbackTaskRow,
-          ]}
-          onPress={() => handleTaskRowPress(item)}
-          activeOpacity={isFeedbackTask ? 0.85 : 0.7}
+          style={[styles.taskRow, { backgroundColor: isDark ? '#1f1f1f' : '#f8f9fb' }]}
+          onPress={() => handleTaskRowPress(task)}
+          activeOpacity={0.7}
         >
           <View style={styles.taskCheckboxArea}>
             <View
@@ -1403,6 +1109,7 @@ function ActivityDetailsContent({
       handleTaskRowPress,
       isAdmin,
       isDark,
+      isIntensityModalSaving,
       resolveFeedbackTemplateId,
       selfFeedbackByTemplate,
       textColor,
@@ -1410,7 +1117,7 @@ function ActivityDetailsContent({
     ]
   );
 
-  const taskKeyExtractor = useCallback((item: Task) => String(item.id), []);
+  const taskKeyExtractor = useCallback((item: Task) => ('__type' in item ? item.key : String(item.id)), []);
 
   const handleDeleteClick = () => {
     if (activity?.isExternal) {
@@ -2102,7 +1809,7 @@ function ActivityDetailsContent({
                     </>
                   )}
                 </>
-              ) : (
+              ) : shouldShowActivityIntensityField ? (
                 <View style={styles.detailRow}>
                   <IconSymbol
                     ios_icon_name="flame.fill"
@@ -2121,7 +1828,7 @@ function ActivityDetailsContent({
                     )}
                   </View>
                 </View>
-              )}
+              ) : null}
             </View>
           )}
 
@@ -2396,7 +2103,7 @@ function ActivityDetailsContent({
           </View>
 
           <FlatList
-            data={taskListData}
+            data={taskListItems}
             keyExtractor={taskKeyExtractor}
             renderItem={renderTaskItem}
             scrollEnabled={false}
@@ -2415,269 +2122,49 @@ function ActivityDetailsContent({
             )}
           />
         </View>
-
-        {/* Action Buttons */}
-        {isEditing && (
-          <React.Fragment>
-            <View style={styles.actionButtons}>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.cancelButton, { borderColor: colors.error }]}
-                onPress={handleCancel}
-                activeOpacity={0.7}
-                disabled={isSaving}
-              >
-                <Text style={[styles.actionButtonText, { color: colors.error }]}>Annuller</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.actionButton,
-                  styles.saveButton,
-                  { backgroundColor: colors.primary },
-                ]}
-                onPress={handleSave}
-                activeOpacity={0.7}
-                disabled={isSaving}
-              >
-                {isSaving ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={[styles.actionButtonText, { color: '#fff' }]}>Gem</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity
-              style={[styles.deleteButton, { backgroundColor: isDark ? '#3a1a1a' : '#ffe5e5' }]}
-              onPress={handleDeleteClick}
-              activeOpacity={0.7}
-              disabled={isDeleting}
-            >
-              {isDeleting ? (
-                <ActivityIndicator size="small" color={colors.error} />
-              ) : (
-                <React.Fragment>
-                  <IconSymbol
-                    ios_icon_name="trash"
-                    android_material_icon_name="delete"
-                    size={24}
-                    color={colors.error}
-                  />
-                  <Text style={[styles.deleteButtonText, { color: colors.error }]}>
-                    Slet aktivitet
-                  </Text>
-                </React.Fragment>
-              )}
-            </TouchableOpacity>
-          </React.Fragment>
-        )}
-
-        {activity.isExternal && !isEditing && (
-          <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
-            <IconSymbol
-              ios_icon_name="info.circle"
-              android_material_icon_name="info"
-              size={24}
-              color={colors.secondary}
-            />
-            <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
-              Dette er en ekstern aktivitet. Du kan kun ændre kategorien. For at redigere andre
-              detaljer skal du opdatere den i den eksterne kalender. Manuelt tildelte kategorier bevares ved synkronisering.
-            </Text>
-          </View>
-        )}
-
-        {activity.seriesId && !isEditing && (
-          <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
-            <IconSymbol
-              ios_icon_name="info.circle"
-              android_material_icon_name="info"
-              size={24}
-              color={colors.primary}
-            />
-            <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
-              Denne aktivitet er en del af en gentagende serie. Når du redigerer, kan du vælge at opdatere kun denne aktivitet eller hele serien.
-            </Text>
-          </View>
-        )}
-
-        {isAdmin && tasksState && tasksState.length > 0 && (
-          <View style={[styles.infoBox, { backgroundColor: isDark ? '#3a2a2a' : '#fff3cd' }]}>
-            <IconSymbol
-              ios_icon_name="shield.checkered"
-              android_material_icon_name="admin_panel_settings"
-              size={24}
-              color={colors.accent}
-            />
-            <Text style={[styles.infoText, { color: isDark ? '#ffc107' : '#856404' }]}>
-              Som admin kan du slette opgaver direkte fra denne aktivitet ved at trykke på den røde slet-knap ved siden af hver opgave. Dette sletter kun opgaven fra denne aktivitet, ikke opgaveskabelonen.
-            </Text>
-          </View>
-        )}
-
-        <View style={{ height: 200 }} />
       </ScrollView>
 
+      {/* Modals */}
       <EditSeriesDialog
         visible={showSeriesDialog}
         onClose={() => setShowSeriesDialog(false)}
-        onEditSingle={handleEditSingle}
-        onEditAll={handleEditAll}
+        activity={activity}
+        onActivityUpdated={onActivityUpdated}
+        isAdmin={isAdmin}
       />
 
       <DeleteActivityDialog
         visible={showDeleteDialog}
         onClose={() => setShowDeleteDialog(false)}
         onDeleteSingle={handleDeleteSingle}
-        onDeleteAll={handleDeleteSeries}
-        isSeries={!!activity.seriesId}
+        onDeleteSeries={handleDeleteSeries}
+        isDeleting={isDeleting}
       />
 
-      {activity && (
-        <CreateActivityTaskModal
-          visible={showCreateTaskModal}
-          onClose={() => setShowCreateTaskModal(false)}
-          onSave={handleTaskCreated}
-          activityId={activity.id}
-          activityTitle={activity.title}
-          activityDate={new Date(activity.date)}
-          activityTime={activity.time}
-        />
-      )}
+      <CreateActivityTaskModal
+        visible={showCreateTaskModal}
+        onClose={() => setShowCreateTaskModal(false)}
+        activityId={activity.id}
+        onTaskCreated={handleTaskCreated}
+      />
 
       <FeedbackTaskModal
-        visible={!!feedbackModalTask}
-        taskTitle={feedbackModalTask?.task.title || ''}
-        defaultRating={activeFeedbackDefaults?.rating ?? null}
-        defaultNote={activeFeedbackDefaults?.note ?? ''}
-        defaultIntensity={currentActivityIntensity}
-        feedbackConfig={feedbackModalTask?.templateId ? feedbackConfigByTemplate[feedbackModalTask.templateId] : undefined}
-        showIntensityField={shouldShowFeedbackIntensityField}
-        isSaving={isFeedbackSaving}
-        onClose={handleFeedbackModalClose}
-        onSave={handleFeedbackSave}
+        visible={!!pendingFeedbackTaskId}
+        onClose={() => setPendingFeedbackTaskId(null)}
+        taskId={pendingFeedbackTaskId}
+        onFeedbackSaved={handleTaskCreated}
+      />
+
+      <IntensityPickerModal
+        visible={isIntensityModalVisible}
+        subtitle={activity.title}
+        currentValue={intensityModalDraft}
+        isSaving={isIntensityModalSaving}
+        onSelect={handleIntensityModalSelect}
+        onRemove={handleIntensityModalRemove}
+        onClose={closeIntensityModal}
       />
     </KeyboardAvoidingView>
-  );
-}
-
-// Main component with hard gate
-export default function ActivityDetailsScreen() {
-  const { id, openFeedbackTaskId } = useLocalSearchParams<{ id: string; openFeedbackTaskId?: string }>();
-  const router = useRouter();
-  const { categories } = useFootball();
-  const { isAdmin } = useUserRole();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-
-  // Hard gate: prevent content mount before first paint
-  const [hasPainted, setHasPainted] = useState(false);
-  const [isReady, setIsReady] = useState(false);
-  const [activity, setActivity] = useState<Activity | null>(null);
-
-  // First paint gate
-  useEffect(() => {
-    requestAnimationFrame(() => {
-      setHasPainted(true);
-    });
-  }, []);
-
-
-  // Fetch activity after mount
-  useEffect(() => {
-    if (!hasPainted) return;
-
-    let isMounted = true;
-
-
-    async function loadActivity() {
-      if (!id) {
-        console.error('❌ No activity ID provided');
-        setIsReady(true);
-        return;
-      }
-
-      console.log('🔍 Loading activity with ID:', id);
-
-      const fetchedActivity = await fetchActivityFromDatabase(id);
-
-      if (!isMounted) return;
-
-      if (fetchedActivity) {
-        console.log('✅ Activity loaded successfully:', fetchedActivity.title);
-        setActivity(fetchedActivity);
-      } else {
-        console.log('❌ Activity not found');
-      }
-
-      setIsReady(true);
-    }
-
-    loadActivity();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [id, hasPainted]);
-
-  const handleBack = () => {
-    router.back();
-  };
-
-  const handleRefresh = () => {
-    // Trigger re-fetch
-    setIsReady(false);
-    setHasPainted(false);
-    requestAnimationFrame(() => {
-      setHasPainted(true);
-    });
-  };
-
-  // Show skeleton before first paint
-  if (!hasPainted) {
-    return <ActivityDetailsSkeleton isDark={isDark} />;
-  }
-
-  // Show loading after first paint but before data ready
-  if (!isReady) {
-    return <ActivityDetailsSkeleton isDark={isDark} />;
-  }
-
-  // Show error state if no activity found
-  if (!activity) {
-    const bgColor = isDark ? '#1a1a1a' : colors.background;
-    const textColor = isDark ? '#e3e3e3' : colors.text;
-
-    return (
-      <View style={[styles.container, { backgroundColor: bgColor }]}>
-        <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: textColor }]}>
-            Aktivitet ikke fundet
-          </Text>
-          <TouchableOpacity
-            style={[styles.backButton, { backgroundColor: colors.primary }]}
-            onPress={handleBack}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.backButtonText}>Gå tilbage</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
-
-  // Render full content
-  return (
-    <ActivityDetailsContent
-      activity={activity}
-      categories={categories}
-      isAdmin={isAdmin}
-      isDark={isDark}
-      onBack={handleBack}
-      onRefresh={handleRefresh}
-      onActivityUpdated={(updatedActivity) => setActivity(updatedActivity)}
-      initialFeedbackTaskId={openFeedbackTaskId ? String(openFeedbackTaskId) : null}
-    />
   );
 }
 
@@ -2685,499 +2172,357 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 16,
-  },
-  loadingText: {
-    fontSize: 16,
-  },
-  backButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginTop: 16,
-  },
-  backButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
   header: {
-    paddingTop: Platform.OS === 'android' ? 60 : 70,
-    paddingBottom: 24,
-    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 50 : 20,
+    paddingBottom: 16,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    position: 'relative',
   },
   backButtonHeader: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
+    position: 'absolute',
+    left: 16,
+    top: Platform.OS === 'ios' ? 50 : 20,
   },
   headerContent: {
+    flex: 1,
     alignItems: 'center',
-    gap: 12,
+    justifyContent: 'center',
+    paddingTop: Platform.OS === 'ios' ? 10 : 0,
   },
   headerEmoji: {
-    fontSize: 64,
+    fontSize: 24,
+    lineHeight: 24,
   },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#fff',
+    fontSize: 18,
+    fontWeight: '500',
     textAlign: 'center',
+    marginTop: 4,
+    color: '#fff',
   },
   seriesBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     borderRadius: 12,
+    paddingVertical: 2,
+    paddingHorizontal: 8,
+    marginTop: 4,
   },
   seriesBadgeText: {
-    fontSize: 14,
-       fontWeight: '600',
+    fontSize: 12,
     color: '#fff',
+    marginLeft: 4,
   },
   headerButtons: {
-    position: 'absolute',
-    top: Platform.OS === 'android' ? 60 : 70,
-    right: 20,
     flexDirection: 'row',
-    gap: 12,
+    position: 'absolute',
+    right: 16,
+    top: Platform.OS === 'ios' ? 50 : 20,
   },
   headerButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    marginLeft: 12,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    padding: 20,
-  },
-  externalBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    marginBottom:  20,
-    alignSelf: 'flex-start',
-  },
-  externalBadgeText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
+    paddingBottom: 32,
   },
   section: {
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 20,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 20,
-  },
-  tasksSectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  addTaskHeaderButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  addTaskHeaderButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  emptyTasksContainer: {
-    paddingVertical: 32,
-    alignItems: 'center',
-  },
-  emptyTasksText: {
     fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  fieldContainer: {
+    marginBottom: 16,
+  },
+  fieldLabel: {
+    fontSize: 14,
+    fontWeight: '500',
     marginBottom: 8,
   },
-  emptyTasksHint: {
-    fontSize: 14,
-    fontStyle: 'italic',
+  input: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 16,
+  },
+  dateTimeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 12,
+    padding: 12,
+  },
+  dateTimeText: {
+    fontSize: 16,
+    color: '#fff',
+  },
+  pickerContainer: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginTop: 8,
+  },
+  iosPicker: {
+    width: '100%',
+    backgroundColor: colors.card,
+  },
+  pickerDoneButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  pickerDoneText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '500',
   },
   detailRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 16,
-    marginBottom: 20,
+    alignItems: 'center',
+    marginBottom: 12,
   },
   detailContent: {
+    marginLeft: 12,
     flex: 1,
   },
   detailLabel: {
     fontSize: 14,
+    fontWeight: '500',
     marginBottom: 4,
   },
   detailValue: {
-    fontSize: 17,
-    fontWeight: '500',
-  },
-  fieldContainer: {
-    marginBottom: 20,
-  },
-  fieldLabel: {
     fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 10,
-  },
-  switchLabel: {
-    fontSize: 16,
-    fontWeight: '500',
-    marginLeft: 8,
-  },
-  intensityEditInfo: {
-    fontSize: 13,
-    marginTop: 4,
-  },
-  intensityToggleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  intensityToggleLabel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  intensityHint: {
-    fontSize: 14,
-    marginBottom: 8,
-  },
-  inlineIntensitySection: {
-    marginTop: 12,
-  },
-  intensityPickerRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  intensityPickerChip: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#d9d9d9',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  intensityPickerChipSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  intensityPickerChipDisabled: {
-    opacity: 0.5,
-  },
-  intensityPickerText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#555',
-  },
-  intensityPickerTextSelected: {
     color: '#fff',
-  },
-  clearIntensityButton: {
-    marginTop: 12,
-  },
-  clearIntensityText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.primary,
-  },
-  input: {
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 17,
-  },
-  dateTimeButton: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderRadius: 12,
-    padding: 16,
-  },
-  dateTimeText: {
-    fontSize: 17,
-  },
-  pickerContainer: {
-    marginTop: 12,
-    borderRadius: 12,
-    padding: 16,
-    overflow: 'hidden',
-  },
-  iosPicker: {
-    height: 200,
-  },
-  pickerDoneButton: {
-    marginTop: 12,
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  pickerDoneText: {
-    color: '#fff',
-    fontSize: 17,
-    fontWeight: '600',
-  },
-  infoNote: {
-    fontSize: 14,
-    marginTop: 8,
-    fontStyle: 'italic',
   },
   categoryScroll: {
-    marginTop: 8,
+    paddingVertical: 8,
   },
   categoryChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 24,
-    marginRight: 12,
+    borderRadius: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginRight: 8,
   },
   categoryEmoji: {
-    fontSize: 20,
+    fontSize: 18,
+    marginRight: 8,
   },
   categoryName: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '500',
   },
-  categoryIndicator: {
-    width: 24,
-    height: 24,
+  intensityToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     borderRadius: 12,
+    overflow: 'hidden',
+    marginTop: 8,
+  },
+  intensityToggleLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+  },
+  switchLabel: {
+    fontSize: 16,
+    marginLeft: 8,
+    color: '#fff',
+  },
+  intensityHint: {
+    fontSize: 14,
+    marginTop: 4,
+  },
+  intensityPickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  intensityPickerChip: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginRight: 8,
+  },
+  intensityPickerChipSelected: {
+    backgroundColor: colors.primary,
+  },
+  intensityPickerText: {
+    fontSize: 16,
+    color: '#fff',
+  },
+  intensityPickerTextSelected: {
+    color: '#fff',
+    fontWeight: '500',
   },
   recurringToggle: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8,
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 12,
+    padding: 12,
   },
   recurringToggleLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
   },
   recurringToggleText: {
-    fontSize: 17,
-    fontWeight: '500',
+    fontSize: 16,
+    marginLeft: 8,
+    color: '#fff',
   },
   toggle: {
-    width: 56,
-    height: 32,
-    borderRadius: 16,
-    padding: 2,
+    width: 40,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
   toggleThumb: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     backgroundColor: '#fff',
+    position: 'absolute',
+    top: 2,
+    left: 2,
   },
   toggleThumbActive: {
-    transform: [{ translateX: 24 }],
-  },
-  recurrenceOptions: {
-    gap: 12,
-  },
-  recurrenceOption: {
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  recurrenceOptionText: {
-    fontSize: 16,
-    fontWeight: '600',
+    left: 18,
   },
   daysContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 8,
+    flexWrap: 'wrap',
+    marginTop: 8,
   },
   dayButton: {
-    flex: 1,
-    paddingVertical: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     borderRadius: 12,
-    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginRight: 8,
+    marginBottom: 8,
   },
   dayButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 16,
+    color: '#fff',
   },
-  taskRow: {
+  infoBox: {
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  feedbackInfoBox: {
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  feedbackInfoHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginBottom: 16,
-    padding: 12,
-    borderRadius: 12,
+    marginBottom: 12,
   },
-  feedbackTaskRow: {
-    borderWidth: 1,
-    borderColor: colors.primary,
+  feedbackInfoTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  feedbackInfoSpinner: {
+    marginTop: 8,
+  },
+  feedbackInfoRow: {
+    marginBottom: 12,
+  },
+  feedbackInfoTaskTitle: {
+    fontSize: 14,
+    color: '#fff',
+  },
+  feedbackInfoRating: {
+    fontSize: 14,
+    color: colors.primary,
+    marginTop: 4,
+  },
+  feedbackInfoNote: {
+    fontSize: 14,
+    color: '#fff',
+    marginTop: 4,
+  },
+  taskRow: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   taskCheckboxArea: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    flex: 1,
+    alignItems: 'center',
   },
   taskCheckbox: {
     width: 24,
     height: 24,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: colors.highlight,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  feedbackTaskCheckbox: {
     borderColor: colors.primary,
-    backgroundColor: 'rgba(98, 0, 238, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
   },
   taskContent: {
     flex: 1,
   },
+  taskTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   taskTitle: {
     fontSize: 16,
-    fontWeight: '500',
-    marginBottom: 4,
+    color: '#fff',
   },
   taskCompleted: {
     textDecorationLine: 'line-through',
-    opacity: 0.6,
+    color: 'rgba(255, 255, 255, 0.6)',
   },
-  feedbackHelperText: {
-    fontSize: 13,
-    marginTop: 4,
-    lineHeight: 18,
-  },
-  feedbackExplanationText: {
-    fontSize: 12,
-    fontStyle: 'italic',
-    marginTop: 2,
-    marginBottom: 2,
-  },
-  taskDeleteButton: {
-    padding: 10,
-    borderRadius: 8,
-    marginLeft: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    minWidth: 44,
-    minHeight: 44,
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    gap: 16,
-    marginBottom: 20,
-  },
-  actionButton: {
-    flex: 1,
-    paddingVertical: 16,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cancelButton: {
-    borderWidth: 2,
-  },
-  saveButton: {},
-  actionButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  deleteButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    paddingVertical: 16,
-    borderRadius: 14,
-    marginBottom: 20,
-  },
-  deleteButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  infoBox: {
-    flexDirection: 'row',
-    gap: 14,
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 20,
-  },
-  feedbackInfoBox: {
-    flexDirection: 'column',
-    gap: 12,
-  },
-  feedbackInfoHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  feedbackInfoTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  feedbackInfoSpinner: {
-    marginTop: 4,
-  },
-  feedbackInfoRow: {
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(0,0,0,0.08)',
-  },
-  feedbackInfoTaskTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  feedbackInfoRating: {
+  intensityTaskValue: {
     fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 4,
+    color: colors.primary,
+    marginLeft: 8,
   },
-  feedbackInfoNote: {
-    fontSize: 13,
-    lineHeight: 18,
+  intensityTaskHelper: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.7)',
   },
-  infoText: {
-    flex: 1,
-    fontSize: 15,
-    lineHeight: 22,
+  emptyTasksContainer: {
+    alignItems: 'center',
+    padding: 32,
+  },
+  emptyTasksText: {
+    fontSize: 16,
+    color: 'rgba(255, 255, 255, 0.7)',
+  },
+  emptyTasksHint: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.5)',
+    marginTop: 4,
+    textAlign: 'center',
   },
 });

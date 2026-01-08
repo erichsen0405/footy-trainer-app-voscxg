@@ -19,71 +19,58 @@ const CHIP_HIT_SLOP = { top: 8, right: 8, bottom: 8, left: 8 };
 interface FeedbackFieldsConfig {
   enableScore: boolean;
   scoreExplanation?: string | null;
-  enableIntensity?: boolean;
   enableNote: boolean;
 }
 
 interface FeedbackTaskModalProps {
   visible: boolean;
   taskTitle: string;
-  defaultRating?: number | null;
-  defaultNote?: string | null;
-  defaultIntensity?: number | null;
+  defaultRating: number | null;
+  defaultNote: string;
   feedbackConfig?: FeedbackFieldsConfig;
-  showIntensityField?: boolean;
   isSaving?: boolean;
   onClose: () => void;
-  onSave: (payload: { rating: number | null; note: string; intensity?: number | null }) => void;
+  onSave: (payload: { rating: number | null; note: string }) => void;
 }
 
 export function FeedbackTaskModal({
   visible,
   taskTitle,
-  defaultRating = null,
-  defaultNote = '',
-  defaultIntensity = null,
+  defaultRating,
+  defaultNote,
   feedbackConfig,
-  showIntensityField = false,
   isSaving = false,
   onClose,
   onSave,
 }: FeedbackTaskModalProps) {
   const [rating, setRating] = useState<number | null>(defaultRating);
-  const [intensity, setIntensity] = useState<number | null>(defaultIntensity ?? null);
   const [note, setNote] = useState(defaultNote ?? '');
 
   const resolvedConfig = useMemo<FeedbackFieldsConfig>(() => {
-    const explanation = typeof feedbackConfig?.scoreExplanation === 'string'
-      ? feedbackConfig.scoreExplanation.trim()
-      : feedbackConfig?.scoreExplanation ?? null;
+    const explanation =
+      typeof feedbackConfig?.scoreExplanation === 'string'
+        ? feedbackConfig.scoreExplanation.trim()
+        : feedbackConfig?.scoreExplanation ?? null;
 
     return {
       enableScore: feedbackConfig?.enableScore !== false,
       scoreExplanation: explanation && explanation.length ? explanation : null,
-      enableIntensity: !!feedbackConfig?.enableIntensity,
       enableNote: feedbackConfig?.enableNote !== false,
     };
   }, [feedbackConfig]);
-
-  // Show intensity only when both the template and parent flow allow it
-  const showIntensity = showIntensityField && resolvedConfig.enableIntensity;
 
   useEffect(() => {
     if (visible) {
       setRating(defaultRating ?? null);
       setNote(defaultNote ?? '');
-      setIntensity(typeof defaultIntensity === 'number' ? defaultIntensity : null);
     }
-  }, [defaultIntensity, defaultNote, defaultRating, visible]);
-
-  const disabled = useMemo(() => isSaving, [isSaving]);
+  }, [defaultNote, defaultRating, visible]);
 
   const handleSave = () => {
-    if (disabled) return;
+    if (isSaving) return;
     onSave({
       rating: resolvedConfig.enableScore ? rating : null,
       note: resolvedConfig.enableNote ? note : '',
-      intensity: showIntensity ? intensity ?? null : undefined,
     });
   };
 
@@ -130,7 +117,7 @@ export function FeedbackTaskModal({
                         ]}
                         onPress={() => setRating(value)}
                         activeOpacity={0.85}
-                        disabled={disabled}
+                        disabled={isSaving}
                       >
                         <Text
                           style={[
@@ -147,54 +134,9 @@ export function FeedbackTaskModal({
                 <TouchableOpacity
                   style={styles.clearRatingButton}
                   onPress={() => setRating(null)}
-                  disabled={disabled || rating === null}
+                  disabled={isSaving || rating === null}
                 >
                   <Text style={styles.clearRatingText}>Nulstil score</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {showIntensity && (
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Intensitet (1-10)</Text>
-                <Text style={styles.scoreExplanation}>Gælder for hele aktiviteten</Text>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.chipRow}
-                >
-                  {RATING_VALUES.map(value => {
-                    const selected = intensity === value;
-                    return (
-                      <TouchableOpacity
-                        key={`intensity-${value}`}
-                        hitSlop={CHIP_HIT_SLOP}
-                        style={[
-                          styles.ratingChip,
-                          selected && styles.intensityChipSelected,
-                        ]}
-                        onPress={() => setIntensity(value)}
-                        activeOpacity={0.85}
-                        disabled={disabled}
-                      >
-                        <Text
-                          style={[
-                            styles.ratingText,
-                            selected && styles.ratingTextSelected,
-                          ]}
-                        >
-                          {value}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-                <TouchableOpacity
-                  style={styles.clearRatingButton}
-                  onPress={() => setIntensity(null)}
-                  disabled={disabled || intensity === null}
-                >
-                  <Text style={styles.clearRatingText}>Nulstil intensitet</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -209,12 +151,12 @@ export function FeedbackTaskModal({
                   placeholder="Skriv hvad der gik godt eller skidt..."
                   placeholderTextColor={colors.textSecondary}
                   multiline
-                  editable={!disabled}
+                  editable={!isSaving}
                 />
               </View>
             )}
 
-            {!resolvedConfig.enableScore && !resolvedConfig.enableNote && !showIntensity && (
+            {!resolvedConfig.enableScore && !resolvedConfig.enableNote && (
               <View style={styles.inputGroup}>
                 <Text style={[styles.label, { color: colors.textSecondary }]}>
                   Ingen feedbackfelter er aktiveret for denne opgave.
@@ -227,14 +169,14 @@ export function FeedbackTaskModal({
             <TouchableOpacity
               style={[styles.button, styles.cancelButton]}
               onPress={onClose}
-              disabled={disabled}
+              disabled={isSaving}
             >
               <Text style={styles.cancelText}>Luk</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.button, styles.saveButton]}
               onPress={handleSave}
-              disabled={disabled}
+              disabled={isSaving}
               activeOpacity={0.8}
             >
               {isSaving ? (
@@ -329,14 +271,6 @@ const styles = StyleSheet.create({
   ratingChipSelected: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
-    shadowColor: 'rgba(0,0,0,0.12)',
-    shadowOpacity: 1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  intensityChipSelected: {
-    backgroundColor: colors.secondary,
-    borderColor: colors.secondary,
     shadowColor: 'rgba(0,0,0,0.12)',
     shadowOpacity: 1,
     shadowRadius: 8,

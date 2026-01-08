@@ -8,11 +8,14 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useFootball } from '@/contexts/FootballContext';
 import TaskDetailsModal from '@/components/TaskDetailsModal';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
+import { colors } from '@/styles/commonStyles';
+import { resolveActivityIntensityEnabled } from '@/utils/activityIntensity';
 
 interface ActivityCardProps {
   activity: any;
   resolvedDate: Date;
   onPress?: () => void;
+  onPressIntensity?: () => void;
   showTasks?: boolean;
 }
 
@@ -68,6 +71,7 @@ export default function ActivityCard({
   activity,
   resolvedDate,
   onPress,
+  onPressIntensity,
   showTasks = false,
 }: ActivityCardProps) {
   const router = useRouter();
@@ -272,22 +276,31 @@ export default function ActivityCard({
     const raw = activity?.intensity ?? activity?.activity_intensity;
     return typeof raw === 'number' ? raw : null;
   }, [activity]);
-  const intensityEnabled = useMemo(() => {
-    if (typeof activity?.intensityEnabled === 'boolean') {
-      return activity.intensityEnabled;
-    }
-    if (typeof activity?.intensity_enabled === 'boolean') {
-      return activity.intensity_enabled;
-    }
-    return typeof activity?.intensity === 'number';
-  }, [activity]);
 
-  const isExternalActivity = Boolean(activity?.is_external ?? activity?.isExternal);
-  const shouldShowIntensityCTA = !isExternalActivity && intensityEnabled && intensityValue === null;
+  const intensityEnabled = useMemo(
+    () => resolveActivityIntensityEnabled(activity),
+    [activity]
+  );
+  const hasIntensityValue = typeof intensityValue === 'number';
+  const allowQuickEdit = typeof onPressIntensity === 'function';
+  const showIntensityRow = allowQuickEdit || intensityEnabled || hasIntensityValue;
+  const intensityMissing = !hasIntensityValue || !intensityEnabled;
 
-  const handleIntensityCtaPress = useCallback(() => {
-    handleCardPress();
-  }, [handleCardPress]);
+  const taskListItems = useMemo(() => {
+    const baseTasks = Array.isArray(optimisticTasks) ? optimisticTasks : [];
+    const rows = showIntensityRow ? [{ type: 'intensity' as const }] : [];
+    return [...rows, ...baseTasks.map(task => ({ type: 'task' as const, task }))];
+  }, [showIntensityRow, optimisticTasks]);
+  const shouldRenderTasksSection = showTasks && taskListItems.length > 0;
+
+  const handleIntensityRowPress = useCallback(
+    (event: any) => {
+      event.stopPropagation?.();
+      if (!onPressIntensity) return;
+      onPressIntensity();
+    },
+    [onPressIntensity]
+  );
 
   return (
     <>
@@ -327,37 +340,6 @@ export default function ActivityCard({
                 </View>
               )}
 
-              {intensityValue !== null && (
-                <View style={styles.intensityBadge}>
-                  <IconSymbol
-                    ios_icon_name="flame.fill"
-                    android_material_icon_name="local_fire_department"
-                    size={14}
-                    color="#FFEDD5"
-                  />
-                  <Text style={styles.intensityBadgeText}>Intensitet {intensityValue}/10</Text>
-                </View>
-              )}
-
-              {shouldShowIntensityCTA && (
-                <TouchableOpacity
-                  style={styles.intensityCta}
-                  onPress={handleIntensityCtaPress}
-                  activeOpacity={0.85}
-                >
-                  <IconSymbol
-                    ios_icon_name="flame"
-                    android_material_icon_name="local_fire_department"
-                    size={18}
-                    color="#FFEDD5"
-                  />
-                  <View style={styles.intensityCtaCopy}>
-                    <Text style={styles.intensityCtaTitle}>Registrer intensitet</Text>
-                    <Text style={styles.intensityCtaSubtitle}>Tryk for at indtaste 1-10</Text>
-                  </View>
-                </TouchableOpacity>
-              )}
-
               {activity.is_external && (
                 <View style={styles.externalBadge}>
                   <Text style={styles.externalText}>📅 Ekstern kalender</Text>
@@ -372,17 +354,81 @@ export default function ActivityCard({
           </View>
 
           {/* Tasks Section - Only show if showTasks is true and tasks exist */}
-          {showTasks && optimisticTasks && optimisticTasks.length > 0 && (
+          {shouldRenderTasksSection && (
             <View style={styles.tasksSection}>
               <View style={styles.tasksDivider} />
-              {optimisticTasks.map((task: any) => {
-                const taskKey =
-                  String(task?.id ?? '').trim() ||
-                  String(task?.task_id ?? '').trim() ||
-                  `${String(activity?.id ?? 'activity')}-${String(task?.title ?? 'task')}`;
+              {taskListItems.map(item => {
+                if (item.type === 'intensity') {
+                  return (
+                    <TouchableOpacity
+                      key={`intensity-${activity.id}`}
+                      style={[
+                        styles.taskRow,
+                        !onPressIntensity && styles.intensityTaskRowDisabled,
+                        intensityMissing && styles.intensityMissingBorder,
+                      ]}
+                      onPress={handleIntensityRowPress}
+                      activeOpacity={onPressIntensity ? 0.7 : 1}
+                      disabled={!onPressIntensity}
+                    >
+                      <View style={styles.intensityRowInner}>
+                        <View style={styles.taskCheckboxArea}>
+                          <View
+                            style={[
+                              styles.taskCheckbox,
+                              !intensityMissing && styles.taskCheckboxCompleted,
+                            ]}
+                          >
+                            {!intensityMissing && (
+                              <IconSymbol
+                                ios_icon_name="checkmark"
+                                android_material_icon_name="check"
+                                size={14}
+                                color="#4CAF50"
+                              />
+                            )}
+                          </View>
+                        </View>
+                        <View style={styles.taskContent}>
+                          <View style={styles.taskTitleRow}>
+                            <Text
+                              style={[
+                                styles.taskTitle,
+                                !intensityMissing && styles.taskTitleCompleted,
+                              ]}
+                              numberOfLines={1}
+                            >
+                              Intensitet
+                            </Text>
+                            <Text
+                              style={[
+                                styles.intensityTaskValue,
+                                intensityMissing && styles.intensityTaskValueMissing,
+                              ]}
+                            >
+                              {intensityMissing ? 'Ikke angivet' : `${intensityValue}/10`}
+                            </Text>
+                          </View>
+                          {allowQuickEdit && (
+                            <Text style={styles.intensityTaskHelper}>
+                              Tryk for at angive intensitet
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                }
 
+                const task = item.task;
                 return (
-                  <React.Fragment key={taskKey}>
+                  <React.Fragment
+                    key={
+                      String(task?.id ?? '').trim() ||
+                      String(task?.task_id ?? '').trim() ||
+                      `${String(activity?.id ?? 'activity')}-${String(task?.title ?? 'task')}`
+                    }
+                  >
                     <View style={styles.taskRow}>
                       <TouchableOpacity
                         style={styles.taskCheckboxArea}
@@ -526,46 +572,6 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.95)',
     flex: 1,
   },
-  intensityBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255, 255, 255, 0.16)',
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-    marginTop: 6,
-  },
-  intensityBadgeText: {
-    color: '#FFEDD5',
-    fontSize: 13,
-    fontWeight: '600',
-    marginLeft: 6,
-  },
-  intensityCta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255, 255, 255, 0.16)',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    marginTop: 8,
-  },
-  intensityCtaCopy: {
-    marginLeft: 8,
-  },
-  intensityCtaTitle: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  intensityCtaSubtitle: {
-    color: 'rgba(255, 255, 255, 0.85)',
-    fontSize: 11,
-    fontWeight: '500',
-    marginTop: 2,
-  },
   externalBadge: {
     marginTop: 6,
   },
@@ -626,33 +632,100 @@ const styles = StyleSheet.create({
   taskTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
   },
   taskTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '500',
-    color: '#FFFFFF',
-    flex: 1,
+    color: 'rgba(255, 255, 255, 0.95)',
   },
   taskTitleCompleted: {
     textDecorationLine: 'line-through',
-    opacity: 0.6,
+    color: 'rgba(255, 255, 255, 0.6)',
   },
+  intensityTaskValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#4CAF50',
+  },
+  intensityTaskValueMissing: {
+    color: 'rgba(255, 255, 255, 0.6)',
+  },
+  intensityRowInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  intensityTaskHelper: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginTop: 4,
+  },
+  intensityTaskRowDisabled: {
+    opacity: 0.5,
+  },
+  intensityMissingBorder: {
+    borderWidth: 2,
+    borderColor: '#EF4444',
+    borderRadius: 12,
+  },
+
+  // Reminder Badge
   reminderBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     borderRadius: 12,
+    paddingVertical: 2,
+    paddingHorizontal: 8,
+    marginLeft: 8,
   },
   reminderText: {
-    fontSize: 10,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '500',
     color: 'rgba(255, 255, 255, 0.9)',
+    marginLeft: 4,
   },
+
+  // Video Indicator
   videoIndicator: {
-    marginLeft: 8,
+    marginLeft: 'auto',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  // Task Details Modal
+  modalContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 12,
+  },
+  modalText: {
+    fontSize: 14,
+    color: '#555',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  closeButton: {
+    backgroundColor: '#4CAF50',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+  },
+  closeButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#fff',
   },
 });
