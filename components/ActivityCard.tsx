@@ -272,6 +272,21 @@ export default function ActivityCard({
     const raw = activity?.intensity ?? activity?.activity_intensity;
     return typeof raw === 'number' ? raw : null;
   }, [activity]);
+  const intensityEnabled = useMemo(() => {
+    if (typeof activity?.intensityEnabled === 'boolean') {
+      return activity.intensityEnabled;
+    }
+    if (typeof activity?.intensity_enabled === 'boolean') {
+      return activity.intensity_enabled;
+    }
+    return typeof activity?.intensity === 'number';
+  }, [activity]);
+
+  const shouldShowIntensityCTA = intensityEnabled && intensityValue === null;
+
+  const handleIntensityCtaPress = useCallback(() => {
+    handleCardPress();
+  }, [handleCardPress]);
 
   return (
     <>
@@ -321,6 +336,25 @@ export default function ActivityCard({
                   />
                   <Text style={styles.intensityBadgeText}>Intensitet {intensityValue}/10</Text>
                 </View>
+              )}
+
+              {shouldShowIntensityCTA && (
+                <TouchableOpacity
+                  style={styles.intensityCta}
+                  onPress={handleIntensityCtaPress}
+                  activeOpacity={0.85}
+                >
+                  <IconSymbol
+                    ios_icon_name="flame"
+                    android_material_icon_name="local_fire_department"
+                    size={18}
+                    color="#FFEDD5"
+                  />
+                  <View style={styles.intensityCtaCopy}>
+                    <Text style={styles.intensityCtaTitle}>Registrer intensitet</Text>
+                    <Text style={styles.intensityCtaSubtitle}>Tryk for at indtaste 1-10</Text>
+                  </View>
+                </TouchableOpacity>
               )}
 
               {activity.is_external && (
@@ -506,6 +540,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     marginLeft: 6,
+  },
+  intensityCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    marginTop: 8,
+  },
+  intensityCtaCopy: {
+    marginLeft: 8,
+  },
+  intensityCtaTitle: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  intensityCtaSubtitle: {
+    color: 'rgba(255, 255, 255, 0.85)',
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 2,
   },
   externalBadge: {
     marginTop: 6,

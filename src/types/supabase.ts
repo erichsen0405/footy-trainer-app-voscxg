@@ -27,6 +27,7 @@ export type Database = {
           external_event_id: string | null
           id: string
           intensity: number | null
+          intensity_enabled: boolean
           is_external: boolean
           location: string | null
           manually_set_category: boolean | null
@@ -50,6 +51,7 @@ export type Database = {
           external_event_id?: string | null
           id?: string
           intensity?: number | null
+          intensity_enabled?: boolean
           is_external?: boolean
           location?: string | null
           manually_set_category?: boolean | null
@@ -73,6 +75,7 @@ export type Database = {
           external_event_id?: string | null
           id?: string
           intensity?: number | null
+          intensity_enabled?: boolean
           is_external?: boolean
           location?: string | null
           manually_set_category?: boolean | null
@@ -163,6 +166,7 @@ export type Database = {
           created_at: string
           end_date: string | null
           id: string
+          intensity_enabled: boolean
           location: string | null
           player_id: string | null
           recurrence_days: number[] | null
@@ -180,6 +184,7 @@ export type Database = {
           created_at?: string
           end_date?: string | null
           id?: string
+          intensity_enabled?: boolean
           location?: string | null
           player_id?: string | null
           recurrence_days?: number[] | null
@@ -197,6 +202,7 @@ export type Database = {
           created_at?: string
           end_date?: string | null
           id?: string
+          intensity_enabled?: boolean
           location?: string | null
           player_id?: string | null
           recurrence_days?: number[] | null

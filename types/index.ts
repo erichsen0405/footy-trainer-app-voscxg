@@ -9,6 +9,7 @@ export interface Activity {
   category: ActivityCategory;
   tasks: Task[];
   intensity?: number | null;
+  intensityEnabled?: boolean;
   isExternal?: boolean;
   externalCalendarId?: string;
   externalEventId?: string;
@@ -38,6 +39,7 @@ export interface ActivitySeries {
   activityEndTime?: string | null;
   createdAt: Date;
   updatedAt: Date;
+  intensityEnabled?: boolean;
 }
 
 export interface Task {

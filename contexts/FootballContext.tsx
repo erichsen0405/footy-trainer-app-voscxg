@@ -28,6 +28,7 @@ interface FootballContextType {
     time: string;
     endTime?: string;
     intensity?: number | null;
+    intensityEnabled?: boolean;
     isRecurring: boolean;
     recurrenceType?: 'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly';
     recurrenceDays?: number[];
@@ -42,6 +43,7 @@ interface FootballContextType {
     time?: string;
     endTime?: string;
     intensity?: number | null;
+    intensityEnabled?: boolean;
   }) => Promise<void>;
   updateActivitySeries: (seriesId: string, updates: {
     title?: string;
@@ -50,6 +52,7 @@ interface FootballContextType {
     time?: string;
     endTime?: string;
     intensity?: number | null;
+    intensityEnabled?: boolean;
   }) => Promise<void>;
   deleteActivity: (id: string) => void;
   deleteActivitySingle: (activityId: string) => Promise<void>;
@@ -136,13 +139,16 @@ export function FootballProvider({ children }: { children: ReactNode }) {
       const timeStr = typeof activityData?.time === 'string' && activityData.time ? activityData.time : '12:00';
 
       // Use a conservative payload shape; cast to any to avoid schema/type coupling here.
+      const fallbackIntensityEnabled = !!activityData?.intensityEnabled;
       const payload: any = {
         title: activityData?.title ?? '',
         location: activityData?.location ?? 'Ingen lokation',
         category_id: activityData?.categoryId ?? activityData?.category_id ?? '',
         activity_date: isoDate,
         activity_time: timeStr,
-        intensity: activityData?.intensity ?? null,
+        intensity: fallbackIntensityEnabled ? activityData?.intensity ?? null : null,
+        intensityEnabled: fallbackIntensityEnabled,
+        intensity_enabled: fallbackIntensityEnabled,
         is_recurring: !!activityData?.isRecurring,
         recurrence_type: activityData?.recurrenceType,
         recurrence_days: activityData?.recurrenceDays,

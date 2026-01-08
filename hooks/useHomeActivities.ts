@@ -30,6 +30,8 @@ interface ActivityWithCategory {
   category_id?: string;
   category?: DatabaseActivityCategory | null;
   intensity?: number | null;
+  intensityEnabled?: boolean;
+  intensity_enabled?: boolean;
   is_external: boolean;
   external_calendar_id?: string;
   external_event_id?: string;
@@ -155,6 +157,28 @@ export function useHomeActivities(): UseHomeActivitiesResult {
 
     const enrichedUpdates = enrichCategoryPatch(updates);
 
+    if (
+      Object.prototype.hasOwnProperty.call(updates, 'intensity_enabled') &&
+      typeof enrichedUpdates.intensityEnabled === 'undefined'
+    ) {
+      enrichedUpdates.intensityEnabled = updates.intensity_enabled;
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(updates, 'intensityEnabled') &&
+      typeof enrichedUpdates.intensity_enabled === 'undefined'
+    ) {
+      enrichedUpdates.intensity_enabled = updates.intensityEnabled;
+    }
+
+    const disablesIntensity =
+      updates.intensityEnabled === false ||
+      updates.intensity_enabled === false;
+
+    if (disablesIntensity && typeof enrichedUpdates.intensity === 'undefined') {
+      enrichedUpdates.intensity = null;
+    }
+
     setActivities(prev => {
       let mutated = false;
       const next = prev.map(activity => {
@@ -230,6 +254,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
             location,
             category_id,
             intensity,
+            intensity_enabled,
             created_at,
             updated_at,
             activity_tasks (
@@ -321,6 +346,9 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       // Map internal activities with tasks and resolved category
       const internalActivities: ActivityWithCategory[] = (internalData || []).map(activity => {
         const resolvedCategory = resolveCategory(activity.title, activity.category_id);
+        const intensityEnabled = typeof activity.intensity_enabled === 'boolean'
+          ? activity.intensity_enabled
+          : typeof activity.intensity === 'number';
         
         // Map tasks to the expected format
         const tasks: ActivityTask[] = (activity.activity_tasks || []).map((task: any) => ({
@@ -341,6 +369,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           category_id: activity.category_id,
           category: resolvedCategory,
           intensity: activity.intensity ?? null,
+          intensityEnabled,
+          intensity_enabled: intensityEnabled,
           is_external: false,
           created_at: activity.created_at,
           updated_at: activity.updated_at,
@@ -423,6 +453,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
               category_id: categoryId,
               category: resolvedCategory,
               intensity: null,
+              intensityEnabled: false,
+              intensity_enabled: false,
               is_external: true,
               external_calendar_id: event.provider_calendar_id,
               external_event_id: event.provider_event_uid,

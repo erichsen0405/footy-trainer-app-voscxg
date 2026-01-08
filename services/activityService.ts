@@ -10,6 +10,7 @@ export interface CreateActivityData {
   time: string;
   endTime?: string;
   intensity?: number | null;
+  intensityEnabled?: boolean;
   isRecurring: boolean;
   recurrenceType?: 'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly';
   recurrenceDays?: number[];
@@ -27,6 +28,7 @@ export interface UpdateActivityData {
   time?: string;
   endTime?: string;
   intensity?: number | null;
+  intensityEnabled?: boolean;
 }
 
 const normalizeEndTime = (value?: string | null): string | null => {
@@ -43,6 +45,35 @@ const normalizeIntensity = (value?: number | null): number | null => {
     return value;
   }
   return null;
+};
+
+const buildIntensityUpdate = (
+  intensity?: number | null,
+  intensityEnabled?: boolean
+): { intensity?: number | null; intensity_enabled?: boolean } | undefined => {
+  const hasIntensityUpdate = intensity !== undefined;
+  const explicitFlag = typeof intensityEnabled === 'boolean' ? intensityEnabled : undefined;
+
+  if (!hasIntensityUpdate && explicitFlag === undefined) {
+    return undefined;
+  }
+
+  const payload: { intensity?: number | null; intensity_enabled?: boolean } = {};
+
+  if (hasIntensityUpdate) {
+    payload.intensity = normalizeIntensity(intensity);
+  }
+
+  if (explicitFlag !== undefined) {
+    payload.intensity_enabled = explicitFlag;
+    if (!explicitFlag && !hasIntensityUpdate) {
+      payload.intensity = null;
+    }
+  } else if (hasIntensityUpdate) {
+    payload.intensity_enabled = payload.intensity !== null && payload.intensity !== undefined;
+  }
+
+  return payload;
 };
 
 // Helper function to generate dates for recurring activities
@@ -101,7 +132,11 @@ export const activityService = {
     console.log('Creating activity:', data);
 
     const normalizedEndTime = normalizeEndTime(data.endTime);
-    const normalizedIntensity = normalizeIntensity(data.intensity);
+    const normalizedIntensityEnabled =
+      typeof data.intensityEnabled === 'boolean'
+        ? data.intensityEnabled
+        : data.intensity !== undefined && data.intensity !== null;
+    const normalizedIntensity = normalizedIntensityEnabled ? normalizeIntensity(data.intensity) : null;
 
     if (data.isRecurring) {
       const { data: seriesData, error: seriesError } = await supabase
@@ -119,6 +154,7 @@ export const activityService = {
           activity_end_time: normalizedEndTime,
           player_id: data.playerId,
           team_id: data.teamId,
+          intensity_enabled: normalizedIntensityEnabled,
         })
         .select()
         .abortSignal(signal)
@@ -138,10 +174,11 @@ export const activityService = {
         title: data.title,
         activity_date: date.toISOString().split('T')[0],
         activity_time: data.time,
-        activity_end_time: data.endTime,
+        activity_end_time: normalizedEndTime,
         location: data.location,
         category_id: data.categoryId,
         intensity: normalizedIntensity,
+        intensity_enabled: normalizedIntensityEnabled,
         series_id: seriesData.id,
         series_instance_date: date.toISOString().split('T')[0],
         is_external: false,
@@ -167,6 +204,7 @@ export const activityService = {
           location: data.location,
           category_id: data.categoryId,
           intensity: normalizedIntensity,
+          intensity_enabled: normalizedIntensityEnabled,
           is_external: false,
           player_id: data.playerId,
           team_id: data.teamId,
@@ -209,7 +247,13 @@ export const activityService = {
       if (updates.date !== undefined) updateData.activity_date = updates.date.toISOString().split('T')[0];
       if (updates.time !== undefined) updateData.activity_time = updates.time;
       if (updates.endTime !== undefined) updateData.activity_end_time = normalizeEndTime(updates.endTime);
-      if (updates.intensity !== undefined) updateData.intensity = normalizeIntensity(updates.intensity);
+      const intensityChanges = buildIntensityUpdate(updates.intensity, updates.intensityEnabled);
+      if (intensityChanges?.intensity !== undefined) {
+        updateData.intensity = intensityChanges.intensity;
+      }
+      if (intensityChanges?.intensity_enabled !== undefined) {
+        updateData.intensity_enabled = intensityChanges.intensity_enabled;
+      }
       
       if (updates.categoryId !== undefined) {
         updateData.category_id = updates.categoryId;
@@ -260,7 +304,14 @@ export const activityService = {
     }
     if (updates.time !== undefined) activityUpdate.activity_time = updates.time;
     if (updates.endTime !== undefined) activityUpdate.activity_end_time = normalizeEndTime(updates.endTime);
-    if (updates.intensity !== undefined) activityUpdate.intensity = normalizeIntensity(updates.intensity);
+    const intensityChanges = buildIntensityUpdate(updates.intensity, updates.intensityEnabled);
+    if (intensityChanges?.intensity !== undefined) {
+      activityUpdate.intensity = intensityChanges.intensity;
+    }
+    if (intensityChanges?.intensity_enabled !== undefined) {
+      seriesUpdate.intensity_enabled = intensityChanges.intensity_enabled;
+      activityUpdate.intensity_enabled = intensityChanges.intensity_enabled;
+    }
 
     if (Object.keys(activityUpdate).length > 0) {
       activityUpdate.updated_at = new Date().toISOString();
@@ -327,6 +378,10 @@ export const activityService = {
     if (fetchError || !activity) throw new Error('Activity not found');
 
     const duplicateTitle = `${activity.title} (kopi)`;
+    const sourceIntensityEnabled =
+      typeof activity.intensity_enabled === 'boolean'
+        ? activity.intensity_enabled
+        : activity.intensity !== null && activity.intensity !== undefined;
 
     const { data: newActivity, error: activityError } = await supabase
       .from('activities')
@@ -339,6 +394,7 @@ export const activityService = {
         location: activity.location,
         category_id: activity.category_id,
         intensity: normalizeIntensity(activity.intensity),
+        intensity_enabled: sourceIntensityEnabled,
         is_external: false,
         player_id: playerId,
         team_id: teamId,

@@ -38,6 +38,7 @@ export interface ActivityCreationData {
   time: string;
   endTime?: string;
   intensity?: number | null;
+  intensityEnabled?: boolean;
   isRecurring: boolean;
   recurrenceType?: 'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly';
   recurrenceDays?: number[];
@@ -241,6 +242,7 @@ export default function CreateActivityModal({
         // gør sluttid valgfri – hvis tom/whitespace, send undefined
         endTime: endTime?.trim() ? endTime.trim() : undefined,
         intensity: normalizedIntensity,
+        intensityEnabled,
         isRecurring,
         recurrenceType: isRecurring ? recurrenceType : undefined,
         recurrenceDays:

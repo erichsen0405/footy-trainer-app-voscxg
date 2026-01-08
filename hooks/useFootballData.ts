@@ -181,6 +181,15 @@ export const useFootballData = () => {
         payload.intensity = updates.intensity;
       }
 
+      if (updates.intensityEnabled !== undefined) {
+        payload.intensityEnabled = updates.intensityEnabled;
+        payload.intensity_enabled = updates.intensityEnabled;
+
+        if (!updates.intensityEnabled) {
+          payload.intensity = null;
+        }
+      }
+
       return payload;
     },
     [categories]
@@ -700,6 +709,7 @@ export const useFootballData = () => {
     time: string;
     endTime?: string;
     intensity?: number | null;
+    intensityEnabled?: boolean;
     isRecurring: boolean;
     recurrenceType?: 'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly';
     recurrenceDays?: number[];
@@ -736,6 +746,7 @@ export const useFootballData = () => {
         time: activityData.time,
         endTime: activityData.endTime,
         intensity: activityData.intensity ?? null,
+        intensityEnabled: activityData.intensityEnabled,
         isRecurring: activityData.isRecurring,
         recurrenceType: activityData.recurrenceType,
         recurrenceDays: activityData.recurrenceDays,
@@ -1078,6 +1089,7 @@ export const useFootballData = () => {
       time?: string;
       endTime?: string;
       intensity?: number | null;
+      intensityEnabled?: boolean;
     }
   ) => {
     const optimisticUpdates = buildOptimisticActivityUpdates(updates);
@@ -1114,6 +1126,7 @@ export const useFootballData = () => {
       time?: string;
       endTime?: string;
       intensity?: number | null;
+      intensityEnabled?: boolean;
     }
   ) => {
     const optimisticUpdates = buildOptimisticActivityUpdates(updates);

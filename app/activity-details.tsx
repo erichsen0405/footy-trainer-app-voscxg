@@ -128,34 +128,6 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
         external_calendar_id,
         external_event_id,
         series_id,
-        series_instance_date,
-        activity_categories (
-          id,
-          name,
-          color,
-          emoji
-        ),
-        activity_tasks (
-          id,
-          task_template_id,
-          title,
-          description,
-          completed,
-          reminder_minutes
-        )
-      `)
-      .eq('id', activityId)
-      .single();
-
-    if (!internalError && internalActivity) {
-      console.log('✅ Found internal activity:', internalActivity.title);
-      
-      // Map to Activity type
-      return {
-        id: internalActivity.id,
-        title: internalActivity.title,
-        date: new Date(internalActivity.activity_date),
-        time: internalActivity.activity_time,
         endTime: internalActivity.activity_end_time,
         location: internalActivity.location || '',
         category: internalActivity.activity_categories ? {
@@ -444,18 +416,76 @@ function ActivityDetailsContent({
 }: ActivityDetailsContentProps) {
   const bgColor = isDark ? '#1a1a1a' : colors.background;
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
-  const textColor = isDark ? '#e3e3e3' : colors.text;
-  const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
+        // Persist intensity only when the activity allows it
+        const canPersistIntensity =
+          !activity.isExternal &&
+          !!activity.intensityEnabled &&
+          typeof intensity !== 'undefined';
 
-  const normalizeOptionalTime = (value: string | undefined | null): string | undefined => {
-    const trimmed = typeof value === 'string' ? value.trim() : '';
-    return trimmed ? trimmed : undefined;
-  };
+        if (canPersistIntensity) {
+          if (intensity !== null && (intensity < 1 || intensity > 10)) {
 
-  const toMinutes = (value: string): number | null => {
-    if (typeof value !== 'string') return null;
-    const segments = value.split(':');
-    if (segments.length < 2) return null;
+function normalizeOptionalTime(value?: string | null): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed.length) {
+    return undefined;
+  }
+
+  const [hoursRaw, minutesRaw] = trimmed.split(':');
+  if (hoursRaw === undefined || minutesRaw === undefined) {
+    return undefined;
+  }
+
+  const hours = Number(hoursRaw);
+  const minutes = Number(minutesRaw);
+
+  if (
+    !Number.isFinite(hours) ||
+    !Number.isFinite(minutes) ||
+    hours < 0 ||
+    hours > 23 ||
+    minutes < 0 ||
+    minutes > 59
+  ) {
+    return undefined;
+  }
+
+  const normalizedHours = hours.toString().padStart(2, '0');
+  const normalizedMinutes = minutes.toString().padStart(2, '0');
+
+  return `${normalizedHours}:${normalizedMinutes}`;
+}
+
+function toMinutes(value?: string | null): number | null {
+  const normalized = normalizeOptionalTime(value);
+  if (!normalized) {
+    return null;
+  }
+
+  const [hoursStr, minutesStr] = normalized.split(':');
+  const hours = Number(hoursStr);
+  const minutes = Number(minutesStr);
+
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return null;
+  }
+
+  return hours * 60 + minutes;
+}
+            Alert.alert('Fejl', 'Intensitet skal være mellem 1 og 10.');
+            setIsFeedbackSaving(false);
+            return;
+          }
+
+          await updateActivitySingle(activity.id, {
+            intensity,
+            intensityEnabled: true,
+          });
+          applyActivityUpdates({ intensity: intensity ?? null, intensityEnabled: true });
 
     const hours = Number(segments[0]);
     const minutes = Number(segments[1]);
@@ -517,12 +547,23 @@ function ActivityDetailsContent({
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
   const [editScope, setEditScope] = useState<'single' | 'series'>('single');
   const [editIntensityEnabled, setEditIntensityEnabled] = useState(
-    typeof activity.intensity === 'number'
+    typeof activity.intensityEnabled === 'boolean'
+      ? activity.intensityEnabled
+      : typeof activity.intensity === 'number'
   );
   const [editIntensity, setEditIntensity] = useState<number | null>(
     typeof activity.intensity === 'number' ? activity.intensity : null
   );
   const intensityOptions = useMemo(() => Array.from({ length: 10 }, (_, idx) => idx + 1), []);
+  const [isInlineIntensitySaving, setIsInlineIntensitySaving] = useState(false);
+  const activityIntensityEnabled = useMemo(() => (
+    typeof activity.intensityEnabled === 'boolean'
+      ? activity.intensityEnabled
+      : typeof activity.intensity === 'number'
+  ), [activity]);
+  const inlineIntensityValue = useMemo(() => (
+    typeof activity.intensity === 'number' ? activity.intensity : null
+  ), [activity]);
   
   // Recurring event conversion state
   const [convertToRecurring, setConvertToRecurring] = useState(false);
@@ -552,9 +593,12 @@ function ActivityDetailsContent({
     setEditTime(activity.time);
     setEditEndTime(activity.endTime);
     setEditCategory(activity.category);
-    const hasIntensity = typeof activity.intensity === 'number';
-    setEditIntensityEnabled(hasIntensity);
-    setEditIntensity(hasIntensity ? activity.intensity! : null);
+    const hasIntensityValue = typeof activity.intensity === 'number';
+    const resolvedFlag = typeof activity.intensityEnabled === 'boolean'
+      ? activity.intensityEnabled
+      : hasIntensityValue;
+    setEditIntensityEnabled(resolvedFlag);
+    setEditIntensity(hasIntensityValue ? activity.intensity! : null);
   }, [activity]);
 
   useEffect(() => {
@@ -630,10 +674,6 @@ function ActivityDetailsContent({
     }
   }, []);
 
-  const handleIntensitySelect = useCallback((value: number) => {
-    setEditIntensity(value);
-  }, []);
-
   const handleSave = async () => {
     if (!activity) return;
 
@@ -656,15 +696,6 @@ function ActivityDetailsContent({
       }
     }
 
-    const normalizedIntensity = editIntensityEnabled ? editIntensity : null;
-    if (
-      editIntensityEnabled &&
-      (normalizedIntensity === null || normalizedIntensity < 1 || normalizedIntensity > 10)
-    ) {
-      Alert.alert('Fejl', 'Vælg intensitet mellem 1 og 10');
-      return;
-    }
-
     setIsSaving(true);
 
     try {
@@ -681,7 +712,8 @@ function ActivityDetailsContent({
           date: editDate,
           time: editTime,
           endTime: endTimePayload,
-          intensity: normalizedIntensity,
+          intensity: null,
+          intensityEnabled: editIntensityEnabled,
           isRecurring: true,
           recurrenceType,
           recurrenceDays: (recurrenceType === 'weekly' || recurrenceType === 'biweekly' || recurrenceType === 'triweekly') ? selectedDays : undefined,
@@ -726,7 +758,8 @@ function ActivityDetailsContent({
           categoryId: editCategory?.id,
           time: editTime,
           endTime: endTimePayload,
-          intensity: normalizedIntensity,
+          intensityEnabled: editIntensityEnabled,
+          ...(editIntensityEnabled ? {} : { intensity: null }),
         });
 
         applyActivityUpdates({
@@ -735,7 +768,8 @@ function ActivityDetailsContent({
           category: editCategory || activity.category,
           time: editTime,
           endTime: endTimePayload,
-          intensity: normalizedIntensity,
+          intensityEnabled: editIntensityEnabled,
+          ...(editIntensityEnabled ? {} : { intensity: null }),
         });
 
         Alert.alert('Gemt', 'Hele serien er blevet opdateret');
@@ -752,7 +786,8 @@ function ActivityDetailsContent({
         date: editDate,
         time: editTime,
         endTime: endTimePayload,
-        intensity: normalizedIntensity,
+        intensityEnabled: editIntensityEnabled,
+        ...(editIntensityEnabled ? {} : { intensity: null }),
       });
 
       applyActivityUpdates({
@@ -762,7 +797,8 @@ function ActivityDetailsContent({
         date: editDate,
         time: editTime,
         endTime: endTimePayload,
-        intensity: normalizedIntensity,
+        intensityEnabled: editIntensityEnabled,
+        ...(editIntensityEnabled ? {} : { intensity: null }),
       });
 
       Alert.alert('Gemt', 'Aktiviteten er blevet opdateret');
@@ -939,11 +975,48 @@ function ActivityDetailsContent({
         category: updates.category ?? activity.category,
         tasks: updates.tasks ?? activity.tasks,
         intensity: updates.intensity !== undefined ? updates.intensity : activity.intensity,
+        intensityEnabled:
+          updates.intensityEnabled !== undefined
+            ? updates.intensityEnabled
+            : activity.intensityEnabled,
       };
       onActivityUpdated(nextActivity);
     },
     [activity, onActivityUpdated]
   );
+
+  const handleInlineIntensitySelect = useCallback(async (value: number | null) => {
+    if (!activity || activity.isExternal || isInlineIntensitySaving) {
+      return;
+    }
+
+    const currentValue = typeof activity.intensity === 'number' ? activity.intensity : null;
+    if (currentValue === value) {
+      return;
+    }
+
+    setIsInlineIntensitySaving(true);
+    applyActivityUpdates({ intensity: value ?? null, intensityEnabled: true });
+
+    try {
+      await updateActivitySingle(activity.id, {
+        intensity: value,
+        intensityEnabled: true,
+      });
+      setEditIntensity(value ?? null);
+    } catch (error) {
+      console.error('Failed to save intensity inline:', error);
+      applyActivityUpdates({ intensity: currentValue });
+      setEditIntensity(currentValue);
+      Alert.alert('Fejl', 'Kunne ikke gemme intensitet. Prøv igen.');
+    } finally {
+      setIsInlineIntensitySaving(false);
+    }
+  }, [activity, applyActivityUpdates, isInlineIntensitySaving, updateActivitySingle]);
+
+  const handleInlineIntensityClear = useCallback(() => {
+    handleInlineIntensitySelect(null);
+  }, [handleInlineIntensitySelect]);
 
   const taskListData = useMemo(() => (tasksState || []).filter(Boolean) as Task[], [tasksState]);
 
@@ -1119,8 +1192,8 @@ function ActivityDetailsContent({
 
   const currentActivityIntensity = typeof activity.intensity === 'number' ? activity.intensity : null;
 
-  // Always show intensity input for feedback on internal activities
-  const shouldShowIntensityField = !activity.isExternal;
+  // Only show intensity input when activity has intensity tracking enabled
+  const shouldShowIntensityField = !activity.isExternal && !!activity.intensityEnabled;
 
   const handleFeedbackTaskPress = useCallback(
     (task: Task) => {
@@ -2785,6 +2858,10 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginLeft: 8,
   },
+  intensityEditInfo: {
+    fontSize: 13,
+    marginTop: 4,
+  },
   intensityToggleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -2802,6 +2879,9 @@ const styles = StyleSheet.create({
   intensityHint: {
     fontSize: 14,
     marginBottom: 8,
+  },
+  inlineIntensitySection: {
+    marginTop: 12,
   },
   intensityPickerRow: {
     flexDirection: 'row',
@@ -2821,6 +2901,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
+  intensityPickerChipDisabled: {
+    opacity: 0.5,
+  },
   intensityPickerText: {
     fontSize: 16,
     fontWeight: '600',
@@ -2828,6 +2911,14 @@ const styles = StyleSheet.create({
   },
   intensityPickerTextSelected: {
     color: '#fff',
+  },
+  clearIntensityButton: {
+    marginTop: 12,
+  },
+  clearIntensityText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
   },
   input: {
     borderRadius: 12,

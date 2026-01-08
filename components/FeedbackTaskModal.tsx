@@ -65,8 +65,8 @@ export function FeedbackTaskModal({
     };
   }, [feedbackConfig]);
 
-  // Always respect the parent-provided flag; ignore template intensity toggle entirely
-  const showIntensity = showIntensityField;
+  // Show intensity only when both the template and parent flow allow it
+  const showIntensity = showIntensityField && resolvedConfig.enableIntensity;
 
   useEffect(() => {
     if (visible) {
