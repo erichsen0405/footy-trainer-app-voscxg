@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -8,7 +8,6 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useFootball } from '@/contexts/FootballContext';
 import TaskDetailsModal from '@/components/TaskDetailsModal';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
-import { colors } from '@/styles/commonStyles';
 import { resolveActivityIntensityEnabled } from '@/utils/activityIntensity';
 
 interface ActivityCardProps {
@@ -18,6 +17,10 @@ interface ActivityCardProps {
   onPressIntensity?: () => void;
   showTasks?: boolean;
 }
+
+type TaskListItem =
+  | { type: 'intensity'; key: string }
+  | { type: 'task'; key: string; task: any };
 
 // Helper function to lighten a hex color
 function lightenColor(hex: string, percent: number): string {
@@ -71,11 +74,12 @@ export default function ActivityCard({
   activity,
   resolvedDate,
   onPress: _deprecatedOnPress,
-  onPressIntensity,
+  onPressIntensity: _deprecatedOnPressIntensity,
   showTasks = false,
 }: ActivityCardProps) {
   const router = useRouter();
   const { toggleTaskCompletion, refreshData } = useFootball();
+  const suppressCardPressRef = useRef(false);
 
   const activityId = useMemo(() => {
     const raw = activity?.id ?? activity?.activity_id;
@@ -84,7 +88,7 @@ export default function ActivityCard({
     const lowered = trimmed.toLowerCase();
     if (!trimmed.length || lowered === 'undefined' || lowered === 'null') return null;
     return trimmed;
-  }, [activity?.id, activity?.activity_id]);
+  }, [activity?.activity_id, activity?.id]);
 
   // Local optimistic state for tasks
   const [optimisticTasks, setOptimisticTasks] = useState<any[]>([]);
@@ -125,7 +129,7 @@ export default function ActivityCard({
 
       return !!resolveFeedbackTemplateId(task);
     },
-    [resolveFeedbackTemplateId],
+    [resolveFeedbackTemplateId]
   );
 
   const navigateToFeedbackTask = useCallback(
@@ -143,84 +147,66 @@ export default function ActivityCard({
       const href = `/activity-details?id=${encodedId}&activityId=${encodedId}${
         encodedTaskId ? `&openFeedbackTaskId=${encodedTaskId}` : ''
       }`;
-      console.log('[ActivityCard] Navigating to activity details (feedback)', href);
       router.push(href);
       return true;
     },
-    [activityId, isFeedbackTask, router],
+    [activityId, isFeedbackTask, router]
   );
 
-  // Memoized card press handler - only navigates, no async work
   const handleCardPress = useCallback(() => {
+    if (suppressCardPressRef.current) {
+      suppressCardPressRef.current = false;
+      return;
+    }
     if (!activityId) {
       console.warn('[ActivityCard] Missing activity id for navigation');
       return;
     }
-
     const encodedId = encodeURIComponent(activityId);
-    const href = `/activity-details?id=${encodedId}&activityId=${encodedId}`;
-    console.log('[ActivityCard] Navigating to activity details', href);
-
-    try {
-      router.push(href);
-    } catch (error) {
-      console.error('[ActivityCard] Error navigating to activity details:', error);
-    }
+    router.push(`/activity-details?id=${encodedId}&activityId=${encodedId}`);
   }, [activityId, router]);
 
-  // Task press handler
   const handleTaskPress = useCallback(
-    (task: any, event: any) => {
+    (task: any, event?: any) => {
       event?.stopPropagation?.();
-
       if (navigateToFeedbackTask(task)) {
         return;
       }
-
       const taskId = task?.id ?? task?.task_id;
       if (!taskId) {
         return;
       }
-
       setActiveTaskId(String(taskId));
       setIsTaskModalOpen(true);
     },
-    [navigateToFeedbackTask],
+    [navigateToFeedbackTask]
   );
 
-  // Toggle task handler
   const handleToggleTask = useCallback(
-    async (task: any, event: any) => {
+    async (task: any, event?: any) => {
       event?.stopPropagation?.();
-
       if (navigateToFeedbackTask(task)) {
         return;
       }
-
-      if (!activityId) {
-        console.warn('[ActivityCard] Missing activity id for toggleTaskCompletion');
-        return;
-      }
-
       const taskIdRaw = task?.id ?? task?.task_id;
       if (!taskIdRaw) {
         return;
       }
+      if (!activityId) {
+        console.warn('[ActivityCard] Missing activity id for toggleTaskCompletion');
+        return;
+      }
       const taskId = String(taskIdRaw);
-
-      const taskIndex = optimisticTasks.findIndex((t) => {
-        const candidate = t?.id ?? t?.task_id;
-        return candidate !== null && candidate !== undefined && String(candidate) === taskId;
+      const taskIndex = optimisticTasks.findIndex((candidate) => {
+        const candidateId = candidate?.id ?? candidate?.task_id;
+        return candidateId !== null && candidateId !== undefined && String(candidateId) === taskId;
       });
-
       if (taskIndex === -1) {
         console.error('Task not found:', taskId);
         return;
       }
 
       const previousCompleted = !!optimisticTasks[taskIndex].completed;
-
-      // Optimistic update
       const newTasks = [...optimisticTasks];
       newTasks[taskIndex] = { ...optimisticTasks[taskIndex], completed: !previousCompleted };
       setOptimisticTasks(newTasks);
@@ -230,17 +216,14 @@ export default function ActivityCard({
         refreshData();
       } catch (error) {
         console.error('❌ Error toggling task, rolling back:', error);
-
-        // Rollback on error
         const rollbackTasks = [...optimisticTasks];
         rollbackTasks[taskIndex] = { ...optimisticTasks[taskIndex], completed: previousCompleted };
         setOptimisticTasks(rollbackTasks);
       }
     },
-    [activityId, navigateToFeedbackTask, optimisticTasks, refreshData, toggleTaskCompletion],
+    [activityId, navigateToFeedbackTask, optimisticTasks, refreshData, toggleTaskCompletion]
   );
 
-  // Memoized modal close handler
   const handleModalClose = useCallback(() => {
     setIsTaskModalOpen(false);
     setActiveTaskId(null);
@@ -279,17 +262,18 @@ export default function ActivityCard({
 
   const gradientColors = useMemo(
     () => getCategoryGradientFromColor(resolvedCategoryMeta?.color),
-    [resolvedCategoryMeta?.color],
+    [resolvedCategoryMeta?.color]
   );
 
   const categoryEmoji = useMemo(
     () => getCategoryEmoji(resolvedCategoryMeta?.emoji),
-    [resolvedCategoryMeta?.emoji],
+    [resolvedCategoryMeta?.emoji]
   );
 
   const dayLabel = format(resolvedDate, 'EEE. d. MMM.', { locale: da });
   const timeLabel = format(resolvedDate, 'HH:mm');
   const location = activity.location || activity.category_location || '';
+
   const intensityValue = useMemo(() => {
     const raw = activity?.intensity ?? activity?.activity_intensity;
     return typeof raw === 'number' ? raw : null;
@@ -297,25 +281,45 @@ export default function ActivityCard({
 
   const intensityEnabled = useMemo(() => resolveActivityIntensityEnabled(activity), [activity]);
   const hasIntensityValue = typeof intensityValue === 'number';
-  const allowQuickEdit = typeof onPressIntensity === 'function';
-  const showIntensityRow = allowQuickEdit || intensityEnabled || hasIntensityValue;
-  const intensityMissing = !hasIntensityValue || !intensityEnabled;
+  const showIntensityRow = intensityEnabled || hasIntensityValue;
+  const intensityMissing = !hasIntensityValue;
 
-  const taskListItems = useMemo(() => {
+  const taskListItems = useMemo<TaskListItem[]>(() => {
     const baseTasks = Array.isArray(optimisticTasks) ? optimisticTasks : [];
-    const rows = showIntensityRow ? [{ type: 'intensity' as const }] : [];
-    return [...rows, ...baseTasks.map((task) => ({ type: 'task' as const, task }))];
-  }, [showIntensityRow, optimisticTasks]);
+    const items: TaskListItem[] = [];
+
+    if (showIntensityRow) {
+      const fallbackId = activityId ?? String(activity?.id ?? 'activity');
+      items.push({ type: 'intensity', key: `intensity-${fallbackId}` });
+    }
+
+    baseTasks.forEach((task, index) => {
+      const rawId = task?.id ?? task?.task_id;
+      const trimmedId =
+        typeof rawId === 'number' || typeof rawId === 'string' ? String(rawId).trim() : '';
+      const fallbackKey = trimmedId || `${activityId ?? 'activity'}-${index}`;
+      items.push({ type: 'task', key: `task-${fallbackKey}`, task });
+    });
+
+    return items;
+  }, [activity?.id, activityId, optimisticTasks, showIntensityRow]);
 
   const shouldRenderTasksSection = showTasks && taskListItems.length > 0;
 
   const handleIntensityRowPress = useCallback(
-    (event: any) => {
+    (event?: any) => {
       event?.stopPropagation?.();
-      if (!onPressIntensity) return;
-      onPressIntensity();
+      if (!activityId) return;
+      suppressCardPressRef.current = true;
+      router.push({
+        pathname: '/activity-details',
+        params: { id: String(activityId), activityId: String(activityId), openIntensity: '1' },
+      });
+      setTimeout(() => {
+        suppressCardPressRef.current = false;
+      }, 0);
     },
-    [onPressIntensity],
+    [activityId, router]
   );
 
   return (
@@ -370,24 +374,18 @@ export default function ActivityCard({
             </View>
           </View>
 
-          {/* Tasks Section - Only show if showTasks is true and tasks exist */}
+          {/* Tasks Section */}
           {shouldRenderTasksSection && (
             <View style={styles.tasksSection}>
               <View style={styles.tasksDivider} />
               {taskListItems.map((item) => {
                 if (item.type === 'intensity') {
-                  const intensityKey = activityId ?? `activity-${activity?.title ?? 'unknown'}`;
                   return (
                     <TouchableOpacity
-                      key={`intensity-${intensityKey}`}
-                      style={[
-                        styles.taskRow,
-                        !onPressIntensity && styles.intensityTaskRowDisabled,
-                        intensityMissing && styles.intensityMissingBorder,
-                      ]}
+                      key={item.key}
+                      style={styles.taskRow}
                       onPress={handleIntensityRowPress}
-                      activeOpacity={onPressIntensity ? 0.7 : 1}
-                      disabled={!onPressIntensity}
+                      activeOpacity={0.7}
                     >
                       <View style={styles.intensityRowInner}>
                         <View style={styles.taskCheckboxArea}>
@@ -407,28 +405,28 @@ export default function ActivityCard({
                             )}
                           </View>
                         </View>
+
                         <View style={styles.taskContent}>
                           <View style={styles.taskTitleRow}>
-                            <Text
-                              style={[
-                                styles.taskTitle,
-                                !intensityMissing && styles.taskTitleCompleted,
-                              ]}
-                              numberOfLines={1}
-                            >
+                            <Text style={styles.taskTitle} numberOfLines={1}>
                               Intensitet
                             </Text>
+
                             <Text
                               style={[
                                 styles.intensityTaskValue,
-                                intensityMissing && styles.intensityTaskValueMissing,
+                                intensityMissing && styles.intensityTaskValueNeutral,
                               ]}
                             >
                               {intensityMissing ? 'Ikke angivet' : `${intensityValue}/10`}
                             </Text>
                           </View>
-                          {allowQuickEdit && (
-                            <Text style={styles.intensityTaskHelper}>Tryk for at angive intensitet</Text>
+
+                          {/* Helper text ONLY when enabled AND missing */}
+                          {intensityEnabled && intensityMissing && (
+                            <Text style={styles.intensityTaskHelper}>
+                              Tryk for at angive intensitet
+                            </Text>
                           )}
                         </View>
                       </View>
@@ -438,13 +436,7 @@ export default function ActivityCard({
 
                 const task = item.task;
                 return (
-                  <React.Fragment
-                    key={
-                      String(task?.id ?? '').trim() ||
-                      String(task?.task_id ?? '').trim() ||
-                      `${String(activityId ?? 'activity')}-${String(task?.title ?? 'task')}`
-                    }
-                  >
+                  <React.Fragment key={item.key}>
                     <View style={styles.taskRow}>
                       <TouchableOpacity
                         style={styles.taskCheckboxArea}
@@ -652,13 +644,15 @@ const styles = StyleSheet.create({
     textDecorationLine: 'line-through',
     color: 'rgba(255, 255, 255, 0.6)',
   },
+
   intensityTaskValue: {
     fontSize: 14,
     fontWeight: '700',
     color: '#4CAF50',
   },
-  intensityTaskValueMissing: {
-    color: 'rgba(255, 255, 255, 0.6)',
+  intensityTaskValueNeutral: {
+    // "Ikke angivet" should NOT look disabled/dimmed
+    color: 'rgba(255, 255, 255, 0.95)',
   },
   intensityRowInner: {
     flexDirection: 'row',
@@ -669,14 +663,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: 'rgba(255, 255, 255, 0.8)',
     marginTop: 4,
-  },
-  intensityTaskRowDisabled: {
-    opacity: 0.5,
-  },
-  intensityMissingBorder: {
-    borderWidth: 2,
-    borderColor: '#EF4444',
-    borderRadius: 12,
   },
 
   // Reminder Badge

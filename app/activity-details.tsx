@@ -351,6 +351,7 @@ interface ActivityDetailsContentProps {
   onRefresh: () => void;
   onActivityUpdated: (activity: Activity) => void;
   initialFeedbackTaskId?: string | null;
+  initialOpenIntensity?: boolean;
 }
 
 interface TemplateFeedbackSummary {
@@ -467,6 +468,7 @@ function ActivityDetailsContent({
   onRefresh: _onRefresh,
   onActivityUpdated,
   initialFeedbackTaskId,
+  initialOpenIntensity,
 }: ActivityDetailsContentProps) {
   const bgColor = isDark ? '#1a1a1a' : colors.background;
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
@@ -510,6 +512,8 @@ function ActivityDetailsContent({
     typeof activity.intensity === 'number' ? activity.intensity : null
   );
   const [isIntensityModalSaving, setIsIntensityModalSaving] = useState(false);
+
+  const [pendingOpenIntensity, setPendingOpenIntensity] = useState<boolean>(initialOpenIntensity ?? false);
 
   const resolveFeedbackTemplateId = useCallback(
     (task: FeedbackTask | null | undefined): string | null =>
@@ -644,6 +648,29 @@ function ActivityDetailsContent({
   useEffect(() => {
     setIntensityModalDraft(currentActivityIntensity);
   }, [currentActivityIntensity]);
+
+  useEffect(() => {
+    setPendingOpenIntensity(initialOpenIntensity ?? false);
+  }, [activity.id, initialOpenIntensity]);
+
+  useEffect(() => {
+    if (!pendingOpenIntensity) {
+      return;
+    }
+
+    setPendingOpenIntensity(false);
+
+    if (!showIntensityTaskRow) {
+      const message = activity.isExternal
+        ? 'Denne aktivitet kommer fra en ekstern kalender og understøtter ikke intensitet.'
+        : 'Intensitet er ikke aktiveret for denne aktivitet.';
+      Alert.alert('Intensitet ikke tilgængelig', message);
+      return;
+    }
+
+    setIntensityModalDraft(currentActivityIntensity);
+    setIsIntensityModalVisible(true);
+  }, [activity.isExternal, currentActivityIntensity, pendingOpenIntensity, showIntensityTaskRow]);
 
   // Recurring event conversion state
   const [convertToRecurring, setConvertToRecurring] = useState(false);
@@ -1210,7 +1237,6 @@ function ActivityDetailsContent({
                     style={[
                       styles.taskTitle,
                       { color: textColor },
-                      intensityTaskCompleted && styles.taskCompleted,
                     ]}
                   >
                     Intensitet
@@ -2511,6 +2537,7 @@ export default function ActivityDetailsScreen() {
     activityId?: string | string[];
     activity_id?: string | string[];
     openFeedbackTaskId?: string | string[];
+    openIntensity?: string | string[];
   }>();
   const { categories } = useFootball();
   const { userRole } = useUserRole();
@@ -2533,6 +2560,8 @@ export default function ActivityDetailsScreen() {
 
   const activityId = normalizeParam(params.id ?? params.activityId ?? params.activity_id);
   const initialFeedbackTaskId = normalizeParam(params.openFeedbackTaskId);
+  const openIntensityParam = normalizeParam(params.openIntensity);
+  const initialOpenIntensity = openIntensityParam === '1' || openIntensityParam === 'true';
 
   const [activity, setActivity] = useState<Activity | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -2646,6 +2675,7 @@ export default function ActivityDetailsScreen() {
       onRefresh={handleRefresh}
       onActivityUpdated={handleActivityUpdated}
       initialFeedbackTaskId={initialFeedbackTaskId}
+      initialOpenIntensity={initialOpenIntensity}
     />
   );
 }
@@ -3035,7 +3065,7 @@ const styles = StyleSheet.create({
   },
   taskCompleted: {
     textDecorationLine: 'line-through',
-    color: 'rgba(255, 255, 255, 0.6)',
+    opacity: 0.6,
   },
   intensityTaskValue: {
     fontSize: 14,
@@ -3050,16 +3080,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   feedbackHelperText: {
-    marginTop: 6,
     fontSize: 13,
+    marginTop: 4,
   },
-
   emptyTasksContainer: {
     alignItems: 'center',
-    padding: 32,
+    paddingVertical: 24,
+    paddingHorizontal: 16,
   },
   emptyTasksText: {
     fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   emptyTasksHint: {
     fontSize: 14,
