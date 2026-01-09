@@ -32,7 +32,7 @@ export interface HeatmapRow {
   focusId: string | null;
   focusName: string;
   color?: string;
-  weeks: Array<{ weekStart: string; label: string; count: number }>;
+  weeks: { weekStart: string; label: string; count: number }[];
   total: number;
 }
 

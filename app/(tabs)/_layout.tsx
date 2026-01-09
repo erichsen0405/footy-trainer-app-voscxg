@@ -59,7 +59,6 @@ function IOSTabLayout({
   return (
     <NativeTabs
       tintColor={colors.primary}
-      barTintColor="#FFFFFF"
       unselectedItemTintColor="#8E8E93"
       translucent={false}
       style={{

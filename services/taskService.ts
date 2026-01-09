@@ -402,7 +402,7 @@ export const taskService = {
 
   async toggleTaskCompletion(taskId: string, signal?: AbortSignal): Promise<TaskCompletionEvent> {
     const nowIso = new Date().toISOString();
-    const lookups: Array<{ table: 'activity_tasks' | 'external_event_tasks'; activityColumn: 'activity_id' | 'local_meta_id' }> = [
+    const lookups: { table: 'activity_tasks' | 'external_event_tasks'; activityColumn: 'activity_id' | 'local_meta_id' }[] = [
       { table: 'activity_tasks', activityColumn: 'activity_id' },
       { table: 'external_event_tasks', activityColumn: 'local_meta_id' },
     ];
@@ -458,7 +458,7 @@ export const taskService = {
 
   async setTaskCompletion(taskId: string, completed: boolean, signal?: AbortSignal): Promise<TaskCompletionEvent> {
     const nowIso = new Date().toISOString();
-    const lookups: Array<{ table: 'activity_tasks' | 'external_event_tasks'; activityColumn: 'activity_id' | 'local_meta_id' }> = [
+    const lookups: { table: 'activity_tasks' | 'external_event_tasks'; activityColumn: 'activity_id' | 'local_meta_id' }[] = [
       { table: 'activity_tasks', activityColumn: 'activity_id' },
       { table: 'external_event_tasks', activityColumn: 'local_meta_id' },
     ];

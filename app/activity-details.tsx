@@ -14,8 +14,7 @@ import {
   KeyboardAvoidingView,
   Switch,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import SmartVideoPlayer from '@/components/SmartVideoPlayer';
 
 import { useFootball } from '@/contexts/FootballContext';
 
@@ -31,11 +30,13 @@ import { CreateActivityTaskModal } from '@/components/CreateActivityTaskModal';
 import { deleteSingleExternalActivity } from '@/utils/deleteExternalActivities';
 import { TaskDescriptionRenderer } from '@/components/TaskDescriptionRenderer';
 import { supabase } from '@/app/integrations/supabase/client';
-import { FeedbackTaskModal } from '@/components/FeedbackTaskModal';
+import { TaskScoreNoteModal, TaskScoreNoteModalPayload } from '@/components/TaskScoreNoteModal';
 import { fetchSelfFeedbackForTemplates, upsertSelfFeedback } from '@/services/feedbackService';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
-import { IntensityPickerModal } from '@/components/IntensityPickerModal';
 import { resolveActivityIntensityEnabled } from '@/utils/activityIntensity';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import TaskDetailsModal from '@/components/TaskDetailsModal';
 
 const FALLBACK_COLORS = {
   primary: '#3B82F6',
@@ -69,10 +70,10 @@ const DAYS_OF_WEEK = [
   { label: 'Lør', value: 6 },
 ];
 
-const RECURRENCE_OPTIONS: Array<{
+const RECURRENCE_OPTIONS: {
   label: string;
   value: 'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly';
-}> = [
+}[] = [
   { label: 'Dagligt', value: 'daily' },
   { label: 'Hver uge', value: 'weekly' },
   { label: 'Hver anden uge', value: 'biweekly' },
@@ -99,201 +100,401 @@ const timeToMinutes = (value?: string | null): number | null => {
   return hours * 60 + minutes;
 };
 
+const getTaskVideoUrl = (task: any): string | null => {
+  if (!task) return null;
+  const camel = typeof task.videoUrl === 'string' ? task.videoUrl.trim() : '';
+  if (camel) return camel;
+  const snake = typeof task.video_url === 'string' ? task.video_url.trim() : '';
+  return snake || null;
+};
+
+// --- Supabase select strings (with/without optional video_url) ---
+const INTERNAL_SELECT_WITH_VIDEO = `
+  id,
+  title,
+  activity_date,
+  activity_time,
+  activity_end_time,
+  location,
+  category_id,
+  intensity,
+  intensity_enabled,
+  is_external,
+  external_calendar_id,
+  external_event_id,
+  series_id,
+  series_instance_date,
+  activity_categories (
+    id,
+    name,
+    color,
+    emoji
+  ),
+  activity_tasks (
+    id,
+    title,
+    description,
+    completed,
+    reminder_minutes,
+    task_template_id,
+    video_url
+  )
+`;
+
+const INTERNAL_SELECT_NO_VIDEO = `
+  id,
+  title,
+  activity_date,
+  activity_time,
+  activity_end_time,
+  location,
+  category_id,
+  intensity,
+  intensity_enabled,
+  is_external,
+  external_calendar_id,
+  external_event_id,
+  series_id,
+  series_instance_date,
+  activity_categories (
+    id,
+    name,
+    color,
+    emoji
+  ),
+  activity_tasks (
+    id,
+    title,
+    description,
+    completed,
+    reminder_minutes,
+    task_template_id
+  )
+`;
+
+const EXTERNAL_META_SELECT_WITH_VIDEO = `
+  id,
+  external_event_id,
+  category_id,
+  local_title_override,
+  activity_categories (
+    id,
+    name,
+    color,
+    emoji
+  ),
+  events_external (
+    id,
+    title,
+    location,
+    start_date,
+    start_time,
+    end_time,
+    provider_calendar_id,
+    raw_payload
+  ),
+  external_event_tasks (
+    id,
+    task_template_id,
+    title,
+    description,
+    completed,
+    reminder_minutes,
+    video_url
+  )
+`;
+
+const EXTERNAL_META_SELECT_NO_VIDEO = `
+  id,
+  external_event_id,
+  category_id,
+  local_title_override,
+  activity_categories (
+    id,
+    name,
+    color,
+    emoji
+  ),
+  events_external (
+    id,
+    title,
+    location,
+    start_date,
+    start_time,
+    end_time,
+    provider_calendar_id,
+    raw_payload
+  ),
+  external_event_tasks (
+    id,
+    task_template_id,
+    title,
+    description,
+    completed,
+    reminder_minutes
+  )
+`;
+
+function isMissingColumn(err: any, colName: string): boolean {
+  const needle = String(colName ?? '').toLowerCase();
+  if (!needle) return false;
+  const hay = [
+    err?.message,
+    err?.details,
+    err?.hint,
+    err?.code,
+  ]
+    .filter(Boolean)
+    .map((v) => String(v).toLowerCase())
+    .join(' | ');
+  return hay.includes(needle);
+}
+
+async function selectSingleWithOptionalColumn<T>(opts: {
+  table: string;
+  selectWith: string;
+  selectWithout: string;
+  eqColumn: string;
+  eqValue: string;
+  optionalColumnName: string; // e.g. 'video_url'
+  context: string; // for dev logs
+}): Promise<{ data: T | null; error: any | null; usedFallback: boolean }> {
+  const { table, selectWith, selectWithout, eqColumn, eqValue, optionalColumnName, context } = opts;
+
+  const first = await supabase.from(table).select(selectWith).eq(eqColumn, eqValue).single();
+  if (!first.error) return { data: (first.data as T) ?? null, error: null, usedFallback: false };
+
+  if (__DEV__) {
+    console.log(`[ActivityDetails][${context}] select(with optional) failed`, {
+      table,
+      eqColumn,
+      eqValue,
+      message: first.error?.message,
+      details: first.error?.details,
+      hint: first.error?.hint,
+      code: first.error?.code,
+    });
+  }
+
+  if (!isMissingColumn(first.error, optionalColumnName)) {
+    return { data: null, error: first.error, usedFallback: false };
+  }
+
+  const second = await supabase.from(table).select(selectWithout).eq(eqColumn, eqValue).single();
+
+  if (__DEV__) {
+    console.log(`[ActivityDetails][${context}] retry(select without "${optionalColumnName}")`, {
+      ok: !second.error,
+      table,
+      eqColumn,
+      eqValue,
+      message: second.error?.message,
+      details: second.error?.details,
+      hint: second.error?.hint,
+      code: second.error?.code,
+    });
+  }
+
+  return { data: (second.data as T) ?? null, error: second.error ?? null, usedFallback: true };
+}
+
 // Helper function to fetch activity directly from database
 async function fetchActivityFromDatabase(activityId: string): Promise<Activity | null> {
   try {
-    const { data: internalActivity, error: internalError } = await supabase
-      .from('activities')
-      .select(
-        `
-        id,
-        title,
-        activity_date,
-        activity_time,
-        activity_end_time,
-        location,
-        category_id,
-        intensity,
-        intensity_enabled,
-        is_external,
-        external_calendar_id,
-        external_event_id,
-        series_id,
-        series_instance_date,
-        activity_categories (
-          id,
-          name,
-          color,
-          emoji
-        ),
-        activity_tasks (
-          id,
-          title,
-          description,
-          completed,
-          reminder_minutes,
-          task_template_id
-        )
-      `,
-      )
-      .eq('id', activityId)
-      .single();
+    const { data: internalActivity, error: internalError } = await selectSingleWithOptionalColumn<any>({
+      table: 'activities',
+      selectWith: INTERNAL_SELECT_WITH_VIDEO,
+      selectWithout: INTERNAL_SELECT_NO_VIDEO,
+      eqColumn: 'id',
+      eqValue: activityId,
+      optionalColumnName: 'video_url',
+      context: `activities.id=${activityId}`,
+    });
 
     if (!internalError && internalActivity) {
+      const internalActivityAny = internalActivity as any;
       const category: ActivityCategory = {
-        id: internalActivity.activity_categories?.id || internalActivity.category_id || '',
-        name: internalActivity.activity_categories?.name || 'Ukendt kategori',
-        color: internalActivity.activity_categories?.color || '#999999',
-        emoji: internalActivity.activity_categories?.emoji || '❓',
+        id: internalActivityAny.activity_categories?.id || internalActivityAny.category_id || '',
+        name: internalActivityAny.activity_categories?.name || 'Ukendt kategori',
+        color: internalActivityAny.activity_categories?.color || '#999999',
+        emoji: internalActivityAny.activity_categories?.emoji || '❓',
       };
 
-      const tasks: FeedbackTask[] = (internalActivity.activity_tasks ?? []).map((task: any) => {
+      const tasks: FeedbackTask[] = (internalActivityAny.activity_tasks ?? []).map((task: any) => {
         const markerTemplateId = parseTemplateIdFromMarker(task.description || '');
         const isFeedbackTask = !task.task_template_id && !!markerTemplateId;
-
-        return {
+        const resolvedVideo = getTaskVideoUrl(task);
+        const mapped: any = {
           id: task.id,
           title: task.title,
           description: task.description || '',
           completed: task.completed,
           isTemplate: false,
           categoryIds: [],
-          reminder: task.reminder_minutes,
+          reminder_minutes: task.reminder_minutes ?? null,
+          reminder: task.reminder_minutes ?? null,
           subtasks: [],
+          videoUrl: resolvedVideo ?? undefined,
+          video_url: resolvedVideo,
           taskTemplateId: task.task_template_id,
           feedbackTemplateId: markerTemplateId,
           isFeedbackTask,
         };
+        return mapped as FeedbackTask;
       });
 
       return {
-        id: internalActivity.id,
-        title: internalActivity.title,
-        date: new Date(internalActivity.activity_date),
-        time: internalActivity.activity_time,
-        endTime: internalActivity.activity_end_time ?? undefined,
-        location: internalActivity.location || '',
+        id: internalActivityAny.id,
+        title: internalActivityAny.title,
+        date: new Date(internalActivityAny.activity_date),
+        time: internalActivityAny.activity_time,
+        endTime: internalActivityAny.activity_end_time ?? undefined,
+        location: internalActivityAny.location || '',
         category,
         tasks,
         isExternal: false,
-        externalCalendarId: internalActivity.external_calendar_id ?? undefined,
-        externalEventId: internalActivity.external_event_id ?? undefined,
-        seriesId: internalActivity.series_id ?? undefined,
-        seriesInstanceDate: internalActivity.series_instance_date
-          ? new Date(internalActivity.series_instance_date)
+        externalCalendarId: internalActivityAny.external_calendar_id ?? undefined,
+        externalEventId: internalActivityAny.external_event_id ?? undefined,
+        seriesId: internalActivityAny.series_id ?? undefined,
+        seriesInstanceDate: internalActivityAny.series_instance_date
+          ? new Date(internalActivityAny.series_instance_date)
           : undefined,
-        intensity: typeof internalActivity.intensity === 'number' ? internalActivity.intensity : null,
-        intensityEnabled: Boolean(internalActivity.intensity_enabled),
+        intensity: typeof internalActivityAny.intensity === 'number' ? internalActivityAny.intensity : null,
+        intensityEnabled: Boolean(internalActivityAny.intensity_enabled),
       };
     }
 
-    const selectExternalMeta = async (column: 'id' | 'external_event_id') =>
-      supabase
-        .from('events_local_meta')
-        .select(
-          `
-          id,
-          external_event_id,
-          category_id,
-          local_title_override,
-          activity_categories (
-            id,
-            name,
-            color,
-            emoji
-          ),
-          events_external (
-            id,
-            title,
-            location,
-            start_date,
-            start_time,
-            end_time,
-            provider_calendar_id,
-            raw_payload
-          ),
-          external_event_tasks (
-            id,
-            task_template_id,
-            title,
-            description,
-            completed,
-            reminder_minutes
-          )
-        `,
-        )
-        .eq(column, activityId)
-        .single();
+    const selectExternalMetaBy = async (column: 'id' | 'external_event_id') =>
+      selectSingleWithOptionalColumn<any>({
+        table: 'events_local_meta',
+        selectWith: EXTERNAL_META_SELECT_WITH_VIDEO,
+        selectWithout: EXTERNAL_META_SELECT_NO_VIDEO,
+        eqColumn: column,
+        eqValue: activityId,
+        optionalColumnName: 'video_url',
+        context: `events_local_meta.${column}=${activityId}`,
+      });
 
-    console.log('🔍 Trying events_local_meta...');
-    let { data: localMeta, error: metaError } = await selectExternalMeta('id');
-
+    let { data: localMeta, error: metaError } = await selectExternalMetaBy('id');
     if (metaError || !localMeta) {
-      const fallback = await selectExternalMeta('external_event_id');
+      const fallback = await selectExternalMetaBy('external_event_id');
       localMeta = fallback.data ?? null;
       metaError = fallback.error ?? metaError;
     }
 
-    if (!metaError && localMeta && localMeta.events_external) {
-      console.log('✅ Found external activity:', localMeta.events_external.title);
-
-      const externalEvent = localMeta.events_external;
-      const eventTitle = localMeta.local_title_override || externalEvent.title;
+    if (!metaError && localMeta && (localMeta as any).events_external) {
+      const localMetaAny = localMeta as any;
+      const externalEvent = localMetaAny.events_external;
+      const eventTitle = localMetaAny.local_title_override || externalEvent.title;
 
       let resolvedCategory: ActivityCategory | null = null;
-
-      if (localMeta.activity_categories) {
+      if (localMetaAny.activity_categories) {
         resolvedCategory = {
-          id: localMeta.activity_categories.id,
-          name: localMeta.activity_categories.name,
-          color: localMeta.activity_categories.color,
-          emoji: localMeta.activity_categories.emoji,
+          id: localMetaAny.activity_categories.id,
+          name: localMetaAny.activity_categories.name,
+          color: localMetaAny.activity_categories.color,
+          emoji: localMetaAny.activity_categories.emoji,
         };
-      } else {
-        resolvedCategory = null;
       }
 
-      const fallbackCategory: ActivityCategory = resolvedCategory ?? {
-        id: '',
-        name: 'Unknown',
-        color: '#999999',
-        emoji: '❓',
-      };
-
       return {
-        id: localMeta.id,
+        id: localMetaAny.id,
         title: eventTitle,
         date: new Date(externalEvent.start_date),
         time: externalEvent.start_time,
         endTime: externalEvent.end_time,
         location: externalEvent.location || '',
-        category: fallbackCategory,
-        tasks: (localMeta.external_event_tasks || []).map((task: any) => {
+        category:
+          resolvedCategory ?? {
+            id: '',
+            name: 'Unknown',
+            color: '#999999',
+            emoji: '❓',
+          },
+        tasks: (localMetaAny.external_event_tasks || []).map((task: any) => {
           const markerTemplateId = parseTemplateIdFromMarker(task.description || '');
           const isFeedbackTask = !task.task_template_id && !!markerTemplateId;
-
-          return {
+          const resolvedVideo = getTaskVideoUrl(task);
+          const mapped: any = {
             id: task.id,
             title: task.title,
             description: task.description || '',
             completed: task.completed,
             isTemplate: false,
             categoryIds: [],
-            reminder: task.reminder_minutes,
+            reminder_minutes: task.reminder_minutes ?? null,
+            reminder: task.reminder_minutes ?? null,
             subtasks: [],
+            videoUrl: resolvedVideo ?? undefined,
+            video_url: resolvedVideo,
             taskTemplateId: task.task_template_id,
             feedbackTemplateId: markerTemplateId,
             isFeedbackTask,
-          } as FeedbackTask;
+          };
+          return mapped as FeedbackTask;
         }),
         isExternal: true,
         externalCalendarId: externalEvent.provider_calendar_id,
-        externalEventId: localMeta.external_event_id,
+        externalEventId: localMetaAny.external_event_id,
         intensity: null,
+        intensityEnabled: false,
       };
     }
 
-    console.log('❌ Activity not found in database');
+    // --- Extra fallback: events_external direct (prevents hard failure on iOS deep links) ---
+    if (__DEV__ && metaError) {
+      console.log('[ActivityDetails] events_local_meta lookup failed; falling back to events_external', {
+        activityId,
+        message: metaError?.message,
+        details: metaError?.details,
+        hint: metaError?.hint,
+        code: metaError?.code,
+      });
+    }
+
+    const { data: externalOnly, error: externalOnlyError } = await supabase
+      .from('events_external')
+      .select('id,title,location,start_date,start_time,end_time,provider_calendar_id')
+      .eq('id', activityId)
+      .single();
+
+    if (!externalOnlyError && externalOnly) {
+      return {
+        id: String(externalOnly.id),
+        title: externalOnly.title ?? 'Ekstern aktivitet',
+        date: new Date(externalOnly.start_date),
+        time: externalOnly.start_time,
+        endTime: externalOnly.end_time ?? undefined,
+        location: externalOnly.location ?? '',
+        category: {
+          id: '',
+          name: 'Unknown',
+          color: '#999999',
+          emoji: '❓',
+        },
+        tasks: [],
+        isExternal: true,
+        externalCalendarId: externalOnly.provider_calendar_id ?? undefined,
+        externalEventId: String(externalOnly.id),
+        intensity: null,
+        intensityEnabled: false,
+      };
+    }
+
+    if (__DEV__) {
+      console.log('[ActivityDetails] Activity not found after fallbacks', {
+        activityId,
+        externalOnlyError: externalOnlyError
+          ? {
+              message: externalOnlyError.message,
+              details: externalOnlyError.details,
+              hint: externalOnlyError.hint,
+              code: externalOnlyError.code,
+            }
+          : null,
+      });
+    }
+
     return null;
   } catch (error) {
     console.error('❌ Error fetching activity from database:', error);
@@ -348,7 +549,6 @@ interface ActivityDetailsContentProps {
   isAdmin: boolean;
   isDark: boolean;
   onBack: () => void;
-  onRefresh: () => void;
   onActivityUpdated: (activity: Activity) => void;
   initialFeedbackTaskId?: string | null;
   initialOpenIntensity?: boolean;
@@ -459,22 +659,17 @@ type TaskListItem =
       key: string;
     };
 
-function ActivityDetailsContent({
-  activity,
-  categories,
-  isAdmin,
-  isDark,
-  onBack,
-  onRefresh: _onRefresh,
-  onActivityUpdated,
-  initialFeedbackTaskId,
-  initialOpenIntensity,
-}: ActivityDetailsContentProps) {
-  const bgColor = isDark ? '#1a1a1a' : colors.background;
-  const cardBgColor = isDark ? '#2a2a2a' : colors.card;
-  const textColor = isDark ? '#e3e3e3' : colors.text;
-  const textSecondaryColor = isDark ? '#9aa0a6' : colors.textSecondary;
-
+function ActivityDetailsContent(props: ActivityDetailsContentProps) {
+  const {
+    activity,
+    categories,
+    isAdmin,
+    isDark,
+    onBack,
+    onActivityUpdated,
+    initialFeedbackTaskId,
+    initialOpenIntensity,
+  } = props;
   const router = useRouter();
   const {
     updateActivitySingle,
@@ -499,10 +694,53 @@ function ActivityDetailsContent({
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [tasksState, setTasksState] = useState<FeedbackTask[]>((activity.tasks as FeedbackTask[]) || []);
 
-  const [selfFeedbackByTemplate, setSelfFeedbackByTemplate] = useState<Record<string, TemplateFeedbackSummary>>({});
-  const [feedbackConfigByTemplate, setFeedbackConfigByTemplate] = useState<Record<string, AfterTrainingFeedbackConfig>>({});
+  // --- Feedback template configs + cached self feedback ---
+  const [feedbackConfigByTemplate, setFeedbackConfigByTemplate] = useState<
+    Record<string, AfterTrainingFeedbackConfig>
+  >({});
+
+  const [selfFeedbackByTemplate, setSelfFeedbackByTemplate] = useState<
+    Record<string, TemplateFeedbackSummary>
+  >({});
+
+  // --- Currently opened feedback modal task ---
   const [feedbackModalTask, setFeedbackModalTask] = useState<FeedbackModalTaskState | null>(null);
+
+  const [selectedNormalTask, setSelectedNormalTask] = useState<FeedbackTask | null>(null);
+  const [isNormalTaskModalVisible, setIsNormalTaskModalVisible] = useState(false);
+  const [isNormalTaskCompleting, setIsNormalTaskCompleting] = useState(false);
+  const normalTaskVideoUrl = useMemo(
+    () => (selectedNormalTask ? getTaskVideoUrl(selectedNormalTask) : null),
+    [selectedNormalTask]
+  );
+
+  const handleNormalTaskComplete = useCallback(async () => {
+    if (!selectedNormalTask || selectedNormalTask.completed) return;
+    setIsNormalTaskCompleting(true);
+    setTasksState(prev =>
+      prev.map(t => (t.id === selectedNormalTask.id ? { ...t, completed: true } : t)),
+    );
+    try {
+      await toggleTaskCompletion(activity.id, selectedNormalTask.id, true);
+      Promise.resolve(refreshData()).catch(() => {});
+      setIsNormalTaskModalVisible(false);
+      setSelectedNormalTask(null);
+    } catch (err) {
+      setTasksState(prev =>
+        prev.map(t => (t.id === selectedNormalTask.id ? { ...t, completed: false } : t)),
+      );
+      Alert.alert('Fejl', 'Kunne ikke markere opgaven som udført. Prøv igen.');
+    } finally {
+      setIsNormalTaskCompleting(false);
+    }
+  }, [selectedNormalTask, activity.id, toggleTaskCompletion, refreshData]);
+  const bgColor = isDark ? '#1a1a1a' : colors.background;
+  const cardBgColor = isDark ? '#2a2a2a' : colors.card;
+  const textColor = isDark ? '#e3e3e3' : colors.text;
+  const textSecondaryColor = isDark ? '#9aa0a6' : colors.textSecondary;
+
   const [isFeedbackSaving, setIsFeedbackSaving] = useState(false);
+  const [feedbackModalError, setFeedbackModalError] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const [pendingFeedbackTaskId, setPendingFeedbackTaskId] = useState<string | null>(initialFeedbackTaskId ?? null);
@@ -512,6 +750,7 @@ function ActivityDetailsContent({
     typeof activity.intensity === 'number' ? activity.intensity : null
   );
   const [isIntensityModalSaving, setIsIntensityModalSaving] = useState(false);
+  const [intensityModalError, setIntensityModalError] = useState<string | null>(null);
 
   const [pendingOpenIntensity, setPendingOpenIntensity] = useState<boolean>(initialOpenIntensity ?? false);
 
@@ -620,6 +859,7 @@ function ActivityDetailsContent({
     if (!templateId) return;
 
     setFeedbackModalTask({ task, templateId });
+    setFeedbackModalError(null);
   }, [pendingFeedbackTaskId, resolveFeedbackTemplateId, tasksState]);
 
   // Edit state
@@ -646,8 +886,9 @@ function ActivityDetailsContent({
   const intensityTaskCompleted = showIntensityTaskRow && typeof activity.intensity === 'number';
 
   useEffect(() => {
+    if (isIntensityModalVisible) return;
     setIntensityModalDraft(currentActivityIntensity);
-  }, [currentActivityIntensity]);
+  }, [currentActivityIntensity, isIntensityModalVisible]);
 
   useEffect(() => {
     setPendingOpenIntensity(initialOpenIntensity ?? false);
@@ -669,6 +910,7 @@ function ActivityDetailsContent({
     }
 
     setIntensityModalDraft(currentActivityIntensity);
+    setIntensityModalError(null);
     setIsIntensityModalVisible(true);
   }, [activity.isExternal, currentActivityIntensity, pendingOpenIntensity, showIntensityTaskRow]);
 
@@ -763,7 +1005,7 @@ function ActivityDetailsContent({
 
     Alert.alert(
       'Duplikér aktivitet',
-      `Er du sikker på at du vil duplikere "${activity.title}"? En kopi vil blive oprettet med samme dato, tid, lokation og opgaver.`,
+      `Er du sikker på at du vil duplikerte "${activity.title}"? En kopi vil blive oprettet med samme dato, tid, lokation og opgaver.`,
       [
         { text: 'Annuller', style: 'cancel' },
         {
@@ -776,7 +1018,7 @@ function ActivityDetailsContent({
               router.replace('/(tabs)/(home)');
             } catch (error: any) {
               console.error('Error duplicating activity:', error);
-              Alert.alert('Fejl', error?.message || 'Kunne ikke duplikere aktiviteten');
+              Alert.alert('Fejl', error?.message || 'Kunne ikke duplikerte aktiviteten');
             } finally {
               setIsDuplicating(false);
             }
@@ -804,47 +1046,46 @@ function ActivityDetailsContent({
   const closeIntensityModal = useCallback(() => {
     if (isIntensityModalSaving) return;
     setIsIntensityModalVisible(false);
+    setIntensityModalError(null);
   }, [isIntensityModalSaving]);
 
   const persistActivityIntensity = useCallback(
     async (value: number | null) => {
       if (!showIntensityTaskRow) return;
-      setIntensityModalDraft(value);
       setIsIntensityModalSaving(true);
       const previousIntensity = typeof activity.intensity === 'number' ? activity.intensity : null;
 
+      setIntensityModalError(null);
       applyActivityUpdates({ intensity: value });
 
       try {
         await updateActivitySingle(activity.id, { intensity: value });
         setIsIntensityModalSaving(false);
         setIsIntensityModalVisible(false);
+        setIntensityModalError(null);
         refreshData();
       } catch (error) {
         console.error('[Details] Error saving intensity:', error);
         applyActivityUpdates({ intensity: previousIntensity });
         setIsIntensityModalSaving(false);
-        Alert.alert('Fejl', 'Kunne ikke gemme intensitet. Prøv igen.');
+        setIntensityModalError('Kunne ikke gemme intensitet. Prøv igen.');
       }
     },
     [activity.id, activity.intensity, applyActivityUpdates, refreshData, showIntensityTaskRow, updateActivitySingle]
   );
 
-  const handleIntensityModalSelect = useCallback(
-    (value: number) => {
-      persistActivityIntensity(value);
+  const handleIntensityModalSave = useCallback(
+    ({ score }: TaskScoreNoteModalPayload) => {
+      persistActivityIntensity(typeof score === 'number' ? score : null);
     },
     [persistActivityIntensity]
   );
-
-  const handleIntensityModalRemove = useCallback(() => {
-    persistActivityIntensity(null);
-  }, [persistActivityIntensity]);
 
   const handleIntensityRowPress = useCallback(() => {
     if (!showIntensityTaskRow) return;
     if (isIntensityModalSaving) return;
     setIntensityModalDraft(typeof activity.intensity === 'number' ? activity.intensity : null);
+    setIntensityModalError(null);
     setIsIntensityModalVisible(true);
   }, [activity.intensity, isIntensityModalSaving, showIntensityTaskRow]);
 
@@ -1078,35 +1319,6 @@ function ActivityDetailsContent({
     );
   };
 
-  const handleToggleTask = useCallback(async (taskId: string) => {
-    if (!activity) return;
-
-    let snapshot: FeedbackTask[] = [];
-    let previousCompleted: boolean | null = null;
-
-    setTasksState(prev => {
-      snapshot = prev.map(task => ({ ...task }));
-      return prev.map(task => {
-        if (String(task.id) !== String(taskId)) {
-          return task;
-        }
-        previousCompleted = task.completed;
-        return { ...task, completed: !task.completed };
-      });
-    });
-
-    const desiredState = previousCompleted === null ? undefined : !previousCompleted;
-
-    try {
-      await toggleTaskCompletion(activity.id, taskId, desiredState);
-      Promise.resolve(refreshData()).catch(() => {});
-    } catch (error) {
-      console.error('Error toggling task:', error);
-      setTasksState(snapshot);
-      Alert.alert('Fejl', 'Kunne ikke opdatere opgaven');
-    }
-  }, [activity, refreshData, toggleTaskCompletion]);
-
   const handleTaskRowPress = useCallback((task: FeedbackTask) => {
     const templateId = resolveFeedbackTemplateId(task);
     const isFeedbackTaskLocal =
@@ -1119,8 +1331,10 @@ function ActivityDetailsContent({
       return;
     }
 
-    handleToggleTask(String(task.id));
-  }, [handleToggleTask, resolveFeedbackTemplateId]);
+    // --- C) Normal task: open shared modal, do not toggle directly ---
+    setSelectedNormalTask(task);
+    setIsNormalTaskModalVisible(true);
+  }, [resolveFeedbackTemplateId]);
 
   const handleDeleteTask = useCallback((taskId: string) => {
     if (!activity || !isAdmin) return;
@@ -1486,27 +1700,89 @@ function ActivityDetailsContent({
   const handleFeedbackClose = useCallback(() => {
     setFeedbackModalTask(null);
     setPendingFeedbackTaskId(null);
+    setFeedbackModalError(null);
   }, []);
 
-  const handleFeedbackSave = useCallback(async (payload: { rating: number | null; note: string }) => {
-    if (!feedbackModalTask) return;
+  const handleFeedbackSave = useCallback(
+    async ({ score, note }: TaskScoreNoteModalPayload) => {
+      if (!feedbackModalTask) return;
 
-    setIsFeedbackSaving(true);
-    try {
-      await (upsertSelfFeedback as any)({
-        templateId: feedbackModalTask.templateId,
-        userId: currentUserId,
-        rating: payload.rating,
-        note: payload.note,
-      });
-      Promise.resolve(refreshData()).catch(() => {});
-    } catch (e) {
-      console.error('[ActivityDetails] feedback save failed:', e);
-    } finally {
-      setIsFeedbackSaving(false);
-      handleFeedbackClose();
-    }
-  }, [currentUserId, feedbackModalTask, handleFeedbackClose, refreshData]);
+      setFeedbackModalError(null);
+      setIsFeedbackSaving(true);
+
+      // --- A) Robust resolvedActivityId logic ---
+      // Only try: a) activity?.id, b) feedbackModalTask.task.activity_id
+      let resolvedActivityId: string | null = null;
+      let triedActivityId: any = null;
+      let triedFeedbackTaskActivityId: any = null;
+
+      try {
+        // a) Current activity.id (from ActivityDetails state)
+        triedActivityId = activity?.id;
+        if (typeof triedActivityId === 'string' && String(triedActivityId).trim().length > 0) {
+          resolvedActivityId = String(triedActivityId).trim();
+        }
+        // b) feedbackModalTask.task.activity_id (if present)
+        if (!resolvedActivityId) {
+          triedFeedbackTaskActivityId = (feedbackModalTask.task as any)?.activity_id;
+          if (typeof triedFeedbackTaskActivityId === 'string' && String(triedFeedbackTaskActivityId).trim().length > 0) {
+            resolvedActivityId = String(triedFeedbackTaskActivityId).trim();
+          }
+        }
+      } catch (err) {
+        // Defensive: should never throw
+        resolvedActivityId = null;
+      }
+
+      if (!resolvedActivityId) {
+        console.error(
+          '[ActivityDetails] Feedback save failed: missing activity_id',
+          {
+            triedActivityId,
+            triedFeedbackTaskActivityId,
+            feedbackModalTask,
+            activity,
+          }
+        );
+        Alert.alert(
+          'Kunne ikke gemme',
+          'Aktiviteten mangler et ID. Prøv at lukke og åbne aktiviteten igen.'
+        );
+        setIsFeedbackSaving(false);
+        return;
+      }
+
+      if (!currentUserId) {
+        console.error('[ActivityDetails] Feedback save failed: missing currentUserId', {
+          currentUserId,
+          feedbackModalTask,
+          activity,
+        });
+        Alert.alert('Kunne ikke gemme', 'Bruger-ID mangler. Prøv at logge ind igen.');
+        setIsFeedbackSaving(false);
+        return;
+      }
+
+      try {
+        await (upsertSelfFeedback as any)({
+          templateId: feedbackModalTask.templateId,
+          userId: currentUserId,
+          rating: score,
+          note,
+          activity_id: String(resolvedActivityId).trim(),
+          activityId: String(resolvedActivityId).trim(), // <-- back-compat: always send both
+        });
+        Promise.resolve(refreshData()).catch(() => {});
+        handleFeedbackClose();
+      } catch (e) {
+        console.error('[ActivityDetails] feedback save failed:', e);
+        setFeedbackModalError('Kunne ikke gemme feedback lige nu. Prøv igen.');
+      } finally {
+        setIsFeedbackSaving(false);
+      }
+    },
+    [currentUserId, feedbackModalTask, handleFeedbackClose, refreshData, activity]
+  );
 
   const feedbackModalConfig = useMemo(() => {
     if (!feedbackModalTask) return undefined;
@@ -1521,6 +1797,16 @@ function ActivityDetailsContent({
       note: cur?.note ?? '',
     };
   }, [feedbackModalTask, selfFeedbackByTemplate]);
+
+  // --- Helper: Strip leading "Feedback på" from a title (case-insensitive, trims) ---
+  function stripLeadingFeedbackPrefix(title: string): string {
+    if (typeof title !== 'string') return title;
+    let t = title.trim();
+    // Remove leading "Feedback på" (case-insensitive), plus any following whitespace
+    t = t.replace(/^feedback på\s*/i, '');
+    // Fallback: if empty, return original
+    return t.length ? t : title;
+  }
 
   return (
     <KeyboardAvoidingView
@@ -1724,7 +2010,7 @@ function ActivityDetailsContent({
               <View style={styles.fieldContainer}>
                 <Text style={[styles.fieldLabel, { color: textColor }]}>Tidspunkt</Text>
                 {Platform.OS === 'web' ? (
-                  // @ts-ignore
+                  // @ts-expect-error Raw HTML time input is only available in the web build
                   <input
                     type="time"
                     value={(editTime || '').substring(0, 5)}
@@ -1781,7 +2067,7 @@ function ActivityDetailsContent({
               <View style={styles.fieldContainer}>
                 <Text style={[styles.fieldLabel, { color: textColor }]}>Sluttidspunkt</Text>
                 {Platform.OS === 'web' ? (
-                  // @ts-ignore
+                  // @ts-expect-error Raw HTML time input is only available in the web build
                   <input
                     type="time"
                     value={editEndTime ? editEndTime.substring(0, 5) : ''}
@@ -1853,7 +2139,7 @@ function ActivityDetailsContent({
                   display="default"
                   onChange={handleTimeChange}
                 />
-              )}
+              ) }
 
               {Platform.OS === 'android' && showEndTimePicker && (
                 <DateTimePicker
@@ -1868,7 +2154,7 @@ function ActivityDetailsContent({
             <View style={styles.fieldContainer}>
               <Text style={[styles.fieldLabel, { color: textColor }]}>Tidspunkt</Text>
               {Platform.OS === 'web' ? (
-                // @ts-ignore
+                // @ts-expect-error Raw HTML time input is only available in the web build
                 <input
                   type="time"
                   value={(editTime || '').substring(0, 5)}
@@ -1932,7 +2218,7 @@ function ActivityDetailsContent({
               <View style={styles.fieldContainer}>
                 <Text style={[styles.fieldLabel, { color: textColor }]}>Sluttidspunkt</Text>
                 {Platform.OS === 'web' ? (
-                  // @ts-ignore
+                  // @ts-expect-error Raw HTML time input is only available in the web build
                   <input
                     type="time"
                     value={editEndTime ? editEndTime.substring(0, 5) : ''}
@@ -2504,25 +2790,64 @@ function ActivityDetailsContent({
         onTaskCreated={handleTaskCreated}
       />
 
-      <FeedbackTaskModal
+      <TaskScoreNoteModal
         visible={!!feedbackModalTask}
-        taskTitle={feedbackModalTask?.task.title ?? 'Opgave'}
-        defaultRating={feedbackModalDefaults.rating}
-        defaultNote={feedbackModalDefaults.note}
-        feedbackConfig={feedbackModalConfig}
+        // --- B) Strip "Feedback på" from task.title for feedback modal only ---
+        title={
+          feedbackModalTask
+            ? `Feedback på ${stripLeadingFeedbackPrefix(feedbackModalTask.task.title ?? 'opgave')}`
+            : 'Feedback på opgave'
+        }
+        introText="Hvordan gik det?"
+        helperText={
+          feedbackModalConfig?.scoreExplanation ?? 'Hvor god var du til dine fokuspunkter'
+        }
+        initialScore={feedbackModalDefaults.rating}
+        initialNote={feedbackModalDefaults.note}
+        enableScore={feedbackModalConfig?.enableScore !== false}
+        enableNote={feedbackModalConfig?.enableNote !== false}
         isSaving={isFeedbackSaving}
-        onClose={handleFeedbackClose}
+        error={feedbackModalError}
         onSave={handleFeedbackSave}
+        onClose={handleFeedbackClose}
       />
 
-      <IntensityPickerModal
+      <TaskScoreNoteModal
         visible={isIntensityModalVisible}
-        subtitle={activity.title}
-        currentValue={intensityModalDraft}
+        title="Feedback på Intensitet"
+        introText="Hvordan gik det?"
+        helperText="1 = let · 10 = maks"
+        initialScore={intensityModalDraft}
+        initialNote=""
+        enableScore
+        enableNote={false}
         isSaving={isIntensityModalSaving}
-        onSelect={handleIntensityModalSelect}
-        onRemove={handleIntensityModalRemove}
+        error={intensityModalError}
+        onSave={handleIntensityModalSave}
         onClose={closeIntensityModal}
+      />
+
+      {/* Normal task modal (shared, glass/soft) */}
+      <TaskDetailsModal
+        visible={isNormalTaskModalVisible && !!selectedNormalTask}
+        title={selectedNormalTask?.title ?? ''}
+        categoryColor={activity.category.color}
+        isDark={isDark}
+        description={selectedNormalTask?.description || undefined}
+        reminderMinutes={
+          selectedNormalTask?.reminder_minutes !== null && selectedNormalTask?.reminder_minutes !== undefined
+            ? selectedNormalTask.reminder_minutes
+            : null
+        }
+        videoUrl={normalTaskVideoUrl}
+        completed={!!selectedNormalTask?.completed}
+        isSaving={isNormalTaskCompleting}
+        onClose={() => {
+          if (isNormalTaskCompleting) return;
+          setIsNormalTaskModalVisible(false);
+          setSelectedNormalTask(null);
+        }}
+        onComplete={handleNormalTaskComplete}
       />
     </KeyboardAvoidingView>
   );
@@ -2672,7 +2997,6 @@ export default function ActivityDetailsScreen() {
       isAdmin={isAdmin}
       isDark={isDark}
       onBack={handleBack}
-      onRefresh={handleRefresh}
       onActivityUpdated={handleActivityUpdated}
       initialFeedbackTaskId={initialFeedbackTaskId}
       initialOpenIntensity={initialOpenIntensity}
@@ -2866,12 +3190,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 8,
     flexWrap: 'wrap',
-    gap: 8,
   },
   intensityPickerChip: {
     borderRadius: 16,
     paddingVertical: 8,
     paddingHorizontal: 12,
+    marginBottom: 8, // ✅ replaces rowGap when wrapping
   },
   intensityPickerChipSelected: {
     backgroundColor: colors.primary,
@@ -2922,7 +3246,6 @@ const styles = StyleSheet.create({
   recurrenceOptions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
   },
   recurrenceOption: {
     borderRadius: 12,
@@ -2940,15 +3263,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     marginTop: 8,
-    gap: 8,
   },
   dayButton: {
     borderRadius: 12,
     paddingVertical: 8,
     paddingHorizontal: 12,
-  },
-  dayButtonText: {
-    fontSize: 16,
+    marginBottom: 8, // ✅ replaces rowGap when wrapping
   },
 
   externalBadge: {
@@ -2960,11 +3280,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
   },
   externalBadgeText: {
     color: '#fff',
     fontWeight: '700',
+    marginLeft: 8, // ✅ replaces rowGap
   },
 
   infoBox: {
@@ -2981,11 +3301,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 12,
-    gap: 8,
   },
   feedbackInfoTitle: {
     fontSize: 16,
     fontWeight: '600',
+    marginLeft: 8, // ✅ replaces rowGap
   },
   feedbackInfoRow: {
     marginBottom: 12,
@@ -3014,11 +3334,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 8,
     paddingHorizontal: 12,
-    gap: 8,
   },
   addTaskHeaderButtonText: {
     color: '#fff',
     fontWeight: '700',
+    marginLeft: 8, // ✅ replaces rowGap between icon + text
   },
 
   taskRow: {
@@ -3097,5 +3417,52 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 4,
     textAlign: 'center',
+  },
+  videoSection: {
+    marginTop: 12,
+    marginBottom: 16,
+  },
+  videoContainer: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+  },
+  sectionLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 6,
+  },
+  description: {
+    fontSize: 16,
+    lineHeight: 22,
+    color: colors.text,
+  },
+  reminderContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  reminderText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginLeft: 8, // ✅ replaces gap
+  },
+  footer: {
+    marginTop: 20,
+  },
+  primaryButton: {
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+  },
+  primaryButtonDisabled: {
+    opacity: 0.5,
+  },
+  primaryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

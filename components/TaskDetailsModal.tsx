@@ -1,476 +1,281 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { memo, useMemo } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
+  ActivityIndicator,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
-  Platform,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
-import { IconSymbol } from '@/components/IconSymbol';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import SmartVideoPlayer from '@/components/SmartVideoPlayer';
-import { colors } from '@/styles/commonStyles';
-import { supabase } from '@/app/integrations/supabase/client';
-import { taskService } from '@/services/taskService';
+import { IconSymbol } from '@/components/IconSymbol';
+import * as CommonStyles from '@/styles/commonStyles';
 
-interface TaskDetailsModalProps {
-  taskId: string;
-  onClose: () => void;
-}
+const FALLBACK_COLORS = {
+  primary: '#3B82F6',
+};
 
-interface TaskData {
-  id: string;
+const colors = ((CommonStyles as any)?.colors as typeof FALLBACK_COLORS | undefined) ?? FALLBACK_COLORS;
+
+export interface TaskDetailsModalProps {
+  visible: boolean;
   title: string;
+  categoryColor: string;
+  isDark: boolean;
   description?: string;
-  completed: boolean;
-  reminder_minutes?: number;
-  video_url?: string;
-  activity_id?: string;
-  local_meta_id?: string;
-  is_external: boolean;
+  reminderMinutes?: number | null;
+  videoUrl?: string | null;
+  completed?: boolean;
+  isSaving?: boolean;
+  onClose: () => void;
+  onComplete: () => void;
 }
 
-// Skeleton component - renders immediately
-const TaskDetailsSkeleton = React.memo(() => {
+function clampColorHex(input?: string | null): string {
+  const v = String(input ?? '').trim();
+  return v.startsWith('#') && (v.length === 7 || v.length === 4) ? v : colors.primary;
+}
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const h = hex.replace('#', '').trim();
+  if (h.length === 3) {
+    const r = parseInt(h[0] + h[0], 16);
+    const g = parseInt(h[1] + h[1], 16);
+    const b = parseInt(h[2] + h[2], 16);
+    return { r, g, b };
+  }
+  if (h.length === 6) {
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    return { r, g, b };
+  }
+  return null;
+}
+
+function mix(hex: string, target: { r: number; g: number; b: number }, t: number): string {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return hex;
+  const r = Math.round(rgb.r + (target.r - rgb.r) * t);
+  const g = Math.round(rgb.g + (target.g - rgb.g) * t);
+  const b = Math.round(rgb.b + (target.b - rgb.b) * t);
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
+
+function lighten(hex: string, t: number): string {
+  return mix(hex, { r: 255, g: 255, b: 255 }, t);
+}
+function darken(hex: string, t: number): string {
+  return mix(hex, { r: 0, g: 0, b: 0 }, t);
+}
+
+function TaskDetailsModalComponent({
+  visible,
+  title,
+  categoryColor,
+  isDark,
+  description,
+  reminderMinutes,
+  videoUrl,
+  completed = false,
+  isSaving = false,
+  onClose,
+  onComplete,
+}: TaskDetailsModalProps) {
+  const base = useMemo(() => clampColorHex(categoryColor), [categoryColor]);
+
+  const disable = completed || isSaving;
+
   return (
-    <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
-      {/* Title skeleton */}
-      <View style={styles.section}>
-        <View style={[styles.skeleton, styles.skeletonTitle]} />
-      </View>
-
-      {/* Description skeleton */}
-      <View style={styles.section}>
-        <View style={[styles.skeleton, styles.skeletonLabel]} />
-        <View style={[styles.skeleton, styles.skeletonDescription]} />
-        <View style={[styles.skeleton, styles.skeletonDescription, { width: '80%' }]} />
-      </View>
-
-      {/* Button skeleton */}
-      <View style={styles.section}>
-        <View style={[styles.skeleton, styles.skeletonButton]} />
-      </View>
-    </ScrollView>
-  );
-});
-
-// Content component - only renders when data is ready
-const TaskDetailsContent = React.memo(({ 
-  task, 
-  completing, 
-  onToggleCompletion 
-}: { 
-  task: TaskData; 
-  completing: boolean;
-  onToggleCompletion: () => void;
-}) => {
-  const formatReminderTime = useCallback((minutes: number) => {
-    if (minutes < 60) {
-      return `${minutes} min før`;
-    }
-    const hours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
-    if (remainingMinutes === 0) {
-      return `${hours} time${hours > 1 ? 'r' : ''} før`;
-    }
-    return `${hours} time${hours > 1 ? 'r' : ''} og ${remainingMinutes} min før`;
-  }, []);
-
-  const videoUrl = useMemo(() => task.video_url || null, [task.video_url]);
-
-  return (
-    <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
-      {/* Task Title */}
-      <View style={styles.section}>
-        <Text style={styles.taskTitle}>{task.title || 'Uden titel'}</Text>
-      </View>
-
-      {/* Video - only render if valid URL exists */}
-      {videoUrl && (
-        <View style={styles.videoSection}>
-          <View style={styles.videoContainer}>
-            <SmartVideoPlayer url={videoUrl} />
-          </View>
-        </View>
-      )}
-
-      {/* Task Description */}
-      {task.description && (
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Beskrivelse</Text>
-          <Text style={styles.description}>{task.description}</Text>
-        </View>
-      )}
-
-      {/* Reminder - read-only, hidden if missing */}
-      {task.reminder_minutes !== null && task.reminder_minutes !== undefined && (
-        <View style={styles.section}>
-          <View style={styles.reminderContainer}>
-            <IconSymbol
-              ios_icon_name="bell.fill"
-              android_material_icon_name="notifications"
-              size={20}
-              color={colors.primary}
-            />
-            <Text style={styles.reminderText}>
-              Påmindelse: {formatReminderTime(task.reminder_minutes)}
-            </Text>
-          </View>
-        </View>
-      )}
-
-      {/* Completion Button */}
-      <View style={styles.section}>
-        <Pressable
-          onPress={onToggleCompletion}
-          disabled={completing}
-          style={({ pressed }) => [
-            styles.completionButton,
-            task.completed && styles.completionButtonCompleted,
-            pressed && styles.completionButtonPressed,
-            completing && styles.completionButtonDisabled,
+    <Modal visible={visible} animationType="fade" transparent statusBarTranslucent onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalRoot}>
+        <View
+          style={[
+            styles.backdropContainer,
+            { backgroundColor: isDark ? 'rgba(0, 0, 0, 0.55)' : 'rgba(7, 16, 35, 0.45)' },
           ]}
         >
-          <View style={styles.completionButtonContent}>
-            <View
-              style={[
-                styles.checkbox,
-                task.completed && styles.checkboxCompleted,
-              ]}
-            >
-              {task.completed && (
-                <IconSymbol
-                  ios_icon_name="checkmark"
-                  android_material_icon_name="check"
-                  size={20}
-                  color={colors.primary}
-                />
-              )}
+          <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} disabled={isSaving} />
+
+          <View style={styles.cardWrapper}>
+            <View style={styles.card}>
+              <View style={styles.header}>
+                <Text style={[styles.title, { color: base }]} numberOfLines={2} ellipsizeMode="tail">
+                  {title}
+                </Text>
+
+                <Pressable onPress={onClose} hitSlop={12} disabled={isSaving} style={styles.closeButton}>
+                  <Text style={styles.closeText}>X</Text>
+                </Pressable>
+              </View>
+
+              <ScrollView
+                style={styles.body}
+                contentContainerStyle={styles.bodyContent}
+                showsVerticalScrollIndicator={false}
+              >
+                {videoUrl ? (
+                  <View style={styles.videoSection}>
+                    <View style={styles.videoContainer}>
+                      <SmartVideoPlayer url={videoUrl} />
+                    </View>
+                  </View>
+                ) : null}
+
+                {description ? (
+                  <View style={styles.section}>
+                    <Text style={styles.sectionLabel}>Beskrivelse</Text>
+                    <Text style={styles.sectionText}>{description}</Text>
+                  </View>
+                ) : null}
+
+                {reminderMinutes !== null && reminderMinutes !== undefined ? (
+                  <View style={styles.section}>
+                    <View style={styles.chip}>
+                      <IconSymbol
+                        ios_icon_name="bell.fill"
+                        android_material_icon_name="notifications"
+                        size={16}
+                        color={base}
+                      />
+                      <Text style={styles.chipText}>{reminderMinutes} min før</Text>
+                    </View>
+                  </View>
+                ) : null}
+              </ScrollView>
+
+              <View style={styles.footer}>
+                <Pressable
+                  onPress={onComplete}
+                  disabled={disable}
+                  style={[styles.primaryButtonShadow, { shadowColor: base }, disable && styles.primaryButtonDisabled]}
+                >
+                  <LinearGradient
+                    colors={[base, lighten(base, 0.25)]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.primaryButton}
+                  >
+                    {isSaving ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={styles.primaryButtonText}>{completed ? 'Udført' : 'Markér som udført'}</Text>
+                    )}
+                  </LinearGradient>
+                </Pressable>
+              </View>
             </View>
-            <Text
-              style={[
-                styles.completionButtonText,
-                task.completed && styles.completionButtonTextCompleted,
-              ]}
-            >
-              {task.completed ? 'Fuldført ✓' : 'Markér som fuldført'}
-            </Text>
           </View>
-        </Pressable>
-      </View>
-    </ScrollView>
-  );
-});
-
-export default function TaskDetailsModal({ taskId, onClose }: TaskDetailsModalProps) {
-  const [task, setTask] = useState<TaskData | null>(null);
-  const [completing, setCompleting] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  // Fetch task data - PARALLELIZED with Promise.allSettled
-  useEffect(() => {
-    let isMounted = true;
-
-    const fetchTask = async () => {
-      setLoading(true);
-      
-      try {
-        // Parallelize both fetches - no sequential blocking
-        const [activityTaskResult, externalTaskResult] = await Promise.allSettled([
-          supabase
-            .from('activity_tasks')
-            .select(`
-              *,
-              task_templates!activity_tasks_task_template_id_fkey (
-                video_url
-              )
-            `)
-            .eq('id', taskId)
-            .maybeSingle(),
-          supabase
-            .from('external_event_tasks')
-            .select(`
-              *,
-              task_templates!external_event_tasks_task_template_id_fkey (
-                video_url
-              )
-            `)
-            .eq('id', taskId)
-            .maybeSingle()
-        ]);
-
-        // Only update state if component is still mounted
-        if (!isMounted) return;
-
-        // Process activity_tasks result
-        if (activityTaskResult.status === 'fulfilled' && activityTaskResult.value.data) {
-          const activityTask = activityTaskResult.value.data;
-          const videoUrl = activityTask.task_templates?.video_url || null;
-          
-          setTask({
-            ...activityTask,
-            video_url: videoUrl,
-            is_external: false,
-          });
-          return;
-        }
-
-        // Process external_event_tasks result
-        if (externalTaskResult.status === 'fulfilled' && externalTaskResult.value.data) {
-          const externalTask = externalTaskResult.value.data;
-          const videoUrl = externalTask.task_templates?.video_url || null;
-          
-          setTask({
-            ...externalTask,
-            video_url: videoUrl,
-            is_external: true,
-          });
-          return;
-        }
-
-        // Task not found in either table
-        setTask(null);
-      } catch (err) {
-        console.error('TaskDetailsModal: Error fetching task:', err);
-        if (isMounted) {
-          setTask(null);
-        }
-      } finally {
-        // Deterministic loading stop - always called
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    fetchTask();
-
-    // Cleanup function to prevent state updates after unmount
-    return () => {
-      isMounted = false;
-    };
-  }, [taskId]);
-
-  const handleToggleCompletion = useCallback(async () => {
-    if (!task || completing) return;
-
-    const previousCompleted = task.completed;
-    const newCompleted = !previousCompleted;
-
-    // Optimistic update
-    setTask({ ...task, completed: newCompleted });
-    
-    // Disable further clicks
-    setCompleting(true);
-
-    try {
-      await taskService.toggleTaskCompletion(taskId);
-    } catch (err) {
-      console.error('TaskDetailsModal: Error toggling completion:', err);
-      // Rollback on error
-      setTask({ ...task, completed: previousCompleted });
-    } finally {
-      setCompleting(false);
-    }
-  }, [task, completing, taskId]);
-
-  return (
-    <Modal
-      visible={true}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}
-    >
-      <View style={styles.container}>
-        {/* Header - always visible */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Opgave</Text>
-          <Pressable onPress={onClose} style={styles.closeButton}>
-            <IconSymbol
-              ios_icon_name="xmark"
-              android_material_icon_name="close"
-              size={24}
-              color={colors.text}
-            />
-          </Pressable>
         </View>
-
-        {/* Skeleton - shown while loading */}
-        {loading && <TaskDetailsSkeleton />}
-
-        {/* Content - only mounted when data is ready */}
-        {!loading && task && (
-          <TaskDetailsContent 
-            task={task} 
-            completing={completing}
-            onToggleCompletion={handleToggleCompletion}
-          />
-        )}
-
-        {/* Error state - only shown when task is not found */}
-        {!loading && !task && (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>Opgave ikke fundet</Text>
-          </View>
-        )}
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  modalRoot: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  backdropContainer: {
     flex: 1,
-    backgroundColor: colors.background,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cardWrapper: { width: '100%', paddingHorizontal: 24 },
+  card: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 32,
+    padding: 28,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.18,
+    shadowRadius: 32,
+    shadowOffset: { width: 0, height: 18 },
+    elevation: 12,
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 60 : 48,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    alignItems: 'flex-start',
+    marginBottom: 12,
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
+  title: {
+    flex: 1,
+    fontSize: 22,
+    fontWeight: '800',
+    marginRight: 16,
   },
   closeButton: {
-    padding: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(239, 241, 245, 0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  content: {
-    flex: 1,
-  },
-  contentContainer: {
-    padding: 20,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  taskTitle: {
-    fontSize: 24,
+  closeText: {
+    fontSize: 20,
     fontWeight: '700',
-    color: colors.text,
-    marginBottom: 8,
+    color: '#3B4256',
   },
+
+  body: { maxHeight: 420 },
+  bodyContent: { paddingTop: 6, paddingBottom: 4 },
+
+  section: { marginTop: 12 },
   sectionLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 6,
+    letterSpacing: 0.2,
+    color: 'rgba(32, 40, 62, 0.6)',
   },
-  description: {
+  sectionText: {
     fontSize: 16,
-    lineHeight: 24,
-    color: colors.text,
-  },
-  videoSection: {
-    marginBottom: 24,
-  },
-  videoContainer: {
-    borderRadius: 12,
-    overflow: 'hidden',
-    backgroundColor: '#000',
-    aspectRatio: 16 / 9,
-  },
-  reminderContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 12,
-    backgroundColor: colors.cardBackground || colors.card,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border || colors.highlight,
-  },
-  reminderText: {
-    fontSize: 15,
+    lineHeight: 22,
     fontWeight: '500',
-    color: colors.text,
+    color: '#20283E',
   },
-  completionButton: {
-    padding: 16,
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  completionButtonCompleted: {
-    backgroundColor: colors.success || '#4CAF50',
-  },
-  completionButtonPressed: {
-    opacity: 0.85,
-  },
-  completionButtonDisabled: {
-    opacity: 0.6,
-  },
-  completionButtonContent: {
+
+  videoSection: { marginTop: 6 },
+  videoContainer: { borderRadius: 24, overflow: 'hidden', backgroundColor: '#000' },
+
+  chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    minHeight: 28,
+    borderRadius: 999,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(11, 15, 25, 0.08)',
+    backgroundColor: 'rgba(240, 242, 247, 0.8)',
   },
-  checkbox: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: '#fff',
-    justifyContent: 'center',
+  chipText: { fontSize: 14, fontWeight: '700', marginLeft: 8, color: '#3B4256' },
+
+  footer: { marginTop: 18 },
+  primaryButtonShadow: {
+    borderRadius: 999,
+    shadowRadius: 18,
+    shadowOpacity: 0.35,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 6,
+  },
+  primaryButton: {
+    borderRadius: 999,
+    paddingVertical: 14,
     alignItems: 'center',
-    backgroundColor: 'transparent',
-  },
-  checkboxCompleted: {
-    backgroundColor: '#fff',
-    borderColor: '#fff',
-  },
-  completionButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  completionButtonTextCompleted: {
-    color: '#fff',
-  },
-  skeleton: {
-    backgroundColor: colors.border || '#E0E0E0',
-    borderRadius: 8,
-    opacity: 0.3,
-  },
-  skeletonTitle: {
-    height: 32,
-    width: '70%',
-    marginBottom: 8,
-  },
-  skeletonLabel: {
-    height: 14,
-    width: '30%',
-    marginBottom: 8,
-  },
-  skeletonDescription: {
-    height: 16,
-    width: '100%',
-    marginBottom: 8,
-  },
-  skeletonButton: {
-    height: 60,
-    width: '100%',
-    borderRadius: 12,
-  },
-  errorContainer: {
-    flex: 1,
     justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
   },
-  errorText: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
+  primaryButtonDisabled: { opacity: 0.55 },
+  primaryButtonText: { color: '#fff', fontSize: 16, fontWeight: '800' },
 });
+
+const TaskDetailsModal = memo(TaskDetailsModalComponent);
+export default TaskDetailsModal;
+export { TaskDetailsModal };

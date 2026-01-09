@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Pressable, TouchableOpacity, useColorScheme } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { format } from 'date-fns';
@@ -80,6 +80,7 @@ export default function ActivityCard({
   const router = useRouter();
   const { toggleTaskCompletion, refreshData } = useFootball();
   const suppressCardPressRef = useRef(false);
+  const isDark = useColorScheme() === 'dark';
 
   const activityId = useMemo(() => {
     const raw = activity?.id ?? activity?.activity_id;
@@ -93,9 +94,10 @@ export default function ActivityCard({
   // Local optimistic state for tasks
   const [optimisticTasks, setOptimisticTasks] = useState<any[]>([]);
 
-  // Task modal state
-  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  // Task modal state (data-driven; no fetch on open)
+  const [selectedTask, setSelectedTask] = useState<any | null>(null);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [isTaskModalSaving, setIsTaskModalSaving] = useState(false);
 
   // Initialize and update optimistic tasks from activity
   useEffect(() => {
@@ -172,63 +174,60 @@ export default function ActivityCard({
       if (navigateToFeedbackTask(task)) {
         return;
       }
-      const taskId = task?.id ?? task?.task_id;
-      if (!taskId) {
-        return;
-      }
-      setActiveTaskId(String(taskId));
+      setSelectedTask(task);
       setIsTaskModalOpen(true);
     },
     [navigateToFeedbackTask]
   );
 
-  const handleToggleTask = useCallback(
-    async (task: any, event?: any) => {
-      event?.stopPropagation?.();
-      if (navigateToFeedbackTask(task)) {
-        return;
-      }
-      const taskIdRaw = task?.id ?? task?.task_id;
-      if (!taskIdRaw) {
-        return;
-      }
-      if (!activityId) {
-        console.warn('[ActivityCard] Missing activity id for toggleTaskCompletion');
-        return;
-      }
-      const taskId = String(taskIdRaw);
-      const taskIndex = optimisticTasks.findIndex((candidate) => {
-        const candidateId = candidate?.id ?? candidate?.task_id;
-        return candidateId !== null && candidateId !== undefined && String(candidateId) === taskId;
-      });
-      if (taskIndex === -1) {
-        console.error('Task not found:', taskId);
-        return;
-      }
-
-      const previousCompleted = !!optimisticTasks[taskIndex].completed;
-      const newTasks = [...optimisticTasks];
-      newTasks[taskIndex] = { ...optimisticTasks[taskIndex], completed: !previousCompleted };
-      setOptimisticTasks(newTasks);
-
-      try {
-        await toggleTaskCompletion(activityId, taskId, !previousCompleted);
-        refreshData();
-      } catch (error) {
-        console.error('❌ Error toggling task, rolling back:', error);
-        const rollbackTasks = [...optimisticTasks];
-        rollbackTasks[taskIndex] = { ...optimisticTasks[taskIndex], completed: previousCompleted };
-        setOptimisticTasks(rollbackTasks);
-      }
-    },
-    [activityId, navigateToFeedbackTask, optimisticTasks, refreshData, toggleTaskCompletion]
-  );
-
   const handleModalClose = useCallback(() => {
     setIsTaskModalOpen(false);
-    setActiveTaskId(null);
-    refreshData();
+    setSelectedTask(null);
+    Promise.resolve(refreshData()).catch(() => {});
   }, [refreshData]);
+
+  const handleModalComplete = useCallback(async () => {
+    if (!selectedTask || isTaskModalSaving) return;
+    if (!activityId) {
+      console.warn('[ActivityCard] Missing activity id for completion');
+      return;
+    }
+
+    const taskIdRaw = selectedTask?.id ?? selectedTask?.task_id;
+    if (!taskIdRaw) return;
+    const taskId = String(taskIdRaw);
+
+    // optimistic set completed = true
+    const idx = optimisticTasks.findIndex((candidate) => {
+      const candidateId = candidate?.id ?? candidate?.task_id;
+      return candidateId !== null && candidateId !== undefined && String(candidateId) === taskId;
+    });
+    if (idx === -1) return;
+
+    const previous = !!optimisticTasks[idx].completed;
+    if (previous) {
+      handleModalClose();
+      return;
+    }
+
+    const nextTasks = [...optimisticTasks];
+    nextTasks[idx] = { ...optimisticTasks[idx], completed: true };
+    setOptimisticTasks(nextTasks);
+
+    setIsTaskModalSaving(true);
+    try {
+      await toggleTaskCompletion(activityId, taskId, true);
+      Promise.resolve(refreshData()).catch(() => {});
+      handleModalClose();
+    } catch (error) {
+      console.error('❌ Error completing task, rolling back:', error);
+      const rollback = [...optimisticTasks];
+      rollback[idx] = { ...optimisticTasks[idx], completed: previous };
+      setOptimisticTasks(rollback);
+    } finally {
+      setIsTaskModalSaving(false);
+    }
+  }, [activityId, handleModalClose, isTaskModalSaving, optimisticTasks, refreshData, selectedTask, toggleTaskCompletion]);
 
   const formatReminderTime = (reminderMinutes: number | null | undefined) => {
     if (reminderMinutes === null || reminderMinutes === undefined) return null;
@@ -434,21 +433,18 @@ export default function ActivityCard({
                   );
                 }
 
-                const task = item.task;
+                const task = (item as any).task;
+
                 return (
                   <React.Fragment key={item.key}>
                     <View style={styles.taskRow}>
+                      {/* Checkbox is no longer a toggle; it opens modal (or feedback flow) */}
                       <TouchableOpacity
                         style={styles.taskCheckboxArea}
-                        onPress={(e) => handleToggleTask(task, e)}
+                        onPress={(e) => handleTaskPress(task, e)}
                         activeOpacity={0.7}
                       >
-                        <View
-                          style={[
-                            styles.taskCheckbox,
-                            task.completed && styles.taskCheckboxCompleted,
-                          ]}
-                        >
+                        <View style={[styles.taskCheckbox, task.completed && styles.taskCheckboxCompleted]}>
                           {task.completed && (
                             <IconSymbol
                               ios_icon_name="checkmark"
@@ -509,8 +505,26 @@ export default function ActivityCard({
         </LinearGradient>
       </Pressable>
 
-      {/* Task Details Modal */}
-      {isTaskModalOpen && activeTaskId && <TaskDetailsModal taskId={activeTaskId} onClose={handleModalClose} />}
+      {/* Normal Task Details Modal (new glass/soft) */}
+      {isTaskModalOpen && selectedTask && (
+        <TaskDetailsModal
+          visible={isTaskModalOpen}
+          title={String(selectedTask?.title ?? 'Uden titel')}
+          categoryColor={String(resolvedCategoryMeta?.color ?? '#3B82F6')}
+          isDark={isDark}
+          description={typeof selectedTask?.description === 'string' ? selectedTask.description : undefined}
+          reminderMinutes={
+            selectedTask?.reminder_minutes !== null && selectedTask?.reminder_minutes !== undefined
+              ? Number(selectedTask.reminder_minutes)
+              : null
+          }
+          videoUrl={typeof selectedTask?.video_url === 'string' ? selectedTask.video_url : null}
+          completed={!!selectedTask?.completed}
+          isSaving={isTaskModalSaving}
+          onClose={handleModalClose}
+          onComplete={handleModalComplete}
+        />
+      )}
     </>
   );
 }

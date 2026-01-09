@@ -223,7 +223,7 @@ function organizeFolders(allTasks: Task[]): FolderItem[] {
 }
 
 // Memoized TaskCard component to prevent unnecessary re-renders
-const TaskCard = React.memo(
+export const TaskCard = React.memo(
   ({
     task,
     isDark,
@@ -354,30 +354,41 @@ const FolderItemComponent = React.memo(
 );
 
 export default function TasksScreen() {
-  const football = useFootball() as any;
-  const admin = useAdmin() as any;
+  const footballData = useFootball() as any;
+  const adminData = useAdmin() as any;
 
-  const tasks = (football?.tasks ?? []) as Task[];
-  const categories = (football?.categories ?? []) as any[];
-  const duplicateTask = football?.duplicateTask as ((taskId: string) => any) | undefined;
-  const deleteTask = football?.deleteTask as ((taskId: string) => any) | undefined;
-  const refreshData = football?.refreshData as (() => Promise<any>) | undefined;
-  const updateTask = football?.updateTask as ((taskId: string, data: any) => Promise<any>) | undefined;
-  const isLoading = !!football?.isLoading;
+  const contextTasks = footballData?.tasks;
+  const tasks = useMemo(() => (contextTasks ?? []) as Task[], [contextTasks]);
 
-  const adminMode = admin?.adminMode ?? 'self';
-  const adminTargetType = admin?.adminTargetType ?? admin?.adminTarget?.type ?? null;
-  const adminTargetId = admin?.adminTargetId ?? admin?.adminTarget?.id ?? null;
+  const contextCategories = footballData?.categories;
+  const categories = useMemo(() => (contextCategories ?? []) as any[], [contextCategories]);
 
-  const selectedContext = admin?.selectedContext ?? {
-    type: adminTargetType ?? 'player',
-    name: admin?.contextName ?? '',
-  };
+  const duplicateTask = footballData?.duplicateTask as ((taskId: string) => any) | undefined;
+  const deleteTask = footballData?.deleteTask as ((taskId: string) => any) | undefined;
+  const refreshData = footballData?.refreshData as (() => Promise<any>) | undefined;
+  const updateTask = footballData?.updateTask as ((taskId: string, data: any) => Promise<any>) | undefined;
+  const isLoading = !!footballData?.isLoading;
+
+  const adminMode = adminData?.adminMode ?? 'self';
+  const adminTargetType = adminData?.adminTargetType ?? adminData?.adminTarget?.type ?? null;
+  const adminTargetId = adminData?.adminTargetId ?? adminData?.adminTarget?.id ?? null;
+
+  const rawSelectedContext = adminData?.selectedContext;
+  const contextName = adminData?.contextName;
+  const selectedContext = useMemo(
+    () =>
+      rawSelectedContext ??
+      {
+        type: adminTargetType ?? 'player',
+        name: contextName ?? '',
+      },
+    [rawSelectedContext, adminTargetType, contextName],
+  );
 
   const scheme = useColorScheme();
   const isDark = scheme === 'dark';
 
-  const REMINDER_DELAY_OPTIONS: Array<{ label: string; value: number }> = [
+  const REMINDER_DELAY_OPTIONS: { label: string; value: number }[] = [
     { label: '0', value: 0 },
     { label: '15', value: 15 },
     { label: '30', value: 30 },

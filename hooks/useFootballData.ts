@@ -1138,7 +1138,7 @@ export const useFootballData = () => {
       .map(activity => String((activity as any).id))
       .filter(Boolean);
 
-    const rollbacks: Array<() => void> = [];
+    const rollbacks: (() => void)[] = [];
 
     try {
       if (targetActivityIds.length && Object.keys(optimisticUpdates).length) {

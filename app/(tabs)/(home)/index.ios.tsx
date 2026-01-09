@@ -59,12 +59,10 @@
 
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform, useColorScheme } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
 import { useFootball } from '@/contexts/FootballContext';
-import { useUserRole } from '@/hooks/useUserRole';
 import { useAdmin } from '@/contexts/AdminContext';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import ActivityCard from '@/components/ActivityCard';
@@ -72,11 +70,37 @@ import CreateActivityModal from '@/components/CreateActivityModal';
 import HomeSkeleton from '@/components/HomeSkeleton';
 import { IconSymbol } from '@/components/IconSymbol';
 import { AdminContextWrapper } from '@/components/AdminContextWrapper';
-import { colors, getColors } from '@/styles/commonStyles';
+import * as CommonStyles from '@/styles/commonStyles';
 import { format, startOfWeek, endOfWeek, getWeek } from 'date-fns';
 import { da } from 'date-fns/locale';
 import { supabase } from '@/app/integrations/supabase/client';
 import { canTrainerManageActivity } from '@/utils/permissions';
+
+const FALLBACK_COLORS = {
+  primary: '#4CAF50',
+  secondary: '#2196F3',
+  accent: '#FF9800',
+  background: '#FFFFFF',
+  backgroundAlt: '#F5F5F5',
+  text: '#333333',
+  textSecondary: '#666666',
+  card: '#F5F5F5',
+  highlight: '#E0E0E0',
+  success: '#4CAF50',
+  warning: '#FFC107',
+  error: '#F44336',
+  gold: '#FFD700',
+  silver: '#C0C0C0',
+  bronze: '#CD7F32',
+  contextWarning: '#F5E6D3',
+};
+
+const colors = (CommonStyles as any).colors ?? FALLBACK_COLORS;
+
+const performanceGradientColors: string[] =
+  (CommonStyles as any).performanceGradientColors ??
+  (CommonStyles as any).colors?.performanceGradientColors ??
+  [colors.primary, colors.secondary];
 
 function resolveActivityDateTime(activity: any): Date | null {
   // STEP H: Guard against null/undefined activity
@@ -118,28 +142,23 @@ function getWeekLabel(date: Date): string {
 
 // Helper function to get gradient colors based on performance percentage
 // Matches the trophy thresholds from performance screen: ≥80% gold, ≥60% silver, <60% bronze
-function getPerformanceGradient(percentage: number): string[] {
-  // STEP H: Guard against invalid percentage
+function getPerformanceGradient(percentage: number): readonly [string, string, string] {
   const safePercentage = typeof percentage === 'number' && !isNaN(percentage) ? percentage : 0;
 
   if (safePercentage >= 80) {
-    // Gold gradient
-    return ['#FFD700', '#FFA500', '#FF8C00'];
+    return ['#FFD700', '#FFA500', '#FF8C00'] as const;
   } else if (safePercentage >= 60) {
-    // Silver gradient
-    return ['#E8E8E8', '#C0C0C0', '#A8A8A8'];
+    return ['#E8E8E8', '#C0C0C0', '#A8A8A8'] as const;
   } else {
-    // Bronze gradient
-    return ['#CD7F32', '#B8722E', '#A0642A'];
+    return ['#CD7F32', '#B8722E', '#A0642A'] as const;
   }
 }
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { userRole } = useUserRole();
   const { activities, loading, refresh: refreshActivities } = useHomeActivities();
-  const { categories, createActivity, refreshData, currentWeekStats, toggleTaskCompletion } = useFootball();
-  const { adminMode, adminTargetId, adminTargetType } = useAdmin();
+  const { categories, createActivity, refreshData, currentWeekStats } = useFootball();
+  const { adminMode, adminTargetType } = useAdmin();
   const { selectedContext } = useTeamPlayer();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showPreviousWeeks, setShowPreviousWeeks] = useState(0);
@@ -147,7 +166,6 @@ export default function HomeScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [currentTrainerId, setCurrentTrainerId] = useState<string | null>(null);
   const colorScheme = useColorScheme();
-  const themeColors = getColors(colorScheme);
   const isDark = colorScheme === 'dark';
 
   const currentWeekNumber = getWeek(new Date(), { weekStartsOn: 1, locale: da });
@@ -533,7 +551,22 @@ export default function HomeScreen() {
     return data;
   }, [previousByWeek, isPreviousExpanded, visiblePreviousWeeks, showPreviousWeeks, todayActivities, upcomingByWeek]);
 
-  // Render item based on type
+  const handleOpenPerformance = useCallback(() => {
+    if (!router) {
+      console.error('[Home] Cannot navigate: router is null');
+      return;
+    }
+    try {
+      router.push('/(tabs)/performance');
+    } catch (error) {
+      console.error('[Home] Error navigating to performance:', error);
+    }
+  }, [router]);
+
+  const handleOpenCreateModal = useCallback(() => {
+    setShowCreateModal(true);
+  }, []);
+
   const renderItem = useCallback(({ item }: { item: any }) => {
     // STEP H: Guard against null item
     if (!item || !item.type) return null;
@@ -698,106 +731,99 @@ export default function HomeScreen() {
   }, []);
 
   // List header component
-  const ListHeaderComponent = useCallback(() => (
-    <>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.logoContainer}>
-          <View style={styles.logo}>
-            <Text style={styles.logoIcon}>⚽</Text>
+  const ListHeaderComponent = useCallback(() => {
+    const gradient = performanceMetrics.gradientColors ?? performanceGradientColors;
+
+    return (
+      <>
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={styles.logoContainer}>
+            <View style={styles.logo}>
+              <Text style={styles.logoIcon}>⚽</Text>
+            </View>
           </View>
-        </View>
-        <View style={styles.headerTextContainer}>
-          <Text style={styles.headerTitle}>Football Coach</Text>
-          <Text style={styles.headerSubtitle}>Træn som en Pro</Text>
-        </View>
-      </View>
-
-      {/* Week Header */}
-      <View style={[styles.weekHeaderContainer, { backgroundColor: isDark ? '#1a1a1a' : colors.background }]}>
-        <Text style={[styles.weekHeaderTitle, { color: isDark ? '#e3e3e3' : colors.text }]}>UGE {currentWeekNumber}</Text>
-        <Text style={[styles.weekHeaderSubtitle, { color: isDark ? '#999' : colors.textSecondary }]}>{currentWeekLabel}</Text>
-      </View>
-
-      {/* Performance card */}
-      <LinearGradient
-        colors={performanceMetrics.gradientColors}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.performanceCard}
-      >
-        <View style={styles.progressHeader}>
-          <Text style={styles.progressLabel}>DENNE UGE</Text>
-          <View style={styles.medalBadge}>
-            <Text style={styles.medalIcon}>{performanceMetrics.trophyEmoji}</Text>
+          <View style={styles.headerTextContainer}>
+            <Text style={styles.headerTitle}>Football Coach</Text>
+            <Text style={styles.headerSubtitle}>Træn som en Pro</Text>
           </View>
         </View>
 
-        <Text style={styles.progressPercentage}>{performanceMetrics.percentageUpToToday}%</Text>
-
-        <View style={styles.progressBar}>
-          <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
+        {/* Week Header */}
+        <View style={[styles.weekHeaderContainer, { backgroundColor: isDark ? '#1a1a1a' : colors.background }]}>
+          <Text style={[styles.weekHeaderTitle, { color: isDark ? '#e3e3e3' : colors.text }]}>UGE {currentWeekNumber}</Text>
+          <Text style={[styles.weekHeaderSubtitle, { color: isDark ? '#999' : colors.textSecondary }]}>{currentWeekLabel}</Text>
         </View>
 
-        <Text style={styles.progressDetail}>
-          Opgaver indtil i dag: {performanceMetrics.completedTasksToday} / {performanceMetrics.totalTasksToday}
-        </Text>
-        <View style={styles.progressBar}>
-          <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
-        </View>
-
-        <Text style={styles.progressDetail}>
-          Hele ugen: {performanceMetrics.completedTasksWeek} / {performanceMetrics.totalTasksWeek} opgaver
-        </Text>
-
-        <Text style={styles.motivationText}>
-          {performanceMetrics.motivationText}
-        </Text>
-
-        {/* Se Performance Button - Inside Performance Card */}
-        <Pressable
-          style={styles.performanceButton}
-          onPress={() => {
-            // STEP H: Guard against null router
-            if (!router) {
-              console.error('[Home] Cannot navigate: router is null');
-              return;
-            }
-            try {
-              router.push('/(tabs)/performance');
-            } catch (error) {
-              console.error('[Home] Error navigating to performance:', error);
-            }
-          }}
+        {/* Performance card */}
+        <LinearGradient
+          colors={gradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.performanceCard}
         >
-          <Text style={styles.performanceButtonText}>Se performance</Text>
-        </Pressable>
-      </LinearGradient>
+          <View style={styles.progressHeader}>
+            <Text style={styles.progressLabel}>DENNE UGE</Text>
+            <View style={styles.medalBadge}>
+              <Text style={styles.medalIcon}>{performanceMetrics.trophyEmoji}</Text>
+            </View>
+          </View>
 
-      {/* STEP E: Static inline info-box when adminMode !== 'self' */}
-      {adminMode !== 'self' && (
-        <View style={[styles.adminInfoBox, { backgroundColor: isDark ? '#3a2a1a' : '#FFF3E0', borderColor: isDark ? '#B8860B' : '#FF9800' }]}>
-          <IconSymbol
-            ios_icon_name="exclamationmark.triangle.fill"
-            android_material_icon_name="warning"
-            size={20}
-            color={isDark ? '#FFB74D' : '#F57C00'}
-          />
-          <Text style={[styles.adminInfoText, { color: isDark ? '#FFB74D' : '#E65100' }]}>
-            Du kan kun redigere indhold, du selv har oprettet.
+          <Text style={styles.progressPercentage}>{performanceMetrics.percentageUpToToday}%</Text>
+
+          <View style={styles.progressBar}>
+            <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
+          </View>
+
+          <Text style={styles.progressDetail}>
+            Opgaver indtil i dag: {performanceMetrics.completedTasksToday} / {performanceMetrics.totalTasksToday}
           </Text>
-        </View>
-      )}
+          <View style={styles.progressBar}>
+            <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
+          </View>
 
-      {/* Create Activity Button */}
-      <Pressable
-        style={styles.createButton}
-        onPress={() => setShowCreateModal(true)}
-      >
-        <Text style={styles.createButtonText}>+  Opret Aktivitet</Text>
-      </Pressable>
-    </>
-  ), [isDark, currentWeekNumber, currentWeekLabel, performanceMetrics, adminMode, router]);
+          <Text style={styles.progressDetail}>
+            Hele ugen: {performanceMetrics.completedTasksWeek} / {performanceMetrics.totalTasksWeek} opgaver
+          </Text>
+
+          <Text style={styles.motivationText}>
+            {performanceMetrics.motivationText}
+          </Text>
+
+          {/* Se Performance Button - Inside Performance Card */}
+          <Pressable
+            style={styles.performanceButton}
+            onPress={handleOpenPerformance}
+          >
+            <Text style={styles.performanceButtonText}>Se performance</Text>
+          </Pressable>
+        </LinearGradient>
+
+        {/* STEP E: Static inline info-box when adminMode !== 'self' */}
+        {adminMode !== 'self' && (
+          <View style={[styles.adminInfoBox, { backgroundColor: isDark ? '#3a2a1a' : '#FFF3E0', borderColor: isDark ? '#B8860B' : '#FF9800' }]}>
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle.fill"
+              android_material_icon_name="warning"
+              size={20}
+              color={isDark ? '#FFB74D' : '#F57C00'}
+            />
+            <Text style={[styles.adminInfoText, { color: isDark ? '#FFB74D' : '#E65100' }]}>
+              Du kan kun redigere indhold, du selv har oprettet.
+            </Text>
+          </View>
+        )}
+
+        {/* Create Activity Button */}
+        <Pressable
+          style={styles.createButton}
+          onPress={handleOpenCreateModal}
+        >
+          <Text style={styles.createButtonText}>+  Opret Aktivitet</Text>
+        </Pressable>
+      </>
+    );
+  }, [isDark, currentWeekNumber, currentWeekLabel, performanceMetrics, adminMode, handleOpenPerformance, handleOpenCreateModal]);
 
   // List footer component
   const ListFooterComponent = useCallback(() => (
@@ -807,7 +833,7 @@ export default function HomeScreen() {
   return (
     <AdminContextWrapper
       isAdmin={isAdminMode}
-      contextName={selectedContext?.name}
+      contextName={selectedContext?.name ?? undefined}
       contextType={adminTargetType || 'player'}
     >
       <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />

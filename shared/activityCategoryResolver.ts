@@ -144,7 +144,7 @@ export function resolveActivityCategory(options: ResolveCategoryOptions): Catego
     ? customKeywords
     : DEFAULT_CATEGORY_KEYWORDS).slice().sort((a, b) => b.priority - a.priority);
 
-  const keywordMatches: Array<{ category: ActivityCategoryCandidate; score: number; matchedKeyword: string } > = [];
+  const keywordMatches: { category: ActivityCategoryCandidate; score: number; matchedKeyword: string }[] = [];
 
   keywordDefinitions.forEach((definition) => {
     const category = byName.get(normalizeString(definition.categoryName));

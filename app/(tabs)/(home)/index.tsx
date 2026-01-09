@@ -77,7 +77,7 @@ import { format, startOfWeek, endOfWeek, getWeek } from 'date-fns';
 import { da } from 'date-fns/locale';
 import { supabase } from '@/app/integrations/supabase/client';
 import { canTrainerManageActivity } from '@/utils/permissions';
-import { IntensityPickerModal } from '@/components/IntensityPickerModal';
+import { TaskScoreNoteModal, TaskScoreNoteModalPayload } from '@/components/TaskScoreNoteModal';
 
 function resolveActivityDateTime(activity: any): Date | null {
   // STEP H: Guard against null/undefined activity
@@ -119,19 +119,16 @@ function getWeekLabel(date: Date): string {
 
 // Helper function to get gradient colors based on performance percentage
 // Matches the trophy thresholds from performance screen: ≥80% gold, ≥60% silver, <60% bronze
-function getPerformanceGradient(percentage: number): string[] {
+function getPerformanceGradient(percentage: number): readonly [string, string, string] {
   // STEP H: Guard against invalid percentage
   const safePercentage = typeof percentage === 'number' && !isNaN(percentage) ? percentage : 0;
 
   if (safePercentage >= 80) {
-    // Gold gradient
-    return ['#FFD700', '#FFA500', '#FF8C00'];
+    return ['#FFD700', '#FFA500', '#FF8C00'] as const;
   } else if (safePercentage >= 60) {
-    // Silver gradient
-    return ['#E8E8E8', '#C0C0C0', '#A8A8A8'];
+    return ['#E8E8E8', '#C0C0C0', '#A8A8A8'] as const;
   } else {
-    // Bronze gradient
-    return ['#CD7F32', '#B8722E', '#A0642A'];
+    return ['#CD7F32', '#B8722E', '#A0642A'] as const;
   }
 }
 
@@ -185,8 +182,8 @@ export default function HomeScreen() {
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [currentIntensityDraft, setCurrentIntensityDraft] = useState<number | null>(null);
   const [isSavingIntensity, setIsSavingIntensity] = useState(false);
-  const [intensityTargetActivity, setIntensityTargetActivity] = useState<any | null>(null);
   const [intensityOverrides, setIntensityOverrides] = useState<Record<string, number | null>>({});
+  const [intensityModalError, setIntensityModalError] = useState<string | null>(null);
   const colorScheme = useColorScheme();
   const themeColors = getColors(colorScheme);
   const isDark = colorScheme === 'dark';
@@ -226,17 +223,6 @@ export default function HomeScreen() {
       setShowPreviousWeeks(0);
     }
   }, [loading]);
-
-  useEffect(() => {
-    if (!selectedActivityId) {
-      return;
-    }
-    const safeActivities = Array.isArray(activities) ? activities : [];
-    const nextTarget = safeActivities.find(activity => String(activity?.id) === String(selectedActivityId));
-    if (nextTarget) {
-      setIntensityTargetActivity(nextTarget);
-    }
-  }, [activities, selectedActivityId]);
 
   const { todayActivities, upcomingByWeek, previousByWeek } = useMemo(() => {
     // STEP H: Guard against non-array activities
@@ -424,6 +410,11 @@ export default function HomeScreen() {
     };
   }, [currentWeekStats]);
 
+  const performanceGradientColors = useMemo(() => {
+    const [first, second = first, third = second] = performanceMetrics.gradientColors;
+    return [first, second, third] as const;
+  }, [performanceMetrics.gradientColors]);
+
   const handleCreateActivity = useCallback(async (activityData: any) => {
     try {
       // STEP H: Guard against null/undefined functions
@@ -513,7 +504,7 @@ export default function HomeScreen() {
     const activityId = String(activity.id);
     setSelectedActivityId(activityId);
     setCurrentIntensityDraft(getActivityIntensityValue(activity));
-    setIntensityTargetActivity(activity);
+    setIntensityModalError(null);
   }, []);
 
   const handleCloseIntensityModal = useCallback(() => {
@@ -522,7 +513,7 @@ export default function HomeScreen() {
     }
     setSelectedActivityId(null);
     setCurrentIntensityDraft(null);
-    setIntensityTargetActivity(null);
+    setIntensityModalError(null);
   }, [isSavingIntensity]);
 
   const persistIntensity = useCallback(
@@ -536,17 +527,17 @@ export default function HomeScreen() {
         ? intensityOverrides[activityId]
         : getActivityIntensityValueById(activityId);
 
-      setCurrentIntensityDraft(value);
       setIntensityOverrides(prev => ({
         ...prev,
         [activityId]: value,
       }));
       setIsSavingIntensity(true);
+      setIntensityModalError(null);
 
       try {
         await updateActivitySingle(activityId, {
           intensity: value,
-          intensity_enabled: value !== null,
+          intensityEnabled: value !== null,
         });
         if (typeof refreshActivities === 'function') {
           await refreshActivities();
@@ -569,9 +560,8 @@ export default function HomeScreen() {
           }
           return next;
         });
-        setCurrentIntensityDraft(rollbackValue ?? null);
         setIsSavingIntensity(false);
-        Alert.alert('Kunne ikke gemme', 'Der opstod en fejl. Prøv igen om lidt.');
+        setIntensityModalError('Kunne ikke gemme intensitet. Prøv igen.');
       }
     },
     [
@@ -585,16 +575,12 @@ export default function HomeScreen() {
     ]
   );
 
-  const handleSelectIntensity = useCallback(
-    (value: number) => {
-      persistIntensity(value);
+  const handleIntensityModalSave = useCallback(
+    ({ score }: TaskScoreNoteModalPayload) => {
+      persistIntensity(typeof score === 'number' ? score : null);
     },
     [persistIntensity]
   );
-
-  const handleRemoveIntensity = useCallback(() => {
-    persistIntensity(null);
-  }, [persistIntensity]);
 
   // Flatten all data into a single list for FlatList
   // Each item has a type to determine how to render it
@@ -860,7 +846,7 @@ export default function HomeScreen() {
 
       {/* Performance card */}
       <LinearGradient
-        colors={performanceMetrics.gradientColors}
+        colors={performanceGradientColors}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.performanceCard}
@@ -946,7 +932,7 @@ export default function HomeScreen() {
   return (
     <AdminContextWrapper
       isAdmin={isAdminMode}
-      contextName={selectedContext?.name}
+      contextName={selectedContext?.name ?? undefined}
       contextType={adminTargetType || 'player'}
     >
       <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
@@ -986,13 +972,18 @@ export default function HomeScreen() {
         />
       ) : null}
 
-      <IntensityPickerModal
+      <TaskScoreNoteModal
         visible={Boolean(selectedActivityId)}
-        subtitle={intensityTargetActivity?.title}
-        currentValue={currentIntensityDraft}
+        title="Feedback på Intensitet"
+        introText="Hvordan gik det?"
+        helperText="1 = let · 10 = maks"
+        initialScore={currentIntensityDraft}
+        initialNote=""
+        enableScore
+        enableNote={false}
         isSaving={isSavingIntensity}
-        onSelect={handleSelectIntensity}
-        onRemove={handleRemoveIntensity}
+        error={intensityModalError}
+        onSave={handleIntensityModalSave}
         onClose={handleCloseIntensityModal}
       />
     </AdminContextWrapper>

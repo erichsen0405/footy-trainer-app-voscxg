@@ -88,7 +88,7 @@ export function ProgressionSection({ categories }: Props) {
     []
   );
 
-  const metricOptions: Array<{ label: string; value: ProgressionMetric }> = useMemo(
+  const metricOptions: { label: string; value: ProgressionMetric }[] = useMemo(
     () => [
       { label: 'Fokus-score', value: 'rating' },
       { label: 'Intensitet', value: 'intensity' },

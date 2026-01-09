@@ -63,7 +63,7 @@
     "react-native-webview": "^13.15.0",
     "react-native-worklets": "0.5.1",
     "react-router-dom": "^7.1.3",
-    "workbox-cli": "^7.3.0",
+    "workbox-cli": "^7.4.0",
     "workbox-precaching": "^7.3.0",
     "workbox-webpack-plugin": "^7.3.0"
   },
@@ -71,11 +71,12 @@
     "@babel/core": "^7.20.0",
     "@eslint/js": "^9.19.0",
     "@types/react": "~19.1.12",
-    "@typescript-eslint/eslint-plugin": "^6.21.0",
-    "@typescript-eslint/parser": "^6.21.0",
+    "@typescript-eslint/eslint-plugin": "^8.12.1",
+    "@typescript-eslint/parser": "^8.12.1",
     "babel-plugin-module-resolver": "^5.0.2",
     "eslint": "^8.57.0",
     "eslint-config-expo": "~10.0.0",
+    "eslint-import-resolver-typescript": "3.6.1",
     "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-react": "^7.37.4",
     "globals": "^15.14.0",
@@ -84,6 +85,9 @@
   },
   "resolutions": {
     "@expo/prebuild-config": "latest"
+  },
+  "overrides": {
+    "tmp": "^0.2.4"
   },
   "private": true
 }
