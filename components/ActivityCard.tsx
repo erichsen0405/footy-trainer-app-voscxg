@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { View, Text, StyleSheet, Pressable, TouchableOpacity, useColorScheme } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { format } from 'date-fns';
@@ -7,13 +7,25 @@ import { da } from 'date-fns/locale';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useFootball } from '@/contexts/FootballContext';
 import TaskDetailsModal from '@/components/TaskDetailsModal';
+import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
+import { resolveActivityIntensityEnabled } from '@/utils/activityIntensity';
 
 interface ActivityCardProps {
   activity: any;
   resolvedDate: Date;
   onPress?: () => void;
+  onPressIntensity?: () => void;
   showTasks?: boolean;
 }
+
+type TaskListItem =
+  | { type: 'intensity'; key: string }
+  | { type: 'task'; key: string; task: any };
+
+type CategoryMeta = {
+  color?: string;
+  emoji?: string;
+};
 
 // Helper function to lighten a hex color
 function lightenColor(hex: string, percent: number): string {
@@ -24,7 +36,9 @@ function lightenColor(hex: string, percent: number): string {
   const newR = Math.min(255, Math.floor(r + (255 - r) * percent));
   const newG = Math.min(255, Math.floor(g + (255 - g) * percent));
   const newB = Math.min(255, Math.floor(b + (255 - b) * percent));
-  return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
+  return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB
+    .toString(16)
+    .padStart(2, '0')}`;
 }
 
 // Helper function to darken a hex color
@@ -36,19 +50,15 @@ function darkenColor(hex: string, percent: number): string {
   const newR = Math.floor(r * (1 - percent));
   const newG = Math.floor(g * (1 - percent));
   const newB = Math.floor(b * (1 - percent));
-  return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
+  return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB
+    .toString(16)
+    .padStart(2, '0')}`;
 }
-
-type CategoryMeta = {
-  color?: string;
-  emoji?: string;
-};
 
 // Category gradient mapping (color-based, supports new resolved fields)
 const getCategoryGradientFromColor = (color?: string): string[] => {
   const baseColor = String(color ?? '').trim();
   if (!baseColor) {
-    // Warn only when we truly have no usable color
     console.warn('ActivityCard: No category color found, using fallback gradient');
     return ['#6B7280', '#4B5563'];
   }
@@ -66,105 +76,167 @@ const getCategoryEmoji = (emoji?: string): string => {
 export default function ActivityCard({
   activity,
   resolvedDate,
-  onPress,
+  onPress: _deprecatedOnPress,
+  onPressIntensity: _deprecatedOnPressIntensity,
   showTasks = false,
 }: ActivityCardProps) {
   const router = useRouter();
   const { toggleTaskCompletion, refreshData } = useFootball();
-  
+  const suppressCardPressRef = useRef(false);
+  const isDark = useColorScheme() === 'dark';
+
+  const activityId = useMemo(() => {
+    const raw = activity?.id ?? activity?.activity_id;
+    if (raw === null || raw === undefined) return null;
+    const trimmed = String(raw).trim();
+    const lowered = trimmed.toLowerCase();
+    if (!trimmed.length || lowered === 'undefined' || lowered === 'null') return null;
+    return trimmed;
+  }, [activity?.activity_id, activity?.id]);
+
   // Local optimistic state for tasks
   const [optimisticTasks, setOptimisticTasks] = useState<any[]>([]);
-  
-  // Task modal state
-  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+
+  // Task modal state (data-driven; no fetch on open)
+  const [selectedTask, setSelectedTask] = useState<any | null>(null);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [isTaskModalSaving, setIsTaskModalSaving] = useState(false);
 
   // Initialize and update optimistic tasks from activity
   useEffect(() => {
-    if (activity.tasks) {
+    if (Array.isArray(activity?.tasks)) {
       setOptimisticTasks(activity.tasks);
     } else {
       setOptimisticTasks([]);
     }
-  }, [activity.tasks, activity.id]);
+  }, [activity?.tasks, activityId]);
 
-  // Memoized card press handler - only navigates, no async work
-  const handleCardPress = useCallback(() => {
-    if (onPress) {
-      onPress();
-    } else {
-      router.push({
-        pathname: '/activity-details',
-        params: { id: activity.id },
-      });
-    }
-  }, [onPress, router, activity.id]);
-
-  // Task press handler
-  const handleTaskPress = useCallback((task: any, event: any) => {
-    event.stopPropagation();
-    setActiveTaskId(task.id);
-    setIsTaskModalOpen(true);
+  const resolveFeedbackTemplateId = useCallback((task: any): string | null => {
+    if (!task) return null;
+    const directTemplateId = task.feedbackTemplateId ?? task.feedback_template_id;
+    if (directTemplateId) return String(directTemplateId);
+    const fromMarker =
+      typeof task.description === 'string' ? parseTemplateIdFromMarker(task.description) : null;
+    return fromMarker ?? null;
   }, []);
 
-  // Toggle task handler
-  const handleToggleTask = useCallback(async (taskId: string, event: any) => {
-    event.stopPropagation();
-    
-    const taskIndex = optimisticTasks.findIndex(t => t.id === taskId);
-    if (taskIndex === -1) {
-      console.error('Task not found:', taskId);
+  const isFeedbackTask = useCallback(
+    (task: any): boolean => {
+      if (!task) return false;
+      if (task.isFeedbackTask || task.is_feedback_task) return true;
+      return !!resolveFeedbackTemplateId(task);
+    },
+    [resolveFeedbackTemplateId]
+  );
+
+  const navigateToFeedbackTask = useCallback(
+    (task: any): boolean => {
+      if (!isFeedbackTask(task)) return false;
+      if (!activityId) {
+        console.warn('[ActivityCard] Missing activity id for feedback navigation');
+        return false;
+      }
+      const taskId = task?.id ?? task?.task_id;
+      const encodedId = encodeURIComponent(activityId);
+      const encodedTaskId = taskId ? encodeURIComponent(String(taskId)) : null;
+      const href = `/activity-details?id=${encodedId}&activityId=${encodedId}${
+        encodedTaskId ? `&openFeedbackTaskId=${encodedTaskId}` : ''
+      }`;
+      router.push(href);
+      return true;
+    },
+    [activityId, isFeedbackTask, router]
+  );
+
+  const handleCardPress = useCallback(() => {
+    if (suppressCardPressRef.current) {
+      suppressCardPressRef.current = false;
       return;
     }
-    
-    const task = optimisticTasks[taskIndex];
-    const previousCompleted = task.completed;
-    
-    // Optimistic update
-    const newTasks = [...optimisticTasks];
-    newTasks[taskIndex] = { ...task, completed: !previousCompleted };
-    setOptimisticTasks(newTasks);
-    
-    try {
-      await toggleTaskCompletion(activity.id, taskId);
-      refreshData();
-    } catch (error) {
-      console.error('❌ Error toggling task, rolling back:', error);
-      
-      // Rollback on error
-      const rollbackTasks = [...optimisticTasks];
-      rollbackTasks[taskIndex] = { ...task, completed: previousCompleted };
-      setOptimisticTasks(rollbackTasks);
+    if (!activityId) {
+      console.warn('[ActivityCard] Missing activity id for navigation');
+      return;
     }
-  }, [optimisticTasks, activity.id, toggleTaskCompletion, refreshData]);
+    const encodedId = encodeURIComponent(activityId);
+    router.push(`/activity-details?id=${encodedId}&activityId=${encodedId}`);
+  }, [activityId, router]);
 
-  // Memoized modal close handler
+  const handleTaskPress = useCallback(
+    (task: any, event?: any) => {
+      event?.stopPropagation?.();
+      if (navigateToFeedbackTask(task)) return;
+      setSelectedTask(task);
+      setIsTaskModalOpen(true);
+    },
+    [navigateToFeedbackTask]
+  );
+
   const handleModalClose = useCallback(() => {
     setIsTaskModalOpen(false);
-    setActiveTaskId(null);
-    refreshData();
+    setSelectedTask(null);
+    Promise.resolve(refreshData()).catch(() => {});
   }, [refreshData]);
 
-  const formatReminderTime = (reminderMinutes: number) => {
-    if (!reminderMinutes) return null;
-    if (reminderMinutes < 60) {
-      return `${reminderMinutes}m`;
+  const handleModalComplete = useCallback(async () => {
+    if (!selectedTask || isTaskModalSaving) return;
+    if (!activityId) {
+      console.warn('[ActivityCard] Missing activity id for completion');
+      return;
     }
+
+    const taskIdRaw = selectedTask?.id ?? selectedTask?.task_id;
+    if (!taskIdRaw) return;
+    const taskId = String(taskIdRaw);
+
+    const idx = optimisticTasks.findIndex((candidate) => {
+      const candidateId = candidate?.id ?? candidate?.task_id;
+      return candidateId !== null && candidateId !== undefined && String(candidateId) === taskId;
+    });
+    if (idx === -1) return;
+
+    const previous = !!optimisticTasks[idx].completed;
+    if (previous) {
+      handleModalClose();
+      return;
+    }
+
+    const nextTasks = [...optimisticTasks];
+    nextTasks[idx] = { ...optimisticTasks[idx], completed: true };
+    setOptimisticTasks(nextTasks);
+
+    setIsTaskModalSaving(true);
+    try {
+      await toggleTaskCompletion(activityId, taskId, true);
+      Promise.resolve(refreshData()).catch(() => {});
+      handleModalClose();
+    } catch (error) {
+      console.error('❌ Error completing task, rolling back:', error);
+      const rollback = [...optimisticTasks];
+      rollback[idx] = { ...optimisticTasks[idx], completed: previous };
+      setOptimisticTasks(rollback);
+    } finally {
+      setIsTaskModalSaving(false);
+    }
+  }, [
+    activityId,
+    handleModalClose,
+    isTaskModalSaving,
+    optimisticTasks,
+    refreshData,
+    selectedTask,
+    toggleTaskCompletion,
+  ]);
+
+  const formatReminderTime = (reminderMinutes: number | null | undefined) => {
+    if (reminderMinutes === null || reminderMinutes === undefined) return null;
+    if (reminderMinutes < 60) return `${reminderMinutes}m`;
     const hours = Math.floor(reminderMinutes / 60);
     const remainingMinutes = reminderMinutes % 60;
-    if (remainingMinutes === 0) {
-      return `${hours}t`;
-    }
+    if (remainingMinutes === 0) return `${hours}t`;
     return `${hours}t ${remainingMinutes}m`;
   };
 
   // Resolve category meta (color + emoji) without relying on legacy activity.category
-  // Priority for color:
-  // a) activity.categoryColor
-  // b) activity.category_color
-  // c) activity.activity_categories?.color
-  // d) activity.activity_category?.color
-  // e) activity.category?.color (legacy)
   const resolvedCategoryMeta: CategoryMeta = useMemo(() => {
     const joinedCategory = activity?.activity_categories ?? activity?.activity_category ?? null;
     const legacyCategory = activity?.category ?? null;
@@ -176,10 +248,7 @@ export default function ActivityCard({
       legacyCategory?.color ??
       undefined;
 
-    const emoji =
-      joinedCategory?.emoji ??
-      legacyCategory?.emoji ??
-      undefined;
+    const emoji = joinedCategory?.emoji ?? legacyCategory?.emoji ?? undefined;
 
     return { color, emoji };
   }, [activity]);
@@ -198,12 +267,57 @@ export default function ActivityCard({
   const timeLabel = format(resolvedDate, 'HH:mm');
   const location = activity.location || activity.category_location || '';
 
+  const intensityValue = useMemo(() => {
+    const raw = activity?.intensity ?? activity?.activity_intensity;
+    return typeof raw === 'number' ? raw : null;
+  }, [activity]);
+
+  const intensityEnabled = useMemo(() => resolveActivityIntensityEnabled(activity), [activity]);
+  const hasIntensityValue = typeof intensityValue === 'number';
+  const showIntensityRow = intensityEnabled || hasIntensityValue;
+  const intensityMissing = !hasIntensityValue;
+
+  const taskListItems = useMemo<TaskListItem[]>(() => {
+    const baseTasks = Array.isArray(optimisticTasks) ? optimisticTasks : [];
+    const items: TaskListItem[] = [];
+
+    if (showIntensityRow) {
+      const fallbackId = activityId ?? String(activity?.id ?? 'activity');
+      items.push({ type: 'intensity', key: `intensity-${fallbackId}` });
+    }
+
+    baseTasks.forEach((task, index) => {
+      const rawId = task?.id ?? task?.task_id;
+      const trimmedId =
+        typeof rawId === 'number' || typeof rawId === 'string' ? String(rawId).trim() : '';
+      const fallbackKey = trimmedId || `${activityId ?? 'activity'}-${index}`;
+      items.push({ type: 'task', key: `task-${fallbackKey}`, task });
+    });
+
+    return items;
+  }, [activity?.id, activityId, optimisticTasks, showIntensityRow]);
+
+  const shouldRenderTasksSection = showTasks && taskListItems.length > 0;
+
+  const handleIntensityRowPress = useCallback(
+    (event?: any) => {
+      event?.stopPropagation?.();
+      if (!activityId) return;
+      suppressCardPressRef.current = true;
+      router.push({
+        pathname: '/activity-details',
+        params: { id: String(activityId), activityId: String(activityId), openIntensity: '1' },
+      });
+      setTimeout(() => {
+        suppressCardPressRef.current = false;
+      }, 0);
+    },
+    [activityId, router]
+  );
+
   return (
     <>
-      <Pressable
-        onPress={handleCardPress}
-        style={({ pressed }) => [pressed && styles.cardPressed]}
-      >
+      <Pressable onPress={handleCardPress} style={({ pressed }) => [pressed && styles.cardPressed]}>
         <LinearGradient
           colors={gradientColors}
           start={{ x: 0, y: 0 }}
@@ -211,137 +325,187 @@ export default function ActivityCard({
           style={styles.card}
         >
           <View style={styles.cardContent}>
-            {/* Icon */}
             <View style={styles.iconContainer}>
               <View style={styles.iconCircle}>
                 <Text style={styles.iconEmoji}>{categoryEmoji}</Text>
               </View>
             </View>
 
-            {/* Content */}
             <View style={styles.textContainer}>
               <Text style={styles.title} numberOfLines={1}>
                 {activity.title || activity.name || 'Uden titel'}
               </Text>
-              
+
               <View style={styles.detailRow}>
                 <Text style={styles.detailIcon}>🕐</Text>
-                <Text style={styles.detailText}>{dayLabel} • {timeLabel}</Text>
+                <Text style={styles.detailText}>
+                  {dayLabel} • {timeLabel}
+                </Text>
               </View>
 
-              {location && (
+              {location ? (
                 <View style={styles.detailRow}>
                   <Text style={styles.detailIcon}>📍</Text>
-                  <Text style={styles.detailText} numberOfLines={1}>{location}</Text>
+                  <Text style={styles.detailText} numberOfLines={1}>
+                    {location}
+                  </Text>
                 </View>
-              )}
+              ) : null}
 
-              {activity.is_external && (
+              {activity.is_external ? (
                 <View style={styles.externalBadge}>
                   <Text style={styles.externalText}>📅 Ekstern kalender</Text>
                 </View>
-              )}
+              ) : null}
             </View>
 
-            {/* Chevron Arrow */}
             <View style={styles.arrowContainer}>
               <Text style={styles.arrow}>›</Text>
             </View>
           </View>
 
-          {/* Tasks Section - Only show if showTasks is true and tasks exist */}
-          {showTasks && optimisticTasks && optimisticTasks.length > 0 && (
+          {shouldRenderTasksSection ? (
             <View style={styles.tasksSection}>
               <View style={styles.tasksDivider} />
-              {optimisticTasks.map((task: any) => {
-                const taskKey =
-                  String(task?.id ?? '').trim() ||
-                  String(task?.task_id ?? '').trim() ||
-                  `${String(activity?.id ?? 'activity')}-${String(task?.title ?? 'task')}`;
+              {taskListItems.map((item) => {
+                if (item.type === 'intensity') {
+                  return (
+                    <TouchableOpacity
+                      key={item.key}
+                      style={styles.taskRow}
+                      onPress={handleIntensityRowPress}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.intensityRowInner}>
+                        <View style={styles.taskCheckboxArea}>
+                          <View
+                            style={[
+                              styles.taskCheckbox,
+                              !intensityMissing && styles.taskCheckboxCompleted,
+                            ]}
+                          >
+                            {!intensityMissing ? (
+                              <IconSymbol
+                                ios_icon_name="checkmark"
+                                android_material_icon_name="check"
+                                size={14}
+                                color="#4CAF50"
+                              />
+                            ) : null}
+                          </View>
+                        </View>
+
+                        <View style={styles.taskContent}>
+                          <View style={styles.taskTitleRow}>
+                            <Text style={styles.taskTitle} numberOfLines={1}>
+                              Intensitet
+                            </Text><Text
+                              style={[
+                                styles.intensityTaskValue,
+                                intensityMissing && styles.intensityTaskValueNeutral,
+                              ]}
+                            >
+                              {intensityMissing ? 'Ikke angivet' : `${intensityValue}/10`}
+                            </Text>
+                          </View>
+
+                          {intensityEnabled && intensityMissing ? (
+                            <Text style={styles.intensityTaskHelper}>Tryk for at angive intensitet</Text>
+                          ) : null}
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                }
+
+                const task = (item as any).task;
+                const reminderMinutesRaw = task?.reminder_minutes;
+                const reminderMinutes =
+                  reminderMinutesRaw === null || reminderMinutesRaw === undefined
+                    ? null
+                    : Number(reminderMinutesRaw);
+                const videoUrl = typeof task?.video_url === 'string' ? task.video_url : null;
 
                 return (
-                  <React.Fragment key={taskKey}>
-                    <View style={styles.taskRow}>
-                      <TouchableOpacity
-                        style={styles.taskCheckboxArea}
-                        onPress={(e) => handleToggleTask(task.id, e)}
-                        activeOpacity={0.7}
-                      >
-                        <View
-                          style={[
-                            styles.taskCheckbox,
-                            task.completed && styles.taskCheckboxCompleted,
-                          ]}
-                        >
-                          {task.completed && (
-                            <IconSymbol
-                              ios_icon_name="checkmark"
-                              android_material_icon_name="check"
-                              size={14}
-                              color={task.completed ? '#4CAF50' : '#fff'}
-                            />
-                          )}
-                        </View>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={styles.taskContent}
-                        onPress={(e) => handleTaskPress(task, e)}
-                        activeOpacity={0.7}
-                      >
-                        <View style={styles.taskTitleRow}>
-                          <Text
-                            style={[
-                              styles.taskTitle,
-                              task.completed && styles.taskTitleCompleted,
-                            ]}
-                            numberOfLines={1}
-                          >
-                            {task.title}
-                          </Text>
-                          
-                          {task.reminder_minutes && (
-                            <View style={styles.reminderBadge}>
-                              <IconSymbol
-                                ios_icon_name="bell.fill"
-                                android_material_icon_name="notifications"
-                                size={10}
-                                color="rgba(255, 255, 255, 0.8)"
-                              />
-                              <Text style={styles.reminderText}>
-                                {formatReminderTime(task.reminder_minutes)}
-                              </Text>
-                            </View>
-                          )}
-                        </View>
-                      </TouchableOpacity>
-
-                      {task.video_url && (
-                        <View style={styles.videoIndicator}>
+                  <View key={item.key} style={styles.taskRow}>
+                    <TouchableOpacity
+                      style={styles.taskCheckboxArea}
+                      onPress={(e) => handleTaskPress(task, e)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={[styles.taskCheckbox, task.completed && styles.taskCheckboxCompleted]}>
+                        {task.completed ? (
                           <IconSymbol
-                            ios_icon_name="play.circle.fill"
-                            android_material_icon_name="play_circle"
-                            size={20}
-                            color="rgba(255, 255, 255, 0.9)"
+                            ios_icon_name="checkmark"
+                            android_material_icon_name="check"
+                            size={14}
+                            color="#4CAF50"
                           />
-                        </View>
-                      )}
-                    </View>
-                  </React.Fragment>
+                        ) : null}
+                      </View>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.taskContent}
+                      onPress={(e) => handleTaskPress(task, e)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.taskTitleRow}>
+                        <Text
+                          style={[styles.taskTitle, task.completed && styles.taskTitleCompleted]}
+                          numberOfLines={1}
+                        >
+                          {String(task?.title ?? 'Uden titel')}
+                        </Text>{reminderMinutes !== null ? (
+                          <View style={styles.reminderBadge}>
+                            <IconSymbol
+                              ios_icon_name="bell.fill"
+                              android_material_icon_name="notifications"
+                              size={10}
+                              color="rgba(255, 255, 255, 0.8)"
+                            /><Text style={styles.reminderText}>
+                              {formatReminderTime(reminderMinutes)}
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    </TouchableOpacity>
+
+                    {videoUrl ? (
+                      <View style={styles.videoIndicator}>
+                        <IconSymbol
+                          ios_icon_name="play.circle.fill"
+                          android_material_icon_name="play_circle"
+                          size={20}
+                          color="rgba(255, 255, 255, 0.9)"
+                        />
+                      </View>
+                    ) : null}
+                  </View>
                 );
               })}
             </View>
-          )}
+          ) : null}
         </LinearGradient>
       </Pressable>
 
-      {/* Task Details Modal */}
-      {isTaskModalOpen && activeTaskId && (
+      {isTaskModalOpen && selectedTask ? (
         <TaskDetailsModal
-          taskId={activeTaskId}
+          visible={isTaskModalOpen}
+          title={String(selectedTask?.title ?? 'Uden titel')}
+          categoryColor={String(resolvedCategoryMeta?.color ?? '#3B82F6')}
+          isDark={isDark}
+          description={typeof selectedTask?.description === 'string' ? selectedTask.description : undefined}
+          reminderMinutes={selectedTask?.reminder_minutes !== null && selectedTask?.reminder_minutes !== undefined
+            ? Number(selectedTask.reminder_minutes)
+            : null}
+          videoUrl={typeof selectedTask?.video_url === 'string' ? selectedTask.video_url : null}
+          completed={!!selectedTask?.completed}
+          isSaving={isTaskModalSaving}
           onClose={handleModalClose}
+          onComplete={handleModalComplete}
         />
-      )}
+      ) : null}
     </>
   );
 }
@@ -363,7 +527,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  // Icon
   iconContainer: {
     marginRight: 14,
   },
@@ -379,7 +542,6 @@ const styles = StyleSheet.create({
     fontSize: 30,
   },
 
-  // Text Content
   textContainer: {
     flex: 1,
   },
@@ -413,7 +575,6 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.9)',
   },
 
-  // Chevron Arrow
   arrowContainer: {
     marginLeft: 12,
     justifyContent: 'center',
@@ -425,7 +586,6 @@ const styles = StyleSheet.create({
     lineHeight: 40,
   },
 
-  // Tasks Section
   tasksSection: {
     marginTop: 16,
   },
@@ -464,33 +624,61 @@ const styles = StyleSheet.create({
   taskTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
   },
   taskTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '500',
-    color: '#FFFFFF',
+    color: 'rgba(255, 255, 255, 0.95)',
     flex: 1,
   },
   taskTitleCompleted: {
     textDecorationLine: 'line-through',
-    opacity: 0.6,
+    color: 'rgba(255, 255, 255, 0.6)',
   },
+
+  intensityTaskValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#4CAF50',
+  },
+  intensityTaskValueNeutral: {
+    color: 'rgba(255, 255, 255, 0.95)',
+  },
+  intensityRowInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  intensityTaskHelper: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginTop: 4,
+  },
+
   reminderBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     borderRadius: 12,
+    paddingVertical: 2,
+    paddingHorizontal: 8,
+    marginLeft: 8,
   },
   reminderText: {
-    fontSize: 10,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '500',
     color: 'rgba(255, 255, 255, 0.9)',
+    marginLeft: 4,
   },
+
   videoIndicator: {
-    marginLeft: 8,
+    marginLeft: 'auto',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
