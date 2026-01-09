@@ -1,4 +1,3 @@
-
 import React, { useEffect } from 'react';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
@@ -25,58 +24,57 @@ export default function RootLayout() {
     }
   }, [loaded]);
 
-  // Don't return null - always render the router
-  // Fonts will load in the background
   return (
     <AppleIAPProvider>
       <SubscriptionProvider>
         <TeamPlayerProvider>
           <AdminProvider>
             <FootballProvider>
-              <Stack>
+              <Stack initialRouteName="index">
+                {/* Root redirect route (/) */}
+                <Stack.Screen name="index" options={{ headerShown: false }} />
+
+                {/* Main tabs */}
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                <Stack.Screen name="+not-found" />
-                <Stack.Screen 
-                  name="activity-details" 
-                  options={{ 
+
+                {/* Activity details */}
+                <Stack.Screen
+                  name="activity-details"
+                  options={{
                     presentation: 'modal',
                     headerShown: false,
-                  }} 
+                  }}
                 />
+
+                {/* Not found */}
+                <Stack.Screen name="+not-found" options={{ headerShown: false }} />
+
                 {/* Debug routes - only available in development */}
                 {__DEV__ && (
                   <React.Fragment>
-                    <Stack.Screen 
-                      name="console-logs" 
-                      options={{ 
+                    <Stack.Screen
+                      name="console-logs"
+                      options={{
                         presentation: 'modal',
                         headerShown: false,
                         title: 'Console Logs (DEV)',
-                      }} 
+                      }}
                     />
-                    <Stack.Screen 
-                      name="notification-debug" 
-                      options={{ 
+                    <Stack.Screen
+                      name="notification-debug"
+                      options={{
                         presentation: 'modal',
                         headerShown: false,
                         title: 'Notification Debug (DEV)',
-                      }} 
+                      }}
                     />
                   </React.Fragment>
                 )}
-                <Stack.Screen 
-                  name="email-confirmed" 
-                  options={{ 
-                    headerShown: false,
-                  }} 
-                />
-                <Stack.Screen 
-                  name="update-password" 
-                  options={{ 
-                    headerShown: false,
-                  }} 
-                />
+
+                <Stack.Screen name="email-confirmed" options={{ headerShown: false }} />
+                <Stack.Screen name="update-password" options={{ headerShown: false }} />
               </Stack>
+
               <StatusBar style="auto" />
             </FootballProvider>
           </AdminProvider>

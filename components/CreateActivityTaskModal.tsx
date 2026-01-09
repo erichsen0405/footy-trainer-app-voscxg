@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,7 +12,7 @@ import {
   Platform,
   KeyboardAvoidingView,
 } from 'react-native';
-import { colors } from '@/styles/commonStyles';
+import * as CommonStyles from '@/styles/commonStyles';
 import { Task } from '@/types';
 import { supabase } from '@/app/integrations/supabase/client';
 import { scheduleTaskReminderImmediate } from '@/utils/notificationScheduler';
@@ -40,13 +39,26 @@ import { scheduleTaskReminderImmediate } from '@/utils/notificationScheduler';
  * ========================================
  */
 
+const FALLBACK_COLORS = {
+  primary: '#3B82F6',
+  background: '#FFFFFF',
+  cardBackground: '#F5F5F5',
+  border: '#E2E8F0',
+  text: '#111827',
+  textSecondary: '#6B7280',
+};
+
+const colors =
+  ((CommonStyles as any)?.colors as typeof FALLBACK_COLORS | undefined) ?? FALLBACK_COLORS;
+
 interface CreateActivityTaskModalProps {
   visible: boolean;
   onClose: () => void;
-  onSave: (task: Omit<Task, 'id'>) => Promise<void>;
+  onSave?: (task: Omit<Task, 'id'>) => Promise<void>;
+  onTaskCreated?: () => void | Promise<void>;
   activityId: string;
   activityTitle: string;
-  activityDate: Date;
+  activityDate?: Date | string | null;
   activityTime: string;
 }
 
@@ -54,6 +66,7 @@ export function CreateActivityTaskModal({
   visible,
   onClose,
   onSave,
+  onTaskCreated,
   activityId,
   activityTitle,
   activityDate,
@@ -68,10 +81,25 @@ export function CreateActivityTaskModal({
   const [activityExists, setActivityExists] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
 
+  const safeActivityDate = useMemo(() => {
+    if (!activityDate) return null;
+    const candidate = activityDate instanceof Date ? activityDate : new Date(activityDate);
+    return Number.isNaN(candidate.getTime()) ? null : candidate;
+  }, [activityDate]);
+
+  const activityDateLabel = useMemo(
+    () => (safeActivityDate ? safeActivityDate.toLocaleDateString('da-DK') : 'Ukendt dato'),
+    [safeActivityDate],
+  );
+
   useEffect(() => {
     const getCurrentUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUserId(user?.id || null);
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        setUserId(null);
+        return;
+      }
+      setUserId(data.session?.user?.id ?? null);
     };
     getCurrentUser();
   }, []);
@@ -149,7 +177,7 @@ export function CreateActivityTaskModal({
       console.log('🆕 ========== CREATING NEW ACTIVITY TASK ==========');
       console.log('  Activity ID:', activityId);
       console.log('  Activity Title:', activityTitle);
-      console.log('  Activity Date:', activityDate);
+      console.log('  Activity Date:', safeActivityDate ?? 'n/a');
       console.log('  Activity Time:', activityTime);
       console.log('  Task Title:', title);
       console.log('  Has Reminder:', hasReminder);
@@ -207,12 +235,12 @@ export function CreateActivityTaskModal({
       console.log('✅ Task created in database:', taskData.id);
 
       // If reminder is set, schedule notification using the smart scheduler
-      if (hasReminder && taskData) {
+      if (hasReminder && taskData && safeActivityDate) {
         console.log('📅 Scheduling notification for new task...');
         console.log('  Task ID:', taskData.id);
         console.log('  Reminder Minutes:', parseInt(reminderMinutes, 10));
         
-        const activityDateStr = activityDate.toISOString().split('T')[0];
+        const activityDateStr = safeActivityDate.toISOString().split('T')[0];
         
         const success = await scheduleTaskReminderImmediate(
           taskData.id,
@@ -239,6 +267,13 @@ export function CreateActivityTaskModal({
             [{ text: 'OK' }]
           );
         }
+      } else if (hasReminder && !safeActivityDate) {
+        console.warn('⚠️ Skipping reminder scheduling – activity date missing');
+        Alert.alert(
+          'Opgave oprettet',
+          `Opgaven "${title}" er oprettet, men der kunne ikke planlægges påmindelse uden gyldig dato.`,
+          [{ text: 'OK' }],
+        );
       } else {
         console.log('ℹ️ No reminder set for this task');
         Alert.alert('Opgave oprettet', `Opgaven "${title}" er oprettet.`, [{ text: 'OK' }]);
@@ -246,16 +281,21 @@ export function CreateActivityTaskModal({
 
       console.log('========== TASK CREATION COMPLETE ==========');
 
-      // Call the onSave callback to refresh the UI
-      await onSave({
-        title: title.trim(),
-        description: description.trim(),
-        completed: false,
-        isTemplate: false,
-        categoryIds: [],
-        reminder: hasReminder ? parseInt(reminderMinutes, 10) : undefined,
-        subtasks: [],
-      });
+      if (onTaskCreated) {
+        await onTaskCreated();
+      }
+
+      if (onSave) {
+        await onSave({
+          title: title.trim(),
+          description: description.trim(),
+          completed: false,
+          isTemplate: false,
+          categoryIds: [],
+          reminder: hasReminder ? parseInt(reminderMinutes, 10) : undefined,
+          subtasks: [],
+        });
+      }
 
       // Reset form and close
       setTitle('');
@@ -278,7 +318,21 @@ export function CreateActivityTaskModal({
     } finally {
       setIsLoading(false);
     }
-  }, [title, userId, activityExists, activityId, activityTitle, activityDate, activityTime, hasReminder, reminderMinutes, description, onSave, onClose]);
+  }, [
+    title,
+    userId,
+    activityExists,
+    activityId,
+    activityTitle,
+    safeActivityDate,
+    activityTime,
+    hasReminder,
+    reminderMinutes,
+    description,
+    onSave,
+    onTaskCreated,
+    onClose,
+  ]);
 
   return (
     <Modal
@@ -308,7 +362,8 @@ export function CreateActivityTaskModal({
             For: {activityTitle}
           </Text>
           <Text style={styles.activityInfo}>
-            Dato: {activityDate.toLocaleDateString('da-DK')} kl. {activityTime}
+            Dato: {activityDateLabel}
+            {safeActivityDate ? ` kl. ${activityTime}` : ''}
           </Text>
 
           {!activityExists && (

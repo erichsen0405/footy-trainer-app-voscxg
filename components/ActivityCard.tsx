@@ -70,28 +70,37 @@ const getCategoryEmoji = (emoji?: string): string => {
 export default function ActivityCard({
   activity,
   resolvedDate,
-  onPress,
+  onPress: _deprecatedOnPress,
   onPressIntensity,
   showTasks = false,
 }: ActivityCardProps) {
   const router = useRouter();
   const { toggleTaskCompletion, refreshData } = useFootball();
-  
+
+  const activityId = useMemo(() => {
+    const raw = activity?.id ?? activity?.activity_id;
+    if (raw === null || raw === undefined) return null;
+    const trimmed = String(raw).trim();
+    const lowered = trimmed.toLowerCase();
+    if (!trimmed.length || lowered === 'undefined' || lowered === 'null') return null;
+    return trimmed;
+  }, [activity?.id, activity?.activity_id]);
+
   // Local optimistic state for tasks
   const [optimisticTasks, setOptimisticTasks] = useState<any[]>([]);
-  
+
   // Task modal state
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
 
   // Initialize and update optimistic tasks from activity
   useEffect(() => {
-    if (activity.tasks) {
+    if (Array.isArray(activity?.tasks)) {
       setOptimisticTasks(activity.tasks);
     } else {
       setOptimisticTasks([]);
     }
-  }, [activity.tasks, activity.id]);
+  }, [activity?.tasks, activityId]);
 
   const resolveFeedbackTemplateId = useCallback((task: any): string | null => {
     if (!task) return null;
@@ -101,9 +110,8 @@ export default function ActivityCard({
       return String(directTemplateId);
     }
 
-    const fromMarker = typeof task.description === 'string'
-      ? parseTemplateIdFromMarker(task.description)
-      : null;
+    const fromMarker =
+      typeof task.description === 'string' ? parseTemplateIdFromMarker(task.description) : null;
 
     return fromMarker ?? null;
   }, []);
@@ -117,7 +125,7 @@ export default function ActivityCard({
 
       return !!resolveFeedbackTemplateId(task);
     },
-    [resolveFeedbackTemplateId]
+    [resolveFeedbackTemplateId],
   );
 
   const navigateToFeedbackTask = useCallback(
@@ -125,38 +133,45 @@ export default function ActivityCard({
       if (!isFeedbackTask(task)) {
         return false;
       }
-
+      if (!activityId) {
+        console.warn('[ActivityCard] Missing activity id for feedback navigation');
+        return false;
+      }
       const taskId = task?.id ?? task?.task_id;
-
-      router.push({
-        pathname: '/activity-details',
-        params: {
-          id: activity.id,
-          openFeedbackTaskId: taskId ? String(taskId) : undefined,
-        },
-      });
-
+      const encodedId = encodeURIComponent(activityId);
+      const encodedTaskId = taskId ? encodeURIComponent(String(taskId)) : null;
+      const href = `/activity-details?id=${encodedId}&activityId=${encodedId}${
+        encodedTaskId ? `&openFeedbackTaskId=${encodedTaskId}` : ''
+      }`;
+      console.log('[ActivityCard] Navigating to activity details (feedback)', href);
+      router.push(href);
       return true;
     },
-    [activity.id, isFeedbackTask, router]
+    [activityId, isFeedbackTask, router],
   );
 
   // Memoized card press handler - only navigates, no async work
   const handleCardPress = useCallback(() => {
-    if (onPress) {
-      onPress();
-    } else {
-      router.push({
-        pathname: '/activity-details',
-        params: { id: activity.id },
-      });
+    if (!activityId) {
+      console.warn('[ActivityCard] Missing activity id for navigation');
+      return;
     }
-  }, [onPress, router, activity.id]);
+
+    const encodedId = encodeURIComponent(activityId);
+    const href = `/activity-details?id=${encodedId}&activityId=${encodedId}`;
+    console.log('[ActivityCard] Navigating to activity details', href);
+
+    try {
+      router.push(href);
+    } catch (error) {
+      console.error('[ActivityCard] Error navigating to activity details:', error);
+    }
+  }, [activityId, router]);
 
   // Task press handler
   const handleTaskPress = useCallback(
     (task: any, event: any) => {
-      event.stopPropagation();
+      event?.stopPropagation?.();
 
       if (navigateToFeedbackTask(task)) {
         return;
@@ -170,47 +185,59 @@ export default function ActivityCard({
       setActiveTaskId(String(taskId));
       setIsTaskModalOpen(true);
     },
-    [navigateToFeedbackTask]
+    [navigateToFeedbackTask],
   );
 
   // Toggle task handler
   const handleToggleTask = useCallback(
     async (task: any, event: any) => {
-      event.stopPropagation();
+      event?.stopPropagation?.();
 
       if (navigateToFeedbackTask(task)) {
         return;
       }
-      
-      const taskId = task?.id ?? task?.task_id;
-      const taskIndex = optimisticTasks.findIndex(
-        t => t.id === taskId || t.task_id === taskId
-      );
+
+      if (!activityId) {
+        console.warn('[ActivityCard] Missing activity id for toggleTaskCompletion');
+        return;
+      }
+
+      const taskIdRaw = task?.id ?? task?.task_id;
+      if (!taskIdRaw) {
+        return;
+      }
+      const taskId = String(taskIdRaw);
+
+      const taskIndex = optimisticTasks.findIndex((t) => {
+        const candidate = t?.id ?? t?.task_id;
+        return candidate !== null && candidate !== undefined && String(candidate) === taskId;
+      });
+
       if (taskIndex === -1) {
         console.error('Task not found:', taskId);
         return;
       }
-      
-      const previousCompleted = optimisticTasks[taskIndex].completed;
-      
+
+      const previousCompleted = !!optimisticTasks[taskIndex].completed;
+
       // Optimistic update
       const newTasks = [...optimisticTasks];
       newTasks[taskIndex] = { ...optimisticTasks[taskIndex], completed: !previousCompleted };
       setOptimisticTasks(newTasks);
-      
+
       try {
-        await toggleTaskCompletion(activity.id, String(taskId), !previousCompleted);
+        await toggleTaskCompletion(activityId, taskId, !previousCompleted);
         refreshData();
       } catch (error) {
         console.error('❌ Error toggling task, rolling back:', error);
-        
+
         // Rollback on error
         const rollbackTasks = [...optimisticTasks];
         rollbackTasks[taskIndex] = { ...optimisticTasks[taskIndex], completed: previousCompleted };
         setOptimisticTasks(rollbackTasks);
       }
     },
-    [activity.id, navigateToFeedbackTask, optimisticTasks, refreshData, toggleTaskCompletion]
+    [activityId, navigateToFeedbackTask, optimisticTasks, refreshData, toggleTaskCompletion],
   );
 
   // Memoized modal close handler
@@ -234,12 +261,6 @@ export default function ActivityCard({
   };
 
   // Resolve category meta (color + emoji) without relying on legacy activity.category
-  // Priority for color:
-  // a) activity.categoryColor
-  // b) activity.category_color
-  // c) activity.activity_categories?.color
-  // d) activity.activity_category?.color
-  // e) activity.category?.color (legacy)
   const resolvedCategoryMeta: CategoryMeta = useMemo(() => {
     const joinedCategory = activity?.activity_categories ?? activity?.activity_category ?? null;
     const legacyCategory = activity?.category ?? null;
@@ -251,22 +272,19 @@ export default function ActivityCard({
       legacyCategory?.color ??
       undefined;
 
-    const emoji =
-      joinedCategory?.emoji ??
-      legacyCategory?.emoji ??
-      undefined;
+    const emoji = joinedCategory?.emoji ?? legacyCategory?.emoji ?? undefined;
 
     return { color, emoji };
   }, [activity]);
 
   const gradientColors = useMemo(
     () => getCategoryGradientFromColor(resolvedCategoryMeta?.color),
-    [resolvedCategoryMeta?.color]
+    [resolvedCategoryMeta?.color],
   );
 
   const categoryEmoji = useMemo(
     () => getCategoryEmoji(resolvedCategoryMeta?.emoji),
-    [resolvedCategoryMeta?.emoji]
+    [resolvedCategoryMeta?.emoji],
   );
 
   const dayLabel = format(resolvedDate, 'EEE. d. MMM.', { locale: da });
@@ -277,10 +295,7 @@ export default function ActivityCard({
     return typeof raw === 'number' ? raw : null;
   }, [activity]);
 
-  const intensityEnabled = useMemo(
-    () => resolveActivityIntensityEnabled(activity),
-    [activity]
-  );
+  const intensityEnabled = useMemo(() => resolveActivityIntensityEnabled(activity), [activity]);
   const hasIntensityValue = typeof intensityValue === 'number';
   const allowQuickEdit = typeof onPressIntensity === 'function';
   const showIntensityRow = allowQuickEdit || intensityEnabled || hasIntensityValue;
@@ -289,25 +304,23 @@ export default function ActivityCard({
   const taskListItems = useMemo(() => {
     const baseTasks = Array.isArray(optimisticTasks) ? optimisticTasks : [];
     const rows = showIntensityRow ? [{ type: 'intensity' as const }] : [];
-    return [...rows, ...baseTasks.map(task => ({ type: 'task' as const, task }))];
+    return [...rows, ...baseTasks.map((task) => ({ type: 'task' as const, task }))];
   }, [showIntensityRow, optimisticTasks]);
+
   const shouldRenderTasksSection = showTasks && taskListItems.length > 0;
 
   const handleIntensityRowPress = useCallback(
     (event: any) => {
-      event.stopPropagation?.();
+      event?.stopPropagation?.();
       if (!onPressIntensity) return;
       onPressIntensity();
     },
-    [onPressIntensity]
+    [onPressIntensity],
   );
 
   return (
     <>
-      <Pressable
-        onPress={handleCardPress}
-        style={({ pressed }) => [pressed && styles.cardPressed]}
-      >
+      <Pressable onPress={handleCardPress} style={({ pressed }) => [pressed && styles.cardPressed]}>
         <LinearGradient
           colors={gradientColors}
           start={{ x: 0, y: 0 }}
@@ -327,16 +340,20 @@ export default function ActivityCard({
               <Text style={styles.title} numberOfLines={1}>
                 {activity.title || activity.name || 'Uden titel'}
               </Text>
-              
+
               <View style={styles.detailRow}>
                 <Text style={styles.detailIcon}>🕐</Text>
-                <Text style={styles.detailText}>{dayLabel} • {timeLabel}</Text>
+                <Text style={styles.detailText}>
+                  {dayLabel} • {timeLabel}
+                </Text>
               </View>
 
               {location && (
                 <View style={styles.detailRow}>
                   <Text style={styles.detailIcon}>📍</Text>
-                  <Text style={styles.detailText} numberOfLines={1}>{location}</Text>
+                  <Text style={styles.detailText} numberOfLines={1}>
+                    {location}
+                  </Text>
                 </View>
               )}
 
@@ -357,11 +374,12 @@ export default function ActivityCard({
           {shouldRenderTasksSection && (
             <View style={styles.tasksSection}>
               <View style={styles.tasksDivider} />
-              {taskListItems.map(item => {
+              {taskListItems.map((item) => {
                 if (item.type === 'intensity') {
+                  const intensityKey = activityId ?? `activity-${activity?.title ?? 'unknown'}`;
                   return (
                     <TouchableOpacity
-                      key={`intensity-${activity.id}`}
+                      key={`intensity-${intensityKey}`}
                       style={[
                         styles.taskRow,
                         !onPressIntensity && styles.intensityTaskRowDisabled,
@@ -410,9 +428,7 @@ export default function ActivityCard({
                             </Text>
                           </View>
                           {allowQuickEdit && (
-                            <Text style={styles.intensityTaskHelper}>
-                              Tryk for at angive intensitet
-                            </Text>
+                            <Text style={styles.intensityTaskHelper}>Tryk for at angive intensitet</Text>
                           )}
                         </View>
                       </View>
@@ -426,7 +442,7 @@ export default function ActivityCard({
                     key={
                       String(task?.id ?? '').trim() ||
                       String(task?.task_id ?? '').trim() ||
-                      `${String(activity?.id ?? 'activity')}-${String(task?.title ?? 'task')}`
+                      `${String(activityId ?? 'activity')}-${String(task?.title ?? 'task')}`
                     }
                   >
                     <View style={styles.taskRow}>
@@ -459,28 +475,26 @@ export default function ActivityCard({
                       >
                         <View style={styles.taskTitleRow}>
                           <Text
-                            style={[
-                              styles.taskTitle,
-                              task.completed && styles.taskTitleCompleted,
-                            ]}
+                            style={[styles.taskTitle, task.completed && styles.taskTitleCompleted]}
                             numberOfLines={1}
                           >
                             {task.title}
                           </Text>
-                          
-                          {task.reminder_minutes !== null && task.reminder_minutes !== undefined && (
-                            <View style={styles.reminderBadge}>
-                              <IconSymbol
-                                ios_icon_name="bell.fill"
-                                android_material_icon_name="notifications"
-                                size={10}
-                                color="rgba(255, 255, 255, 0.8)"
-                              />
-                              <Text style={styles.reminderText}>
-                                {formatReminderTime(task.reminder_minutes)}
-                              </Text>
-                            </View>
-                          )}
+
+                          {task.reminder_minutes !== null &&
+                            task.reminder_minutes !== undefined && (
+                              <View style={styles.reminderBadge}>
+                                <IconSymbol
+                                  ios_icon_name="bell.fill"
+                                  android_material_icon_name="notifications"
+                                  size={10}
+                                  color="rgba(255, 255, 255, 0.8)"
+                                />
+                                <Text style={styles.reminderText}>
+                                  {formatReminderTime(task.reminder_minutes)}
+                                </Text>
+                              </View>
+                            )}
                         </View>
                       </TouchableOpacity>
 
@@ -504,12 +518,7 @@ export default function ActivityCard({
       </Pressable>
 
       {/* Task Details Modal */}
-      {isTaskModalOpen && activeTaskId && (
-        <TaskDetailsModal
-          taskId={activeTaskId}
-          onClose={handleModalClose}
-        />
-      )}
+      {isTaskModalOpen && activeTaskId && <TaskDetailsModal taskId={activeTaskId} onClose={handleModalClose} />}
     </>
   );
 }
