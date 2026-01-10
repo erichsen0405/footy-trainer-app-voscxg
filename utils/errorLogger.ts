@@ -1,12 +1,14 @@
-
 // Global error logging for runtime errors - ONLY IN DEVELOPMENT
 
 import { Platform } from "react-native";
 
 // Simple debouncing to prevent duplicate errors
 const recentErrors: { [key: string]: boolean } = {};
+const ERROR_DEBOUNCE_MS = 2000;
 const clearErrorAfterDelay = (errorKey: string) => {
-  setTimeout(() => delete recentErrors[errorKey], 100);
+  setTimeout(() => {
+    delete recentErrors[errorKey];
+  }, ERROR_DEBOUNCE_MS);
 };
 
 // Function to send errors to parent window (React frontend)
@@ -132,55 +134,16 @@ export const setupErrorLogging = () => {
       window.addEventListener('unhandledrejection', (event) => {
         const errorData = {
           reason: event.reason,
+          message: typeof event.reason === 'string' ? event.reason : event.reason?.message,
+          stack:
+            typeof event.reason === 'object' && event.reason
+              ? event.reason.stack ?? JSON.stringify(event.reason)
+              : undefined,
           timestamp: new Date().toISOString()
         };
-
         console.error('🚨 UNHANDLED PROMISE REJECTION:', errorData);
         sendErrorToParent('error', 'Unhandled Promise Rejection', errorData);
       });
     }
   }
-
-  // Note: Console overrides are commented out to reduce noise
-  // Uncomment if you need more detailed logging during debugging
-  
-  // Store original console methods
-  // const originalConsoleError = console.error;
-  // const originalConsoleWarn = console.warn;
-  // const originalConsoleLog = console.log;
-
-  // Override console.error to capture more detailed information
-  // console.error = (...args: any[]) => {
-  //   const stack = new Error().stack || '';
-  //   const sourceInfo = extractSourceLocation(stack);
-  //   const callerInfo = getCallerInfo();
-  //   const enhancedMessage = args.join(' ') + sourceInfo + callerInfo;
-  //   originalConsoleError('🔥🔥🔥 ERROR:', new Date().toISOString(), enhancedMessage);
-  //   sendErrorToParent('error', 'Console Error', enhancedMessage);
-  // };
-
-  // Override console.warn to capture warnings with source location
-  // console.warn = (...args: any[]) => {
-  //   const stack = new Error().stack || '';
-  //   const sourceInfo = extractSourceLocation(stack);
-  //   const callerInfo = getCallerInfo();
-  //   const enhancedMessage = args.join(' ') + sourceInfo + callerInfo;
-  //   originalConsoleWarn('⚠️ WARNING:', new Date().toISOString(), enhancedMessage);
-  //   sendErrorToParent('warn', 'Console Warning', enhancedMessage);
-  // };
-
-  // Override console.log to catch any logs that might contain error information
-  // console.log = (...args: any[]) => {
-  //   const message = args.join(' ');
-  //   if (message.indexOf('deprecated') !== -1 || message.indexOf('warning') !== -1 || message.indexOf('error') !== -1) {
-  //     const stack = new Error().stack || '';
-  //     const sourceInfo = extractSourceLocation(stack);
-  //     const callerInfo = getCallerInfo();
-  //     const enhancedMessage = message + sourceInfo + callerInfo;
-  //     originalConsoleLog('📝 LOG (potential issue):', new Date().toISOString(), enhancedMessage);
-  //     sendErrorToParent('info', 'Console Log (potential issue)', enhancedMessage);
-  //   } else {
-  //     originalConsoleLog(...args);
-  //   }
-  // };
 };

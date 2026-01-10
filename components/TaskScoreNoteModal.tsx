@@ -416,4 +416,27 @@ const styles = StyleSheet.create({
     color: '#3B4256',
   },
   primaryButtonShadow: {
-    flex
+    flex: 1,
+  },
+  primaryButton: {
+    height: 52,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+  },
+  primaryButtonDisabled: {
+    opacity: 0.5,
+  },
+  primaryButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  errorText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#FF3B30',
+    textAlign: 'center',
+  },
+});
