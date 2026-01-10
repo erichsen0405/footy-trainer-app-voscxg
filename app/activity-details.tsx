@@ -28,8 +28,10 @@ import { TaskDescriptionRenderer } from '@/components/TaskDescriptionRenderer';
 import { supabase } from '@/app/integrations/supabase/client';
 import TaskScoreNoteModal from '@/components/TaskScoreNoteModal';
 import { fetchSelfFeedbackForTemplates, upsertSelfFeedback } from '@/services/feedbackService';
+import { updateActivityIntensity } from '@/services/activityIntensityService';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { getCategories } from '@/services/activities';
+import { resolveActivityIntensityEnabled } from '@/utils/activityIntensity';
 import { resolveActivityCategory, type CategoryMappingRecord } from '@/shared/activityCategoryResolver';
 
 const DAYS_OF_WEEK = [
@@ -377,6 +379,13 @@ const normalizeId = (value: unknown): string | null => {
   const trimmed = String(value ?? '').trim();
   return trimmed && trimmed !== 'undefined' && trimmed !== 'null' ? trimmed : null;
 };
+const parseActivityIntensityValue = (value: unknown): number | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const num = typeof value === 'string' ? Number(value.trim()) : Number(value);
+  return Number.isFinite(num) ? num : null;
+};
 
 // Content component - only mounts after first paint
 interface ActivityDetailsContentProps {
@@ -406,6 +415,9 @@ interface FeedbackModalTaskState {
 function ActivityDetailsScreen() {
   const params = useLocalSearchParams();
   const router = useRouter();
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  const { isAdmin } = useUserRole();
   const resolvedActivityId =
     normalizeId(firstParam(params.id)) ??
     normalizeId(firstParam((params as any).activityId)) ??
@@ -424,17 +436,51 @@ function ActivityDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState<ActivityCategory[]>([]);
 
-  useEffect(() => {
+  const handleRefresh = useCallback(async () => {
     if (!resolvedActivityId) return;
     setLoading(true);
-    fetchActivityFromDatabase(resolvedActivityId)
-      .then((fetched) => {
-        setActivity(fetched);
-      })
-      .finally(() => setLoading(false));
+    try {
+      const fetched = await fetchActivityFromDatabase(resolvedActivityId);
+      setActivity(fetched);
+    } finally {
+      setLoading(false);
+    }
   }, [resolvedActivityId]);
 
-  // ...category fetch + effects...
+  useEffect(() => {
+    handleRefresh();
+  }, [handleRefresh]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadCategories = async () => {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const rows = await getCategories(user.id);
+        if (cancelled) return;
+
+        const mapped: ActivityCategory[] = (rows || []).map((row) => ({
+          id: row.id,
+          name: row.name,
+          color: row.color,
+          emoji: row.emoji,
+        }));
+        setCategories(mapped);
+      } catch (error) {
+        console.error('Error loading categories:', error);
+      }
+    };
+
+    loadCategories();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (!resolvedActivityId || loading || !activity) {
     return <ActivityDetailsSkeleton isDark={useColorScheme() === 'dark'} />;
@@ -444,7 +490,11 @@ function ActivityDetailsScreen() {
     <ActivityDetailsContent
       activity={activity}
       categories={categories}
-      // ...existing props...
+      isAdmin={!!isAdmin}
+      isDark={isDark}
+      onBack={() => router.back()}
+      onRefresh={handleRefresh}
+      onActivityUpdated={(next) => setActivity(next)}
       resolvedActivityId={resolvedActivityId}
       openFeedbackTaskId={openFeedbackTaskId}
       openIntensity={openIntensity}
@@ -523,6 +573,12 @@ function ActivityDetailsContent({
   const [isScoreSaving, setIsScoreSaving] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isFeedbackLoading, setIsFeedbackLoading] = useState(false);
+  const [activityIntensityValue, setActivityIntensityValue] = useState<number | null>(
+    parseActivityIntensityValue((activity as any)?.activity_intensity ?? (activity as any)?.intensity)
+  );
+  const [activityIntensityEnabled, setActivityIntensityEnabled] = useState<boolean>(
+    resolveActivityIntensityEnabled(activity as any)
+  );
   
   // Edit state
   const [editTitle, setEditTitle] = useState(activity.title);
@@ -569,6 +625,102 @@ function ActivityDetailsContent({
   useEffect(() => {
     setTasksState(activity.tasks || []);
   }, [activity.tasks]);
+
+  useEffect(() => {
+    setActivityIntensityValue(
+      parseActivityIntensityValue((activity as any)?.activity_intensity ?? (activity as any)?.intensity)
+    );
+    setActivityIntensityEnabled(resolveActivityIntensityEnabled(activity as any));
+  }, [activity]);
+
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth
+      .getUser()
+      .then(({ data }) => {
+        if (!mounted) return;
+        setCurrentUserId(data.user?.id ?? null);
+      })
+      .catch((error) => {
+        console.error('Error fetching current user for feedback:', error);
+        if (mounted) {
+          setCurrentUserId(null);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!openIntensity || didAutoOpenIntensityRef.current) {
+      return;
+    }
+    didAutoOpenIntensityRef.current = true;
+    setScoreModalMode('intensity');
+    setScoreModalTask(null);
+    setScoreModalScore(activityIntensityValue);
+    setScoreModalNote('');
+  }, [activityIntensityValue, openIntensity]);
+
+  useEffect(() => {
+    if (!openFeedbackTaskId || didAutoOpenFeedbackRef.current) {
+      return;
+    }
+
+    const matchingTask = tasksState.find((task) => String(task.id) === openFeedbackTaskId);
+    if (!matchingTask) {
+      return;
+    }
+
+    didAutoOpenFeedbackRef.current = true;
+    openFeedbackModalForTask(matchingTask);
+  }, [openFeedbackModalForTask, openFeedbackTaskId, tasksState]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadFeedback = async () => {
+      const templateIds = tasksState
+        .map((task) => task.feedbackTemplateId ?? parseTemplateIdFromMarker(task.description || ''))
+        .filter((id): id is string => Boolean(id));
+
+      if (!currentUserId || templateIds.length === 0) {
+        return;
+      }
+
+      const uniqueTemplateIds = Array.from(new Set(templateIds));
+      setIsFeedbackLoading(true);
+      try {
+        const feedbackRows = await fetchSelfFeedbackForTemplates(currentUserId, uniqueTemplateIds);
+        if (cancelled) return;
+
+        const nextSummary: Record<string, TemplateFeedbackSummary> = {};
+        uniqueTemplateIds.forEach((id) => {
+          const matches = feedbackRows.filter((row) => row.taskTemplateId === id);
+          if (matches.length > 0) {
+            nextSummary[id] = {
+              current: matches[0],
+              previous: matches[1],
+            };
+          }
+        });
+        setSelfFeedbackByTemplate(nextSummary);
+      } catch (error) {
+        console.error('Error loading feedback history:', error);
+      } finally {
+        if (!cancelled) {
+          setIsFeedbackLoading(false);
+        }
+      }
+    };
+
+    loadFeedback();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUserId, tasksState]);
 
   const handleEditClick = () => {
     if (activity?.seriesId) {
@@ -895,12 +1047,81 @@ function ActivityDetailsContent({
         Alert.alert('Fejl', 'Feedback-skabelon mangler');
         return;
       }
+      const summary = selfFeedbackByTemplate[templateId];
       setScoreModalMode('feedback');
       setScoreModalTask({ task, templateId });
-      setScoreModalScore(null);
-      setScoreModalNote('');
+      setScoreModalScore(summary?.current?.rating ?? null);
+      setScoreModalNote(summary?.current?.note ?? '');
     },
-    [setScoreModalMode, setScoreModalTask, setScoreModalScore, setScoreModalNote]
+    [selfFeedbackByTemplate]
+  );
+
+  const closeScoreModal = useCallback(() => {
+    setScoreModalMode(null);
+    setScoreModalTask(null);
+    setScoreModalScore(null);
+    setScoreModalNote('');
+  }, []);
+
+  const handleFeedbackSubmit = useCallback(
+    async ({ score, note }: { score: number | null; note: string }) => {
+      if (!scoreModalTask || !currentUserId) {
+        closeScoreModal();
+        return;
+      }
+
+      setIsScoreSaving(true);
+      try {
+        const saved = await upsertSelfFeedback({
+          userId: currentUserId,
+          templateId: scoreModalTask.templateId,
+          activityId: resolvedActivityId,
+          rating: typeof score === 'number' ? score : null,
+          note,
+        });
+
+        setSelfFeedbackByTemplate((prev) => ({
+          ...prev,
+          [scoreModalTask.templateId]: {
+            current: saved,
+            previous: prev[scoreModalTask.templateId]?.current,
+          },
+        }));
+
+        closeScoreModal();
+      } catch (error) {
+        console.error('Error saving feedback:', error);
+        Alert.alert('Fejl', 'Kunne ikke gemme feedback');
+      } finally {
+        setIsScoreSaving(false);
+      }
+    },
+    [closeScoreModal, currentUserId, resolvedActivityId, scoreModalTask]
+  );
+
+  const handleIntensitySubmit = useCallback(
+    async ({ score }: { score: number | null; note: string }) => {
+      setIsScoreSaving(true);
+      try {
+        await updateActivityIntensity({
+          activityId: resolvedActivityId,
+          intensity: typeof score === 'number' ? score : null,
+          enableIntensity: true,
+          isExternal: !!activity.isExternal,
+        });
+
+        setActivityIntensityValue(typeof score === 'number' ? score : null);
+        setActivityIntensityEnabled(true);
+        closeScoreModal();
+        await refreshData();
+      } catch (error) {
+        console.error('Error saving intensity:', error);
+        Alert.alert('Fejl', 'Kunne ikke gemme intensitet');
+      } finally {
+        setIsScoreSaving(false);
+      }
+    },
+    [activity.isExternal, closeScoreModal, refreshData, resolvedActivityId]
   );
 
   const renderTaskRow = useCallback(
@@ -992,11 +1213,26 @@ function ActivityDetailsContent({
       />
       <TaskScoreNoteModal
         visible={scoreModalMode === 'feedback'}
-        // ...existing props...
+        mode="feedback"
+        title={scoreModalTask?.task.title ?? 'Feedback'}
+        subtitle="Giv en vurdering (1-10)"
+        initialScore={scoreModalScore}
+        initialNote={scoreModalNote}
+        isSaving={isScoreSaving}
+        isLoading={isFeedbackLoading}
+        onClose={closeScoreModal}
+        onSubmit={handleFeedbackSubmit}
       />
       <TaskScoreNoteModal
         visible={scoreModalMode === 'intensity'}
-        // ...existing props...
+        mode="intensity"
+        title="Aktivitetens intensitet"
+        subtitle="Vælg en værdi mellem 1 og 10"
+        initialScore={activityIntensityValue}
+        allowNote={false}
+        isSaving={isScoreSaving}
+        onClose={closeScoreModal}
+        onSubmit={handleIntensitySubmit}
       />
     </>
   );
@@ -1076,3 +1312,5 @@ const styles = StyleSheet.create({
     color: '#F97316',
   },
 });
+
+export default ActivityDetailsScreen;

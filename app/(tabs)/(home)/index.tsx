@@ -59,7 +59,7 @@
  */
 
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform, useColorScheme } from 'react-native';
+import { Alert, FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform, useColorScheme } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -73,11 +73,13 @@ import CreateActivityModal from '@/components/CreateActivityModal';
 import HomeSkeleton from '@/components/HomeSkeleton';
 import { IconSymbol } from '@/components/IconSymbol';
 import { AdminContextWrapper } from '@/components/AdminContextWrapper';
+import TaskScoreNoteModal from '@/components/TaskScoreNoteModal';
 import { colors, getColors } from '@/styles/commonStyles';
 import { format, startOfWeek, endOfWeek, getWeek } from 'date-fns';
 import { da } from 'date-fns/locale';
 import { supabase } from '@/app/integrations/supabase/client';
 import { canTrainerManageActivity } from '@/utils/permissions';
+import { updateActivityIntensity } from '@/services/activityIntensityService';
 
 function resolveActivityDateTime(activity: any): Date | null {
   // STEP H: Guard against null/undefined activity
@@ -135,6 +137,26 @@ function getPerformanceGradient(percentage: number): string[] {
   }
 }
 
+interface IntensityModalState {
+  visible: boolean;
+  activity: any | null;
+  activityId: string | null;
+  score: number | null;
+  isExternal: boolean;
+}
+
+function resolveActivityIntensityValue(activity: any): number | null {
+  if (!activity) return null;
+  const raw =
+    activity?.intensity ??
+    activity?.activity_intensity ??
+    activity?.activityIntensity ??
+    activity?.activity?.activity_intensity;
+  if (raw === null || raw === undefined) return null;
+  const num = typeof raw === 'string' ? Number(raw.trim()) : Number(raw);
+  return Number.isFinite(num) ? num : null;
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const { userRole } = useUserRole();
@@ -147,6 +169,14 @@ export default function HomeScreen() {
   const [isPreviousExpanded, setIsPreviousExpanded] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [currentTrainerId, setCurrentTrainerId] = useState<string | null>(null);
+  const [intensityModalState, setIntensityModalState] = useState<IntensityModalState>({
+    visible: false,
+    activity: null,
+    activityId: null,
+    score: null,
+    isExternal: false,
+  });
+  const [isIntensitySaving, setIsIntensitySaving] = useState(false);
   const colorScheme = useColorScheme();
   const themeColors = getColors(colorScheme);
   const isDark = colorScheme === 'dark';
@@ -183,6 +213,62 @@ export default function HomeScreen() {
       setShowPreviousWeeks(0);
     }
   }, [loading]);
+
+  const closeIntensityModal = useCallback(() => {
+    setIntensityModalState({
+      visible: false,
+      activity: null,
+      activityId: null,
+      score: null,
+      isExternal: false,
+    });
+  }, []);
+
+  const handleCardIntensityPress = useCallback(
+    (payload: { activityId: string | null; activity: any; intensityValue: number | null }) => {
+      const resolvedScore =
+        typeof payload.intensityValue === 'number'
+          ? payload.intensityValue
+          : resolveActivityIntensityValue(payload.activity);
+
+      setIntensityModalState({
+        visible: true,
+        activity: payload.activity,
+        activityId:
+          payload.activityId ?? (payload.activity?.id ? String(payload.activity.id) : null),
+        score: typeof resolvedScore === 'number' ? resolvedScore : null,
+        isExternal: !!payload.activity?.is_external,
+      });
+    },
+    []
+  );
+
+  const handleSaveIntensity = useCallback(
+    async ({ score }: { score: number | null; note: string }) => {
+      if (!intensityModalState.activityId) {
+        closeIntensityModal();
+        return;
+      }
+
+      setIsIntensitySaving(true);
+      try {
+        await updateActivityIntensity({
+          activityId: intensityModalState.activityId,
+          intensity: typeof score === 'number' ? score : null,
+          enableIntensity: true,
+          isExternal: intensityModalState.isExternal,
+        });
+        await refreshActivities();
+        closeIntensityModal();
+      } catch (error) {
+        console.error('[Home] Error saving intensity:', error);
+        Alert.alert('Fejl', 'Kunne ikke gemme intensitet');
+      } finally {
+        setIsIntensitySaving(false);
+      }
+    },
+    [closeIntensityModal, intensityModalState.activityId, intensityModalState.isExternal, refreshActivities]
+  );
 
   const { todayActivities, upcomingByWeek, previousByWeek } = useMemo(() => {
     // STEP H: Guard against non-array activities
@@ -603,6 +689,7 @@ export default function HomeScreen() {
               resolvedDate={activity.__resolvedDateTime}
               showTasks={item.section === 'today' || item.section === 'previous'}
               onPress={handleActivityPress}
+              onPressIntensity={handleCardIntensityPress}
             />
           </View>
         );
@@ -631,7 +718,7 @@ export default function HomeScreen() {
       default:
         return null;
     }
-  }, [isDark, isPreviousExpanded, togglePreviousExpanded, isAdminMode, currentTrainerId, adminMode, router, handleLoadMorePrevious, showPreviousWeeks]);
+  }, [isDark, isPreviousExpanded, togglePreviousExpanded, isAdminMode, currentTrainerId, adminMode, router, handleLoadMorePrevious, showPreviousWeeks, handleCardIntensityPress]);
 
   // Key extractor for FlatList
   const keyExtractor = useCallback((item: any, index: number) => {
@@ -799,6 +886,18 @@ export default function HomeScreen() {
           onRefreshCategories={refreshData}
         />
       ) : null}
+
+      <TaskScoreNoteModal
+        visible={intensityModalState.visible}
+        mode="intensity"
+        title={intensityModalState.activity?.title ?? 'Intensitet'}
+        subtitle="Vælg intensitet (1-10)"
+        initialScore={intensityModalState.score}
+        allowNote={false}
+        isSaving={isIntensitySaving}
+        onClose={closeIntensityModal}
+        onSubmit={handleSaveIntensity}
+      />
     </AdminContextWrapper>
   );
 }

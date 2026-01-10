@@ -14,13 +14,20 @@ interface ActivityCardProps {
   activity: any;
   resolvedDate: Date;
   onPress?: () => void;
-  onPressIntensity?: () => void;
+  onPressIntensity?: (payload: ActivityCardIntensityPayload) => void;
   showTasks?: boolean;
 }
 
 type TaskListItem =
   | { type: 'intensity'; key: string }
   | { type: 'task'; key: string; task: any };
+
+interface ActivityCardIntensityPayload {
+  activityId: string | null;
+  activity: any;
+  intensityValue: number | null;
+  intensityEnabled: boolean;
+}
 
 type CategoryMeta = {
   color?: string;
@@ -77,7 +84,7 @@ export default function ActivityCard({
   activity,
   resolvedDate,
   onPress: _deprecatedOnPress,
-  onPressIntensity: _deprecatedOnPressIntensity,
+  onPressIntensity,
   showTasks = false,
 }: ActivityCardProps) {
   const router = useRouter();
@@ -300,8 +307,26 @@ export default function ActivityCard({
   const handleIntensityRowPress = useCallback(
     (event?: any) => {
       event?.stopPropagation?.();
-      if (!activityId) return;
       suppressCardPressRef.current = true;
+
+      if (typeof onPressIntensity === 'function') {
+        onPressIntensity({
+          activityId,
+          activity,
+          intensityValue,
+          intensityEnabled,
+        });
+        setTimeout(() => {
+          suppressCardPressRef.current = false;
+        }, 0);
+        return;
+      }
+
+      if (!activityId) {
+        suppressCardPressRef.current = false;
+        return;
+      }
+
       router.push({
         pathname: '/activity-details',
         params: { id: activityId, openIntensity: '1' },
@@ -310,7 +335,7 @@ export default function ActivityCard({
         suppressCardPressRef.current = false;
       }, 0);
     },
-    [activityId, router]
+    [activity, activityId, intensityEnabled, intensityValue, onPressIntensity, router]
   );
 
   return (
