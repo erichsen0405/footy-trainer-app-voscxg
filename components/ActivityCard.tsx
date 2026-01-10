@@ -124,6 +124,10 @@ export default function ActivityCard({
     (task: any): boolean => {
       if (!task) return false;
       if (task.isFeedbackTask || task.is_feedback_task) return true;
+
+      const title = String(task?.title ?? '').trim().toLowerCase();
+      if (title.includes('feedback')) return true;
+
       return !!resolveFeedbackTemplateId(task);
     },
     [resolveFeedbackTemplateId]
@@ -131,18 +135,15 @@ export default function ActivityCard({
 
   const navigateToFeedbackTask = useCallback(
     (task: any): boolean => {
-      if (!isFeedbackTask(task)) return false;
-      if (!activityId) {
-        console.warn('[ActivityCard] Missing activity id for feedback navigation');
-        return false;
-      }
+      if (!isFeedbackTask(task) || !activityId) return false;
       const taskId = task?.id ?? task?.task_id;
-      const encodedId = encodeURIComponent(activityId);
-      const encodedTaskId = taskId ? encodeURIComponent(String(taskId)) : null;
-      const href = `/activity-details?id=${encodedId}&activityId=${encodedId}${
-        encodedTaskId ? `&openFeedbackTaskId=${encodedTaskId}` : ''
-      }`;
-      router.push(href);
+      router.push({
+        pathname: '/activity-details',
+        params: {
+          id: activityId,
+          ...(taskId ? { openFeedbackTaskId: String(taskId) } : {}),
+        },
+      });
       return true;
     },
     [activityId, isFeedbackTask, router]
@@ -153,12 +154,8 @@ export default function ActivityCard({
       suppressCardPressRef.current = false;
       return;
     }
-    if (!activityId) {
-      console.warn('[ActivityCard] Missing activity id for navigation');
-      return;
-    }
-    const encodedId = encodeURIComponent(activityId);
-    router.push(`/activity-details?id=${encodedId}&activityId=${encodedId}`);
+    if (!activityId) return;
+    router.push({ pathname: '/activity-details', params: { id: activityId } });
   }, [activityId, router]);
 
   const handleTaskPress = useCallback(
@@ -269,7 +266,8 @@ export default function ActivityCard({
 
   const intensityValue = useMemo(() => {
     const raw = activity?.intensity ?? activity?.activity_intensity;
-    return typeof raw === 'number' ? raw : null;
+    const num = typeof raw === 'string' ? Number(raw.trim()) : raw;
+    return Number.isFinite(num) ? Number(num) : null;
   }, [activity]);
 
   const intensityEnabled = useMemo(() => resolveActivityIntensityEnabled(activity), [activity]);
@@ -306,7 +304,7 @@ export default function ActivityCard({
       suppressCardPressRef.current = true;
       router.push({
         pathname: '/activity-details',
-        params: { id: String(activityId), activityId: String(activityId), openIntensity: '1' },
+        params: { id: activityId, openIntensity: '1' },
       });
       setTimeout(() => {
         suppressCardPressRef.current = false;

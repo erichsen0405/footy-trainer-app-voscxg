@@ -1,4 +1,3 @@
-
 import { useEffect, useState, useCallback } from 'react';
 import { Platform } from 'react-native';
 import { supabase } from '@/app/integrations/supabase/client';
@@ -10,8 +9,9 @@ interface ActivityTask {
   title: string;
   description?: string;
   completed: boolean;
-  reminder_minutes?: number;
-  video_url?: string;
+  reminder_minutes?: number | null;
+  video_url?: string | null;
+  videoUrl?: string | null;
 }
 
 interface ActivityWithCategory {
@@ -29,6 +29,9 @@ interface ActivityWithCategory {
   created_at: string;
   updated_at: string;
   tasks?: ActivityTask[];
+  // NEW: keep intensity fields for ActivityCard (string/number/boolean-ish ok)
+  activity_intensity?: string | number | null;
+  activity_intensity_enabled?: any;
 }
 
 interface UseHomeActivitiesResult {
@@ -96,6 +99,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
             activity_time,
             location,
             category_id,
+            activity_intensity,
+            activity_intensity_enabled,
             created_at,
             updated_at,
             activity_tasks (
@@ -103,7 +108,11 @@ export function useHomeActivities(): UseHomeActivitiesResult {
               title,
               description,
               completed,
-              reminder_minutes
+              reminder_minutes,
+              video_url,
+              task_templates!activity_tasks_task_template_id_fkey (
+                video_url
+              )
             )
           `)
           .eq('user_id', userId)
@@ -187,15 +196,26 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       const internalActivities: ActivityWithCategory[] = (internalData || []).map(activity => {
         const resolvedCategory = resolveCategory(activity.title, activity.category_id);
         
-        // Map tasks to the expected format
-        const tasks: ActivityTask[] = (activity.activity_tasks || []).map((task: any) => ({
-          id: task.id,
-          title: task.title,
-          description: task.description || '',
-          completed: task.completed,
-          reminder_minutes: task.reminder_minutes,
-        }));
-        
+        const resolveTaskVideo = (task: any) =>
+          typeof task.video_url === 'string'
+            ? task.video_url
+            : typeof task.task_templates?.video_url === 'string'
+              ? task.task_templates.video_url
+              : null;
+
+        const tasks: ActivityTask[] = (activity.activity_tasks || []).map((task: any) => {
+          const video = resolveTaskVideo(task);
+          return {
+            id: task.id,
+            title: task.title,
+            description: typeof task.description === 'string' ? task.description : '',
+            completed: !!task.completed,
+            reminder_minutes: task.reminder_minutes ?? null,
+            video_url: video,
+            videoUrl: video,
+          };
+        });
+
         return {
           id: activity.id,
           user_id: activity.user_id,
@@ -209,6 +229,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           created_at: activity.created_at,
           updated_at: activity.updated_at,
           tasks,
+          activity_intensity: activity.activity_intensity ?? null,
+          activity_intensity_enabled: activity.activity_intensity_enabled ?? null,
         };
       });
       
@@ -232,7 +254,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           
           // ✅ SEQUENTIAL FETCH GROUP 3: External Metadata (depends on event IDs)
           const externalEventIds = eventsData.map(e => e.id);
-          const { data: metaData, error: metaError } = await supabase
+          const { data: metaData } = await supabase
             .from('events_local_meta')
             .select(`
               id,
@@ -240,20 +262,22 @@ export function useHomeActivities(): UseHomeActivitiesResult {
               category_id,
               user_id,
               local_title_override,
+              activity_intensity,
+              activity_intensity_enabled,
               external_event_tasks (
                 id,
                 title,
                 description,
                 completed,
-                reminder_minutes
+                reminder_minutes,
+                video_url,
+                task_templates!external_event_tasks_task_template_id_fkey (
+                  video_url
+                )
               )
             `)
             .eq('user_id', userId)
             .in('external_event_id', externalEventIds);
-          
-          if (metaError) {
-            console.error('[useHomeActivities] Error fetching external event metadata:', metaError);
-          }
           
           // Map external events to activity format with resolved category and tasks
           externalActivities = eventsData.map(event => {
@@ -268,14 +292,25 @@ export function useHomeActivities(): UseHomeActivitiesResult {
               providerCategories,
             );
             
-            // Map tasks to the expected format
-            const tasks: ActivityTask[] = (meta?.external_event_tasks || []).map((task: any) => ({
-              id: task.id,
-              title: task.title,
-              description: task.description || '',
-              completed: task.completed,
-              reminder_minutes: task.reminder_minutes,
-            }));
+            const resolveTaskVideo = (task: any) =>
+              typeof task.video_url === 'string'
+                ? task.video_url
+                : typeof task.task_templates?.video_url === 'string'
+                  ? task.task_templates.video_url
+                  : null;
+
+            const externalTasks: ActivityTask[] = (meta?.external_event_tasks || []).map((task: any) => {
+              const video = resolveTaskVideo(task);
+              return {
+                id: task.id,
+                title: task.title,
+                description: typeof task.description === 'string' ? task.description : '',
+                completed: !!task.completed,
+                reminder_minutes: task.reminder_minutes ?? null,
+                video_url: video,
+                videoUrl: video,
+              };
+            });
             
             return {
               id: meta?.id || event.id,
@@ -291,7 +326,9 @@ export function useHomeActivities(): UseHomeActivitiesResult {
               external_event_id: event.provider_event_uid,
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
-              tasks,
+              tasks: externalTasks,
+              activity_intensity: meta?.activity_intensity ?? null,
+              activity_intensity_enabled: meta?.activity_intensity_enabled ?? null,
             } as ActivityWithCategory;
           });
         }
