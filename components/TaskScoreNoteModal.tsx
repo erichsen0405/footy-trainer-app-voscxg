@@ -26,10 +26,10 @@ export interface TaskScoreNoteModalPayload {
 
 interface TaskScoreNoteModalProps {
   visible: boolean;
-  title: string;
+  title?: string;              // was required
   introText?: string;
   helperText?: string | null;
-  initialScore: number | null;
+  initialScore?: number | null; // was required
   initialNote?: string;
   enableScore?: boolean;
   enableNote?: boolean;
@@ -41,16 +41,16 @@ interface TaskScoreNoteModalProps {
   isSaving?: boolean;
   readonly?: boolean;
   error?: string | null;
-  onSave: (payload: TaskScoreNoteModalPayload) => void | Promise<void>;
+  onSave?: (payload: TaskScoreNoteModalPayload) => void | Promise<void>; // was required
   onClose: () => void;
 }
 
 function TaskScoreNoteModalComponent({
   visible,
-  title,
+  title = 'Feedback',
   introText = 'Hvordan gik det?',
   helperText = 'Hvor god var du til dine fokuspunkter',
-  initialScore,
+  initialScore = null,
   initialNote = '',
   enableScore = true,
   enableNote = true,
@@ -62,7 +62,7 @@ function TaskScoreNoteModalComponent({
   isSaving = false,
   readonly = false,
   error,
-  onSave,
+  onSave = () => {},
   onClose,
 }: TaskScoreNoteModalProps) {
   const [score, setScore] = useState<number | null>(initialScore ?? null);
@@ -261,6 +261,7 @@ function TaskScoreNoteModalComponent({
 }
 
 export const TaskScoreNoteModal = memo(TaskScoreNoteModalComponent);
+export default TaskScoreNoteModal;
 
 const styles = StyleSheet.create({
   modalRoot: {

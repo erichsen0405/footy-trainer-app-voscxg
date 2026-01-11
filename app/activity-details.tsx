@@ -14,6 +14,9 @@ import {
   KeyboardAvoidingView,
   Switch,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Path } from 'react-native-svg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SmartVideoPlayer from '@/components/SmartVideoPlayer';
 
 import { useFootball } from '@/contexts/FootballContext';
@@ -54,10 +57,88 @@ const FALLBACK_COLORS = {
 const colors =
   ((CommonStyles as any)?.colors as typeof FALLBACK_COLORS | undefined) ?? FALLBACK_COLORS;
 
+const V2_WAVE_HEIGHT = 28;
+const V2_CTA_HEIGHT = 56;
+
+const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  if (typeof hex !== 'string') return null;
+  const raw = hex.trim().replace('#', '');
+  if (!/^[0-9a-fA-F]{6}$/.test(raw)) return null;
+  return {
+    r: parseInt(raw.slice(0, 2), 16),
+    g: parseInt(raw.slice(2, 4), 16),
+    b: parseInt(raw.slice(4, 6), 16),
+  };
+}
+
+function rgbToHex(rgb: { r: number; g: number; b: number }): string {
+  const r = Math.max(0, Math.min(255, Math.round(rgb.r)));
+  const g = Math.max(0, Math.min(255, Math.round(rgb.g)));
+  const b = Math.max(0, Math.min(255, Math.round(rgb.b)));
+  const toHex = (v: number) => v.toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function mixHex(a: string, b: string, t: number): string {
+  const ra = hexToRgb(a);
+  const rb = hexToRgb(b);
+  if (!ra || !rb) return a;
+  const tt = clamp01(t);
+  return rgbToHex({
+    r: ra.r + (rb.r - ra.r) * tt,
+    g: ra.g + (rb.g - ra.g) * tt,
+    b: ra.b + (rb.b - ra.b) * tt,
+  });
+}
+
+function lightenHex(hex: string, amount01: number): string {
+  return mixHex(hex, '#FFFFFF', clamp01(amount01));
+}
+
+function darkenHex(hex: string, amount01: number): string {
+  return mixHex(hex, '#000000', clamp01(amount01));
+}
+
+function SheetWaveTop({ color, height = V2_WAVE_HEIGHT }: { color: string; height?: number }) {
+  return (
+    <View pointerEvents="none" style={{ width: '100%', height }}>
+      <Svg width="100%" height="100%" viewBox="0 0 1440 120" preserveAspectRatio="none">
+        <Path
+          fill={color}
+          d="M0,64L60,64C120,64,240,64,360,58.7C480,53,600,43,720,42.7C840,43,960,53,1080,64C1200,75,1320,85,1380,90.7L1440,96L1440,120L1380,120C1320,120,1200,120,1080,120C960,120,840,120,720,120C600,120,480,120,360,120C240,120,120,120,60,120L0,120Z"
+        />
+      </Svg>
+    </View>
+  );
+}
+
+function DetailsCard(props: {
+  label: string;
+  value: string;
+  backgroundColor: string;
+  textColor: string;
+  secondaryTextColor: string;
+  fullWidth?: boolean;
+}) {
+  const { label, value, backgroundColor, textColor, secondaryTextColor, fullWidth } = props;
+  return (
+    <View style={[styles.v2DetailCard, { backgroundColor }, fullWidth && styles.v2DetailCardFullWidth]}>
+      <Text style={[styles.v2DetailCardLabel, { color: secondaryTextColor }]}>{label}</Text>
+      <Text style={[styles.v2DetailCardValue, { color: textColor }]} numberOfLines={2}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
 type FeedbackTask = Task & {
   feedbackTemplateId?: string | null;
   isFeedbackTask?: boolean;
   taskTemplateId?: string | null;
+  reminder_minutes?: number | null;
+  reminder?: number | null;
 };
 
 const DAYS_OF_WEEK = [
@@ -261,7 +342,7 @@ async function selectSingleWithOptionalColumn<T>(opts: {
 }): Promise<{ data: T | null; error: any | null; usedFallback: boolean }> {
   const { table, selectWith, selectWithout, eqColumn, eqValue, optionalColumnName, context } = opts;
 
-  const first = await supabase.from(table).select(selectWith).eq(eqColumn, eqValue).single();
+  const first = await (supabase as any).from(table).select(selectWith).eq(eqColumn, eqValue).single();
   if (!first.error) return { data: (first.data as T) ?? null, error: null, usedFallback: false };
 
   if (__DEV__) {
@@ -280,7 +361,7 @@ async function selectSingleWithOptionalColumn<T>(opts: {
     return { data: null, error: first.error, usedFallback: false };
   }
 
-  const second = await supabase.from(table).select(selectWithout).eq(eqColumn, eqValue).single();
+  const second = await (supabase as any).from(table).select(selectWithout).eq(eqColumn, eqValue).single();
 
   if (__DEV__) {
     console.log(`[ActivityDetails][${context}] retry(select without "${optionalColumnName}")`, {
@@ -452,20 +533,21 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
       });
     }
 
-    const { data: externalOnly, error: externalOnlyError } = await supabase
+    const { data: externalOnly, error: externalOnlyError } = await (supabase as any)
       .from('events_external')
       .select('id,title,location,start_date,start_time,end_time,provider_calendar_id')
       .eq('id', activityId)
       .single();
 
     if (!externalOnlyError && externalOnly) {
+      const externalOnlyAny = externalOnly as any;
       return {
-        id: String(externalOnly.id),
-        title: externalOnly.title ?? 'Ekstern aktivitet',
-        date: new Date(externalOnly.start_date),
-        time: externalOnly.start_time,
-        endTime: externalOnly.end_time ?? undefined,
-        location: externalOnly.location ?? '',
+        id: String(externalOnlyAny.id),
+        title: externalOnlyAny.title ?? 'Ekstern aktivitet',
+        date: new Date(externalOnlyAny.start_date),
+        time: externalOnlyAny.start_time,
+        endTime: externalOnlyAny.end_time ?? undefined,
+        location: externalOnlyAny.location ?? '',
         category: {
           id: '',
           name: 'Unknown',
@@ -474,8 +556,8 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
         },
         tasks: [],
         isExternal: true,
-        externalCalendarId: externalOnly.provider_calendar_id ?? undefined,
-        externalEventId: String(externalOnly.id),
+        externalCalendarId: externalOnlyAny.provider_calendar_id ?? undefined,
+        externalEventId: String(externalOnlyAny.id),
         intensity: null,
         intensityEnabled: false,
       };
@@ -507,37 +589,77 @@ function ActivityDetailsSkeleton({ isDark }: { isDark: boolean }) {
   const bgColor = isDark ? '#1a1a1a' : colors.background;
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
   const skeletonColor = isDark ? '#3a3a3a' : '#e0e0e0';
+  const insets = useSafeAreaInsets();
 
   return (
     <View style={[styles.container, { backgroundColor: bgColor }]}>
       {/* Header Skeleton */}
-      <View style={[styles.header, { backgroundColor: skeletonColor }]}>
-        <View style={styles.backButtonHeader}>
-          <View style={{ width: 28, height: 28, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 14 }} />
+      <LinearGradient
+        colors={[skeletonColor, skeletonColor] as [string, string]}
+        style={[styles.header, styles.v2Topbar, { paddingTop: insets.top + 8 }]}
+      >
+        <View style={[styles.backButtonHeader, { top: insets.top + 8 }]}>
+          <View
+            style={{
+              width: 28,
+              height: 28,
+              backgroundColor: 'rgba(255,255,255,0.3)',
+              borderRadius: 14,
+            }}
+          />
         </View>
         <View style={styles.headerContent}>
-          <View style={{ width: 64, height: 64, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 32 }} />
-          <View style={{ width: 200, height: 28, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 14, marginTop: 12 }} />
+          <View
+            style={{
+              width: 64,
+              height: 64,
+              backgroundColor: 'rgba(255,255,255,0.3)',
+              borderRadius: 32,
+            }}
+          />
+          <View
+            style={{
+              width: 200,
+              height: 28,
+              backgroundColor: 'rgba(255,255,255,0.3)',
+              borderRadius: 14,
+              marginTop: 12,
+            }}
+          />
+        </View>
+      </LinearGradient>
+
+      <View style={[styles.v2Sheet, { backgroundColor: cardBgColor }]}>
+        <View style={styles.v2WaveOverlay}>
+          <SheetWaveTop color={cardBgColor} />
+        </View>
+
+        <View style={{ paddingTop: 12, paddingBottom: 32 + V2_CTA_HEIGHT + 24 + insets.bottom }}>
+          {/* Details cards skeleton */}
+          <View style={[styles.section, { backgroundColor: 'transparent', marginBottom: 8 }]}>
+            <View style={{ width: 100, height: 20, backgroundColor: skeletonColor, borderRadius: 10, marginBottom: 14 }} />
+            <View style={{ width: '100%', height: 64, backgroundColor: skeletonColor, borderRadius: 16, marginBottom: 12 }} />
+            <View style={{ flexDirection: 'row', marginBottom: 12 }}>
+              <View style={{ flex: 1, height: 64, backgroundColor: skeletonColor, borderRadius: 16 }} />
+              <View style={{ width: 12 }} />
+              <View style={{ flex: 1, height: 64, backgroundColor: skeletonColor, borderRadius: 16 }} />
+            </View>
+          </View>
+
+          {/* Tasks list skeleton */}
+          <View style={[styles.section, { backgroundColor: 'transparent' }]}>
+            <View style={{ width: 100, height: 20, backgroundColor: skeletonColor, borderRadius: 10, marginBottom: 14 }} />
+            <View style={{ width: '100%', height: 60, backgroundColor: skeletonColor, borderRadius: 16, marginBottom: 12 }} />
+            <View style={{ width: '100%', height: 60, backgroundColor: skeletonColor, borderRadius: 16, marginBottom: 12 }} />
+            <View style={{ width: '100%', height: 60, backgroundColor: skeletonColor, borderRadius: 16 }} />
+          </View>
         </View>
       </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {/* Details Section Skeleton */}
-        <View style={[styles.section, { backgroundColor: cardBgColor }]}>
-          <View style={{ width: 100, height: 24, backgroundColor: skeletonColor, borderRadius: 12, marginBottom: 20 }} />
-          <View style={{ width: '100%', height: 60, backgroundColor: skeletonColor, borderRadius: 12, marginBottom: 16 }} />
-          <View style={{ width: '100%', height: 60, backgroundColor: skeletonColor, borderRadius: 12, marginBottom: 16 }} />
-          <View style={{ width: '100%', height: 60, backgroundColor: skeletonColor, borderRadius: 12 }} />
-        </View>
-
-        {/* Tasks Section Skeleton */}
-        <View style={[styles.section, { backgroundColor: cardBgColor }]}>
-          <View style={{ width: 100, height: 24, backgroundColor: skeletonColor, borderRadius: 12, marginBottom: 20 }} />
-          <View style={{ width: '100%', height: 60, backgroundColor: skeletonColor, borderRadius: 12, marginBottom: 12 }} />
-          <View style={{ width: '100%', height: 60, backgroundColor: skeletonColor, borderRadius: 12, marginBottom: 12 }} />
-          <View style={{ width: '100%', height: 60, backgroundColor: skeletonColor, borderRadius: 12 }} />
-        </View>
-      </ScrollView>
+      {/* Sticky CTA skeleton */}
+      <View style={[styles.v2StickyCtaWrap, { paddingBottom: insets.bottom + 12 }]}>
+        <View style={[styles.v2StickyCtaButton, { backgroundColor: skeletonColor, opacity: 0.6 }]} />
+      </View>
     </View>
   );
 }
@@ -659,6 +781,13 @@ type TaskListItem =
       key: string;
     };
 
+type PendingAction =
+  | { type: 'duplicate' }
+  | { type: 'delete-task'; taskId: string }
+  | { type: 'delete-external' }
+  | { type: 'delete-single' }
+  | { type: 'delete-series' };
+
 function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const {
     activity,
@@ -671,6 +800,16 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     initialOpenIntensity,
   } = props;
   const router = useRouter();
+  const safeDismiss = useCallback(() => {
+    try {
+      const r: any = router;
+      if (typeof r.dismiss === 'function') return r.dismiss();
+      if (router.canGoBack()) return router.back();
+      return router.replace('/(tabs)');
+    } catch {
+      return router.replace('/(tabs)');
+    }
+  }, [router]);
   const {
     updateActivitySingle,
     updateActivitySeries,
@@ -682,7 +821,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     createActivity,
     duplicateActivity,
   } = useFootball();
-  const scrollViewRef = useRef<ScrollView>(null);
+  const listRef = useRef<FlatList<TaskListItem>>(null);
 
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -693,6 +832,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [tasksState, setTasksState] = useState<FeedbackTask[]>((activity.tasks as FeedbackTask[]) || []);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 
   // --- Feedback template configs + cached self feedback ---
   const [feedbackConfigByTemplate, setFeedbackConfigByTemplate] = useState<
@@ -738,6 +878,12 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#9aa0a6' : colors.textSecondary;
+  const insets = useSafeAreaInsets();
+
+  const headerGradientColors = useMemo(() => {
+    const base = activity?.category?.color || colors.primary;
+    return [darkenHex(base, 0.22), lightenHex(base, 0.12)] as [string, string];
+  }, [activity?.category?.color]);
 
   const [isFeedbackSaving, setIsFeedbackSaving] = useState(false);
   const [feedbackModalError, setFeedbackModalError] = useState<string | null>(null);
@@ -926,7 +1072,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   useEffect(() => {
     if (showDatePicker || showTimePicker || showEndTimePicker || showEndDatePicker) {
       setTimeout(() => {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
+        listRef.current?.scrollToEnd({ animated: true });
       }, 100);
     }
   }, [showDatePicker, showTimePicker, showEndTimePicker, showEndDatePicker]);
@@ -992,7 +1138,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     setIsEditing(true);
   };
 
-  const handleDuplicate = async () => {
+  const handleDuplicate = () => {
     if (!activity) return;
 
     if (activity.isExternal) {
@@ -1010,19 +1156,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         { text: 'Annuller', style: 'cancel' },
         {
           text: 'Duplikér',
-          onPress: async () => {
-            setIsDuplicating(true);
-            try {
-              await duplicateActivity(activity.id);
-              Alert.alert('Succes', 'Aktiviteten er blevet duplikeret');
-              router.replace('/(tabs)/(home)');
-            } catch (error: any) {
-              console.error('Error duplicating activity:', error);
-              Alert.alert('Fejl', error?.message || 'Kunne ikke duplikerte aktiviteten');
-            } finally {
-              setIsDuplicating(false);
-            }
-          }
+          onPress: () => setPendingAction({ type: 'duplicate' }),
         }
       ]
     );
@@ -1347,26 +1481,11 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         {
           text: 'Slet',
           style: 'destructive',
-          onPress: async () => {
-            setDeletingTaskId(taskId);
-            try {
-              console.log('🗑️ Attempting to delete task:', taskId, 'from activity:', activity.id);
-              await deleteActivityTask(activity.id, taskId);
-              console.log('✅ Task deleted successfully');
-              setTasksState(prev => prev.filter(task => String(task.id) !== String(taskId)));
-              refreshData();
-              Alert.alert('Slettet', 'Opgaven er blevet slettet fra denne aktivitet');
-            } catch (error: any) {
-              console.error('❌ Error deleting task:', error);
-              Alert.alert('Fejl', `Kunne ikke slette opgaven: ${error?.message || 'Ukendt fejl'}`);
-            } finally {
-              setDeletingTaskId(null);
-            }
-          }
+          onPress: () => setPendingAction({ type: 'delete-task', taskId }),
         }
       ]
     );
-  }, [activity, deleteActivityTask, isAdmin, refreshData]);
+  }, [activity, isAdmin]);
 
   const handleAddTask = () => {
     console.log('Opening create task modal for activity:', activity?.id);
@@ -1612,7 +1731,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           {
             text: 'Slet',
             style: 'destructive',
-            onPress: handleDeleteExternalActivity,
+            onPress: () => setPendingAction({ type: 'delete-external' }),
           }
         ]
       );
@@ -1621,64 +1740,154 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     setShowDeleteDialog(true);
   };
 
-  const handleDeleteExternalActivity = async () => {
-    if (!activity) return;
+  const handleDeleteSingle = useCallback(() => {
+    setPendingAction({ type: 'delete-single' });
+  }, []);
 
-    setIsDeleting(true);
-    try {
-      const result = await deleteSingleExternalActivity(activity.id);
+  const handleDeleteSeries = useCallback(() => {
+    setPendingAction({ type: 'delete-series' });
+  }, []);
 
-      if (!result.success) {
-        throw new Error(result.error || 'Kunne ikke slette aktiviteten');
+  useEffect(() => {
+    if (!pendingAction) return;
+
+    let cancelled = false;
+
+    (async () => {
+      const action = pendingAction;
+      const currentActivity = activity;
+      if (!currentActivity) {
+        if (!cancelled) setPendingAction(null);
+        return;
       }
 
-      router.replace('/(tabs)/(home)');
+      try {
+        switch (action.type) {
+          case 'duplicate': {
+            if (currentActivity.isExternal) break;
+            if (!cancelled) setIsDuplicating(true);
+            try {
+              await duplicateActivity(currentActivity.id);
+              if (!cancelled) {
+                Alert.alert('Succes', 'Aktiviteten er blevet duplikeret');
+                router.replace('/(tabs)/(home)');
+              }
+            } catch (error: any) {
+              console.error('Error duplicating activity:', error);
+              if (!cancelled) {
+                Alert.alert('Fejl', error?.message || 'Kunne ikke duplikerte aktiviteten');
+              }
+            } finally {
+              if (!cancelled) setIsDuplicating(false);
+            }
+            break;
+          }
+          case 'delete-task': {
+            if (!isAdmin) break;
+            if (!cancelled) setDeletingTaskId(action.taskId);
+            try {
+              await deleteActivityTask(currentActivity.id, action.taskId);
+              if (!cancelled) {
+                setTasksState(prev => prev.filter(task => String(task.id) !== String(action.taskId)));
+                refreshData();
+                Alert.alert('Slettet', 'Opgaven er blevet slettet fra denne aktivitet');
+              }
+            } catch (error: any) {
+              console.error('❌ Error deleting task:', error);
+              if (!cancelled) {
+                Alert.alert('Fejl', `Kunne ikke slette opgaven: ${error?.message || 'Ukendt fejl'}`);
+              }
+            } finally {
+              if (!cancelled) setDeletingTaskId(null);
+            }
+            break;
+          }
+          case 'delete-external': {
+            if (!cancelled) setIsDeleting(true);
+            try {
+              const result = await deleteSingleExternalActivity(currentActivity.id);
+              if (!result.success) {
+                throw new Error(result.error || 'Kunne ikke slette aktiviteten');
+              }
+              if (!cancelled) {
+                router.replace('/(tabs)/(home)');
+                setTimeout(() => {
+                  Alert.alert('Slettet', 'Den eksterne aktivitet er blevet slettet fra din app');
+                }, 300);
+              }
+            } catch (error: any) {
+              console.error('❌ Error deleting external activity:', error);
+              if (!cancelled) {
+                Alert.alert('Fejl', `Kunne ikke slette aktiviteten: ${error?.message || 'Ukendt fejl'}`);
+              }
+            } finally {
+              if (!cancelled) setIsDeleting(false);
+            }
+            break;
+          }
+          case 'delete-single': {
+            if (!cancelled) setIsDeleting(true);
+            try {
+              await deleteActivitySingle(currentActivity.id);
+              if (!cancelled) {
+                router.replace('/(tabs)/(home)');
+                setTimeout(() => {
+                  Alert.alert('Slettet', 'Aktiviteten er blevet slettet');
+                }, 300);
+              }
+            } catch (error: any) {
+              console.error('❌ Error deleting activity:', error);
+              if (!cancelled) {
+                Alert.alert('Fejl', `Kunne ikke slette aktiviteten: ${error?.message || 'Ukendt fejl'}`);
+              }
+            } finally {
+              if (!cancelled) setIsDeleting(false);
+            }
+            break;
+          }
+          case 'delete-series': {
+            if (!currentActivity.seriesId) break;
+            if (!cancelled) setIsDeleting(true);
+            try {
+              await deleteActivitySeries(currentActivity.seriesId);
+              if (!cancelled) {
+                router.replace('/(tabs)/(home)');
+                setTimeout(() => {
+                  Alert.alert('Slettet', 'Hele serien er blevet slettet');
+                }, 300);
+              }
+            } catch (error: any) {
+              console.error('❌ Error deleting series:', error);
+              if (!cancelled) {
+                Alert.alert('Fejl', `Kunne ikke slette serien: ${error?.message || 'Ukendt fejl'}`);
+              }
+            } finally {
+              if (!cancelled) setIsDeleting(false);
+            }
+            break;
+          }
+          default:
+            break;
+        }
+      } finally {
+        if (!cancelled) setPendingAction(null);
+      }
+    })();
 
-      setTimeout(() => {
-        Alert.alert('Slettet', 'Den eksterne aktivitet er blevet slettet fra din app');
-      }, 300);
-    } catch (error: any) {
-      console.error('❌ Error deleting external activity:', error);
-      Alert.alert('Fejl', `Kunne ikke slette aktiviteten: ${error?.message || 'Ukendt fejl'}`);
-      setIsDeleting(false);
-    }
-  };
-
-  const handleDeleteSingle = async () => {
-    if (!activity) return;
-
-    setIsDeleting(true);
-    try {
-      await deleteActivitySingle(activity.id);
-      router.replace('/(tabs)/(home)');
-
-      setTimeout(() => {
-        Alert.alert('Slettet', 'Aktiviteten er blevet slettet');
-      }, 300);
-    } catch (error: any) {
-      console.error('❌ Error deleting activity:', error);
-      Alert.alert('Fejl', `Kunne ikke slette aktiviteten: ${error?.message || 'Ukendt fejl'}`);
-      setIsDeleting(false);
-    }
-  };
-
-  const handleDeleteSeries = async () => {
-    if (!activity || !activity.seriesId) return;
-
-    setIsDeleting(true);
-    try {
-      await deleteActivitySeries(activity.seriesId);
-      router.replace('/(tabs)/(home)');
-
-      setTimeout(() => {
-        Alert.alert('Slettet', 'Hele serien er blevet slettet');
-      }, 300);
-    } catch (error: any) {
-      console.error('❌ Error deleting series:', error);
-      Alert.alert('Fejl', `Kunne ikke slette serien: ${error?.message || 'Ukendt fejl'}`);
-      setIsDeleting(false);
-    }
-  };
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activity,
+    deleteActivitySeries,
+    deleteActivitySingle,
+    deleteActivityTask,
+    duplicateActivity,
+    isAdmin,
+    pendingAction,
+    refreshData,
+    router,
+  ]);
 
   const formatDate = (date: Date) => {
     return new Date(date).toLocaleDateString('da-DK', {
@@ -1808,16 +2017,42 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     return t.length ? t : title;
   }
 
+  const handleBackPress = useCallback(() => {
+    if (isEditing) {
+      Alert.alert(
+        'Afslut redigering',
+        'Du er i gang med at redigere. Vil du afslutte uden at gemme?',
+        [
+          { text: 'Annuller', style: 'cancel' },
+          {
+            text: 'Afslut',
+            style: 'destructive',
+            onPress: () => {
+              setIsEditing(false);
+              safeDismiss();
+            },
+          },
+        ]
+      );
+    } else {
+      safeDismiss();
+    }
+  }, [isEditing, safeDismiss]);
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={[styles.container, { backgroundColor: bgColor }]}
     >
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: activity.category.color }]}>
+      <LinearGradient
+        colors={headerGradientColors}
+        style={[styles.header, styles.v2Topbar, { paddingTop: insets.top + 8 }]}
+      >
+        {/* removed duplicate absolute back button */}
         <TouchableOpacity
-          style={styles.backButtonHeader}
-          onPress={isEditing ? handleCancel : onBack}
+          style={[styles.backButtonHeader, { top: insets.top + 8 }]}
+          onPress={isEditing ? handleCancel : handleBackPress}
           activeOpacity={0.7}
         >
           <IconSymbol
@@ -1846,7 +2081,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           )}
         </View>
 
-        <View style={styles.headerButtons}>
+        <View style={[styles.headerButtons, { top: insets.top + 8 }]}>
           {isEditing ? (
             <TouchableOpacity
               style={styles.headerButton}
@@ -1866,8 +2101,10 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               )}
             </TouchableOpacity>
           ) : (
+
             <>
               {!activity.isExternal && (
+
                 <TouchableOpacity
                   style={styles.headerButton}
                   onPress={handleDuplicate}
@@ -1915,31 +2152,46 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             </>
           )}
         </View>
-      </View>
+      </LinearGradient>
 
-      <ScrollView
-        ref={scrollViewRef}
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {activity.isExternal && (
-          <View style={[styles.externalBadge, { backgroundColor: colors.secondary }]}>
-            <IconSymbol
-              ios_icon_name="calendar.badge.clock"
-              android_material_icon_name="event"
-              size={20}
-              color="#fff"
-            />
-            <Text style={styles.externalBadgeText}>Ekstern aktivitet</Text>
-          </View>
-        )}
+      <View style={[styles.v2Sheet, { backgroundColor: cardBgColor }]}>
+        <View style={styles.v2WaveOverlay}>
+          <SheetWaveTop color={cardBgColor} />
+        </View>
 
-        {/* Activity Details */}
-        <View style={[styles.section, { backgroundColor: cardBgColor }]}>
-          <Text style={[styles.sectionTitle, { color: textColor }]}>Detaljer</Text>
+        <FlatList
+          ref={listRef}
+          data={taskListItems}
+          keyExtractor={taskKeyExtractor}
+          renderItem={renderTaskItem}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[
+            styles.scrollContent,
+            {
+              paddingBottom:
+                32 + (!isEditing ? V2_CTA_HEIGHT + 24 : 0) + (insets.bottom ? insets.bottom : 0),
+            },
+          ]}
+          ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
+          ListHeaderComponent={
+            <>
+              {activity.isExternal && (
+                <View style={[styles.externalBadge, { backgroundColor: colors.secondary }]}>
+                  <IconSymbol
+                    ios_icon_name="calendar.badge.clock"
+                    android_material_icon_name="event"
+                    size={20}
+                    color="#fff"
+                  />
+                  <Text style={styles.externalBadgeText}>Ekstern aktivitet</Text>
+                </View>
+              )}
 
-          {/* Title */}
+              {/* Activity Details */}
+              <View style={[styles.section, { backgroundColor: cardBgColor }]}>
+                <Text style={[styles.sectionTitle, { color: textColor }]}>Detaljer</Text>
+
+          {/* Title (edit only) */}
           {isEditing && !activity.isExternal ? (
             <View style={styles.fieldContainer}>
               <Text style={[styles.fieldLabel, { color: textColor }]}>Titel</Text>
@@ -1951,20 +2203,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                 placeholderTextColor={textSecondaryColor}
               />
             </View>
-          ) : (
-            <View style={styles.detailRow}>
-              <IconSymbol
-                ios_icon_name="text.alignleft"
-                android_material_icon_name="subject"
-                size={24}
-                color={activity.category.color}
-              />
-              <View style={styles.detailContent}>
-                <Text style={[styles.detailLabel, { color: textSecondaryColor }]}>Titel</Text>
-                <Text style={[styles.detailValue, { color: textColor }]}>{activity.title}</Text>
-              </View>
-            </View>
-          )}
+          ) : null}
 
           {/* Date & Time */}
           {isEditing && !activity.isExternal && !activity.seriesId ? (
@@ -2010,7 +2249,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               <View style={styles.fieldContainer}>
                 <Text style={[styles.fieldLabel, { color: textColor }]}>Tidspunkt</Text>
                 {Platform.OS === 'web' ? (
-                  // @ts-expect-error Raw HTML time input is only available in the web build
+                  // @ts-ignore Raw HTML time input is only available in the web build
                   <input
                     type="time"
                     value={(editTime || '').substring(0, 5)}
@@ -2067,7 +2306,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               <View style={styles.fieldContainer}>
                 <Text style={[styles.fieldLabel, { color: textColor }]}>Sluttidspunkt</Text>
                 {Platform.OS === 'web' ? (
-                  // @ts-expect-error Raw HTML time input is only available in the web build
+                  // @ts-ignore Raw HTML time input is only available in the web build
                   <input
                     type="time"
                     value={editEndTime ? editEndTime.substring(0, 5) : ''}
@@ -2086,7 +2325,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                 ) : (
                   <>
                     <TouchableOpacity
-                      style={[styles.dateTimeButton, { backgroundColor: bgColor }]}
+                      style={[styles.dateTimeButton, { backgroundColor: bgBgColor }]}
                       onPress={() => setShowEndTimePicker(true)}
                       activeOpacity={0.7}
                     >
@@ -2154,7 +2393,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             <View style={styles.fieldContainer}>
               <Text style={[styles.fieldLabel, { color: textColor }]}>Tidspunkt</Text>
               {Platform.OS === 'web' ? (
-                // @ts-expect-error Raw HTML time input is only available in the web build
+                // @ts-ignore Raw HTML time input is only available in the web build
                 <input
                   type="time"
                   value={(editTime || '').substring(0, 5)}
@@ -2218,7 +2457,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               <View style={styles.fieldContainer}>
                 <Text style={[styles.fieldLabel, { color: textColor }]}>Sluttidspunkt</Text>
                 {Platform.OS === 'web' ? (
-                  // @ts-expect-error Raw HTML time input is only available in the web build
+                  // @ts-ignore Raw HTML time input is only available in the web build
                   <input
                     type="time"
                     value={editEndTime ? editEndTime.substring(0, 5) : ''}
@@ -2284,26 +2523,37 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               )}
             </View>
           ) : (
-            <View style={styles.detailRow}>
-              <IconSymbol
-                ios_icon_name="calendar.badge.clock"
-                android_material_icon_name="event"
-                size={24}
-                color={activity.category.color}
+            <DetailsCard
+              label="Dato & Tidspunkt"
+              value={`${formatDateTime(activity.date, activity.time)}${activity.endTime ? ` - ${activity.endTime.substring(0, 5)}` : ''}`}
+              backgroundColor={isDark ? '#1f1f1f' : '#f8f9fb'}
+              textColor={textColor}
+              secondaryTextColor={textSecondaryColor}
+              fullWidth
+            />
+          )}
+
+          {!isEditing && (
+            <View style={styles.v2DetailsRow}>
+              <DetailsCard
+                label="Lokation"
+                value={activity.location || ''}
+                backgroundColor={isDark ? '#1f1f1f' : '#f8f9fb'}
+                textColor={textColor}
+                secondaryTextColor={textSecondaryColor}
               />
-              <View style={styles.detailContent}>
-                <Text style={[styles.detailLabel, { color: textSecondaryColor }]}>
-                  Dato & Tidspunkt
-                </Text>
-                <Text style={[styles.detailValue, { color: textColor }]}>
-                  {formatDateTime(activity.date, activity.time)}
-                  {activity.endTime && ` - ${activity.endTime.substring(0, 5)}`}
-                </Text>
-              </View>
+              <View style={{ width: 12 }} />
+              <DetailsCard
+                label="Kategori"
+                value={`${activity.category.emoji} ${activity.category.name}`}
+                backgroundColor={isDark ? '#1f1f1f' : '#f8f9fb'}
+                textColor={textColor}
+                secondaryTextColor={textSecondaryColor}
+              />
             </View>
           )}
 
-          {/* Location */}
+          {/* Location (edit only) */}
           {isEditing && !activity.isExternal ? (
             <View style={styles.fieldContainer}>
               <Text style={[styles.fieldLabel, { color: textColor }]}>Lokation</Text>
@@ -2315,27 +2565,12 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                 placeholderTextColor={textSecondaryColor}
               />
             </View>
-          ) : (
-            <View style={styles.detailRow}>
-              <IconSymbol
-                ios_icon_name="mappin.circle"
-                android_material_icon_name="location_on"
-                size={24}
-                color={activity.category.color}
-              />
-              <View style={styles.detailContent}>
-                <Text style={[styles.detailLabel, { color: textSecondaryColor }]}>Lokation</Text>
-                <Text style={[styles.detailValue, { color: textColor }]}>
-                  {activity.location}
-                </Text>
-              </View>
-            </View>
-          )}
+          ) : null}
 
-          {/* Category */}
-          <View style={styles.fieldContainer}>
-            <Text style={[styles.fieldLabel, { color: textColor }]}>Kategori</Text>
-            {isEditing ? (
+          {/* Category (edit only) */}
+          {isEditing ? (
+            <View style={styles.fieldContainer}>
+              <Text style={[styles.fieldLabel, { color: textColor }]}>Kategori</Text>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -2347,8 +2582,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                     style={[
                       styles.categoryChip,
                       {
-                        backgroundColor:
-                          editCategory?.id === cat.id ? cat.color : bgColor,
+                        backgroundColor: editCategory?.id === cat.id ? cat.color : bgColor,
                         borderColor: cat.color,
                         borderWidth: 2,
                       },
@@ -2370,107 +2604,66 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                   </TouchableOpacity>
                 ))}
               </ScrollView>
-            ) : (
-              <View style={styles.detailRow}>
-                <View
-                  style={[
-                    styles.categoryIndicator,
-                    { backgroundColor: activity.category.color },
-                  ]}
-                />
-                <View style={styles.detailContent}>
-                  <Text style={[styles.detailValue, { color: textColor }]}>
-                    {activity.category.emoji} {activity.category.name}
-                  </Text>
-                </View>
-              </View>
-            )}
-          </View>
+            </View>
+          ) : null}
 
           {/* Intensity */}
-          {!activity.isExternal && (
+          {!activity.isExternal && isEditing ? (
             <View style={styles.fieldContainer}>
               <Text style={[styles.fieldLabel, { color: textColor }]}>Intensitet</Text>
-              {isEditing ? (
-                <>
-                  <View style={[styles.intensityToggleRow, { backgroundColor: bgColor }]}>
-                    <View style={styles.intensityToggleLabel}>
-                      <IconSymbol
-                        ios_icon_name="flame"
-                        android_material_icon_name="local_fire_department"
-                        size={20}
-                        color={textColor}
-                      />
-                      <Text style={[styles.switchLabel, { color: textColor }]}>Tilføj intensitet</Text>
-                    </View>
-                    <Switch
-                      value={editIntensityEnabled}
-                      onValueChange={handleIntensityToggle}
-                      trackColor={{ false: '#767577', true: colors.primary }}
-                      thumbColor={editIntensityEnabled ? '#fff' : '#f4f3f4'}
-                    />
-                  </View>
+              <View style={[styles.intensityToggleRow, { backgroundColor: bgColor }]}>
+                <View style={styles.intensityToggleLabel}>
+                  <IconSymbol
+                    ios_icon_name="flame"
+                    android_material_icon_name="local_fire_department"
+                    size={20}
+                    color={textColor}
+                  />
+                  <Text style={[styles.switchLabel, { color: textColor }]}>Tilføj intensitet</Text>
+                </View>
+                <Switch
+                  value={editIntensityEnabled}
+                  onValueChange={handleIntensityToggle}
+                  trackColor={{ false: '#767577', true: colors.primary }}
+                  thumbColor={editIntensityEnabled ? '#fff' : '#f4f3f4'}
+                />
+              </View>
 
-                  {editIntensityEnabled && (
-                    <>
-                      <Text style={[styles.intensityHint, { color: textSecondaryColor }]}>1 = let · 10 = maks</Text>
-                      <View style={styles.intensityPickerRow}>
-                        {intensityOptions.map(option => {
-                          const isSelected = editIntensity === option;
-                          return (
-                            <TouchableOpacity
-                              key={`intensity-${option}`}
-                              style={[styles.intensityPickerChip, isSelected && styles.intensityPickerChipSelected]}
-                              onPress={() => handleIntensitySelect(option)}
-                              activeOpacity={0.7}
-                            >
-                              <Text style={[styles.intensityPickerText, isSelected && styles.intensityPickerTextSelected]}>
-                                {option}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
-                    </>
-                  )}
+              {editIntensityEnabled && (
+                <>
+                  <Text style={[styles.intensityHint, { color: textSecondaryColor }]}>1 = let · 10 = maks</Text>
+                  <View style={styles.intensityPickerRow}>
+                    {intensityOptions.map(option => {
+                      const isSelected = editIntensity === option;
+                      return (
+                        <TouchableOpacity
+                          key={`intensity-${option}`}
+                          style={[styles.intensityPickerChip, isSelected && styles.intensityPickerChipSelected]}
+                          onPress={() => handleIntensitySelect(option)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.intensityPickerText, isSelected && styles.intensityPickerTextSelected]}>
+                            {option}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
                 </>
-              ) : shouldShowActivityIntensityField ? (
-                <View style={styles.detailRow}>
-                  <IconSymbol
-                    ios_icon_name="flame"
-                    android_material_icon_name="local_fire_department"
-                    size={24}
-                    color={activity.category.color}
-                  />
-                  <View style={styles.detailContent}>
-                    <Text style={[styles.detailLabel, { color: textSecondaryColor }]}>
-                      Intensitet
-                    </Text>
-                    <Text style={[styles.detailValue, { color: textColor }]}>
-                      {typeof activity.intensity === 'number' ? `${activity.intensity}/10` : 'Ikke angivet'}
-                    </Text>
-                  </View>
-                </View>
-              ) : (
-                <View style={styles.detailRow}>
-                  <IconSymbol
-                    ios_icon_name="flame"
-                    android_material_icon_name="local_fire_department"
-                    size={24}
-                    color={activity.category.color}
-                  />
-                  <View style={styles.detailContent}>
-                    <Text style={[styles.detailLabel, { color: textSecondaryColor }]}>
-                      Intensitet
-                    </Text>
-                    <Text style={[styles.detailValue, { color: textColor }]}>
-                      Ikke aktiveret
-                    </Text>
-                  </View>
-                </View>
               )}
             </View>
-          )}
+          ) : null}
+
+          {!activity.isExternal && !isEditing && shouldShowActivityIntensityField ? (
+            <DetailsCard
+              label="Intensitet"
+              value={typeof activity.intensity === 'number' ? `${activity.intensity}/10` : ''}
+              backgroundColor={isDark ? '#1f1f1f' : '#f8f9fb'}
+              textColor={textColor}
+              secondaryTextColor={textSecondaryColor}
+              fullWidth
+            />
+          ) : null}
 
           {/* Convert to recurring (only while editing, internal, not already series) */}
           {isEditing && isInternalActivity && !activity.seriesId && (
@@ -2718,56 +2911,69 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           </View>
         )}
 
-        {/* Tasks Section */}
-        <View style={[styles.section, { backgroundColor: cardBgColor }]}>
-          <View style={styles.tasksSectionHeader}>
-            <Text style={[styles.sectionTitle, { color: textColor }]}>Opgaver</Text>
-            {isAdmin && !activity.isExternal && (
-              <TouchableOpacity
-                style={[styles.addTaskHeaderButton, { backgroundColor: colors.primary }]}
-                onPress={handleAddTask}
-                activeOpacity={0.7}
-              >
-                <IconSymbol
-                  ios_icon_name="plus"
-                  android_material_icon_name="add"
-                  size={20}
-                  color="#fff"
-                />
-                <Text style={styles.addTaskHeaderButtonText}>Tilføj opgave</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          <FlatList
-            data={taskListItems}
-            keyExtractor={taskKeyExtractor}
-            renderItem={renderTaskItem}
-            scrollEnabled={false}
-            ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
-            ListEmptyComponent={() => (
-              <View style={styles.emptyTasksContainer}>
-                <Text style={[styles.emptyTasksText, { color: textSecondaryColor }]}>
-                  Ingen opgaver endnu
-                </Text>
-                {isAdmin && !activity.isExternal && (
-                  <Text style={[styles.emptyTasksHint, { color: textSecondaryColor }]}>
-                    Tryk på &quot;Tilføj opgave&quot; for at oprette en opgave
-                  </Text>
-                )}
+              {/* Tasks Section */}
+              <View style={[styles.section, { backgroundColor: cardBgColor }]}>
+                <View style={styles.tasksSectionHeader}>
+                  <Text style={[styles.sectionTitle, { color: textColor }]}>Opgaver</Text>
+                  {isAdmin && !activity.isExternal && (
+                    <TouchableOpacity
+                      style={[styles.addTaskHeaderButton, { backgroundColor: colors.primary }]}
+                      onPress={handleAddTask}
+                      activeOpacity={0.7}
+                    >
+                      <IconSymbol
+                        ios_icon_name="plus"
+                        android_material_icon_name="add"
+                        size={20}
+                        color="#fff"
+                      />
+                      <Text style={styles.addTaskHeaderButtonText}>Tilføj opgave</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
-            )}
-          />
+            </>
+          }
+          ListEmptyComponent={() => (
+            <View style={styles.emptyTasksContainer}>
+              <Text style={[styles.emptyTasksText, { color: textSecondaryColor }]}>
+                Ingen opgaver endnu
+              </Text>
+              {isAdmin && !activity.isExternal && (
+                <Text style={[styles.emptyTasksHint, { color: textSecondaryColor }]}>
+                  Tryk på "Tilføj opgave" for at oprette en opgave
+                </Text>
+              )}
+            </View>
+          )}
+        />
+      </View>
+
+      {!isEditing && (
+        <View style={[styles.v2StickyCtaWrap, { paddingBottom: insets.bottom + 12 }]}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={handleEditClick}
+            disabled={isSaving || isDeleting || isDuplicating}
+            style={{ width: '100%' }}
+          >
+            <LinearGradient
+              colors={headerGradientColors}
+              style={[
+                styles.v2StickyCtaButton,
+                (isSaving || isDeleting || isDuplicating) && { opacity: 0.55 },
+              ]}
+            >
+              <Text style={styles.v2StickyCtaText}>Rediger aktivitet</Text>
+            </LinearGradient>
+          </TouchableOpacity>
         </View>
-      </ScrollView>
+      )}
 
       {/* Modals */}
       <EditSeriesDialog
         visible={showSeriesDialog}
         onClose={() => setShowSeriesDialog(false)}
-        activity={activity}
-        onActivityUpdated={onActivityUpdated}
-        isAdmin={isAdmin}
         onEditSingle={handleEditSingle}
         onEditAll={handleEditAll}
       />
@@ -2776,8 +2982,8 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         visible={showDeleteDialog}
         onClose={() => setShowDeleteDialog(false)}
         onDeleteSingle={handleDeleteSingle}
-        onDeleteSeries={handleDeleteSeries}
-        isDeleting={isDeleting}
+        onDeleteAll={handleDeleteSeries}
+        isSeries={!!activity.seriesId}
       />
 
       <CreateActivityTaskModal
@@ -3009,34 +3215,37 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    paddingTop: Platform.OS === 'ios' ? 50 : 20,
-    paddingBottom: 16,
+    paddingTop: 16,
     paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    position: 'relative',
+    justifyContent: 'space-between',
+    backgroundColor: colors.background,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.highlight,
   },
   backButtonHeader: {
     position: 'absolute',
     left: 16,
-    top: Platform.OS === 'ios' ? 50 : 20,
+    top: 20,
   },
   headerContent: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: Platform.OS === 'ios' ? 10 : 0,
+    paddingTop: 10,
   },
   headerEmoji: {
     fontSize: 24,
     lineHeight: 24,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '500',
-    textAlign: 'center',
-    marginTop: 4,
-    color: '#fff',
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  headerIcon: {
+    marginHorizontal: 8,
   },
   seriesBadge: {
     flexDirection: 'row',
@@ -3056,11 +3265,70 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     position: 'absolute',
     right: 16,
-    top: Platform.OS === 'ios' ? 50 : 20,
+    top: 20,
     alignItems: 'center',
   },
   headerButton: {
     marginLeft: 12,
+  },
+  v2Topbar: {
+    backgroundColor: 'transparent',
+    paddingBottom: 64,
+  },
+  v2Sheet: {
+    flex: 1,
+    marginTop: -V2_WAVE_HEIGHT,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingTop: V2_WAVE_HEIGHT,
+  },
+  v2WaveOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+  },
+  v2DetailsRow: {
+    flexDirection: 'row',
+  },
+  v2DetailCard: {
+    borderRadius: 12,
+    padding: 16,
+    marginVertical: 8,
+    backgroundColor: colors.card,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  v2DetailCardLabel: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
+  v2DetailCardValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  v2StickyCtaWrap: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 0,
+    paddingTop: 12,
+  },
+  v2StickyCtaButton: {
+    height: V2_CTA_HEIGHT,
+    borderRadius: V2_CTA_HEIGHT / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  v2StickyCtaText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
   },
   scrollView: {
     flex: 1,
@@ -3269,6 +3537,10 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 12,
     marginBottom: 8, // ✅ replaces rowGap when wrapping
+  },
+  dayButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 
   externalBadge: {

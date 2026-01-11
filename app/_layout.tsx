@@ -37,6 +37,17 @@ export default function RootLayout() {
                 {/* Main tabs */}
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
 
+                {/* Modals overlay */}
+                <Stack.Screen
+                  name="(modals)"
+                  options={{
+                    presentation: 'transparentModal',
+                    headerShown: false,
+                    contentStyle: { backgroundColor: 'transparent' },
+                    animation: 'fade',
+                  }}
+                />
+
                 {/* Activity details */}
                 <Stack.Screen
                   name="activity-details"

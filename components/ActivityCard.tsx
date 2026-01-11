@@ -134,25 +134,21 @@ export default function ActivityCard({
     [resolveFeedbackTemplateId]
   );
 
-  const navigateToFeedbackTask = useCallback(
-    (task: any): boolean => {
-      if (!isFeedbackTask(task)) {
-        return false;
-      }
+  const navigateToTaskModal = useCallback(
+    (task: any, type: 'intensity' | 'feedback') => {
       if (!activityId) {
-        console.warn('[ActivityCard] Missing activity id for feedback navigation');
-        return false;
+        console.warn('[ActivityCard] Missing activity id for task modal navigation');
+        return;
       }
       const taskId = task?.id ?? task?.task_id;
-      const encodedId = encodeURIComponent(activityId);
       const encodedTaskId = taskId ? encodeURIComponent(String(taskId)) : null;
-      const href = `/activity-details?id=${encodedId}&activityId=${encodedId}${
-        encodedTaskId ? `&openFeedbackTaskId=${encodedTaskId}` : ''
+      const route = type === 'intensity' ? '/(modals)/task-score-note' : '/(modals)/task-feedback-note';
+      const href = `${route}?activityId=${encodeURIComponent(activityId)}${
+        encodedTaskId ? `&taskId=${encodedTaskId}` : ''
       }`;
       router.push(href);
-      return true;
     },
-    [activityId, isFeedbackTask, router]
+    [activityId, router]
   );
 
   const handleCardPress = useCallback(() => {
@@ -168,16 +164,53 @@ export default function ActivityCard({
     router.push(`/activity-details?id=${encodedId}&activityId=${encodedId}`);
   }, [activityId, router]);
 
+  const handleIntensityRowPress = useCallback(
+    (event?: any) => {
+      event?.stopPropagation?.();
+      if (!activityId) return;
+      suppressCardPressRef.current = true;
+      router.push({
+        pathname: '/(modals)/task-score-note',
+        params: {
+          activityId: String(activity.id ?? activityId),
+          initialScore:
+            activity?.intensity !== null && activity?.intensity !== undefined
+              ? String(activity.intensity)
+              : '',
+        },
+      });
+      setTimeout(() => {
+        suppressCardPressRef.current = false;
+      }, 0);
+    },
+    [activity?.intensity, activity.id, activityId, router]
+  );
+
   const handleTaskPress = useCallback(
     (task: any, event?: any) => {
       event?.stopPropagation?.();
-      if (navigateToFeedbackTask(task)) {
+      const templateId =
+        task?.feedbackTemplateId ??
+        parseTemplateIdFromMarker(task?.description || '');
+      if (isFeedbackTask(task)) {
+        if (templateId && activityId) {
+          router.push({
+            pathname: '/(modals)/task-feedback-note',
+            params: {
+              activityId: String(activity.id ?? activityId),
+              templateId: String(templateId),
+              title: String(task.title ?? 'opgave'),
+            },
+          });
+          return;
+        }
+        handleCardPress();
         return;
       }
       setSelectedTask(task);
       setIsTaskModalOpen(true);
     },
-    [navigateToFeedbackTask]
+    [activity.id, activityId, handleCardPress, isFeedbackTask, router]
   );
 
   const handleModalClose = useCallback(() => {
@@ -304,22 +337,6 @@ export default function ActivityCard({
   }, [activity?.id, activityId, optimisticTasks, showIntensityRow]);
 
   const shouldRenderTasksSection = showTasks && taskListItems.length > 0;
-
-  const handleIntensityRowPress = useCallback(
-    (event?: any) => {
-      event?.stopPropagation?.();
-      if (!activityId) return;
-      suppressCardPressRef.current = true;
-      router.push({
-        pathname: '/activity-details',
-        params: { id: String(activityId), activityId: String(activityId), openIntensity: '1' },
-      });
-      setTimeout(() => {
-        suppressCardPressRef.current = false;
-      }, 0);
-    },
-    [activityId, router]
-  );
 
   return (
     <>
