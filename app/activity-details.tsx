@@ -1171,12 +1171,21 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
   const handleEditClick = () => {
     if (activity?.seriesId) {
-      setEditScope('single');
-      setShowSeriesDialog(true);
-    } else {
-      setEditScope('single');
-      setIsEditing(true);
+      // Previously: setShowSeriesDialog(true) (but dialog isn't rendered in this file right now)
+      Alert.alert(
+        'Rediger serie',
+        'Vil du redigere kun denne aktivitet eller hele serien?',
+        [
+          { text: 'Annuller', style: 'cancel' },
+          { text: 'Kun denne', onPress: handleEditSingle },
+          { text: 'Hele serien', onPress: handleEditAll },
+        ]
+      );
+      return;
     }
+
+    setEditScope('single');
+    setIsEditing(true);
   };
 
   const handleEditSingle = () => {
@@ -1801,22 +1810,49 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             text: 'Slet',
             style: 'destructive',
             onPress: () => setPendingAction({ type: 'delete-external' }),
-          }
+          },
         ]
       );
       return;
     }
-    setShowDeleteDialog(true);
+
+    // Internal activity
+    if (activity?.seriesId) {
+      Alert.alert(
+        'Slet aktivitet',
+        'Vil du slette kun denne aktivitet eller hele serien?',
+        [
+          { text: 'Annuller', style: 'cancel' },
+          {
+            text: 'Slet kun denne',
+            style: 'destructive',
+            onPress: () => setPendingAction({ type: 'delete-single' }),
+          },
+          {
+            text: 'Slet hele serien',
+            style: 'destructive',
+            onPress: () => setPendingAction({ type: 'delete-series' }),
+          },
+        ]
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Slet aktivitet',
+      `Er du sikker på at du vil slette "${activity?.title ?? ''}"?`,
+      [
+        { text: 'Annuller', style: 'cancel' },
+        {
+          text: 'Slet',
+          style: 'destructive',
+          onPress: () => setPendingAction({ type: 'delete-single' }),
+        },
+      ]
+    );
   };
 
-  const handleDeleteSingle = useCallback(() => {
-    setPendingAction({ type: 'delete-single' });
-  }, []);
-
-  const handleDeleteSeries = useCallback(() => {
-    setPendingAction({ type: 'delete-series' });
-  }, []);
-
+  // --- pendingAction handlers (duplicate/delete) ---
   useEffect(() => {
     if (!pendingAction) return;
 
