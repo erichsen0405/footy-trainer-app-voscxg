@@ -15,12 +15,6 @@ import * as CommonStyles from '@/styles/commonStyles';
 import { ActivityCategory } from '@/types';
 import { ProgressionMetric, TrendPoint, useProgressionData } from '@/hooks/useProgressionData';
 
-interface FocusOption {
-  id: string | null;
-  name: string;
-  color?: string;
-}
-
 type Props = {
   categories: ActivityCategory[];
 };
@@ -48,41 +42,37 @@ export function ProgressionSection({ categories }: Props) {
 
   const [periodDays, setPeriodDays] = useState(30);
   const [metric, setMetric] = useState<ProgressionMetric>('rating');
-  const [focusCategoryId, setFocusCategoryId] = useState<string | null>(null);
+  const [selectedFocusId, setSelectedFocusId] = useState<string | null>(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [chartWidth, setChartWidth] = useState(0);
   const [selectedPoint, setSelectedPoint] = useState<TrendPoint | null>(null);
+  const [showFocusPicker, setShowFocusPicker] = useState(false);
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
 
-  const { trendPoints, heatmapRows, summary, isLoading, error, rawEntries } = useProgressionData({
+  const { trendPoints, heatmapRows, summary, isLoading, error, rawEntries, focusTemplates, intensityCategoriesWithData } = useProgressionData({
     days: periodDays,
     metric,
-    focusCategoryId,
+    focusTaskTemplateId: metric === 'rating' ? selectedFocusId : null,
+    intensityCategoryId: metric === 'intensity' ? selectedCategoryId : null,
     categories,
   });
 
-  const focusOptions = useMemo<FocusOption[]>(() => {
-    const unique = new Map<string, FocusOption>();
+  const focusOptions = useMemo(() => [{ id: null, name: 'Alle fokusopgaver' }, ...focusTemplates], [focusTemplates]);
 
-    heatmapRows.forEach(row => {
-      if (!row.focusId) return;
-      if (unique.has(row.focusId)) return;
-      unique.set(row.focusId, {
-        id: row.focusId,
-        name: row.focusName,
-        color: row.color,
-      });
-    });
-
-    if (!unique.size) {
-      return [{ id: null, name: 'Alle' }];
-    }
-
-    return [{ id: null, name: 'Alle' }, ...Array.from(unique.values())];
-  }, [heatmapRows]);
+  const intensityOptions = useMemo(() => {
+    const availableIds = new Set(intensityCategoriesWithData);
+    const mapped = categories
+      .filter(cat => availableIds.size === 0 || availableIds.has(String((cat as any).id)))
+      .map(cat => ({ id: String((cat as any).id), name: cat.name, color: (cat as any).color as string | undefined }));
+    return [{ id: null, name: 'Alle kategorier' }, ...mapped];
+  }, [categories, intensityCategoriesWithData]);
 
   const periodOptions = useMemo(
     () => [
       { label: '7 dage', value: 7 },
+      { label: '14 dage', value: 14 },
       { label: '30 dage', value: 30 },
+      { label: '60 dage', value: 60 },
       { label: '90 dage', value: 90 },
     ],
     []
@@ -103,11 +93,6 @@ export function ProgressionSection({ categories }: Props) {
     setSelectedPoint(point);
   }, []);
 
-  const heatmapMax = useMemo(() => {
-    const counts = heatmapRows.flatMap(row => row.weeks.map(week => week.count));
-    return Math.max(1, ...counts, 1);
-  }, [heatmapRows]);
-
   const resolveValueColor = useCallback(
     (value: number) => {
       if (value >= 8) return palette.success;
@@ -118,15 +103,17 @@ export function ProgressionSection({ categories }: Props) {
   );
 
   const heatColor = useCallback(
-    (count: number, baseColor?: string) => {
-      const intensity = Math.min(1, count / heatmapMax);
-      const alpha = 0.12 + intensity * 0.78;
-      const colorValue = /^#([0-9a-fA-F]{6})$/.test(baseColor || '') ? (baseColor as string) : palette.primary;
+    (ratio: number, baseColor?: string) => {
+      const clamped = Math.max(0, Math.min(1, ratio));
+      const alpha = 0.12 + clamped * 0.78;
+      const scaledForThreshold = clamped * 10;
+      const thresholdColor = resolveValueColor(scaledForThreshold);
+      const colorValue = /^#([0-9a-fA-F]{6})$/.test(baseColor || '') ? (baseColor as string) : thresholdColor;
       return `${colorValue}${Math.round(alpha * 255)
         .toString(16)
         .padStart(2, '0')}`;
     },
-    [heatmapMax, palette.primary]
+    [resolveValueColor]
   );
 
   const selectedDetails = useMemo(() => {
@@ -142,7 +129,7 @@ export function ProgressionSection({ categories }: Props) {
           <View style={[styles.colorDot, { backgroundColor: item.color || palette.primary }]} />
           <View>
             <Text style={[styles.heatmapTitle, { color: palette.text }]}>{item.focusName}</Text>
-            <Text style={[styles.heatmapSubtitle, { color: palette.textSecondary }]}>Samlet {item.total}</Text>
+            <Text style={[styles.heatmapSubtitle, { color: palette.textSecondary }]}>Fuldført {item.totalCompleted} / {item.totalPossible || item.totalCompleted || 1}</Text>
           </View>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -150,10 +137,12 @@ export function ProgressionSection({ categories }: Props) {
             {item.weeks.map(week => (
               <View
                 key={`${item.focusId ?? 'none'}-${week.weekStart}`}
-                style={[styles.heatCell, { backgroundColor: heatColor(week.count, item.color) }]}
+                style={[styles.heatCell, { backgroundColor: heatColor(week.ratio, item.color) }]}
               >
-                <Text style={[styles.heatCellValue, { color: palette.text }]}>{week.count ? week.count : ''}</Text>
-                <Text style={[styles.heatCellLabel, { color: palette.textSecondary }]}>{week.label}</Text>
+                <Text style={[styles.heatCellValue, { color: palette.text }]}>
+                  {week.completed}/{week.possible || week.completed || 1}
+                </Text>
+                <Text style={[styles.heatCellLabel, { color: palette.textSecondary }]}>{Math.round(week.ratio * 100)}% · {week.label}</Text>
               </View>
             ))}
           </View>
@@ -201,7 +190,10 @@ export function ProgressionSection({ categories }: Props) {
           return (
             <TouchableOpacity
               key={option.value}
-              onPress={() => setMetric(option.value)}
+              onPress={() => {
+                setMetric(option.value);
+                setSelectedPoint(null);
+              }}
               style={[styles.chip, { borderColor: palette.highlight }, active && { backgroundColor: palette.secondary }]}
               accessibilityRole="button"
             >
@@ -211,33 +203,52 @@ export function ProgressionSection({ categories }: Props) {
         })}
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.focusRow}>
-        {focusOptions.map(option => {
-          const active = focusCategoryId === option.id;
-          return (
-            <TouchableOpacity
-              key={option.id ?? 'all'}
-              onPress={() => setFocusCategoryId(option.id)}
-              style={[styles.focusChip, { borderColor: active ? option.color || palette.primary : palette.highlight, backgroundColor: active ? (option.color || palette.primary) : 'transparent' }]}
-              accessibilityRole="button"
-            >
-              <Text style={[styles.focusChipText, { color: active ? '#fff' : palette.text }]}>{option.name}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+      {metric === 'rating' ? (
+        <View>
+          <TouchableOpacity
+            onPress={() => setShowFocusPicker(true)}
+            style={[styles.dropdown, { borderColor: palette.highlight }]}
+            accessibilityRole="button"
+          >
+            <Text style={[styles.dropdownLabel, { color: palette.textSecondary }]}>Fokusopgave</Text>
+            <Text style={[styles.dropdownValue, { color: palette.text }]}>
+              {focusOptions.find(opt => opt.id === selectedFocusId)?.name || 'Alle fokusopgaver'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View>
+          <TouchableOpacity
+            onPress={() => setShowCategoryPicker(true)}
+            style={[styles.dropdown, { borderColor: palette.highlight }]}
+            accessibilityRole="button"
+          >
+            <Text style={[styles.dropdownLabel, { color: palette.textSecondary }]}>Aktivitetskategori</Text>
+            <Text style={[styles.dropdownValue, { color: palette.text }]}>
+              {intensityOptions.find(opt => opt.id === selectedCategoryId)?.name || 'Alle kategorier'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <View style={[styles.summaryCard, { backgroundColor: palette.highlight }]}> 
         <View style={styles.summaryLeft}>
-          <Text style={[styles.summaryLabel, { color: palette.textSecondary }]}>Progressionsscore</Text>
-          <Text style={[styles.summaryValue, { color: palette.text }]}>{summary.completionRate}%</Text>
-          <Text style={[styles.summaryDelta, { color: summary.delta >= 0 ? palette.success : palette.error }]}>
-            {summary.delta >= 0 ? '↑' : '↓'} {Math.abs(summary.delta)}% vs. forrige periode
+          <Text style={[styles.summaryLabel, { color: palette.textSecondary }]}>
+            {metric === 'rating' ? 'Fuldført fokusopgaver' : 'Registreret intensitet'}
           </Text>
+          <Text style={[styles.summaryValue, { color: palette.text }]}>{summary.scorePercent}%</Text>
+          <Text style={[styles.summaryDelta, { color: summary.deltaPercentPoints >= 0 ? palette.success : palette.error }]}>
+            {summary.deltaPercentPoints >= 0 ? '↑' : '↓'} {Math.abs(summary.deltaPercentPoints)}% vs. forrige periode
+          </Text>
+          <Text style={[styles.summaryMeta, { color: palette.textSecondary }]}>Periode: {periodDays} dage</Text>
+          <Text style={[styles.summaryMeta, { color: palette.textSecondary }]}>Sammenlignes med: forrige {periodDays} dage</Text>
+          <Text style={[styles.summaryMeta, { color: palette.textSecondary }]}>Gns: {summary.avgCurrent.toFixed(1)} (forrige {summary.avgPrevious.toFixed(1)})</Text>
         </View>
         <View style={styles.summaryRight}>
-          <Text style={[styles.summaryMeta, { color: palette.textSecondary }]}>Registreringer</Text>
-          <Text style={[styles.summaryMetaValue, { color: palette.text }]}>{summary.totalEntries}</Text>
+          <Text style={[styles.summaryMeta, { color: palette.textSecondary }]}>Muligt</Text>
+          <Text style={[styles.summaryMetaValue, { color: palette.text }]}>{summary.possibleCount}</Text>
+          <Text style={[styles.summaryMeta, { color: palette.textSecondary }]}>Fuldført</Text>
+          <Text style={[styles.summaryMetaValue, { color: palette.text }]}>{summary.completedCount}</Text>
           <Text style={[styles.summaryMeta, { color: palette.textSecondary }]}>Streak</Text>
           <Text style={[styles.summaryMetaValue, { color: palette.text }]}>{summary.streakDays} dage</Text>
         </View>
@@ -326,10 +337,12 @@ export function ProgressionSection({ categories }: Props) {
 
       {!!heatmapRows.length && (
         <View style={[styles.heatmapCard, { backgroundColor: palette.backgroundAlt, borderColor: palette.highlight }]}> 
-          <Text style={[styles.chartTitle, { color: palette.text }]}>Frekvens pr. fokus (uge)</Text>
+          <Text style={[styles.chartTitle, { color: palette.text }]}>
+            {metric === 'rating' ? 'Frekvens pr. fokus (uge)' : 'Frekvens pr. kategori (uge)'} · {periodDays} dage
+          </Text>
           <FlatList
-            data={[...heatmapRows].sort((a, b) => b.total - a.total)}
-            keyExtractor={item => item.focusId ?? 'none'}
+            data={[...heatmapRows].sort((a, b) => b.totalCompleted - a.totalCompleted)}
+            keyExtractor={(item, index) => `${item.focusId ?? 'none'}-${index}`}
             renderItem={renderHeatmapRow}
             ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
             scrollEnabled={false}
@@ -355,9 +368,18 @@ export function ProgressionSection({ categories }: Props) {
             {selectedDetails ? (
               <>
                 <Text style={[styles.modalText, { color: palette.textSecondary }]}>Dato: {selectedPoint?.dateLabel}</Text>
-                <Text style={[styles.modalText, { color: palette.textSecondary }]}>Fokuspunkt: {selectedDetails.focusName}</Text>
-                <Text style={[styles.modalText, { color: palette.textSecondary }]}>Fokus-score: {selectedDetails.rating ?? '—'}</Text>
-                <Text style={[styles.modalText, { color: palette.textSecondary }]}>Intensitet: {selectedDetails.intensity ?? '—'}</Text>
+                {metric === 'rating' ? (
+                  <>
+                    <Text style={[styles.modalText, { color: palette.textSecondary }]}>Fokusopgave: {selectedDetails.focusName}</Text>
+                    <Text style={[styles.modalText, { color: palette.textSecondary }]}>Score: {selectedDetails.rating ?? '—'}</Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={[styles.modalText, { color: palette.textSecondary }]}>Kategori: {selectedDetails.focusName}</Text>
+                    <Text style={[styles.modalText, { color: palette.textSecondary }]}>Aktivitet: {selectedDetails.activityTitle || 'Aktivitet'}</Text>
+                    <Text style={[styles.modalText, { color: palette.textSecondary }]}>Intensitet: {selectedDetails.intensity ?? '—'}</Text>
+                  </>
+                )}
                 <Text style={[styles.modalText, { color: palette.textSecondary }]}>Note: {selectedDetails.note || 'Ingen note'}</Text>
               </>
             ) : null}
@@ -365,6 +387,72 @@ export function ProgressionSection({ categories }: Props) {
               onPress={() => setSelectedPoint(null)}
               style={[styles.closeButton, { backgroundColor: palette.primary }]}
               accessibilityRole="button"
+            >
+              <Text style={[styles.closeButtonText, { color: '#fff' }]}>Luk</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showFocusPicker} transparent animationType="fade" onRequestClose={() => setShowFocusPicker(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: palette.card }]}> 
+            <Text style={[styles.modalTitle, { color: palette.text }]}>Vælg fokusopgave</Text>
+            <FlatList
+              data={focusOptions}
+              keyExtractor={item => item.id ?? 'alle'}
+              renderItem={({ item }) => {
+                const active = item.id === selectedFocusId;
+                return (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setSelectedFocusId(item.id ?? null);
+                      setShowFocusPicker(false);
+                    }}
+                    style={[styles.optionRow, active && { backgroundColor: palette.highlight }]}
+                  >
+                    <Text style={[styles.optionText, { color: palette.text }]}>{item.name}</Text>
+                  </TouchableOpacity>
+                );
+              }}
+              ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+            />
+            <TouchableOpacity
+              onPress={() => setShowFocusPicker(false)}
+              style={[styles.closeButton, { backgroundColor: palette.primary, marginTop: 12 }]}
+            >
+              <Text style={[styles.closeButtonText, { color: '#fff' }]}>Luk</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showCategoryPicker} transparent animationType="fade" onRequestClose={() => setShowCategoryPicker(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: palette.card }]}> 
+            <Text style={[styles.modalTitle, { color: palette.text }]}>Vælg kategori</Text>
+            <FlatList
+              data={intensityOptions}
+              keyExtractor={item => item.id ?? 'alle'}
+              renderItem={({ item }) => {
+                const active = item.id === selectedCategoryId;
+                return (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setSelectedCategoryId(item.id ?? null);
+                      setShowCategoryPicker(false);
+                    }}
+                    style={[styles.optionRow, active && { backgroundColor: palette.highlight }]}
+                  >
+                    <Text style={[styles.optionText, { color: palette.text }]}>{item.name}</Text>
+                  </TouchableOpacity>
+                );
+              }}
+              ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+            />
+            <TouchableOpacity
+              onPress={() => setShowCategoryPicker(false)}
+              style={[styles.closeButton, { backgroundColor: palette.primary, marginTop: 12 }]}
             >
               <Text style={[styles.closeButtonText, { color: '#fff' }]}>Luk</Text>
             </TouchableOpacity>
@@ -406,6 +494,21 @@ const styles = StyleSheet.create({
   chipText: {
     fontSize: 13,
     fontWeight: '600',
+  },
+  dropdown: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 6,
+  },
+  dropdownLabel: {
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  dropdownValue: {
+    fontSize: 15,
+    fontWeight: '700',
   },
   focusRow: {
     gap: 8,
@@ -596,5 +699,13 @@ const styles = StyleSheet.create({
   closeButtonText: {
     fontSize: 15,
     fontWeight: '700',
+  },
+  optionRow: {
+    borderRadius: 12,
+    padding: 12,
+  },
+  optionText: {
+    fontSize: 15,
+    fontWeight: '600',
   },
 });
