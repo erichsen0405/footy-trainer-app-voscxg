@@ -57,7 +57,7 @@ const FALLBACK_COLORS = {
 const colors =
   ((CommonStyles as any)?.colors as typeof FALLBACK_COLORS | undefined) ?? FALLBACK_COLORS;
 
-const V2_WAVE_HEIGHT = 44; // Updated wave height
+const V2_WAVE_HEIGHT = 60; // was 44; give the wave enough vertical space for a deeper center dip
 const V2_CTA_HEIGHT = 56;
 
 // ✅ Make header action buttons visually closer (not just margin tweaks)
@@ -109,9 +109,17 @@ function darkenHex(hex: string, amount01: number): string {
 function SheetWaveTop({ color, height = V2_WAVE_HEIGHT }: { color: string; height?: number }) {
   return (
     <View pointerEvents="none" style={{ width: '100%', height }}>
-      <Svg width="100%" height="100%" viewBox="0 0 1440 120" preserveAspectRatio="none">
-        {/* one smooth dip; area above curve stays transparent */}
-        <Path fill={color} d="M0,52 Q720,92 1440,52 L1440,120 L0,120 Z" />
+      <Svg width="100%" height="100%" viewBox="0 0 375 60" preserveAspectRatio="none">
+        {/* Outer peaks pushed towards the sides + deeper center dip (closer to the reference). */}
+        <Path
+          fill={color}
+          d="M0,28
+             C18,16 34,14 52,22
+             C96,42 138,46 187.5,46
+             C237,46 279,42 323,22
+             C341,14 357,16 375,28
+             L375,60 L0,60 Z"
+        />
       </Svg>
     </View>
   );
@@ -2084,7 +2092,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           rating: score,
           note,
           activity_id: String(resolvedActivityId).trim(),
-          activityId: String(resolvedActivityId).trim(), // <-- back-compat: always send both
+          activityId: String(resolvedActivityId).trim() // <-- back-compat: always send both
         });
         Promise.resolve(refreshData()).catch(() => {});
         handleFeedbackClose();
@@ -2683,8 +2691,8 @@ const styles = StyleSheet.create({
   v2Sheet: {
     flex: 1,
     marginTop: -V2_WAVE_HEIGHT,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    borderTopLeftRadius: 0,  // ✅ no rounded corners under the wave
+    borderTopRightRadius: 0, // ✅ no rounded corners under the wave
     paddingTop: V2_WAVE_HEIGHT,
     overflow: 'hidden',
     backgroundColor: 'transparent',
