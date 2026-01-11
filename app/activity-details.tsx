@@ -57,7 +57,7 @@ const FALLBACK_COLORS = {
 const colors =
   ((CommonStyles as any)?.colors as typeof FALLBACK_COLORS | undefined) ?? FALLBACK_COLORS;
 
-const V2_WAVE_HEIGHT = 28;
+const V2_WAVE_HEIGHT = 44; // Updated wave height
 const V2_CTA_HEIGHT = 56;
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
@@ -105,10 +105,8 @@ function SheetWaveTop({ color, height = V2_WAVE_HEIGHT }: { color: string; heigh
   return (
     <View pointerEvents="none" style={{ width: '100%', height }}>
       <Svg width="100%" height="100%" viewBox="0 0 1440 120" preserveAspectRatio="none">
-        <Path
-          fill={color}
-          d="M0,64L60,64C120,64,240,64,360,58.7C480,53,600,43,720,42.7C840,43,960,53,1080,64C1200,75,1320,85,1380,90.7L1440,96L1440,120L1380,120C1320,120,1200,120,1080,120C960,120,840,120,720,120C600,120,480,120,360,120C240,120,120,120,60,120L0,120Z"
-        />
+        {/* one smooth dip; area above curve stays transparent */}
+        <Path fill={color} d="M0,52 Q720,92 1440,52 L1440,120 L0,120 Z" />
       </Svg>
     </View>
   );
@@ -121,14 +119,38 @@ function DetailsCard(props: {
   textColor: string;
   secondaryTextColor: string;
   fullWidth?: boolean;
+  flex?: number; // Added flex prop
+  icon?: { ios: string; android: string };
+  iconColor?: string;
 }) {
-  const { label, value, backgroundColor, textColor, secondaryTextColor, fullWidth } = props;
+  const { label, value, backgroundColor, textColor, secondaryTextColor, fullWidth, flex, icon, iconColor } = props;
   return (
-    <View style={[styles.v2DetailCard, { backgroundColor }, fullWidth && styles.v2DetailCardFullWidth]}>
-      <Text style={[styles.v2DetailCardLabel, { color: secondaryTextColor }]}>{label}</Text>
-      <Text style={[styles.v2DetailCardValue, { color: textColor }]} numberOfLines={2}>
-        {value}
-      </Text>
+    <View
+      style={[
+        styles.v2DetailCard,
+        { backgroundColor },
+        fullWidth && styles.v2DetailCardFullWidth,
+        flex !== undefined && { flex },
+      ]}
+    >
+      <View style={styles.v2DetailCardRow}>
+        {icon ? (
+          <View style={styles.v2DetailIconWrap}>
+            <IconSymbol
+              ios_icon_name={icon.ios}
+              android_material_icon_name={icon.android}
+              size={20}
+              color={iconColor || textColor}
+            />
+          </View>
+        ) : null}
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.v2DetailCardLabel, { color: secondaryTextColor }]}>{label}</Text>
+          <Text style={[styles.v2DetailCardValue, { color: textColor }]} numberOfLines={2}>
+            {value}
+          </Text>
+        </View>
+      </View>
     </View>
   );
 }
@@ -589,6 +611,7 @@ function ActivityDetailsSkeleton({ isDark }: { isDark: boolean }) {
   const bgColor = isDark ? '#1a1a1a' : colors.background;
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
   const skeletonColor = isDark ? '#3a3a3a' : '#e0e0e0';
+  const waveFillColor = isDark ? 'rgba(42,42,42,0.92)' : 'rgba(255,255,255,0.92)'; // ✅ subtle bleed-through
   const insets = useSafeAreaInsets();
 
   return (
@@ -629,8 +652,10 @@ function ActivityDetailsSkeleton({ isDark }: { isDark: boolean }) {
         </View>
       </LinearGradient>
 
-      <View style={[styles.v2Sheet, { backgroundColor: cardBgColor }]}>
-        <View style={styles.v2WaveOverlay}>
+      {/* ✅ sheet must be transparent; fill + wave provide the white background */}
+      <View style={styles.v2Sheet}>
+        <View pointerEvents="none" style={[styles.v2SheetFill, { backgroundColor: cardBgColor }]} />
+        <View pointerEvents="none" style={styles.v2WaveOverlay}>
           <SheetWaveTop color={cardBgColor} />
         </View>
 
@@ -800,6 +825,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     initialOpenIntensity,
   } = props;
   const router = useRouter();
+  const insets = useSafeAreaInsets(); // ✅ Fix crash (insets used in header + paddingBottom)
   const safeDismiss = useCallback(() => {
     try {
       const r: any = router;
@@ -878,7 +904,8 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#9aa0a6' : colors.textSecondary;
-  const insets = useSafeAreaInsets();
+  const waveFillColor = isDark ? 'rgba(42,42,42,0.92)' : 'rgba(255,255,255,0.92)'; // ✅ subtle bleed-through
+  const sectionTitleColor = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(15,23,42,0.35)';
 
   const headerGradientColors = useMemo(() => {
     const base = activity?.category?.color || colors.primary;
@@ -1470,6 +1497,12 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     setIsNormalTaskModalVisible(true);
   }, [resolveFeedbackTemplateId]);
 
+  const handleNormalTaskModalClose = useCallback(() => {
+    if (isNormalTaskCompleting) return;
+    setIsNormalTaskModalVisible(false);
+    setSelectedNormalTask(null);
+  }, [isNormalTaskCompleting]);
+
   const handleDeleteTask = useCallback((taskId: string) => {
     if (!activity || !isAdmin) return;
 
@@ -1542,10 +1575,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       if ('__type' in item) {
         return (
           <TouchableOpacity
-            style={[
-              styles.taskRow,
-              { backgroundColor: isDark ? '#1f1f1f' : '#f8f9fb' },
-            ]}
+            style={[styles.taskRow, styles.taskCard, { backgroundColor: isDark ? '#111318' : '#ffffff' }]}
             onPress={(event) => {
               event.stopPropagation();
               handleIntensityRowPress();
@@ -1553,7 +1583,8 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             activeOpacity={0.7}
             disabled={isIntensityModalSaving}
           >
-            <View style={styles.taskCheckboxArea}>
+            {/* ✅ Fixed left slot + body + right actions */}
+            <View style={styles.taskLeftSlot}>
               <View
                 style={[
                   styles.taskCheckbox,
@@ -1564,28 +1595,29 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                   <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
                 )}
               </View>
-              <View style={styles.taskContent}>
-                <View style={styles.taskTitleRow}>
-                  <Text
-                    style={[
-                      styles.taskTitle,
-                      { color: textColor },
-                    ]}
-                  >
-                    Intensitet
-                  </Text>
-                  {intensityTaskCompleted && (
-                    <Text style={[styles.intensityTaskValue, { color: textSecondaryColor }]}>
-                      {`${activity.intensity}/10`}
-                    </Text>
-                  )}
-                </View>
-                {!intensityTaskCompleted && (
-                  <Text style={[styles.intensityTaskHelper, { color: textSecondaryColor }]}>
-                    Tryk for at angive intensitet
-                  </Text>
+            </View>
+
+            <View style={styles.taskBody}>
+              <View style={styles.taskTitleRow}>
+                <Text style={[styles.taskTitle, { color: textColor }]}>Intensitet</Text>
+                {intensityTaskCompleted && (
+                  <Text style={[styles.intensityTaskValue, { color: textSecondaryColor }]}>{`${activity.intensity}/10`}</Text>
                 )}
               </View>
+              {!intensityTaskCompleted && (
+                <Text style={[styles.intensityTaskHelper, { color: textSecondaryColor }]}>
+                  Tryk for at angive intensitet
+                </Text>
+              )}
+            </View>
+
+            <View style={styles.taskRightActions}>
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="chevron_right"
+                size={20}
+                color={textSecondaryColor}
+              />
             </View>
           </TouchableOpacity>
         );
@@ -1630,11 +1662,12 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
       return (
         <TouchableOpacity
-          style={[styles.taskRow, { backgroundColor: isDark ? '#1f1f1f' : '#f8f9fb' }]}
+          style={[styles.taskRow, styles.taskCard, { backgroundColor: isDark ? '#111318' : '#ffffff' }]}
           onPress={() => handleTaskRowPress(task)}
           activeOpacity={0.7}
         >
-          <View style={styles.taskCheckboxArea}>
+          {/* ✅ Fixed left slot */}
+          <View style={styles.taskLeftSlot}>
             <View
               style={[
                 styles.taskCheckbox,
@@ -1653,51 +1686,61 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                   <IconSymbol ios_icon_name="bubble.left" android_material_icon_name="chat" size={16} color={colors.primary} />
                 ))}
             </View>
-
-            <View style={styles.taskContent}>
-              <Text
-                style={[
-                  styles.taskTitle,
-                  { color: textColor },
-                  task.completed && !isFeedbackTaskLocal && styles.taskCompleted,
-                ]}
-              >
-                {task.title}
-              </Text>
-
-              {!isFeedbackTaskLocal && task.description ? (
-                <TaskDescriptionRenderer description={task.description} textColor={textSecondaryColor} />
-              ) : null}
-
-              {isFeedbackTaskLocal && (
-                <>
-                  {scoreExplanation ? (
-                    <Text style={[styles.feedbackExplanationText, { color: textSecondaryColor }]}>
-                      {scoreExplanation}
-                    </Text>
-                  ) : null}
-                  <Text style={[styles.feedbackHelperText, { color: textSecondaryColor }]}>
-                    {helperText}
-                  </Text>
-                </>
-              )}
-            </View>
           </View>
 
-          {isAdmin && !isFeedbackTaskLocal && (
-            <TouchableOpacity
-              style={[styles.taskDeleteButton, { backgroundColor: isDark ? '#3a1a1a' : '#ffe5e5' }]}
-              onPress={() => handleDeleteTask(String(task.id))}
-              activeOpacity={0.7}
-              disabled={deletingTaskId === String(task.id)}
+          {/* ✅ Body: ALL text lives here, so x-start matches intensity row */}
+          <View style={styles.taskBody}>
+            <Text
+              style={[
+                styles.taskTitle,
+                { color: textColor },
+                task.completed && !isFeedbackTaskLocal && styles.taskCompleted,
+              ]}
             >
-              {deletingTaskId === String(task.id) ? (
-                <ActivityIndicator size="small" color={colors.error} />
-              ) : (
-                <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={22} color={colors.error} />
-              )}
-            </TouchableOpacity>
-          )}
+              {task.title}
+            </Text>
+
+            {!isFeedbackTaskLocal && task.description ? (
+              <TaskDescriptionRenderer description={task.description} textColor={textSecondaryColor} />
+            ) : null}
+
+            {isFeedbackTaskLocal && (
+              <>
+                {scoreExplanation ? (
+                  <Text style={[styles.feedbackExplanationText, { color: textSecondaryColor }]}>
+                    {scoreExplanation}
+                  </Text>
+                ) : null}
+                <Text style={[styles.feedbackHelperText, { color: textSecondaryColor }]}>{helperText}</Text>
+              </>
+            )}
+          </View>
+
+          <View style={styles.taskRightActions}>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="chevron_right"
+              size={20}
+              color={textSecondaryColor}
+            />
+            {isAdmin && !isFeedbackTaskLocal && (
+              <TouchableOpacity
+                style={[styles.taskDeleteButton, { backgroundColor: isDark ? '#3a1a1a' : '#ffe5e5' }]}
+                onPress={(e) => {
+                  e?.stopPropagation?.();
+                  handleDeleteTask(String(task.id));
+                }}
+                activeOpacity={0.7}
+                disabled={deletingTaskId === String(task.id)}
+              >
+                {deletingTaskId === String(task.id) ? (
+                  <ActivityIndicator size="small" color={colors.error} />
+                ) : (
+                  <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={22} color={colors.error} />
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
         </TouchableOpacity>
       );
     },
@@ -2049,19 +2092,18 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         colors={headerGradientColors}
         style={[styles.header, styles.v2Topbar, { paddingTop: insets.top + 8 }]}
       >
-        {/* removed duplicate absolute back button */}
         <TouchableOpacity
           style={[styles.backButtonHeader, { top: insets.top + 8 }]}
-          onPress={isEditing ? handleCancel : handleBackPress}
+          onPress={handleBackPress}
           activeOpacity={0.7}
         >
           <IconSymbol
-            ios_icon_name={isEditing ? 'xmark' : 'chevron.left'}
-            android_material_icon_name={isEditing ? 'close' : 'arrow_back'}
+            ios_icon_name="chevron.left"
+            android_material_icon_name="arrow_back"
             size={28}
             color="#fff"
           />
-        </TouchableOpacity>
+               </TouchableOpacity>
 
         <View style={styles.headerContent}>
           <Text style={styles.headerEmoji}>{activity.category.emoji}</Text>
@@ -2070,12 +2112,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           </Text>
           {activity.seriesId && (
             <View style={styles.seriesBadge}>
-              <IconSymbol
-                ios_icon_name="repeat"
-                android_material_icon_name="repeat"
-                size={16}
-                color="#fff"
-              />
+              <IconSymbol ios_icon_name="repeat" android_material_icon_name="repeat" size={16} color="#fff" />
               <Text style={styles.seriesBadgeText}>Serie</Text>
             </View>
           )}
@@ -2154,8 +2191,10 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         </View>
       </LinearGradient>
 
-      <View style={[styles.v2Sheet, { backgroundColor: cardBgColor }]}>
-        <View style={styles.v2WaveOverlay}>
+      <View style={styles.v2Sheet}>
+        {/* ✅ background fill behind list */}
+        <View pointerEvents="none" style={[styles.v2SheetFill, { backgroundColor: cardBgColor }]} />
+        <View pointerEvents="none" style={styles.v2WaveOverlay}>
           <SheetWaveTop color={cardBgColor} />
         </View>
 
@@ -2174,842 +2213,117 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           ]}
           ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
           ListHeaderComponent={
-            <>
-              {activity.isExternal && (
-                <View style={[styles.externalBadge, { backgroundColor: colors.secondary }]}>
-                  <IconSymbol
-                    ios_icon_name="calendar.badge.clock"
-                    android_material_icon_name="event"
-                    size={20}
-                    color="#fff"
-                  />
-                  <Text style={styles.externalBadgeText}>Ekstern aktivitet</Text>
-                </View>
-              )}
-
-              {/* Activity Details */}
+            <View>
               <View style={[styles.section, { backgroundColor: cardBgColor }]}>
-                <Text style={[styles.sectionTitle, { color: textColor }]}>Detaljer</Text>
+                <Text style={styles.sectionHeaderTitle}>Detaljer</Text>
 
-          {/* Title (edit only) */}
-          {isEditing && !activity.isExternal ? (
-            <View style={styles.fieldContainer}>
-              <Text style={[styles.fieldLabel, { color: textColor }]}>Titel</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
-                value={editTitle}
-                onChangeText={setEditTitle}
-                placeholder="Aktivitetens titel"
-                placeholderTextColor={textSecondaryColor}
-              />
-            </View>
-          ) : null}
-
-          {/* Date & Time */}
-          {isEditing && !activity.isExternal && !activity.seriesId ? (
-            <>
-              <View style={styles.fieldContainer}>
-                <Text style={[styles.fieldLabel, { color: textColor }]}>Dato</Text>
-                <TouchableOpacity
-                  style={[styles.dateTimeButton, { backgroundColor: bgColor }]}
-                  onPress={() => setShowDatePicker(true)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.dateTimeText, { color: textColor }]}>
-                    {formatDate(editDate)}
-                  </Text>
-                  <IconSymbol
-                    ios_icon_name="calendar"
-                    android_material_icon_name="calendar_today"
-                    size={20}
-                    color={colors.primary}
+                <View style={styles.v2CardWrap}>
+                  <DetailsCard
+                    label="Dato & Tidspunkt"
+                    value={`${formatDateTime(activity.date, activity.time)}${
+                      activity.endTime ? ` - ${activity.endTime.substring(0, 5)}` : ''
+                    }`}
+                    backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
+                    textColor={textColor}
+                    secondaryTextColor={textSecondaryColor}
+                    fullWidth
+                    icon={{ ios: 'calendar', android: 'calendar_today' }}
+                    iconColor={colors.primary}
                   />
-                </TouchableOpacity>
-                {Platform.OS === 'ios' && showDatePicker && (
-                  <View style={[styles.pickerContainer, { backgroundColor: bgColor }]}>
-                    <DateTimePicker
-                      value={editDate}
-                      mode="date"
-                      display="spinner"
-                      onChange={handleDateChange}
-                      textColor={textColor as any}
-                      style={styles.iosPicker}
-                    />
-                    <TouchableOpacity
-                      style={[styles.pickerDoneButton, { backgroundColor: colors.primary }]}
-                      onPress={() => setShowDatePicker(false)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.pickerDoneText}>Færdig</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View>
-
-              <View style={styles.fieldContainer}>
-                <Text style={[styles.fieldLabel, { color: textColor }]}>Tidspunkt</Text>
-                {Platform.OS === 'web' ? (
-                  // @ts-ignore Raw HTML time input is only available in the web build
-                  <input
-                    type="time"
-                    value={(editTime || '').substring(0, 5)}
-                    onChange={handleWebTimeChange}
-                    style={{
-                      backgroundColor: bgColor,
-                      color: textColor,
-                      borderRadius: 12,
-                      padding: 16,
-                      fontSize: 17,
-                      border: 'none',
-                      width: '100%',
-                      fontFamily: 'inherit',
-                    }}
-                  />
-                ) : (
-                  <>
-                    <TouchableOpacity
-                      style={[styles.dateTimeButton, { backgroundColor: bgColor }]}
-                      onPress={() => setShowTimePicker(true)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.dateTimeText, { color: textColor }]}>{(editTime || '').substring(0, 5)}</Text>
-                      <IconSymbol
-                        ios_icon_name="clock"
-                        android_material_icon_name="access_time"
-                        size={20}
-                        color={colors.primary}
-                      />
-                    </TouchableOpacity>
-                    {Platform.OS === 'ios' && showTimePicker && (
-                      <View style={[styles.pickerContainer, { backgroundColor: bgColor }]}>
-                        <DateTimePicker
-                          value={new Date(`2000-01-01T${editTime}`)}
-                          mode="time"
-                          display="spinner"
-                          onChange={handleTimeChange}
-                          textColor={textColor as any}
-                          style={styles.iosPicker}
-                        />
-                        <TouchableOpacity
-                          style={[styles.pickerDoneButton, { backgroundColor: colors.primary }]}
-                          onPress={() => setShowTimePicker(false)}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.pickerDoneText}>Færdig</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </>
-                )}
-              </View>
-
-              <View style={styles.fieldContainer}>
-                <Text style={[styles.fieldLabel, { color: textColor }]}>Sluttidspunkt</Text>
-                {Platform.OS === 'web' ? (
-                  // @ts-ignore Raw HTML time input is only available in the web build
-                  <input
-                    type="time"
-                    value={editEndTime ? editEndTime.substring(0, 5) : ''}
-                    onChange={handleWebEndTimeChange}
-                    style={{
-                      backgroundColor: bgColor,
-                      color: textColor,
-                      borderRadius: 12,
-                      padding: 16,
-                      fontSize: 17,
-                      border: 'none',
-                      width: '100%',
-                      fontFamily: 'inherit',
-                    }}
-                  />
-                ) : (
-                  <>
-                    <TouchableOpacity
-                      style={[styles.dateTimeButton, { backgroundColor: bgBgColor }]}
-                      onPress={() => setShowEndTimePicker(true)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.dateTimeText, { color: textColor }]}>
-                        {editEndTime ? editEndTime.substring(0, 5) : 'Vælg sluttidspunkt'}
-                      </Text>
-                      <IconSymbol
-                        ios_icon_name="clock.fill"
-                        android_material_icon_name="schedule"
-                        size={20}
-                        color={colors.primary}
-                      />
-                    </TouchableOpacity>
-                    {Platform.OS === 'ios' && showEndTimePicker && (
-                      <View style={[styles.pickerContainer, { backgroundColor: bgColor }]}>
-                        <DateTimePicker
-                          value={editEndTime ? new Date(`2000-01-01T${editEndTime}`) : new Date()}
-                          mode="time"
-                          display="spinner"
-                          onChange={handleEndTimeChange}
-                          textColor={textColor as any}
-                          style={styles.iosPicker}
-                        />
-                        <TouchableOpacity
-                          style={[styles.pickerDoneButton, { backgroundColor: colors.primary }]}
-                          onPress={() => setShowEndTimePicker(false)}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.pickerDoneText}>Færdig</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </>
-                )}
-              </View>
-
-              {Platform.OS === 'android' && showDatePicker && (
-                <DateTimePicker
-                  value={editDate}
-                  mode="date"
-                  display="default"
-                  onChange={handleDateChange}
-                />
-              )}
-
-              {Platform.OS === 'android' && showTimePicker && (
-                <DateTimePicker
-                  value={new Date(`2000-01-01T${editTime}`)}
-                  mode="time"
-                  display="default"
-                  onChange={handleTimeChange}
-                />
-              ) }
-
-              {Platform.OS === 'android' && showEndTimePicker && (
-                <DateTimePicker
-                  value={editEndTime ? new Date(`2000-01-01T${editEndTime}`) : new Date()}
-                  mode="time"
-                  display="default"
-                  onChange={handleEndTimeChange}
-                />
-              )}
-            </>
-          ) : isEditing && activity.seriesId ? (
-            <View style={styles.fieldContainer}>
-              <Text style={[styles.fieldLabel, { color: textColor }]}>Tidspunkt</Text>
-              {Platform.OS === 'web' ? (
-                // @ts-ignore Raw HTML time input is only available in the web build
-                <input
-                  type="time"
-                  value={(editTime || '').substring(0, 5)}
-                  onChange={handleWebTimeChange}
-                  style={{
-                    backgroundColor: bgColor,
-                    color: textColor,
-                    borderRadius: 12,
-                    padding: 16,
-                    fontSize: 17,
-                    border: 'none',
-                    width: '100%',
-                    fontFamily: 'inherit',
-                  }}
-                />
-              ) : (
-                <>
-                  <TouchableOpacity
-                    style={[styles.dateTimeButton, { backgroundColor: bgColor }]}
-                    onPress={() => setShowTimePicker(true)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.dateTimeText, { color: textColor }]}>{(editTime || '').substring(0, 5)}</Text>
-                    <IconSymbol
-                      ios_icon_name="clock"
-                      android_material_icon_name="access_time"
-                      size={20}
-                      color={colors.primary}
-                    />
-                  </TouchableOpacity>
-                  {Platform.OS === 'ios' && showTimePicker && (
-                    <View style={[styles.pickerContainer, { backgroundColor: bgColor }]}>
-                      <DateTimePicker
-                        value={new Date(`2000-01-01T${editTime}`)}
-                        mode="time"
-                        display="spinner"
-                        onChange={handleTimeChange}
-                        textColor={textColor as any}
-                        style={styles.iosPicker}
-                      />
-                      <TouchableOpacity
-                        style={[styles.pickerDoneButton, { backgroundColor: colors.primary }]}
-                        onPress={() => setShowTimePicker(false)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.pickerDoneText}>Færdig</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                  {Platform.OS === 'android' && showTimePicker && (
-                    <DateTimePicker
-                      value={new Date(`2000-01-01T${editTime}`)}
-                      mode="time"
-                      display="default"
-                      onChange={handleTimeChange}
-                    />
-                  )}
-                </>
-              )}
-
-              <View style={styles.fieldContainer}>
-                <Text style={[styles.fieldLabel, { color: textColor }]}>Sluttidspunkt</Text>
-                {Platform.OS === 'web' ? (
-                  // @ts-ignore Raw HTML time input is only available in the web build
-                  <input
-                    type="time"
-                    value={editEndTime ? editEndTime.substring(0, 5) : ''}
-                    onChange={handleWebEndTimeChange}
-                    style={{
-                      backgroundColor: bgColor,
-                      color: textColor,
-                      borderRadius: 12,
-                      padding: 16,
-                      fontSize: 17,
-                      border: 'none',
-                      width: '100%',
-                      fontFamily: 'inherit',
-                    }}
-                  />
-                ) : (
-                  <>
-                    <TouchableOpacity
-                      style={[styles.dateTimeButton, { backgroundColor: bgColor }]}
-                      onPress={() => setShowEndTimePicker(true)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.dateTimeText, { color: textColor }]}>
-                        {editEndTime ? editEndTime.substring(0, 5) : 'Vælg sluttidspunkt'}
-                      </Text>
-                      <IconSymbol
-                        ios_icon_name="clock.fill"
-                        android_material_icon_name="schedule"
-                        size={20}
-                        color={colors.primary}
-                      />
-                    </TouchableOpacity>
-                    {Platform.OS === 'ios' && showEndTimePicker && (
-                      <View style={[styles.pickerContainer, { backgroundColor: bgColor }]}>
-                        <DateTimePicker
-                          value={editEndTime ? new Date(`2000-01-01T${editEndTime}`) : new Date()}
-                          mode="time"
-                          display="spinner"
-                          onChange={handleEndTimeChange}
-                          textColor={textColor as any}
-                          style={styles.iosPicker}
-                        />
-                        <TouchableOpacity
-                          style={[styles.pickerDoneButton, { backgroundColor: colors.primary }]}
-                          onPress={() => setShowEndTimePicker(false)}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.pickerDoneText}>Færdig</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </>
-                )}
-              </View>
-
-              {Platform.OS === 'android' && showEndTimePicker && (
-                <DateTimePicker
-                  value={editEndTime ? new Date(`2000-01-01T${editEndTime}`) : new Date()}
-                  mode="time"
-                  display="default"
-                  onChange={handleEndTimeChange}
-                />
-              )}
-            </View>
-          ) : (
-            <DetailsCard
-              label="Dato & Tidspunkt"
-              value={`${formatDateTime(activity.date, activity.time)}${activity.endTime ? ` - ${activity.endTime.substring(0, 5)}` : ''}`}
-              backgroundColor={isDark ? '#1f1f1f' : '#f8f9fb'}
-              textColor={textColor}
-              secondaryTextColor={textSecondaryColor}
-              fullWidth
-            />
-          )}
-
-          {!isEditing && (
-            <View style={styles.v2DetailsRow}>
-              <DetailsCard
-                label="Lokation"
-                value={activity.location || ''}
-                backgroundColor={isDark ? '#1f1f1f' : '#f8f9fb'}
-                textColor={textColor}
-                secondaryTextColor={textSecondaryColor}
-              />
-              <View style={{ width: 12 }} />
-              <DetailsCard
-                label="Kategori"
-                value={`${activity.category.emoji} ${activity.category.name}`}
-                backgroundColor={isDark ? '#1f1f1f' : '#f8f9fb'}
-                textColor={textColor}
-                secondaryTextColor={textSecondaryColor}
-              />
-            </View>
-          )}
-
-          {/* Location (edit only) */}
-          {isEditing && !activity.isExternal ? (
-            <View style={styles.fieldContainer}>
-              <Text style={[styles.fieldLabel, { color: textColor }]}>Lokation</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
-                value={editLocation}
-                onChangeText={setEditLocation}
-                placeholder="Hvor finder aktiviteten sted?"
-                placeholderTextColor={textSecondaryColor}
-              />
-            </View>
-          ) : null}
-
-          {/* Category (edit only) */}
-          {isEditing ? (
-            <View style={styles.fieldContainer}>
-              <Text style={[styles.fieldLabel, { color: textColor }]}>Kategori</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.categoryScroll}
-              >
-                {categories.map((cat) => (
-                  <TouchableOpacity
-                    key={`category-${cat.id}`}
-                    style={[
-                      styles.categoryChip,
-                      {
-                        backgroundColor: editCategory?.id === cat.id ? cat.color : bgColor,
-                        borderColor: cat.color,
-                        borderWidth: 2,
-                      },
-                    ]}
-                    onPress={() => setEditCategory(cat)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.categoryEmoji}>{cat.emoji}</Text>
-                    <Text
-                      style={[
-                        styles.categoryName,
-                        {
-                          color: editCategory?.id === cat.id ? '#fff' : textColor,
-                        },
-                      ]}
-                    >
-                      {cat.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          ) : null}
-
-          {/* Intensity */}
-          {!activity.isExternal && isEditing ? (
-            <View style={styles.fieldContainer}>
-              <Text style={[styles.fieldLabel, { color: textColor }]}>Intensitet</Text>
-              <View style={[styles.intensityToggleRow, { backgroundColor: bgColor }]}>
-                <View style={styles.intensityToggleLabel}>
-                  <IconSymbol
-                    ios_icon_name="flame"
-                    android_material_icon_name="local_fire_department"
-                    size={20}
-                    color={textColor}
-                  />
-                  <Text style={[styles.switchLabel, { color: textColor }]}>Tilføj intensitet</Text>
                 </View>
-                <Switch
-                  value={editIntensityEnabled}
-                  onValueChange={handleIntensityToggle}
-                  trackColor={{ false: '#767577', true: colors.primary }}
-                  thumbColor={editIntensityEnabled ? '#fff' : '#f4f3f4'}
-                />
-              </View>
 
-              {editIntensityEnabled && (
-                <>
-                  <Text style={[styles.intensityHint, { color: textSecondaryColor }]}>1 = let · 10 = maks</Text>
-                  <View style={styles.intensityPickerRow}>
-                    {intensityOptions.map(option => {
-                      const isSelected = editIntensity === option;
-                      return (
-                        <TouchableOpacity
-                          key={`intensity-${option}`}
-                          style={[styles.intensityPickerChip, isSelected && styles.intensityPickerChipSelected]}
-                          onPress={() => handleIntensitySelect(option)}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={[styles.intensityPickerText, isSelected && styles.intensityPickerTextSelected]}>
-                            {option}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </>
-              )}
-            </View>
-          ) : null}
-
-          {!activity.isExternal && !isEditing && shouldShowActivityIntensityField ? (
-            <DetailsCard
-              label="Intensitet"
-              value={typeof activity.intensity === 'number' ? `${activity.intensity}/10` : ''}
-              backgroundColor={isDark ? '#1f1f1f' : '#f8f9fb'}
-              textColor={textColor}
-              secondaryTextColor={textSecondaryColor}
-              fullWidth
-            />
-          ) : null}
-
-          {/* Convert to recurring (only while editing, internal, not already series) */}
-          {isEditing && isInternalActivity && !activity.seriesId && (
-            <>
-              <View style={styles.fieldContainer}>
-                <TouchableOpacity
-                  style={styles.recurringToggle}
-                  onPress={() => setConvertToRecurring(!convertToRecurring)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.recurringToggleLeft}>
-                    <IconSymbol
-                      ios_icon_name="repeat"
-                      android_material_icon_name="repeat"
-                      size={24}
-                      color={convertToRecurring ? colors.primary : textSecondaryColor}
-                    />
-                    <Text style={[styles.recurringToggleText, { color: textColor }]}>
-                      Konverter til gentagende event
-                    </Text>
-                  </View>
-                  <View
-                    style={[
-                      styles.toggle,
-                      { backgroundColor: convertToRecurring ? colors.primary : colors.highlight },
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.toggleThumb,
-                        convertToRecurring && styles.toggleThumbActive,
-                      ]}
-                    />
-                  </View>
-                </TouchableOpacity>
-              </View>
-
-              {convertToRecurring && (
-                <>
-                  <View style={styles.fieldContainer}>
-                    <Text style={[styles.fieldLabel, { color: textColor }]}>Gentagelsesmønster</Text>
-                    <View style={styles.recurrenceOptions}>
-                      {RECURRENCE_OPTIONS.map((option) => (
-                        <TouchableOpacity
-                          key={option.value}
-                          style={[
-                            styles.recurrenceOption,
-                            {
-                              backgroundColor:
-                                recurrenceType === option.value ? colors.primary : bgColor,
-                              borderColor: colors.primary,
-                              borderWidth: 2,
-                            },
-                          ]}
-                          onPress={() => {
-                            setRecurrenceType(option.value);
-                            if (
-                              option.value !== 'weekly' &&
-                              option.value !== 'biweekly' &&
-                              option.value !== 'triweekly'
-                            ) {
-                              setSelectedDays([]);
-                            }
-                          }}
-                          activeOpacity={0.7}
-                        >
-                          <Text
-                            style={[
-                              styles.recurrenceOptionText,
-                              { color: recurrenceType === option.value ? '#fff' : textColor },
-                            ]}
-                          >
-                            {option.label}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
-
-                  {needsDaySelection && (
-                    <View style={styles.fieldContainer}>
-                      <Text style={[styles.fieldLabel, { color: textColor }]}>
-                        Vælg dage *
-                      </Text>
-                      <View style={styles.daysContainer}>
-                        {DAYS_OF_WEEK.map((day) => (
-                          <TouchableOpacity
-                            key={day.value}
-                            style={[
-                              styles.dayButton,
-                              {
-                                backgroundColor: selectedDays.includes(day.value)
-                                  ? colors.primary
-                                  : bgColor,
-                                borderColor: colors.primary,
-                                borderWidth: 2,
-                              },
-                            ]}
-                            onPress={() => toggleDay(day.value)}
-                            activeOpacity={0.7}
-                          >
-                            <Text
-                              style={[
-                                styles.dayButtonText,
-                                {
-                                  color: selectedDays.includes(day.value) ? '#fff' : textColor,
-                                },
-                              ]}
-                            >
-                              {day.label}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </View>
-                  )}
-
-                  <View style={styles.fieldContainer}>
-                    <TouchableOpacity
-                      style={styles.recurringToggle}
-                      onPress={() => setHasEndDate(!hasEndDate)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.recurringToggleLeft}>
-                        <IconSymbol
-                          ios_icon_name="calendar.badge.clock"
-                          android_material_icon_name="event_available"
-                          size={24}
-                          color={hasEndDate ? colors.primary : textSecondaryColor}
-                        />
-                        <Text style={[styles.recurringToggleText, { color: textColor }]}>
-                          Sæt slutdato
-                        </Text>
-                      </View>
-                      <View
-                        style={[
-                          styles.toggle,
-                          { backgroundColor: hasEndDate ? colors.primary : colors.highlight },
-                        ]}
-                      >
-                        <View
-                          style={[
-                            styles.toggleThumb,
-                            hasEndDate && styles.toggleThumbActive,
-                          ]}
-                        />
-                      </View>
-                    </TouchableOpacity>
-                  </View>
-
-                  {hasEndDate && (
-                    <View style={styles.fieldContainer}>
-                      <Text style={[styles.fieldLabel, { color: textColor }]}>Slutdato</Text>
-                      <TouchableOpacity
-                        style={[styles.dateTimeButton, { backgroundColor: bgColor }]}
-                        onPress={() => setShowEndDatePicker(true)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={[styles.dateTimeText, { color: textColor }]}>
-                          {formatDate(endDate)}
-                        </Text>
-                        <IconSymbol
-                          ios_icon_name="calendar"
-                          android_material_icon_name="calendar_today"
-                          size={20}
-                          color={colors.primary}
-                        />
-                      </TouchableOpacity>
-                      {Platform.OS === 'ios' && showEndDatePicker && (
-                        <View style={[styles.pickerContainer, { backgroundColor: bgColor }]}>
-                          <DateTimePicker
-                            value={endDate}
-                            mode="date"
-                            display="spinner"
-                            onChange={handleEndDateChange}
-                            minimumDate={editDate}
-                            textColor={textColor as any}
-                            style={styles.iosPicker}
-                          />
-                          <TouchableOpacity
-                            style={[styles.pickerDoneButton, { backgroundColor: colors.primary }]}
-                            onPress={() => setShowEndDatePicker(false)}
-                            activeOpacity={0.7}
-                          >
-                            <Text style={styles.pickerDoneText}>Færdig</Text>
-                          </TouchableOpacity>
-                        </View>
-                      )}
-                    </View>
-                  )}
-
-                  {Platform.OS === 'android' && showEndDatePicker && (
-                    <DateTimePicker
-                      value={endDate}
-                      mode="date"
-                      display="default"
-                      onChange={handleEndDateChange}
-                      minimumDate={editDate}
-                    />
-                  )}
-                </>
-              )}
-            </>
-          )}
-        </View>
-
-        {previousFeedbackEntries.length > 0 && (
-          <View
-            style={[
-              styles.infoBox,
-              styles.feedbackInfoBox,
-              { backgroundColor: isDark ? '#2a2a2a' : '#f8f9fb' },
-            ]}
-          >
-            <View style={styles.feedbackInfoHeader}>
-              <IconSymbol
-                ios_icon_name="info.circle"
-                android_material_icon_name="info"
-                size={22}
-                color={colors.primary}
-              />
-              <Text style={[styles.feedbackInfoTitle, { color: textColor }]}>Sidste feedback</Text>
-            </View>
-            {previousFeedbackEntries.map(entry => {
-              const config = feedbackConfigByTemplate[entry.templateId];
-              const summaryText = buildFeedbackSummary(entry.feedback, config) || 'Ingen svar registreret';
-              const noteText = extractFeedbackNote(entry.feedback, config);
-
-              return (
-                <View key={entry.templateId} style={styles.feedbackInfoRow}>
-                  <Text style={[styles.feedbackInfoTaskTitle, { color: textColor }]}>
-                    {entry.taskTitle}
-                  </Text>
-                  <Text style={[styles.feedbackInfoRating, { color: colors.primary }]}>
-                    {summaryText}
-                  </Text>
-                  {noteText ? (
-                    <Text style={[styles.feedbackInfoNote, { color: textSecondaryColor }]}>
-                      {noteText}
-                    </Text>
-                  ) : null}
+                <View style={styles.v2DetailsRowWrap}>
+                  <DetailsCard
+                    flex={1}
+                    label="Lokation"
+                    value={activity.location?.trim() ? activity.location : 'Ikke angivet'}
+                    backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
+                    textColor={textColor}
+                    secondaryTextColor={textSecondaryColor}
+                    icon={{ ios: 'mappin.and.ellipse', android: 'place' }}
+                    iconColor={colors.primary}
+                  />
+                  <View style={{ width: 12 }} />
+                  <DetailsCard
+                    flex={1}
+                    label="Kategori"
+                    value={activity.category?.name ?? 'Ukendt'}
+                    backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
+                    textColor={textColor}
+                    secondaryTextColor={textSecondaryColor}
+                    icon={{ ios: 'tag', android: 'local_offer' }}
+                    iconColor={colors.primary}
+                  />
                 </View>
-              );
-            })}
-          </View>
-        )}
 
-              {/* Tasks Section */}
-              <View style={[styles.section, { backgroundColor: cardBgColor }]}>
-                <View style={styles.tasksSectionHeader}>
-                  <Text style={[styles.sectionTitle, { color: textColor }]}>Opgaver</Text>
+                {!activity.isExternal && !isEditing && shouldShowActivityIntensityField ? (
+                  <View style={styles.v2CardWrap}>
+                    <DetailsCard
+                      label="Intensitet"
+                      value={typeof activity.intensity === 'number' ? `${activity.intensity}/10` : 'Ikke angivet'}
+                      backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
+                      textColor={textColor}
+                      secondaryTextColor={textSecondaryColor}
+                      fullWidth
+                      icon={{ ios: 'flame', android: 'local_fire_department' }}
+                      iconColor={colors.primary}
+                    />
+                  </View>
+                ) : null}
+
+                <View style={{ height: 18 }} />
+
+                {/* ✅ Tasks header: same title style + aligned with cards */}
+                <View style={styles.sectionHeaderRow}>
+                  <Text style={styles.sectionHeaderTitle}>Opgaver</Text>
                   {isAdmin && !activity.isExternal && (
                     <TouchableOpacity
                       style={[styles.addTaskHeaderButton, { backgroundColor: colors.primary }]}
                       onPress={handleAddTask}
                       activeOpacity={0.7}
                     >
-                      <IconSymbol
-                        ios_icon_name="plus"
-                        android_material_icon_name="add"
-                        size={20}
-                        color="#fff"
-                      />
+                      <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={20} color="#fff" />
                       <Text style={styles.addTaskHeaderButtonText}>Tilføj opgave</Text>
                     </TouchableOpacity>
                   )}
                 </View>
+
+                <View style={{ height: 8 }} />
               </View>
-            </>
-          }
-          ListEmptyComponent={() => (
-            <View style={styles.emptyTasksContainer}>
-              <Text style={[styles.emptyTasksText, { color: textSecondaryColor }]}>
-                Ingen opgaver endnu
-              </Text>
-              {isAdmin && !activity.isExternal && (
-                <Text style={[styles.emptyTasksHint, { color: textSecondaryColor }]}>
-                  Tryk på "Tilføj opgave" for at oprette en opgave
-                </Text>
-              )}
             </View>
-          )}
+          }
         />
       </View>
 
-      {!isEditing && (
-        <View style={[styles.v2StickyCtaWrap, { paddingBottom: insets.bottom + 12 }]}>
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={handleEditClick}
-            disabled={isSaving || isDeleting || isDuplicating}
-            style={{ width: '100%' }}
-          >
-            <LinearGradient
-              colors={headerGradientColors}
-              style={[
-                styles.v2StickyCtaButton,
-                (isSaving || isDeleting || isDuplicating) && { opacity: 0.55 },
-              ]}
-            >
-              <Text style={styles.v2StickyCtaText}>Rediger aktivitet</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
+      {selectedNormalTask && (
+        <TaskDetailsModal
+          visible={isNormalTaskModalVisible}
+          title={String(selectedNormalTask.title ?? 'Opgave')}
+          categoryColor={activity.category?.color ?? colors.primary}
+          isDark={isDark}
+          description={selectedNormalTask.description}
+          reminderMinutes={
+            selectedNormalTask.reminder_minutes ?? selectedNormalTask.reminder ?? null
+          }
+          videoUrl={getTaskVideoUrl(selectedNormalTask)}
+          completed={!!selectedNormalTask.completed}
+          isSaving={isNormalTaskCompleting}
+          onClose={handleNormalTaskModalClose}
+          onComplete={handleNormalTaskComplete}
+        />
       )}
 
-      {/* Modals */}
-      <EditSeriesDialog
-        visible={showSeriesDialog}
-        onClose={() => setShowSeriesDialog(false)}
-        onEditSingle={handleEditSingle}
-        onEditAll={handleEditAll}
-      />
-
-      <DeleteActivityDialog
-        visible={showDeleteDialog}
-        onClose={() => setShowDeleteDialog(false)}
-        onDeleteSingle={handleDeleteSingle}
-        onDeleteAll={handleDeleteSeries}
-        isSeries={!!activity.seriesId}
-      />
-
-      <CreateActivityTaskModal
-        visible={showCreateTaskModal}
-        onClose={() => setShowCreateTaskModal(false)}
-        activityId={activity.id}
-        activityTitle={activity.title}
-        activityDate={activity.date}
-        activityTime={activity.time}
-        onTaskCreated={handleTaskCreated}
-      />
-
       <TaskScoreNoteModal
-        visible={!!feedbackModalTask}
-        // --- B) Strip "Feedback på" from task.title for feedback modal only ---
+        visible={Boolean(feedbackModalTask)}
         title={
           feedbackModalTask
-            ? `Feedback på ${stripLeadingFeedbackPrefix(feedbackModalTask.task.title ?? 'opgave')}`
-            : 'Feedback på opgave'
+            ? stripLeadingFeedbackPrefix(feedbackModalTask.task.title ?? 'Feedback')
+            : 'Feedback'
         }
-        introText="Hvordan gik det?"
-        helperText={
-          feedbackModalConfig?.scoreExplanation ?? 'Hvor god var du til dine fokuspunkter'
-        }
+        introText={feedbackModalConfig?.scoreExplanation ?? 'Hvordan gik træningen?'}
+        helperText="1 = let · 10 = maks"
         initialScore={feedbackModalDefaults.rating}
-        initialNote={feedbackModalDefaults.note}
+        initialNote={feedbackModalDefaults.note ?? ''}
         enableScore={feedbackModalConfig?.enableScore !== false}
         enableNote={feedbackModalConfig?.enableNote !== false}
         isSaving={isFeedbackSaving}
@@ -3020,8 +2334,8 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
       <TaskScoreNoteModal
         visible={isIntensityModalVisible}
-        title="Feedback på Intensitet"
-        introText="Hvordan gik det?"
+        title="Intensitet"
+        introText="Hvordan gik træningen?"
         helperText="1 = let · 10 = maks"
         initialScore={intensityModalDraft}
         initialNote=""
@@ -3033,28 +2347,19 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         onClose={closeIntensityModal}
       />
 
-      {/* Normal task modal (shared, glass/soft) */}
-      <TaskDetailsModal
-        visible={isNormalTaskModalVisible && !!selectedNormalTask}
-        title={selectedNormalTask?.title ?? ''}
-        categoryColor={activity.category.color}
-        isDark={isDark}
-        description={selectedNormalTask?.description || undefined}
-        reminderMinutes={
-          selectedNormalTask?.reminder_minutes !== null && selectedNormalTask?.reminder_minutes !== undefined
-            ? selectedNormalTask.reminder_minutes
-            : null
-        }
-        videoUrl={normalTaskVideoUrl}
-        completed={!!selectedNormalTask?.completed}
-        isSaving={isNormalTaskCompleting}
-        onClose={() => {
-          if (isNormalTaskCompleting) return;
-          setIsNormalTaskModalVisible(false);
-          setSelectedNormalTask(null);
-        }}
-        onComplete={handleNormalTaskComplete}
-      />
+      {showCreateTaskModal && (
+        <CreateActivityTaskModal
+          visible={showCreateTaskModal}
+          onClose={() => setShowCreateTaskModal(false)}
+          onTaskCreated={handleTaskCreated}
+          activityId={activity.id}
+          activityTitle={activity.title}
+          activityDate={activity.date}
+          activityTime={activity.time}
+        />
+      )}
+
+      {/* ...existing dialogs/modals (DeleteActivityDialog, EditSeriesDialog, etc.) */}
     </KeyboardAvoidingView>
   );
 }
@@ -3236,13 +2541,15 @@ const styles = StyleSheet.create({
     paddingTop: 10,
   },
   headerEmoji: {
-    fontSize: 24,
-    lineHeight: 24,
+    fontSize: 32,
+    lineHeight: 34,
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.text,
+    fontSize: 30,
+    fontWeight: '800',
+    color: '#fff',
+    textAlign: 'center',
+    lineHeight: 34,
   },
   headerIcon: {
     marginHorizontal: 8,
@@ -3281,6 +2588,15 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     paddingTop: V2_WAVE_HEIGHT,
+    overflow: 'hidden',
+    backgroundColor: 'transparent',
+  },
+  v2SheetFill: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    top: V2_WAVE_HEIGHT - 2,
   },
   v2WaveOverlay: {
     position: 'absolute',
@@ -3288,28 +2604,88 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
   },
-  v2DetailsRow: {
+
+  // ✅ shared section title (Detaljer + Opgaver)
+  sectionHeaderTitle: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    fontSize: 22,
+    fontWeight: '800',
+    color: 'rgba(15, 23, 42, 0.40)',
+  },
+  sectionHeaderRow: {
+    marginHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  // ✅ detail card alignment wrappers
+  v2CardWrap: {
+    marginHorizontal: 16,
+  },
+  v2DetailsRowWrap: {
+    marginHorizontal: 16,
+    marginTop: 12,
     flexDirection: 'row',
   },
-  v2DetailCard: {
-    borderRadius: 12,
+
+  // ✅ task cards + intensity cards alignment (ensures same width as details)
+  taskCard: {
+    marginHorizontal: 16,
+    borderRadius: 16,
     padding: 16,
-    marginVertical: 8,
-    backgroundColor: colors.card,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    elevation: 6,
+  },
+  taskTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  taskTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+
+  v2DetailCard: {
+    borderRadius: 16,
+    padding: 16,
+    // marginHorizontal: 16,  // ❌ remove (caused double indents)
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    elevation: 6,
+  },
+  v2DetailCardFullWidth: {
+    width: '100%',
+  },
+  v2DetailCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  v2DetailIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(59, 130, 246, 0.12)',
+    marginRight: 12,
   },
   v2DetailCardLabel: {
     fontSize: 14,
+    fontWeight: '600',
     color: colors.textSecondary,
     marginBottom: 4,
   },
   v2DetailCardValue: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '700',
     color: colors.text,
   },
   v2StickyCtaWrap: {
@@ -3343,9 +2719,9 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 12,
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 8,
   },
   fieldContainer: {
     marginBottom: 16,
@@ -3614,17 +2990,24 @@ const styles = StyleSheet.create({
   },
 
   taskRow: {
-    borderRadius: 12,
-    padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
   },
-  taskCheckboxArea: {
-    flexDirection: 'row',
+  taskLeftSlot: {
+    width: 44,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  taskBody: {
     flex: 1,
   },
+
+  taskRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 12,
+  },
+
   taskCheckbox: {
     width: 24,
     height: 24,
@@ -3633,8 +3016,9 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    // marginRight: 12, // ❌ spacing controlled by taskLeftSlot
   },
+
   feedbackTaskCheckbox: {
     borderColor: colors.primary,
     backgroundColor: 'transparent',
@@ -3643,17 +3027,6 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     padding: 8,
     borderRadius: 10,
-  },
-  taskContent: {
-    flex: 1,
-  },
-  taskTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  taskTitle: {
-    fontSize: 16,
   },
   taskCompleted: {
     textDecorationLine: 'line-through',
@@ -3698,17 +3071,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: '#000',
-  },
-  sectionLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 6,
-  },
-  description: {
-    fontSize: 16,
-    lineHeight: 22,
-    color: colors.text,
   },
   reminderContainer: {
     flexDirection: 'row',

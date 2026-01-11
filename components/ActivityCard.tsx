@@ -134,23 +134,6 @@ export default function ActivityCard({
     [resolveFeedbackTemplateId]
   );
 
-  const navigateToTaskModal = useCallback(
-    (task: any, type: 'intensity' | 'feedback') => {
-      if (!activityId) {
-        console.warn('[ActivityCard] Missing activity id for task modal navigation');
-        return;
-      }
-      const taskId = task?.id ?? task?.task_id;
-      const encodedTaskId = taskId ? encodeURIComponent(String(taskId)) : null;
-      const route = type === 'intensity' ? '/(modals)/task-score-note' : '/(modals)/task-feedback-note';
-      const href = `${route}?activityId=${encodeURIComponent(activityId)}${
-        encodedTaskId ? `&taskId=${encodedTaskId}` : ''
-      }`;
-      router.push(href);
-    },
-    [activityId, router]
-  );
-
   const handleCardPress = useCallback(() => {
     if (suppressCardPressRef.current) {
       suppressCardPressRef.current = false;

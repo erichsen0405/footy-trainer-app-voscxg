@@ -70,9 +70,6 @@ function mix(hex: string, target: { r: number; g: number; b: number }, t: number
 function lighten(hex: string, t: number): string {
   return mix(hex, { r: 255, g: 255, b: 255 }, t);
 }
-function darken(hex: string, t: number): string {
-  return mix(hex, { r: 0, g: 0, b: 0 }, t);
-}
 
 function TaskDetailsModalComponent({
   visible,
