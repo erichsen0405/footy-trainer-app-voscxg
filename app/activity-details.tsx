@@ -60,6 +60,11 @@ const colors =
 const V2_WAVE_HEIGHT = 44; // Updated wave height
 const V2_CTA_HEIGHT = 56;
 
+// ✅ Make header action buttons visually closer (not just margin tweaks)
+const HEADER_ACTION_BUTTON_SIZE = 36; // smaller than 44 => icons appear closer
+const HEADER_ACTION_BUTTON_GAP = 0;   // set to 1-2 if you want a tiny gap
+const HEADER_ACTION_HITSLOP = { top: 6, bottom: 6, left: 6, right: 6 }; // ~36+6+6 => 48-ish touch target
+
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
@@ -640,8 +645,8 @@ function ActivityDetailsSkeleton({ isDark }: { isDark: boolean }) {
         colors={[skeletonColor, skeletonColor] as [string, string]}
         style={[styles.header, styles.v2Topbar, { paddingTop: insets.top + 8 }]}
       >
-        {/* ✅ centered close chevron placeholder */}
-        <View style={styles.headerChevronWrap}>
+        {/* ✅ centered close chevron placeholder (don't block touches in header) */}
+        <View style={styles.headerChevronWrap} pointerEvents="box-none">
           <View
             style={{
               width: 28,
@@ -2096,7 +2101,8 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               safeDismiss();
             },
           },
-        ]
+                            
+               ]
       );
 
 
@@ -2115,10 +2121,11 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         colors={headerGradientColors}
         style={[styles.header, styles.v2Topbar, { paddingTop: insets.top + 8 }]}
       >
-        {/* ✅ centered chevron (down) fixed 16px from top */}
-        <View style={styles.headerChevronWrap}>
+        {/* ✅ centered chevron (down) fixed 16px from top (don't block header buttons) */}
+        <View style={styles.headerChevronWrap} pointerEvents="box-none">
           <TouchableOpacity
             style={styles.headerChevronButton}
+            hitSlop={HEADER_ACTION_HITSLOP}
             onPress={handleBackPress}
             activeOpacity={0.7}
             accessibilityRole="button"
@@ -2146,10 +2153,12 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           )}
         </View>
 
-        <View style={[styles.headerButtons, { top: insets.top + 8 }]}>
+        {/* ✅ remove inline top override; position handled in styles to match chevron */}
+        <View style={styles.headerButtons}>
           {isEditing ? (
             <TouchableOpacity
               style={styles.headerButton}
+              hitSlop={HEADER_ACTION_HITSLOP}
               onPress={handleSave}
               activeOpacity={0.7}
               disabled={isSaving}
@@ -2166,12 +2175,11 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               )}
             </TouchableOpacity>
           ) : (
-
             <>
               {!activity.isExternal && (
-
                 <TouchableOpacity
                   style={styles.headerButton}
+                  hitSlop={HEADER_ACTION_HITSLOP}
                   onPress={handleDuplicate}
                   activeOpacity={0.7}
                   disabled={isDuplicating}
@@ -2190,7 +2198,11 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               )}
 
               <TouchableOpacity
-                style={styles.headerButton}
+                style={[
+                  styles.headerButton,
+                  !activity.isExternal ? styles.headerButtonGap : null,
+                ]}
+                hitSlop={HEADER_ACTION_HITSLOP}
                 onPress={handleEditClick}
                 activeOpacity={0.7}
               >
@@ -2203,7 +2215,11 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.headerButton}
+                style={[
+                  styles.headerButton,
+                  styles.headerButtonGap,
+                ]}
+                hitSlop={HEADER_ACTION_HITSLOP}
                 onPress={handleDeleteClick}
                 activeOpacity={0.7}
               >
@@ -2608,11 +2624,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     position: 'absolute',
     right: 16,
-    top: 20,
+    top: 16, // ✅ align vertically with chevron wrap top
     alignItems: 'center',
+    zIndex: 3,
+    elevation: 3,
   },
   headerButton: {
-    marginLeft: 12,
+    width: HEADER_ACTION_BUTTON_SIZE,
+    height: HEADER_ACTION_BUTTON_SIZE,
+    borderRadius: HEADER_ACTION_BUTTON_SIZE / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 0, // ✅ moved out to headerButtonGap (prevents “first button margin” from masking changes)
+  },
+  headerButtonGap: {
+    marginLeft: HEADER_ACTION_BUTTON_GAP,
   },
   v2Topbar: {
     backgroundColor: 'transparent',
@@ -3170,11 +3196,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: 'center',
+    zIndex: 2,       // ✅ below headerButtons
+    elevation: 2,    // ✅ Android
   },
   headerChevronButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: HEADER_ACTION_BUTTON_SIZE,
+    height: HEADER_ACTION_BUTTON_SIZE,
+    borderRadius: HEADER_ACTION_BUTTON_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
