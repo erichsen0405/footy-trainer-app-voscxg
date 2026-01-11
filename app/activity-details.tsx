@@ -122,8 +122,23 @@ function DetailsCard(props: {
   flex?: number; // Added flex prop
   icon?: { ios: string; android: string };
   iconColor?: string;
+  leadingEmoji?: string; // ✅ category icon via emoji
 }) {
-  const { label, value, backgroundColor, textColor, secondaryTextColor, fullWidth, flex, icon, iconColor } = props;
+  const {
+    label,
+    value,
+    backgroundColor,
+    textColor,
+    secondaryTextColor,
+    fullWidth,
+    flex,
+    icon,
+    iconColor,
+    leadingEmoji,
+  } = props;
+
+  const hasEmoji = typeof leadingEmoji === 'string' && leadingEmoji.trim().length > 0;
+
   return (
     <View
       style={[
@@ -134,7 +149,11 @@ function DetailsCard(props: {
       ]}
     >
       <View style={styles.v2DetailCardRow}>
-        {icon ? (
+        {hasEmoji ? (
+          <View style={styles.v2DetailIconWrap}>
+            <Text style={styles.v2DetailEmoji}>{leadingEmoji}</Text>
+          </View>
+        ) : icon ? (
           <View style={styles.v2DetailIconWrap}>
             <IconSymbol
               ios_icon_name={icon.ios}
@@ -144,6 +163,7 @@ function DetailsCard(props: {
             />
           </View>
         ) : null}
+
         <View style={{ flex: 1 }}>
           <Text style={[styles.v2DetailCardLabel, { color: secondaryTextColor }]}>{label}</Text>
           <Text style={[styles.v2DetailCardValue, { color: textColor }]} numberOfLines={2}>
@@ -2077,6 +2097,9 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           },
         ]
       );
+
+
+
     } else {
       safeDismiss();
     }
@@ -2214,25 +2237,31 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
           ListHeaderComponent={
             <View>
-              <View style={[styles.section, { backgroundColor: cardBgColor }]}>
-                <Text style={styles.sectionHeaderTitle}>Detaljer</Text>
+              {/* ✅ Title aligned with task cards */
+              }
+              <Text style={styles.v2SectionTitle}>Detaljer</Text>
 
-                <View style={styles.v2CardWrap}>
-                  <DetailsCard
-                    label="Dato & Tidspunkt"
-                    value={`${formatDateTime(activity.date, activity.time)}${
-                      activity.endTime ? ` - ${activity.endTime.substring(0, 5)}` : ''
-                    }`}
-                    backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
-                    textColor={textColor}
-                    secondaryTextColor={textSecondaryColor}
-                    fullWidth
-                    icon={{ ios: 'calendar', android: 'calendar_today' }}
-                    iconColor={colors.primary}
-                  />
-                </View>
+              {/* ✅ Dato card full-width aligned with task cards */
+              }
+              <View style={styles.v2CardWrap}>
+                <DetailsCard
+                  label="Dato & Tidspunkt"
+                  value={`${formatDateTime(activity.date, activity.time)}${
+                    activity.endTime ? ` - ${activity.endTime.substring(0, 5)}` : ''
+                  }`}
+                  backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
+                  textColor={textColor}
+                  secondaryTextColor={textSecondaryColor}
+                  fullWidth
+                  icon={{ ios: 'calendar', android: 'calendar_today' }}
+                  iconColor={colors.primary}
+                />
+              </View>
 
-                <View style={styles.v2DetailsRowWrap}>
+              {/* ✅ Lokation/Kategori row: keep inner split, only “bleed” outwards */
+              }
+              <View style={styles.v2DetailsRowWrap}>
+                <View style={styles.v2DetailBleedLeft}>
                   <DetailsCard
                     flex={1}
                     label="Lokation"
@@ -2243,7 +2272,11 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                     icon={{ ios: 'mappin.and.ellipse', android: 'place' }}
                     iconColor={colors.primary}
                   />
-                  <View style={{ width: 12 }} />
+                </View>
+
+                <View style={{ width: 12 }} />
+
+                <View style={styles.v2DetailBleedRight}>
                   <DetailsCard
                     flex={1}
                     label="Kategori"
@@ -2251,45 +2284,45 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                     backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
                     textColor={textColor}
                     secondaryTextColor={textSecondaryColor}
-                    icon={{ ios: 'tag', android: 'local_offer' }}
+                    leadingEmoji={activity.category?.emoji} // ✅ system icon
+                  />
+                </View>
+              </View>
+
+              {/* ✅ Intensitet: same width as task cards + same spacing as other blocks */
+              }
+              {!activity.isExternal && !isEditing && shouldShowActivityIntensityField ? (
+                <View style={[styles.v2CardWrap, { marginTop: 12 }]}>
+                  <DetailsCard
+                    label="Intensitet"
+                    value={typeof activity.intensity === 'number' ? `${activity.intensity}/10` : 'Ikke angivet'}
+                    backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
+                    textColor={textColor}
+                    secondaryTextColor={textSecondaryColor}
+                    fullWidth
+                    icon={{ ios: 'flame', android: 'local_fire_department' }}
                     iconColor={colors.primary}
                   />
                 </View>
+              ) : null}
 
-                {!activity.isExternal && !isEditing && shouldShowActivityIntensityField ? (
-                  <View style={styles.v2CardWrap}>
-                    <DetailsCard
-                      label="Intensitet"
-                      value={typeof activity.intensity === 'number' ? `${activity.intensity}/10` : 'Ikke angivet'}
-                      backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
-                      textColor={textColor}
-                      secondaryTextColor={textSecondaryColor}
-                      fullWidth
-                      icon={{ ios: 'flame', android: 'local_fire_department' }}
-                      iconColor={colors.primary}
-                    />
-                  </View>
-                ) : null}
-
-                <View style={{ height: 18 }} />
-
-                {/* ✅ Tasks header: same title style + aligned with cards */}
-                <View style={styles.sectionHeaderRow}>
-                  <Text style={styles.sectionHeaderTitle}>Opgaver</Text>
-                  {isAdmin && !activity.isExternal && (
-                    <TouchableOpacity
-                      style={[styles.addTaskHeaderButton, { backgroundColor: colors.primary }]}
-                      onPress={handleAddTask}
-                      activeOpacity={0.7}
-                    >
-                      <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={20} color="#fff" />
-                      <Text style={styles.addTaskHeaderButtonText}>Tilføj opgave</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-
-                <View style={{ height: 8 }} />
+              {/* ✅ “Opgaver” title: aligned left + spacing to first task matches “Detaljer”→Dato */
+              }
+              <View style={styles.v2TasksHeaderRow}>
+                <Text style={styles.v2SectionTitle}>Opgaver</Text>
+                {isAdmin && !activity.isExternal && (
+                  <TouchableOpacity
+                    style={[styles.addTaskHeaderButton, { backgroundColor: colors.primary }]}
+                    onPress={handleAddTask}
+                    activeOpacity={0.7}
+                  >
+                    <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={20} color="#fff" />
+                    <Text style={styles.addTaskHeaderButtonText}>Tilføj opgave</Text>
+                  </TouchableOpacity>
+                )}
               </View>
+
+              <View style={{ height: 12 }} />
             </View>
           }
         />
@@ -2613,42 +2646,41 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: 'rgba(15, 23, 42, 0.40)',
   },
-  sectionHeaderRow: {
+  v2SectionTitle: {
     marginHorizontal: 16,
+    marginBottom: 12,
+    fontSize: 22,
+    fontWeight: '800',
+    color: 'rgba(15, 23, 42, 0.40)',
+  },
+  v2TasksHeaderRow: {
+    marginHorizontal: 16,
+    marginTop: 20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
 
-  // ✅ detail card alignment wrappers
+  // ✅ detail card alignment wrappers (match taskCard gutter)
   v2CardWrap: {
     marginHorizontal: 16,
   },
   v2DetailsRowWrap: {
     marginHorizontal: 16,
-    marginTop: 12,
+    marginTop: 12, // ✅ matches Dato→row spacing
     flexDirection: 'row',
   },
 
-  // ✅ task cards + intensity cards alignment (ensures same width as details)
-  taskCard: {
-    marginHorizontal: 16,
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.12,
-    shadowRadius: 14,
-    elevation: 6,
+  // ✅ directional widen: keep inner geometry, extend only outward
+  v2DetailBleedLeft: {
+    flex: 1,
+    marginLeft: -16,   // widen left only
+    paddingLeft: 16,   // keep content aligned
   },
-  taskTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  taskTitle: {
-    fontSize: 16,
-    fontWeight: '700',
+  v2DetailBleedRight: {
+    flex: 1,
+    marginRight: -16,  // widen right only
+    paddingRight: 16,  // keep content aligned
   },
 
   v2DetailCard: {
@@ -2676,6 +2708,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(59, 130, 246, 0.12)',
     marginRight: 12,
+  },
+  v2DetailEmoji: {
+    fontSize: 20,
+    lineHeight: 22,
   },
   v2DetailCardLabel: {
     fontSize: 14,
@@ -3096,6 +3132,27 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+
+  // ✅ Restore original look + width for task boxes
+  taskCard: {
+    marginHorizontal: 16,
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    elevation: 6,
+  },
+  taskTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  taskTitle: {
     fontSize: 16,
     fontWeight: '700',
   },
