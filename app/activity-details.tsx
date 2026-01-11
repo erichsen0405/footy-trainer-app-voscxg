@@ -636,12 +636,12 @@ function ActivityDetailsSkeleton({ isDark }: { isDark: boolean }) {
 
   return (
     <View style={[styles.container, { backgroundColor: bgColor }]}>
-      {/* Header Skeleton */}
       <LinearGradient
         colors={[skeletonColor, skeletonColor] as [string, string]}
         style={[styles.header, styles.v2Topbar, { paddingTop: insets.top + 8 }]}
       >
-        <View style={[styles.backButtonHeader, { top: insets.top + 8 }]}>
+        {/* ✅ centered close chevron placeholder */}
+        <View style={styles.headerChevronWrap}>
           <View
             style={{
               width: 28,
@@ -651,6 +651,7 @@ function ActivityDetailsSkeleton({ isDark }: { isDark: boolean }) {
             }}
           />
         </View>
+
         <View style={styles.headerContent}>
           <View
             style={{
@@ -1340,7 +1341,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         Alert.alert('Succes', 'Aktiviteten er blevet konverteret til en gentagende serie');
         setIsEditing(false);
         setEditScope('single');
-        router.replace('/(tabs)/(home)');
+        router.replace('/(tabs)');
         return;
       }
 
@@ -2102,7 +2103,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
     } else {
       safeDismiss();
-    }
+       }
   }, [isEditing, safeDismiss]);
 
   return (
@@ -2110,23 +2111,27 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={[styles.container, { backgroundColor: bgColor }]}
     >
-      {/* Header */}
       <LinearGradient
         colors={headerGradientColors}
         style={[styles.header, styles.v2Topbar, { paddingTop: insets.top + 8 }]}
       >
-        <TouchableOpacity
-          style={[styles.backButtonHeader, { top: insets.top + 8 }]}
-          onPress={handleBackPress}
-          activeOpacity={0.7}
-        >
-          <IconSymbol
-            ios_icon_name="chevron.left"
-            android_material_icon_name="arrow_back"
-            size={28}
-            color="#fff"
-          />
-               </TouchableOpacity>
+        {/* ✅ centered chevron (down) fixed 16px from top */}
+        <View style={styles.headerChevronWrap}>
+          <TouchableOpacity
+            style={styles.headerChevronButton}
+            onPress={handleBackPress}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Luk aktivitet"
+          >
+            <IconSymbol
+              ios_icon_name="chevron.down"
+              android_material_icon_name="expand_more"
+              size={28}
+              color="#fff"
+            />
+          </TouchableOpacity>
+        </View>
 
         <View style={styles.headerContent}>
           <Text style={styles.headerEmoji}>{activity.category.emoji}</Text>
@@ -2309,7 +2314,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               {/* ✅ “Opgaver” title: aligned left + spacing to first task matches “Detaljer”→Dato */
               }
               <View style={styles.v2TasksHeaderRow}>
-                <Text style={styles.v2SectionTitle}>Opgaver</Text>
+                <Text style={[styles.v2SectionTitle, styles.v2SectionTitleInRow]}>Opgaver</Text>
                 {isAdmin && !activity.isExternal && (
                   <TouchableOpacity
                     style={[styles.addTaskHeaderButton, { backgroundColor: colors.primary }]}
@@ -2321,8 +2326,6 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                   </TouchableOpacity>
                 )}
               </View>
-
-              <View style={{ height: 12 }} />
             </View>
           }
         />
@@ -2656,9 +2659,14 @@ const styles = StyleSheet.create({
   v2TasksHeaderRow: {
     marginHorizontal: 16,
     marginTop: 20,
+    marginBottom: 12, // ✅ same title→content spacing as "Detaljer"→Dato card
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  v2SectionTitleInRow: {
+    marginHorizontal: 0, // ✅ prevent double indent (row already has marginHorizontal)
+    marginBottom: 0,    // ✅ spacing handled by v2TasksHeaderRow
   },
 
   // ✅ detail card alignment wrappers (match taskCard gutter)
@@ -2686,7 +2694,7 @@ const styles = StyleSheet.create({
   v2DetailCard: {
     borderRadius: 16,
     padding: 16,
-    // marginHorizontal: 16,  // ❌ remove (caused double indents)
+    justifyContent: 'center', // ✅ vertical center icon/text inside stretched cards
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.12,
@@ -3155,5 +3163,19 @@ const styles = StyleSheet.create({
   taskTitle: {
     fontSize: 16,
     fontWeight: '700',
+  },
+  headerChevronWrap: {
+    position: 'absolute',
+    top: 16, // ✅ fixed spacing to top of modal header
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  headerChevronButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
