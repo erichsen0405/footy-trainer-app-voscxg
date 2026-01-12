@@ -1,15 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ActivityIndicator,
-  useColorScheme,
-  Modal,
-  ScrollView,
-  FlatList,
-} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useColorScheme, Modal, FlatList } from 'react-native';
 import Svg, { Polyline, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import * as CommonStyles from '@/styles/commonStyles';
 import { ActivityCategory } from '@/types';
@@ -49,7 +39,7 @@ export function ProgressionSection({ categories }: Props) {
   const [showFocusPicker, setShowFocusPicker] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
 
-  const { trendPoints, heatmapRows, summary, isLoading, error, rawEntries, focusTemplates, intensityCategoriesWithData } = useProgressionData({
+  const { trendPoints, summary, isLoading, error, rawEntries, focusTemplates, intensityCategoriesWithData } = useProgressionData({
     days: periodDays,
     metric,
     focusTaskTemplateId: metric === 'rating' ? selectedFocusId : null,
@@ -102,64 +92,30 @@ export function ProgressionSection({ categories }: Props) {
     [palette.error, palette.success, palette.warning]
   );
 
-  const heatColor = useCallback(
-    (ratio: number, baseColor?: string) => {
-      const clamped = Math.max(0, Math.min(1, ratio));
-      const alpha = 0.12 + clamped * 0.78;
-      const scaledForThreshold = clamped * 10;
-      const thresholdColor = resolveValueColor(scaledForThreshold);
-      const colorValue = /^#([0-9a-fA-F]{6})$/.test(baseColor || '') ? (baseColor as string) : thresholdColor;
-      return `${colorValue}${Math.round(alpha * 255)
-        .toString(16)
-        .padStart(2, '0')}`;
-    },
-    [resolveValueColor]
-  );
-
   const selectedDetails = useMemo(() => {
     if (!selectedPoint) return null;
     const matched = rawEntries.find(entry => entry.id === selectedPoint.representative.id) || selectedPoint.representative;
     return matched;
   }, [rawEntries, selectedPoint]);
 
-  const renderHeatmapRow = useCallback(
-    ({ item }: { item: typeof heatmapRows[number] }) => (
-      <View style={[styles.heatmapRow, { borderColor: palette.highlight }]}> 
-        <View style={styles.heatmapLabel}>
-          <View style={[styles.colorDot, { backgroundColor: item.color || palette.primary }]} />
-          <View>
-            <Text style={[styles.heatmapTitle, { color: palette.text }]}>{item.focusName}</Text>
-            <Text style={[styles.heatmapSubtitle, { color: palette.textSecondary }]}>Fuldført {item.totalCompleted} / {item.totalPossible || item.totalCompleted || 1}</Text>
-          </View>
-        </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={styles.heatmapCells}>
-            {item.weeks.map(week => (
-              <View
-                key={`${item.focusId ?? 'none'}-${week.weekStart}`}
-                style={[styles.heatCell, { backgroundColor: heatColor(week.ratio, item.color) }]}
-              >
-                <Text style={[styles.heatCellValue, { color: palette.text }]}>
-                  {week.completed}/{week.possible || week.completed || 1}
-                </Text>
-                <Text style={[styles.heatCellLabel, { color: palette.textSecondary }]}>{Math.round(week.ratio * 100)}% · {week.label}</Text>
-              </View>
-            ))}
-          </View>
-        </ScrollView>
-      </View>
-    ),
-    [heatColor, palette.highlight, palette.primary, palette.text, palette.textSecondary]
-  );
+  const summaryPrimaryLabel = metric === 'rating' ? 'Fokus-score' : 'Intensitet';
+  const summaryValueColor = resolveValueColor(summary.avgCurrent);
+  const avgChangeRounded = Math.round(summary.avgChangePercent);
+  const previousWasZero = summary.avgPrevious === 0;
+  let summaryDeltaText = '0% vs. forrige periode';
+  let summaryDeltaColor = palette.textSecondary;
 
-  const renderBadge = useCallback(
-    ({ item }: { item: string }) => (
-      <View style={[styles.badge, { backgroundColor: palette.highlight }]}> 
-        <Text style={[styles.badgeText, { color: palette.text }]}>{item}</Text>
-      </View>
-    ),
-    [palette.highlight, palette.text]
-  );
+  if (previousWasZero) {
+    if (summary.avgCurrent > 0) {
+      summaryDeltaText = '↑ 100%+ vs. forrige periode';
+      summaryDeltaColor = palette.success;
+    }
+  } else {
+    const arrow = avgChangeRounded > 0 ? '↑' : avgChangeRounded < 0 ? '↓' : '';
+    summaryDeltaText = `${arrow ? `${arrow} ` : ''}${Math.abs(avgChangeRounded)}% vs. forrige periode`;
+    summaryDeltaColor =
+      avgChangeRounded > 0 ? palette.success : avgChangeRounded < 0 ? palette.error : palette.textSecondary;
+  }
 
   return (
     <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.highlight }]}> 
@@ -233,21 +189,17 @@ export function ProgressionSection({ categories }: Props) {
 
       <View style={[styles.summaryCard, { backgroundColor: palette.highlight }]}> 
         <View style={styles.summaryLeft}>
-          <Text style={[styles.summaryLabel, { color: palette.textSecondary }]}>
-            {metric === 'rating' ? 'Fuldført fokusopgaver' : 'Registreret intensitet'}
-          </Text>
-          <Text style={[styles.summaryValue, { color: palette.text }]}>{summary.scorePercent}%</Text>
-          <Text style={[styles.summaryDelta, { color: summary.deltaPercentPoints >= 0 ? palette.success : palette.error }]}>
-            {summary.deltaPercentPoints >= 0 ? '↑' : '↓'} {Math.abs(summary.deltaPercentPoints)}% vs. forrige periode
-          </Text>
+          <Text style={[styles.summaryLabel, { color: palette.textSecondary }]}>{summaryPrimaryLabel}</Text>
+          <Text style={[styles.summaryValue, { color: summaryValueColor }]}>{summary.avgCurrent.toFixed(1)}</Text>
+          <Text style={[styles.summaryDelta, { color: summaryDeltaColor }]}>{summaryDeltaText}</Text>
           <Text style={[styles.summaryMeta, { color: palette.textSecondary }]}>Periode: {periodDays} dage</Text>
           <Text style={[styles.summaryMeta, { color: palette.textSecondary }]}>Sammenlignes med: forrige {periodDays} dage</Text>
           <Text style={[styles.summaryMeta, { color: palette.textSecondary }]}>Gns: {summary.avgCurrent.toFixed(1)} (forrige {summary.avgPrevious.toFixed(1)})</Text>
         </View>
         <View style={styles.summaryRight}>
-          <Text style={[styles.summaryMeta, { color: palette.textSecondary }]}>Muligt</Text>
+          <Text style={[styles.summaryMeta, { color: palette.textSecondary }]}>Mulige</Text>
           <Text style={[styles.summaryMetaValue, { color: palette.text }]}>{summary.possibleCount}</Text>
-          <Text style={[styles.summaryMeta, { color: palette.textSecondary }]}>Fuldført</Text>
+          <Text style={[styles.summaryMeta, { color: palette.textSecondary }]}>Fuldførte</Text>
           <Text style={[styles.summaryMetaValue, { color: palette.text }]}>{summary.completedCount}</Text>
           <Text style={[styles.summaryMeta, { color: palette.textSecondary }]}>Streak</Text>
           <Text style={[styles.summaryMetaValue, { color: palette.text }]}>{summary.streakDays} dage</Text>
@@ -276,7 +228,7 @@ export function ProgressionSection({ categories }: Props) {
           onLayout={event => setChartWidth(event.nativeEvent.layout.width)}
         >
           <View style={styles.chartHeader}>
-            <Text style={[styles.chartTitle, { color: palette.text }]}>Trend ({metric === 'rating' ? 'Fokus' : 'Intensitet'})</Text>
+            <Text style={[styles.chartTitle, { color: palette.text }]}>Score over tid</Text>
             <Text style={[styles.chartSubtitle, { color: palette.textSecondary }]}>{trendPoints.length} datapunkter</Text>
           </View>
 
@@ -334,32 +286,6 @@ export function ProgressionSection({ categories }: Props) {
           </View>
         </View>
       )}
-
-      {!!heatmapRows.length && (
-        <View style={[styles.heatmapCard, { backgroundColor: palette.backgroundAlt, borderColor: palette.highlight }]}> 
-          <Text style={[styles.chartTitle, { color: palette.text }]}>
-            {metric === 'rating' ? 'Frekvens pr. fokus (uge)' : 'Frekvens pr. kategori (uge)'} · {periodDays} dage
-          </Text>
-          <FlatList
-            data={[...heatmapRows].sort((a, b) => b.totalCompleted - a.totalCompleted)}
-            keyExtractor={(item, index) => `${item.focusId ?? 'none'}-${index}`}
-            renderItem={renderHeatmapRow}
-            ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-            scrollEnabled={false}
-          />
-        </View>
-      )}
-
-      <View style={styles.badgesRow}>
-        <FlatList
-          data={summary.badges.length ? summary.badges : ['På vej']}
-          keyExtractor={item => item}
-          renderItem={renderBadge}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          ItemSeparatorComponent={() => <View style={{ width: 8 }} />}
-        />
-      </View>
 
       <Modal visible={!!selectedPoint} transparent animationType="fade" onRequestClose={() => setSelectedPoint(null)}>
         <View style={styles.modalBackdrop}>
@@ -510,20 +436,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
-  focusRow: {
-    gap: 8,
-    paddingVertical: 6,
-  },
-  focusChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
-    borderWidth: 1,
-  },
-  focusChipText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
   summaryCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -608,65 +520,6 @@ const styles = StyleSheet.create({
   },
   legendItem: {
     fontSize: 12,
-  },
-  heatmapCard: {
-    borderRadius: 14,
-    padding: 12,
-    borderWidth: 1,
-    marginTop: 12,
-  },
-  heatmapRow: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 10,
-  },
-  heatmapLabel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  heatmapTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  heatmapSubtitle: {
-    fontSize: 12,
-  },
-  heatmapCells: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  heatCell: {
-    minWidth: 64,
-    padding: 8,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  heatCellValue: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  heatCellLabel: {
-    fontSize: 11,
-    marginTop: 2,
-  },
-  colorDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
-  badgesRow: {
-    marginTop: 14,
-  },
-  badge: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-  },
-  badgeText: {
-    fontSize: 13,
-    fontWeight: '700',
   },
   modalBackdrop: {
     flex: 1,

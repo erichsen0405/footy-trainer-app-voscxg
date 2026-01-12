@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { subDays, startOfDay, parseISO, format, startOfWeek, differenceInCalendarDays } from 'date-fns';
+import { subDays, startOfDay, parseISO, format, differenceInCalendarDays, addDays } from 'date-fns';
 import { supabase } from '@/app/integrations/supabase/client';
 import { ActivityCategory } from '@/types';
 
@@ -60,6 +60,7 @@ export interface ProgressionSummary {
   completedCount: number;
   avgCurrent: number;
   avgPrevious: number;
+  avgChangePercent: number;
   scorePercent: number;
   previousScorePercent: number;
   deltaPercentPoints: number;
@@ -169,14 +170,16 @@ export function useProgressionData({
 
   const mapIntensityRow = useCallback(
     (row: any): ProgressionEntry => {
-      const dateKey = toDateKey(row.activity_date ?? row.created_at);
+      const activityDate: string | null = row.activity_date ?? null;
+      const createdAt: string = activityDate || row.created_at || new Date().toISOString();
+      const dateKey = toDateKey(activityDate || row.createdAt);
       const categoryId = row.category_id ? String(row.category_id) : null;
       const categoryMeta = categoryId ? categoryMap[categoryId] : undefined;
 
       return {
         id: String(row.id),
         kind: 'intensity',
-        createdAt: row.activity_date ?? row.created_at,
+        createdAt,
         activityId: row.id ? String(row.id) : null,
         taskTemplateId: null,
         taskTemplateName: null,
@@ -210,6 +213,7 @@ export function useProgressionData({
 
       const today = startOfDay(new Date());
       const periodStart = startOfDay(subDays(today, Math.max(days - 1, 0)));
+      const periodEndExclusive = startOfDay(addDays(today, 1));
       const previousStart = startOfDay(subDays(periodStart, days));
 
       const focusSelect = `
@@ -229,10 +233,10 @@ export function useProgressionData({
         activity_id,
         task_template_id,
         task_templates ( title ),
-        activities ( activity_date, user_id )
+        activities!inner ( activity_date, user_id )
       `;
 
-      const activitySelect = 'id, activity_date, category_id, intensity, title, user_id';
+      const activitySelect = 'id, activity_date, category_id, intensity, title, user_id, created_at';
 
       const [
         { data: focusCurrent, error: focusCurrentError },
@@ -260,7 +264,7 @@ export function useProgressionData({
           .select(activityTaskSelect)
           .not('task_template_id', 'is', null)
           .gte('activities.activity_date', periodStart.toISOString())
-          .lte('activities.activity_date', today.toISOString())
+          .lt('activities.activity_date', periodEndExclusive.toISOString())
           .eq('activities.user_id', userId)
           .order('created_at', { ascending: true }),
         supabase
@@ -276,6 +280,7 @@ export function useProgressionData({
           .select(activitySelect)
           .eq('user_id', userId)
           .gte('activity_date', periodStart.toISOString())
+          .lt('activity_date', periodEndExclusive.toISOString())
           .order('activity_date', { ascending: true }),
         supabase
           .from('activities')
@@ -371,204 +376,140 @@ export function useProgressionData({
     if (!intensityCategoryId) return intensityEntriesPrevious;
     return intensityEntriesPrevious.filter(entry => entry.focusCategoryId === intensityCategoryId);
   }, [intensityEntriesPrevious, intensityCategoryId]);
+  const focusPossibleDeduped = useMemo(() => {
+    const seen = new Set<string>();
+    return filteredFocusPossible.filter(entry => {
+      const key = `${entry.activityId ?? entry.dateKey ?? 'na'}::${entry.templateId ?? 'none'}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [filteredFocusPossible]);
+
+  const focusPossiblePreviousDeduped = useMemo(() => {
+    const seen = new Set<string>();
+    return filteredFocusPossiblePrevious.filter(entry => {
+      const key = `${entry.activityId ?? entry.dateKey ?? 'na'}::${entry.templateId ?? 'none'}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [filteredFocusPossiblePrevious]);
+
+  const focusCompletedDeduped = useMemo(() => {
+    const possibleKeys = new Set<string>(
+      focusPossibleDeduped.map(entry => `${entry.activityId ?? entry.dateKey ?? 'na'}::${entry.templateId ?? 'none'}`)
+    );
+    const seen = new Set<string>();
+    return filteredFocusEntries
+      .filter(entry => typeof entry.rating === 'number')
+      .filter(entry => {
+        const key = `${entry.activityId ?? entry.dateKey ?? entry.id}::${entry.taskTemplateId ?? 'none'}`;
+        if (seen.has(key)) return false;
+        if (possibleKeys.size && !possibleKeys.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }, [filteredFocusEntries, focusPossibleDeduped]);
+
+  const focusCompletedPreviousDeduped = useMemo(() => {
+    const possibleKeys = new Set<string>(
+      focusPossiblePreviousDeduped.map(entry => `${entry.activityId ?? entry.dateKey ?? 'na'}::${entry.templateId ?? 'none'}`)
+    );
+    const seen = new Set<string>();
+    return filteredFocusPrevious
+      .filter(entry => typeof entry.rating === 'number')
+      .filter(entry => {
+        const key = `${entry.activityId ?? entry.dateKey ?? entry.id}::${entry.taskTemplateId ?? 'none'}`;
+        if (seen.has(key)) return false;
+        if (possibleKeys.size && !possibleKeys.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }, [filteredFocusPrevious, focusPossiblePreviousDeduped]);
+
+  const intensityPossibleDeduped = useMemo(() => {
+    const seen = new Set<string>();
+    return filteredIntensityEntries.filter(entry => {
+      const key = entry.activityId ?? entry.id;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [filteredIntensityEntries]);
+
+  const intensityPossiblePreviousDeduped = useMemo(() => {
+    const seen = new Set<string>();
+    return filteredIntensityPrevious.filter(entry => {
+      const key = entry.activityId ?? entry.id;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [filteredIntensityPrevious]);
+
+  const intensityCompletedDeduped = useMemo(() => {
+    const possibleKeys = new Set<string>(intensityPossibleDeduped.map(entry => entry.activityId ?? entry.id));
+    const seen = new Set<string>();
+    return filteredIntensityEntries
+      .filter(entry => typeof entry.intensity === 'number')
+      .filter(entry => {
+        const key = entry.activityId ?? entry.id;
+        if (seen.has(key)) return false;
+        if (possibleKeys.size && !possibleKeys.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }, [filteredIntensityEntries, intensityPossibleDeduped]);
+
+  const intensityCompletedPreviousDeduped = useMemo(() => {
+    const possibleKeys = new Set<string>(intensityPossiblePreviousDeduped.map(entry => entry.activityId ?? entry.id));
+    const seen = new Set<string>();
+    return filteredIntensityPrevious
+      .filter(entry => typeof entry.intensity === 'number')
+      .filter(entry => {
+        const key = entry.activityId ?? entry.id;
+        if (seen.has(key)) return false;
+        if (possibleKeys.size && !possibleKeys.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }, [filteredIntensityPrevious, intensityPossiblePreviousDeduped]);
 
   const trendPoints = useMemo(() => {
-    const sourceEntries = metric === 'rating' ? filteredFocusEntries : filteredIntensityEntries;
-    const grouped: Record<string, { values: number[]; sample: ProgressionEntry }> = {};
-
-    sourceEntries.forEach(entry => {
-      const value = metric === 'rating' ? entry.rating : entry.intensity;
-      if (typeof value !== 'number') return;
-
-      const key = entry.dateKey || entry.createdAt.slice(0, 10);
-      const bucket = grouped[key] || { values: [], sample: entry };
-      bucket.values.push(value);
-
-      const bucketDate = bucket.sample?.createdAt ? parseISO(bucket.sample.createdAt) : null;
-      const entryDate = entry.createdAt ? parseISO(entry.createdAt) : null;
-      if (bucketDate && entryDate && entryDate > bucketDate) {
-        bucket.sample = entry;
-      }
-
-      grouped[key] = bucket;
-    });
-
-    return Object.entries(grouped)
-      .map(([dateKey, bucket]) => {
-        const avg = bucket.values.reduce((sum, v) => sum + v, 0) / bucket.values.length;
+    const sourceEntries = metric === 'rating' ? focusCompletedDeduped : intensityCompletedDeduped;
+    return sourceEntries
+      .map(entry => {
+        const dateKey = entry.dateKey || entry.createdAt.slice(0, 10);
+        const parsedDate = (() => {
+          try {
+            return parseISO(`${dateKey || entry.createdAt.slice(0, 10)}T00:00:00`);
+          } catch (error) {
+            return new Date(entry.createdAt);
+          }
+        })();
         return {
-          id: `${dateKey}-${bucket.sample.id}`,
+          id: entry.id,
           dateKey,
-          dateLabel: format(parseISO(`${dateKey}T00:00:00`), 'dd MMM'),
-          value: Number(avg.toFixed(2)),
-          representative: bucket.sample,
-          sampleCount: bucket.values.length,
+          dateLabel: format(parsedDate, 'dd MMM'),
+          value: metric === 'rating' ? (entry.rating ?? 0) : (entry.intensity ?? 0),
+          representative: entry,
+          sampleCount: 1,
         } as TrendPoint;
       })
       .sort((a, b) => (a.dateKey < b.dateKey ? -1 : 1));
-  }, [filteredFocusEntries, filteredIntensityEntries, metric]);
+  }, [focusCompletedDeduped, intensityCompletedDeduped, metric]);
 
-  const heatmapRows = useMemo(() => {
-    if (metric === 'rating') {
-      if (!focusPossible.length && !filteredFocusEntries.length) return [];
-
-      const weekLabels = new Set<string>();
-      const possibleByTemplate: Record<string, Record<string, number>> = {};
-      const completedByTemplate: Record<string, Record<string, number>> = {};
-      const templateNames: Record<string, string> = {};
-      const safeParse = (key?: string) => {
-        try {
-          return key ? parseISO(`${key}T00:00:00`) : new Date();
-        } catch (error) {
-          return new Date();
-        }
-      };
-
-      filteredFocusPossible.forEach(entry => {
-        const weekStart = startOfWeek(safeParse(entry.dateKey), { weekStartsOn: 1 });
-        const weekKey = weekStart.toISOString().slice(0, 10);
-        weekLabels.add(weekKey);
-        const key = entry.templateId ?? 'none';
-        templateNames[key] = entry.templateName;
-        possibleByTemplate[key] = possibleByTemplate[key] || {};
-        possibleByTemplate[key][weekKey] = (possibleByTemplate[key][weekKey] || 0) + 1;
-      });
-
-      filteredFocusEntries
-        .filter(entry => typeof entry.rating === 'number')
-        .forEach(entry => {
-          const parsedDate = safeParse(entry.dateKey || entry.createdAt.slice(0, 10));
-          const weekStart = startOfWeek(parsedDate, { weekStartsOn: 1 });
-          const weekKey = weekStart.toISOString().slice(0, 10);
-          weekLabels.add(weekKey);
-          const key = entry.taskTemplateId ?? 'none';
-          templateNames[key] = entry.focusName;
-          completedByTemplate[key] = completedByTemplate[key] || {};
-          completedByTemplate[key][weekKey] = (completedByTemplate[key][weekKey] || 0) + 1;
-          if (!possibleByTemplate[key]) {
-            possibleByTemplate[key] = {};
-          }
-          if (!possibleByTemplate[key][weekKey]) {
-            possibleByTemplate[key][weekKey] = 1;
-          }
-        });
-
-      const sortedWeeks = Array.from(weekLabels).sort();
-
-      return Object.keys({ ...possibleByTemplate, ...completedByTemplate }).map(templateKey => {
-        const weeks: HeatmapWeek[] = sortedWeeks.map(weekKey => {
-          const possible = possibleByTemplate[templateKey]?.[weekKey] ?? 0;
-          const completed = completedByTemplate[templateKey]?.[weekKey] ?? 0;
-          const ratio = possible ? completed / possible : 0;
-          return {
-            weekStart: weekKey,
-            label: format(parseISO(`${weekKey}T00:00:00`), 'd MMM'),
-            possible,
-            completed,
-            ratio,
-          };
-        });
-
-        const totals = weeks.reduce(
-          (acc, week) => {
-            acc.possible += week.possible;
-            acc.completed += week.completed;
-            return acc;
-          },
-          { possible: 0, completed: 0 }
-        );
-
-        return {
-          focusId: templateKey === 'none' ? null : templateKey,
-          focusName: templateNames[templateKey] || 'Fokusopgave',
-          color: undefined,
-          weeks,
-          totalCompleted: totals.completed,
-          totalPossible: totals.possible,
-        } as HeatmapRow;
-      });
-    }
-
-    // Intensity heatmap
-    if (!filteredIntensityEntries.length) return [];
-
-    const weekLabels = new Set<string>();
-    const possibleByCategory: Record<string, Record<string, number>> = {};
-    const completedByCategory: Record<string, Record<string, number>> = {};
-    const categoryNames: Record<string, { name: string; color?: string }> = {};
-    const safeParse = (key?: string) => {
-      try {
-        return key ? parseISO(`${key}T00:00:00`) : new Date();
-      } catch (error) {
-        return new Date();
-      }
-    };
-
-    filteredIntensityEntries.forEach(entry => {
-      const parsedDate = safeParse(entry.dateKey || entry.createdAt.slice(0, 10));
-      const weekStart = startOfWeek(parsedDate, { weekStartsOn: 1 });
-      const weekKey = weekStart.toISOString().slice(0, 10);
-      weekLabels.add(weekKey);
-      const key = entry.focusCategoryId ?? 'none';
-      categoryNames[key] = { name: entry.focusName, color: entry.focusColor };
-      possibleByCategory[key] = possibleByCategory[key] || {};
-      possibleByCategory[key][weekKey] = (possibleByCategory[key][weekKey] || 0) + 1;
-      if (typeof entry.intensity === 'number') {
-        completedByCategory[key] = completedByCategory[key] || {};
-        completedByCategory[key][weekKey] = (completedByCategory[key][weekKey] || 0) + 1;
-      }
-    });
-
-    const sortedWeeks = Array.from(weekLabels).sort();
-
-    return Object.keys(possibleByCategory).map(categoryKey => {
-      const weeks: HeatmapWeek[] = sortedWeeks.map(weekKey => {
-        const possible = possibleByCategory[categoryKey]?.[weekKey] ?? 0;
-        const completed = completedByCategory[categoryKey]?.[weekKey] ?? 0;
-        const ratio = possible ? completed / possible : 0;
-        return {
-          weekStart: weekKey,
-          label: format(parseISO(`${weekKey}T00:00:00`), 'd MMM'),
-          possible,
-          completed,
-          ratio,
-        };
-      });
-
-      const totals = weeks.reduce(
-        (acc, week) => {
-          acc.possible += week.possible;
-          acc.completed += week.completed;
-          return acc;
-        },
-        { possible: 0, completed: 0 }
-      );
-
-      return {
-        focusId: categoryKey === 'none' ? null : categoryKey,
-        focusName: categoryNames[categoryKey]?.name ?? 'Kategori',
-        color: categoryNames[categoryKey]?.color,
-        weeks,
-        totalCompleted: totals.completed,
-        totalPossible: totals.possible,
-      } as HeatmapRow;
-    });
-  }, [
-    filteredFocusEntries,
-    filteredFocusPossible,
-    focusPossible,
-    filteredIntensityEntries,
-    metric,
-  ]);
+  const heatmapRows = useMemo<HeatmapRow[]>(() => [], []);
 
   const summary = useMemo<ProgressionSummary>(() => {
     if (metric === 'rating') {
-      const completed = filteredFocusEntries.filter(entry => typeof entry.rating === 'number');
+      const completed = focusCompletedDeduped;
       const completedCount = completed.length;
-      const possibleCount = filteredFocusPossible.length || completedCount;
+      const possibleCount = focusPossibleDeduped.length;
 
-      const previousCompleted = filteredFocusPrevious.filter(entry => typeof entry.rating === 'number');
-      const previousPossibleCount = filteredFocusPossiblePrevious.length || previousCompleted.length;
+      const previousCompleted = focusCompletedPreviousDeduped;
+      const previousPossibleCount = focusPossiblePreviousDeduped.length;
 
       const completionRate = possibleCount ? Math.round((completedCount / possibleCount) * 100) : 0;
       const previousRate = previousPossibleCount ? Math.round((previousCompleted.length / previousPossibleCount) * 100) : 0;
@@ -581,6 +522,8 @@ export function useProgressionData({
       const scorePercent = Math.round((avgCurrent / 10) * 100);
       const previousScorePercent = Math.round((avgPrevious / 10) * 100);
       const deltaPercentPoints = scorePercent - previousScorePercent;
+      const avgChangePercent =
+        avgPrevious > 0 ? ((avgCurrent - avgPrevious) / avgPrevious) * 100 : avgCurrent > 0 ? 100 : 0;
 
       const successCount = completed.filter(entry => (entry.rating ?? 0) >= SUCCESS_THRESHOLD).length;
 
@@ -622,6 +565,7 @@ export function useProgressionData({
         completedCount,
         avgCurrent,
         avgPrevious,
+        avgChangePercent,
         scorePercent,
         previousScorePercent,
         deltaPercentPoints,
@@ -629,12 +573,12 @@ export function useProgressionData({
     }
 
     // Intensity summary
-    const registered = filteredIntensityEntries.filter(entry => typeof entry.intensity === 'number');
+    const registered = intensityCompletedDeduped;
     const registeredCount = registered.length;
-    const possibleCount = filteredIntensityEntries.length;
+    const possibleCount = intensityPossibleDeduped.length;
 
-    const previousRegistered = filteredIntensityPrevious.filter(entry => typeof entry.intensity === 'number');
-    const previousPossibleCount = filteredIntensityPrevious.length;
+    const previousRegistered = intensityCompletedPreviousDeduped;
+    const previousPossibleCount = intensityPossiblePreviousDeduped.length;
 
     const completionRate = possibleCount ? Math.round((registeredCount / possibleCount) * 100) : 0;
     const previousRate = previousPossibleCount ? Math.round((previousRegistered.length / previousPossibleCount) * 100) : 0;
@@ -647,6 +591,8 @@ export function useProgressionData({
     const scorePercent = Math.round((avgCurrent / 10) * 100);
     const previousScorePercent = Math.round((avgPrevious / 10) * 100);
     const deltaPercentPoints = scorePercent - previousScorePercent;
+    const avgChangePercent =
+      avgPrevious > 0 ? ((avgCurrent - avgPrevious) / avgPrevious) * 100 : avgCurrent > 0 ? 100 : 0;
 
     const successCount = registered.filter(entry => (entry.intensity ?? 0) >= SUCCESS_THRESHOLD).length;
 
@@ -686,22 +632,25 @@ export function useProgressionData({
       completedCount: registeredCount,
       avgCurrent,
       avgPrevious,
+      avgChangePercent,
       scorePercent,
       previousScorePercent,
       deltaPercentPoints,
     };
   }, [
     days,
-    filteredFocusEntries,
-    filteredFocusPossible,
-    filteredFocusPrevious,
-    filteredFocusPossiblePrevious,
-    filteredIntensityEntries,
-    filteredIntensityPrevious,
+    focusCompletedDeduped,
+    focusCompletedPreviousDeduped,
+    focusPossibleDeduped,
+    focusPossiblePreviousDeduped,
+    intensityCompletedDeduped,
+    intensityCompletedPreviousDeduped,
+    intensityPossibleDeduped,
+    intensityPossiblePreviousDeduped,
     metric,
   ]);
 
-  const activeEntries = metric === 'rating' ? filteredFocusEntries : filteredIntensityEntries;
+  const activeEntries = metric === 'rating' ? focusCompletedDeduped : intensityCompletedDeduped;
   const intensityCategoriesWithData = useMemo(
     () => Array.from(new Set(intensityEntries.map(entry => entry.focusCategoryId).filter(Boolean))) as string[],
     [intensityEntries]
