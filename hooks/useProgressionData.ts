@@ -29,6 +29,15 @@ export interface TrendPoint {
   value: number;
   representative: ProgressionEntry;
   sampleCount: number;
+  seriesId?: string;
+  seriesName?: string;
+}
+
+export interface TrendSeries {
+  id: string;
+  name: string;
+  points: TrendPoint[];
+  color: string;
 }
 
 export interface HeatmapWeek {
@@ -97,6 +106,7 @@ interface UseProgressionDataResult {
   refetch: () => Promise<void>;
   focusTemplates: FocusTemplateOption[];
   intensityCategoriesWithData: string[];
+  possibleCount: number;
 }
 
 const SUCCESS_THRESHOLD = 7;
@@ -656,6 +666,8 @@ export function useProgressionData({
     [intensityEntries]
   );
 
+  const possibleCount = metric === 'rating' ? focusPossibleDeduped.length : intensityPossibleDeduped.length;
+
   return {
     isLoading,
     error,
@@ -667,5 +679,6 @@ export function useProgressionData({
     refetch: fetchEntries,
     focusTemplates,
     intensityCategoriesWithData,
+    possibleCount,
   };
 }
