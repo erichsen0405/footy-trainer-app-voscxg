@@ -751,7 +751,7 @@ export default function HomeScreen() {
           try {
             router.push({
               pathname: '/activity-details',
-              params: { id: activity.id },
+              params: { id: activity.id, isExternal: activityIsExternal },
             });
           } catch (error) {
             console.error('[Home] Error navigating to activity details:', error);

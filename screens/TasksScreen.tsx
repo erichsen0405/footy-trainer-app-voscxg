@@ -50,7 +50,7 @@ function organizeFolders(templateTasks: Task[]): FolderItem[] {
       return;
     }
 
-    if (sourceFolder === 'FootballCoach Inspiration') {
+    if (sourceFolder && sourceFolder.includes('FootballCoach Inspiration')) {
       footballCoachTasks.push(task);
       return;
     }

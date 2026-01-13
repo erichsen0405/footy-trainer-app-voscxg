@@ -1,4 +1,3 @@
-
 import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -63,6 +62,7 @@ export default function RootLayout() {
               <Stack.Screen name="(tabs)" />
               <Stack.Screen name="+not-found" />
               <Stack.Screen name="activity-details" options={{ presentation: 'modal' }} />
+              <Stack.Screen name="exercise-details" options={{ presentation: 'modal' }} />
               <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
               <Stack.Screen name="formsheet" options={{ presentation: 'formSheet' }} />
               <Stack.Screen
