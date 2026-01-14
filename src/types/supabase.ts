@@ -626,6 +626,7 @@ export type Database = {
           category_path: string | null
           created_at: string
           description: string | null
+          difficulty: number | null
           id: string
           is_system: boolean | null
           title: string
@@ -637,6 +638,7 @@ export type Database = {
           category_path?: string | null
           created_at?: string
           description?: string | null
+          difficulty?: number | null
           id?: string
           is_system?: boolean | null
           title: string
@@ -648,6 +650,7 @@ export type Database = {
           category_path?: string | null
           created_at?: string
           description?: string | null
+          difficulty?: number | null
           id?: string
           is_system?: boolean | null
           title?: string

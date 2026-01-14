@@ -9,7 +9,9 @@
     "web": "EXPO_NO_TELEMETRY=1 expo start --web",
     "build:web": "expo export -p web && npx workbox generateSW workbox-config.js",
     "build:android": "expo prebuild -p android",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "seed:holdtraening": "tsx scripts/holdtraening/importHoldtraening.ts",
+    "seed:holdtraening:dry-run": "tsx scripts/holdtraening/importHoldtraening.ts --dry-run"
   },
   "dependencies": {
     "@babel/plugin-proposal-export-namespace-from": "^7.18.9",
@@ -73,6 +75,7 @@
     "@types/react": "~19.1.12",
     "@typescript-eslint/eslint-plugin": "^8.12.1",
     "@typescript-eslint/parser": "^8.12.1",
+    "csv-parse": "^5.5.6",
     "babel-plugin-module-resolver": "^5.0.2",
     "eslint": "^8.57.0",
     "eslint-config-expo": "~10.0.0",
@@ -80,6 +83,7 @@
     "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-react": "^7.37.4",
     "globals": "^15.14.0",
+    "tsx": "^4.19.2",
     "typescript": "^5.9.3",
     "webpack-cli": "^6.0.1"
   },
