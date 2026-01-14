@@ -1,0 +1,2 @@
+-- Placeholder to match remote migration history (version 20260113).
+-- Original file is missing locally. No-op.
