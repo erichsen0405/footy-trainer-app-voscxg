@@ -1,1074 +1,1031 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
-  TextInput,
+  SectionList,
+  Image,
   Modal,
-  Alert,
-  ActivityIndicator,
-  useColorScheme,
   Platform,
-  KeyboardAvoidingView,
+  useColorScheme,
+  Pressable,
+  TextInput,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
+
 import { colors, getColors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
-import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import { useUserRole } from '@/hooks/useUserRole';
-import { useFocusEffect } from '@react-navigation/native';
-import SmartVideoPlayer from '@/components/SmartVideoPlayer';
+import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 
-/*
-  * Kode herunder er hele det oprindelige UI for biblioteks‑skærmen.
-  * Genskab ALT ned til sidste linje – det henter øvelser fra exercise_library,
-  * understøtter personlige templates, træner‑mapper, FootballCoach‑fokusområder,
-  * modal til oprettelse/ændring og tildeling, og kopiering til task templates.
-  * Sørg for at bevare alle keys i lister (de er allerede sat).
-  * Undgå blocking operations i render – al data hentes i hooks/callbacks.
-*/
+type RootFolderId = 'personal' | 'trainer' | 'footballcoach';
+type SortKey = 'recent' | 'difficulty';
 
-interface Exercise {
+type NavigationState = {
+  root: RootFolderId | null;
+  level2Id: string | null;
+  level3Id: string | null;
+};
+
+type Exercise = {
   id: string;
-  trainer_id: string;
+  trainer_id: string | null;
   title: string;
   description: string | null;
   video_url: string | null;
-  created_at: Date;
-  updated_at: Date;
-  subtasks: ExerciseSubtask[];
-  assignments: ExerciseAssignment[];
-  isAssignedByCurrentTrainer?: boolean;
-  trainer_name?: string;
-  is_system?: boolean;
-  category_path?: string;
-}
+  thumbnail_url: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  is_system: boolean | null;
+  category_path: string | null;
+  difficulty: number | null;
+  "position": string | null;
+  trainer_name?: string | null;
+  last_score?: number | null;
+  execution_count?: number | null;
+  is_added_to_tasks?: boolean | null;
+};
 
-interface ExerciseSubtask {
+type FolderVM = {
   id: string;
-  exercise_id: string;
+  level: 1 | 2 | 3;
   title: string;
-  sort_order: number;
-}
+  subtitle?: string;
+  icon: { ios: string; android: string; color: string; bg: string };
+  rightBadgeText?: string;
+  chevron?: boolean;
+  kind: RootFolderId | 'trainer' | 'footballcoach_category' | 'footballcoach_position';
+  payload?: { root?: RootFolderId; level2Id?: string; level3Id?: string };
+};
 
-interface ExerciseAssignment {
-  id: string;
-  exercise_id: string;
-  trainer_id: string;
-  player_id: string | null;
-  team_id: string | null;
-  player_name?: string;
-  team_name?: string;
-}
+type LibrarySection =
+  | { key: 'folders'; title?: string; data: FolderVM[] }
+  | { key: 'exercises'; title?: string; data: Exercise[] };
 
-interface FolderItem {
-  id: string;
-  name: string;
-  type: 'personal' | 'trainer' | 'footballcoach' | 'category';
-  icon: string;
-  androidIcon: string;
-  exercises?: Exercise[];
-  subfolders?: FolderItem[];
-  trainerId?: string;
-  isExpanded?: boolean;
-}
-
-// Predefined FootballCoach focus areas
-const FOOTBALLCOACH_STRUCTURE: FolderItem[] = [
+const FOOTBALLCOACH_STRUCTURE = [
   {
     id: 'holdtraening',
     name: 'Holdtræning',
-    type: 'category',
-    icon: 'person.3.fill',
-    androidIcon: 'groups',
-    subfolders: [
-      { id: 'holdtraening_faelles', name: 'Fælles (alle positioner)', type: 'category', icon: 'star.fill', androidIcon: 'star', exercises: [] },
-      { id: 'holdtraening_maalmand', name: 'Målmand', type: 'category', icon: 'hand.raised.fill', androidIcon: 'sports_soccer', exercises: [] },
-      { id: 'holdtraening_back', name: 'Back', type: 'category', icon: 'shield.fill', androidIcon: 'shield', exercises: [] },
-      { id: 'holdtraening_midterforsvarer', name: 'Midterforsvarer', type: 'category', icon: 'shield.lefthalf.filled', androidIcon: 'security', exercises: [] },
-      { id: 'holdtraening_central_midtbane', name: 'Central midtbane', type: 'category', icon: 'circle.grid.cross.fill', androidIcon: 'grid_on', exercises: [] },
-      { id: 'holdtraening_offensiv_midtbane', name: 'Offensiv midtbane', type: 'category', icon: 'arrow.up.circle.fill', androidIcon: 'arrow_upward', exercises: [] },
-      { id: 'holdtraening_kant', name: 'Kant', type: 'category', icon: 'arrow.left.and.right.circle.fill', androidIcon: 'swap_horiz', exercises: [] },
-      { id: 'holdtraening_angriber', name: 'Angriber', type: 'category', icon: 'flame.fill', androidIcon: 'local_fire_department', exercises: [] },
+    icon: { ios: 'person.3.fill', android: 'groups' },
+    positions: [
+      { id: 'holdtraening_faelles', name: 'Fælles (alle positioner)', icon: { ios: 'star.fill', android: 'star' } },
+      { id: 'holdtraening_maalmand', name: 'Målmand', icon: { ios: 'hand.raised.fill', android: 'sports_soccer' } },
+      { id: 'holdtraening_forsvar', name: 'Forsvar', icon: { ios: 'shield.fill', android: 'shield' } },
+      { id: 'holdtraening_midtbane', name: 'Midtbane', icon: { ios: 'circle.grid.cross.fill', android: 'grid_on' } },
+      { id: 'holdtraening_angriber', name: 'Angriber', icon: { ios: 'flame.fill', android: 'local_fire_department' } },
     ],
   },
-  {
-    id: 'selvtraening',
-    name: 'Selvtræning',
-    type: 'category',
-    icon: 'person.fill',
-    androidIcon: 'person',
-    subfolders: [
-      { id: 'selvtraening_faelles', name: 'Fælles', type: 'category', icon: 'star.fill', androidIcon: 'star', exercises: [] },
-      { id: 'selvtraening_maalmand', name: 'Målmand', type: 'category', icon: 'hand.raised.fill', androidIcon: 'sports_soccer', exercises: [] },
-      { id: 'selvtraening_back', name: 'Back', type: 'category', icon: 'shield.fill', androidIcon: 'shield', exercises: [] },
-      { id: 'selvtraening_midterforsvarer', name: 'Midterforsvarer', type: 'category', icon: 'shield.lefthalf.filled', androidIcon: 'security', exercises: [] },
-      { id: 'selvtraening_central_midtbane', name: 'Central midtbane', type: 'category', icon: 'circle.grid.cross.fill', androidIcon: 'grid_on', exercises: [] },
-      { id: 'selvtraening_offensiv_midtbane', name: 'Offensiv midtbane', type: 'category', icon: 'arrow.up.circle.fill', androidIcon: 'arrow_upward', exercises: [] },
-      { id: 'selvtraening_kant', name: 'Kant', type: 'category', icon: 'arrow.left.and.right.circle.fill', androidIcon: 'swap_horiz', exercises: [] },
-      { id: 'selvtraening_angriber', name: 'Angriber', type: 'category', icon: 'flame.fill', androidIcon: 'local_fire_department', exercises: [] },
-    ],
-  },
-];
+] as const;
+
+const FOOTBALLCOACH_POS_NAME_BY_ID = new Map<string, string>(
+  FOOTBALLCOACH_STRUCTURE.flatMap(cat => cat.positions.map(pos => [pos.id, pos.name] as const))
+);
+
+const clampDifficulty = (value: any): number => {
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(5, Math.round(n)));
+};
+
+// ✅ Always show placeholders
+const formatMetaLine = (lastScore?: number | null, executionCount?: number | null) => {
+  const scorePart = typeof lastScore === 'number' ? `Senest: ${lastScore}/10` : 'Senest: –/10';
+  const countPart = typeof executionCount === 'number' && executionCount > 0 ? `Udført: ${executionCount}x` : 'Udført: –x';
+  return `${scorePart}  |  ${countPart}`;
+};
+
+const buildIcon = (kind: FolderVM['kind']): FolderVM['icon'] => {
+  switch (kind) {
+    case 'personal':
+      return { ios: 'folder.fill', android: 'folder', color: '#8B6B2E', bg: 'rgba(139,107,46,0.15)' };
+    case 'trainer':
+      return { ios: 'folder.fill', android: 'folder', color: '#2F6B4E', bg: 'rgba(47,107,78,0.15)' };
+    case 'footballcoach':
+      return { ios: 'star.fill', android: 'stars', color: '#E0A336', bg: 'rgba(224,163,54,0.18)' };
+    case 'footballcoach_category':
+      return { ios: 'folder.fill', android: 'folder', color: '#5A6CE8', bg: 'rgba(90,108,232,0.12)' };
+    case 'footballcoach_position':
+      return { ios: 'folder.fill', android: 'folder', color: '#5A6CE8', bg: 'rgba(90,108,232,0.12)' };
+    default:
+      return { ios: 'folder.fill', android: 'folder', color: '#999', bg: 'rgba(153,153,153,0.12)' };
+  }
+};
+
+const FolderRow = memo(function FolderRow({
+  item,
+  onPress,
+  isSelected,
+}: {
+  item: FolderVM;
+  onPress: (folder: FolderVM) => void;
+  isSelected: boolean;
+}) {
+  const theme = getColors(useColorScheme() === 'dark');
+  const handlePress = useCallback(() => onPress(item), [onPress, item]);
+
+  return (
+    <TouchableOpacity
+      onPress={handlePress}
+      activeOpacity={0.85}
+      style={[
+        styles.folderRow,
+        { backgroundColor: theme.card },
+        item.level > 1 ? { marginLeft: (item.level - 1) * 14 } : null,
+        isSelected
+          ? { borderColor: colors.success, borderWidth: 2 }
+          : { borderColor: 'transparent', borderWidth: 2 },
+      ]}
+    >
+      <View style={[styles.folderIconWrap, { backgroundColor: item.icon.bg }]}>
+        <IconSymbol ios_icon_name={item.icon.ios} android_material_icon_name={item.icon.android} size={18} color={item.icon.color} />
+      </View>
+
+      <View style={styles.folderTextWrap}>
+        <Text style={[styles.folderTitle, { color: theme.text }]} numberOfLines={1}>
+          {item.title}
+        </Text>
+        {item.subtitle ? (
+          <Text style={[styles.folderSubtitle, { color: theme.textSecondary }]} numberOfLines={1}>
+            {item.subtitle}
+          </Text>
+        ) : null}
+      </View>
+
+      {item.rightBadgeText ? (
+        <View style={[styles.folderRightBadge, { backgroundColor: theme.highlight }]}>
+          <Text style={[styles.folderRightBadgeText, { color: theme.textSecondary }]}>{item.rightBadgeText}</Text>
+        </View>
+      ) : null}
+
+      {item.chevron !== false ? (
+        <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron_right" size={18} color={theme.textSecondary} />
+      ) : null}
+    </TouchableOpacity>
+  );
+});
+
+const ExerciseCard = memo(function ExerciseCard({
+  exercise,
+  onPressCard,
+  onPressCta,
+  positionLabelOverride,
+}: {
+  exercise: Exercise;
+  onPressCard: (exercise: Exercise) => void;
+  onPressCta: (exercise: Exercise) => void;
+  positionLabelOverride?: string | null;
+}) {
+  const theme = getColors(useColorScheme() === 'dark');
+
+  const handleCardPress = useCallback(() => onPressCard(exercise), [onPressCard, exercise]);
+  const handleCtaPress = useCallback(() => onPressCta(exercise), [onPressCta, exercise]);
+
+  const difficulty = clampDifficulty(exercise.difficulty);
+  const metaLine = formatMetaLine(exercise.last_score ?? null, exercise.execution_count ?? null);
+  const isAdded = !!exercise.is_added_to_tasks;
+  const positionLabel = positionLabelOverride ?? exercise.position ?? null;
+
+  return (
+    <View style={[styles.exerciseCard, { backgroundColor: theme.card }]}>
+      <Pressable onPress={handleCardPress} style={styles.exerciseTop} android_ripple={{ color: 'rgba(0,0,0,0.05)' }}>
+        <View style={styles.exerciseLeft}>
+          {!!exercise.last_score && typeof exercise.last_score === 'number' ? (
+            <View style={styles.trophyWrap}>
+              <Text style={styles.trophyEmoji}>🏆</Text>
+            </View>
+          ) : (
+            <View style={styles.trophySpacer} />
+          )}
+
+          <Text style={[styles.exerciseTitle, { color: theme.text }]} numberOfLines={2}>
+            {exercise.title}
+          </Text>
+
+          <View style={styles.exerciseMetaRow}>
+            <View style={styles.starRow}>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <IconSymbol
+                  key={`star-${exercise.id}-${i}`}
+                  ios_icon_name="star.fill"
+                  android_material_icon_name="star"
+                  size={14}
+                  color={i < difficulty ? colors.warning : theme.highlight}
+                />
+              ))}
+            </View>
+
+            {positionLabel ? (
+              <View style={[styles.positionPill, { backgroundColor: theme.highlight }]}>
+                <Text style={[styles.positionPillText, { color: theme.textSecondary }]} numberOfLines={1}>
+                  {positionLabel}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          {metaLine ? <Text style={[styles.exerciseMetaLine, { color: theme.textSecondary }]}>{metaLine}</Text> : null}
+        </View>
+
+        <View style={styles.exerciseRight}>
+          <Image source={{ uri: exercise.thumbnail_url || 'https://placehold.co/160x120/e2e8f0/e2e8f0' }} style={styles.thumb} />
+          {exercise.video_url ? (
+            <View style={styles.playOverlay}>
+              <IconSymbol
+                ios_icon_name="play.circle.fill"
+                android_material_icon_name="play_circle_filled"
+                size={34}
+                color="rgba(255,255,255,0.85)"
+              />
+            </View>
+          ) : null}
+        </View>
+      </Pressable>
+
+      <View style={styles.exerciseBottom}>
+        <TouchableOpacity
+          onPress={handleCtaPress}
+          activeOpacity={0.9}
+          style={[styles.ctaBadge, isAdded ? { backgroundColor: theme.highlight } : { backgroundColor: colors.success }]}
+        >
+          {isAdded ? <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={14} color={theme.textSecondary} /> : null}
+          <Text style={[styles.ctaText, { color: isAdded ? theme.textSecondary : '#fff' }]}>
+            {isAdded ? 'Allerede tilføjet til opgaver' : 'Tilføj til opgaver'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+});
+
+const SkeletonFolderRow = memo(function SkeletonFolderRow({ level }: { level: 1 | 2 | 3 }) {
+  const theme = getColors(useColorScheme() === 'dark');
+  return (
+    <View
+      style={[
+        styles.folderRow,
+        { backgroundColor: theme.card, borderWidth: 2, borderColor: 'transparent' },
+        level > 1 ? { marginLeft: (level - 1) * 14 } : null,
+      ]}
+    >
+      <View style={[styles.skeleton, { width: 34, height: 34, borderRadius: 10 }]} />
+      <View style={{ flex: 1, gap: 8 }}>
+        <View style={[styles.skeleton, { width: '55%', height: 14, borderRadius: 6 }]} />
+        <View style={[styles.skeleton, { width: '35%', height: 12, borderRadius: 6 }]} />
+      </View>
+      <View style={[styles.skeleton, { width: 18, height: 18, borderRadius: 6 }]} />
+    </View>
+  );
+});
+
+const SkeletonExerciseCard = memo(function SkeletonExerciseCard() {
+  const theme = getColors(useColorScheme() === 'dark');
+  return (
+    <View style={[styles.exerciseCard, { backgroundColor: theme.card }]}>
+      <View style={styles.exerciseTop}>
+        <View style={styles.exerciseLeft}>
+          <View style={[styles.skeleton, { width: 26, height: 18, borderRadius: 6 }]} />
+          <View style={[styles.skeleton, { width: '85%', height: 18, borderRadius: 6, marginTop: 10 }]} />
+          <View style={[styles.skeleton, { width: '70%', height: 18, borderRadius: 6 }]} />
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+            <View style={[styles.skeleton, { width: 90, height: 14, borderRadius: 6 }]} />
+            <View style={[styles.skeleton, { width: 70, height: 18, borderRadius: 10 }]} />
+          </View>
+          <View style={[styles.skeleton, { width: '60%', height: 14, borderRadius: 6, marginTop: 10 }]} />
+        </View>
+        <View style={styles.exerciseRight}>
+          <View style={[styles.skeleton, { width: 150, height: 110, borderRadius: 14 }]} />
+        </View>
+      </View>
+      <View style={styles.exerciseBottom}>
+        <View style={[styles.skeleton, { width: 180, height: 34, borderRadius: 18 }]} />
+      </View>
+    </View>
+  );
+});
+
+const ALL_FC_POS_IDS = new Set<string>(FOOTBALLCOACH_STRUCTURE.flatMap(c => c.positions.map(p => p.id)));
+const normalizeForMatch = (value: string) =>
+  (value || '')
+    .toLowerCase()
+    .trim()
+    .replace(/æ/g, 'ae')
+    .replace(/ø/g, 'oe')
+    .replace(/å/g, 'aa')
+    .replace(/[^a-z0-9]+/g, '_');
+
+const resolveFootballCoachPosId = (categoryPath: string | null): string | null => {
+  if (!categoryPath) return null;
+  if (ALL_FC_POS_IDS.has(categoryPath)) return categoryPath;
+
+  const raw = String(categoryPath);
+  const rawNorm = normalizeForMatch(raw);
+
+  for (const id of ALL_FC_POS_IDS) {
+    const idNorm = normalizeForMatch(id);
+    if (rawNorm.includes(idNorm) || raw.includes(id)) return id;
+  }
+
+  const isSelv = rawNorm.includes('selv') || rawNorm.includes('self') || rawNorm.includes('selvtraening');
+  const isHold = rawNorm.includes('hold') || rawNorm.includes('holdtraening');
+  const catId: 'holdtraening' | 'selvtraening' | null = isSelv ? 'selvtraening' : isHold ? 'holdtraening' : null;
+
+  const posSlug =
+    rawNorm.includes('maalmand') || rawNorm.includes('malmand')
+      ? 'maalmand'
+      : rawNorm.includes('forsvar')
+      ? 'forsvar'
+      : rawNorm.includes('midtbane')
+      ? 'midtbane'
+      : rawNorm.includes('angriber')
+      ? 'angriber'
+      : rawNorm.includes('faelles') || rawNorm.includes('faelless')
+      ? 'faelles'
+      : null;
+
+  if (catId && posSlug && ALL_FC_POS_IDS.has(`${catId}_${posSlug}`)) return `${catId}_${posSlug}`;
+  if (catId && ALL_FC_POS_IDS.has(`${catId}_faelles`)) return `${catId}_faelles`;
+  if (posSlug && ALL_FC_POS_IDS.has(`holdtraening_${posSlug}`)) return `holdtraening_${posSlug}`;
+  return null;
+};
 
 export default function LibraryScreen() {
-  const { teams, players, selectedContext } = useTeamPlayer();
   const { isAdmin } = useUserRole();
-  const [personalExercises, setPersonalExercises] = useState<Exercise[]>([]);
-  const [trainerFolders, setTrainerFolders] = useState<FolderItem[]>([]);
-  const [footballCoachFolders, setFootballCoachFolders] = useState<FolderItem[]>(FOOTBALLCOACH_STRUCTURE);
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const { teams } = useTeamPlayer();
+  const router = useRouter();
+  const theme = getColors(useColorScheme() === 'dark');
+
   const [status, setStatus] = useState<'loading' | 'success' | 'empty' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState<string>('');
-  const [reloadNonce, setReloadNonce] = useState(0);
-  const [showModal, setShowModal] = useState(false);
-  const [showAssignModal, setShowAssignModal] = useState(false);
-  const [showVideoModal, setShowVideoModal] = useState(false);
-  const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
-  const [isCreating, setIsCreating] = useState(false);
-  const [processing, setProcessing] = useState(false);
-  const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
+
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
-  
-  // Form state
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [videoUrl, setVideoUrl] = useState('');
-  const [subtasks, setSubtasks] = useState<string[]>(['']);
-  
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const themeColors = getColors(colorScheme);
-  
-  const bgColor = isDark ? '#1a1a1a' : colors.background;
-  const cardBgColor = isDark ? '#2a2a2a' : colors.card;
-  const textColor = isDark ? '#e3e3e3' : colors.text;
-  const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
+  const [reloadNonce, setReloadNonce] = useState(0);
 
-  const isManagingContext = isAdmin && selectedContext.type;
-  const containerBgColor = isManagingContext ? themeColors.contextWarning : bgColor;
+  const [personalExercises, setPersonalExercises] = useState<Exercise[]>([]);
+  const [trainerFolders, setTrainerFolders] = useState<Array<{ trainerId: string; trainerName: string; exercises: Exercise[] }>>([]);
+  const [footballCoachExercises, setFootballCoachExercises] = useState<Exercise[]>([]);
 
-  const fetchLibraryData = useCallback(async (userId: string) => {
-    console.log('🔄 Library: Fetching library data for user:', userId);
+  const [nav, setNav] = useState<NavigationState>({ root: null, level2Id: null, level3Id: null });
+  const [sortKey, setSortKey] = useState<SortKey>('recent');
 
-    try {
-      setStatus('loading');
-      setErrorMessage('');
-      setPersonalExercises([]);
-      setTrainerFolders([]);
-      setFootballCoachFolders(FOOTBALLCOACH_STRUCTURE);
+  // Search (local only)
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
-      let exercisesWithDetails: Exercise[] = [];
-      let folders: FolderItem[] = [];
-
-      if (isAdmin) {
-        // TRAINERS: Fetch their own exercises (personal templates)
-        const { data: exercisesData, error: exercisesError } = await supabase
-          .from('exercise_library')
-          .select('*')
-          .eq('trainer_id', userId)
-          .eq('is_system', false)
-          .order('created_at', { ascending: false });
-
-        if (exercisesError) throw exercisesError;
-
-        const exerciseIds = exercisesData?.map(e => e.id) || [];
-        let subtasksData: ExerciseSubtask[] = [];
-        if (exerciseIds.length) {
-          const { data, error } = await supabase
-            .from('exercise_subtasks')
-            .select('*')
-            .in('exercise_id', exerciseIds)
-            .order('sort_order', { ascending: true });
-          if (error) throw error;
-          subtasksData = data || [];
-        }
-
-        let assignmentsData: ExerciseAssignment[] = [];
-        if (exerciseIds.length) {
-          const { data, error } = await supabase
-            .from('exercise_assignments')
-            .select('*')
-            .in('exercise_id', exerciseIds);
-          if (error) throw error;
-          assignmentsData = data || [];
-        }
-
-        exercisesWithDetails = (exercisesData || []).map(exercise => ({
-          ...exercise,
-          created_at: new Date(exercise.created_at),
-          updated_at: new Date(exercise.updated_at),
-          subtasks: (subtasksData || []).filter(s => s.exercise_id === exercise.id),
-          assignments: (assignmentsData || []).filter(a => a.exercise_id === exercise.id),
-          isAssignedByCurrentTrainer: true,
-        }));
-
-        console.log('✅ Library: Loaded personal exercises:', exercisesWithDetails.length);
-        setPersonalExercises(exercisesWithDetails);
-        setTrainerFolders([]); // Trainers don't see trainer folders
-
-      } else {
-        // PLAYERS: Fetch exercises assigned to them, grouped by trainer
-        const { data: assignmentsData, error: assignmentsError } = await supabase
-          .from('exercise_assignments')
-          .select('*')
-          .eq('player_id', userId);
-
-        if (assignmentsError) throw assignmentsError;
-
-        const exerciseIds = assignmentsData?.map(a => a.exercise_id) || [];
-        let exercisesData: any[] = [];
-        if (exerciseIds.length) {
-          const { data, error } = await supabase
-            .from('exercise_library')
-            .select('*')
-            .in('id', exerciseIds);
-          if (error) throw error;
-          exercisesData = data || [];
-        }
-
-        let subtasksData: ExerciseSubtask[] = [];
-        if (exerciseIds.length) {
-          const { data, error } = await supabase
-            .from('exercise_subtasks')
-            .select('*')
-            .in('exercise_id', exerciseIds)
-            .order('sort_order', { ascending: true });
-          if (error) throw error;
-          subtasksData = data || [];
-        }
-
-        const trainerIds = [...new Set(assignmentsData?.map(a => a.trainer_id) || [])];
-        let trainersData: { user_id: string; full_name: string | null }[] = [];
-        if (trainerIds.length) {
-          const { data, error } = await supabase
-            .from('profiles')
-            .select('user_id, full_name')
-            .in('user_id', trainerIds);
-          if (error) throw error;
-          trainersData = data || [];
-        }
-
-        // Group exercises by trainer
-        const trainerMap = new Map<string, FolderItem>();
-        
-        (assignmentsData || []).forEach(assignment => {
-          const exercise = exercisesData?.find(e => e.id === assignment.exercise_id);
-          if (!exercise) return;
-
-          const trainerId = assignment.trainer_id;
-          const trainerProfile = trainersData?.find(t => t.user_id === trainerId);
-          const trainerName = trainerProfile?.full_name || 'Ukendt træner';
-
-          if (!trainerMap.has(trainerId)) {
-            trainerMap.set(trainerId, {
-              id: `trainer_${trainerId}`,
-              name: `Træner: ${trainerName}`,
-              type: 'trainer',
-              icon: 'person.crop.circle.fill',
-              androidIcon: 'account_circle',
-              exercises: [],
-              trainerId,
-            });
-          }
-
-          const folder = trainerMap.get(trainerId)!;
-          const exerciseWithDetails: Exercise = {
-            ...exercise,
-            created_at: new Date(exercise.created_at),
-            updated_at: new Date(exercise.updated_at),
-            subtasks: (subtasksData || []).filter(s => s.exercise_id === exercise.id),
-            assignments: [assignment],
-            trainer_name: trainerName,
-          };
-
-          folder.exercises!.push(exerciseWithDetails);
-        });
-
-        folders = Array.from(trainerMap.values());
-        console.log('✅ Library: Loaded trainer folders:', folders.length);
-        setTrainerFolders(folders);
-        setPersonalExercises([]); // Players don't have personal exercises in this context
-      }
-
-      // Fetch FootballCoach system exercises for all users
-      const { data: systemExercisesData, error: systemExercisesError } = await supabase
-        .from('exercise_library')
-        .select('*')
-        .eq('is_system', true)
-        .order('created_at', { ascending: true });
-
-      if (systemExercisesError) throw systemExercisesError;
-
-      const systemExerciseIds = systemExercisesData?.map(e => e.id) || [];
-      let systemSubtasksData: ExerciseSubtask[] = [];
-      if (systemExerciseIds.length) {
-        const { data, error } = await supabase
-          .from('exercise_subtasks')
-          .select('*')
-          .in('exercise_id', systemExerciseIds)
-          .order('sort_order', { ascending: true });
-        if (error) throw error;
-        systemSubtasksData = data || [];
-      }
-
-      // Group system exercises by category_path
-      const updatedFootballCoachFolders = FOOTBALLCOACH_STRUCTURE.map(mainFolder => {
-        const updatedSubfolders = mainFolder.subfolders?.map(subfolder => {
-          const categoryExercises = (systemExercisesData || [])
-            .filter(ex => ex.category_path === subfolder.id)
-            .map(exercise => ({
-              ...exercise,
-              created_at: new Date(exercise.created_at),
-              updated_at: new Date(exercise.updated_at),
-              subtasks: (systemSubtasksData || []).filter(s => s.exercise_id === exercise.id),
-              assignments: [],
-            }));
-
-          return {
-            ...subfolder,
-            exercises: categoryExercises,
-          };
-        });
-
-        return {
-          ...mainFolder,
-          subfolders: updatedSubfolders,
-        };
-      });
-
-      setFootballCoachFolders(updatedFootballCoachFolders);
-      console.log('✅ Library: Loaded FootballCoach exercises');
-
-      const hasPersonalContent = isAdmin ? exercisesWithDetails.length > 0 : false;
-      const hasTrainerContent = !isAdmin ? folders.length > 0 : false;
-      const hasSystemContent = updatedFootballCoachFolders.some(folder =>
-        (folder.subfolders || []).some(sub => (sub.exercises || []).length > 0)
-      );
-
-      const hasContent = hasPersonalContent || hasTrainerContent || hasSystemContent;
-      setStatus(hasContent ? 'success' : 'empty');
-    } catch (error: any) {
-      console.error('❌ Library: Error fetching library data:', error);
-      setErrorMessage(error?.message || 'Kunne ikke hente bibliotek');
-      setStatus('error');
-    }
-  }, [isAdmin]);
-
+  // CTA state: local optimistic only (no fetch in onPress)
+  const [addedToTasksIds, setAddedToTasksIds] = useState<Set<string>>(() => new Set());
+  const addedToTasksIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    let isMounted = true;
+    addedToTasksIdsRef.current = addedToTasksIds;
+  }, [addedToTasksIds]);
 
-    const getCurrentUser = async () => {
-      console.log('🔄 Library: Getting current user...');
-      
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        
-        if (!user) {
-          console.log('❌ Library: No user found');
-          if (isMounted) {
-            setStatus('error');
-            setErrorMessage('Ingen bruger fundet');
-          }
-          return;
-        }
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [addModalExercise, setAddModalExercise] = useState<Exercise | null>(null);
 
-        console.log('✅ Library: User found:', user.id);
-        
-        if (isMounted) {
-          setCurrentUserId(user.id);
-        }
-      } catch (error) {
-        console.error('❌ Library: Error getting user:', error);
-        if (isMounted) {
-          setStatus('error');
-          setErrorMessage(error?.message || 'Kunne ikke hente bruger');
-        }
-      }
-    };
-
-    getCurrentUser();
-
+  const isMountedRef = useRef(true);
+  useEffect(() => {
     return () => {
-      isMounted = false;
+      isMountedRef.current = false;
     };
   }, []);
 
-  useEffect(() => {
-    if (!currentUserId) {
-      console.log('⚠️ Library: No user ID yet, waiting...');
-      return;
-    }
+  const normalizeExercise = useCallback((row: any): Exercise => {
+    return {
+      id: String(row?.id ?? ''),
+      trainer_id: row?.trainer_id ? String(row.trainer_id) : null,
+      title: String(row?.title ?? ''),
+      description: row?.description ?? null,
+      video_url: row?.video_url ?? null,
+      thumbnail_url: row?.thumbnail_url ?? null,
+      created_at: row?.created_at ?? null,
+      updated_at: row?.updated_at ?? null,
+      is_system: typeof row?.is_system === 'boolean' ? row.is_system : !!row?.is_system,
+      category_path: row?.category_path ?? null,
+      difficulty: typeof row?.difficulty === 'number' ? row.difficulty : row?.difficulty != null ? Number(row.difficulty) : null,
+      "position": row?.position ?? row?.player_position ?? null,
+      trainer_name: row?.trainer_name ?? null,
+      last_score: typeof row?.last_score === 'number' ? row.last_score : row?.last_score != null ? Number(row.last_score) : null,
+      execution_count: typeof row?.execution_count === 'number' ? row.execution_count : row?.execution_count != null ? Number(row.execution_count) : null,
+      is_added_to_tasks: typeof row?.is_added_to_tasks === 'boolean' ? row.is_added_to_tasks : null,
+    };
+  }, []);
 
-    console.log('🔄 Library: User ID available, fetching library data...');
-    fetchLibraryData(currentUserId);
-  }, [currentUserId, selectedContext, reloadNonce, fetchLibraryData]);
+  const applyAdded = useCallback((xs: Exercise[]) => {
+    const set = addedToTasksIdsRef.current;
+    if (!set || set.size === 0) return xs;
+    return xs.map(e => ({ ...e, is_added_to_tasks: set.has(e.id) ? true : e.is_added_to_tasks }));
+  }, []);
+
+  const loadLibraryData = useCallback(
+    async (userId: string) => {
+      try {
+        setStatus('loading');
+        setErrorMessage('');
+
+        const systemPromise = supabase
+          .from('exercise_library')
+          .select('*')
+          .eq('is_system', true)
+          .order('created_at', { ascending: true });
+
+        const personalPromise = isAdmin
+          ? supabase
+              .from('exercise_library')
+              .select('*')
+              .eq('trainer_id', userId)
+              .eq('is_system', false)
+              .order('created_at', { ascending: false })
+          : Promise.resolve({ data: [], error: null } as any);
+
+        const teamIds = (teams || []).map(t => t.id).filter(Boolean);
+        const assignmentsPromise = !isAdmin
+          ? supabase
+              .from('exercise_assignments')
+              .select('*')
+              .or(teamIds.length ? `player_id.eq.${userId},team_id.in.(${teamIds.join(',')})` : `player_id.eq.${userId}`)
+          : Promise.resolve({ data: [], error: null } as any);
+
+        const [systemRes, personalRes, assignmentsRes] = await Promise.all([systemPromise, personalPromise, assignmentsPromise]);
+
+        if (systemRes.error) throw systemRes.error;
+        if (personalRes?.error) throw personalRes.error;
+        if (assignmentsRes?.error) throw assignmentsRes.error;
+
+        const system = (systemRes.data || []) as any[];
+        const personal = (personalRes?.data || []) as any[];
+        const assignments = (assignmentsRes?.data || []) as any[];
+
+        const systemExercises = applyAdded(system.map(normalizeExercise));
+
+        let trainerGrouped: Array<{ trainerId: string; trainerName: string; exercises: Exercise[] }> = [];
+        if (!isAdmin) {
+          const exerciseIds = Array.from(new Set(assignments.map((a: any) => String(a.exercise_id)).filter(Boolean)));
+          let assignedExercises: Exercise[] = [];
+
+          if (exerciseIds.length) {
+            const { data: exerciseRows, error: exErr } = await supabase.from('exercise_library').select('*').in('id', exerciseIds);
+            if (exErr) throw exErr;
+            assignedExercises = applyAdded((exerciseRows || []).map(normalizeExercise));
+          }
+
+          const trainerIds = Array.from(new Set(assignments.map((a: any) => String(a.trainer_id)).filter(Boolean)));
+          let trainerProfiles: Array<{ user_id: string; full_name: string | null }> = [];
+
+          if (trainerIds.length) {
+            const { data: profRows, error: profErr } = await supabase.from('profiles').select('user_id, full_name').in('user_id', trainerIds);
+            if (profErr) throw profErr;
+            trainerProfiles = (profRows || []) as any;
+          }
+
+          const profileName = (trainerId: string) =>
+            trainerProfiles.find(p => String(p.user_id) === String(trainerId))?.full_name || 'Ukendt træner';
+
+          const grouped = new Map<string, Exercise[]>();
+          assignments.forEach((a: any) => {
+            const tid = String(a.trainer_id || '');
+            const eid = String(a.exercise_id || '');
+            if (!tid || !eid) return;
+            const ex = assignedExercises.find(e => String(e.id) === eid);
+            if (!ex) return;
+
+            const next = grouped.get(tid) || [];
+            next.push({ ...ex, trainer_name: profileName(tid) });
+            grouped.set(tid, next);
+          });
+
+          trainerGrouped = Array.from(grouped.entries()).map(([trainerId, exercises]) => ({
+            trainerId,
+            trainerName: profileName(trainerId),
+            exercises,
+          }));
+        }
+
+        const personalExercises = isAdmin ? applyAdded(personal.map(normalizeExercise)) : [];
+
+        if (!isMountedRef.current) return;
+
+        setFootballCoachExercises(systemExercises);
+        setPersonalExercises(personalExercises);
+        setTrainerFolders(trainerGrouped);
+
+        const hasAny =
+          systemExercises.length > 0 ||
+          personalExercises.length > 0 ||
+          trainerGrouped.some(g => g.exercises.length > 0);
+
+        setStatus(hasAny ? 'success' : 'empty');
+      } catch (e: any) {
+        if (!isMountedRef.current) return;
+        setStatus('error');
+        setErrorMessage(e?.message || 'Kunne ikke hente bibliotek');
+      }
+    },
+    [isAdmin, teams, normalizeExercise, applyAdded]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.auth.getUser();
+      if (cancelled) return;
+      setCurrentUserId(data?.user?.id ?? null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
-      // Always start collapsed on focus (before fetch)
-      setExpandedFolders(new Set());
-
-      console.log('🔄 Library: Screen focused, refreshing data...');
-      if (currentUserId) {
-        fetchLibraryData(currentUserId);
-      }
-    }, [currentUserId, fetchLibraryData])
+      setReloadNonce(n => n + 1);
+    }, [])
   );
 
-  const handleRetry = () => {
-    setReloadNonce((n) => n + 1);
-  };
+  useEffect(() => {
+    if (!currentUserId) return;
+    loadLibraryData(currentUserId);
+  }, [currentUserId, reloadNonce, loadLibraryData]);
 
-  const toggleFolder = (folderId: string) => {
-    setExpandedFolders(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(folderId)) {
-        newSet.delete(folderId);
-      } else {
-        newSet.add(folderId);
-      }
-      return newSet;
+  const footballCoachCountsByPosition = useMemo(() => {
+    const m = new Map<string, number>();
+    footballCoachExercises.forEach(e => {
+      const posId = resolveFootballCoachPosId(e.category_path);
+      if (!posId) return;
+      m.set(posId, (m.get(posId) || 0) + 1);
     });
-  };
+    return m;
+  }, [footballCoachExercises]);
 
-  const openCreateModal = () => {
-    if (!isAdmin) {
-      Alert.alert('Ikke tilladt', 'Kun trænere kan oprette øvelser');
-      return;
-    }
-    
-    setSelectedExercise(null);
-    setIsCreating(true);
-    setTitle('');
-    setDescription('');
-    setVideoUrl('');
-    setSubtasks(['']);
-    setShowModal(true);
-  };
-
-  const openEditModal = (exercise: Exercise) => {
-    if (!isAdmin) {
-      Alert.alert('Ikke tilladt', 'Du kan ikke redigere denne øvelse');
-      return;
-    }
-    
-    setSelectedExercise(exercise);
-    setIsCreating(false);
-    setTitle(exercise.title);
-    setDescription(exercise.description || '');
-    setVideoUrl(exercise.video_url || '');
-    setSubtasks(exercise.subtasks.length > 0 ? exercise.subtasks.map(s => s.title) : ['']);
-    setShowModal(true);
-  };
-
-  const handleDeleteVideo = () => {
-    Alert.alert(
-      'Slet video',
-      'Er du sikker på at du vil fjerne videoen fra denne øvelse?',
-      [
-        { text: 'Annuller', style: 'cancel' },
-        {
-          text: 'Slet',
-          style: 'destructive',
-          onPress: () => {
-            setVideoUrl('');
-            Alert.alert('Video fjernet', 'Husk at gemme øvelsen for at bekræfte ændringen');
-          },
-        },
-      ]
-    );
-  };
-
-  const handleSaveExercise = async () => {
-    if (!title.trim()) {
-      Alert.alert('Fejl', 'Indtast venligst en titel');
-      return;
-    }
-
-    if (!isAdmin) {
-      Alert.alert('Fejl', 'Kun trænere kan gemme øvelser');
-      return;
-    }
-
-    setProcessing(true);
-    try {
-      if (!currentUserId) throw new Error('Not authenticated');
-
-      console.log('Saving exercise...');
-
-      if (isCreating) {
-        const { data: newExercise, error: exerciseError } = await supabase
-          .from('exercise_library')
-          .insert({
-            trainer_id: currentUserId,
-            title,
-            description: description || null,
-            video_url: videoUrl.trim() || null,
-          })
-          .select()
-          .single();
-
-        if (exerciseError) throw exerciseError;
-
-        const validSubtasks = subtasks.filter(s => s.trim());
-        if (validSubtasks.length > 0) {
-          const subtasksToInsert = validSubtasks.map((subtask, index) => ({
-            exercise_id: newExercise.id,
-            title: subtask,
-            sort_order: index,
-          }));
-
-          const { error: subtasksError } = await supabase
-            .from('exercise_subtasks')
-            .insert(subtasksToInsert);
-
-          if (subtasksError) throw subtasksError;
-        }
-
-        Alert.alert('Succes', 'Øvelse oprettet');
-      } else if (selectedExercise) {
-        const { error: updateError } = await supabase
-          .from('exercise_library')
-          .update({
-            title,
-            description: description || null,
-            video_url: videoUrl.trim() || null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', selectedExercise.id);
-
-        if (updateError) throw updateError;
-
-        const { error: deleteError } = await supabase
-          .from('exercise_subtasks')
-          .delete()
-          .eq('exercise_id', selectedExercise.id);
-
-        if (deleteError) throw deleteError;
-
-        const validSubtasks = subtasks.filter(s => s.trim());
-        if (validSubtasks.length > 0) {
-          const subtasksToInsert = validSubtasks.map((subtask, index) => ({
-            exercise_id: selectedExercise.id,
-            title: subtask,
-            sort_order: index,
-          }));
-
-          const { error: subtasksError } = await supabase
-            .from('exercise_subtasks')
-            .insert(subtasksToInsert);
-
-          if (subtasksError) throw subtasksError;
-        }
-
-        Alert.alert('Succes', 'Øvelse opdateret');
-      }
-
-      setShowModal(false);
-      if (currentUserId) {
-        await fetchLibraryData(currentUserId);
-      }
-    } catch (error: any) {
-      console.error('Error saving exercise:', error);
-      Alert.alert('Fejl', 'Kunne ikke gemme øvelse: ' + error.message);
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const handleDeleteExercise = (exercise: Exercise) => {
-    if (!isAdmin) {
-      Alert.alert('Ikke tilladt', 'Du kan ikke slette denne øvelse');
-      return;
-    }
-    
-    Alert.alert(
-      'Slet øvelse',
-      `Er du sikker på at du vil slette "${exercise.title}"?\n\nDette vil også fjerne alle tildelinger af denne øvelse.`,
-      [
-        { text: 'Annuller', style: 'cancel' },
-        {
-          text: 'Slet',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const { error } = await supabase
-                .from('exercise_library')
-                .delete()
-                .eq('id', exercise.id);
-
-              if (error) throw error;
-
-              Alert.alert('Succes', 'Øvelse slettet');
-              if (currentUserId) {
-                await fetchLibraryData(currentUserId);
-              }
-            } catch (error: any) {
-              console.error('Error deleting exercise:', error);
-              Alert.alert('Fejl', 'Kunne ikke slette øvelse: ' + error.message);
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  const handleDuplicateExercise = async (exercise: Exercise) => {
-    if (!isAdmin) {
-      Alert.alert('Ikke tilladt', 'Du kan ikke duplikere denne øvelse');
-      return;
-    }
-
-    setProcessing(true);
-    try {
-      if (!currentUserId) throw new Error('Not authenticated');
-
-      const { data: newExercise, error: exerciseError } = await supabase
-        .from('exercise_library')
-        .insert({
-          trainer_id: currentUserId,
-          title: `${exercise.title} (kopi)`,
-          description: exercise.description,
-          video_url: exercise.video_url,
-        })
-        .select()
-        .single();
-
-      if (exerciseError) throw exerciseError;
-
-      if (exercise.subtasks.length > 0) {
-        const subtasksToInsert = exercise.subtasks.map(subtask => ({
-          exercise_id: newExercise.id,
-          title: subtask.title,
-          sort_order: subtask.sort_order,
-        }));
-
-        const { error: subtasksError } = await supabase
-          .from('exercise_subtasks')
-          .insert(subtasksToInsert);
-
-        if (subtasksError) throw subtasksError;
-      }
-
-      Alert.alert('Succes', 'Øvelse duplikeret');
-      if (currentUserId) {
-        await fetchLibraryData(currentUserId);
-      }
-    } catch (error: any) {
-      console.error('Error duplicating exercise:', error);
-      Alert.alert('Fejl', 'Kunne ikke duplikere øvelse: ' + error.message);
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const openAssignModal = (exercise: Exercise) => {
-    if (!isAdmin) {
-      Alert.alert('Ikke tilladt', 'Du kan ikke tildele denne øvelse');
-      return;
-    }
-    
-    setSelectedExercise(exercise);
-    setShowAssignModal(true);
-  };
-
-  const handleAssignToPlayer = async (playerId: string) => {
-    if (!selectedExercise || !currentUserId) return;
-
-    setProcessing(true);
-    try {
-      const { error: assignmentError } = await supabase
-        .from('exercise_assignments')
-        .insert({
-          exercise_id: selectedExercise.id,
-          trainer_id: currentUserId,
-          player_id: playerId,
-          team_id: null,
-        });
-
-      if (assignmentError) {
-        if (assignmentError.message.includes('duplicate')) {
-          Alert.alert('Info', 'Denne øvelse er allerede tildelt denne spiller');
-          setProcessing(false);
-          return;
-        } else {
-          throw assignmentError;
-        }
-      }
-
-      Alert.alert('Succes', `Øvelse "${selectedExercise.title}" er nu tildelt spilleren`);
-      
-      if (currentUserId) {
-        await fetchLibraryData(currentUserId);
-      }
-      setShowAssignModal(false);
-    } catch (error: any) {
-      console.error('Error assigning exercise:', error);
-      Alert.alert('Fejl', 'Kunne ikke tildele øvelse: ' + error.message);
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const handleAssignToTeam = async (teamId: string) => {
-    if (!selectedExercise || !currentUserId) return;
-
-    setProcessing(true);
-    try {
-      const { error: assignmentError } = await supabase
-        .from('exercise_assignments')
-        .insert({
-          exercise_id: selectedExercise.id,
-          trainer_id: currentUserId,
-          player_id: null,
-          team_id: teamId,
-        });
-
-      if (assignmentError) {
-        if (assignmentError.message.includes('duplicate')) {
-          Alert.alert('Info', 'Denne øvelse er allerede tildelt dette team');
-          setProcessing(false);
-          return;
-        } else {
-          throw assignmentError;
-        }
-      }
-
-      Alert.alert('Succes', `Øvelse "${selectedExercise.title}" er nu tildelt teamet`);
-      
-      if (currentUserId) {
-        await fetchLibraryData(currentUserId);
-      }
-      setShowAssignModal(false);
-    } catch (error: any) {
-      console.error('Error assigning exercise:', error);
-      Alert.alert('Fejl', 'Kunne ikke tildele øvelse: ' + error.message);
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const handleCopyToTasks = async (exercise: Exercise) => {
-    setProcessing(true);
-    try {
-      if (!currentUserId) throw new Error('Not authenticated');
-
-      const { data: taskTemplate, error: taskTemplateError } = await supabase
-        .from('task_templates')
-        .insert({
-          user_id: currentUserId,
-          player_id: currentUserId,
-          title: exercise.title,
-          description: exercise.description,
-          video_url: exercise.video_url,
-          reminder_minutes: null,
-          source_folder: getSourceFolderForExercise(exercise),
-        })
-        .select()
-        .single();
-
-      if (exercise.subtasks.length > 0) {
-        const subtasksToInsert = exercise.subtasks.map(subtask => ({
-          task_template_id: taskTemplate.id,
-          title: subtask.title,
-          sort_order: subtask.sort_order,
-        }));
-
-        const { error: subtasksError } = await supabase
-          .from('task_template_subtasks')
-          .insert(subtasksToInsert);
-
-        if (subtasksError) {
-          console.error('❌ Error copying subtasks:', subtasksError);
-        }
-      }
-
-      Alert.alert('Succes', `Øvelse "${exercise.title}" er nu kopieret til dine opgaveskabeloner`);
-    } catch (error: any) {
-      console.error('Error copying exercise to tasks:', error);
-      Alert.alert('Fejl', 'Kunne ikke kopiere øvelse: ' + error.message);
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const openVideoModal = (url: string) => {
-    setSelectedVideoUrl(url);
-    setShowVideoModal(true);
-  };
-
-  const addSubtask = () => {
-    setSubtasks([...subtasks, '']);
-  };
-
-  const updateSubtask = (index: number, value: string) => {
-    const newSubtasks = [...subtasks];
-    newSubtasks[index] = value;
-    setSubtasks(newSubtasks);
-  };
-
-  const removeSubtask = (index: number) => {
-    if (subtasks.length > 1) {
-      setSubtasks(subtasks.filter((_, i) => i !== index));
-    }
-  };
-
-  // Map category_path -> "Holdtræning/Selvtræning" + subfolder navn
-  const footballCoachCategoryMap = React.useMemo(() => {
-    const map = new Map<string, { main: string; sub: string }>();
-    FOOTBALLCOACH_STRUCTURE.forEach((mainFolder) => {
-      (mainFolder.subfolders ?? []).forEach((sub) => {
-        map.set(sub.id, { main: mainFolder.name, sub: sub.name });
-      });
+  const footballCoachCountsByCategory = useMemo(() => {
+    const m = new Map<string, number>();
+    FOOTBALLCOACH_STRUCTURE.forEach(cat => {
+      const sum = cat.positions.reduce((acc, pos) => acc + (footballCoachCountsByPosition.get(pos.id) || 0), 0);
+      m.set(cat.id, sum);
     });
-    return map;
+    return m;
+  }, [footballCoachCountsByPosition]);
+
+  const trainerTotalExercises = useMemo(() => {
+    return trainerFolders.reduce((acc, t) => acc + (t.exercises?.length || 0), 0);
+  }, [trainerFolders]);
+
+  const rootFolders: FolderVM[] = useMemo(() => {
+    if (isAdmin) {
+      return [
+        {
+          id: 'personal',
+          level: 1,
+          title: 'Personlige øvelser',
+          subtitle: `${personalExercises.length} øvelser`,
+          rightBadgeText: String(personalExercises.length),
+          icon: buildIcon('personal'),
+          chevron: true,
+          kind: 'personal',
+          payload: { root: 'personal' },
+        },
+        {
+          id: 'footballcoach',
+          level: 1,
+          title: 'FootballCoach fokusområder',
+          subtitle: `${footballCoachExercises.length} øvelser`,
+          rightBadgeText: String(footballCoachExercises.length),
+          icon: buildIcon('footballcoach'),
+          chevron: true,
+          kind: 'footballcoach',
+          payload: { root: 'footballcoach' },
+        },
+      ];
+    }
+    return [
+      {
+        id: 'trainer',
+        level: 1,
+        title: 'Øvelser fra træner',
+        subtitle: `${trainerTotalExercises} øvelser`,
+        rightBadgeText: String(trainerTotalExercises),
+        icon: buildIcon('trainer'),
+        chevron: true,
+        kind: 'trainer',
+        payload: { root: 'trainer' },
+      },
+      {
+        id: 'footballcoach',
+        level: 1,
+        title: 'FootballCoach fokusområder',
+        subtitle: `${footballCoachExercises.length} øvelser`,
+        rightBadgeText: String(footballCoachExercises.length),
+        icon: buildIcon('footballcoach'),
+        chevron: true,
+        kind: 'footballcoach',
+        payload: { root: 'footballcoach' },
+      },
+    ];
+  }, [isAdmin, personalExercises.length, footballCoachExercises.length, trainerTotalExercises]);
+
+  const footballCoachCategories: FolderVM[] = useMemo(() => {
+    return FOOTBALLCOACH_STRUCTURE.map(cat => {
+      const count = footballCoachCountsByCategory.get(cat.id) || 0;
+      return {
+        id: cat.id,
+        level: 2,
+        title: cat.name,
+        subtitle: `${count} øvelser`,
+        rightBadgeText: String(count),
+        icon: buildIcon('footballcoach_category'),
+        chevron: true,
+        kind: 'footballcoach_category',
+        payload: { root: 'footballcoach', level2Id: cat.id },
+      };
+    });
+  }, [footballCoachCountsByCategory]);
+
+  const footballCoachPositions: FolderVM[] = useMemo(() => {
+    if (nav.root !== 'footballcoach' || !nav.level2Id) return [];
+    const cat = FOOTBALLCOACH_STRUCTURE.find(c => c.id === nav.level2Id);
+    if (!cat) return [];
+    return cat.positions.map(pos => {
+      const count = footballCoachCountsByPosition.get(pos.id) || 0;
+      return {
+        id: pos.id,
+        level: 3,
+        title: pos.name,
+        subtitle: `${count} øvelser`,
+        rightBadgeText: String(count),
+        icon: buildIcon('footballcoach_position'),
+        chevron: true,
+        kind: 'footballcoach_position',
+        payload: { root: 'footballcoach', level2Id: cat.id, level3Id: pos.id },
+      };
+    });
+  }, [nav.root, nav.level2Id, footballCoachCountsByPosition]);
+
+  const trainerLevel2Folders: FolderVM[] = useMemo(() => {
+    if (nav.root !== 'trainer') return [];
+    return trainerFolders.map(tf => ({
+      id: tf.trainerId,
+      level: 2,
+      title: tf.trainerName,
+      subtitle: `${tf.exercises.length} øvelser`,
+      rightBadgeText: String(tf.exercises.length),
+      icon: buildIcon('trainer'),
+      chevron: true,
+      kind: 'trainer',
+      payload: { root: 'trainer', level2Id: tf.trainerId },
+    }));
+  }, [nav.root, trainerFolders]);
+
+  const selectedExerciseHeaderTitle = useMemo(() => {
+    if (!nav.root) return '';
+    if (searchOpen && searchQuery.trim().length > 0) return 'Søgeresultater';
+    if (nav.root === 'personal') return 'Personlige øvelser';
+    if (nav.root === 'trainer') {
+      const t = trainerFolders.find(x => x.trainerId === nav.level2Id);
+      return t ? t.trainerName : 'Øvelser fra træner';
+    }
+    const cat = FOOTBALLCOACH_STRUCTURE.find(c => c.id === nav.level2Id);
+    const pos = cat?.positions.find(p => p.id === nav.level3Id);
+    return pos?.name || cat?.name || 'FootballCoach fokusområder';
+  }, [nav, trainerFolders, searchOpen, searchQuery]);
+
+  const visibleFolderStack: FolderVM[] = useMemo(() => {
+    const rows: FolderVM[] = [...rootFolders];
+    if (nav.root === 'footballcoach') {
+      rows.push(...footballCoachCategories);
+      if (nav.level2Id) rows.push(...footballCoachPositions);
+    }
+    if (nav.root === 'trainer') {
+      rows.push(...trainerLevel2Folders);
+    }
+    return rows;
+  }, [rootFolders, nav.root, nav.level2Id, footballCoachCategories, footballCoachPositions, trainerLevel2Folders]);
+
+  const selectedPathIds = useMemo(() => {
+    const s = new Set<string>();
+    if (!nav.root) return s;
+    if (nav.root === 'personal') {
+      s.add('personal');
+      return s;
+    }
+    if (nav.root === 'trainer') {
+      s.add('trainer');
+      if (nav.level2Id) s.add(nav.level2Id);
+      return s;
+    }
+    if (nav.root === 'footballcoach') {
+      s.add('footballcoach');
+      if (nav.level2Id) s.add(nav.level2Id);
+      if (nav.level3Id) s.add(nav.level3Id);
+      return s;
+    }
+    return s;
+  }, [nav]);
+
+  const exercisesInCurrentView: Exercise[] = useMemo(() => {
+    let list: Exercise[] = [];
+    if (nav.root === 'personal') {
+      list = personalExercises;
+    } else if (nav.root === 'trainer') {
+      if (!nav.level2Id) list = [];
+      else list = trainerFolders.find(t => t.trainerId === nav.level2Id)?.exercises ?? [];
+    } else if (nav.root === 'footballcoach') {
+      if (!nav.level3Id) list = [];
+      else {
+        list = footballCoachExercises.filter(e => resolveFootballCoachPosId(e.category_path) === nav.level3Id);
+      }
+    }
+    return list;
+  }, [nav, personalExercises, trainerFolders, footballCoachExercises]);
+
+  const dedupeById = useCallback((xs: Exercise[]) => {
+    const seen = new Set<string>();
+    const out: Exercise[] = [];
+    xs.forEach(e => {
+      if (!e?.id) return;
+      if (seen.has(e.id)) return;
+      seen.add(e.id);
+      out.push(e);
+    });
+    return out;
   }, []);
 
-  const getSourceFolderForExercise = useCallback(
-    (exercise: Exercise) => {
-      // System (FootballCoach – Fokusområder)
-      if (exercise.is_system) {
-        const cat = exercise.category_path;
-        const mapped = cat ? footballCoachCategoryMap.get(cat) : undefined;
+  const allExercisesForSearch = useMemo(() => {
+    if (!nav.root) return [];
+    if (nav.root === 'personal') return personalExercises;
+    if (nav.root === 'trainer') {
+      const flat = trainerFolders.flatMap(t => t.exercises || []);
+      return dedupeById(flat);
+    }
+    return footballCoachExercises;
+  }, [nav.root, personalExercises, trainerFolders, footballCoachExercises, dedupeById]);
 
-        if (mapped) {
-          return `FootballCoach Inspiration > ${mapped.main} > ${mapped.sub}`;
+  const displayedExercises: Exercise[] = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const isSearching = searchOpen && q.length > 0;
+    let list = isSearching ? allExercisesForSearch : exercisesInCurrentView;
+    if (isSearching) {
+      list = list.filter(e => {
+        const hay = `${e.title ?? ''} ${e.description ?? ''}`.toLowerCase();
+        return hay.includes(q);
+      });
+    }
+    if (sortKey === 'difficulty') {
+      return [...list].sort((a, b) => clampDifficulty(b.difficulty) - clampDifficulty(a.difficulty));
+    }
+    return [...list].sort((a, b) => {
+      const au = a.updated_at || a.created_at || '';
+      const bu = b.updated_at || b.created_at || '';
+      return String(bu).localeCompare(String(au));
+    });
+  }, [searchOpen, searchQuery, allExercisesForSearch, exercisesInCurrentView, sortKey]);
+
+  const isAtExerciseLevel = useMemo(() => {
+    if (nav.root === 'personal') return true;
+    if (nav.root === 'trainer') return !!nav.level2Id || (searchOpen && searchQuery.trim().length > 0);
+    if (nav.root === 'footballcoach') return !!nav.level3Id || (searchOpen && searchQuery.trim().length > 0);
+    return false;
+  }, [nav, searchOpen, searchQuery]);
+
+  const handleFolderPress = useCallback((folder: FolderVM) => {
+    const root = folder.payload?.root ?? null;
+    setSearchOpen(false);
+    setSearchQuery('');
+    setNav(prev => {
+      if (!root) return prev;
+      if (folder.level === 1) {
+        if (prev.root === root) return { root: null, level2Id: null, level3Id: null };
+        if (root === 'personal') pendingScrollToExercisesRef.current = true;
+        return { root, level2Id: null, level3Id: null };
+      }
+      if (root === 'trainer' && folder.level === 2) {
+        const nextLevel2 = folder.payload?.level2Id ?? null;
+        const isSame = prev.root === 'trainer' && prev.level2Id === nextLevel2;
+        pendingScrollToExercisesRef.current = true;
+        return isSame ? prev : { root: 'trainer', level2Id: nextLevel2, level3Id: null };
+      }
+      if (root === 'footballcoach') {
+        if (folder.level === 2) {
+          return { root: 'footballcoach', level2Id: folder.payload?.level2Id ?? null, level3Id: null };
         }
-
-        // Fallback hvis category_path mangler
-        return 'FootballCoach Inspiration';
+        if (folder.level === 3) {
+          const nextL2 = folder.payload?.level2Id ?? null;
+          const nextL3 = folder.payload?.level3Id ?? null;
+          const isSame = prev.root === 'footballcoach' && prev.level2Id === nextL2 && prev.level3Id === nextL3;
+          pendingScrollToExercisesRef.current = true;
+          return isSame ? prev : { root: 'footballcoach', level2Id: nextL2, level3Id: nextL3 };
+        }
       }
+      return prev;
+    });
+  }, []);
 
-      // Træner-templates (for spillere)
-      if (exercise.trainer_name) {
-        return `Fra træner: ${exercise.trainer_name}`;
-      }
-
-      // Personlige templates (for trænere)
-      if (isAdmin) {
-        return 'Personlige templates';
-      }
-
-      return 'Bibliotek';
+  const handlePressCard = useCallback(
+    (exercise: Exercise) => {
+      router.push({ pathname: '/exercise-details', params: { exerciseId: exercise.id } } as any);
     },
-    [footballCoachCategoryMap, isAdmin]
+    [router]
   );
 
-  const renderExerciseCard = (exercise: Exercise, isReadOnly: boolean = false) => {
-    // System exercises are always read-only
-    const isSystemExercise = exercise.is_system === true;
-    const shouldBeReadOnly = isReadOnly || isSystemExercise;
+  const handlePressCta = useCallback((exercise: Exercise) => {
+    setAddModalExercise(exercise);
+    setAddModalOpen(true);
+  }, []);
 
-    return (
-      <View 
-        key={exercise.id} 
-        style={[styles.exerciseCard, { backgroundColor: cardBgColor }]}
-      >
-        <View style={styles.exerciseHeader}>
-          <View style={styles.exerciseHeaderLeft}>
-            <IconSymbol
-              ios_icon_name="book.fill"
-              android_material_icon_name="menu_book"
-              size={24}
-              color={colors.primary}
-            />
-            <View style={styles.exerciseTitleContainer}>
-              <Text style={[styles.exerciseTitle, { color: textColor }]}>
-                {exercise.title}
-              </Text>
-              {exercise.trainer_name && (
-                <Text style={[styles.trainerName, { color: textSecondaryColor }]}>
-                  Fra: {exercise.trainer_name}
-                </Text>
-              )}
-            </View>
-          </View>
-          <View style={styles.exerciseActions}>
-            {shouldBeReadOnly ? (
-              <TouchableOpacity
-                style={[styles.actionButton, { backgroundColor: colors.primary }]}
-                onPress={() => handleCopyToTasks(exercise)}
-                disabled={processing}
-              >
-                <IconSymbol
-                  ios_icon_name="doc.on.doc"
-                  android_material_icon_name="content_copy"
-                  size={20}
-                  color="#fff"
-                />
-                <Text style={styles.copyButtonText}>Kopier</Text>
-              </TouchableOpacity>
-            ) : (
-              <>
-                <TouchableOpacity
-                  style={styles.actionButton}
-                  onPress={() => openAssignModal(exercise)}
-                  disabled={processing}
-                >
-                  <IconSymbol
-                    ios_icon_name="person.badge.plus"
-                    android_material_icon_name="person_add"
-                    size={20}
-                    color={colors.secondary}
-                  />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.actionButton}
-                  onPress={() => handleDuplicateExercise(exercise)}
-                  disabled={processing}
-                >
-                  <IconSymbol
-                    ios_icon_name="doc.on.doc"
-                    android_material_icon_name="content_copy"
-                    size={20}
-                    color={colors.secondary}
-                  />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.actionButton}
-                  onPress={() => openEditModal(exercise)}
-                  disabled={processing}
-                >
-                  <IconSymbol
-                    ios_icon_name="pencil"
-                    android_material_icon_name="edit"
-                    size={20}
-                    color={colors.accent}
-                  />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.actionButton}
-                  onPress={() => handleDeleteExercise(exercise)}
-                  disabled={processing}
-                >
-                  <IconSymbol
-                    ios_icon_name="trash"
-                    android_material_icon_name="delete"
-                    size={20}
-                    color={colors.error}
-                  />
-                </TouchableOpacity>
-              </>
-            )}
+  const handleCloseAddModal = useCallback(() => {
+    setAddModalOpen(false);
+    setAddModalExercise(null);
+  }, []);
+
+  const handleConfirmAddToTasks = useCallback(() => {
+    if (!addModalExercise) return;
+    setAddedToTasksIds(prev => {
+      const next = new Set(prev);
+      next.add(addModalExercise.id);
+      return next;
+    });
+    handleCloseAddModal();
+  }, [addModalExercise, handleCloseAddModal]);
+
+  const handleRetry = useCallback(() => {
+    setReloadNonce(n => n + 1);
+  }, []);
+
+  const toggleSort = useCallback((key: SortKey) => {
+    setSortKey(key);
+  }, []);
+
+  const handleToggleSearch = useCallback(() => {
+    setSearchOpen(prev => {
+      const next = !prev;
+      if (!next) setSearchQuery('');
+      return next;
+    });
+  }, []);
+
+  const handleClearSearch = useCallback(() => {
+    setSearchQuery('');
+  }, []);
+
+  useEffect(() => {
+    if (!addedToTasksIds.size) return;
+    setPersonalExercises(prev => prev.map(e => (addedToTasksIds.has(e.id) ? { ...e, is_added_to_tasks: true } : e)));
+    setFootballCoachExercises(prev => prev.map(e => (addedToTasksIds.has(e.id) ? { ...e, is_added_to_tasks: true } : e)));
+    setTrainerFolders(prev =>
+      prev.map(t => ({ ...t, exercises: t.exercises.map(e => (addedToTasksIds.has(e.id) ? { ...e, is_added_to_tasks: true } : e)) }))
+    );
+  }, [addedToTasksIds]);
+
+  const sections: LibrarySection[] = useMemo(() => {
+    const folderSection: LibrarySection = { key: 'folders', data: visibleFolderStack };
+    const exerciseSection: LibrarySection = { key: 'exercises', title: selectedExerciseHeaderTitle, data: displayedExercises };
+    return [folderSection, exerciseSection];
+  }, [visibleFolderStack, selectedExerciseHeaderTitle, displayedExercises]);
+
+  const listRef = useRef<SectionList<any>>(null);
+  const pendingScrollToExercisesRef = useRef(false);
+
+  const scrollToTop = useCallback(() => {
+    const ref = listRef.current as any;
+    try {
+      if (typeof ref?.scrollToOffset === 'function') {
+        ref.scrollToOffset({ offset: 0, animated: true });
+        return;
+      }
+      if (typeof ref?.scrollToLocation === 'function') {
+        ref.scrollToLocation({ sectionIndex: 0, itemIndex: 0, viewPosition: 0, animated: true });
+      }
+    } catch {}
+  }, []);
+
+  const scrollToExercises = useCallback(() => {
+    const ref = listRef.current as any;
+    try {
+      if (typeof ref?.scrollToLocation === 'function') {
+        ref.scrollToLocation({ sectionIndex: 1, itemIndex: 0, viewPosition: 0, animated: true });
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (!pendingScrollToExercisesRef.current) return;
+    if (!displayedExercises.length) {
+      pendingScrollToExercisesRef.current = false;
+      return;
+    }
+    const t = setTimeout(() => {
+      scrollToExercises();
+      pendingScrollToExercisesRef.current = false;
+    }, 60);
+    return () => clearTimeout(t);
+  }, [nav.root, nav.level2Id, nav.level3Id, displayedExercises.length, scrollToExercises]);
+
+  const renderSectionHeader = useCallback(
+    ({ section }: { section: LibrarySection }) => {
+      if (section.key !== 'exercises') return null;
+      return (
+        <View style={styles.exerciseHeaderRow}>
+          <Pressable onPress={scrollToTop} style={{ flex: 1 }}>
+            <Text style={[styles.exerciseHeaderTitle, { color: theme.text }]} numberOfLines={1}>
+              {section.title || ''}
+            </Text>
+          </Pressable>
+          <View style={styles.sortRow}>
+            <TouchableOpacity
+              onPress={() => toggleSort('recent')}
+              activeOpacity={0.85}
+              style={[styles.sortPill, { backgroundColor: sortKey === 'recent' ? theme.card : 'transparent', borderColor: theme.highlight }]}
+            >
+              <Text style={[styles.sortPillText, { color: theme.textSecondary }]}>Senest brugt</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => toggleSort('difficulty')}
+              activeOpacity={0.85}
+              style={[styles.sortPill, { backgroundColor: sortKey === 'difficulty' ? theme.card : 'transparent', borderColor: theme.highlight }]}
+            >
+              <Text style={[styles.sortPillText, { color: theme.textSecondary }]}>Sværhedsgrad</Text>
+            </TouchableOpacity>
           </View>
         </View>
+      );
+    },
+    [sortKey, theme, toggleSort, scrollToTop]
+  );
 
-        {exercise.description && (
-          <View style={styles.descriptionContainer}>
-            {isSystemExercise ? (
-              // For system exercises, render focus points as bullet list
-              exercise.description.split('\n').map((line, lineIndex) => (
-                <View key={`${exercise.id}-line-${lineIndex}`} style={styles.focusPointItem}>
-                  <Text style={[styles.focusPointBullet, { color: colors.primary }]}>•</Text>
-                  <Text style={[styles.focusPointText, { color: textSecondaryColor }]}>
-                    {line.trim()}
-                  </Text>
-                </View>
-              ))
-            ) : (
-              // For regular exercises, render as normal text
-              <Text style={[styles.exerciseDescription, { color: textSecondaryColor }]}>
-                {exercise.description}
-              </Text>
-            )}
-          </View>
-        )}
+  const renderItem = useCallback(
+    ({ item, section }: { item: any; section: LibrarySection }) => {
+      if (section.key === 'folders') {
+        const folder = item as FolderVM;
+        const isSelected = selectedPathIds.has(folder.id);
+        return <FolderRow item={folder} onPress={handleFolderPress} isSelected={isSelected} />;
+      }
+      const ex = item as Exercise;
+      let positionOverride: string | null = null;
+      const isSearching = searchOpen && searchQuery.trim().length > 0;
+      if (nav.root === 'footballcoach') {
+        if (isSearching) {
+          const posId = resolveFootballCoachPosId(ex.category_path);
+          positionOverride = posId ? FOOTBALLCOACH_POS_NAME_BY_ID.get(posId) ?? null : null;
+        } else if (nav.level3Id) {
+          positionOverride = FOOTBALLCOACH_POS_NAME_BY_ID.get(nav.level3Id) ?? null;
+        }
+      }
+      return (
+        <ExerciseCard
+          exercise={ex}
+          onPressCard={handlePressCard}
+          onPressCta={handlePressCta}
+          positionLabelOverride={positionOverride}
+        />
+      );
+    },
+    [handleFolderPress, handlePressCard, handlePressCta, selectedPathIds, nav.root, nav.level3Id, searchOpen, searchQuery]
+  );
 
-        {exercise.video_url && (
-          <View style={styles.videoPreviewContainer}>
-            <SmartVideoPlayer url={exercise.video_url} />
-          </View>
-        )}
-
-        {exercise.subtasks.length > 0 && (
-          <View style={styles.subtasksContainer}>
-            <Text style={[styles.subtasksTitle, { color: textColor }]}>Delopgaver:</Text>
-            {exercise.subtasks.map((subtask, index) => (
-              <View key={subtask.id} style={styles.subtaskItem}>
-                <Text style={[styles.subtaskText, { color: textSecondaryColor }]}>
-                  {index + 1}. {subtask.title}
-                </Text>
-              </View>
-            ))}
-          </View>
-        )}
-      </View>
-    );
-  };
-
-  const renderFolder = (folder: FolderItem, level: number = 0) => {
-    const isExpanded = expandedFolders.has(folder.id);
-    const hasContent = (folder.exercises && folder.exercises.length > 0) || (folder.subfolders && folder.subfolders.length > 0);
-    
-    return (
-      <React.Fragment key={folder.id}>
-        <TouchableOpacity
-          style={[
-            styles.folderHeader,
-            { 
-              backgroundColor: cardBgColor,
-              marginLeft: level * 16,
-            }
-          ]}
-          onPress={() => toggleFolder(folder.id)}
-        >
-          <View style={styles.folderHeaderLeft}>
-            <IconSymbol
-              ios_icon_name={folder.icon}
-              android_material_icon_name={folder.androidIcon}
-              size={24}
-              color={colors.primary}
-            />
-            <Text style={[styles.folderName, { color: textColor }]}>
-              {folder.name}
-            </Text>
-            {folder.exercises && folder.exercises.length > 0 && (
-              <View style={[styles.countBadge, { backgroundColor: colors.primary }]}>
-                <Text style={styles.countBadgeText}>{folder.exercises.length}</Text>
-              </View>
-            )}
-          </View>
-          <IconSymbol
-            ios_icon_name={isExpanded ? 'chevron.down' : 'chevron.right'}
-            android_material_icon_name={isExpanded ? 'expand_more' : 'chevron_right'}
-            size={20}
-            color={textSecondaryColor}
-          />
-        </TouchableOpacity>
-
-        {isExpanded && (
-          <View style={[styles.folderContent, { marginLeft: level * 16 }]}>
-            {folder.subfolders && folder.subfolders.map(subfolder => renderFolder(subfolder, level + 1))}
-            
-            {folder.exercises && folder.exercises.length > 0 && (
-              <View style={styles.exercisesContainer}>
-                {folder.exercises.map(exercise => renderExerciseCard(exercise, folder.type === 'trainer' || folder.type === 'footballcoach'))}
-              </View>
-            )}
-
-            {folder.exercises && folder.exercises.length === 0 && !folder.subfolders && (
-              <View style={[styles.emptyFolder, { backgroundColor: isDark ? '#1a1a1a' : '#f5f5f5' }]}>
-                <Text style={[styles.emptyFolderText, { color: textSecondaryColor }]}>
-                  {folder.type === 'footballcoach' ? 'Kommer snart...' : 'Ingen øvelser endnu'}
-                </Text>
-              </View>
-            )}
-          </View>
-        )}
-      </React.Fragment>
-    );
-  };
+  const keyExtractor = useCallback((item: any, index: number) => {
+    if ((item as FolderVM)?.kind) return `folder-${(item as FolderVM).id}`;
+    if ((item as Exercise)?.id) return `exercise-${(item as Exercise).id}`;
+    return `row-${index}`;
+  }, []);
 
   if (status === 'loading') {
     return (
-      <View style={[styles.container, { backgroundColor: containerBgColor }]}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[styles.loadingText, { color: textColor }]}>Indlæser bibliotek...</Text>
+      <View style={[styles.screen, { backgroundColor: theme.background }]}>
+        <View style={styles.topBar}>
+          <Text style={[styles.screenTitle, { color: theme.text }]}>Bibliotek</Text>
+          <View style={styles.topBarRight}>
+            <TouchableOpacity activeOpacity={0.8} style={styles.iconButton} onPress={handleToggleSearch}>
+              <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={22} color={theme.text} />
+            </TouchableOpacity>
+          </View>
+        </View>
+        {searchOpen ? (
+          <View style={[styles.searchBarWrap, { backgroundColor: theme.card, borderColor: theme.highlight }]}>
+            <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={18} color={theme.textSecondary} />
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Søg øvelser..."
+              placeholderTextColor={theme.textSecondary}
+              style={[styles.searchInput, { color: theme.text }]}
+              autoCorrect={false}
+              autoCapitalize="none"
+              returnKeyType="search"
+            />
+            {searchQuery.trim().length > 0 ? (
+              <TouchableOpacity onPress={handleClearSearch} style={styles.iconButton} activeOpacity={0.8}>
+                <IconSymbol ios_icon_name="xmark.circle.fill" android_material_icon_name="cancel" size={20} color={theme.textSecondary} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
+        <View style={styles.listPad}>
+          <SkeletonFolderRow level={1} />
+          <SkeletonFolderRow level={1} />
+          <SkeletonFolderRow level={1} />
+          <View style={{ height: 12 }} />
+          <SkeletonExerciseCard />
+          <SkeletonExerciseCard />
         </View>
       </View>
     );
@@ -1076,46 +1033,38 @@ export default function LibraryScreen() {
 
   if (status === 'error') {
     return (
-      <View style={[styles.container, { backgroundColor: containerBgColor }]}>        
-        <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: textColor, textAlign: 'center' }]}>
-            {errorMessage || 'Kunne ikke hente bibliotek'}
-          </Text>
-          <TouchableOpacity
-            style={[styles.createButton, { backgroundColor: colors.primary }]}
-            onPress={handleRetry}
-            activeOpacity={0.7}
-          >
-            <IconSymbol
-              ios_icon_name="arrow.clockwise"
-              android_material_icon_name="refresh"
-              size={20}
-              color="#fff"
-            />
-            <Text style={styles.createButtonText}>Prøv igen</Text>
-          </TouchableOpacity>
+      <View style={[styles.screen, { backgroundColor: theme.background }]}>
+        <View style={styles.topBar}>
+          <Text style={[styles.screenTitle, { color: theme.text }]}>Bibliotek</Text>
+          <View style={styles.topBarRight}>
+            <TouchableOpacity activeOpacity={0.8} style={styles.iconButton} onPress={handleToggleSearch}>
+              <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={22} color={theme.text} />
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
-    );
-  }
-
-  if (status === 'empty') {
-    return (
-      <View style={[styles.container, { backgroundColor: containerBgColor }]}>        
-        <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: textColor, textAlign: 'center' }]}>Ingen indhold fundet i biblioteket.</Text>
-          <TouchableOpacity
-            style={[styles.createButton, { backgroundColor: colors.primary }]}
-            onPress={handleRetry}
-            activeOpacity={0.7}
-          >
-            <IconSymbol
-              ios_icon_name="arrow.clockwise"
-              android_material_icon_name="refresh"
-              size={20}
-              color="#fff"
+        {searchOpen ? (
+          <View style={[styles.searchBarWrap, { backgroundColor: theme.card, borderColor: theme.highlight }]}>
+            <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={18} color={theme.textSecondary} />
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Søg øvelser..."
+              placeholderTextColor={theme.textSecondary}
+              style={[styles.searchInput, { color: theme.text }]}
+              autoCorrect={false}
+              autoCapitalize="none"
+              returnKeyType="search"
             />
-            <Text style={styles.createButtonText}>Opdater</Text>
+            <TouchableOpacity onPress={handleToggleSearch} style={styles.iconButton} activeOpacity={0.8}>
+              <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={20} color={theme.textSecondary} />
+            </TouchableOpacity>
+          </View>
+        ) : null}
+        <View style={[styles.stateCard, { backgroundColor: theme.card }]}>
+          <Text style={[styles.stateTitle, { color: theme.error }]}>Kunne ikke hente bibliotek</Text>
+          <Text style={[styles.stateMessage, { color: theme.textSecondary }]}>{errorMessage}</Text>
+          <TouchableOpacity onPress={handleRetry} activeOpacity={0.9} style={[styles.retryButton, { backgroundColor: theme.primary }]}>
+            <Text style={styles.retryButtonText}>Prøv igen</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1123,779 +1072,265 @@ export default function LibraryScreen() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: containerBgColor }]}>
-      <View style={styles.header}>
-        <View>
-          <Text style={[styles.headerTitle, { color: textColor }]}>
-            Øvelsesbibliotek
-          </Text>
-          <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
-            Struktureret i mapper
-          </Text>
-        </View>
-        {isAdmin && (
-          <TouchableOpacity
-            style={[styles.createButton, { backgroundColor: colors.primary }]}
-            onPress={openCreateModal}
-            activeOpacity={0.7}
-          >
-            <IconSymbol
-              ios_icon_name="plus.circle.fill"
-              android_material_icon_name="add_circle"
-              size={24}
-              color="#fff"
-            />
-            <Text style={styles.createButtonText}>Ny øvelse</Text>
+    <View style={[styles.screen, { backgroundColor: theme.background }]}>
+      <View style={styles.topBar}>
+        <Text style={[styles.screenTitle, { color: theme.text }]}>Bibliotek</Text>
+        <View style={styles.topBarRight}>
+          <TouchableOpacity activeOpacity={0.8} style={styles.iconButton} onPress={handleToggleSearch}>
+            <IconSymbol ios_icon_name={searchOpen ? "xmark" : "magnifyingglass"} android_material_icon_name={searchOpen ? "close" : "search"} size={22} color={theme.text} />
           </TouchableOpacity>
-        )}
-      </View>
-
-      <ScrollView
-        style={styles.content}
-        contentContainerStyle={styles.contentContainer}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Personal Templates Folder */}
-        {isAdmin && (
-          <>
-            {renderFolder({
-              id: 'personal',
-              name: 'Personlige templates',
-              type: 'personal',
-              icon: 'person.crop.circle.fill',
-              androidIcon: 'account_circle',
-              exercises: personalExercises,
-            })}
-          </>
-        )}
-
-        {/* Templates from Trainers Folder */}
-        {!isAdmin && trainerFolders.length > 0 && (
-          <>
-            <TouchableOpacity
-              style={[styles.folderHeader, { backgroundColor: cardBgColor }]}
-              onPress={() => toggleFolder('trainers')}
-            >
-              <View style={styles.folderHeaderLeft}>
-                <IconSymbol
-                  ios_icon_name="person.2.fill"
-                  android_material_icon_name="groups"
-                  size={24}
-                  color={colors.secondary}
-                />
-                <Text style={[styles.folderName, { color: textColor }]}>
-                  Templates fra trænere
-                </Text>
-                <View style={[styles.countBadge, { backgroundColor: colors.secondary }]}>
-                  <Text style={styles.countBadgeText}>{trainerFolders.length}</Text>
-                </View>
-              </View>
-              <IconSymbol
-                ios_icon_name={expandedFolders.has('trainers') ? 'chevron.down' : 'chevron.right'}
-                android_material_icon_name={expandedFolders.has('trainers') ? 'expand_more' : 'chevron_right'}
-                size={20}
-                color={textSecondaryColor}
-              />
-            </TouchableOpacity>
-
-            {expandedFolders.has('trainers') && (
-              <View style={styles.folderContent}>
-                {trainerFolders.map(folder => renderFolder(folder, 1))}
-              </View>
-            )}
-          </>
-        )}
-
-        {/* FootballCoach Focus Areas Folder */}
-        <TouchableOpacity
-          style={[styles.folderHeader, { backgroundColor: cardBgColor }]}
-          onPress={() => toggleFolder('footballcoach')}
-        >
-          <View style={styles.folderHeaderLeft}>
-            <IconSymbol
-              ios_icon_name="star.circle.fill"
-              android_material_icon_name="stars"
-              size={24}
-              color={colors.accent}
-            />
-            <Text style={[styles.folderName, { color: textColor }]}>
-              FootballCoach – Fokusområder
-            </Text>
-            <View style={[styles.readOnlyBadge, { backgroundColor: isDark ? '#444' : '#e0e0e0' }]}>
-              <Text style={[styles.readOnlyBadgeText, { color: textSecondaryColor }]}>Inspiration</Text>
-            </View>
-          </View>
-          <IconSymbol
-            ios_icon_name={expandedFolders.has('footballcoach') ? 'chevron.down' : 'chevron.right'}
-            android_material_icon_name={expandedFolders.has('footballcoach') ? 'expand_more' : 'chevron_right'}
-            size={20}
-            color={textSecondaryColor}
-          />
-        </TouchableOpacity>
-
-        {expandedFolders.has('footballcoach') && (
-          <View style={styles.folderContent}>
-            {footballCoachFolders.map(folder => renderFolder(folder, 1))}
-          </View>
-        )}
-
-        <View style={{ height: 100 }} />
-      </ScrollView>
-
-      {/* Create/Edit Exercise Modal */}
-      <Modal
-        visible={showModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => !processing && setShowModal(false)}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={[styles.modalContainer, { backgroundColor: bgColor }]}
-        >
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => !processing && setShowModal(false)} disabled={processing}>
-              <IconSymbol
-                ios_icon_name="xmark"
-                android_material_icon_name="close"
-                size={24}
-                color={textColor}
-              />
-            </TouchableOpacity>
-            <Text style={[styles.modalTitle, { color: textColor }]}>
-              {isCreating ? 'Ny øvelse' : 'Rediger øvelse'}
-            </Text>
-            <View style={{ width: 24 }} />
-          </View>
-
-          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
-            <Text style={[styles.label, { color: textColor }]}>Titel *</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: cardBgColor, color: textColor }]}
-              value={title}
-              onChangeText={setTitle}
-              placeholder="F.eks. Dribling øvelse"
-              placeholderTextColor={textSecondaryColor}
-              editable={!processing}
-            />
-
-            <Text style={[styles.label, { color: textColor }]}>Beskrivelse</Text>
-            <TextInput
-              style={[styles.input, styles.textArea, { backgroundColor: cardBgColor, color: textColor }]}
-              value={description}
-              onChangeText={setDescription}
-              placeholder="Beskriv øvelsen..."
-              placeholderTextColor={textSecondaryColor}
-              multiline
-              numberOfLines={4}
-              editable={!processing}
-            />
-
-            <View style={styles.videoSection}>
-              <View style={styles.videoLabelRow}>
-                <Text style={[styles.label, { color: textColor }]}>Video URL (YouTube eller Vimeo)</Text>
-                {videoUrl.trim() && (
-                  <TouchableOpacity
-                    style={styles.deleteVideoButton}
-                    onPress={handleDeleteVideo}
-                    disabled={processing}
-                  >
-                    <IconSymbol
-                      ios_icon_name="trash.fill"
-                      android_material_icon_name="delete"
-                      size={18}
-                      color={colors.error}
-                    />
-                    <Text style={[styles.deleteVideoText, { color: colors.error }]}>Slet video</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-              <TextInput
-                style={[styles.input, { backgroundColor: cardBgColor, color: textColor }]}
-                value={videoUrl}
-                onChangeText={setVideoUrl}
-                placeholder="https://youtube.com/... eller https://vimeo.com/..."
-                placeholderTextColor={textSecondaryColor}
-                editable={!processing}
-                autoCapitalize="none"
-              />
-              {videoUrl.trim() && (
-                <View style={styles.videoPreviewSmall}>
-                  <SmartVideoPlayer url={videoUrl} />
-                  <Text style={[styles.helperText, { color: colors.secondary }]}>
-                    ✓ Video URL gemt
-                  </Text>
-                </View>
-              )}
-            </View>
-
-            <View style={styles.subtasksSection}>
-              <View style={styles.subtasksHeader}>
-                <Text style={[styles.label, { color: textColor }]}>Delopgaver</Text>
-                <TouchableOpacity
-                  style={[styles.addSubtaskButton, { backgroundColor: colors.primary }]}
-                  onPress={addSubtask}
-                  disabled={processing}
-                >
-                  <IconSymbol
-                    ios_icon_name="plus"
-                    android_material_icon_name="add"
-                    size={16}
-                    color="#fff"
-                  />
-                  <Text style={styles.addSubtaskText}>Tilføj</Text>
-                </TouchableOpacity>
-              </View>
-
-              {subtasks.map((subtask, index) => (
-                <View key={index} style={styles.subtaskInputRow}>
-                  <TextInput
-                    style={[styles.subtaskInput, { backgroundColor: cardBgColor, color: textColor }]}
-                    value={subtask}
-                    onChangeText={(value) => updateSubtask(index, value)}
-                    placeholder={`Delopgave ${index + 1}`}
-                    placeholderTextColor={textSecondaryColor}
-                    editable={!processing}
-                  />
-                  {subtasks.length > 1 && (
-                    <TouchableOpacity
-                      style={styles.removeSubtaskButton}
-                      onPress={() => removeSubtask(index)}
-                      disabled={processing}
-                    >
-                      <IconSymbol
-                        ios_icon_name="minus.circle"
-                        android_material_icon_name="remove_circle"
-                        size={24}
-                        color={colors.error}
-                      />
-                    </TouchableOpacity>
-                  )}
-                </View>
-              ))}
-            </View>
-          </ScrollView>
-
-          <View style={styles.modalFooter}>
-            <TouchableOpacity
-              style={[styles.cancelButton, { backgroundColor: cardBgColor }]}
-              onPress={() => setShowModal(false)}
-              disabled={processing}
-            >
-              <Text style={[styles.cancelButtonText, { color: textColor }]}>Annuller</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.saveButton, { backgroundColor: colors.primary, opacity: processing ? 0.6 : 1 }]}
-              onPress={handleSaveExercise}
-              disabled={processing}
-            >
-              {processing ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Text style={styles.saveButtonText}>{processing ? 'Gemmer...' : 'Gem'}</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* Assign Exercise Modal */}
-      <Modal
-        visible={showAssignModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowAssignModal(false)}
-      >
-        <View style={[styles.modalContainer, { backgroundColor: bgColor }]}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowAssignModal(false)}>
-              <IconSymbol
-                ios_icon_name="xmark"
-                android_material_icon_name="close"
-                size={24}
-                color={textColor}
-              />
-            </TouchableOpacity>
-            <Text style={[styles.modalTitle, { color: textColor }]}>Tildel øvelse</Text>
-            <View style={{ width: 24 }} />
-          </View>
-
-          <ScrollView style={styles.modalContent}>
-            <Text style={[styles.sectionTitle, { color: textColor }]}>Spillere</Text>
-            {players.length === 0 ? (
-              <View style={[styles.emptySection, { backgroundColor: cardBgColor }]}>
-                <Text style={[styles.emptySectionText, { color: textSecondaryColor }]}>
-                  Ingen spillere tilgængelige
-                </Text>
-              </View>
-            ) : (
-              players.map((player) => (
-                <TouchableOpacity
-                  key={player.id}
-                  style={[styles.assignCard, { backgroundColor: cardBgColor }]}
-                  onPress={() => handleAssignToPlayer(player.id)}
-                  disabled={processing}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.assignIcon}>
-                    <IconSymbol
-                      ios_icon_name="person.fill"
-                      android_material_icon_name="person"
-                      size={24}
-                      color={colors.primary}
-                    />
-                  </View>
-                  <Text style={[styles.assignName, { color: textColor }]}>{player.full_name}</Text>
-                  <IconSymbol
-                    ios_icon_name="chevron.right"
-                    android_material_icon_name="chevron_right"
-                    size={20}
-                    color={textSecondaryColor}
-                  />
-                </TouchableOpacity>
-              ))
-            )}
-
-            <Text style={[styles.sectionTitle, { color: textColor, marginTop: 24 }]}>Teams</Text>
-            {teams.length === 0 ? (
-              <View style={[styles.emptySection, { backgroundColor: cardBgColor }]}>
-                <Text style={[styles.emptySectionText, { color: textSecondaryColor }]}>
-                  Ingen teams tilgængelige
-                </Text>
-              </View>
-            ) : (
-              teams.map((team) => (
-                <TouchableOpacity
-                  key={team.id}
-                  style={[styles.assignCard, { backgroundColor: cardBgColor }]}
-                  onPress={() => handleAssignToTeam(team.id)}
-                  disabled={processing}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.assignIcon}>
-                    <IconSymbol
-                      ios_icon_name="person.3.fill"
-                      android_material_icon_name="groups"
-                      size={24}
-                      color={colors.primary}
-                    />
-                  </View>
-                  <Text style={[styles.assignName, { color: textColor }]}>{team.name}</Text>
-                  <IconSymbol
-                    ios_icon_name="chevron.right"
-                    android_material_icon_name="chevron_right"
-                    size={20}
-                    color={textSecondaryColor}
-                  />
-                </TouchableOpacity>
-              ))
-            )}
-          </ScrollView>
         </View>
-      </Modal>
-
-      {/* Video Modal */}
-      {selectedVideoUrl && (
-        <Modal
-          visible={showVideoModal}
-          animationType="slide"
-          presentationStyle="fullScreen"
-          onRequestClose={() => setShowVideoModal(false)}
-        >
-          <View style={{ flex: 1, backgroundColor: '#000' }}>
-            <View style={{ 
-              flexDirection: 'row', 
-              alignItems: 'center', 
-              justifyContent: 'space-between',
-              paddingTop: Platform.OS === 'android' ? 48 : 60,
-              paddingBottom: 16,
-              paddingHorizontal: 20,
-              backgroundColor: 'rgba(0,0,0,0.9)'
-            }}>
-              <TouchableOpacity 
-                onPress={() => setShowVideoModal(false)}
-                style={{ padding: 4 }}
-              >
-                <IconSymbol
-                  ios_icon_name="xmark.circle.fill"
-                  android_material_icon_name="close"
-                  size={32}
-                  color="#fff"
-                />
-              </TouchableOpacity>
-              <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#fff' }}>
-                Video
-              </Text>
-              <View style={{ width: 32 }} />
+      </View>
+      {searchOpen ? (
+        <View style={[styles.searchBarWrap, { backgroundColor: theme.card, borderColor: theme.highlight }]}>
+          <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={18} color={theme.textSecondary} />
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Søg øvelser..."
+            placeholderTextColor={theme.textSecondary}
+            style={[styles.searchInput, { color: theme.text }]}
+            autoCorrect={false}
+            autoCapitalize="none"
+            returnKeyType="search"
+          />
+          {searchQuery.trim().length > 0 ? (
+            <TouchableOpacity onPress={handleClearSearch} style={styles.iconButton} activeOpacity={0.8}>
+              <IconSymbol ios_icon_name="xmark.circle.fill" android_material_icon_name="cancel" size={20} color={theme.textSecondary} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : null}
+      <SectionList
+        sections={sections as any}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem as any}
+        renderSectionHeader={renderSectionHeader as any}
+        contentContainerStyle={styles.listPad}
+        stickySectionHeadersEnabled={false}
+        showsVerticalScrollIndicator={false}
+        initialNumToRender={10}
+        windowSize={11}
+        maxToRenderPerBatch={10}
+        updateCellsBatchingPeriod={50}
+        removeClippedSubviews={Platform.OS !== 'web'}
+        ListEmptyComponent={
+          isAtExerciseLevel ? (
+            <View style={[styles.stateCard, { backgroundColor: theme.card }]}>
+              {searchOpen && searchQuery.trim().length > 0 ? (
+                <>
+                  <Text style={[styles.stateTitle, { color: theme.text }]}>Ingen resultater</Text>
+                  <Text style={[styles.stateMessage, { color: theme.textSecondary }]}>Prøv en anden søgning.</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={[styles.stateTitle, { color: theme.text }]}>Denne mappe er tom</Text>
+                  <Text style={[styles.stateMessage, { color: theme.textSecondary }]}>Der er ingen øvelser i denne mappe endnu.</Text>
+                  {isAdmin ? (
+                    <TouchableOpacity
+                      activeOpacity={0.9}
+                      style={[styles.retryButton, { backgroundColor: theme.primary }]}
+                      onPress={() => {
+                        setAddModalExercise(null);
+                        setAddModalOpen(true);
+                      }}
+                    >
+                      <Text style={styles.retryButtonText}>Opret øvelse</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </>
+              )}
             </View>
-            <SmartVideoPlayer url={selectedVideoUrl} />
+          ) : null
+        }
+        ListFooterComponent={<View style={{ height: 90 }} />}
+        ref={listRef}
+      />
+      <Modal visible={addModalOpen} transparent animationType="fade" onRequestClose={handleCloseAddModal}>
+        <Pressable style={styles.modalBackdrop} onPress={handleCloseAddModal}>
+          <View style={[styles.modalSheet, { backgroundColor: theme.card }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>{addModalExercise ? 'Tilføj til opgaver' : 'Opret øvelse'}</Text>
+              <TouchableOpacity onPress={handleCloseAddModal} style={styles.iconButton}>
+                <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={20} color={theme.text} />
+              </TouchableOpacity>
+            </View>
+            {addModalExercise ? (
+              <>
+                <Text style={[styles.modalBodyText, { color: theme.textSecondary }]}>
+                  Vælg aktivitet/opgave i bundsheet-flowet (tilkobles senere). For nu toggles UI-state lokalt.
+                </Text>
+                <View style={styles.modalActions}>
+                  <TouchableOpacity activeOpacity={0.9} style={[styles.modalActionPrimary, { backgroundColor: colors.success }]} onPress={handleConfirmAddToTasks}>
+                    <Text style={styles.modalActionPrimaryText}>Tilføj</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity activeOpacity={0.9} style={[styles.modalActionSecondary, { borderColor: theme.highlight }]} onPress={handleCloseAddModal}>
+                    <Text style={[styles.modalActionSecondaryText, { color: theme.textSecondary }]}>Annuller</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={[styles.modalBodyText, { color: theme.textSecondary }]}>Opret-flowet kan kobles på en eksisterende skærm. (Ingen DB-kald her.)</Text>
+                <View style={styles.modalActions}>
+                  <TouchableOpacity activeOpacity={0.9} style={[styles.modalActionSecondary, { borderColor: theme.highlight }]} onPress={handleCloseAddModal}>
+                    <Text style={[styles.modalActionSecondaryText, { color: theme.textSecondary }]}>Luk</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
           </View>
-        </Modal>
-      )}
+        </Pressable>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 16,
-  },
-  loadingText: {
-    fontSize: 16,
-  },
-  header: {
+  screen: { flex: 1 },
+  topBar: {
+    paddingTop: Platform.OS === 'android' ? 54 : 56,
+    paddingHorizontal: 18,
+    paddingBottom: 10,
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: Platform.OS === 'android' ? 60 : 70,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
   },
-  headerTitle: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  headerSubtitle: {
-    fontSize: 16,
-  },
-  createButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-  },
-  createButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  content: {
-    flex: 1,
-  },
-  contentContainer: {
-    paddingHorizontal: 20,
-  },
-  folderHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 8,
-  },
-  folderHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-  },
-  folderName: {
-    fontSize: 18,
-    fontWeight: '600',
-    flex: 1,
-  },
-  countBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  countBadgeText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  readOnlyBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  readOnlyBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  folderContent: {
-    marginBottom: 8,
-  },
-  exercisesContainer: {
-    gap: 8,
-  },
-  emptyFolder: {
-    padding: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  emptyFolderText: {
-    fontSize: 14,
-    fontStyle: 'italic',
-  },
-  exerciseCard: {
+  screenTitle: { fontSize: 34, fontWeight: '800' },
+  topBarRight: { flexDirection: 'row', gap: 12, alignItems: 'center' },
+  iconButton: { padding: 6 },
+
+  searchBarWrap: {
+    marginHorizontal: 18,
+    marginBottom: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderRadius: 16,
-    padding: 20,
-    marginBottom: 8,
-  },
-  exerciseHeader: {
+    borderWidth: 1,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
+    alignItems: 'center',
+    gap: 10,
   },
-  exerciseHeaderLeft: {
+  searchInput: { flex: 1, fontSize: 14, fontWeight: '600' },
+
+  listPad: { paddingHorizontal: 18, paddingBottom: 16 },
+
+  folderRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: 12,
-    flex: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    marginBottom: 10,
   },
-  exerciseTitleContainer: {
-    flex: 1,
+  folderIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  exerciseTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 4,
+  folderTextWrap: { flex: 1, gap: 2 },
+  folderTitle: { fontSize: 16, fontWeight: '700' },
+  folderSubtitle: { fontSize: 13, fontWeight: '500' },
+  folderRightBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    marginRight: 6,
   },
-  trainerName: {
-    fontSize: 14,
-    fontStyle: 'italic',
-  },
-  exerciseActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  actionButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: colors.highlight,
+  folderRightBadgeText: { fontSize: 12, fontWeight: '800' },
+
+  exerciseHeaderRow: {
+    marginTop: 6,
+    marginBottom: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-  },
-  copyButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  exerciseDescription: {
-    fontSize: 15,
-    lineHeight: 22,
-    marginBottom: 12,
-  },
-  descriptionContainer: {
-    marginBottom: 12,
-  },
-  focusPointItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-    paddingLeft: 4,
-  },
-  focusPointBullet: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginRight: 8,
-    marginTop: -2,
-  },
-  focusPointText: {
-    flex: 1,
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  videoPreviewContainer: {
-    marginBottom: 12,
-  },
-  videoSection: {
-    marginBottom: 16,
-  },
-  videoLabelRow: {
-    flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
+    gap: 12,
   },
-  deleteVideoButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+  exerciseHeaderTitle: { fontSize: 20, fontWeight: '800', flex: 1 },
+  sortRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  sortPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
   },
-  deleteVideoText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  videoPreviewSmall: {
-    marginTop: 8,
+  sortPillText: { fontSize: 12, fontWeight: '600' },
+
+  exerciseCard: {
+    borderRadius: 18,
+    padding: 14,
     marginBottom: 12,
   },
-  helperText: {
-    fontSize: 14,
-    marginTop: 4,
+  exerciseTop: { flexDirection: 'row', gap: 14 },
+  exerciseLeft: { flex: 1, paddingRight: 6 },
+  exerciseRight: { width: 150, height: 110 },
+  thumb: { width: '100%', height: '100%', borderRadius: 14 },
+  playOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.25)',
   },
-  subtasksContainer: {
-    marginTop: 8,
+  trophyWrap: { height: 20, justifyContent: 'center' },
+  trophyEmoji: { fontSize: 18, lineHeight: 20 },
+  trophySpacer: { height: 20 },
+
+  exerciseTitle: { fontSize: 17, fontWeight: '800', marginTop: 8 },
+  exerciseMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 },
+  starRow: { flexDirection: 'row', gap: 2 },
+  positionPill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, maxWidth: 140 },
+  positionPillText: { fontSize: 12, fontWeight: '700' },
+  exerciseMetaLine: { fontSize: 13, fontWeight: '600', marginTop: 10 },
+
+  exerciseBottom: { marginTop: 12, flexDirection: 'row', justifyContent: 'flex-end' },
+  ctaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
   },
-  subtasksTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
+  ctaText: { fontSize: 13, fontWeight: '800' },
+
+  stateCard: {
+    marginHorizontal: 18,
+    marginTop: 18,
+    padding: 16,
+    borderRadius: 16,
   },
-  subtaskItem: {
-    paddingVertical: 4,
-  },
-  subtaskText: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  modalContainer: {
+  stateTitle: { fontSize: 16, fontWeight: '800' },
+  stateMessage: { marginTop: 8, fontSize: 13, fontWeight: '500' },
+  retryButton: { marginTop: 14, alignSelf: 'flex-start', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12 },
+  retryButtonText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+
+  skeleton: { backgroundColor: 'rgba(128,128,128,0.20)' },
+
+  modalBackdrop: {
     flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'flex-end',
+    padding: 18,
+  },
+  modalSheet: {
+    borderRadius: 18,
+    padding: 14,
   },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 60 : 20,
-    paddingBottom: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.highlight,
   },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  modalContent: {
-    flex: 1,
-    padding: 20,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
-    marginTop: 8,
-  },
-  input: {
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: colors.highlight,
-  },
-  textArea: {
-    height: 100,
-    textAlignVertical: 'top',
-  },
-  subtasksSection: {
-    marginTop: 8,
-  },
-  subtasksHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  addSubtaskButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  addSubtaskText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  subtaskInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  subtaskInput: {
-    flex: 1,
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 15,
-    borderWidth: 1,
-    borderColor: colors.highlight,
-  },
-  removeSubtaskButton: {
-    padding: 4,
-  },
-  modalFooter: {
-    flexDirection: 'row',
-    gap: 12,
-    padding: 20,
-    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
-    borderTopWidth: 1,
-    borderTopColor: colors.highlight,
-  },
-  cancelButton: {
-    flex: 1,
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  cancelButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  saveButton: {
-    flex: 1,
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  saveButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  emptySection: {
-    padding: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  emptySectionText: {
-    fontSize: 15,
-    textAlign: 'center',
-  },
-  assignCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 8,
-    gap: 12,
-  },
-  assignIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.highlight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  assignName: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  modalTitle: { fontSize: 16, fontWeight: '900' },
+  modalBodyText: { marginTop: 10, fontSize: 13, fontWeight: '600', lineHeight: 18 },
+  modalActions: { marginTop: 14, gap: 10 },
+  modalActionPrimary: { paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
+  modalActionPrimaryText: { color: '#fff', fontSize: 14, fontWeight: '900' },
+  modalActionSecondary: { paddingVertical: 12, borderRadius: 12, alignItems: 'center', borderWidth: 1 },
+  modalActionSecondaryText: { fontSize: 14, fontWeight: '900' },
 });
