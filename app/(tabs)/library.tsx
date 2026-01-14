@@ -186,19 +186,21 @@ const ExerciseCard = memo(function ExerciseCard({
   const difficulty = clampDifficulty(exercise.difficulty);
   const metaLine = formatMetaLine(exercise.last_score ?? null, exercise.execution_count ?? null);
   const isAdded = !!exercise.is_added_to_tasks;
+
   const positionLabel = positionLabelOverride ?? exercise.position ?? null;
+  const positionText = positionLabel ? positionLabel : 'Position: –';
+  const positionIsPlaceholder = !positionLabel;
+
+  const hasTrophy = typeof exercise.last_score === 'number' && Number.isFinite(exercise.last_score);
+  const hasVideo = !!exercise.video_url;
 
   return (
     <View style={[styles.exerciseCard, { backgroundColor: theme.card }]}>
       <Pressable onPress={handleCardPress} style={styles.exerciseTop} android_ripple={{ color: 'rgba(0,0,0,0.05)' }}>
         <View style={styles.exerciseLeft}>
-          {!!exercise.last_score && typeof exercise.last_score === 'number' ? (
-            <View style={styles.trophyWrap}>
-              <Text style={styles.trophyEmoji}>🏆</Text>
-            </View>
-          ) : (
-            <View style={styles.trophySpacer} />
-          )}
+          <View style={styles.trophyWrap}>
+            <Text style={[styles.trophyEmoji, !hasTrophy ? { opacity: 0.25 } : null]}>🏆</Text>
+          </View>
 
           <Text style={[styles.exerciseTitle, { color: theme.text }]} numberOfLines={2}>
             {exercise.title}
@@ -217,30 +219,33 @@ const ExerciseCard = memo(function ExerciseCard({
               ))}
             </View>
 
-            {positionLabel ? (
-              <View style={[styles.positionPill, { backgroundColor: theme.highlight }]}>
-                <Text style={[styles.positionPillText, { color: theme.textSecondary }]} numberOfLines={1}>
-                  {positionLabel}
-                </Text>
-              </View>
-            ) : null}
+            <View style={[styles.positionPill, { backgroundColor: theme.highlight }, positionIsPlaceholder ? { opacity: 0.55 } : null]}>
+              <Text style={[styles.positionPillText, { color: theme.textSecondary }]} numberOfLines={1}>
+                {positionText}
+              </Text>
+            </View>
           </View>
 
-          {metaLine ? <Text style={[styles.exerciseMetaLine, { color: theme.textSecondary }]}>{metaLine}</Text> : null}
+          <Text style={[styles.exerciseMetaLine, { color: theme.textSecondary }]}>{metaLine}</Text>
         </View>
 
         <View style={styles.exerciseRight}>
           <Image source={{ uri: exercise.thumbnail_url || 'https://placehold.co/160x120/e2e8f0/e2e8f0' }} style={styles.thumb} />
-          {exercise.video_url ? (
-            <View style={styles.playOverlay}>
-              <IconSymbol
-                ios_icon_name="play.circle.fill"
-                android_material_icon_name="play_circle_filled"
-                size={34}
-                color="rgba(255,255,255,0.85)"
-              />
-            </View>
-          ) : null}
+          <View
+            style={[
+              styles.playOverlay,
+              { backgroundColor: hasVideo ? 'rgba(0,0,0,0.25)' : 'transparent' },
+              !hasVideo ? { opacity: 0.25 } : null,
+            ]}
+            pointerEvents="none"
+          >
+            <IconSymbol
+              ios_icon_name="play.circle.fill"
+              android_material_icon_name="play_circle_filled"
+              size={34}
+              color={hasVideo ? 'rgba(255,255,255,0.85)' : theme.textSecondary}
+            />
+          </View>
         </View>
       </Pressable>
 

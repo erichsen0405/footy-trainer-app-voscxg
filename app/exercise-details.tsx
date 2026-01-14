@@ -29,12 +29,20 @@ type Exercise = {
   category_path: string | null;
   created_at: string | null;
   updated_at: string | null;
+  last_score?: number | null;
+  execution_count?: number | null;
 };
 
 const clampDifficulty = (value: any): number => {
   const n = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(n)) return 0;
   return Math.max(0, Math.min(5, Math.round(n)));
+};
+
+const formatMetaLine = (lastScore?: number | null, executionCount?: number | null) => {
+  const scorePart = typeof lastScore === 'number' ? `Senest: ${lastScore}/10` : 'Senest: –/10';
+  const countPart = typeof executionCount === 'number' && executionCount > 0 ? `Udført: ${executionCount}x` : 'Udført: –x';
+  return `${scorePart}  |  ${countPart}`;
 };
 
 export default function ExerciseDetailsScreen() {
@@ -83,6 +91,18 @@ export default function ExerciseDetailsScreen() {
         category_path: (data as any)?.category_path ?? null,
         created_at: (data as any)?.created_at ?? null,
         updated_at: (data as any)?.updated_at ?? null,
+        last_score:
+          typeof (data as any)?.last_score === 'number'
+            ? (data as any).last_score
+            : (data as any)?.last_score != null
+            ? Number((data as any).last_score)
+            : null,
+        execution_count:
+          typeof (data as any)?.execution_count === 'number'
+            ? (data as any).execution_count
+            : (data as any)?.execution_count != null
+            ? Number((data as any).execution_count)
+            : null,
       };
 
       setExercise(normalized);
@@ -104,7 +124,10 @@ export default function ExerciseDetailsScreen() {
 
   const handleOpenVideo = useCallback(async () => {
     const url = exercise?.video_url;
-    if (!url) return;
+    if (!url) {
+      Alert.alert('Ingen video', 'Ingen video til denne øvelse endnu.');
+      return;
+    }
     try {
       const can = await Linking.canOpenURL(url);
       if (!can) {
@@ -120,116 +143,143 @@ export default function ExerciseDetailsScreen() {
   const difficulty = useMemo(() => clampDifficulty(exercise?.difficulty), [exercise?.difficulty]);
   const thumbUri = useMemo(() => exercise?.thumbnail_url || 'https://placehold.co/900x600/e2e8f0/e2e8f0', [exercise?.thumbnail_url]);
 
-  if (!exerciseId) {
-    return (
-      <View style={[styles.screen, { backgroundColor: theme.background }]}>
-        <View style={styles.topBar}>
-          <TouchableOpacity onPress={handleBack} activeOpacity={0.8} style={styles.iconButton}>
-            <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="chevron_left" size={22} color={theme.text} />
-          </TouchableOpacity>
-          <Text style={[styles.topTitle, { color: theme.text }]} numberOfLines={1}>
-            Øvelse
-          </Text>
-          <View style={{ width: 34 }} />
-        </View>
+  const positionLabel = exercise?.position ?? 'Position: –';
+  const positionIsPlaceholder = !exercise?.position;
 
-        <View style={[styles.stateCard, { backgroundColor: theme.card }]}>
-          <Text style={[styles.stateTitle, { color: theme.text }]}>Mangler øvelse-id</Text>
-          <Text style={[styles.stateMessage, { color: theme.textSecondary }]}>
-            Prøv at gå tilbage til biblioteket og åbne øvelsen igen.
-          </Text>
-          <TouchableOpacity onPress={handleBack} activeOpacity={0.9} style={[styles.primaryButton, { backgroundColor: theme.primary }]}>
-            <Text style={styles.primaryButtonText}>Tilbage</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
+  const hasTrophy = typeof exercise?.last_score === 'number' && Number.isFinite(exercise?.last_score);
+  const hasVideo = !!exercise?.video_url;
 
+  // --- JSX render ---
   return (
-    <View style={[styles.screen, { backgroundColor: theme.background }]}>
-      <View style={styles.topBar}>
-        <TouchableOpacity onPress={handleBack} activeOpacity={0.8} style={styles.iconButton}>
-          <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="chevron_left" size={22} color={theme.text} />
-        </TouchableOpacity>
-        <Text style={[styles.topTitle, { color: theme.text }]} numberOfLines={1}>
-          Øvelse
-        </Text>
-        <View style={{ width: 34 }} />
-      </View>
-
-      <ScrollView contentContainerStyle={styles.contentPad} showsVerticalScrollIndicator={false}>
-        {status === 'loading' || status === 'idle' ? (
-          <View style={[styles.card, { backgroundColor: theme.card }]}>
-            <View style={[styles.thumbSkeleton, { backgroundColor: theme.highlight }]} />
-            <View style={{ height: 14 }} />
-            <View style={[styles.lineSkeleton, { width: '70%', backgroundColor: theme.highlight }]} />
-            <View style={[styles.lineSkeleton, { width: '55%', backgroundColor: theme.highlight, marginTop: 10 }]} />
-            <View style={{ height: 16 }} />
-            <ActivityIndicator />
+    <>
+      <Stack.Screen options={{ headerShown: false, title: 'Øvelse' }} />
+      {!exerciseId ? (
+        <View style={[styles.screen, { backgroundColor: theme.background }]}>
+          <View style={styles.topBar}>
+            <TouchableOpacity onPress={handleBack} activeOpacity={0.8} style={styles.iconButton}>
+              <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="chevron_left" size={22} color={theme.text} />
+            </TouchableOpacity>
+            <Text style={[styles.topTitle, { color: theme.text }]} numberOfLines={1}>
+              Øvelse
+            </Text>
+            <View style={{ width: 34 }} />
           </View>
-        ) : null}
-
-        {status === 'error' ? (
           <View style={[styles.stateCard, { backgroundColor: theme.card }]}>
-            <Text style={[styles.stateTitle, { color: theme.error }]}>Kunne ikke åbne øvelse</Text>
-            <Text style={[styles.stateMessage, { color: theme.textSecondary }]}>{errorMessage}</Text>
-            <TouchableOpacity onPress={() => load(exerciseId)} activeOpacity={0.9} style={[styles.primaryButton, { backgroundColor: theme.primary }]}>
-              <Text style={styles.primaryButtonText}>Prøv igen</Text>
+            <Text style={[styles.stateTitle, { color: theme.text }]}>Mangler øvelse-id</Text>
+            <Text style={[styles.stateMessage, { color: theme.textSecondary }]}>
+              Prøv at gå tilbage til biblioteket og åbne øvelsen igen.
+            </Text>
+            <TouchableOpacity onPress={handleBack} activeOpacity={0.9} style={[styles.primaryButton, { backgroundColor: theme.primary }]}>
+              <Text style={styles.primaryButtonText}>Tilbage</Text>
             </TouchableOpacity>
           </View>
-        ) : null}
+        </View>
+      ) : (
+        <View style={[styles.screen, { backgroundColor: theme.background }]}>
+          <View style={styles.topBar}>
+            <TouchableOpacity onPress={handleBack} activeOpacity={0.8} style={styles.iconButton}>
+              <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="chevron_left" size={22} color={theme.text} />
+            </TouchableOpacity>
+            <Text style={[styles.topTitle, { color: theme.text }]} numberOfLines={1}>
+              Øvelse
+            </Text>
+            <View style={{ width: 34 }} />
+          </View>
 
-        {status === 'success' && exercise ? (
-          <>
-            <View style={[styles.card, { backgroundColor: theme.card }]}>
-              <Image source={{ uri: thumbUri }} style={styles.thumb} />
+          <ScrollView contentContainerStyle={styles.contentPad} showsVerticalScrollIndicator={false}>
+            {status === 'loading' || status === 'idle' ? (
+              <View style={[styles.card, { backgroundColor: theme.card }]}>
+                <View style={[styles.thumbSkeleton, { backgroundColor: theme.highlight }]} />
+                <View style={{ height: 14 }} />
+                <View style={[styles.lineSkeleton, { width: '70%', backgroundColor: theme.highlight }]} />
+                <View style={[styles.lineSkeleton, { width: '55%', backgroundColor: theme.highlight, marginTop: 10 }]} />
+                <View style={{ height: 16 }} />
+                <ActivityIndicator />
+              </View>
+            ) : null}
 
-              {exercise.video_url ? (
-                <TouchableOpacity onPress={handleOpenVideo} activeOpacity={0.9} style={[styles.videoButton, { backgroundColor: theme.primary }]}>
-                  <IconSymbol ios_icon_name="play.fill" android_material_icon_name="play_arrow" size={18} color="#fff" />
-                  <Text style={styles.videoButtonText}>Åbn video</Text>
+            {status === 'error' ? (
+              <View style={[styles.stateCard, { backgroundColor: theme.card }]}>
+                <Text style={[styles.stateTitle, { color: theme.error }]}>Kunne ikke åbne øvelse</Text>
+                <Text style={[styles.stateMessage, { color: theme.textSecondary }]}>{errorMessage}</Text>
+                <TouchableOpacity onPress={() => load(exerciseId)} activeOpacity={0.9} style={[styles.primaryButton, { backgroundColor: theme.primary }]}>
+                  <Text style={styles.primaryButtonText}>Prøv igen</Text>
                 </TouchableOpacity>
-              ) : null}
+              </View>
+            ) : null}
 
-              <Text style={[styles.title, { color: theme.text }]}>{exercise.title}</Text>
+            {status === 'success' && exercise ? (
+              <>
+                <View style={[styles.card, { backgroundColor: theme.card }]}>
+                  {/* Trophy badge */}
+                  <View style={styles.trophyWrap}>
+                    <Text style={[styles.trophyEmoji, !hasTrophy ? { opacity: 0.25 } : null]}>🏆</Text>
+                  </View>
 
-              <View style={styles.metaRow}>
-                <View style={styles.starRow}>
-                  {Array.from({ length: 5 }).map((_, i) => (
+                  <Image source={{ uri: thumbUri }} style={styles.thumb} />
+
+                  {/* Video pill button */}
+                  <TouchableOpacity
+                    onPress={handleOpenVideo}
+                    activeOpacity={hasVideo ? 0.9 : 1}
+                    style={[
+                      styles.videoPill,
+                      { backgroundColor: hasVideo ? theme.primary : theme.highlight },
+                      !hasVideo ? { opacity: 0.55 } : null,
+                    ]}
+                  >
                     <IconSymbol
-                      key={`star-${exercise.id}-${i}`}
-                      ios_icon_name="star.fill"
-                      android_material_icon_name="star"
-                      size={14}
-                      color={i < difficulty ? colors.warning : theme.highlight}
+                      ios_icon_name="play.fill"
+                      android_material_icon_name="play_arrow"
+                      size={16}
+                      color={hasVideo ? '#fff' : theme.textSecondary}
                     />
-                  ))}
+                    <Text style={[styles.videoPillText, { color: hasVideo ? '#fff' : theme.textSecondary }]}>Video</Text>
+                  </TouchableOpacity>
+
+                  <Text style={[styles.title, { color: theme.text }]}>{exercise.title}</Text>
+
+                  <View style={styles.metaRow}>
+                    <View style={styles.starRow}>
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <IconSymbol
+                          key={`star-${exercise.id}-${i}`}
+                          ios_icon_name="star.fill"
+                          android_material_icon_name="star"
+                          size={14}
+                          color={i < difficulty ? colors.warning : theme.highlight}
+                        />
+                      ))}
+                    </View>
+
+                    <View style={[styles.positionPill, { backgroundColor: theme.highlight }, positionIsPlaceholder ? { opacity: 0.55 } : null]}>
+                      <Text style={[styles.positionPillText, { color: theme.textSecondary }]} numberOfLines={1}>
+                        {positionLabel}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Meta line */}
+                  <Text style={[styles.metaLine, { color: theme.textSecondary }]}>
+                    {formatMetaLine(exercise.last_score, exercise.execution_count)}
+                  </Text>
+
+                  {exercise.description ? (
+                    <Text style={[styles.description, { color: theme.textSecondary }]}>{exercise.description}</Text>
+                  ) : (
+                    <Text style={[styles.descriptionMuted, { color: theme.textSecondary }]}>Ingen beskrivelse endnu.</Text>
+                  )}
                 </View>
 
-                {exercise.position ? (
-                  <View style={[styles.positionPill, { backgroundColor: theme.highlight }]}>
-                    <Text style={[styles.positionPillText, { color: theme.textSecondary }]} numberOfLines={1}>
-                      {exercise.position}
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
+                <View style={{ height: 24 }} />
+              </>
+            ) : null}
 
-              {exercise.description ? (
-                <Text style={[styles.description, { color: theme.textSecondary }]}>{exercise.description}</Text>
-              ) : (
-                <Text style={[styles.descriptionMuted, { color: theme.textSecondary }]}>Ingen beskrivelse endnu.</Text>
-              )}
-            </View>
-
-            <View style={{ height: 24 }} />
-          </>
-        ) : null}
-
-        <View style={{ height: 40 }} />
-      </ScrollView>
-    </View>
+            <View style={{ height: 40 }} />
+          </ScrollView>
+        </View>
+      )}
+    </>
   );
 }
 
@@ -252,34 +302,41 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 18,
     padding: 14,
+    marginTop: 8,
   },
+
+  trophyWrap: { height: 20, justifyContent: 'center', alignItems: 'flex-start', marginBottom: 2 },
+  trophyEmoji: { fontSize: 18, lineHeight: 20 },
 
   thumb: {
     width: '100%',
     height: 210,
     borderRadius: 16,
     backgroundColor: 'rgba(0,0,0,0.06)',
+    marginBottom: 10,
   },
 
-  videoButton: {
-    marginTop: 12,
-    borderRadius: 999,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+  videoPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
     alignSelf: 'flex-start',
+    borderRadius: 999,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    marginBottom: 8,
+    gap: 8,
   },
-  videoButtonText: { color: '#fff', fontSize: 13, fontWeight: '900' },
+  videoPillText: { fontSize: 13, fontWeight: '900' },
 
-  title: { marginTop: 14, fontSize: 22, fontWeight: '900' },
+  title: { marginTop: 2, fontSize: 22, fontWeight: '900' },
 
   metaRow: { marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
   starRow: { flexDirection: 'row', gap: 2 },
 
   positionPill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, maxWidth: 180 },
   positionPillText: { fontSize: 12, fontWeight: '800' },
+
+  metaLine: { marginTop: 10, fontSize: 13, fontWeight: '600' },
 
   description: { marginTop: 12, fontSize: 14, fontWeight: '600', lineHeight: 20 },
   descriptionMuted: { marginTop: 12, fontSize: 14, fontWeight: '600', lineHeight: 20, opacity: 0.8 },
