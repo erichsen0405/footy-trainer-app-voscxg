@@ -65,24 +65,51 @@ type LibrarySection =
   | { key: 'folders'; title?: string; data: FolderVM[] }
   | { key: 'exercises'; title?: string; data: Exercise[] };
 
+const HOLDTRAINING_POSITIONS = [
+  { id: 'holdtraening_faelles', name: 'Fælles (alle positioner)', icon: { ios: 'star.fill', android: 'star' } },
+  { id: 'holdtraening_maalmand', name: 'Målmand', icon: { ios: 'hand.raised.fill', android: 'sports_soccer' } },
+  { id: 'holdtraening_back', name: 'Back', icon: { ios: 'arrow.left.and.right.circle', android: 'swap_horiz' } },
+  { id: 'holdtraening_midterforsvarer', name: 'Midterforsvarer', icon: { ios: 'shield.fill', android: 'shield' } },
+  { id: 'holdtraening_central_midtbane', name: 'Central midtbane (6/8)', icon: { ios: 'circle.grid.cross.fill', android: 'grid_on' } },
+  { id: 'holdtraening_offensiv_midtbane', name: 'Offensiv midtbane (10)', icon: { ios: 'sparkles', android: 'flare' } },
+  { id: 'holdtraening_kant', name: 'Kant', icon: { ios: 'arrow.triangle.turn.up.right.circle.fill', android: 'open_with' } },
+  { id: 'holdtraening_angriber', name: 'Angriber', icon: { ios: 'flame.fill', android: 'whatshot' } },
+];
+
 const FOOTBALLCOACH_STRUCTURE = [
   {
     id: 'holdtraening',
     name: 'Holdtræning',
     icon: { ios: 'person.3.fill', android: 'groups' },
-    positions: [
-      { id: 'holdtraening_faelles', name: 'Fælles (alle positioner)', icon: { ios: 'star.fill', android: 'star' } },
-      { id: 'holdtraening_maalmand', name: 'Målmand', icon: { ios: 'hand.raised.fill', android: 'sports_soccer' } },
-      { id: 'holdtraening_forsvar', name: 'Forsvar', icon: { ios: 'shield.fill', android: 'shield' } },
-      { id: 'holdtraening_midtbane', name: 'Midtbane', icon: { ios: 'circle.grid.cross.fill', android: 'grid_on' } },
-      { id: 'holdtraening_angriber', name: 'Angriber', icon: { ios: 'flame.fill', android: 'local_fire_department' } },
-    ],
+    positions: HOLDTRAINING_POSITIONS,
   },
 ] as const;
 
-const FOOTBALLCOACH_POS_NAME_BY_ID = new Map<string, string>(
-  FOOTBALLCOACH_STRUCTURE.flatMap(cat => cat.positions.map(pos => [pos.id, pos.name] as const))
-);
+const KNOWN_HOLDTRAINING_POSITION_IDS = new Set(HOLDTRAINING_POSITIONS.map(pos => pos.id));
+const FOOTBALLCOACH_POS_NAME_BY_ID = new Map<string, string>(HOLDTRAINING_POSITIONS.map(pos => [pos.id, pos.name]));
+
+const formatHoldtraeningSlug = (posId: string) =>
+  posId
+    .replace(/^holdtraening_/i, '')
+    .split('_')
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+
+const getHoldtraeningPositionTitle = (posId: string) =>
+  FOOTBALLCOACH_POS_NAME_BY_ID.get(posId) ?? `Andre: ${formatHoldtraeningSlug(posId)}`;
+
+const buildHoldtraeningFolderVm = (posId: string, count: number): FolderVM => ({
+  id: posId,
+  level: 3,
+  title: getHoldtraeningPositionTitle(posId),
+  subtitle: `${count} øvelser`,
+  rightBadgeText: String(count),
+  icon: buildIcon('footballcoach_position'),
+  chevron: true,
+  kind: 'footballcoach_position',
+  payload: { root: 'footballcoach', level2Id: 'holdtraening', level3Id: posId },
+});
 
 const clampDifficulty = (value: any): number => {
   const n = typeof value === 'number' ? value : Number(value);
@@ -311,7 +338,7 @@ const SkeletonExerciseCard = memo(function SkeletonExerciseCard() {
   );
 });
 
-const ALL_FC_POS_IDS = new Set<string>(FOOTBALLCOACH_STRUCTURE.flatMap(c => c.positions.map(p => p.id)));
+const ALL_FC_POS_IDS = new Set<string>(KNOWN_HOLDTRAINING_POSITION_IDS); // compatibility for other uses
 const normalizeForMatch = (value: string) =>
   (value || '')
     .toLowerCase()
@@ -323,36 +350,8 @@ const normalizeForMatch = (value: string) =>
 
 const resolveFootballCoachPosId = (categoryPath: string | null): string | null => {
   if (!categoryPath) return null;
-  if (ALL_FC_POS_IDS.has(categoryPath)) return categoryPath;
-
-  const raw = String(categoryPath);
-  const rawNorm = normalizeForMatch(raw);
-
-  for (const id of ALL_FC_POS_IDS) {
-    const idNorm = normalizeForMatch(id);
-    if (rawNorm.includes(idNorm) || raw.includes(id)) return id;
-  }
-
-  const isSelv = rawNorm.includes('selv') || rawNorm.includes('self') || rawNorm.includes('selvtraening');
-  const isHold = rawNorm.includes('hold') || rawNorm.includes('holdtraening');
-  const catId: 'holdtraening' | 'selvtraening' | null = isSelv ? 'selvtraening' : isHold ? 'holdtraening' : null;
-
-  const posSlug =
-    rawNorm.includes('maalmand') || rawNorm.includes('malmand')
-      ? 'maalmand'
-      : rawNorm.includes('forsvar')
-      ? 'forsvar'
-      : rawNorm.includes('midtbane')
-      ? 'midtbane'
-      : rawNorm.includes('angriber')
-      ? 'angriber'
-      : rawNorm.includes('faelles') || rawNorm.includes('faelless')
-      ? 'faelles'
-      : null;
-
-  if (catId && posSlug && ALL_FC_POS_IDS.has(`${catId}_${posSlug}`)) return `${catId}_${posSlug}`;
-  if (catId && ALL_FC_POS_IDS.has(`${catId}_faelles`)) return `${catId}_faelles`;
-  if (posSlug && ALL_FC_POS_IDS.has(`holdtraening_${posSlug}`)) return `holdtraening_${posSlug}`;
+  if (KNOWN_HOLDTRAINING_POSITION_IDS.has(categoryPath)) return categoryPath;
+  if (categoryPath.startsWith('holdtraening_')) return categoryPath;
   return null;
 };
 
@@ -563,6 +562,11 @@ export default function LibraryScreen() {
     return m;
   }, [footballCoachExercises]);
 
+  useEffect(() => {
+    if (!__DEV__) return;
+    console.log('[Holdtræning] counts by category_path', Object.fromEntries(footballCoachCountsByPosition));
+  }, [footballCoachCountsByPosition]);
+
   const footballCoachCountsByCategory = useMemo(() => {
     const m = new Map<string, number>();
     FOOTBALLCOACH_STRUCTURE.forEach(cat => {
@@ -650,20 +654,13 @@ export default function LibraryScreen() {
     if (nav.root !== 'footballcoach' || !nav.level2Id) return [];
     const cat = FOOTBALLCOACH_STRUCTURE.find(c => c.id === nav.level2Id);
     if (!cat) return [];
-    return cat.positions.map(pos => {
-      const count = footballCoachCountsByPosition.get(pos.id) || 0;
-      return {
-        id: pos.id,
-        level: 3,
-        title: pos.name,
-        subtitle: `${count} øvelser`,
-        rightBadgeText: String(count),
-        icon: buildIcon('footballcoach_position'),
-        chevron: true,
-        kind: 'footballcoach_position',
-        payload: { root: 'footballcoach', level2Id: cat.id, level3Id: pos.id },
-      };
-    });
+    const base = cat.positions.map(pos => buildHoldtraeningFolderVm(pos.id, footballCoachCountsByPosition.get(pos.id) || 0));
+    if (nav.level2Id !== 'holdtraening') return base;
+    const dynamic = Array.from(footballCoachCountsByPosition.entries())
+      .filter(([posId, count]) => posId.startsWith('holdtraening_') && !KNOWN_HOLDTRAINING_POSITION_IDS.has(posId) && count > 0)
+      .map(([posId, count]) => buildHoldtraeningFolderVm(posId, count))
+      .sort((a, b) => a.title.localeCompare(b.title));
+    return [...base, ...dynamic];
   }, [nav.root, nav.level2Id, footballCoachCountsByPosition]);
 
   const trainerLevel2Folders: FolderVM[] = useMemo(() => {
@@ -689,9 +686,12 @@ export default function LibraryScreen() {
       const t = trainerFolders.find(x => x.trainerId === nav.level2Id);
       return t ? t.trainerName : 'Øvelser fra træner';
     }
-    const cat = FOOTBALLCOACH_STRUCTURE.find(c => c.id === nav.level2Id);
-    const pos = cat?.positions.find(p => p.id === nav.level3Id);
-    return pos?.name || cat?.name || 'FootballCoach fokusområder';
+    if (nav.root === 'footballcoach') {
+      if (nav.level3Id) return getHoldtraeningPositionTitle(nav.level3Id);
+      const cat = FOOTBALLCOACH_STRUCTURE.find(c => c.id === nav.level2Id);
+      return cat?.name || 'FootballCoach fokusområder';
+    }
+    return '';
   }, [nav, trainerFolders, searchOpen, searchQuery]);
 
   const visibleFolderStack: FolderVM[] = useMemo(() => {
@@ -970,9 +970,9 @@ export default function LibraryScreen() {
       if (nav.root === 'footballcoach') {
         if (isSearching) {
           const posId = resolveFootballCoachPosId(ex.category_path);
-          positionOverride = posId ? FOOTBALLCOACH_POS_NAME_BY_ID.get(posId) ?? null : null;
+          positionOverride = posId ? getHoldtraeningPositionTitle(posId) : null;
         } else if (nav.level3Id) {
-          positionOverride = FOOTBALLCOACH_POS_NAME_BY_ID.get(nav.level3Id) ?? null;
+          positionOverride = getHoldtraeningPositionTitle(nav.level3Id);
         }
       }
       return (
