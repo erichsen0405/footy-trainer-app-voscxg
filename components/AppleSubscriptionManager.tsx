@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,18 +11,100 @@ import {
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
-import { useAppleIAP } from '@/contexts/AppleIAPContext';
+import { useAppleIAP, PRODUCT_IDS } from '@/contexts/AppleIAPContext';
 
 interface AppleSubscriptionManagerProps {
   onPlanSelected?: (productId: string) => void;
   isSignupFlow?: boolean;
   selectedRole?: 'player' | 'trainer' | null;
+  highlightProductId?: string;
+  forceShowPlans?: boolean;
 }
+
+type PlanType =
+  | 'player_basic'
+  | 'player_premium'
+  | 'trainer_basic'
+  | 'trainer_standard'
+  | 'trainer_premium'
+  | 'unknown';
+
+type FeatureStatus = 'included' | 'locked';
+
+interface PlanFeature {
+  label: string;
+  status: FeatureStatus;
+}
+
+const getPlanTypeFromProductId = (productId: string): PlanType => {
+  switch (productId) {
+    case PRODUCT_IDS.PLAYER_BASIC:
+      return 'player_basic';
+    case PRODUCT_IDS.PLAYER_PREMIUM:
+      return 'player_premium';
+    case PRODUCT_IDS.TRAINER_BASIC:
+      return 'trainer_basic';
+    case PRODUCT_IDS.TRAINER_STANDARD:
+      return 'trainer_standard';
+    case PRODUCT_IDS.TRAINER_PREMIUM:
+      return 'trainer_premium';
+    default:
+      return 'unknown';
+  }
+};
+
+const getPlanFeatures = (productId: string, maxPlayers: number): PlanFeature[] => {
+  const planType = getPlanTypeFromProductId(productId);
+  const capacityFeature: PlanFeature = {
+    label: maxPlayers <= 1 ? 'Personlig spiller konto' : `Op til ${maxPlayers} spillere`,
+    status: 'included',
+  };
+
+  const playerBasicFeatures: PlanFeature[] = [
+    { label: 'Daglige aktiviteter og mål', status: 'included' },
+    { label: 'Progression og statistik', status: 'included' },
+    { label: 'Bibliotek', status: 'locked' },
+    { label: 'Kalender-synk', status: 'locked' },
+    { label: 'Træner-tilknytning', status: 'locked' },
+  ];
+
+  const playerPremiumFeatures: PlanFeature[] = [
+    { label: 'Bibliotek', status: 'included' },
+    { label: 'Kalender-synk', status: 'included' },
+    { label: 'Træner-tilknytning', status: 'included' },
+    { label: 'Alt fra Basis spiller', status: 'included' },
+  ];
+
+  const trainerFeatures: PlanFeature[] = [
+    { label: 'Fuld adgang til FootballCoach værktøjer', status: 'included' },
+    { label: 'Planlægning, bibliotek og rapporter', status: 'included' },
+  ];
+
+  const defaultFeatures: PlanFeature[] = [
+    { label: 'Fuld adgang til alle funktioner', status: 'included' },
+  ];
+
+  let specificFeatures: PlanFeature[] = defaultFeatures;
+  if (planType === 'player_basic') specificFeatures = playerBasicFeatures;
+  else if (planType === 'player_premium') specificFeatures = playerPremiumFeatures;
+  else if (planType === 'trainer_basic' || planType === 'trainer_standard' || planType === 'trainer_premium') {
+    specificFeatures = trainerFeatures;
+  }
+
+  return [
+    capacityFeature,
+    ...specificFeatures,
+    { label: '14 dages gratis prøveperiode', status: 'included' },
+    { label: 'Opsig når som helst via App Store', status: 'included' },
+  ];
+};
 
 export default function AppleSubscriptionManager({ 
   onPlanSelected, 
   isSignupFlow = false,
-  selectedRole = null 
+  selectedRole = null,
+  highlightProductId,
+  forceShowPlans = false,
 }: AppleSubscriptionManagerProps) {
   const { 
     products, 
@@ -65,21 +146,37 @@ export default function AppleSubscriptionManager({
   };
 
   const getPlanIcon = (productId: string) => {
-    if (productId.includes('spiller')) return 'star.fill';
-    if (productId.includes('basic')) return 'star.fill';
-    if (productId.includes('standard')) return 'star.leadinghalf.filled';
-    if (productId.includes('premium')) return 'star.circle.fill';
-    return 'star.fill';
+    const planType = getPlanTypeFromProductId(productId);
+    switch (planType) {
+      case 'player_premium':
+      case 'trainer_premium':
+        return 'star.circle.fill';
+      case 'trainer_standard':
+        return 'star.leadinghalf.filled';
+      default:
+        return 'star.fill';
+    }
   };
 
   const getPlanColor = (productId: string) => {
-    if (productId.includes('spiller') || productId.includes('basic')) return '#CD7F32'; // Bronze
-    if (productId.includes('standard')) return '#C0C0C0'; // Silver
-    if (productId.includes('premium')) return '#FFD700'; // Gold
-    return colors.primary;
+    const planType = getPlanTypeFromProductId(productId);
+    switch (planType) {
+      case 'player_basic':
+      case 'trainer_basic':
+        return '#CD7F32';
+      case 'trainer_standard':
+        return '#C0C0C0';
+      case 'player_premium':
+      case 'trainer_premium':
+        return '#FFD700';
+      default:
+        return colors.primary;
+    }
   };
 
   const getPlanName = (product: any) => {
+    if (product.productId === PRODUCT_IDS.PLAYER_PREMIUM) return 'Premium spiller';
+    if (product.productId === PRODUCT_IDS.PLAYER_BASIC) return 'Basis spiller';
     if (product.productId.includes('spiller')) return 'Spiller';
     if (product.productId.includes('basic')) return 'Træner Basis';
     if (product.productId.includes('standard')) return 'Træner Standard';
@@ -90,6 +187,12 @@ export default function AppleSubscriptionManager({
   const isCurrentPlan = (productId: string): boolean => {
     return subscriptionStatus?.isActive && subscriptionStatus.productId === productId;
   };
+
+  useEffect(() => {
+    if (forceShowPlans) {
+      setShowPlans(true);
+    }
+  }, [forceShowPlans]);
 
   if (Platform.OS !== 'ios') {
     return (
@@ -245,6 +348,8 @@ export default function AppleSubscriptionManager({
           {filteredProducts.map((product, index) => {
             const isPopular = index === Math.floor(filteredProducts.length / 2);
             const isCurrentActive = isCurrentPlan(product.productId);
+            const isHighlightTarget = highlightProductId === product.productId;
+            const features = getPlanFeatures(product.productId, product.maxPlayers || 1);
 
             return (
               <TouchableOpacity
@@ -254,6 +359,7 @@ export default function AppleSubscriptionManager({
                   { backgroundColor: cardBgColor },
                   isPopular && !isCurrentActive && styles.popularPlan,
                   isCurrentActive && styles.currentPlanCard,
+                  isHighlightTarget && styles.highlightedPlan,
                 ]}
                 onPress={() => handleSelectPlan(product.productId, product.title)}
                 disabled={purchasing || isCurrentActive}
@@ -301,56 +407,31 @@ export default function AppleSubscriptionManager({
                 </View>
 
                 <View style={styles.featuresContainer}>
-                  <View style={styles.featureRow}>
-                    <IconSymbol
-                      ios_icon_name="checkmark.circle.fill"
-                      android_material_icon_name="check_circle"
-                      size={20}
-                      color={isCurrentActive ? colors.success : colors.primary}
-                    />
-                    <Text style={[styles.featureText, { color: textColor }]}>
-                      {product.maxPlayers === 1 
-                        ? 'Personlig spiller konto'
-                        : `Op til ${product.maxPlayers} spillere`
-                      }
-                    </Text>
-                  </View>
-
-                  <View style={styles.featureRow}>
-                    <IconSymbol
-                      ios_icon_name="checkmark.circle.fill"
-                      android_material_icon_name="check_circle"
-                      size={20}
-                      color={isCurrentActive ? colors.success : colors.primary}
-                    />
-                    <Text style={[styles.featureText, { color: textColor }]}>
-                      14 dages gratis prøveperiode
-                    </Text>
-                  </View>
-
-                  <View style={styles.featureRow}>
-                    <IconSymbol
-                      ios_icon_name="checkmark.circle.fill"
-                      android_material_icon_name="check_circle"
-                      size={20}
-                      color={isCurrentActive ? colors.success : colors.primary}
-                    />
-                    <Text style={[styles.featureText, { color: textColor }]}>
-                      Fuld adgang til alle funktioner
-                    </Text>
-                  </View>
-
-                  <View style={styles.featureRow}>
-                    <IconSymbol
-                      ios_icon_name="checkmark.circle.fill"
-                      android_material_icon_name="check_circle"
-                      size={20}
-                      color={isCurrentActive ? colors.success : colors.primary}
-                    />
-                    <Text style={[styles.featureText, { color: textColor }]}>
-                      Opsig når som helst via App Store
-                    </Text>
-                  </View>
+                  {features.map(feature => {
+                    const isIncluded = feature.status === 'included';
+                    const iconColor = isIncluded
+                      ? (isCurrentActive ? colors.success : colors.primary)
+                      : colors.error;
+                    return (
+                      <View style={styles.featureRow} key={`${product.productId}-${feature.label}`}>
+                        <IconSymbol
+                          ios_icon_name={isIncluded ? 'checkmark.circle.fill' : 'xmark.circle'}
+                          android_material_icon_name={isIncluded ? 'check_circle' : 'block'}
+                          size={20}
+                          color={iconColor}
+                        />
+                        <Text
+                          style={[
+                            styles.featureText,
+                            { color: isIncluded ? textColor : textSecondaryColor },
+                            !isIncluded && styles.lockedFeatureText,
+                          ]}
+                        >
+                          {feature.label}
+                        </Text>
+                      </View>
+                    );
+                  })}
                 </View>
 
                 {!isCurrentActive && (
@@ -566,6 +647,14 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'transparent',
   },
+  highlightedPlan: {
+    borderColor: colors.warning,
+    shadowColor: colors.warning,
+    shadowOpacity: 0.4,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 6,
+  },
   popularPlan: {
     borderColor: colors.primary,
   },
@@ -648,6 +737,9 @@ const styles = StyleSheet.create({
   featureText: {
     fontSize: 16,
     flex: 1,
+  },
+  lockedFeatureText: {
+    textDecorationLine: 'line-through',
   },
   selectButton: {
     paddingVertical: 16,

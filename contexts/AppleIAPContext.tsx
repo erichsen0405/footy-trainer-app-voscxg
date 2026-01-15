@@ -38,12 +38,13 @@ if (isExpoGo && Platform.OS === 'ios') {
 }
 
 // Product IDs from App Store Connect - MUST MATCH EXACTLY
-const PRODUCT_IDS = {
-  PLAYER: 'fc_spiller_monthly',
+export const PRODUCT_IDS = {
+  PLAYER_BASIC: 'fc_spiller_monthly',
+  PLAYER_PREMIUM: 'fc_spiller_premium_monthly',
   TRAINER_BASIC: 'fc_trainer_basic_monthly',
   TRAINER_STANDARD: 'fc_trainer_standard_monthly',
   TRAINER_PREMIUM: 'fc_trainer_premium_monthly',
-};
+} as const;
 
 interface SubscriptionProduct {
   productId: string;
@@ -98,8 +99,9 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       // Map products to our format with max players info
       const mappedProducts: SubscriptionProduct[] = availableProducts.map((product: any) => {
         let maxPlayers = 1;
-        if (product.productId === PRODUCT_IDS.PLAYER) maxPlayers = 1;
-        else if (product.productId === PRODUCT_IDS.TRAINER_BASIC) maxPlayers = 5;
+        if (product.productId === PRODUCT_IDS.PLAYER_BASIC || product.productId === PRODUCT_IDS.PLAYER_PREMIUM) {
+          maxPlayers = 1;
+        } else if (product.productId === PRODUCT_IDS.TRAINER_BASIC) maxPlayers = 5;
         else if (product.productId === PRODUCT_IDS.TRAINER_STANDARD) maxPlayers = 15;
         else if (product.productId === PRODUCT_IDS.TRAINER_PREMIUM) maxPlayers = 50;
 
@@ -298,8 +300,9 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       }
 
       // Determine subscription tier based on product ID
-      let subscriptionTier = 'player';
-      if (productId === PRODUCT_IDS.PLAYER) subscriptionTier = 'player';
+      let subscriptionTier = 'player_basic';
+      if (productId === PRODUCT_IDS.PLAYER_BASIC) subscriptionTier = 'player_basic';
+      else if (productId === PRODUCT_IDS.PLAYER_PREMIUM) subscriptionTier = 'player_premium';
       else if (productId === PRODUCT_IDS.TRAINER_BASIC) subscriptionTier = 'trainer_basic';
       else if (productId === PRODUCT_IDS.TRAINER_STANDARD) subscriptionTier = 'trainer_standard';
       else if (productId === PRODUCT_IDS.TRAINER_PREMIUM) subscriptionTier = 'trainer_premium';

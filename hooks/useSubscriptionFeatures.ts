@@ -1,16 +1,78 @@
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Platform } from 'react-native';
-import { useAppleIAP } from '@/contexts/AppleIAPContext';
+import { useAppleIAP, PRODUCT_IDS } from '@/contexts/AppleIAPContext';
 import { supabase } from '@/app/integrations/supabase/client';
 
 interface SubscriptionFeatures {
   hasActiveSubscription: boolean;
   maxPlayers: number;
-  subscriptionTier: string | null;
+  subscriptionTier: SubscriptionTier | null;
   canAddMorePlayers: (currentPlayerCount: number) => boolean;
   isLoading: boolean;
+  isPlayerPremium: boolean;
+  isPlayerBasic: boolean;
+  featureAccess: FeatureAccess;
 }
+
+type SubscriptionTier =
+  | 'player_basic'
+  | 'player_premium'
+  | 'trainer_basic'
+  | 'trainer_standard'
+  | 'trainer_premium';
+
+type FeatureAccess = {
+  library: boolean;
+  calendarSync: boolean;
+  trainerLinking: boolean;
+};
+
+const normalizeTier = (value?: string | null): SubscriptionTier | null => {
+  if (!value) return null;
+  if (value === 'player') return 'player_basic';
+  if (
+    value === 'player_basic' ||
+    value === 'player_premium' ||
+    value === 'trainer_basic' ||
+    value === 'trainer_standard' ||
+    value === 'trainer_premium'
+  ) {
+    return value;
+  }
+  return null;
+};
+
+const tierFromProductId = (productId?: string | null): SubscriptionTier | null => {
+  if (!productId) return null;
+  if (productId === PRODUCT_IDS.PLAYER_PREMIUM) return 'player_premium';
+  if (productId === PRODUCT_IDS.PLAYER_BASIC) return 'player_basic';
+  if (productId === PRODUCT_IDS.TRAINER_BASIC) return 'trainer_basic';
+  if (productId === PRODUCT_IDS.TRAINER_STANDARD) return 'trainer_standard';
+  if (productId === PRODUCT_IDS.TRAINER_PREMIUM) return 'trainer_premium';
+  return null;
+};
+
+const featureAccessForTier = (tier: SubscriptionTier | null): FeatureAccess => {
+  if (!tier) {
+    return {
+      library: false,
+      calendarSync: false,
+      trainerLinking: false,
+    };
+  }
+
+  const isTrainerTier = tier.startsWith('trainer');
+  const isPremiumPlayer = tier === 'player_premium';
+
+  const hasAccess = isTrainerTier || isPremiumPlayer;
+
+  return {
+    library: hasAccess,
+    calendarSync: hasAccess,
+    trainerLinking: hasAccess,
+  };
+};
 
 export function useSubscriptionFeatures(): SubscriptionFeatures {
   // Safely get Apple IAP context - it should always be available since provider is in _layout
@@ -20,11 +82,7 @@ export function useSubscriptionFeatures(): SubscriptionFeatures {
   const [profileData, setProfileData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchProfileData();
-  }, []);
-
-  const fetchProfileData = async () => {
+  const fetchProfileData = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -48,7 +106,21 @@ export function useSubscriptionFeatures(): SubscriptionFeatures {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchProfileData();
+  }, [fetchProfileData]);
+
+  useEffect(() => {
+    if (subscriptionStatus?.productId) {
+      fetchProfileData();
+    }
+  }, [subscriptionStatus?.productId, fetchProfileData]);
+
+  const tierFromProfile = normalizeTier(profileData?.subscription_tier);
+  const tierFromStore = Platform.OS === 'ios' ? tierFromProductId(subscriptionStatus?.productId || null) : null;
+  const subscriptionTier = tierFromProfile ?? tierFromStore;
 
   const getMaxPlayers = (): number => {
     if (Platform.OS === 'ios' && subscriptionStatus?.isActive && subscriptionStatus.productId) {
@@ -56,26 +128,20 @@ export function useSubscriptionFeatures(): SubscriptionFeatures {
       return product?.maxPlayers || 0;
     }
 
-    // Fallback to profile data
-    if (profileData?.subscription_tier) {
-      const tier = profileData.subscription_tier;
-      if (tier === 'player') return 1;
-      if (tier === 'trainer_basic') return 5;
-      if (tier === 'trainer_standard') return 15;
-      if (tier === 'trainer_premium') return 50;
-    }
+    if (subscriptionTier === 'player_basic' || subscriptionTier === 'player_premium') return 1;
+    if (subscriptionTier === 'trainer_basic') return 5;
+    if (subscriptionTier === 'trainer_standard') return 15;
+    if (subscriptionTier === 'trainer_premium') return 50;
 
     return 0;
   };
 
   const hasActiveSubscription = Platform.OS === 'ios' 
     ? (subscriptionStatus?.isActive || false)
-    : (profileData?.subscription_tier != null);
+    : subscriptionTier != null;
 
   const maxPlayers = getMaxPlayers();
-  const subscriptionTier = Platform.OS === 'ios'
-    ? subscriptionStatus?.productId || null
-    : profileData?.subscription_tier || null;
+  const featureAccess = useMemo(() => featureAccessForTier(subscriptionTier), [subscriptionTier]);
 
   const canAddMorePlayers = (currentPlayerCount: number): boolean => {
     return hasActiveSubscription && currentPlayerCount < maxPlayers;
@@ -87,5 +153,8 @@ export function useSubscriptionFeatures(): SubscriptionFeatures {
     subscriptionTier,
     canAddMorePlayers,
     isLoading: loading || iapLoading,
+    isPlayerPremium: subscriptionTier === 'player_premium',
+    isPlayerBasic: subscriptionTier === 'player_basic',
+    featureAccess,
   };
 }

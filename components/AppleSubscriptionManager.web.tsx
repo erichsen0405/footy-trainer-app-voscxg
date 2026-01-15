@@ -13,12 +13,16 @@ interface AppleSubscriptionManagerProps {
   onPlanSelected?: (productId: string) => void;
   isSignupFlow?: boolean;
   selectedRole?: 'player' | 'trainer' | null;
+  highlightProductId?: string;
+  forceShowPlans?: boolean;
 }
 
 export default function AppleSubscriptionManager({ 
   onPlanSelected, 
   isSignupFlow = false,
-  selectedRole = null 
+  selectedRole = null,
+  highlightProductId,
+  forceShowPlans = false,
 }: AppleSubscriptionManagerProps) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';

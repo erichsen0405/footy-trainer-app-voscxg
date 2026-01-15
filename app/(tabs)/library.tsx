@@ -20,6 +20,8 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
+import { useSubscriptionFeatures } from '@/hooks/useSubscriptionFeatures';
+import { PremiumFeatureGate } from '@/components/PremiumFeatureGate';
 
 type RootFolderId = 'personal' | 'trainer' | 'footballcoach';
 type SortKey = 'recent' | 'difficulty';
@@ -360,6 +362,7 @@ export default function LibraryScreen() {
   const { teams } = useTeamPlayer();
   const router = useRouter();
   const theme = getColors(useColorScheme() === 'dark');
+  const { featureAccess, isLoading: subscriptionFeaturesLoading } = useSubscriptionFeatures();
 
   const [status, setStatus] = useState<'loading' | 'success' | 'empty' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -547,10 +550,14 @@ export default function LibraryScreen() {
     }, [])
   );
 
+  const isPlayer = !isAdmin;
+  const entitlementsReady = !subscriptionFeaturesLoading;
+  const gateLibrary = entitlementsReady && isPlayer && !featureAccess.library;
+
   useEffect(() => {
-    if (!currentUserId) return;
+    if (!currentUserId || gateLibrary) return;
     loadLibraryData(currentUserId);
-  }, [currentUserId, reloadNonce, loadLibraryData]);
+  }, [currentUserId, reloadNonce, loadLibraryData, gateLibrary]);
 
   const footballCoachCountsByPosition = useMemo(() => {
     const m = new Map<string, number>();
@@ -993,7 +1000,63 @@ export default function LibraryScreen() {
     return `row-${index}`;
   }, []);
 
-  if (status === 'loading') {
+  const renderUpgradeGate = () => (
+    <View style={[styles.stateCard, { backgroundColor: theme.card, gap: 16 }]}>
+      <PremiumFeatureGate
+        title="Biblioteket kræver Premium"
+        description="Se FootballCoach øvelser, gem favorittræning og få fuld adgang ved at opgradere til Premium Spiller."
+        onPress={() => router.push({ pathname: '/(tabs)/profile', params: { upgradeTarget: 'library' } })}
+        icon={{ ios: 'book.fill', android: 'menu_book' }}
+      />
+    </View>
+  );
+
+  const renderLoadingSkeleton = () => (
+    <View style={[styles.screen, { backgroundColor: theme.background }]}>
+      <View style={styles.topBar}>
+        <Text style={[styles.screenTitle, { color: theme.text }]}>Bibliotek</Text>
+        <View style={styles.topBarRight}>
+          <TouchableOpacity activeOpacity={0.8} style={styles.iconButton} onPress={handleToggleSearch}>
+            <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={22} color={theme.text} />
+          </TouchableOpacity>
+        </View>
+      </View>
+      {searchOpen ? (
+        <View style={[styles.searchBarWrap, { backgroundColor: theme.card, borderColor: theme.highlight }]}>
+          <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={18} color={theme.textSecondary} />
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Søg øvelser..."
+            placeholderTextColor={theme.textSecondary}
+            style={[styles.searchInput, { color: theme.text }]}
+            autoCorrect={false}
+            autoCapitalize="none"
+            returnKeyType="search"
+          />
+          {searchQuery.trim().length > 0 ? (
+            <TouchableOpacity onPress={handleClearSearch} style={styles.iconButton} activeOpacity={0.8}>
+              <IconSymbol ios_icon_name="xmark.circle.fill" android_material_icon_name="cancel" size={20} color={theme.textSecondary} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : null}
+      <View style={styles.listPad}>
+        <SkeletonFolderRow level={1} />
+        <SkeletonFolderRow level={1} />
+        <SkeletonFolderRow level={1} />
+        <View style={{ height: 12 }} />
+        <SkeletonExerciseCard />
+        <SkeletonExerciseCard />
+      </View>
+    </View>
+  );
+
+  if (isPlayer && subscriptionFeaturesLoading) {
+    return renderLoadingSkeleton();
+  }
+
+  if (gateLibrary) {
     return (
       <View style={[styles.screen, { backgroundColor: theme.background }]}>
         <View style={styles.topBar}>
@@ -1004,36 +1067,13 @@ export default function LibraryScreen() {
             </TouchableOpacity>
           </View>
         </View>
-        {searchOpen ? (
-          <View style={[styles.searchBarWrap, { backgroundColor: theme.card, borderColor: theme.highlight }]}>
-            <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={18} color={theme.textSecondary} />
-            <TextInput
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Søg øvelser..."
-              placeholderTextColor={theme.textSecondary}
-              style={[styles.searchInput, { color: theme.text }]}
-              autoCorrect={false}
-              autoCapitalize="none"
-              returnKeyType="search"
-            />
-            {searchQuery.trim().length > 0 ? (
-              <TouchableOpacity onPress={handleClearSearch} style={styles.iconButton} activeOpacity={0.8}>
-                <IconSymbol ios_icon_name="xmark.circle.fill" android_material_icon_name="cancel" size={20} color={theme.textSecondary} />
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        ) : null}
-        <View style={styles.listPad}>
-          <SkeletonFolderRow level={1} />
-          <SkeletonFolderRow level={1} />
-          <SkeletonFolderRow level={1} />
-          <View style={{ height: 12 }} />
-          <SkeletonExerciseCard />
-          <SkeletonExerciseCard />
-        </View>
+        <View style={styles.listPad}>{renderUpgradeGate()}</View>
       </View>
     );
+  }
+
+  if (status === 'loading') {
+    return renderLoadingSkeleton();
   }
 
   if (status === 'error') {

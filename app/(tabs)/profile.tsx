@@ -1,11 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, useColorScheme, Alert, Platform, ActivityIndicator } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
+import { PremiumFeatureGate } from '@/components/PremiumFeatureGate';
 import { supabase } from '@/app/integrations/supabase/client';
 import ExternalCalendarManager from '@/components/ExternalCalendarManager';
 import SubscriptionManager from '@/components/SubscriptionManager';
+import AppleSubscriptionManager from '@/components/AppleSubscriptionManager';
 import CreatePlayerModal from '@/components/CreatePlayerModal';
 import PlayersList from '@/components/PlayersList';
 import TeamManagement from '@/components/TeamManagement';
@@ -13,6 +16,8 @@ import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import { useFootball } from '@/contexts/FootballContext';
 import { deleteAllExternalActivities } from '@/utils/deleteExternalActivities';
+import { useSubscriptionFeatures } from '@/hooks/useSubscriptionFeatures';
+import { PRODUCT_IDS } from '@/contexts/AppleIAPContext';
 
 // Conditionally import GlassView only on native platforms
 let GlassView: any = View;
@@ -38,6 +43,19 @@ interface AdminInfo {
 }
 
 type SubscriptionStatusType = ReturnType<typeof useSubscription>['subscriptionStatus'];
+
+type UpgradeTarget = 'library' | 'calendarSync' | 'trainerLinking';
+
+const normalizeUpgradeTarget = (value: string | string[] | undefined): UpgradeTarget | null => {
+  if (!value) {
+    return null;
+  }
+  const candidate = Array.isArray(value) ? value[0] : value;
+  if (candidate === 'library' || candidate === 'calendarSync' || candidate === 'trainerLinking') {
+    return candidate;
+  }
+  return null;
+};
 
 export default function ProfileScreen() {
   const [user, setUser] = useState<any>(null);
@@ -65,6 +83,11 @@ export default function ProfileScreen() {
   // Collapsible sections - Calendar Sync now collapsed by default
   const [isCalendarSyncExpanded, setIsCalendarSyncExpanded] = useState(false);
   const [isSubscriptionExpanded, setIsSubscriptionExpanded] = useState(false);
+  const [subscriptionSectionY, setSubscriptionSectionY] = useState<number | null>(null);
+  const scrollViewRef = useRef<ScrollView | null>(null);
+  const params = useLocalSearchParams<{ upgradeTarget?: string }>();
+  const routeUpgradeTarget = normalizeUpgradeTarget(params.upgradeTarget);
+  const [manualUpgradeTarget, setManualUpgradeTarget] = useState<UpgradeTarget | null>(null);
   
   // Delete external activities state
   const [isDeletingExternalActivities, setIsDeletingExternalActivities] = useState(false);
@@ -75,8 +98,36 @@ export default function ProfileScreen() {
   // Get subscription status
   const { subscriptionStatus, refreshSubscription } = useSubscription();
   const { refreshAll } = useFootball();
+  const {
+    featureAccess,
+    isLoading: subscriptionFeaturesLoading,
+  } = useSubscriptionFeatures();
+
+  const canUseCalendarSync = featureAccess.calendarSync;
+  const canLinkTrainer = featureAccess.trainerLinking;
+  const effectiveUpgradeTarget = manualUpgradeTarget ?? routeUpgradeTarget;
+  const highlightProductId =
+    userRole === 'player' && effectiveUpgradeTarget ? PRODUCT_IDS.PLAYER_PREMIUM : undefined;
+  const shouldHighlightPremiumPlan = Boolean(highlightProductId);
 
   const canManagePlayers = userRole === 'admin' || userRole === 'trainer';
+
+  const scrollToSubscription = useCallback(() => {
+    if (!scrollViewRef.current || subscriptionSectionY === null) {
+      return;
+    }
+    scrollViewRef.current.scrollTo({ y: Math.max(subscriptionSectionY - 32, 0), animated: true });
+  }, [subscriptionSectionY]);
+
+  const handleOpenSubscriptionSection = useCallback((target?: UpgradeTarget) => {
+    if (target) {
+      setManualUpgradeTarget(target);
+    }
+    setIsSubscriptionExpanded(true);
+    setTimeout(() => {
+      scrollToSubscription();
+    }, 200);
+  }, [scrollToSubscription]);
 
   const fetchUserProfile = async (userId: string) => {
     try {
@@ -250,6 +301,22 @@ export default function ProfileScreen() {
 
     return () => subscription.unsubscribe();
   }, [checkUserOnboarding, refreshSubscription]);
+
+  useEffect(() => {
+    if (shouldHighlightPremiumPlan) {
+      setIsSubscriptionExpanded(true);
+    }
+  }, [shouldHighlightPremiumPlan]);
+
+  useEffect(() => {
+    if (!shouldHighlightPremiumPlan || subscriptionSectionY === null) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      scrollToSubscription();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [shouldHighlightPremiumPlan, subscriptionSectionY, scrollToSubscription]);
 
   const handleSaveProfile = async () => {
     if (!user) {
@@ -566,6 +633,14 @@ export default function ProfileScreen() {
   };
 
   const handleDeleteAllExternalActivities = async () => {
+    if (!canUseCalendarSync) {
+      Alert.alert(
+        'Premium påkrævet',
+        'Kalendersynk kræver et Premium-abonnement. Opgrader for at fortsætte.'
+      );
+      return;
+    }
+
     Alert.alert(
       'Slet alle eksterne aktiviteter',
       'Er du sikker på at du vil slette ALLE dine eksterne aktiviteter?\n\nDette vil slette alle aktiviteter importeret fra eksterne kalendere. Aktiviteterne vil blive importeret igen ved næste synkronisering, medmindre du fjerner kalenderne fra din profil.\n\n⚠️ Denne handling kan ikke fortrydes!',
@@ -740,6 +815,7 @@ export default function ProfileScreen() {
   return (
     <ContainerWrapper style={[styles.safeArea, { backgroundColor: bgColor }]} edges={containerEdges}>
       <ScrollView
+        ref={scrollViewRef}
         style={styles.container}
         contentContainerStyle={[styles.contentContainer, Platform.OS !== 'ios' && { paddingTop: 60 }]}
       >
@@ -910,38 +986,56 @@ export default function ProfileScreen() {
             </CardWrapper>
 
             {/* Admin Info for Players */}
-            {userRole === 'player' && adminInfo && (
-              <CardWrapper style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
-                <Text style={[styles.sectionTitle, { color: textColor }]}>
-                  Din Træner
-                </Text>
-                <View style={styles.profileInfo}>
-                  <View style={styles.infoRow}>
-                    <IconSymbol
-                      ios_icon_name="person.fill"
-                      android_material_icon_name="person"
-                      size={20}
-                      color={colors.primary}
-                    />
-                    <Text style={[styles.infoText, { color: textColor }]}>
-                      {adminInfo.full_name}
-                    </Text>
+            {userRole === 'player' && (
+              subscriptionFeaturesLoading ? (
+                <CardWrapper style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
+                  <View style={[styles.loadingContainer, { paddingVertical: 24 }]}>
+                    <ActivityIndicator size="small" color={colors.primary} />
                   </View>
-                  {adminInfo.phone_number && (
-                    <View style={styles.infoRow}>
-                      <IconSymbol
-                        ios_icon_name="phone.fill"
-                        android_material_icon_name="phone"
-                        size={20}
-                        color={colors.primary}
-                      />
-                      <Text style={[styles.infoText, { color: textColor }]}>
-                        {adminInfo.phone_number}
-                      </Text>
+                </CardWrapper>
+              ) : canLinkTrainer ? (
+                adminInfo ? (
+                  <CardWrapper style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
+                    <Text style={[styles.sectionTitle, { color: textColor }]}>Din Træner</Text>
+                    <View style={styles.profileInfo}>
+                      <View style={styles.infoRow}>
+                        <IconSymbol
+                          ios_icon_name="person.fill"
+                          android_material_icon_name="person"
+                          size={20}
+                          color={colors.primary}
+                        />
+                        <Text style={[styles.infoText, { color: textColor }]}>
+                          {adminInfo.full_name}
+                        </Text>
+                      </View>
+                      {adminInfo.phone_number && (
+                        <View style={styles.infoRow}>
+                          <IconSymbol
+                            ios_icon_name="phone.fill"
+                            android_material_icon_name="phone"
+                            size={20}
+                            color={colors.primary}
+                          />
+                          <Text style={[styles.infoText, { color: textColor }]}>
+                            {adminInfo.phone_number}
+                          </Text>
+                        </View>
+                      )}
                     </View>
-                  )}
-                </View>
-              </CardWrapper>
+                  </CardWrapper>
+                ) : null
+              ) : (
+                <CardWrapper style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
+                  <PremiumFeatureGate
+                    title="Tilslut din træner med Premium"
+                    description="Opgrader for at give din træner adgang til dine aktiviteter og opgaver."
+                    onPress={() => handleOpenSubscriptionSection('trainerLinking')}
+                    icon={{ ios: 'person.2.circle', android: 'groups' }}
+                    align="left"
+                  />
+                </CardWrapper>
+              )
             )}
 
             {canManagePlayers && (
@@ -981,72 +1075,93 @@ export default function ProfileScreen() {
               </TouchableOpacity>
               
               {isCalendarSyncExpanded && (
-                <>
-                  <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
-                    Tilknyt eksterne kalendere (iCal/webcal) for automatisk at importere aktiviteter
-                  </Text>
-                  <ExternalCalendarManager />
-                  
-                  {/* Delete All External Activities Button */}
-                  <TouchableOpacity
-                    style={[styles.deleteExternalButton, { backgroundColor: Platform.OS === 'ios' ? (isDark ? 'rgba(255,59,48,0.2)' : 'rgba(255,59,48,0.1)') : (isDark ? '#3a1a1a' : '#ffe5e5') }]}
-                    onPress={handleDeleteAllExternalActivities}
-                    activeOpacity={0.7}
-                    disabled={isDeletingExternalActivities}
-                  >
-                    {isDeletingExternalActivities ? (
-                      <ActivityIndicator size="small" color={Platform.OS === 'ios' ? '#ff3b30' : colors.error} />
-                    ) : (
-                      <React.Fragment>
-                        <IconSymbol
-                          ios_icon_name="trash.fill"
-                          android_material_icon_name="delete"
-                          size={24}
-                          color={Platform.OS === 'ios' ? '#ff3b30' : colors.error}
-                        />
-                        <Text style={[styles.deleteExternalButtonText, { color: Platform.OS === 'ios' ? '#ff3b30' : colors.error }]}>
-                          Slet alle eksterne aktiviteter
-                        </Text>
-                      </React.Fragment>
-                    )}
-                  </TouchableOpacity>
-                </>
+                subscriptionFeaturesLoading ? (
+                  <View style={[styles.loadingContainer, { paddingVertical: 24 }]}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  </View>
+                ) : canUseCalendarSync ? (
+                  <>
+                    <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
+                      Tilknyt eksterne kalendere (iCal/webcal) for automatisk at importere aktiviteter
+                    </Text>
+                    <ExternalCalendarManager />
+                    
+                    {/* Delete All External Activities Button */}
+                    <TouchableOpacity
+                      style={[styles.deleteExternalButton, { backgroundColor: Platform.OS === 'ios' ? (isDark ? 'rgba(255,59,48,0.2)' : 'rgba(255,59,48,0.1)') : (isDark ? '#3a1a1a' : '#ffe5e5') }]}
+                      onPress={handleDeleteAllExternalActivities}
+                      activeOpacity={0.7}
+                      disabled={isDeletingExternalActivities}
+                    >
+                      {isDeletingExternalActivities ? (
+                        <ActivityIndicator size="small" color={Platform.OS === 'ios' ? '#ff3b30' : colors.error} />
+                      ) : (
+                        <React.Fragment>
+                          <IconSymbol
+                            ios_icon_name="trash.fill"
+                            android_material_icon_name="delete"
+                            size={24}
+                            color={Platform.OS === 'ios' ? '#ff3b30' : colors.error}
+                          />
+                          <Text style={[styles.deleteExternalButtonText, { color: Platform.OS === 'ios' ? '#ff3b30' : colors.error }]}>
+                            Slet alle eksterne aktiviteter
+                          </Text>
+                        </React.Fragment>
+                      )}
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <PremiumFeatureGate
+                    title="Kalendersynk er en Premium-fordel"
+                    description="Importer dine aktiviteter automatisk fra eksterne kalendere ved at opgradere."
+                    onPress={() => handleOpenSubscriptionSection('calendarSync')}
+                    icon={{ ios: 'calendar.badge.plus', android: 'event' }}
+                    align="left"
+                  />
+                )
               )}
             </CardWrapper>
 
             {/* Subscription Section - Collapsible - Available for all users */}
-            <CardWrapper style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
-              <TouchableOpacity
-                style={styles.collapsibleHeader}
-                onPress={() => setIsSubscriptionExpanded(!isSubscriptionExpanded)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.sectionTitleContainer}>
+            <View onLayout={(event) => setSubscriptionSectionY(event.nativeEvent.layout.y)}>
+              <CardWrapper style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
+                <TouchableOpacity
+                  style={styles.collapsibleHeader}
+                  onPress={() => setIsSubscriptionExpanded(!isSubscriptionExpanded)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.sectionTitleContainer}>
+                    <IconSymbol
+                      ios_icon_name="creditcard.fill"
+                      android_material_icon_name="payment"
+                      size={28}
+                      color={colors.primary}
+                    />
+                    <Text style={[styles.sectionTitle, { color: textColor }]}>Abonnement</Text>
+                  </View>
                   <IconSymbol
-                    ios_icon_name="creditcard.fill"
-                    android_material_icon_name="payment"
-                    size={28}
-                    color={colors.primary}
+                    ios_icon_name={isSubscriptionExpanded ? 'chevron.up' : 'chevron.down'}
+                    android_material_icon_name={isSubscriptionExpanded ? 'expand_less' : 'expand_more'}
+                    size={24}
+                    color={textSecondaryColor}
                   />
-                  <Text style={[styles.sectionTitle, { color: textColor }]}>Abonnement</Text>
-                </View>
-                <IconSymbol
-                  ios_icon_name={isSubscriptionExpanded ? 'chevron.up' : 'chevron.down'}
-                  android_material_icon_name={isSubscriptionExpanded ? 'expand_less' : 'expand_more'}
-                  size={24}
-                  color={textSecondaryColor}
-                />
-              </TouchableOpacity>
-              
-              {isSubscriptionExpanded && (
-                <>
-                  <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
-                    Administrer dit abonnement
-                  </Text>
-                  <SubscriptionManager />
-                </>
-              )}
-            </CardWrapper>
+                </TouchableOpacity>
+                
+                {isSubscriptionExpanded && (
+                  <>
+                    <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>Administrer dit abonnement</Text>
+                    {userRole === 'player' ? (
+                      <AppleSubscriptionManager
+                        highlightProductId={highlightProductId}
+                        forceShowPlans={Boolean(highlightProductId)}
+                      />
+                    ) : (
+                      <SubscriptionManager />
+                    )}
+                  </>
+                )}
+              </CardWrapper>
+            </View>
 
             <TouchableOpacity
               style={[styles.signOutButton, { backgroundColor: Platform.OS === 'ios' ? '#ff3b30' : colors.error }]}

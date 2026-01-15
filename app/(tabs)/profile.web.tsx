@@ -1,14 +1,18 @@
-
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, useColorScheme, Platform, ActivityIndicator } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
+import { PremiumFeatureGate } from '@/components/PremiumFeatureGate';
 import { supabase } from '@/app/integrations/supabase/client';
 import CreatePlayerModal from '@/components/CreatePlayerModal';
 import PlayersList from '@/components/PlayersList';
 import ExternalCalendarManager from '@/components/ExternalCalendarManager';
 import SubscriptionManager from '@/components/SubscriptionManager';
+import AppleSubscriptionManager from '@/components/AppleSubscriptionManager';
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import { useSubscriptionFeatures } from '@/hooks/useSubscriptionFeatures';
+import { PRODUCT_IDS } from '@/contexts/AppleIAPContext';
 
 interface UserProfile {
   full_name: string;
@@ -20,6 +24,19 @@ interface AdminInfo {
   phone_number: string;
   email: string;
 }
+
+type UpgradeTarget = 'library' | 'calendarSync' | 'trainerLinking';
+
+const normalizeUpgradeTarget = (value: string | string[] | undefined): UpgradeTarget | null => {
+  if (!value) {
+    return null;
+  }
+  const resolved = Array.isArray(value) ? value[0] : value;
+  if (resolved === 'library' || resolved === 'calendarSync' || resolved === 'trainerLinking') {
+    return resolved;
+  }
+  return null;
+};
 
 export default function ProfileScreen() {
   const [user, setUser] = useState<any>(null);
@@ -47,6 +64,11 @@ export default function ProfileScreen() {
   // Collapsible sections - Calendar Sync now collapsed by default
   const [isCalendarSyncExpanded, setIsCalendarSyncExpanded] = useState(false);
   const [isSubscriptionExpanded, setIsSubscriptionExpanded] = useState(false);
+  const [subscriptionSectionY, setSubscriptionSectionY] = useState<number | null>(null);
+  const scrollViewRef = useRef<ScrollView | null>(null);
+  const params = useLocalSearchParams<{ upgradeTarget?: string }>();
+  const routeUpgradeTarget = normalizeUpgradeTarget(params.upgradeTarget);
+  const [manualUpgradeTarget, setManualUpgradeTarget] = useState<UpgradeTarget | null>(null);
   
   // Debug state
   const [debugInfo, setDebugInfo] = useState<string[]>([]);
@@ -56,11 +78,39 @@ export default function ProfileScreen() {
 
   // Get subscription status
   const { subscriptionStatus, refreshSubscription } = useSubscription();
+  const {
+    featureAccess,
+    isLoading: subscriptionFeaturesLoading,
+  } = useSubscriptionFeatures();
+
+  const canUseCalendarSync = featureAccess.calendarSync;
+  const canLinkTrainer = featureAccess.trainerLinking;
+  const effectiveUpgradeTarget = manualUpgradeTarget ?? routeUpgradeTarget;
+  const highlightProductId =
+    userRole === 'player' && effectiveUpgradeTarget ? PRODUCT_IDS.PLAYER_PREMIUM : undefined;
+  const shouldHighlightPremiumPlan = Boolean(highlightProductId);
 
   const addDebugInfo = (message: string) => {
     console.log('[PROFILE DEBUG]', message);
     setDebugInfo(prev => [...prev, `${new Date().toISOString().split('T')[1].split('.')[0]} - ${message}`]);
   };
+
+  const scrollToSubscription = useCallback(() => {
+    if (!scrollViewRef.current || subscriptionSectionY === null) {
+      return;
+    }
+    scrollViewRef.current.scrollTo({ y: Math.max(subscriptionSectionY - 32, 0), animated: true });
+  }, [subscriptionSectionY]);
+
+  const handleOpenSubscriptionSection = useCallback((target?: UpgradeTarget) => {
+    if (target) {
+      setManualUpgradeTarget(target);
+    }
+    setIsSubscriptionExpanded(true);
+    setTimeout(() => {
+      scrollToSubscription();
+    }, 200);
+  }, [scrollToSubscription]);
 
   const checkUserOnboarding = useCallback(async (userId: string) => {
     addDebugInfo('Checking user onboarding status...');
@@ -142,6 +192,22 @@ export default function ProfileScreen() {
 
     return () => subscription.unsubscribe();
   }, [checkUserOnboarding]);
+
+  useEffect(() => {
+    if (shouldHighlightPremiumPlan) {
+      setIsSubscriptionExpanded(true);
+    }
+  }, [shouldHighlightPremiumPlan]);
+
+  useEffect(() => {
+    if (!shouldHighlightPremiumPlan || subscriptionSectionY === null) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      scrollToSubscription();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [shouldHighlightPremiumPlan, subscriptionSectionY, scrollToSubscription]);
 
   const fetchUserProfile = async (userId: string) => {
     try {
@@ -485,6 +551,7 @@ export default function ProfileScreen() {
     return (
       <View style={[styles.container, { backgroundColor: bgColor }]}>
         <ScrollView 
+          ref={scrollViewRef}
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
@@ -613,6 +680,7 @@ export default function ProfileScreen() {
   return (
     <View style={[styles.container, { backgroundColor: bgColor }]}>
       <ScrollView 
+        ref={scrollViewRef}
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -791,38 +859,56 @@ export default function ProfileScreen() {
             </View>
 
             {/* Admin Info for Players */}
-            {userRole === 'player' && adminInfo && (
-              <View style={[styles.card, { backgroundColor: cardBgColor }]}>
-                <Text style={[styles.sectionTitle, { color: textColor }]}>
-                  Din Træner
-                </Text>
-                <View style={styles.profileInfo}>
-                  <View style={styles.infoRow}>
-                    <IconSymbol
-                      ios_icon_name="person.fill"
-                      android_material_icon_name="person"
-                      size={20}
-                      color={colors.primary}
-                    />
-                    <Text style={[styles.infoText, { color: textColor }]}>
-                      {adminInfo.full_name}
-                    </Text>
-                  </View>
-                  {adminInfo.phone_number && (
-                    <View style={styles.infoRow}>
-                      <IconSymbol
-                        ios_icon_name="phone.fill"
-                        android_material_icon_name="phone"
-                        size={20}
-                        color={colors.primary}
-                      />
-                      <Text style={[styles.infoText, { color: textColor }]}>
-                        {adminInfo.phone_number}
-                      </Text>
-                    </View>
-                  )}
+            {userRole === 'player' && (
+              subscriptionFeaturesLoading ? (
+                <View style={[styles.card, { backgroundColor: cardBgColor, alignItems: 'center', paddingVertical: 24 }]}>
+                  <ActivityIndicator size="small" color={colors.primary} />
                 </View>
-              </View>
+              ) : canLinkTrainer ? (
+                adminInfo ? (
+                  <View style={[styles.card, { backgroundColor: cardBgColor }]}>
+                    <Text style={[styles.sectionTitle, { color: textColor }]}>
+                      Din Træner
+                    </Text>
+                    <View style={styles.profileInfo}>
+                      <View style={styles.infoRow}>
+                        <IconSymbol
+                          ios_icon_name="person.fill"
+                          android_material_icon_name="person"
+                          size={20}
+                          color={colors.primary}
+                        />
+                        <Text style={[styles.infoText, { color: textColor }]}>
+                          {adminInfo.full_name}
+                        </Text>
+                      </View>
+                      {adminInfo.phone_number && (
+                        <View style={styles.infoRow}>
+                          <IconSymbol
+                            ios_icon_name="phone.fill"
+                            android_material_icon_name="phone"
+                            size={20}
+                            color={colors.primary}
+                          />
+                          <Text style={[styles.infoText, { color: textColor }]}>
+                            {adminInfo.phone_number}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                ) : null
+              ) : (
+                <View style={[styles.card, { backgroundColor: cardBgColor }]}>
+                  <PremiumFeatureGate
+                    title="Premium kræves for træner-adgang"
+                    description="Opgrader for at forbinde dig med din træner og få skræddersyede aktiviteter."
+                    onPress={() => handleOpenSubscriptionSection('trainerLinking')}
+                    icon={{ ios: 'person.2.circle', android: 'groups' }}
+                    align="left"
+                  />
+                </View>
+              )
             )}
 
             {/* Calendar Sync Section - Collapsible - Available for all users */}
@@ -850,17 +936,34 @@ export default function ProfileScreen() {
               </TouchableOpacity>
               
               {isCalendarSyncExpanded && (
-                <>
-                  <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
-                    Tilknyt eksterne kalendere (iCal/webcal) for automatisk at importere aktiviteter
-                  </Text>
-                  <ExternalCalendarManager />
-                </>
+                subscriptionFeaturesLoading ? (
+                  <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  </View>
+                ) : canUseCalendarSync ? (
+                  <>
+                    <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
+                      Tilknyt eksterne kalendere (iCal/webcal) for automatisk at importere aktiviteter
+                    </Text>
+                    <ExternalCalendarManager />
+                  </>
+                ) : (
+                  <PremiumFeatureGate
+                    title="Kalendersynk er låst op i Premium"
+                    description="Importer automatisk aktiviteter ved at opgradere til Premium."
+                    onPress={() => handleOpenSubscriptionSection('calendarSync')}
+                    icon={{ ios: 'calendar.badge.plus', android: 'event' }}
+                    align="left"
+                  />
+                )
               )}
             </View>
 
             {/* Subscription Section - Collapsible - Available for all users */}
-            <View style={[styles.card, { backgroundColor: cardBgColor }]}>
+            <View
+              style={[styles.card, { backgroundColor: cardBgColor }]}
+              onLayout={(event) => setSubscriptionSectionY(event.nativeEvent.layout.y)}
+            >
               <TouchableOpacity
                 style={styles.collapsibleHeader}
                 onPress={() => setIsSubscriptionExpanded(!isSubscriptionExpanded)}
@@ -888,7 +991,14 @@ export default function ProfileScreen() {
                   <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
                     Administrer dit abonnement
                   </Text>
-                  <SubscriptionManager />
+                  {userRole === 'player' ? (
+                    <AppleSubscriptionManager
+                      highlightProductId={highlightProductId}
+                      forceShowPlans={Boolean(highlightProductId)}
+                    />
+                  ) : (
+                    <SubscriptionManager />
+                  )}
                 </>
               )}
             </View>

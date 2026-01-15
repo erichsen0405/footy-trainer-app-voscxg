@@ -14,9 +14,11 @@ import {
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
+import { PremiumFeatureGate } from '@/components/PremiumFeatureGate';
 import { supabase } from '@/app/integrations/supabase/client';
 import { triggerManualSync, checkSyncStatus } from '@/utils/calendarAutoSync';
 import { deleteExternalActivitiesForCalendar } from '@/utils/deleteExternalActivities';
+import { useSubscriptionFeatures } from '@/hooks/useSubscriptionFeatures';
 
 interface ExternalCalendar {
   id: string;
@@ -51,6 +53,27 @@ export default function ExternalCalendarManager() {
   const [categoryMappings, setCategoryMappings] = useState<CategoryMapping[]>([]);
   const [showMappings, setShowMappings] = useState(false);
   const [syncStatus, setSyncStatus] = useState<any>(null);
+  const {
+    featureAccess,
+    isLoading: subscriptionFeaturesLoading,
+  } = useSubscriptionFeatures();
+
+  const canUseCalendarSync = featureAccess.calendarSync;
+
+  const showCalendarUpgradeAlert = () => {
+    Alert.alert(
+      'Premium påkrævet',
+      'Kalendersynk er kun tilgængelig for Premium spillere og trænere. Opgrader under Abonnement for at fortsætte.'
+    );
+  };
+
+  const ensureCalendarAccess = () => {
+    if (canUseCalendarSync) {
+      return true;
+    }
+    showCalendarUpgradeAlert();
+    return false;
+  };
 
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -59,10 +82,18 @@ export default function ExternalCalendarManager() {
   const bgColor = isDark ? '#1a1a1a' : colors.background;
 
   useEffect(() => {
+    if (!canUseCalendarSync) {
+      setLoading(false);
+      setCalendars([]);
+      setCategoryMappings([]);
+      setShowAddForm(false);
+      return;
+    }
+
     fetchCalendars();
     fetchCategoryMappings();
     checkAutoSyncStatus();
-  }, []);
+  }, [canUseCalendarSync]);
 
   const checkAutoSyncStatus = async () => {
     const status = await checkSyncStatus();
@@ -70,6 +101,9 @@ export default function ExternalCalendarManager() {
   };
 
   const fetchCalendars = async () => {
+    if (!canUseCalendarSync) {
+      return;
+    }
     try {
       setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
@@ -101,6 +135,9 @@ export default function ExternalCalendarManager() {
   };
 
   const fetchCategoryMappings = async () => {
+    if (!canUseCalendarSync) {
+      return;
+    }
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -143,6 +180,10 @@ export default function ExternalCalendarManager() {
   };
 
   const handleAddCalendar = async () => {
+    if (!ensureCalendarAccess()) {
+      return;
+    }
+
     if (!newCalendarName.trim() || !newCalendarUrl.trim()) {
       Alert.alert('Fejl', 'Udfyld venligst både navn og URL');
       return;
@@ -202,6 +243,10 @@ export default function ExternalCalendarManager() {
   };
 
   const handleSyncCalendar = async (calendarId: string, calendarName: string) => {
+    if (!ensureCalendarAccess()) {
+      return;
+    }
+
     try {
       setSyncing(calendarId);
       
@@ -281,6 +326,10 @@ export default function ExternalCalendarManager() {
   };
 
   const handleAutoSyncAll = async () => {
+    if (!ensureCalendarAccess()) {
+      return;
+    }
+
     try {
       setAutoSyncing(true);
       
@@ -302,6 +351,10 @@ export default function ExternalCalendarManager() {
   };
 
   const handleToggleCalendar = async (calendarId: string, currentEnabled: boolean) => {
+    if (!ensureCalendarAccess()) {
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from('external_calendars')
@@ -321,6 +374,10 @@ export default function ExternalCalendarManager() {
   };
 
   const handleToggleAutoSync = async (calendarId: string, currentAutoSync: boolean) => {
+    if (!ensureCalendarAccess()) {
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from('external_calendars')
@@ -340,6 +397,10 @@ export default function ExternalCalendarManager() {
   };
 
   const handleDeleteCalendar = async (calendarId: string, calendarName: string) => {
+    if (!ensureCalendarAccess()) {
+      return;
+    }
+
     const { data: { user } } = await supabase.auth.getUser();
     
     if (!user) {
@@ -409,6 +470,10 @@ export default function ExternalCalendarManager() {
   };
 
   const deleteCalendarOnly = async (calendarId: string, calendarName: string, activityCount: number) => {
+    if (!ensureCalendarAccess()) {
+      return;
+    }
+
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -465,6 +530,10 @@ export default function ExternalCalendarManager() {
   };
 
   const deleteCalendarWithActivities = async (calendarId: string, calendarName: string) => {
+    if (!ensureCalendarAccess()) {
+      return;
+    }
+
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -509,6 +578,29 @@ export default function ExternalCalendarManager() {
       Alert.alert('Fejl', error.message || 'Kunne ikke slette kalender og aktiviteter');
     }
   };
+
+  if (subscriptionFeaturesLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={[styles.loadingText, { color: textColor }]}>Kontrollerer abonnement...</Text>
+      </View>
+    );
+  }
+
+  if (!canUseCalendarSync) {
+    return (
+      <View style={{ paddingVertical: 12 }}>
+        <PremiumFeatureGate
+          title="Kalendersynk kræver Premium"
+          description="Opgrader for at importere eksterne kalendere og holde aktiviteterne automatisk opdateret."
+          onPress={showCalendarUpgradeAlert}
+          icon={{ ios: 'calendar.badge.plus', android: 'event' }}
+          align="left"
+        />
+      </View>
+    );
+  }
 
   if (loading) {
     return (
