@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, ReactNode } from 'react';
 
 // Stub types for web
@@ -27,6 +26,8 @@ interface AppleIAPContextType {
   purchaseSubscription: (productId: string) => Promise<void>;
   restorePurchases: () => Promise<void>;
   refreshSubscriptionStatus: () => Promise<void>;
+  iapReady: boolean;
+  ensureIapReady: () => Promise<boolean>;
 }
 
 const AppleIAPContext = createContext<AppleIAPContextType | undefined>(undefined);
@@ -47,6 +48,8 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
     refreshSubscriptionStatus: async () => {
       console.log('[AppleIAP Web] Refresh not available on web');
     },
+    iapReady: true,
+    ensureIapReady: async () => true,
   };
 
   return (

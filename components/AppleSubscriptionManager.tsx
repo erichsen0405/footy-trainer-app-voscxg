@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
-import { useAppleIAP, PRODUCT_IDS } from '@/contexts/AppleIAPContext';
+import { useAppleIAP, PRODUCT_IDS, ORDERED_PRODUCT_IDS } from '@/contexts/AppleIAPContext';
 
 interface AppleSubscriptionManagerProps {
   onPlanSelected?: (productId: string) => void;
@@ -99,6 +99,23 @@ const getPlanFeatures = (productId: string, maxPlayers: number): PlanFeature[] =
   ];
 };
 
+const getPlanName = (product: { productId: string }) => {
+  switch (getPlanTypeFromProductId(product.productId)) {
+    case 'player_basic':
+      return 'Basis spiller';
+    case 'player_premium':
+      return 'Premium spiller';
+    case 'trainer_basic':
+      return 'Træner Basis';
+    case 'trainer_standard':
+      return 'Træner Standard';
+    case 'trainer_premium':
+      return 'Træner Premium';
+    default:
+      return product.productId;
+  }
+};
+
 export default function AppleSubscriptionManager({ 
   onPlanSelected, 
   isSignupFlow = false,
@@ -112,7 +129,9 @@ export default function AppleSubscriptionManager({
     loading, 
     purchasing,
     purchaseSubscription,
-    restorePurchases 
+    restorePurchases,
+    iapReady,
+    ensureIapReady,
   } = useAppleIAP();
   
   const [showPlans, setShowPlans] = useState(isSignupFlow);
@@ -130,6 +149,21 @@ export default function AppleSubscriptionManager({
       ? products.filter(p => p.maxPlayers <= 1)
       : products.filter(p => p.maxPlayers > 1)
     : products;
+
+  const planOrder = useMemo(() => {
+    return ORDERED_PRODUCT_IDS.reduce<Record<string, number>>((acc, id, index) => {
+      acc[id] = index;
+      return acc;
+    }, {});
+  }, []);
+
+  const sortedProducts = useMemo(() => {
+    return [...filteredProducts].sort((a, b) => {
+      const orderA = planOrder[a.productId] ?? Number.MAX_SAFE_INTEGER;
+      const orderB = planOrder[b.productId] ?? Number.MAX_SAFE_INTEGER;
+      return orderA - orderB;
+    });
+  }, [filteredProducts, planOrder]);
 
   const handleSelectPlan = async (productId: string, title: string) => {
     if (isSignupFlow && onPlanSelected) {
@@ -174,16 +208,6 @@ export default function AppleSubscriptionManager({
     }
   };
 
-  const getPlanName = (product: any) => {
-    if (product.productId === PRODUCT_IDS.PLAYER_PREMIUM) return 'Premium spiller';
-    if (product.productId === PRODUCT_IDS.PLAYER_BASIC) return 'Basis spiller';
-    if (product.productId.includes('spiller')) return 'Spiller';
-    if (product.productId.includes('basic')) return 'Træner Basis';
-    if (product.productId.includes('standard')) return 'Træner Standard';
-    if (product.productId.includes('premium')) return 'Træner Premium';
-    return product.title;
-  };
-
   const isCurrentPlan = (productId: string): boolean => {
     return subscriptionStatus?.isActive && subscriptionStatus.productId === productId;
   };
@@ -193,6 +217,12 @@ export default function AppleSubscriptionManager({
       setShowPlans(true);
     }
   }, [forceShowPlans]);
+
+  useEffect(() => {
+    if (Platform.OS === 'ios') {
+      ensureIapReady().catch(() => {});
+    }
+  }, [ensureIapReady]);
 
   if (Platform.OS !== 'ios') {
     return (
@@ -213,12 +243,12 @@ export default function AppleSubscriptionManager({
     );
   }
 
-  if (loading) {
+  if (loading || !iapReady) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
         <Text style={[styles.loadingText, { color: textColor }]}>
-          Henter abonnementer fra App Store...
+          {iapReady ? 'Henter abonnementer fra App Store...' : 'Forbinder til App Store…'}
         </Text>
       </View>
     );
@@ -299,9 +329,14 @@ export default function AppleSubscriptionManager({
       {/* Restore Purchases Button */}
       {!isSignupFlow && (
         <TouchableOpacity
-          style={[styles.restoreButton, { backgroundColor: cardBgColor }]}
+          style={[
+            styles.restoreButton,
+            { backgroundColor: cardBgColor },
+            (!iapReady || purchasing) && styles.disabledButton,
+          ]}
           onPress={handleRestorePurchases}
           activeOpacity={0.7}
+          disabled={!iapReady || purchasing}
         >
           <IconSymbol
             ios_icon_name="arrow.clockwise"
@@ -343,10 +378,10 @@ export default function AppleSubscriptionManager({
       )}
 
       {/* Plans List */}
-      {showPlans && (
+      {showPlans && iapReady && (
         <View style={styles.plansContainer}>
-          {filteredProducts.map((product, index) => {
-            const isPopular = index === Math.floor(filteredProducts.length / 2);
+          {sortedProducts.map((product, index) => {
+            const isPopular = index === Math.floor(sortedProducts.length / 2);
             const isCurrentActive = isCurrentPlan(product.productId);
             const isHighlightTarget = highlightProductId === product.productId;
             const features = getPlanFeatures(product.productId, product.maxPlayers || 1);
@@ -616,9 +651,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 12,
   },
-  restoreButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
+  disabledButton: {
+    opacity: 0.5,
   },
   expandButton: {
     flexDirection: 'row',
