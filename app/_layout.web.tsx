@@ -1,4 +1,3 @@
-
 import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -49,6 +48,14 @@ export default function RootLayout() {
     if (typeof window !== 'undefined' && (window as any).tolt) {
       console.error('[RN Web] CRITICAL: tolt.js detected after mount - this should not happen');
       delete (window as any).tolt;
+    }
+  }, []);
+
+  // Hermes log mirroring
+  useEffect(() => {
+    if (__DEV__) {
+      const hermesEnabled = typeof (globalThis as any).HermesInternal === 'object';
+      console.log(`[Hermes] Runtime ${hermesEnabled ? 'ENABLED' : 'DISABLED'}`);
     }
   }, []);
 

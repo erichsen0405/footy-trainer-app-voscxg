@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { subDays, startOfDay, parseISO, format, differenceInCalendarDays, addDays } from 'date-fns';
 import { supabase } from '@/app/integrations/supabase/client';
 import { ActivityCategory } from '@/types';
@@ -107,6 +107,7 @@ interface UseProgressionDataResult {
   focusTemplates: FocusTemplateOption[];
   intensityCategoriesWithData: string[];
   possibleCount: number;
+  requiresLogin: boolean;
 }
 
 const SUCCESS_THRESHOLD = 7;
@@ -130,6 +131,30 @@ export function useProgressionData({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [requiresLogin, setRequiresLogin] = useState(false);
+  const mountedRef = useRef(true);
+
+  const runIfMounted = useCallback((fn: () => void) => {
+    if (mountedRef.current) fn();
+  }, []);
+
+  const clearDataState = useCallback(() => {
+    if (!mountedRef.current) return;
+    setFocusEntries([]);
+    setFocusEntriesPrevious([]);
+    setFocusPossible([]);
+    setFocusPossiblePrevious([]);
+    setFocusTemplates([]);
+    setIntensityEntries([]);
+    setIntensityEntriesPrevious([]);
+    setLastUpdated(null);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const categoryMap = useMemo(() => {
     const lookup: Record<string, ActivityCategory> = {};
@@ -207,8 +232,10 @@ export function useProgressionData({
   );
 
   const fetchEntries = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
+    runIfMounted(() => {
+      setIsLoading(true);
+      setError(null);
+    });
 
     try {
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
@@ -218,8 +245,13 @@ export function useProgressionData({
 
       const userId = sessionData?.session?.user?.id;
       if (!userId) {
-        throw new Error('Ingen aktiv session');
+        console.info('[useProgressionData] Skipping progression fetch – no active session');
+        clearDataState();
+        runIfMounted(() => setRequiresLogin(true));
+        return;
       }
+
+      runIfMounted(() => setRequiresLogin(false));
 
       const today = startOfDay(new Date());
       const periodStart = startOfDay(subDays(today, Math.max(days - 1, 0)));
@@ -331,27 +363,27 @@ export function useProgressionData({
         .map(([id, name]) => ({ id, name }))
         .sort((a, b) => a.name.localeCompare(b.name));
 
-      setFocusEntries(mappedFocusCurrent);
-      setFocusEntriesPrevious(mappedFocusPrevious);
-      setFocusPossible(mappedPossibleCurrent);
-      setFocusPossiblePrevious(mappedPossiblePrevious);
-      setFocusTemplates(templateOptions);
-      setIntensityEntries(mappedIntensityCurrent);
-      setIntensityEntriesPrevious(mappedIntensityPrevious);
-      setLastUpdated(new Date());
+      runIfMounted(() => {
+        setFocusEntries(mappedFocusCurrent);
+        setFocusEntriesPrevious(mappedFocusPrevious);
+        setFocusPossible(mappedPossibleCurrent);
+        setFocusPossiblePrevious(mappedPossiblePrevious);
+        setFocusTemplates(templateOptions);
+        setIntensityEntries(mappedIntensityCurrent);
+        setIntensityEntriesPrevious(mappedIntensityPrevious);
+        setLastUpdated(new Date());
+      });
     } catch (err: any) {
       console.error('[useProgressionData] fetch failed:', err);
-      setError(err?.message ?? 'Kunne ikke hente progression');
-      setFocusEntries([]);
-      setFocusEntriesPrevious([]);
-      setFocusPossible([]);
-      setFocusPossiblePrevious([]);
-      setIntensityEntries([]);
-      setIntensityEntriesPrevious([]);
+      clearDataState();
+      runIfMounted(() => {
+        setRequiresLogin(false);
+        setError(err?.message ?? 'Kunne ikke hente progression');
+      });
     } finally {
-      setIsLoading(false);
+      runIfMounted(() => setIsLoading(false));
     }
-  }, [days, mapFocusFeedbackRow, mapFocusPossibleRow, mapIntensityRow]);
+  }, [days, mapFocusFeedbackRow, mapFocusPossibleRow, mapIntensityRow, clearDataState, runIfMounted]);
 
   useEffect(() => {
     fetchEntries();
@@ -680,5 +712,6 @@ export function useProgressionData({
     focusTemplates,
     intensityCategoriesWithData,
     possibleCount,
+    requiresLogin,
   };
 }

@@ -28,6 +28,7 @@ interface AppleIAPContextType {
   refreshSubscriptionStatus: () => Promise<void>;
   iapReady: boolean;
   ensureIapReady: () => Promise<boolean>;
+  iapUnavailableReason: string | null;
 }
 
 const AppleIAPContext = createContext<AppleIAPContextType | undefined>(undefined);
@@ -50,6 +51,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
     },
     iapReady: true,
     ensureIapReady: async () => true,
+    iapUnavailableReason: 'Apple In-App Purchases er ikke tilgængelige på web.',
   };
 
   return (

@@ -4,7 +4,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { PremiumFeatureGate } from '@/components/PremiumFeatureGate';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import CreatePlayerModal from '@/components/CreatePlayerModal';
 import PlayersList from '@/components/PlayersList';
 import ExternalCalendarManager from '@/components/ExternalCalendarManager';
@@ -994,7 +994,7 @@ export default function ProfileScreen() {
                   {userRole === 'player' ? (
                     <AppleSubscriptionManager
                       highlightProductId={highlightProductId}
-                      forceShowPlans={Boolean(highlightProductId)}
+                      forceShowPlans={userRole === 'player' && !subscriptionStatus?.hasSubscription}
                     />
                   ) : (
                     <SubscriptionManager />

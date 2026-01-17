@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { PremiumFeatureGate } from '@/components/PremiumFeatureGate';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import ExternalCalendarManager from '@/components/ExternalCalendarManager';
 import SubscriptionManager from '@/components/SubscriptionManager';
 import AppleSubscriptionManager from '@/components/AppleSubscriptionManager';
@@ -1153,7 +1153,7 @@ export default function ProfileScreen() {
                     {userRole === 'player' ? (
                       <AppleSubscriptionManager
                         highlightProductId={highlightProductId}
-                        forceShowPlans={Boolean(highlightProductId)}
+                        forceShowPlans={userRole === 'player' && !subscriptionStatus?.hasSubscription}
                       />
                     ) : (
                       <SubscriptionManager />

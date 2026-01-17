@@ -1,13 +1,14 @@
-
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { supabase } from '@/app/integrations/supabase/client';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
+import { supabase } from '@/integrations/supabase/client';
 import { colors } from '@/styles/commonStyles';
+import { useAppleIAP } from '@/contexts/AppleIAPContext';
 
 export default function SubscriptionDiagnostic() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const { iapDiagnostics, refetchProducts, loading: iapLoading, iapReady, iapUnavailableReason } = useAppleIAP();
 
   useEffect(() => {
     fetchDiagnosticInfo();
@@ -67,10 +68,8 @@ export default function SubscriptionDiagnostic() {
     );
   }
 
-  const userHasSubscription = subscriptions.some(sub => sub.admin_id === currentUser?.id);
-
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container}>
       <Text style={styles.title}>🔍 Abonnement Diagnostik (DEV)</Text>
       
       <View style={styles.section}>
@@ -105,7 +104,7 @@ export default function SubscriptionDiagnostic() {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Diagnose:</Text>
-        {userHasSubscription ? (
+        {subscriptions.some(sub => sub.admin_id === currentUser?.id) ? (
           <Text style={[styles.text, { color: colors.success }]}>
             ✅ Du har et abonnement! Hvis det ikke vises, prøv at genindlæse siden.
           </Text>
@@ -122,6 +121,39 @@ export default function SubscriptionDiagnostic() {
         )}
       </View>
 
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>In-App Purchases</Text>
+        <Text style={styles.text}>Hermes enabled: {iapDiagnostics.hermesEnabled ? 'Ja' : 'Nej'}</Text>
+        <Text style={styles.text}>IAP ready: {iapReady ? 'Ja' : 'Nej'}</Text>
+        {iapUnavailableReason && (
+          <Text style={[styles.text, { color: colors.warning }]}>{iapUnavailableReason}</Text>
+        )}
+        <Text style={styles.text}>Requested SKUs: {iapDiagnostics.requestedSkus.join(', ') || 'Ingen'}</Text>
+        <Text style={styles.text}>Returned products: {iapDiagnostics.lastFetchCount}</Text>
+        {iapDiagnostics.returnedProductsDetailed.length === 0 ? (
+          <Text style={[styles.text, { color: colors.error }]}>Ingen produkter returneret fra Apple</Text>
+        ) : (
+          iapDiagnostics.returnedProductsDetailed.map((p) => (
+            <View key={p.productId} style={styles.subscriptionCard}>
+              <Text style={styles.text}>{p.productId}</Text>
+              <Text style={styles.text}>{p.title}</Text>
+              <Text style={styles.text}>{p.localizedPrice}</Text>
+            </View>
+          ))
+        )}
+        <TouchableOpacity
+          style={[styles.button, { backgroundColor: colors.secondary }]}
+          onPress={refetchProducts}
+          disabled={iapLoading || !!iapUnavailableReason}
+        >
+          {iapLoading ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={styles.buttonText}>Refresh IAP products</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+
       <TouchableOpacity style={styles.button} onPress={handleLogout}>
         <Text style={styles.buttonText}>Log ud og prøv igen</Text>
       </TouchableOpacity>
@@ -129,7 +161,7 @@ export default function SubscriptionDiagnostic() {
       <TouchableOpacity style={[styles.button, { backgroundColor: colors.secondary }]} onPress={fetchDiagnosticInfo}>
         <Text style={styles.buttonText}>Opdater diagnostik</Text>
       </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
 }
 

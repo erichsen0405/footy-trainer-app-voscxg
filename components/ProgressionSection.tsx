@@ -22,7 +22,7 @@ export function ProgressionSection({ categories }: Props) {
   const [chartWidth, setChartWidth] = useState(0);
   const [selectedPoint, setSelectedPoint] = useState<TrendPoint | null>(null);
 
-  const { trendPoints, summary, isLoading, error, rawEntries, focusTemplates, intensityCategoriesWithData, possibleCount } =
+  const { trendPoints, summary, isLoading, error, rawEntries, focusTemplates, intensityCategoriesWithData, possibleCount, requiresLogin } =
     useProgressionData({
       days: periodDays,
       metric,
@@ -187,6 +187,17 @@ export function ProgressionSection({ categories }: Props) {
 
   const yAxisLabels = [0, 2, 4, 6, 8, 10];
   const isMultiSeries = trendSeries.length > 1;
+
+  if (requiresLogin) {
+    return (
+      <View style={[styles.emptyState, { backgroundColor: palette.backgroundAlt }]}>
+        <Text style={[styles.emptyTitle, { color: palette.text }]}>Log ind for at se progression</Text>
+        <Text style={[styles.emptyText, { color: palette.textSecondary }]}>
+          Log ind for at gemme og se din progression.
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <>

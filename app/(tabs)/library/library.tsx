@@ -1,4 +1,3 @@
-
 /**
  * BINARY SEARCH TEST - GROUP 1 (First half of imports)
  * Testing: commonStyles, IconSymbol, supabase, TeamPlayerContext
@@ -6,11 +5,12 @@
 
 import React from 'react';
 import { Platform } from 'react-native';
+import { Redirect } from 'expo-router';
 
 // GROUP 1 - TESTING THESE:
 import { colors, getColors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 
 // GROUP 2 - STILL COMMENTED:
@@ -25,4 +25,8 @@ export default function Library() {
     return null;
   }
   return null;
+}
+
+export function LegacyLibraryRoute() {
+  return <Redirect href="/(tabs)/library" />;
 }

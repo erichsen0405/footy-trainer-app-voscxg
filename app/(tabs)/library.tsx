@@ -17,7 +17,7 @@ import { useRouter } from 'expo-router';
 
 import { colors, getColors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import { useSubscriptionFeatures } from '@/hooks/useSubscriptionFeatures';

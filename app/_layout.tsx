@@ -24,6 +24,13 @@ export default function RootLayout() {
     }
   }, [loaded]);
 
+  useEffect(() => {
+    if (__DEV__) {
+      const hermesEnabled = typeof (globalThis as any).HermesInternal === 'object';
+      console.log(`[Hermes] Runtime ${hermesEnabled ? 'ENABLED' : 'DISABLED'}`);
+    }
+  }, []);
+
   return (
     <AppleIAPProvider>
       <SubscriptionProvider>

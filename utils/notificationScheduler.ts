@@ -1,6 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import { Platform } from 'react-native';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 
