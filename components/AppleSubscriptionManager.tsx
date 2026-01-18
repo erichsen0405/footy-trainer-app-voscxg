@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useColorScheme, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useColorScheme, Platform, Alert, Linking } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAppleIAP, PRODUCT_IDS, ORDERED_PRODUCT_IDS } from '@/contexts/AppleIAPContext';
@@ -34,6 +34,8 @@ const TRAINER_PRODUCT_IDS = [
 ] as const;
 
 const THIRTY_SECONDS_MS = 30 * 1000;
+const PRIVACY_POLICY_URL = 'https://footballcoach.online/privacy';
+const APPLE_STANDARD_EULA_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
 
 const getPlanTypeFromProductId = (productId: string): PlanType => {
   switch (productId) {
@@ -224,6 +226,16 @@ export default function AppleSubscriptionManager({
   const handleRestorePurchases = useCallback(async () => {
     await restorePurchases();
   }, [restorePurchases]);
+
+  const openLegalLink = useCallback(async (url: string) => {
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (!supported) throw new Error('unsupported');
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert('Kunne ikke åbne link', 'Prøv igen senere.');
+    }
+  }, []);
 
   const getPlanIcon = (productId: string) => {
     const planType = getPlanTypeFromProductId(productId);
@@ -611,6 +623,23 @@ export default function AppleSubscriptionManager({
           <Text style={[styles.restoreButtonText, { color: colors.primary }]}>Gendan køb</Text>
         </TouchableOpacity>
       )}
+      <View style={styles.legalLinksRow}>
+        <TouchableOpacity
+          style={styles.legalLinkButton}
+          activeOpacity={0.6}
+          onPress={() => openLegalLink(PRIVACY_POLICY_URL)}
+        >
+          <Text style={styles.legalLinkText}>Privatlivspolitik</Text>
+        </TouchableOpacity>
+        <View style={styles.legalLinkSeparator} />
+        <TouchableOpacity
+          style={styles.legalLinkButton}
+          activeOpacity={0.6}
+          onPress={() => openLegalLink(APPLE_STANDARD_EULA_URL)}
+        >
+          <Text style={styles.legalLinkText}>Vilkår (EULA)</Text>
+        </TouchableOpacity>
+      </View>
       {!isSignupFlow && (
         <TouchableOpacity
           style={[styles.expandButton, { backgroundColor: cardBgColor }]}
@@ -645,6 +674,7 @@ export default function AppleSubscriptionManager({
     iapReady,
     isOrangeBoxExpanded,
     isSignupFlow,
+    openLegalLink,
     purchasing,
     renderPendingDowngrade,
     setShowPlans,
@@ -945,4 +975,26 @@ const styles = StyleSheet.create({
   notAvailableContainer: { alignItems: 'center', gap: 12, padding: 24 },
   notAvailableTitle: { fontSize: 20, fontWeight: '700' },
   notAvailableText: { fontSize: 14, textAlign: 'center' },
+  legalLinksRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    marginBottom: 12,
+  },
+  legalLinkButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  legalLinkText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
+    textDecorationLine: 'underline',
+  },
+  legalLinkSeparator: {
+    width: 1,
+    height: 14,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+  },
 });

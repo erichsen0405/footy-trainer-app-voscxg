@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,6 +8,7 @@ import {
   Alert,
   ScrollView,
   useColorScheme,
+  Linking,
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -19,6 +19,9 @@ interface SubscriptionManagerProps {
   isSignupFlow?: boolean;
   selectedRole?: 'player' | 'trainer' | null;
 }
+
+const PRIVACY_POLICY_URL = 'https://footballcoach.online/privacy';
+const APPLE_STANDARD_EULA_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
 
 export default function SubscriptionManager({ 
   onPlanSelected, 
@@ -233,6 +236,16 @@ export default function SubscriptionManager({
     return isMatch;
   };
 
+  const openLegalLink = useCallback(async (url: string) => {
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (!supported) throw new Error('unsupported');
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert('Kunne ikke åbne link', 'Prøv igen senere.');
+    }
+  }, []);
+
   if (loading && !isSignupFlow) {
     return (
       <View style={styles.loadingContainer}>
@@ -375,6 +388,24 @@ export default function SubscriptionManager({
           />
         </TouchableOpacity>
       )}
+
+      <View style={styles.legalLinksRow}>
+        <TouchableOpacity
+          style={styles.legalLinkButton}
+          activeOpacity={0.6}
+          onPress={() => openLegalLink(PRIVACY_POLICY_URL)}
+        >
+          <Text style={[styles.legalLinkText, { color: colors.primary }]}>Privatlivspolitik</Text>
+        </TouchableOpacity>
+        <View style={styles.legalLinkSeparator} />
+        <TouchableOpacity
+          style={styles.legalLinkButton}
+          activeOpacity={0.6}
+          onPress={() => openLegalLink(APPLE_STANDARD_EULA_URL)}
+        >
+          <Text style={[styles.legalLinkText, { color: colors.primary }]}>Vilkår (EULA)</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Plans List (Collapsible) */}
       {showPlans && (
@@ -661,6 +692,27 @@ const styles = StyleSheet.create({
   expandButtonText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  legalLinksRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  legalLinkButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  legalLinkText: {
+    fontSize: 13,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
+  legalLinkSeparator: {
+    width: 1,
+    height: 14,
+    backgroundColor: 'rgba(0,0,0,0.2)',
   },
   plansContainer: {
     gap: 16,
