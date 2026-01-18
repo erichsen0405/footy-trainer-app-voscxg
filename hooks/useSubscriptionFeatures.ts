@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Platform } from 'react-native';
 import { useAppleIAP, PRODUCT_IDS } from '@/contexts/AppleIAPContext';
@@ -77,7 +76,13 @@ const featureAccessForTier = (tier: SubscriptionTier | null): FeatureAccess => {
 export function useSubscriptionFeatures(): SubscriptionFeatures {
   // Safely get Apple IAP context - it should always be available since provider is in _layout
   const appleIAPContext = useAppleIAP();
-  const { subscriptionStatus, products, loading: iapLoading } = appleIAPContext;
+  const {
+    subscriptionStatus,
+    products,
+    loading: iapLoading,
+    hasPlayerPremium,
+    hasTrainerPremium,
+  } = appleIAPContext;
   
   const [profileData, setProfileData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -113,19 +118,28 @@ export function useSubscriptionFeatures(): SubscriptionFeatures {
   }, [fetchProfileData]);
 
   useEffect(() => {
-    if (subscriptionStatus?.productId) {
+    if (subscriptionStatus?.productId || hasPlayerPremium || hasTrainerPremium) {
       fetchProfileData();
     }
-  }, [subscriptionStatus?.productId, fetchProfileData]);
+  }, [subscriptionStatus?.productId, hasPlayerPremium, hasTrainerPremium, fetchProfileData]);
 
-  const tierFromProfile = normalizeTier(profileData?.subscription_tier);
+  const tierFromComplimentary = hasTrainerPremium
+    ? 'trainer_premium'
+    : hasPlayerPremium
+    ? 'player_premium'
+    : null;
+
   const tierFromStore = Platform.OS === 'ios' ? tierFromProductId(subscriptionStatus?.productId || null) : null;
-  const subscriptionTier = tierFromProfile ?? tierFromStore;
+  const subscriptionTier = tierFromComplimentary ?? tierFromProfile ?? tierFromStore;
 
   const getMaxPlayers = (): number => {
-    if (Platform.OS === 'ios' && subscriptionStatus?.isActive && subscriptionStatus.productId) {
-      const product = products.find(p => p.productId === subscriptionStatus.productId);
-      return product?.maxPlayers || 0;
+    if (Platform.OS === 'ios') {
+      if (hasTrainerPremium) return 50;
+      if (hasPlayerPremium) return 1;
+      if (subscriptionStatus?.isActive && subscriptionStatus.productId) {
+        const product = products.find(p => p.productId === subscriptionStatus.productId);
+        if (product?.maxPlayers) return product.maxPlayers;
+      }
     }
 
     if (subscriptionTier === 'player_basic' || subscriptionTier === 'player_premium') return 1;
@@ -136,8 +150,8 @@ export function useSubscriptionFeatures(): SubscriptionFeatures {
     return 0;
   };
 
-  const hasActiveSubscription = Platform.OS === 'ios' 
-    ? (subscriptionStatus?.isActive || false)
+  const hasActiveSubscription = Platform.OS === 'ios'
+    ? Boolean(subscriptionStatus?.isActive || hasPlayerPremium || hasTrainerPremium)
     : subscriptionTier != null;
 
   const maxPlayers = getMaxPlayers();

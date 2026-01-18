@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef, useMemo } from 'react';
 import { Platform, Alert } from 'react-native';
 import Constants from 'expo-constants';
 import * as Application from 'expo-application';
@@ -101,6 +101,7 @@ export const APP_STORE_SUBSCRIPTION_SKUS = [
   PRODUCT_IDS.TRAINER_STANDARD,
   PRODUCT_IDS.TRAINER_PREMIUM,
 ] as const;
+const APP_STORE_SKU_SET = new Set(APP_STORE_SUBSCRIPTION_SKUS);
 
 // Shared ordering for UI components that need deterministic plan sorting
 export const ORDERED_PRODUCT_IDS = [...APP_STORE_SUBSCRIPTION_SKUS];
@@ -115,6 +116,21 @@ export const APP_STORE_SKU_BY_PLAN_CODE = {
 
 export const PLAN_CODE_BY_SKU: Record<string, keyof typeof APP_STORE_SKU_BY_PLAN_CODE> =
   Object.fromEntries(Object.entries(APP_STORE_SKU_BY_PLAN_CODE).map(([plan, sku]) => [sku, plan as keyof typeof APP_STORE_SKU_BY_PLAN_CODE]));
+
+const PLAN_TIER_RANK: Record<keyof typeof APP_STORE_SKU_BY_PLAN_CODE, number> = {
+  player_basic: 0,
+  player_premium: 1,
+  trainer_basic: 0,
+  trainer_standard: 1,
+  trainer_premium: 2,
+};
+
+const getPlanMeta = (sku: string | null) => {
+  const planCode = sku ? PLAN_CODE_BY_SKU[sku] ?? null : null;
+  const group = planCode ? planCode.split('_')[0] : null;
+  const tierRank = planCode ? PLAN_TIER_RANK[planCode] ?? null : null;
+  return { planCode, group, tierRank };
+};
 
 const hermesRuntimeEnabled = typeof (globalThis as any).HermesInternal === 'object';
 
@@ -214,6 +230,13 @@ interface AppleIAPContextType {
   ensureIapReady: () => Promise<boolean>;
   iapDiagnostics: IapDiagnostics;
   iapUnavailableReason: string | null;
+  pendingProductId: string | null;
+  pendingEffectiveDate: number | null;
+  entitlements: UserEntitlement[];
+  hasComplimentaryPlayerPremium: boolean;
+  hasComplimentaryTrainerPremium: boolean;
+  hasPlayerPremium: boolean;
+  hasTrainerPremium: boolean;
 }
 
 const AppleIAPContext = createContext<AppleIAPContextType | undefined>(undefined);
@@ -263,6 +286,13 @@ type NormalizedStoreProduct = {
   rawKeys: string[];
 };
 
+type NormalizedPurchase = {
+  original: any;
+  productId: string;
+  expiryDate: number;
+  transactionDate: number;
+};
+
 const normalizeProductId = (product: any): string | null => {
   const candidates = [
     product?.productId,
@@ -270,6 +300,23 @@ const normalizeProductId = (product: any): string | null => {
     product?.sku,
     product?.productIdentifier,
     product?.identifier,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string') {
+      const trimmed = candidate.trim();
+      if (trimmed.length) return trimmed;
+    }
+  }
+  return null;
+};
+
+const normalizePurchaseProductId = (purchase: any): string | null => {
+  const candidates = [
+    purchase?.productId,
+    purchase?.productIdentifier,
+    purchase?.sku,
+    purchase?.identifier,
+    purchase?.productIdIOS,
   ];
   for (const candidate of candidates) {
     if (typeof candidate === 'string') {
@@ -323,6 +370,13 @@ const normalizeStoreProduct = (product: any): NormalizedStoreProduct | null => {
   };
 };
 
+type ComplimentaryEntitlement = 'spiller_premium' | 'træner_premium';
+interface UserEntitlement {
+  entitlement: ComplimentaryEntitlement;
+  source: string;
+  expires_at: string | null;
+}
+
 export function AppleIAPProvider({ children }: { children: ReactNode }) {
   const [products, setProducts] = useState<SubscriptionProduct[]>([]);
   const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus | null>(null);
@@ -331,6 +385,62 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
   const [iapReady, setIapReady] = useState<boolean>(iapReadyFlag);
   const [iapDiagnostics, setIapDiagnostics] = useState<IapDiagnostics>(defaultDiagnostics);
   const [iapUnavailableReason, setIapUnavailableReason] = useState<string | null>(null);
+  const [pendingPlan, setPendingPlan] = useState<{ productId: string; effectiveDate: number | null } | null>(null);
+  const [entitlements, setEntitlements] = useState<UserEntitlement[]>([]);
+  const lastRequestedSkuRef = useRef<string | null>(null);
+
+  const fetchEntitlements = useCallback(async () => {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        setEntitlements([]);
+        return;
+      }
+      const { data, error } = await supabase.rpc('get_my_entitlements');
+      if (error) {
+        console.warn('[AppleIAP] Failed to load entitlements', error.message);
+        return;
+      }
+      setEntitlements(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.warn('[AppleIAP] Unexpected entitlement fetch error', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchEntitlements();
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        fetchEntitlements();
+      } else {
+        setEntitlements([]);
+      }
+    });
+    return () => {
+      data.subscription.unsubscribe();
+    };
+  }, [fetchEntitlements]);
+
+  const complimentaryFlags = useMemo(() => {
+    const hasComplimentaryPlayerPremium = entitlements.some(e => e.entitlement === 'spiller_premium');
+    const hasComplimentaryTrainerPremium = entitlements.some(e => e.entitlement === 'træner_premium');
+    const applePlayerActive =
+      subscriptionStatus?.isActive && subscriptionStatus.productId === PRODUCT_IDS.PLAYER_PREMIUM;
+    const appleTrainerActive =
+      subscriptionStatus?.isActive && !!subscriptionStatus.productId && TRAINER_PRODUCT_SET.has(subscriptionStatus.productId);
+    return {
+      hasComplimentaryPlayerPremium,
+      hasComplimentaryTrainerPremium,
+      hasPlayerPremium: Boolean(applePlayerActive || hasComplimentaryPlayerPremium),
+      hasTrainerPremium: Boolean(appleTrainerActive || hasComplimentaryTrainerPremium),
+      applePlayerActive,
+      appleTrainerActive,
+    };
+  }, [entitlements, subscriptionStatus?.isActive, subscriptionStatus?.productId]);
+
+  const { hasComplimentaryPlayerPremium, hasComplimentaryTrainerPremium, hasPlayerPremium, hasTrainerPremium } = complimentaryFlags;
 
   useEffect(() => {
     const runtimeBundleId = getRuntimeBundleId();
@@ -483,6 +593,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
   }, [updateDiagnostics]);
 
   const refreshSubscriptionStatus = useCallback(async () => {
+    await fetchEntitlements();
     const ready = await ensureIapReady();
     if (!ready) {
       setIapUnavailableReason(getIapUnavailableMessage());
@@ -492,6 +603,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
         expiryDate: null,
         isInTrialPeriod: false,
       });
+      setPendingPlan(null);
       return;
     }
 
@@ -504,6 +616,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
         expiryDate: null,
         isInTrialPeriod: false,
       });
+      setPendingPlan(null);
       return;
     }
 
@@ -521,40 +634,101 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
         console.warn('[AppleIAP] getAvailablePurchases with iOS options failed, retrying without filters.', fetchError);
         availablePurchases = await RNIap.getAvailablePurchases();
       }
-      console.log('[AppleIAP] Available purchases:', availablePurchases);
 
-      if (availablePurchases.length > 0) {
-        // Find the most recent subscription
-        const sortedPurchases = availablePurchases.sort((a: any, b: any) => {
-          return (b.transactionDate || 0) - (a.transactionDate || 0);
-        });
+      const normalizedPurchases: NormalizedPurchase[] = (availablePurchases ?? [])
+        .map(purchase => {
+          const productId = normalizePurchaseProductId(purchase);
+          if (!productId || !APP_STORE_SKU_SET.has(productId)) return null;
 
-        const latestPurchase = sortedPurchases[0];
+          const transactionDateRaw =
+            purchase?.transactionDate ??
+            purchase?.originalTransactionDateIOS ??
+            purchase?.transactionDateIOS ??
+            0;
+          const transactionDate = Number(transactionDateRaw) || 0;
 
-        const expiryDate = latestPurchase?.expirationDateIOS
-          ? Number(latestPurchase.expirationDateIOS)
-          : latestPurchase?.transactionDate
-          ? Number(latestPurchase.transactionDate) + 30 * 24 * 60 * 60 * 1000
-          : null;
+          const expiryDate = purchase?.expirationDateIOS
+            ? Number(purchase.expirationDateIOS)
+            : transactionDate
+            ? transactionDate + 30 * 24 * 60 * 60 * 1000
+            : Date.now() + 30 * 24 * 60 * 60 * 1000;
 
-        const isActive = true; // If it's in availablePurchases, it's active
+          return {
+            original: purchase,
+            productId,
+            expiryDate,
+            transactionDate,
+          };
+        })
+        .filter(Boolean) as NormalizedPurchase[];
 
+      const currentPurchase = normalizedPurchases.reduce<NormalizedPurchase | null>((winner, candidate) => {
+        if (!candidate) return winner;
+        if (!winner) return candidate;
+        if (candidate.expiryDate !== winner.expiryDate) {
+          return candidate.expiryDate > winner.expiryDate ? candidate : winner;
+        }
+        return candidate.transactionDate > winner.transactionDate ? candidate : winner;
+      }, null);
+
+      console.log('[AppleIAP] Purchases inspected', {
+        purchaseCount: normalizedPurchases.length,
+        chosenProductId: currentPurchase?.productId ?? null,
+        chosenExpiry: currentPurchase?.expiryDate ?? null,
+      });
+
+      if (currentPurchase) {
         const status: SubscriptionStatus = {
-          isActive,
-          productId: latestPurchase.productId,
-          expiryDate,
+          isActive: true,
+          productId: currentPurchase.productId,
+          expiryDate: currentPurchase.expiryDate,
           isInTrialPeriod: false,
         };
 
         setSubscriptionStatus(status);
-        console.log('[AppleIAP] Subscription status:', status);
 
-        const receiptOrToken = latestPurchase.transactionReceipt ?? latestPurchase.purchaseToken ?? null;
+        const desiredSku = lastRequestedSkuRef.current;
+        const activeMeta = getPlanMeta(currentPurchase.productId);
+        const desiredMeta = getPlanMeta(desiredSku ?? null);
+        let nextPending: { productId: string; effectiveDate: number | null } | null = null;
 
-        if (isActive && receiptOrToken) {
-          await updateSubscriptionInSupabase(latestPurchase.productId, receiptOrToken);
-        } else if (!receiptOrToken) {
-          console.warn('[AppleIAP] Latest purchase missing receipt and purchaseToken.');
+        if (!desiredSku) {
+          nextPending = null;
+        } else if (desiredSku === currentPurchase.productId) {
+          nextPending = null;
+          lastRequestedSkuRef.current = null;
+        } else if (
+          desiredMeta.group &&
+          activeMeta.group &&
+          desiredMeta.group === activeMeta.group &&
+          desiredMeta.tierRank != null &&
+          activeMeta.tierRank != null &&
+          desiredMeta.tierRank < activeMeta.tierRank
+        ) {
+          nextPending = {
+            productId: desiredSku,
+            effectiveDate: currentPurchase.expiryDate,
+          };
+        } else {
+          nextPending = null;
+        }
+
+        setPendingPlan(nextPending);
+
+        console.log('[AppleIAP] Pending plan evaluation', {
+          activeSku: currentPurchase.productId,
+          desiredSku,
+          activeMeta,
+          desiredMeta,
+          pending: nextPending?.productId ?? null,
+        });
+
+        const receiptOrToken =
+          currentPurchase.original?.transactionReceipt ?? currentPurchase.original?.purchaseToken ?? null;
+        if (receiptOrToken) {
+          await updateSubscriptionInSupabase(currentPurchase.productId, receiptOrToken);
+        } else {
+          console.warn('[AppleIAP] Current purchase missing receipt/purchaseToken.');
         }
       } else {
         setSubscriptionStatus({
@@ -563,15 +737,16 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
           expiryDate: null,
           isInTrialPeriod: false,
         });
+        setPendingPlan(null);
         console.log('[AppleIAP] No active subscriptions found');
       }
     } catch (error) {
       console.error('[AppleIAP] Error refreshing subscription status:', error);
     }
-  }, []);
+  }, [fetchEntitlements]);
 
   const initializeIAP = useCallback(async () => {
-    if (Platform.OS !== 'ios' || !RNIap || isExpoGo) {
+    if (Platform.OS !== 'ios' || isExpoGo) {
       setLoading(false);
       return;
     }
@@ -607,40 +782,55 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
 
   // Set up purchase update listener
   useEffect(() => {
-    if (Platform.OS !== 'ios' || !RNIap || isExpoGo) return;
+    if (Platform.OS !== 'ios' || isExpoGo || !iapReady) return;
 
-    if (typeof RNIap.purchaseUpdatedListener !== 'function' || typeof RNIap.purchaseErrorListener !== 'function') {
+    if (!RNIap || typeof RNIap.purchaseUpdatedListener !== 'function' || typeof RNIap.purchaseErrorListener !== 'function') {
       console.warn('[AppleIAP] purchaseUpdatedListener/purchaseErrorListener not available on react-native-iap – skipping listeners');
       return;
     }
 
     const purchaseUpdateSubscription = RNIap.purchaseUpdatedListener(async (purchase: any) => {
       console.log('[AppleIAP] Purchase updated:', purchase);
-      const receiptOrToken = purchase.transactionReceipt ?? purchase.purchaseToken ?? null;
 
+      const normalizedProductId = normalizePurchaseProductId(purchase) ?? lastRequestedSkuRef.current;
+      const optimisticExpiry = purchase?.expirationDateIOS
+        ? Number(purchase.expirationDateIOS)
+        : Date.now() + 30 * 24 * 60 * 60 * 1000;
+
+      if (normalizedProductId) {
+        setSubscriptionStatus({
+          isActive: true,
+          productId: normalizedProductId,
+          expiryDate: optimisticExpiry,
+          isInTrialPeriod: false,
+        });
+      }
+
+      const receiptOrToken = purchase?.transactionReceipt ?? purchase?.purchaseToken ?? null;
       try {
         await RNIap.finishTransaction?.({ purchase, isConsumable: false });
       } catch (finishError) {
         console.error('[AppleIAP] Error finishing transaction:', finishError);
       }
 
-      if (receiptOrToken) {
+      if (receiptOrToken && normalizedProductId) {
         try {
-          await updateSubscriptionInSupabase(purchase.productId, receiptOrToken);
+          await updateSubscriptionInSupabase(normalizedProductId, receiptOrToken);
         } catch (upsertError) {
           console.error('[AppleIAP] Error updating subscription after purchase:', upsertError);
         }
-        await refreshSubscriptionStatus();
-        Alert.alert('Køb gennemført! 🎉', 'Dit abonnement er nu aktivt. Du kan nu bruge alle funktioner.', [{ text: 'OK' }]);
       } else {
         console.warn('[AppleIAP] Purchase missing receipt/purchaseToken.');
-        await refreshSubscriptionStatus();
-        Alert.alert(
-          'Køb registreret',
-          'Vi kunne ikke verificere kvitteringen endnu. Tjek dit abonnement lidt senere.',
-          [{ text: 'OK' }]
-        );
       }
+
+      await refreshSubscriptionStatus();
+      Alert.alert(
+        receiptOrToken ? 'Køb gennemført! 🎉' : 'Køb registreret',
+        receiptOrToken
+          ? 'Dit abonnement er nu aktivt. Du kan nu bruge alle funktioner.'
+          : 'Vi kunne ikke verificere kvitteringen endnu. Tjek dit abonnement lidt senere.',
+        [{ text: 'OK' }]
+      );
     });
 
     const purchaseErrorSubscription = RNIap.purchaseErrorListener((error: any) => {
@@ -654,7 +844,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       purchaseUpdateSubscription.remove();
       purchaseErrorSubscription.remove();
     };
-  }, [refreshSubscriptionStatus]);
+  }, [iapReady, refreshSubscriptionStatus]);
 
   const updateSubscriptionInSupabase = async (productId: string, receipt: string) => {
     try {
@@ -679,13 +869,18 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       console.log('[AppleIAP] Subscription tier:', subscriptionTier);
 
       // Update or create profile with subscription info
-      const { error } = await supabase.from('profiles').upsert({
-        user_id: user.id,
-        subscription_tier: subscriptionTier,
-        subscription_product_id: productId,
-        subscription_receipt: receipt,
-        subscription_updated_at: new Date().toISOString(),
-      });
+      const { error } = await supabase
+        .from('profiles')
+        .upsert(
+          {
+            user_id: user.id,
+            subscription_tier: subscriptionTier,
+            subscription_product_id: productId,
+            subscription_receipt: receipt,
+            subscription_updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id' }
+        );
 
       if (error) {
         console.error('[AppleIAP] Error updating subscription in Supabase:', error);
@@ -715,6 +910,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    lastRequestedSkuRef.current = productId;
     setPurchasing(true);
     try {
       console.log('[AppleIAP] Requesting subscription:', productId);
@@ -790,6 +986,13 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
         ensureIapReady: syncIapReadyState,
         iapDiagnostics,
         iapUnavailableReason,
+        pendingProductId: pendingPlan?.productId ?? null,
+        pendingEffectiveDate: pendingPlan?.effectiveDate ?? null,
+        entitlements,
+        hasComplimentaryPlayerPremium,
+        hasComplimentaryTrainerPremium,
+        hasPlayerPremium,
+        hasTrainerPremium,
       }}
     >
       {children}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -114,6 +114,8 @@ const getPlanName = (product: { productId: string }) => {
   }
 };
 
+const THIRTY_SECONDS_MS = 30 * 1000;
+
 export default function AppleSubscriptionManager({
   onPlanSelected,
   isSignupFlow = false,
@@ -133,48 +135,46 @@ export default function AppleSubscriptionManager({
     iapDiagnostics,
     refetchProducts,
     iapUnavailableReason,
+    pendingProductId,
+    pendingEffectiveDate,
+    refreshSubscriptionStatus,
+    hasPlayerPremium,
+    hasTrainerPremium,
+    hasComplimentaryPlayerPremium,
+    hasComplimentaryTrainerPremium,
   } = useAppleIAP();
 
-  const [showPlans, setShowPlans] = useState(() => isSignupFlow || !subscriptionStatus?.isActive);
-  const [isOrangeBoxExpanded, setIsOrangeBoxExpanded] = useState(false);
-  const [debugVisible, setDebugVisible] = useState(false);
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const trainerProductSet = useMemo(() => new Set(TRAINER_PRODUCT_IDS), []);
+  const hasApplePlayerPremium =
+    subscriptionStatus?.isActive && subscriptionStatus.productId === PRODUCT_IDS.PLAYER_PREMIUM;
+  const hasAppleTrainerPlan =
+    subscriptionStatus?.isActive && !!subscriptionStatus.productId && trainerProductSet.has(subscriptionStatus.productId);
+  const showComplimentaryPlayerBanner = hasComplimentaryPlayerPremium && !hasApplePlayerPremium;
+  const showComplimentaryTrainerBanner = hasComplimentaryTrainerPremium && !hasAppleTrainerPlan;
 
-  const cardBgColor = isDark ? '#2a2a2a' : colors.card;
-  const textColor = isDark ? '#e3e3e3' : colors.text;
-  const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
+  const isComplimentaryForProduct = useCallback(
+    (productId: string) => {
+      if (productId === PRODUCT_IDS.PLAYER_PREMIUM) return hasComplimentaryPlayerPremium;
+      if (trainerProductSet.has(productId)) return hasComplimentaryTrainerPremium;
+      return false;
+    },
+    [hasComplimentaryPlayerPremium, hasComplimentaryTrainerPremium, trainerProductSet]
+  );
 
-  // Filter products based on role in signup flow
-  const filteredProducts =
-    isSignupFlow && selectedRole
-      ? selectedRole === 'player'
-        ? products.filter((p) => p.maxPlayers <= 1)
-        : products.filter((p) => p.maxPlayers > 1)
-      : products;
+  const isPlanLockedByComplimentary = useCallback(
+    (productId: string) => {
+      if (productId === PRODUCT_IDS.PLAYER_PREMIUM) return hasPlayerPremium;
+      if (trainerProductSet.has(productId)) return hasTrainerPremium;
+      return false;
+    },
+    [hasPlayerPremium, hasTrainerPremium, trainerProductSet]
+  );
 
-  const planOrder = useMemo(() => {
-    return ORDERED_PRODUCT_IDS.reduce<Record<string, number>>((acc, id, index) => {
-      acc[id] = index;
-      return acc;
-    }, {});
-  }, []);
-
-  const sortedProducts = useMemo(() => {
-    return [...filteredProducts].sort((a, b) => {
-      const orderA = planOrder[a.productId] ?? Number.MAX_SAFE_INTEGER;
-      const orderB = planOrder[b.productId] ?? Number.MAX_SAFE_INTEGER;
-      return orderA - orderB;
-    });
-  }, [filteredProducts, planOrder]);
-
-  const handleSelectPlan = async (productId: string, title: string) => {
+  const handleSelectPlan = async (productId: string) => {
     if (isSignupFlow && onPlanSelected) {
       onPlanSelected(productId);
       return;
     }
-
-    // Purchase subscription
     await purchaseSubscription(productId);
   };
 
@@ -233,6 +233,65 @@ export default function AppleSubscriptionManager({
     }
   }, [ensureIapReady]);
 
+  const shouldRefetchProducts = useCallback(() => {
+    if (!iapDiagnostics?.lastFetchAt) {
+      return true;
+    }
+    const lastFetchAtMs = new Date(iapDiagnostics.lastFetchAt).getTime();
+    if (Number.isNaN(lastFetchAtMs)) {
+      return true;
+    }
+    return Date.now() - lastFetchAtMs > THIRTY_SECONDS_MS;
+  }, [iapDiagnostics?.lastFetchAt]);
+
+  useEffect(() => {
+    if (!showPlans) {
+      return;
+    }
+    let cancelled = false;
+
+    const ensureData = async () => {
+      try {
+        const ready = await ensureIapReady();
+        if (!ready || cancelled) {
+          return;
+        }
+        if (shouldRefetchProducts()) {
+          await refetchProducts();
+          if (cancelled) {
+            return;
+          }
+        }
+        await refreshSubscriptionStatus();
+      } catch (error) {
+        console.warn('[AppleSubscriptionManager] Auto refresh failed', error);
+      }
+    };
+
+    ensureData();
+    return () => {
+      cancelled = true;
+    };
+  }, [showPlans, ensureIapReady, shouldRefetchProducts, refetchProducts, refreshSubscriptionStatus]);
+
+  useEffect(() => {
+    if (!showPlans) {
+      hasRequestedProductsRef.current = false;
+      return;
+    }
+
+    if (
+      iapReady &&
+      !loading &&
+      !purchasing &&
+      products.length === 0 &&
+      !hasRequestedProductsRef.current
+    ) {
+      hasRequestedProductsRef.current = true;
+      refetchProducts();
+    }
+  }, [showPlans, iapReady, loading, purchasing, products.length, refetchProducts]);
+
   const handleHeaderLongPress = () => {
     setDebugVisible((prev) => !prev);
   };
@@ -280,8 +339,31 @@ export default function AppleSubscriptionManager({
     );
   };
 
+  const renderPendingDowngrade = () => {
+    if (!pendingProductId || !pendingEffectiveDate) return null;
+    return (
+      <Text style={styles.pendingDowngradeText}>
+        Skifter til {getPlanName({ productId: pendingProductId })} ved næste fornyelse (
+        {new Date(pendingEffectiveDate).toLocaleDateString('da-DK')})
+      </Text>
+    );
+  };
+
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false} nestedScrollEnabled>
+      {showComplimentaryPlayerBanner && (
+        <View style={[styles.partnerBanner, { backgroundColor: colors.secondary }]}>
+          <IconSymbol ios_icon_name="gift.fill" android_material_icon_name="redeem" size={20} color="#fff" />
+          <Text style={styles.partnerBannerText}>Partner-adgang: Premium spiller</Text>
+        </View>
+      )}
+      {showComplimentaryTrainerBanner && (
+        <View style={[styles.partnerBanner, { backgroundColor: colors.primary }]}>
+          <IconSymbol ios_icon_name="briefcase.fill" android_material_icon_name="workspace_premium" size={20} color="#fff" />
+          <Text style={styles.partnerBannerText}>Partner-adgang: Træner Premium</Text>
+        </View>
+      )}
+
       {/* Header */}
       {!isSignupFlow && !subscriptionStatus?.isActive && (
         <TouchableOpacity style={styles.header} onLongPress={handleHeaderLongPress} delayLongPress={400} activeOpacity={0.8}>
@@ -304,6 +386,7 @@ export default function AppleSubscriptionManager({
             <View style={styles.currentPlanInfo}>
               <Text style={styles.currentPlanLabel}>Dit aktive abonnement:</Text>
               <Text style={styles.currentPlanName}>{getPlanName({ productId: subscriptionStatus.productId })}</Text>
+              {renderPendingDowngrade()}
             </View>
             <View style={styles.currentPlanBadge}>
               <Text style={styles.currentPlanBadgeText}>Aktiv</Text>
@@ -390,9 +473,10 @@ export default function AppleSubscriptionManager({
             {sortedProducts.map((product, index) => {
               const cardKey = product.productId ?? `unknown-${index}`;
               const isPopular = index === Math.floor(sortedProducts.length / 2);
-              const isCurrentActive = isCurrentPlan(product.productId);
+              const isCurrentActive = isCurrentPlan(product.productId) || isComplimentaryForProduct(product.productId);
               const isHighlightTarget = highlightProductId === product.productId;
               const features = getPlanFeatures(product.productId, product.maxPlayers || 1);
+              const disabledByComplimentary = isPlanLockedByComplimentary(product.productId);
 
               return (
                 <TouchableOpacity
@@ -404,10 +488,16 @@ export default function AppleSubscriptionManager({
                     isCurrentActive && styles.currentPlanCard,
                     isHighlightTarget && styles.highlightedPlan,
                   ]}
-                  onPress={() => handleSelectPlan(product.productId, product.title)}
-                  disabled={purchasing || isCurrentActive}
+                  onPress={() => handleSelectPlan(product.productId)}
+                  disabled={purchasing || isCurrentActive || disabledByComplimentary}
                   activeOpacity={0.7}
                 >
+                  {isComplimentaryForProduct(product.productId) && (
+                    <View style={[styles.partnerBadge, { backgroundColor: colors.secondary }]}>
+                      <Text style={styles.partnerBadgeText}>Partner-adgang</Text>
+                    </View>
+                  )}
+
                   {isPopular && !isCurrentActive && (
                     <View style={[styles.popularBadge, { backgroundColor: colors.primary }]}>
                       <Text style={styles.popularBadgeText}>Mest populær</Text>
@@ -466,10 +556,10 @@ export default function AppleSubscriptionManager({
                       style={[
                         styles.selectButton,
                         { backgroundColor: isPopular ? colors.primary : colors.highlight },
-                        purchasing && { opacity: 0.6 },
+                        (purchasing || disabledByComplimentary) && { opacity: 0.6 },
                       ]}
-                      onPress={() => handleSelectPlan(product.productId, product.title)}
-                      disabled={purchasing}
+                      onPress={() => handleSelectPlan(product.productId)}
+                      disabled={purchasing || disabledByComplimentary}
                     >
                       {purchasing ? (
                         <ActivityIndicator color={isPopular ? '#fff' : colors.primary} size="small" />
@@ -669,6 +759,12 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#fff',
   },
+  pendingDowngradeText: {
+    marginTop: 6,
+    fontSize: 13,
+    color: '#fff',
+    opacity: 0.85,
+  },
   currentPlanBadge: {
     backgroundColor: 'rgba(255,255,255,0.25)',
     paddingHorizontal: 12,
@@ -834,97 +930,122 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 20,
   },
-  featureRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  featureText: {
-    fontSize: 16,
-    flex: 1,
-  },
-  lockedFeatureText: {
-    textDecorationLine: 'line-through',
-  },
-  selectButton: {
-    paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
-  },
+  },alignItems: 'center',
   selectButtonText: {
     fontSize: 16,
     fontWeight: '600',
-  },
+  },fontSize: 16,
   currentPlanIndicator: {
     paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
+    borderRadius: 12,{
+    alignItems: 'center',line-through',
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 8,
-  },
+    gap: 8,Vertical: 16,
+  },borderRadius: 12,
   currentPlanIndicatorText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
-  },
+  },fontWeight: '600',
   infoBox: {
     flexDirection: 'row',
-    gap: 14,
-    padding: 16,
-    borderRadius: 12,
-    marginTop: 20,
-  },
+    gap: 14,ertical: 12,
+    padding: 16,: 12,
+    borderRadius: 12,er',
+    marginTop: 20, 'row',
+  },justifyContent: 'center',
   infoText: {
     flex: 1,
-    fontSize: 15,
+    fontSize: 15,catorText: {
     lineHeight: 22,
-  },
-  debugToggle: {
+  },fontWeight: '600',
+  debugToggle: {',
     marginTop: 12,
     alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    padding: 6,
-  },
+    gap: 6,: 16,
+    padding: 6,s: 12,
+  },marginTop: 20,
   debugToggleText: {
     color: colors.textSecondary,
     fontSize: 13,
-  },
+  },fontSize: 15,
   debugContainer: {
     marginTop: 12,
     borderRadius: 12,
-    padding: 16,
-    gap: 8,
-  },
-  debugTitle: {
+    padding: 16,2,
+    gap: 8,lf: 'center',
+  },flexDirection: 'row',
+  debugTitle: { 'center',
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 4,
     color: colors.text,
-  },
-  debugRow: {
+  },color: colors.textSecondary,
+  debugRow: { 13,
     flexDirection: 'column',
-    gap: 2,
-  },
-  debugLabel: {
+    gap: 2,ainer: {
+  },marginTop: 12,
+  debugLabel: {s: 12,
     fontSize: 13,
     fontWeight: '600',
     color: colors.text,
-  },
-  debugValue: {
-    fontSize: 12,
+  },bugTitle: {
+  debugValue: {6,
+    fontSize: 12,700',
     color: colors.textSecondary,
-  },
+  },color: colors.text,
   debugWarningText: {
     color: colors.warning,
-  },
+  },flexDirection: 'column',
   debugHelp: {
     marginTop: 6,
     fontSize: 12,
     color: colors.warning,
-    lineHeight: 16,
+    lineHeight: 16,0',
+  },color: colors.text,
+  refreshButton: {
+    marginTop: 12,
+    paddingVertical: 12,
+    borderRadius: 10,tSecondary,
+    alignItems: 'center',
+  },bugWarningText: {
+  refreshButtonText: {ing,
+    color: '#fff',
+    fontWeight: '600',
+  },marginTop: 6,
+  partnerBanner: { fontSize: 12,
+    flexDirection: 'row',    color: colors.warning,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+});  },    fontWeight: '700',    fontSize: 11,    color: '#fff',  partnerBadgeText: {  },    borderRadius: 12,    paddingVertical: 4,    paddingHorizontal: 12,    right: -12,    top: -12,    position: 'absolute',  partnerBadge: {  },    fontWeight: '600',    color: '#fff',  partnerBannerText: {  },    marginBottom: 12,    borderRadius: 12,    padding: 12,    gap: 8,    alignItems: 'center',    lineHeight: 16,
   },
   refreshButton: {
     marginTop: 12,
@@ -935,5 +1056,34 @@ const styles = StyleSheet.create({
   refreshButtonText: {
     color: '#fff',
     fontWeight: '600',
+  },
+  partnerBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  partnerBannerText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#fff',
+  },
+  partnerBadge: {
+    position: 'absolute',
+    top: -8,
+    right: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  partnerBadgeText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#fff',
   },
 });
