@@ -48,13 +48,38 @@ export async function ensureIapReady(): Promise<boolean> {
   }
 }
 
+const resolveRniapModule = (module: any) => {
+  if (!module) return module;
+  if (module?.getSubscriptions || module?.initConnection) {
+    return module;
+  }
+  if (module?.default?.getSubscriptions || module?.default?.initConnection) {
+    return module.default;
+  }
+  return module?.default ?? module;
+};
+
 if ((Platform.OS === 'ios' || Platform.OS === 'android') && !isExpoGo) {
   rniapImportPromise = import('react-native-iap')
-    .then((module) => {
-      RNIap = module;
-      console.log('[AppleIAP] ✅ react-native-iap loaded successfully');
+    .then(module => {
+      const resolved = resolveRniapModule(module);
+      RNIap = resolved;
+      const exportedKeys =
+        resolved && typeof resolved === 'object' ? Object.keys(resolved) : [];
+      const capabilities = {
+        initConnection: typeof resolved?.initConnection === 'function',
+        getSubscriptions: typeof resolved?.getSubscriptions === 'function',
+        getProducts: typeof resolved?.getProducts === 'function',
+        fetchProducts: typeof resolved?.fetchProducts === 'function',
+        getAvailablePurchases: typeof resolved?.getAvailablePurchases === 'function',
+        requestPurchase: typeof resolved?.requestPurchase === 'function',
+        requestSubscription: typeof resolved?.requestSubscription === 'function',
+        purchaseUpdatedListener: typeof resolved?.purchaseUpdatedListener === 'function',
+        purchaseErrorListener: typeof resolved?.purchaseErrorListener === 'function',
+      };
+      console.log('[AppleIAP] ✅ react-native-iap loaded successfully', { exportedKeys, capabilities });
     })
-    .catch((error) => {
+    .catch(error => {
       console.warn('[AppleIAP] ⚠️ react-native-iap not available', error);
       throw error;
     });
@@ -126,23 +151,40 @@ interface IapDiagnostics {
   lastFetchAt: string | null;
   lastFetchError: string | null;
   appOwnership: string | null;
-  expoBundleId: string | null;
+  configBundleId: string | null;
   runtimeBundleId: string | null;
+  bundleIdMismatch: boolean;
   platform: string;
   hermesEnabled: boolean;
   lastFetchCount: number;
   returnedProductsDetailed: Array<{ productId: string; title: string; localizedPrice: string }>;
+  lastFetchMethod: string | null;
 }
 
-const getExpoBundleId = (): string | null => {
-  const bundleId =
+const getConfigBundleId = (): string | null => {
+  const manifest2BundleId =
+    (Constants as any)?.manifest2?.extra?.expoClient?.iosBundleIdentifier ?? null;
+  const legacyManifestBundleId = (Constants as any)?.manifest?.ios?.bundleIdentifier ?? null;
+
+  return (
     Constants?.expoConfig?.ios?.bundleIdentifier ??
-    Constants?.easConfig?.projectId ??
-    null;
-  return bundleId ?? null;
+    manifest2BundleId ??
+    legacyManifestBundleId ??
+    null
+  );
 };
 
 const getRuntimeBundleId = (): string | null => Application?.applicationId ?? null;
+
+const buildBundleIdSnapshot = () => {
+  const configBundleId = getConfigBundleId();
+  const runtimeBundleId = getRuntimeBundleId();
+  return {
+    configBundleId,
+    runtimeBundleId,
+    bundleIdMismatch: Boolean(configBundleId && runtimeBundleId && configBundleId !== runtimeBundleId),
+  };
+};
 
 const defaultDiagnostics: IapDiagnostics = {
   requestedSkus: [...APP_STORE_SUBSCRIPTION_SKUS],
@@ -151,12 +193,12 @@ const defaultDiagnostics: IapDiagnostics = {
   lastFetchAt: null,
   lastFetchError: null,
   appOwnership: Constants.appOwnership ?? null,
-  expoBundleId: getExpoBundleId(),
-  runtimeBundleId: getRuntimeBundleId(),
+  ...buildBundleIdSnapshot(),
   platform: Platform.OS,
   hermesEnabled: hermesRuntimeEnabled,
   lastFetchCount: 0,
   returnedProductsDetailed: [],
+  lastFetchMethod: null,
 };
 
 interface AppleIAPContextType {
@@ -175,6 +217,41 @@ interface AppleIAPContextType {
 }
 
 const AppleIAPContext = createContext<AppleIAPContextType | undefined>(undefined);
+
+type FetchMethod = 'getSubscriptions' | 'getProducts' | 'fetchProducts';
+const resolveFetchMethod = (): {
+  method: FetchMethod;
+  run: (skus: string[]) => Promise<any[]>;
+} => {
+  if (!RNIap) {
+    throw new Error('[AppleIAP] react-native-iap module is not available.');
+  }
+
+  if (typeof RNIap.getSubscriptions === 'function') {
+    return {
+      method: 'getSubscriptions',
+      run: skus => RNIap.getSubscriptions({ skus }),
+    };
+  }
+
+  if (typeof RNIap.getProducts === 'function') {
+    return {
+      method: 'getProducts',
+      run: skus => RNIap.getProducts({ skus }),
+    };
+  }
+
+  if (typeof RNIap.fetchProducts === 'function') {
+    return {
+      method: 'fetchProducts',
+      run: skus => RNIap.fetchProducts({ skus, type: 'subs' }),
+    };
+  }
+
+  throw new Error(
+    '[AppleIAP] No compatible product fetch method found (expected getSubscriptions, getProducts or fetchProducts).'
+  );
+};
 
 export function AppleIAPProvider({ children }: { children: ReactNode }) {
   const [products, setProducts] = useState<SubscriptionProduct[]>([]);
@@ -198,11 +275,10 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
 
   const updateDiagnostics = useCallback(
     (partial: Partial<IapDiagnostics>) => {
-      setIapDiagnostics((prev) => ({
+      setIapDiagnostics(prev => ({
         ...prev,
+        ...buildBundleIdSnapshot(),
         appOwnership: Constants.appOwnership ?? prev.appOwnership ?? null,
-        expoBundleId: getExpoBundleId() ?? prev.expoBundleId ?? null,
-        runtimeBundleId: getRuntimeBundleId() ?? prev.runtimeBundleId ?? null,
         platform: Platform.OS,
         ...partial,
       }));
@@ -222,12 +298,11 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    if (!RNIap || typeof RNIap.fetchProducts !== 'function') {
+    if (!RNIap) {
       const reason = getIapUnavailableMessage();
-      console.error('[AppleIAP] fetchProducts unavailable – native module missing or outdated API.');
       setIapUnavailableReason(reason);
       updateDiagnostics({
-        lastFetchError: 'react-native-iap.fetchProducts unavailable',
+        lastFetchError: 'react-native-iap unavailable',
         lastFetchAt: new Date().toISOString(),
       });
       return;
@@ -235,7 +310,19 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
 
     setIapUnavailableReason(null);
     const requestedSkus = [...APP_STORE_SUBSCRIPTION_SKUS];
-    console.log('[AppleIAP] Fetching products from App Store…', requestedSkus);
+    const configBundleId = getConfigBundleId();
+    const runtimeBundleId = getRuntimeBundleId();
+    const bundleIdMismatch = Boolean(
+      configBundleId && runtimeBundleId && configBundleId !== runtimeBundleId
+    );
+    console.log('[AppleIAP] Fetching products…', {
+      requestedSkus,
+      configBundleId,
+      runtimeBundleId,
+      bundleIdMismatch,
+      isExpoGo,
+      appOwnership: Constants.appOwnership,
+    });
     updateDiagnostics({
       requestedSkus,
       returnedSkus: [],
@@ -246,30 +333,30 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
     });
 
     try {
-      const availableProducts = await RNIap.fetchProducts({
-        skus: requestedSkus,
-        type: 'subs',
-      });
+      const { method: fetchMethod, run } = resolveFetchMethod();
+      updateDiagnostics({ lastFetchMethod: fetchMethod });
+      const availableProducts = await run(requestedSkus);
+
       const returnedSkus = (availableProducts ?? []).map((product: any) => product.productId);
-      const missingSkus = requestedSkus.filter((sku) => !returnedSkus.includes(sku));
-      console.log('[AppleIAP] Returned products:', returnedSkus.length, returnedSkus);
+      const missingSkus = requestedSkus.filter(sku => !returnedSkus.includes(sku));
+      console.log('[AppleIAP] Fetch completed', {
+        fetchMethod,
+        returnedCount: returnedSkus.length,
+        returnedSkus,
+      });
 
       if (!returnedSkus.length) {
+        console.error(
+          '[AppleIAP] ⚠️ Apple returned zero products. Paid Apps Agreement / Banking must be ACTIVE and products must be Approved or properly submitted for sale.'
+        );
         console.warn(
-          '[AppleIAP] ⚠️ Apple returned zero products. Common causes:\n' +
-            '• Product IDs not cleared for sale\n' +
-            '• TestFlight build not approved for IAP\n' +
-            '• Sandbox tester not added to App Store Connect\n' +
-            '• Wrong App Store region / bundle identifier'
+          '[AppleIAP] Common causes: products not cleared for sale, TestFlight build lacking IAP approval, missing sandbox testers, or bundle identifier mismatch.'
         );
       }
 
-      // Map products to our format with max players info
       const mappedProducts: SubscriptionProduct[] = (availableProducts ?? []).map((product: any) => {
         let maxPlayers = 1;
-        if (product.productId === PRODUCT_IDS.PLAYER_BASIC || product.productId === PRODUCT_IDS.PLAYER_PREMIUM) {
-          maxPlayers = 1;
-        } else if (product.productId === PRODUCT_IDS.TRAINER_BASIC) maxPlayers = 5;
+        if (product.productId === PRODUCT_IDS.TRAINER_BASIC) maxPlayers = 5;
         else if (product.productId === PRODUCT_IDS.TRAINER_STANDARD) maxPlayers = 15;
         else if (product.productId === PRODUCT_IDS.TRAINER_PREMIUM) maxPlayers = 50;
 
@@ -438,6 +525,11 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (Platform.OS !== 'ios' || !RNIap || isExpoGo) return;
 
+    if (typeof RNIap.purchaseUpdatedListener !== 'function' || typeof RNIap.purchaseErrorListener !== 'function') {
+      console.warn('[AppleIAP] purchaseUpdatedListener/purchaseErrorListener not available on react-native-iap – skipping listeners');
+      return;
+    }
+
     const purchaseUpdateSubscription = RNIap.purchaseUpdatedListener(async (purchase: any) => {
       console.log('[AppleIAP] Purchase updated:', purchase);
       const receiptOrToken = purchase.transactionReceipt ?? purchase.purchaseToken ?? null;
@@ -584,9 +676,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       console.log('[AppleIAP] Restored purchases:', availablePurchases);
 
       if (availablePurchases.length > 0) {
-        // Update subscription status
         await refreshSubscriptionStatus();
-
         Alert.alert('Køb gendannet! ✅', 'Dine tidligere køb er blevet gendannet.', [{ text: 'OK' }]);
       } else {
         Alert.alert('Ingen køb fundet', 'Der blev ikke fundet nogen tidligere køb at gendanne.', [{ text: 'OK' }]);

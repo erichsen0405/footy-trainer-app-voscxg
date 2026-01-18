@@ -522,12 +522,31 @@ export default function AppleSubscriptionManager({
           {renderSkuList('Missing', iapDiagnostics.missingSkus, true)}
 
           <View style={styles.debugRow}>
-            <Text style={styles.debugLabel}>appOwnership</Text>
-            <Text style={styles.debugValue}>{iapDiagnostics.appOwnership ?? 'N/A'}</Text>
+            <Text style={styles.debugLabel}>lastFetchMethod</Text>
+            <Text style={styles.debugValue}>{iapDiagnostics.lastFetchMethod ?? 'N/A'}</Text>
           </View>
           <View style={styles.debugRow}>
-            <Text style={styles.debugLabel}>expoBundleId</Text>
-            <Text style={styles.debugValue}>{iapDiagnostics.expoBundleId ?? 'N/A'}</Text>
+            <Text style={styles.debugLabel}>configBundleId</Text>
+            <Text style={styles.debugValue}>{iapDiagnostics.configBundleId ?? 'N/A'}</Text>
+          </View>
+          <View style={styles.debugRow}>
+            <Text style={styles.debugLabel}>runtimeBundleId</Text>
+            <Text style={styles.debugValue}>{iapDiagnostics.runtimeBundleId ?? 'N/A'}</Text>
+          </View>
+          <View style={styles.debugRow}>
+            <Text style={styles.debugLabel}>bundleIdMismatch</Text>
+            <Text
+              style={[
+                styles.debugValue,
+                iapDiagnostics.bundleIdMismatch ? styles.debugWarningText : null,
+              ]}
+            >
+              {iapDiagnostics.bundleIdMismatch ? 'YES' : 'NO'}
+            </Text>
+          </View>
+          <View style={styles.debugRow}>
+            <Text style={styles.debugLabel}>appOwnership</Text>
+            <Text style={styles.debugValue}>{iapDiagnostics.appOwnership ?? 'N/A'}</Text>
           </View>
           <View style={styles.debugRow}>
             <Text style={styles.debugLabel}>Platform</Text>
