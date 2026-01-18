@@ -10,6 +10,7 @@ import {
   Platform,
   ActivityIndicator,
   FlatList,
+  Modal,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -68,6 +69,9 @@ const normalizeUpgradeTarget = (value: string | string[] | undefined): UpgradeTa
   return null;
 };
 
+const DELETE_ACCOUNT_CONFIRMATION_PHRASE = 'SLET';
+const ACCOUNT_DELETION_REVIEW_PATH = 'Profil -> Indstillinger -> Konto -> Slet konto';
+
 export default function ProfileScreen() {
   const [user, setUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<'admin' | 'trainer' | 'player' | null>(null);
@@ -102,6 +106,10 @@ export default function ProfileScreen() {
 
   // Delete external activities state
   const [isDeletingExternalActivities, setIsDeletingExternalActivities] = useState(false);
+  const [isDeleteDialogVisible, setIsDeleteDialogVisible] = useState(false);
+  const [deleteConfirmationInput, setDeleteConfirmationInput] = useState('');
+  const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -704,6 +712,80 @@ export default function ProfileScreen() {
     );
   };
 
+  const openDeleteAccountDialog = useCallback(() => {
+    setDeleteAccountError(null);
+    setDeleteConfirmationInput('');
+    setIsDeleteDialogVisible(true);
+  }, []);
+
+  const closeDeleteAccountDialog = useCallback(() => {
+    setIsDeleteDialogVisible(false);
+    setDeleteConfirmationInput('');
+    setDeleteAccountError(null);
+  }, []);
+
+  const handleConfirmDeleteAccount = useCallback(async () => {
+    if (isDeletingAccount) {
+      return;
+    }
+    if (!user) {
+      setDeleteAccountError('Ingen bruger er logget ind.');
+      return;
+    }
+    const normalizedInput = deleteConfirmationInput.trim().toUpperCase();
+    if (normalizedInput !== DELETE_ACCOUNT_CONFIRMATION_PHRASE) {
+      setDeleteAccountError(`Skriv ${DELETE_ACCOUNT_CONFIRMATION_PHRASE} for at bekræfte sletningen.`);
+      return;
+    }
+
+    setIsDeletingAccount(true);
+    setDeleteAccountError(null);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('delete-account', { body: {} });
+      if (error) {
+        throw new Error(error.message ?? 'Kunne ikke slette kontoen.');
+      }
+      if (!data?.success) {
+        throw new Error(data?.error ?? 'Kunne ikke slette kontoen.');
+      }
+
+      let signOutMessageSuffix = ' Du er nu logget ud.';
+      try {
+        const { error: signOutError } = await supabase.auth.signOut();
+        if (signOutError) {
+          console.warn('[PROFILE] Sign-out after deletion failed, continuing anyway:', signOutError);
+          signOutMessageSuffix = ' Din konto er slettet, men vi kunne ikke logge dig ud automatisk. Genstart appen for at bekræfte.';
+        }
+      } catch (signOutUnexpected) {
+        console.warn('[PROFILE] Unexpected sign-out failure after deletion, continuing anyway:', signOutUnexpected);
+        signOutMessageSuffix = ' Din konto er slettet, men vi kunne ikke logge dig ud automatisk. Genstart appen for at bekræfte.';
+      }
+
+      setUser(null);
+      setUserRole(null);
+      setProfile(null);
+      setAdminInfo(null);
+      setNeedsRoleSelection(false);
+      setNeedsSubscription(false);
+      setManualUpgradeTarget(null);
+      setIsEditingProfile(false);
+      closeDeleteAccountDialog();
+
+      Alert.alert('Konto slettet', `Din konto og alle dine data er blevet slettet.${signOutMessageSuffix}`);
+    } catch (error: any) {
+      console.error('[PROFILE] Account deletion failed:', error);
+      setDeleteAccountError(error?.message ?? 'Der opstod en fejl under sletningen. Prøv igen.');
+    } finally {
+      setIsDeletingAccount(false);
+    }
+  }, [
+    closeDeleteAccountDialog,
+    deleteConfirmationInput,
+    isDeletingAccount,
+    user,
+  ]);
+
   const getPlanColor = (planName: string | null) => {
     if (!planName) return colors.primary;
 
@@ -748,6 +830,16 @@ export default function ProfileScreen() {
       : isDark
         ? '#1f1f1f'
         : '#f5f6f9';
+  const destructiveColor = Platform.OS === 'ios' ? '#ff3b30' : colors.error;
+  const deleteRowBackground = Platform.OS === 'ios'
+    ? isDark
+      ? 'rgba(255,59,48,0.16)'
+      : 'rgba(255,59,48,0.08)'
+    : isDark
+      ? '#3a1a1a'
+      : '#ffecec';
+  const isDeleteConfirmationValid =
+    deleteConfirmationInput.trim().toUpperCase() === DELETE_ACCOUNT_CONFIRMATION_PHRASE;
 
   // Platform-specific wrapper component
   const CardWrapper = Platform.OS === 'ios' ? GlassView : View;
@@ -1162,6 +1254,41 @@ export default function ProfileScreen() {
             </CardWrapper>
           </View>
 
+          <CardWrapper style={[styles.section, styles.settingsCard, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
+            <Text style={[styles.sectionTitle, { color: textColor }]}>Indstillinger</Text>
+            <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>Administrer din konto og sikkerhed.</Text>
+            <View style={styles.settingsGroup}>
+              <Text style={[styles.settingsGroupTitle, { color: textSecondaryColor }]}>Konto</Text>
+              {/* Review note (App Store): Indstillinger -> Konto -> Slet konto */}
+              <TouchableOpacity
+                style={[styles.settingsRow, { backgroundColor: deleteRowBackground }]}
+                onPress={openDeleteAccountDialog}
+                activeOpacity={0.7}
+                disabled={isDeletingAccount}
+                accessibilityHint={ACCOUNT_DELETION_REVIEW_PATH}
+              >
+                <IconSymbol
+                  ios_icon_name="trash.fill"
+                  android_material_icon_name="delete"
+                  size={22}
+                  color={destructiveColor}
+                />
+                <View style={styles.settingsRowContent}>
+                  <Text style={[styles.settingsRowTitle, { color: destructiveColor }]}>Slet konto</Text>
+                  <Text style={[styles.settingsRowSubtitle, { color: textSecondaryColor }]}>
+                    Sletter din konto og alle data permanent
+                  </Text>
+                </View>
+                <IconSymbol
+                  ios_icon_name="chevron.right"
+                  android_material_icon_name="chevron_right"
+                  size={18}
+                  color={destructiveColor}
+                />
+              </TouchableOpacity>
+            </View>
+          </CardWrapper>
+
           <TouchableOpacity
             style={[styles.signOutButton, { backgroundColor: Platform.OS === 'ios' ? '#ff3b30' : colors.error }]}
             onPress={handleSignOut}
@@ -1340,6 +1467,92 @@ export default function ProfileScreen() {
         contentContainerStyle={[styles.contentContainer, Platform.OS !== 'ios' && { paddingTop: 60 }]}
         showsVerticalScrollIndicator={false}
       />
+      <Modal
+        animationType="fade"
+        transparent
+        visible={isDeleteDialogVisible}
+        onRequestClose={() => {
+          if (!isDeletingAccount) {
+            closeDeleteAccountDialog();
+          }
+        }}
+      >
+        <View style={styles.deleteModalOverlay}>
+          <View style={[styles.deleteModalCard, { backgroundColor: cardBgColor }]}>
+            <IconSymbol
+              ios_icon_name="trash.fill"
+              android_material_icon_name="delete"
+              size={42}
+              color={destructiveColor}
+            />
+            <Text style={[styles.deleteModalTitle, { color: textColor }]}>Vil du slette din konto?</Text>
+            <Text style={[styles.deleteModalDescription, { color: textSecondaryColor }]}>
+              Denne handling kan ikke fortrydes. Skriv {DELETE_ACCOUNT_CONFIRMATION_PHRASE} for at bekræfte, at du vil slette alle dine data permanent.
+            </Text>
+            <TextInput
+              value={deleteConfirmationInput}
+              onChangeText={value => {
+                setDeleteConfirmationInput(value);
+                if (deleteAccountError) {
+                  setDeleteAccountError(null);
+                }
+              }}
+              placeholder={DELETE_ACCOUNT_CONFIRMATION_PHRASE}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              editable={!isDeletingAccount}
+              style={[
+                styles.deleteModalInput,
+                {
+                  color: textColor,
+                  borderColor: destructiveColor,
+                  backgroundColor: Platform.OS === 'ios'
+                    ? isDark
+                      ? 'rgba(255,255,255,0.1)'
+                      : 'rgba(0,0,0,0.04)'
+                    : nestedCardBgColor,
+                },
+              ]}
+              placeholderTextColor={textSecondaryColor}
+            />
+            {deleteAccountError ? (
+              <Text style={styles.deleteModalError}>{deleteAccountError}</Text>
+            ) : null}
+            <View style={styles.deleteModalActions}>
+              <TouchableOpacity
+                style={[styles.deleteModalButton, styles.deleteModalCancel]}
+                onPress={() => {
+                  if (!isDeletingAccount) {
+                    closeDeleteAccountDialog();
+                  }
+                }}
+                activeOpacity={0.7}
+                disabled={isDeletingAccount}
+              >
+                <Text style={[styles.buttonText, { color: textColor }]}>Annuller</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.deleteModalButton,
+                  {
+                    backgroundColor: destructiveColor,
+                    opacity: isDeleteConfirmationValid && !isDeletingAccount ? 1 : 0.6,
+                  },
+                ]}
+                onPress={handleConfirmDeleteAccount}
+                activeOpacity={0.7}
+                disabled={!isDeleteConfirmationValid || isDeletingAccount}
+              >
+                {isDeletingAccount ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={[styles.buttonText, { color: '#fff' }]}>Slet</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ContainerWrapper>
   );
 }
@@ -1672,6 +1885,39 @@ const styles = StyleSheet.create({
     padding: 24,
     marginBottom: 16,
   },
+  settingsCard: {
+    gap: 16,
+  },
+  settingsGroup: {
+    marginTop: 20,
+    gap: 12,
+  },
+  settingsGroupTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  settingsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    paddingVertical: Platform.OS === 'ios' ? 14 : 16,
+    paddingHorizontal: Platform.OS === 'ios' ? 12 : 16,
+    borderRadius: Platform.OS === 'ios' ? 12 : 14,
+  },
+  settingsRowContent: {
+    flex: 1,
+    gap: 2,
+  },
+  settingsRowTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  settingsRowSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
   deleteExternalButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1684,6 +1930,66 @@ const styles = StyleSheet.create({
   deleteExternalButtonText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  deleteModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  deleteModalCard: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: Platform.OS === 'ios' ? 16 : 20,
+    padding: Platform.OS === 'ios' ? 24 : 28,
+    alignItems: 'center',
+    gap: 16,
+  },
+  deleteModalTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  deleteModalDescription: {
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+  },
+  deleteModalInput: {
+    width: '100%',
+    marginTop: 8,
+    borderWidth: 1,
+    borderRadius: Platform.OS === 'ios' ? 10 : 12,
+    paddingVertical: Platform.OS === 'ios' ? 12 : 14,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    textTransform: 'uppercase',
+  },
+  deleteModalError: {
+    width: '100%',
+    marginTop: 8,
+    fontSize: 13,
+    textAlign: 'center',
+    fontWeight: '600',
+    color: Platform.OS === 'ios' ? '#ff3b30' : colors.error,
+  },
+  deleteModalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
+    width: '100%',
+  },
+  deleteModalButton: {
+    flex: 1,
+    paddingVertical: Platform.OS === 'ios' ? 14 : 16,
+    borderRadius: Platform.OS === 'ios' ? 12 : 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteModalCancel: {
+    borderWidth: 1,
+    borderColor: Platform.OS === 'ios' ? 'rgba(60,60,67,0.18)' : 'rgba(0,0,0,0.3)',
   },
 });
 
