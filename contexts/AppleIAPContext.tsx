@@ -6,6 +6,8 @@ import { supabase } from '@/integrations/supabase/client';
 
 // Check if we're running in Expo Go
 const isExpoGo = Constants.appOwnership === 'expo';
+// Prevents refresh loops by throttling auto-refresh calls
+const REFRESH_THROTTLE_MS = 10_000;
 
 // Dynamically import react-native-iap only on native platforms AND not in Expo Go
 let RNIap: any = null;
