@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Platform } from 'react-native';
 import { useAppleIAP, PRODUCT_IDS } from '@/contexts/AppleIAPContext';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 
 interface SubscriptionFeatures {
   hasActiveSubscription: boolean;
@@ -25,6 +25,23 @@ type FeatureAccess = {
   library: boolean;
   calendarSync: boolean;
   trainerLinking: boolean;
+};
+
+const TIER_RANK: Record<SubscriptionTier, number> = {
+  player_basic: 10,
+  player_premium: 20,
+  trainer_basic: 30,
+  trainer_standard: 40,
+  trainer_premium: 50,
+};
+
+const pickBestTier = (tiers: Array<SubscriptionTier | null | undefined>): SubscriptionTier | null => {
+  let best: SubscriptionTier | null = null;
+  for (const tier of tiers) {
+    if (!tier) continue;
+    if (!best || TIER_RANK[tier] > TIER_RANK[best]) best = tier;
+  }
+  return best;
 };
 
 const normalizeTier = (value?: string | null): SubscriptionTier | null => {
@@ -53,45 +70,30 @@ const tierFromProductId = (productId?: string | null): SubscriptionTier | null =
 };
 
 const featureAccessForTier = (tier: SubscriptionTier | null): FeatureAccess => {
-  if (!tier) {
-    return {
-      library: false,
-      calendarSync: false,
-      trainerLinking: false,
-    };
-  }
-
+  if (!tier) return { library: false, calendarSync: false, trainerLinking: false };
   const isTrainerTier = tier.startsWith('trainer');
   const isPremiumPlayer = tier === 'player_premium';
-
   const hasAccess = isTrainerTier || isPremiumPlayer;
-
-  return {
-    library: hasAccess,
-    calendarSync: hasAccess,
-    trainerLinking: hasAccess,
-  };
+  return { library: hasAccess, calendarSync: hasAccess, trainerLinking: hasAccess };
 };
 
 export function useSubscriptionFeatures(): SubscriptionFeatures {
-  // Safely get Apple IAP context - it should always be available since provider is in _layout
-  const appleIAPContext = useAppleIAP();
   const {
     subscriptionStatus,
     products,
     loading: iapLoading,
-    hasPlayerPremium,
-    hasTrainerPremium,
-  } = appleIAPContext;
-  
-  const [profileData, setProfileData] = useState<any>(null);
+    entitlements,
+    iapUnavailableReason,
+  } = useAppleIAP();
+
+  const [profileData, setProfileData] = useState<{ subscription_tier?: string | null; subscription_product_id?: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchProfileData = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        setLoading(false);
+        setProfileData(null);
         return;
       }
 
@@ -103,9 +105,9 @@ export function useSubscriptionFeatures(): SubscriptionFeatures {
 
       if (error) {
         console.error('[useSubscriptionFeatures] Error fetching profile:', error);
-      } else {
-        setProfileData(data);
+        return;
       }
+      setProfileData(data ?? null);
     } catch (error) {
       console.error('[useSubscriptionFeatures] Error:', error);
     } finally {
@@ -117,44 +119,76 @@ export function useSubscriptionFeatures(): SubscriptionFeatures {
     fetchProfileData();
   }, [fetchProfileData]);
 
+  // Refetch profile when StoreKit sku changes or entitlements change (so UI catches up after purchase)
   useEffect(() => {
-    if (subscriptionStatus?.productId || hasPlayerPremium || hasTrainerPremium) {
+    if (subscriptionStatus?.productId || (entitlements?.length ?? 0) > 0) {
       fetchProfileData();
     }
-  }, [subscriptionStatus?.productId, hasPlayerPremium, hasTrainerPremium, fetchProfileData]);
+  }, [subscriptionStatus?.productId, entitlements?.length, fetchProfileData]);
 
-  const tierFromComplimentary = hasTrainerPremium
-    ? 'trainer_premium'
-    : hasPlayerPremium
-    ? 'player_premium'
-    : null;
+  const tierFromEntitlements = useMemo<SubscriptionTier | null>(() => {
+    if (!entitlements?.length) return null;
+    if (entitlements.some(e => e.entitlement === 'træner_premium')) return 'trainer_premium';
+    if (entitlements.some(e => e.entitlement === 'spiller_premium')) return 'player_premium';
+    return null;
+  }, [entitlements]);
 
-  const tierFromStore = Platform.OS === 'ios' ? tierFromProductId(subscriptionStatus?.productId || null) : null;
-  const subscriptionTier = tierFromComplimentary ?? tierFromProfile ?? tierFromStore;
+  const tierFromProfile = useMemo<SubscriptionTier | null>(() => {
+    if (!profileData) return null;
+    const directTier = normalizeTier(profileData.subscription_tier ?? null);
+    if (directTier) return directTier;
+    return tierFromProductId(profileData.subscription_product_id ?? null);
+  }, [profileData]);
 
-  const getMaxPlayers = (): number => {
+  const tierFromStore = useMemo<SubscriptionTier | null>(() => {
+    if (Platform.OS !== 'ios') return null;
+    return tierFromProductId(subscriptionStatus?.productId ?? null);
+  }, [subscriptionStatus?.productId]);
+
+  const subscriptionTier = useMemo<SubscriptionTier | null>(() => {
     if (Platform.OS === 'ios') {
-      if (hasTrainerPremium) return 50;
-      if (hasPlayerPremium) return 1;
-      if (subscriptionStatus?.isActive && subscriptionStatus.productId) {
-        const product = products.find(p => p.productId === subscriptionStatus.productId);
-        if (product?.maxPlayers) return product.maxPlayers;
-      }
+      const allowProfile = Boolean(iapUnavailableReason);
+      return pickBestTier([
+        tierFromStore,
+        tierFromEntitlements,
+        allowProfile ? tierFromProfile : null,
+        (!tierFromStore && !tierFromEntitlements) ? tierFromProfile : null,
+      ]);
+    }
+    return pickBestTier([tierFromEntitlements, tierFromProfile]);
+  }, [tierFromStore, tierFromEntitlements, tierFromProfile, iapUnavailableReason]);
+
+  const maxPlayers = useMemo(() => {
+    if (Platform.OS === 'ios' && subscriptionStatus?.isActive && subscriptionStatus.productId) {
+      const product = products.find(p => p.productId === subscriptionStatus.productId);
+      if (product?.maxPlayers && product.maxPlayers > 0) return product.maxPlayers;
     }
 
-    if (subscriptionTier === 'player_basic' || subscriptionTier === 'player_premium') return 1;
-    if (subscriptionTier === 'trainer_basic') return 5;
-    if (subscriptionTier === 'trainer_standard') return 15;
-    if (subscriptionTier === 'trainer_premium') return 50;
+    switch (subscriptionTier) {
+      case 'player_basic':
+      case 'player_premium':
+        return 1;
+      case 'trainer_basic':
+        return 5;
+      case 'trainer_standard':
+        return 15;
+      case 'trainer_premium':
+        return 50;
+      default:
+        return 0;
+    }
+  }, [subscriptionStatus?.isActive, subscriptionStatus?.productId, products, subscriptionTier]);
 
-    return 0;
-  };
+  const hasActiveSubscription = useMemo(() => {
+    if (Platform.OS === 'ios') {
+      if (subscriptionStatus?.isActive) return true;
+      if (tierFromEntitlements) return true;
+      if (iapUnavailableReason && subscriptionTier) return true;
+      return false;
+    }
+    return subscriptionTier != null;
+  }, [subscriptionStatus?.isActive, tierFromEntitlements, iapUnavailableReason, subscriptionTier]);
 
-  const hasActiveSubscription = Platform.OS === 'ios'
-    ? Boolean(subscriptionStatus?.isActive || hasPlayerPremium || hasTrainerPremium)
-    : subscriptionTier != null;
-
-  const maxPlayers = getMaxPlayers();
   const featureAccess = useMemo(() => featureAccessForTier(subscriptionTier), [subscriptionTier]);
 
   const canAddMorePlayers = (currentPlayerCount: number): boolean => {
