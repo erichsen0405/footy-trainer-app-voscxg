@@ -36,6 +36,14 @@ interface PlanFeature {
   status: FeatureStatus;
 }
 
+const TRAINER_PRODUCT_IDS = [
+  PRODUCT_IDS.TRAINER_BASIC,
+  PRODUCT_IDS.TRAINER_STANDARD,
+  PRODUCT_IDS.TRAINER_PREMIUM,
+] as const;
+
+const THIRTY_SECONDS_MS = 30 * 1000;
+
 const getPlanTypeFromProductId = (productId: string): PlanType => {
   switch (productId) {
     case PRODUCT_IDS.PLAYER_BASIC:
@@ -80,22 +88,14 @@ const getPlanFeatures = (productId: string, maxPlayers: number): PlanFeature[] =
     { label: 'Planlægning, bibliotek og rapporter', status: 'included' },
   ];
 
-  const defaultFeatures: PlanFeature[] = [{ label: 'Fuld adgang til alle funktioner', status: 'included' }];
-
-  let specificFeatures: PlanFeature[] = defaultFeatures;
-  if (planType === 'player_basic') specificFeatures = playerBasicFeatures;
-  else if (planType === 'player_premium') specificFeatures = playerPremiumFeatures;
-  else if (planType === 'trainer_basic' || planType === 'trainer_standard' || planType === 'trainer_premium') {
-    specificFeatures = trainerFeatures;
-  }
-
-  return [
-    capacityFeature,
-    ...specificFeatures,
-    { label: '14 dages gratis prøveperiode', status: 'included' },
-    { label: 'Opsig når som helst via App Store', status: 'included' },
-  ];
+  if (planType === 'player_basic') return [capacityFeature, ...playerBasicFeatures, trialFeature(), cancelFeature()];
+  if (planType === 'player_premium') return [capacityFeature, ...playerPremiumFeatures, trialFeature(), cancelFeature()];
+  if (planType.startsWith('trainer')) return [capacityFeature, ...trainerFeatures, trialFeature(), cancelFeature()];
+  return [capacityFeature, { label: 'Fuld adgang til alle funktioner', status: 'included' }, trialFeature(), cancelFeature()];
 };
+
+const trialFeature = (): PlanFeature => ({ label: '14 dages gratis prøveperiode', status: 'included' });
+const cancelFeature = (): PlanFeature => ({ label: 'Opsig når som helst via App Store', status: 'included' });
 
 const getPlanName = (product: { productId: string }) => {
   switch (getPlanTypeFromProductId(product.productId)) {
@@ -113,8 +113,6 @@ const getPlanName = (product: { productId: string }) => {
       return product.productId;
   }
 };
-
-const THIRTY_SECONDS_MS = 30 * 1000;
 
 export default function AppleSubscriptionManager({
   onPlanSelected,
@@ -138,8 +136,6 @@ export default function AppleSubscriptionManager({
     pendingProductId,
     pendingEffectiveDate,
     refreshSubscriptionStatus,
-    hasPlayerPremium,
-    hasTrainerPremium,
     hasComplimentaryPlayerPremium,
     hasComplimentaryTrainerPremium,
   } = useAppleIAP();
@@ -163,12 +159,45 @@ export default function AppleSubscriptionManager({
 
   const isPlanLockedByComplimentary = useCallback(
     (productId: string) => {
-      if (productId === PRODUCT_IDS.PLAYER_PREMIUM) return hasPlayerPremium;
-      if (trainerProductSet.has(productId)) return hasTrainerPremium;
+      if (productId === PRODUCT_IDS.PLAYER_PREMIUM) return hasComplimentaryPlayerPremium;
+      if (trainerProductSet.has(productId)) return hasComplimentaryTrainerPremium;
       return false;
     },
-    [hasPlayerPremium, hasTrainerPremium, trainerProductSet]
+    [hasComplimentaryPlayerPremium, hasComplimentaryTrainerPremium, trainerProductSet]
   );
+
+  const [showPlans, setShowPlans] = useState(() => isSignupFlow || !subscriptionStatus?.isActive);
+  const [isOrangeBoxExpanded, setIsOrangeBoxExpanded] = useState(false);
+  const [debugVisible, setDebugVisible] = useState(false);
+  const hasRequestedProductsRef = useRef(false);
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+
+  const cardBgColor = isDark ? '#2a2a2a' : colors.card;
+  const textColor = isDark ? '#e3e3e3' : colors.text;
+  const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
+
+  const filteredProducts =
+    isSignupFlow && selectedRole
+      ? selectedRole === 'player'
+        ? products.filter(p => p.maxPlayers <= 1)
+        : products.filter(p => p.maxPlayers > 1)
+      : products;
+
+  const planOrder = useMemo(() => {
+    return ORDERED_PRODUCT_IDS.reduce<Record<string, number>>((acc, id, index) => {
+      acc[id] = index;
+      return acc;
+    }, {});
+  }, []);
+
+  const sortedProducts = useMemo(() => {
+    return [...filteredProducts].sort((a, b) => {
+      const orderA = planOrder[a.productId] ?? Number.MAX_SAFE_INTEGER;
+      const orderB = planOrder[b.productId] ?? Number.MAX_SAFE_INTEGER;
+      return orderA - orderB;
+    });
+  }, [filteredProducts, planOrder]);
 
   const handleSelectPlan = async (productId: string) => {
     if (isSignupFlow && onPlanSelected) {
@@ -293,7 +322,7 @@ export default function AppleSubscriptionManager({
   }, [showPlans, iapReady, loading, purchasing, products.length, refetchProducts]);
 
   const handleHeaderLongPress = () => {
-    setDebugVisible((prev) => !prev);
+    setDebugVisible(prev => !prev);
   };
 
   if (Platform.OS !== 'ios') {
@@ -301,7 +330,9 @@ export default function AppleSubscriptionManager({
       <View style={styles.notAvailableContainer}>
         <IconSymbol ios_icon_name="exclamationmark.triangle.fill" android_material_icon_name="warning" size={48} color={colors.warning} />
         <Text style={[styles.notAvailableTitle, { color: textColor }]}>Ikke tilgængelig</Text>
-        <Text style={[styles.notAvailableText, { color: textSecondaryColor }]}>Apple In-App Purchases er kun tilgængelige på iOS enheder.</Text>
+        <Text style={[styles.notAvailableText, { color: textSecondaryColor }]}>
+          Apple In-App Purchases er kun tilgængelige på iOS enheder.
+        </Text>
       </View>
     );
   }
@@ -586,7 +617,7 @@ export default function AppleSubscriptionManager({
 
       {/* Info Box */}
       {showPlans && (
-        <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
+        <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a2a' : '#e3f2fd' }]}>
           <IconSymbol ios_icon_name="info.circle.fill" android_material_icon_name="info" size={24} color={colors.secondary} />
           <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
             Abonnementer håndteres via App Store. Du kan opsige når som helst i dine App Store indstillinger.
@@ -597,7 +628,7 @@ export default function AppleSubscriptionManager({
       )}
 
       {/* Debug Toggle */}
-      <TouchableOpacity style={styles.debugToggle} onPress={() => setDebugVisible((prev) => !prev)} activeOpacity={0.7}>
+      <TouchableOpacity style={styles.debugToggle} onPress={() => setDebugVisible(prev => !prev)} activeOpacity={0.7}>
         <IconSymbol
           ios_icon_name={debugVisible ? 'eye.slash' : 'ant.fill'}
           android_material_icon_name={debugVisible ? 'visibility_off' : 'bug_report'}
@@ -629,12 +660,7 @@ export default function AppleSubscriptionManager({
           </View>
           <View style={styles.debugRow}>
             <Text style={styles.debugLabel}>bundleIdMismatch</Text>
-            <Text
-              style={[
-                styles.debugValue,
-                iapDiagnostics.bundleIdMismatch ? styles.debugWarningText : null,
-              ]}
-            >
+            <Text style={[styles.debugValue, iapDiagnostics.bundleIdMismatch ? styles.debugWarningText : null]}>
               {iapDiagnostics.bundleIdMismatch ? 'YES' : 'NO'}
             </Text>
           </View>
@@ -693,9 +719,7 @@ export default function AppleSubscriptionManager({
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -703,10 +727,7 @@ const styles = StyleSheet.create({
     gap: 16,
     minHeight: 200,
   },
-  loadingText: {
-    fontSize: 16,
-    textAlign: 'center',
-  },
+  loadingText: { fontSize: 16, textAlign: 'center' },
   notAvailableContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -714,101 +735,36 @@ const styles = StyleSheet.create({
     padding: 32,
     gap: 16,
   },
-  notAvailableTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  notAvailableText: {
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  header: {
-    marginBottom: 24,
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  headerSubtitle: {
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  currentPlanBanner: {
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 20,
-  },
-  currentPlanContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  currentPlanInfo: {
-    flex: 1,
-  },
-  currentPlanLabel: {
-    fontSize: 14,
-    color: '#fff',
-    opacity: 0.9,
-    marginBottom: 4,
-  },
-  currentPlanName: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  pendingDowngradeText: {
-    marginTop: 6,
-    fontSize: 13,
-    color: '#fff',
-    opacity: 0.85,
-  },
+  notAvailableTitle: { fontSize: 24, fontWeight: 'bold' },
+  notAvailableText: { fontSize: 16, textAlign: 'center' },
+  header: { marginBottom: 24, alignItems: 'center' },
+  headerTitle: { fontSize: 28, fontWeight: 'bold', marginBottom: 8 },
+  headerSubtitle: { fontSize: 16, textAlign: 'center' },
+  currentPlanBanner: { borderRadius: 16, padding: 20, marginBottom: 20 },
+  currentPlanContent: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  currentPlanInfo: { flex: 1 },
+  currentPlanLabel: { fontSize: 14, color: '#fff', opacity: 0.9, marginBottom: 4 },
+  currentPlanName: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
+  pendingDowngradeText: { marginTop: 6, fontSize: 13, color: '#fff', opacity: 0.85 },
   currentPlanBadge: {
     backgroundColor: 'rgba(255,255,255,0.25)',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
   },
-  currentPlanBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  orangeBoxExpandedContent: {
-    marginTop: 16,
-  },
-  orangeBoxDivider: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    marginBottom: 16,
-  },
+  currentPlanBadgeText: { fontSize: 12, fontWeight: '600', color: '#fff' },
+  orangeBoxExpandedContent: { marginTop: 16 },
+  orangeBoxDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.3)', marginBottom: 16 },
   orangeBoxDetailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
   },
-  orangeBoxDetailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  orangeBoxDetailLabel: {
-    fontSize: 15,
-    color: '#fff',
-    opacity: 0.9,
-  },
-  orangeBoxDetailValue: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  expandIndicator: {
-    alignItems: 'center',
-    marginTop: 12,
-  },
+  orangeBoxDetailItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  orangeBoxDetailLabel: { fontSize: 15, color: '#fff', opacity: 0.9 },
+  orangeBoxDetailValue: { fontSize: 16, fontWeight: '600', color: '#fff' },
+  expandIndicator: { alignItems: 'center', marginTop: 12 },
   restoreButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -818,9 +774,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 12,
   },
-  disabledButton: {
-    opacity: 0.5,
-  },
+  disabledButton: { opacity: 0.5 },
   expandButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -829,25 +783,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 20,
   },
-  expandButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  expandButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  plansContainer: {
-    gap: 16,
-    marginBottom: 20,
-  },
-  planCard: {
-    borderRadius: 16,
-    padding: 24,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
+  expandButtonContent: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  expandButtonText: { fontSize: 16, fontWeight: '600' },
+  plansContainer: { gap: 16, marginBottom: 20 },
+  planCard: { borderRadius: 16, padding: 24, borderWidth: 2, borderColor: 'transparent' },
   highlightedPlan: {
     borderColor: colors.warning,
     shadowColor: colors.warning,
@@ -856,14 +795,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
     elevation: 6,
   },
-  popularPlan: {
-    borderColor: colors.primary,
-  },
-  currentPlanCard: {
-    borderColor: colors.success,
-    borderWidth: 3,
-    backgroundColor: 'rgba(76, 175, 80, 0.05)',
-  },
+  popularPlan: { borderColor: colors.primary },
+  currentPlanCard: { borderColor: colors.success, borderWidth: 3, backgroundColor: 'rgba(76, 175, 80, 0.05)' },
   popularBadge: {
     position: 'absolute',
     top: -12,
@@ -872,11 +805,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 12,
   },
-  popularBadgeText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
+  popularBadgeText: { fontSize: 12, fontWeight: 'bold', color: '#fff' },
   currentBadge: {
     position: 'absolute',
     top: -12,
@@ -888,22 +817,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  currentBadgeText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  planHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  planName: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    flex: 1,
-  },
+  currentBadgeText: { fontSize: 12, fontWeight: 'bold', color: '#fff' },
+  planHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  planName: { fontSize: 24, fontWeight: 'bold', flex: 1 },
   activeIndicatorCircle: {
     width: 36,
     height: 36,
@@ -913,177 +829,62 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginLeft: 12,
   },
-  priceContainer: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    marginBottom: 20,
-  },
-  price: {
-    fontSize: 36,
-    fontWeight: 'bold',
-  },
-  priceUnit: {
-    fontSize: 16,
-    marginLeft: 4,
-  },
-  featuresContainer: {
-    gap: 12,
-    marginBottom: 20,
-  },
-    borderRadius: 12,
-    alignItems: 'center',
-  },alignItems: 'center',
-  selectButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },fontSize: 16,
+  priceContainer: { flexDirection: 'row', alignItems: 'baseline', marginBottom: 20 },
+  price: { fontSize: 36, fontWeight: 'bold' },
+  priceUnit: { fontSize: 16, marginLeft: 4 },
+  featuresContainer: { gap: 12, marginBottom: 20 },
+  featureRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  featureText: { fontSize: 16, flex: 1 },
+  lockedFeatureText: { textDecorationLine: 'line-through' },
+  selectButton: { paddingVertical: 16, borderRadius: 12, alignItems: 'center' },
+  selectButtonText: { fontSize: 16, fontWeight: '600' },
   currentPlanIndicator: {
     paddingVertical: 12,
-    borderRadius: 12,{
-    alignItems: 'center',line-through',
+    borderRadius: 12,
+    alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 8,Vertical: 16,
-  },borderRadius: 12,
-  currentPlanIndicatorText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-  },fontWeight: '600',
-  infoBox: {
-    flexDirection: 'row',
-    gap: 14,ertical: 12,
-    padding: 16,: 12,
-    borderRadius: 12,er',
-    marginTop: 20, 'row',
-  },justifyContent: 'center',
-  infoText: {
-    flex: 1,
-    fontSize: 15,catorText: {
-    lineHeight: 22,
-  },fontWeight: '600',
-  debugToggle: {',
+    gap: 8,
+  },
+  currentPlanIndicatorText: { fontSize: 16, fontWeight: '600', color: '#fff' },
+  infoBox: { flexDirection: 'row', gap: 14, padding: 16, borderRadius: 12, marginTop: 20 },
+  infoText: { flex: 1, fontSize: 15, lineHeight: 22 },
+  debugToggle: {
     marginTop: 12,
     alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,: 16,
-    padding: 6,s: 12,
-  },marginTop: 20,
-  debugToggleText: {
-    color: colors.textSecondary,
-    fontSize: 13,
-  },fontSize: 15,
-  debugContainer: {
-    marginTop: 12,
-    borderRadius: 12,
-    padding: 16,2,
-    gap: 8,lf: 'center',
-  },flexDirection: 'row',
-  debugTitle: { 'center',
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 4,
-    color: colors.text,
-  },color: colors.textSecondary,
-  debugRow: { 13,
-    flexDirection: 'column',
-    gap: 2,ainer: {
-  },marginTop: 12,
-  debugLabel: {s: 12,
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.text,
-  },bugTitle: {
-  debugValue: {6,
-    fontSize: 12,700',
-    color: colors.textSecondary,
-  },color: colors.text,
-  debugWarningText: {
-    color: colors.warning,
-  },flexDirection: 'column',
-  debugHelp: {
-    marginTop: 6,
-    fontSize: 12,
-    color: colors.warning,
-    lineHeight: 16,0',
-  },color: colors.text,
-  refreshButton: {
-    marginTop: 12,
-    paddingVertical: 12,
-    borderRadius: 10,tSecondary,
-    alignItems: 'center',
-  },bugWarningText: {
-  refreshButtonText: {ing,
-    color: '#fff',
-    fontWeight: '600',
-  },marginTop: 6,
-  partnerBanner: { fontSize: 12,
-    flexDirection: 'row',    color: colors.warning,
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-});  },    fontWeight: '700',    fontSize: 11,    color: '#fff',  partnerBadgeText: {  },    borderRadius: 12,    paddingVertical: 4,    paddingHorizontal: 12,    right: -12,    top: -12,    position: 'absolute',  partnerBadge: {  },    fontWeight: '600',    color: '#fff',  partnerBannerText: {  },    marginBottom: 12,    borderRadius: 12,    padding: 12,    gap: 8,    alignItems: 'center',    lineHeight: 16,
+    gap: 6,
+    padding: 6,
   },
-  refreshButton: {
-    marginTop: 12,
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  refreshButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
+  debugToggleText: { color: colors.textSecondary, fontSize: 13 },
+  debugContainer: { marginTop: 12, borderRadius: 12, padding: 16, gap: 8 },
+  debugTitle: { fontSize: 16, fontWeight: '700', marginBottom: 4, color: colors.text },
+  debugRow: { flexDirection: 'column', gap: 2 },
+  debugLabel: { fontSize: 13, fontWeight: '600', color: colors.text },
+  debugValue: { fontSize: 12, color: colors.textSecondary },
+  debugWarningText: { color: colors.warning },
+  debugHelp: { marginTop: 6, fontSize: 12, color: colors.warning, lineHeight: 16 },
+  refreshButton: { marginTop: 12, paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
+  refreshButtonText: { color: '#fff', fontWeight: '600' },
   partnerBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
+    borderRadius: 12,
+    marginHorizontal: 4,
+    marginBottom: 12,
+    gap: 8,
   },
-  partnerBannerText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#fff',
-  },
+  partnerBannerText: { color: '#fff', fontWeight: '600' },
   partnerBadge: {
     position: 'absolute',
-    top: -8,
-    right: 16,
+    top: -12,
+    right: -12,
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
   },
-  partnerBadgeText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
+  partnerBadgeText: { fontSize: 11, fontWeight: '700', color: '#fff' },
 });
