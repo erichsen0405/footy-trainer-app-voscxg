@@ -1,5 +1,16 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, useColorScheme, Alert, Platform, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  TextInput,
+  useColorScheme,
+  Alert,
+  Platform,
+  ActivityIndicator,
+  FlatList,
+} from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
@@ -67,41 +78,38 @@ export default function ProfileScreen() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
-  
+
   // New onboarding flow states
   const [needsRoleSelection, setNeedsRoleSelection] = useState(false);
   const [needsSubscription, setNeedsSubscription] = useState(false);
   const [selectedRole, setSelectedRole] = useState<'player' | 'trainer' | null>(null);
-  
+
   // Profile editing
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [originalName, setOriginalName] = useState('');
   const [originalPhone, setOriginalPhone] = useState('');
-  
+
   // Collapsible sections - Calendar Sync now collapsed by default
   const [isCalendarSyncExpanded, setIsCalendarSyncExpanded] = useState(false);
   const [isSubscriptionExpanded, setIsSubscriptionExpanded] = useState(false);
   const [subscriptionSectionY, setSubscriptionSectionY] = useState<number | null>(null);
-  const scrollViewRef = useRef<ScrollView | null>(null);
+  const scrollViewRef = useRef<any>(null);
   const params = useLocalSearchParams<{ upgradeTarget?: string }>();
   const routeUpgradeTarget = normalizeUpgradeTarget(params.upgradeTarget);
   const [manualUpgradeTarget, setManualUpgradeTarget] = useState<UpgradeTarget | null>(null);
-  
+
   // Delete external activities state
   const [isDeletingExternalActivities, setIsDeletingExternalActivities] = useState(false);
-  
+
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
   // Get subscription status
   const { subscriptionStatus, refreshSubscription } = useSubscription();
   const { refreshAll } = useFootball();
-  const {
-    featureAccess,
-    isLoading: subscriptionFeaturesLoading,
-  } = useSubscriptionFeatures();
+  const { featureAccess, isLoading: subscriptionFeaturesLoading } = useSubscriptionFeatures();
 
   const canUseCalendarSync = featureAccess.calendarSync;
   const canLinkTrainer = featureAccess.trainerLinking;
@@ -116,25 +124,34 @@ export default function ProfileScreen() {
     if (!scrollViewRef.current || subscriptionSectionY === null) {
       return;
     }
-    scrollViewRef.current.scrollTo({ y: Math.max(subscriptionSectionY - 32, 0), animated: true });
+    const targetOffset = Math.max(subscriptionSectionY - 32, 0);
+
+    if (typeof scrollViewRef.current.scrollTo === 'function') {
+      scrollViewRef.current.scrollTo({ y: targetOffset, animated: true });
+    } else if (typeof scrollViewRef.current.scrollToOffset === 'function') {
+      scrollViewRef.current.scrollToOffset({ offset: targetOffset, animated: true });
+    }
   }, [subscriptionSectionY]);
 
-  const handleOpenSubscriptionSection = useCallback((target?: UpgradeTarget) => {
-    if (target) {
-      setManualUpgradeTarget(target);
-    }
-    setIsSubscriptionExpanded(true);
-    setTimeout(() => {
-      scrollToSubscription();
-    }, 200);
-  }, [scrollToSubscription]);
+  const handleOpenSubscriptionSection = useCallback(
+    (target?: UpgradeTarget) => {
+      if (target) {
+        setManualUpgradeTarget(target);
+      }
+      setIsSubscriptionExpanded(true);
+      setTimeout(() => {
+        scrollToSubscription();
+      }, 200);
+    },
+    [scrollToSubscription]
+  );
 
   const fetchUserProfile = async (userId: string) => {
     try {
       if (__DEV__) {
         console.log('[PROFILE] Fetching profile for user:', userId);
       }
-      
+
       const { data, error } = await supabase
         .from('profiles')
         .select('full_name, phone_number')
@@ -206,74 +223,79 @@ export default function ProfileScreen() {
     }
   };
 
-  const checkUserOnboarding = useCallback(async (userId: string) => {
-    if (__DEV__) {
-      console.log('[PROFILE] Checking user onboarding status for user:', userId);
-    }
-    
-    // Check if user has a role
-    const { data: roleData, error: roleError } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', userId)
-      .single();
-
-    if (roleError || !roleData) {
+  const checkUserOnboarding = useCallback(
+    async (userId: string) => {
       if (__DEV__) {
-        console.log('[PROFILE] No role found - needs role selection');
+        console.log('[PROFILE] Checking user onboarding status for user:', userId);
       }
-      setNeedsRoleSelection(true);
-      setNeedsSubscription(false);
-      return;
-    }
 
-    const role = roleData.role as 'admin' | 'trainer' | 'player';
-    setUserRole(role);
-    if (__DEV__) {
-      console.log(`[PROFILE] Role found: ${role}`);
-    }
-
-    // If role is trainer or admin, check if they have a subscription
-    if (role === 'trainer' || role === 'admin') {
-      const { data: subData, error: subError } = await supabase
-        .from('subscriptions')
-        .select('id, status')
-        .eq('admin_id', userId)
+      // Check if user has a role
+      const { data: roleData, error: roleError } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
         .single();
 
-      if (subError || !subData) {
+      if (roleError || !roleData) {
         if (__DEV__) {
-          console.log('[PROFILE] No subscription found - needs subscription');
+          console.log('[PROFILE] No role found - needs role selection');
         }
-        setNeedsRoleSelection(false);
-        setNeedsSubscription(true);
+        setNeedsRoleSelection(true);
+        setNeedsSubscription(false);
         return;
       }
 
+      const role = roleData.role as 'admin' | 'trainer' | 'player';
+      setUserRole(role);
       if (__DEV__) {
-        console.log(`[PROFILE] Subscription found: ${subData.status}`);
+        console.log(`[PROFILE] Role found: ${role}`);
       }
-      // Refresh subscription status
-      await refreshSubscription();
-    }
 
-    // User is fully onboarded
-    setNeedsRoleSelection(false);
-    setNeedsSubscription(false);
-    await fetchUserProfile(userId);
-    
-    if (role === 'player') {
-      await fetchAdminInfo(userId);
-    }
-  }, [refreshSubscription]);
+      // If role is trainer or admin, check if they have a subscription
+      if (role === 'trainer' || role === 'admin') {
+        const { data: subData, error: subError } = await supabase
+          .from('subscriptions')
+          .select('id, status')
+          .eq('admin_id', userId)
+          .single();
+
+        if (subError || !subData) {
+          if (__DEV__) {
+            console.log('[PROFILE] No subscription found - needs subscription');
+          }
+          setNeedsRoleSelection(false);
+          setNeedsSubscription(true);
+          return;
+        }
+
+        if (__DEV__) {
+          console.log(`[PROFILE] Subscription found: ${subData.status}`);
+        }
+        // Refresh subscription status
+        await refreshSubscription();
+      }
+
+      // User is fully onboarded
+      setNeedsRoleSelection(false);
+      setNeedsSubscription(false);
+      await fetchUserProfile(userId);
+
+      if (role === 'player') {
+        await fetchAdminInfo(userId);
+      }
+    },
+    [refreshSubscription]
+  );
 
   useEffect(() => {
     const checkUser = async () => {
       console.log('[PROFILE] Checking current user...');
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       console.log('[PROFILE] Current user:', user?.id, user?.email);
       setUser(user);
-      
+
       if (user) {
         // Refresh subscription status immediately when user is detected
         await refreshSubscription();
@@ -282,10 +304,12 @@ export default function ProfileScreen() {
     };
     checkUser();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
       console.log('[PROFILE] Auth state changed:', _event, session?.user?.id);
       setUser(session?.user || null);
-      
+
       if (session?.user) {
         // Refresh subscription status immediately on auth state change
         await refreshSubscription();
@@ -326,7 +350,7 @@ export default function ProfileScreen() {
 
     // Check if there are any changes BEFORE setting loading
     const hasChanges = editName !== originalName || editPhone !== originalPhone;
-    
+
     if (!hasChanges) {
       console.log('[PROFILE] No changes detected, skipping API call');
       setIsEditingProfile(false);
@@ -353,13 +377,11 @@ export default function ProfileScreen() {
 
         if (error) throw error;
       } else {
-        const { error } = await supabase
-          .from('profiles')
-          .insert({
-            user_id: user.id,
-            full_name: editName,
-            phone_number: editPhone,
-          });
+        const { error } = await supabase.from('profiles').insert({
+          user_id: user.id,
+          full_name: editName,
+          phone_number: editPhone,
+        });
 
         if (error) throw error;
       }
@@ -393,14 +415,14 @@ export default function ProfileScreen() {
     }
 
     setLoading(true);
-    
+
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          emailRedirectTo: 'natively://auth-callback'
-        }
+          emailRedirectTo: 'natively://auth-callback',
+        },
       });
 
       if (error) {
@@ -425,7 +447,9 @@ export default function ProfileScreen() {
 
       if (__DEV__) {
         console.log(`[PROFILE] User created: ${data.user.id}`);
-        console.log(`[PROFILE] Session exists: ${data.session ? 'Yes - Auto logged in!' : 'No - Email confirmation required'}`);
+        console.log(
+          `[PROFILE] Session exists: ${data.session ? 'Yes - Auto logged in!' : 'No - Email confirmation required'}`
+        );
       }
 
       setEmail('');
@@ -435,14 +459,14 @@ export default function ProfileScreen() {
       if (data.session) {
         // User is logged in immediately - show success and they'll be prompted for role
         Alert.alert(
-          'Velkommen! 🎉', 
+          'Velkommen! 🎉',
           `Din konto er oprettet og du er nu logget ind!\n\nVi har sendt en bekræftelsesmail til ${email}. Bekræft venligst din email når du får tid.\n\nNu skal du vælge din rolle for at fortsætte.`,
           [{ text: 'OK' }]
         );
       } else {
         // Email confirmation required before login
         setShowSuccessMessage(true);
-        
+
         setTimeout(() => {
           setShowSuccessMessage(false);
           setIsSignUp(false);
@@ -473,25 +497,25 @@ export default function ProfileScreen() {
 
     setLoading(true);
     console.log('Attempting to sign in with:', email);
-    
+
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      console.log('Sign in response:', { 
-        user: data.user?.id, 
+      console.log('Sign in response:', {
+        user: data.user?.id,
         session: data.session ? 'exists' : 'null',
-        error: error?.message 
+        error: error?.message,
       });
 
       if (error) {
         console.error('Sign in error:', error);
-        
+
         if (error.message.includes('Invalid login credentials')) {
           Alert.alert(
-            'Login fejlede', 
+            'Login fejlede',
             'Email eller adgangskode er forkert.\n\nHusk:\n• Har du bekræftet din email?\n• Er du sikker på at du har oprettet en konto?\n• Prøv at nulstille din adgangskode hvis du har glemt den.'
           );
         } else if (error.message.includes('Email not confirmed')) {
@@ -528,12 +552,10 @@ export default function ProfileScreen() {
 
     try {
       // Insert role into user_roles table
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .insert({
-          user_id: user.id,
-          role: role
-        });
+      const { error: roleError } = await supabase.from('user_roles').insert({
+        user_id: user.id,
+        role: role,
+      });
 
       if (roleError) {
         if (__DEV__) {
@@ -560,11 +582,7 @@ export default function ProfileScreen() {
         );
       } else {
         // Player doesn't need subscription
-        Alert.alert(
-          'Velkommen! 🎉',
-          'Din konto er nu klar til brug!',
-          [{ text: 'OK' }]
-        );
+        Alert.alert('Velkommen! 🎉', 'Din konto er nu klar til brug!', [{ text: 'OK' }]);
       }
     } catch (error: any) {
       if (__DEV__) {
@@ -587,7 +605,7 @@ export default function ProfileScreen() {
     try {
       // Call the create-subscription edge function
       const { data, error } = await supabase.functions.invoke('create-subscription', {
-        body: { planId }
+        body: { planId },
       });
 
       if (error) {
@@ -602,10 +620,10 @@ export default function ProfileScreen() {
         console.log('[PROFILE] Subscription created successfully');
       }
       setNeedsSubscription(false);
-      
+
       // Refresh subscription status
       await refreshSubscription();
-      
+
       Alert.alert(
         'Velkommen! 🎉',
         'Dit abonnement er aktiveret med 14 dages gratis prøveperiode. Du kan nu oprette spillere og hold!',
@@ -653,7 +671,7 @@ export default function ProfileScreen() {
             setIsDeletingExternalActivities(true);
             try {
               const result = await deleteAllExternalActivities();
-              
+
               if (!result.success) {
                 throw new Error(result.error || 'Kunne ikke slette aktiviteter');
               }
@@ -680,15 +698,15 @@ export default function ProfileScreen() {
             } finally {
               setIsDeletingExternalActivities(false);
             }
-          }
-        }
+          },
+        },
       ]
     );
   };
 
   const getPlanColor = (planName: string | null) => {
     if (!planName) return colors.primary;
-    
+
     const lowerName = planName.toLowerCase();
     if (lowerName.includes('bronze') || lowerName.includes('basic')) {
       return '#CD7F32'; // Bronze
@@ -700,13 +718,36 @@ export default function ProfileScreen() {
     return colors.primary;
   };
 
-  const bgColor = isDark ? (Platform.OS === 'ios' ? '#000' : '#1a1a1a') : (Platform.OS === 'ios' ? '#f8f9fa' : colors.background);
-  const cardBgColor = isDark ? (Platform.OS === 'ios' ? '#1a1a1a' : '#2a2a2a') : (Platform.OS === 'ios' ? '#fff' : colors.card);
-  const textColor = isDark ? (Platform.OS === 'ios' ? '#fff' : '#e3e3e3') : (Platform.OS === 'ios' ? '#1a1a1a' : colors.text);
-  const textSecondaryColor = isDark ? '#999' : (Platform.OS === 'ios' ? '#666' : colors.textSecondary);
-  const nestedCardBgColor = Platform.OS === 'ios'
-    ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)')
-    : (isDark ? '#1f1f1f' : '#f5f6f9');
+  const bgColor = isDark
+    ? Platform.OS === 'ios'
+      ? '#000'
+      : '#1a1a1a'
+    : Platform.OS === 'ios'
+      ? '#f8f9fa'
+      : colors.background;
+  const cardBgColor = isDark
+    ? Platform.OS === 'ios'
+      ? '#1a1a1a'
+      : '#2a2a2a'
+    : Platform.OS === 'ios'
+      ? '#fff'
+      : colors.card;
+  const textColor = isDark
+    ? Platform.OS === 'ios'
+      ? '#fff'
+      : '#e3e3e3'
+    : Platform.OS === 'ios'
+      ? '#1a1a1a'
+      : colors.text;
+  const textSecondaryColor = isDark ? '#999' : Platform.OS === 'ios' ? '#666' : colors.textSecondary;
+  const nestedCardBgColor =
+    Platform.OS === 'ios'
+      ? isDark
+        ? 'rgba(255,255,255,0.08)'
+        : 'rgba(0,0,0,0.04)'
+      : isDark
+        ? '#1f1f1f'
+        : '#f5f6f9';
 
   // Platform-specific wrapper component
   const CardWrapper = Platform.OS === 'ios' ? GlassView : View;
@@ -714,75 +755,91 @@ export default function ProfileScreen() {
 
   // Platform-specific container
   const ContainerWrapper = Platform.OS === 'ios' ? SafeAreaView : View;
-  const containerEdges = Platform.OS === 'ios' ? ['top'] as const : undefined;
+  const containerEdges = Platform.OS === 'ios' ? (['top'] as const) : undefined;
 
   // Show role selection if user is logged in but has no role
   if (user && needsRoleSelection) {
     return (
       <ContainerWrapper style={[styles.safeArea, { backgroundColor: bgColor }]} edges={containerEdges}>
-        <ScrollView
+        <FlatList
           style={styles.container}
-          contentContainerStyle={[styles.contentContainer, Platform.OS !== 'ios' && { paddingTop: 60 }]}
-        >
-          <Text style={[styles.title, { color: textColor }]}>Vælg din rolle</Text>
-          <Text style={[styles.subtitle, { color: textSecondaryColor }]}>
-            Vælg om du er spiller eller træner for at fortsætte
-          </Text>
-
-          <CardWrapper style={[styles.onboardingCard, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
-            <Text style={[styles.onboardingTitle, { color: textColor }]}>
-              Velkommen til din nye konto! 🎉
-            </Text>
-            <Text style={[styles.onboardingDescription, { color: textSecondaryColor }]}>
-              For at komme i gang skal du vælge din rolle. Dette hjælper os med at tilpasse oplevelsen til dig.
-            </Text>
-
-            <TouchableOpacity
-              style={[styles.roleCard, { backgroundColor: Platform.OS === 'ios' ? (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)') : bgColor }]}
-              onPress={() => handleRoleSelection('player')}
-              disabled={loading}
-              activeOpacity={0.7}
-            >
-              <IconSymbol
-                ios_icon_name="figure.run"
-                android_material_icon_name="directions_run"
-                size={48}
-                color={colors.primary}
-              />
-              <Text style={[styles.roleTitle, { color: textColor }]}>Spiller</Text>
-              <Text style={[styles.roleDescription, { color: textSecondaryColor }]}>
-                Jeg er en spiller og vil holde styr på min træning
+          data={[]}
+          keyExtractor={(_, index) => `profile-role-${index}`}
+          renderItem={() => null}
+          ListHeaderComponent={() => (
+            <View style={Platform.OS !== 'ios' ? { paddingTop: 60 } : undefined}>
+              <Text style={[styles.title, { color: textColor }]}>Vælg din rolle</Text>
+              <Text style={[styles.subtitle, { color: textSecondaryColor }]}>
+                Vælg om du er spiller eller træner for at fortsætte
               </Text>
-            </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.roleCard, { backgroundColor: Platform.OS === 'ios' ? (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)') : bgColor }]}
-              onPress={() => handleRoleSelection('trainer')}
-              disabled={loading}
-              activeOpacity={0.7}
-            >
-              <IconSymbol
-                ios_icon_name="person.3.fill"
-                android_material_icon_name="group"
-                size={48}
-                color={colors.primary}
-              />
-              <Text style={[styles.roleTitle, { color: textColor }]}>Træner</Text>
-              <Text style={[styles.roleDescription, { color: textSecondaryColor }]}>
-                Jeg er træner og vil administrere spillere og hold
-              </Text>
-            </TouchableOpacity>
-
-            {loading && (
-              <View style={styles.loadingOverlay}>
-                <ActivityIndicator size="large" color={colors.primary} />
-                <Text style={[styles.loadingText, { color: textColor }]}>
-                  Gemmer din rolle...
+              <CardWrapper
+                style={[styles.onboardingCard, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]}
+                {...cardWrapperProps}
+              >
+                <Text style={[styles.onboardingTitle, { color: textColor }]}>Velkommen til din nye konto! 🎉</Text>
+                <Text style={[styles.onboardingDescription, { color: textSecondaryColor }]}>
+                  For at komme i gang skal du vælge din rolle. Dette hjælper os med at tilpasse oplevelsen til dig.
                 </Text>
-              </View>
-            )}
-          </CardWrapper>
-        </ScrollView>
+
+                <TouchableOpacity
+                  style={[
+                    styles.roleCard,
+                    {
+                      backgroundColor:
+                        Platform.OS === 'ios'
+                          ? isDark
+                            ? 'rgba(255,255,255,0.1)'
+                            : 'rgba(0,0,0,0.05)'
+                          : bgColor,
+                    },
+                  ]}
+                  onPress={() => handleRoleSelection('player')}
+                  disabled={loading}
+                  activeOpacity={0.7}
+                >
+                  <IconSymbol ios_icon_name="figure.run" android_material_icon_name="directions_run" size={48} color={colors.primary} />
+                  <Text style={[styles.roleTitle, { color: textColor }]}>Spiller</Text>
+                  <Text style={[styles.roleDescription, { color: textSecondaryColor }]}>
+                    Jeg er en spiller og vil holde styr på min træning
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.roleCard,
+                    {
+                      backgroundColor:
+                        Platform.OS === 'ios'
+                          ? isDark
+                            ? 'rgba(255,255,255,0.1)'
+                            : 'rgba(0,0,0,0.05)'
+                          : bgColor,
+                    },
+                  ]}
+                  onPress={() => handleRoleSelection('trainer')}
+                  disabled={loading}
+                  activeOpacity={0.7}
+                >
+                  <IconSymbol ios_icon_name="person.3.fill" android_material_icon_name="group" size={48} color={colors.primary} />
+                  <Text style={[styles.roleTitle, { color: textColor }]}>Træner</Text>
+                  <Text style={[styles.roleDescription, { color: textSecondaryColor }]}>
+                    Jeg er træner og vil administrere spillere og hold
+                  </Text>
+                </TouchableOpacity>
+
+                {loading && (
+                  <View style={styles.loadingOverlay}>
+                    <ActivityIndicator size="large" color={colors.primary} />
+                    <Text style={[styles.loadingText, { color: textColor }]}>Gemmer din rolle...</Text>
+                  </View>
+                )}
+              </CardWrapper>
+            </View>
+          )}
+          contentContainerStyle={[styles.contentContainer]}
+          showsVerticalScrollIndicator={false}
+        />
       </ContainerWrapper>
     );
   }
@@ -791,546 +848,498 @@ export default function ProfileScreen() {
   if (user && needsSubscription) {
     return (
       <ContainerWrapper style={[styles.safeArea, { backgroundColor: bgColor }]} edges={containerEdges}>
-        <ScrollView
+        <FlatList
           style={styles.container}
-          contentContainerStyle={[styles.contentContainer, Platform.OS !== 'ios' && { paddingTop: 60 }]}
-        >
-          <Text style={[styles.title, { color: textColor }]}>Vælg dit abonnement</Text>
-          <Text style={[styles.subtitle, { color: textSecondaryColor }]}>
-            Som træner skal du vælge et abonnement for at administrere spillere
-          </Text>
+          data={[]}
+          keyExtractor={(_, index) => `profile-sub-${index}`}
+          renderItem={() => null}
+          ListHeaderComponent={() => (
+            <View style={Platform.OS !== 'ios' ? { paddingTop: 60 } : undefined}>
+              <Text style={[styles.title, { color: textColor }]}>Vælg dit abonnement</Text>
+              <Text style={[styles.subtitle, { color: textSecondaryColor }]}>
+                Som træner skal du vælge et abonnement for at administrere spillere
+              </Text>
 
-          <CardWrapper style={[styles.subscriptionCard, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
-            <SubscriptionManager 
-              onPlanSelected={handleCompleteSubscription}
-              isSignupFlow={true}
-              selectedRole="trainer"
-            />
-          </CardWrapper>
-        </ScrollView>
+              <CardWrapper
+                style={[styles.subscriptionCard, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]}
+                {...cardWrapperProps}
+              >
+                <SubscriptionManager onPlanSelected={handleCompleteSubscription} isSignupFlow={true} selectedRole="trainer" />
+              </CardWrapper>
+            </View>
+          )}
+          contentContainerStyle={[styles.contentContainer]}
+          showsVerticalScrollIndicator={false}
+        />
       </ContainerWrapper>
     );
   }
 
-  return (
-    <ContainerWrapper style={[styles.safeArea, { backgroundColor: bgColor }]} edges={containerEdges}>
-      <ScrollView
-        ref={scrollViewRef}
-        style={styles.container}
-        contentContainerStyle={[styles.contentContainer, Platform.OS !== 'ios' && { paddingTop: 60 }]}
-      >
-        {user ? (
-          // Logged in view
-          <>
-            <CardWrapper style={[styles.profileHeader, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
-              <View style={styles.avatarContainer}>
-                <View style={[styles.avatar, { 
-                  backgroundColor: subscriptionStatus?.hasSubscription 
-                    ? getPlanColor(subscriptionStatus.planName)
-                    : colors.primary 
-                }]}>
-                  <IconSymbol 
-                    ios_icon_name="person.circle.fill" 
-                    android_material_icon_name="person" 
-                    size={Platform.OS === 'ios' ? 80 : 48} 
-                    color="#fff" 
-                  />
-                </View>
-                {subscriptionStatus?.hasSubscription && (
-                  <View style={[styles.subscriptionBadge, { 
-                    backgroundColor: getPlanColor(subscriptionStatus.planName) 
-                  }]}>
-                    <IconSymbol
-                      ios_icon_name="star.fill"
-                      android_material_icon_name="star"
-                      size={16}
-                      color="#fff"
-                    />
-                  </View>
-                )}
+  // Logged-in main view now rendered via FlatList (see return)
+  const renderProfileContent = () => (
+    <View>
+      {user ? (
+        <>
+          <CardWrapper style={[styles.profileHeader, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
+            <View style={styles.avatarContainer}>
+              <View
+                style={[
+                  styles.avatar,
+                  {
+                    backgroundColor: subscriptionStatus?.hasSubscription ? getPlanColor(subscriptionStatus.planName) : colors.primary,
+                  },
+                ]}
+              >
+                <IconSymbol ios_icon_name="person.circle.fill" android_material_icon_name="person" size={Platform.OS === 'ios' ? 80 : 48} color="#fff" />
               </View>
-              <Text style={[styles.name, { color: textColor }]}>
-                {profile?.full_name || user.email?.split('@')[0] || 'Bruger'}
-              </Text>
-              <Text style={[styles.email, { color: textSecondaryColor }]}>
-                {user.email}
-              </Text>
-              {/* Only show subscription badge if user has an active subscription */}
-              {subscriptionStatus?.hasSubscription && subscriptionStatus.planName && (
-                <View style={styles.badgesRow}>
-                  <View style={[styles.planBadge, { 
-                    backgroundColor: getPlanColor(subscriptionStatus.planName) 
-                  }]}>
-                    <IconSymbol
-                      ios_icon_name="star.fill"
-                      android_material_icon_name="star"
-                      size={12}
-                      color="#fff"
-                    />
-                    <Text style={styles.planBadgeText}>
-                      {subscriptionStatus.planName}
-                    </Text>
-                  </View>
+              {subscriptionStatus?.hasSubscription && (
+                <View style={[styles.subscriptionBadge, { backgroundColor: getPlanColor(subscriptionStatus.planName) }]}>
+                  <IconSymbol ios_icon_name="star.fill" android_material_icon_name="star" size={16} color="#fff" />
                 </View>
               )}
-            </CardWrapper>
+            </View>
+            <Text style={[styles.name, { color: textColor }]}>{profile?.full_name || user.email?.split('@')[0] || 'Bruger'}</Text>
+            <Text style={[styles.email, { color: textSecondaryColor }]}>{user.email}</Text>
+            {/* Only show subscription badge if user has an active subscription */}
+            {subscriptionStatus?.hasSubscription && subscriptionStatus.planName && (
+              <View style={styles.badgesRow}>
+                <View style={[styles.planBadge, { backgroundColor: getPlanColor(subscriptionStatus.planName) }]}>
+                  <IconSymbol ios_icon_name="star.fill" android_material_icon_name="star" size={12} color="#fff" />
+                  <Text style={styles.planBadgeText}>{subscriptionStatus.planName}</Text>
+                </View>
+              </View>
+            )}
+          </CardWrapper>
 
-            {/* Profile Info Section */}
-            <CardWrapper style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
-              <View style={styles.sectionHeader}>
-                <Text style={[styles.sectionTitle, { color: textColor }]}>
-                  Profil Information
-                </Text>
-                {!isEditingProfile && (
-                  <TouchableOpacity onPress={() => {
+          {/* Profile Info Section */}
+          <CardWrapper style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: textColor }]}>Profil Information</Text>
+              {!isEditingProfile && (
+                <TouchableOpacity
+                  onPress={() => {
                     setIsEditingProfile(true);
                     setOriginalName(profile?.full_name || '');
                     setOriginalPhone(profile?.phone_number || '');
-                  }}>
-                    <IconSymbol
-                      ios_icon_name="pencil"
-                      android_material_icon_name="edit"
-                      size={20}
-                      color={colors.primary}
-                    />
+                  }}
+                >
+                  <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={20} color={colors.primary} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {isEditingProfile ? (
+              <View style={styles.editForm}>
+                <Text style={[styles.label, { color: textColor }]}>Navn</Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: Platform.OS === 'ios' ? (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)') : bgColor,
+                      color: textColor,
+                    },
+                  ]}
+                  value={editName}
+                  onChangeText={setEditName}
+                  placeholder="Dit navn"
+                  placeholderTextColor={textSecondaryColor}
+                />
+
+                <Text style={[styles.label, { color: textColor }]}>Telefon</Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: Platform.OS === 'ios' ? (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)') : bgColor,
+                      color: textColor,
+                    },
+                  ]}
+                  value={editPhone}
+                  onChangeText={setEditPhone}
+                  placeholder="+45 12 34 56 78"
+                  placeholderTextColor={textSecondaryColor}
+                  keyboardType="phone-pad"
+                />
+
+                <View style={styles.editButtons}>
+                  <TouchableOpacity
+                    style={[
+                      styles.button,
+                      { backgroundColor: Platform.OS === 'ios' ? (isDark ? '#3a3a3c' : '#e5e5e5') : colors.highlight },
+                    ]}
+                    onPress={() => {
+                      setIsEditingProfile(false);
+                      setEditName(profile?.full_name || '');
+                      setEditPhone(profile?.phone_number || '');
+                    }}
+                  >
+                    <Text style={[styles.buttonText, { color: textColor }]}>Annuller</Text>
                   </TouchableOpacity>
+                  <TouchableOpacity style={[styles.button, { backgroundColor: colors.primary }]} onPress={handleSaveProfile} disabled={loading}>
+                    {loading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={[styles.buttonText, { color: '#fff' }]}>Gem</Text>}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.profileInfo}>
+                {profile?.full_name && (
+                  <View style={styles.infoRow}>
+                    <IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={20} color={colors.primary} />
+                    <Text style={[styles.infoText, { color: textColor }]}>{profile.full_name}</Text>
+                  </View>
+                )}
+                {profile?.phone_number && (
+                  <View style={styles.infoRow}>
+                    <IconSymbol ios_icon_name="phone.fill" android_material_icon_name="phone" size={20} color={colors.primary} />
+                    <Text style={[styles.infoText, { color: textColor }]}>{profile.phone_number}</Text>
+                  </View>
+                )}
+                {!profile?.full_name && !profile?.phone_number && (
+                  <Text style={[styles.emptyText, { color: textSecondaryColor }]}>
+                    Ingen profilinformation tilgængelig. Tryk på rediger for at tilføje.
+                  </Text>
                 )}
               </View>
+            )}
+          </CardWrapper>
 
-              {isEditingProfile ? (
-                <View style={styles.editForm}>
-                  <Text style={[styles.label, { color: textColor }]}>Navn</Text>
-                  <TextInput
-                    style={[styles.input, { 
-                      backgroundColor: Platform.OS === 'ios' ? (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)') : bgColor,
-                      color: textColor 
-                    }]}
-                    value={editName}
-                    onChangeText={setEditName}
-                    placeholder="Dit navn"
-                    placeholderTextColor={textSecondaryColor}
-                  />
-
-                  <Text style={[styles.label, { color: textColor }]}>Telefon</Text>
-                  <TextInput
-                    style={[styles.input, { 
-                      backgroundColor: Platform.OS === 'ios' ? (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)') : bgColor,
-                      color: textColor 
-                    }]}
-                    value={editPhone}
-                    onChangeText={setEditPhone}
-                    placeholder="+45 12 34 56 78"
-                    placeholderTextColor={textSecondaryColor}
-                    keyboardType="phone-pad"
-                  />
-
-                  <View style={styles.editButtons}>
-                    <TouchableOpacity
-                      style={[styles.button, { backgroundColor: Platform.OS === 'ios' ? (isDark ? '#3a3a3c' : '#e5e5e5') : colors.highlight }]}
-                      onPress={() => {
-                        setIsEditingProfile(false);
-                        setEditName(profile?.full_name || '');
-                        setEditPhone(profile?.phone_number || '');
-                      }}
-                    >
-                      <Text style={[styles.buttonText, { color: textColor }]}>Annuller</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.button, { backgroundColor: colors.primary }]}
-                      onPress={handleSaveProfile}
-                      disabled={loading}
-                    >
-                      {loading ? (
-                        <ActivityIndicator color="#fff" size="small" />
-                      ) : (
-                        <Text style={[styles.buttonText, { color: '#fff' }]}>Gem</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
+          {/* Admin Info for Players */}
+          {userRole === 'player' &&
+            (subscriptionFeaturesLoading ? (
+              <CardWrapper style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
+                <View style={[styles.loadingContainer, { paddingVertical: 24 }]}>
+                  <ActivityIndicator size="small" color={colors.primary} />
                 </View>
-              ) : (
-                <View style={styles.profileInfo}>
-                  {profile?.full_name && (
-                    <View style={styles.infoRow}>
-                      <IconSymbol
-                        ios_icon_name="person.fill"
-                        android_material_icon_name="person"
-                        size={20}
-                        color={colors.primary}
-                      />
-                      <Text style={[styles.infoText, { color: textColor }]}>
-                        {profile.full_name}
-                      </Text>
-                    </View>
-                  )}
-                  {profile?.phone_number && (
-                    <View style={styles.infoRow}>
-                      <IconSymbol
-                        ios_icon_name="phone.fill"
-                        android_material_icon_name="phone"
-                        size={20}
-                        color={colors.primary}
-                      />
-                      <Text style={[styles.infoText, { color: textColor }]}>
-                        {profile.phone_number}
-                      </Text>
-                    </View>
-                  )}
-                  {!profile?.full_name && !profile?.phone_number && (
-                    <Text style={[styles.emptyText, { color: textSecondaryColor }]}>
-                      Ingen profilinformation tilgængelig. Tryk på rediger for at tilføje.
-                    </Text>
-                  )}
-                </View>
-              )}
-            </CardWrapper>
-
-            {/* Admin Info for Players */}
-            {userRole === 'player' && (
-              subscriptionFeaturesLoading ? (
+              </CardWrapper>
+            ) : canLinkTrainer ? (
+              adminInfo ? (
                 <CardWrapper style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
-                  <View style={[styles.loadingContainer, { paddingVertical: 24 }]}>
-                    <ActivityIndicator size="small" color={colors.primary} />
-                  </View>
-                </CardWrapper>
-              ) : canLinkTrainer ? (
-                adminInfo ? (
-                  <CardWrapper style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
-                    <Text style={[styles.sectionTitle, { color: textColor }]}>Din Træner</Text>
-                    <View style={styles.profileInfo}>
+                  <Text style={[styles.sectionTitle, { color: textColor }]}>Din Træner</Text>
+                  <View style={styles.profileInfo}>
+                    <View style={styles.infoRow}>
+                      <IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={20} color={colors.primary} />
+                      <Text style={[styles.infoText, { color: textColor }]}>{adminInfo.full_name}</Text>
+                    </View>
+                    {adminInfo.phone_number && (
                       <View style={styles.infoRow}>
-                        <IconSymbol
-                          ios_icon_name="person.fill"
-                          android_material_icon_name="person"
-                          size={20}
-                          color={colors.primary}
-                        />
-                        <Text style={[styles.infoText, { color: textColor }]}>
-                          {adminInfo.full_name}
-                        </Text>
+                        <IconSymbol ios_icon_name="phone.fill" android_material_icon_name="phone" size={20} color={colors.primary} />
+                        <Text style={[styles.infoText, { color: textColor }]}>{adminInfo.phone_number}</Text>
                       </View>
-                      {adminInfo.phone_number && (
-                        <View style={styles.infoRow}>
-                          <IconSymbol
-                            ios_icon_name="phone.fill"
-                            android_material_icon_name="phone"
-                            size={20}
-                            color={colors.primary}
-                          />
-                          <Text style={[styles.infoText, { color: textColor }]}>
-                            {adminInfo.phone_number}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                  </CardWrapper>
-                ) : null
-              ) : (
-                <CardWrapper style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
-                  <PremiumFeatureGate
-                    title="Tilslut din træner med Premium"
-                    description="Opgrader for at give din træner adgang til dine aktiviteter og opgaver."
-                    onPress={() => handleOpenSubscriptionSection('trainerLinking')}
-                    icon={{ ios: 'person.2.circle', android: 'groups' }}
-                    align="left"
-                  />
+                    )}
+                  </View>
                 </CardWrapper>
-              )
-            )}
+              ) : null
+            ) : (
+              <CardWrapper style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
+                <PremiumFeatureGate
+                  title="Tilslut din træner med Premium"
+                  description="Opgrader for at give din træner adgang til dine aktiviteter og opgaver."
+                  onPress={() => handleOpenSubscriptionSection('trainerLinking')}
+                  icon={{ ios: 'person.2.circle', android: 'groups' }}
+                  align="left"
+                />
+              </CardWrapper>
+            ))}
 
-            {canManagePlayers && (
-              <ManagePlayersSection
-                CardWrapperComponent={CardWrapper}
-                cardWrapperProps={cardWrapperProps}
-                cardBgColor={cardBgColor}
-                nestedCardBgColor={nestedCardBgColor}
-                textColor={textColor}
-                textSecondaryColor={textSecondaryColor}
-                subscriptionStatus={subscriptionStatus}
+          {canManagePlayers && (
+            <ManagePlayersSection
+              CardWrapperComponent={CardWrapper}
+              cardWrapperProps={cardWrapperProps}
+              cardBgColor={cardBgColor}
+              nestedCardBgColor={nestedCardBgColor}
+              textColor={textColor}
+              textSecondaryColor={textSecondaryColor}
+              subscriptionStatus={subscriptionStatus}
+            />
+          )}
+
+          {/* Calendar Sync Section - Collapsible - Available for all users */}
+          <CardWrapper style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
+            <TouchableOpacity
+              style={styles.collapsibleHeader}
+              onPress={() => setIsCalendarSyncExpanded(!isCalendarSyncExpanded)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.sectionTitleContainer}>
+                <IconSymbol ios_icon_name="calendar.badge.plus" android_material_icon_name="event" size={28} color={colors.primary} />
+                <Text style={[styles.sectionTitle, { color: textColor }]}>Kalender Synkronisering</Text>
+              </View>
+              <IconSymbol
+                ios_icon_name={isCalendarSyncExpanded ? 'chevron.up' : 'chevron.down'}
+                android_material_icon_name={isCalendarSyncExpanded ? 'expand_less' : 'expand_more'}
+                size={24}
+                color={textSecondaryColor}
               />
-            )}
+            </TouchableOpacity>
 
-            {/* Calendar Sync Section - Collapsible - Available for all users */}
+            {isCalendarSyncExpanded &&
+              (subscriptionFeaturesLoading ? (
+                <View style={[styles.loadingContainer, { paddingVertical: 24 }]}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                </View>
+              ) : canUseCalendarSync ? (
+                <>
+                  <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
+                    Tilknyt eksterne kalendere (iCal/webcal) for automatisk at importere aktiviteter
+                  </Text>
+                  <ExternalCalendarManager />
+
+                  {/* Delete All External Activities Button */}
+                  <TouchableOpacity
+                    style={[
+                      styles.deleteExternalButton,
+                      {
+                        backgroundColor:
+                          Platform.OS === 'ios'
+                            ? isDark
+                              ? 'rgba(255,59,48,0.2)'
+                              : 'rgba(255,59,48,0.1)'
+                            : isDark
+                              ? '#3a1a1a'
+                              : '#ffe5e5',
+                      },
+                    ]}
+                    onPress={handleDeleteAllExternalActivities}
+                    activeOpacity={0.7}
+                    disabled={isDeletingExternalActivities}
+                  >
+                    {isDeletingExternalActivities ? (
+                      <ActivityIndicator size="small" color={Platform.OS === 'ios' ? '#ff3b30' : colors.error} />
+                    ) : (
+                      <React.Fragment>
+                        <IconSymbol ios_icon_name="trash.fill" android_material_icon_name="delete" size={24} color={Platform.OS === 'ios' ? '#ff3b30' : colors.error} />
+                        <Text style={[styles.deleteExternalButtonText, { color: Platform.OS === 'ios' ? '#ff3b30' : colors.error }]}>
+                          Slet alle eksterne aktiviteter
+                        </Text>
+                      </React.Fragment>
+                    )}
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <PremiumFeatureGate
+                  title="Kalendersynk er en Premium-fordel"
+                  description="Importer dine aktiviteter automatisk fra eksterne kalendere ved at opgradere."
+                  onPress={() => handleOpenSubscriptionSection('calendarSync')}
+                  icon={{ ios: 'calendar.badge.plus', android: 'event' }}
+                  align="left"
+                />
+              ))}
+          </CardWrapper>
+
+          {/* Subscription Section - Collapsible - Available for all users */}
+          <View onLayout={event => setSubscriptionSectionY(event.nativeEvent.layout.y)}>
             <CardWrapper style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
               <TouchableOpacity
                 style={styles.collapsibleHeader}
-                onPress={() => setIsCalendarSyncExpanded(!isCalendarSyncExpanded)}
+                onPress={() => setIsSubscriptionExpanded(!isSubscriptionExpanded)}
                 activeOpacity={0.7}
               >
                 <View style={styles.sectionTitleContainer}>
-                  <IconSymbol
-                    ios_icon_name="calendar.badge.plus"
-                    android_material_icon_name="event"
-                    size={28}
-                    color={colors.primary}
-                  />
-                  <Text style={[styles.sectionTitle, { color: textColor }]}>Kalender Synkronisering</Text>
+                  <IconSymbol ios_icon_name="creditcard.fill" android_material_icon_name="payment" size={28} color={colors.primary} />
+                  <Text style={[styles.sectionTitle, { color: textColor }]}>Abonnement</Text>
                 </View>
                 <IconSymbol
-                  ios_icon_name={isCalendarSyncExpanded ? 'chevron.up' : 'chevron.down'}
-                  android_material_icon_name={isCalendarSyncExpanded ? 'expand_less' : 'expand_more'}
+                  ios_icon_name={isSubscriptionExpanded ? 'chevron.up' : 'chevron.down'}
+                  android_material_icon_name={isSubscriptionExpanded ? 'expand_less' : 'expand_more'}
                   size={24}
                   color={textSecondaryColor}
                 />
               </TouchableOpacity>
-              
-              {isCalendarSyncExpanded && (
-                subscriptionFeaturesLoading ? (
-                  <View style={[styles.loadingContainer, { paddingVertical: 24 }]}>
-                    <ActivityIndicator size="small" color={colors.primary} />
-                  </View>
-                ) : canUseCalendarSync ? (
-                  <>
-                    <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
-                      Tilknyt eksterne kalendere (iCal/webcal) for automatisk at importere aktiviteter
-                    </Text>
-                    <ExternalCalendarManager />
-                    
-                    {/* Delete All External Activities Button */}
-                    <TouchableOpacity
-                      style={[styles.deleteExternalButton, { backgroundColor: Platform.OS === 'ios' ? (isDark ? 'rgba(255,59,48,0.2)' : 'rgba(255,59,48,0.1)') : (isDark ? '#3a1a1a' : '#ffe5e5') }]}
-                      onPress={handleDeleteAllExternalActivities}
-                      activeOpacity={0.7}
-                      disabled={isDeletingExternalActivities}
-                    >
-                      {isDeletingExternalActivities ? (
-                        <ActivityIndicator size="small" color={Platform.OS === 'ios' ? '#ff3b30' : colors.error} />
-                      ) : (
-                        <React.Fragment>
-                          <IconSymbol
-                            ios_icon_name="trash.fill"
-                            android_material_icon_name="delete"
-                            size={24}
-                            color={Platform.OS === 'ios' ? '#ff3b30' : colors.error}
-                          />
-                          <Text style={[styles.deleteExternalButtonText, { color: Platform.OS === 'ios' ? '#ff3b30' : colors.error }]}>
-                            Slet alle eksterne aktiviteter
-                          </Text>
-                        </React.Fragment>
-                      )}
-                    </TouchableOpacity>
-                  </>
-                ) : (
-                  <PremiumFeatureGate
-                    title="Kalendersynk er en Premium-fordel"
-                    description="Importer dine aktiviteter automatisk fra eksterne kalendere ved at opgradere."
-                    onPress={() => handleOpenSubscriptionSection('calendarSync')}
-                    icon={{ ios: 'calendar.badge.plus', android: 'event' }}
-                    align="left"
-                  />
-                )
+
+              {isSubscriptionExpanded && (
+                <>
+                  <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>Administrer dit abonnement</Text>
+                  {userRole === 'player' ? (
+                    <AppleSubscriptionManager
+                      highlightProductId={highlightProductId}
+                      forceShowPlans={userRole === 'player' && !subscriptionStatus?.hasSubscription}
+                    />
+                  ) : (
+                    <SubscriptionManager />
+                  )}
+                </>
               )}
             </CardWrapper>
+          </View>
 
-            {/* Subscription Section - Collapsible - Available for all users */}
-            <View onLayout={(event) => setSubscriptionSectionY(event.nativeEvent.layout.y)}>
-              <CardWrapper style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
+          <TouchableOpacity
+            style={[styles.signOutButton, { backgroundColor: Platform.OS === 'ios' ? '#ff3b30' : colors.error }]}
+            onPress={handleSignOut}
+            activeOpacity={0.7}
+          >
+            {Platform.OS !== 'ios' && <IconSymbol ios_icon_name="arrow.right.square" android_material_icon_name="logout" size={24} color="#fff" />}
+            <Text style={styles.signOutButtonText}>Log ud</Text>
+          </TouchableOpacity>
+        </>
+      ) : (
+        // Login/Sign up view
+        <CardWrapper style={[styles.authCard, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
+          {showSuccessMessage && (
+            <View style={[styles.successMessage, { backgroundColor: colors.primary }]}>
+              <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name="check_circle" size={Platform.OS === 'ios' ? 64 : 48} color="#fff" />
+              <Text style={styles.successTitle}>Konto oprettet! 🎉</Text>
+              <Text style={styles.successText}>
+                Din konto er blevet oprettet succesfuldt.{'\n'}
+                Tjek din email for at bekræfte din konto, og log derefter ind.
+              </Text>
+            </View>
+          )}
+
+          {!showSuccessMessage && (
+            <>
+              {Platform.OS === 'ios' && <Text style={[styles.title, { color: textColor }]}>{isSignUp ? 'Opret konto' : 'Log ind'}</Text>}
+
+              <View style={styles.authToggle}>
                 <TouchableOpacity
-                  style={styles.collapsibleHeader}
-                  onPress={() => setIsSubscriptionExpanded(!isSubscriptionExpanded)}
+                  style={[
+                    styles.authToggleButton,
+                    !isSignUp && [
+                      styles.authToggleButtonActive,
+                      Platform.OS === 'ios' ? { backgroundColor: 'rgba(0,122,255,0.3)' } : { backgroundColor: colors.primary },
+                    ],
+                  ]}
+                  onPress={() => {
+                    setIsSignUp(false);
+                  }}
                   activeOpacity={0.7}
                 >
-                  <View style={styles.sectionTitleContainer}>
-                    <IconSymbol
-                      ios_icon_name="creditcard.fill"
-                      android_material_icon_name="payment"
-                      size={28}
-                      color={colors.primary}
-                    />
-                    <Text style={[styles.sectionTitle, { color: textColor }]}>Abonnement</Text>
-                  </View>
-                  <IconSymbol
-                    ios_icon_name={isSubscriptionExpanded ? 'chevron.up' : 'chevron.down'}
-                    android_material_icon_name={isSubscriptionExpanded ? 'expand_less' : 'expand_more'}
-                    size={24}
-                    color={textSecondaryColor}
-                  />
-                </TouchableOpacity>
-                
-                {isSubscriptionExpanded && (
-                  <>
-                    <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>Administrer dit abonnement</Text>
-                    {userRole === 'player' ? (
-                      <AppleSubscriptionManager
-                        highlightProductId={highlightProductId}
-                        forceShowPlans={userRole === 'player' && !subscriptionStatus?.hasSubscription}
-                      />
-                    ) : (
-                      <SubscriptionManager />
-                    )}
-                  </>
-                )}
-              </CardWrapper>
-            </View>
-
-            <TouchableOpacity
-              style={[styles.signOutButton, { backgroundColor: Platform.OS === 'ios' ? '#ff3b30' : colors.error }]}
-              onPress={handleSignOut}
-              activeOpacity={0.7}
-            >
-              {Platform.OS !== 'ios' && (
-                <IconSymbol 
-                  ios_icon_name="arrow.right.square" 
-                  android_material_icon_name="logout" 
-                  size={24} 
-                  color="#fff" 
-                />
-              )}
-              <Text style={styles.signOutButtonText}>Log ud</Text>
-            </TouchableOpacity>
-          </>
-        ) : (
-          // Login/Sign up view
-          <CardWrapper style={[styles.authCard, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
-            {showSuccessMessage && (
-              <View style={[styles.successMessage, { backgroundColor: colors.primary }]}>
-                <IconSymbol 
-                  ios_icon_name="checkmark.circle.fill" 
-                  android_material_icon_name="check_circle" 
-                  size={Platform.OS === 'ios' ? 64 : 48} 
-                  color="#fff" 
-                />
-                <Text style={styles.successTitle}>Konto oprettet! 🎉</Text>
-                <Text style={styles.successText}>
-                  Din konto er blevet oprettet succesfuldt.{'\n'}
-                  Tjek din email for at bekræfte din konto, og log derefter ind.
-                </Text>
-              </View>
-            )}
-
-            {!showSuccessMessage && (
-              <>
-                {Platform.OS === 'ios' && (
-                  <Text style={[styles.title, { color: textColor }]}>
-                    {isSignUp ? 'Opret konto' : 'Log ind'}
+                  <Text
+                    style={[
+                      styles.authToggleText,
+                      { color: Platform.OS === 'ios' ? textColor : isSignUp ? colors.textSecondary : '#fff' },
+                      !isSignUp && styles.authToggleTextActive,
+                    ]}
+                  >
+                    Log ind
                   </Text>
-                )}
-
-                <View style={styles.authToggle}>
-                  <TouchableOpacity
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.authToggleButton,
+                    isSignUp && [
+                      styles.authToggleButtonActive,
+                      Platform.OS === 'ios' ? { backgroundColor: 'rgba(0,122,255,0.3)' } : { backgroundColor: colors.primary },
+                    ],
+                  ]}
+                  onPress={() => {
+                    setIsSignUp(true);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text
                     style={[
-                      styles.authToggleButton,
-                      !isSignUp && [styles.authToggleButtonActive, Platform.OS === 'ios' ? { backgroundColor: 'rgba(0,122,255,0.3)' } : { backgroundColor: colors.primary }]
-                    ]}
-                    onPress={() => {
-                      setIsSignUp(false);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[
                       styles.authToggleText,
-                      { color: Platform.OS === 'ios' ? textColor : (isSignUp ? colors.textSecondary : '#fff') },
-                      !isSignUp && styles.authToggleTextActive
-                    ]}>
-                      Log ind
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.authToggleButton,
-                      isSignUp && [styles.authToggleButtonActive, Platform.OS === 'ios' ? { backgroundColor: 'rgba(0,122,255,0.3)' } : { backgroundColor: colors.primary }]
+                      { color: Platform.OS === 'ios' ? textColor : !isSignUp ? colors.textSecondary : '#fff' },
+                      isSignUp && styles.authToggleTextActive,
                     ]}
-                    onPress={() => {
-                      setIsSignUp(true);
-                    }}
-                    activeOpacity={0.7}
                   >
-                    <Text style={[
-                      styles.authToggleText,
-                      { color: Platform.OS === 'ios' ? textColor : (!isSignUp ? colors.textSecondary : '#fff') },
-                      isSignUp && styles.authToggleTextActive
-                    ]}>
-                      Opret konto
-                    </Text>
-                  </TouchableOpacity>
-                </View>
+                    Opret konto
+                  </Text>
+                </TouchableOpacity>
+              </View>
 
-                <View style={styles.form}>
-                  <Text style={[styles.label, { color: textColor }]}>Email</Text>
-                  <TextInput
-                    style={[styles.input, { 
+              <View style={styles.form}>
+                <Text style={[styles.label, { color: textColor }]}>Email</Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
                       backgroundColor: Platform.OS === 'ios' ? (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)') : bgColor,
-                      color: textColor 
-                    }]}
-                    value={email}
-                    onChangeText={setEmail}
-                    placeholder="din@email.dk"
-                    placeholderTextColor={textSecondaryColor}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                    editable={!loading}
-                    autoCorrect={false}
-                  />
+                      color: textColor,
+                    },
+                  ]}
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="din@email.dk"
+                  placeholderTextColor={textSecondaryColor}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  editable={!loading}
+                  autoCorrect={false}
+                />
 
-                  <Text style={[styles.label, { color: textColor }]}>Adgangskode</Text>
-                  <TextInput
-                    style={[styles.input, { 
+                <Text style={[styles.label, { color: textColor }]}>Adgangskode</Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
                       backgroundColor: Platform.OS === 'ios' ? (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)') : bgColor,
-                      color: textColor 
-                    }]}
-                    value={password}
-                    onChangeText={setPassword}
-                    placeholder="Mindst 6 tegn"
-                    placeholderTextColor={textSecondaryColor}
-                    secureTextEntry
-                    editable={!loading}
-                    autoCorrect={false}
-                    autoCapitalize="none"
-                  />
+                      color: textColor,
+                    },
+                  ]}
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="Mindst 6 tegn"
+                  placeholderTextColor={textSecondaryColor}
+                  secureTextEntry
+                  editable={!loading}
+                  autoCorrect={false}
+                  autoCapitalize="none"
+                />
 
-                  <TouchableOpacity
-                    style={[
-                      styles.authButton,
-                      { backgroundColor: colors.primary },
-                      loading && { opacity: 0.6 }
-                    ]}
-                    onPress={isSignUp ? handleSignup : handleLogin}
-                    disabled={loading}
-                    activeOpacity={0.7}
-                  >
-                    {loading ? (
-                      <View style={styles.loadingContainer}>
-                        <ActivityIndicator color="#fff" size="small" />
-                        <Text style={[styles.authButtonText, { marginLeft: 12 }]}>
-                          {isSignUp ? 'Opretter konto...' : 'Logger ind...'}
-                        </Text>
-                      </View>
-                    ) : (
-                      <Text style={styles.authButtonText}>
-                        {isSignUp ? 'Opret konto' : 'Log ind'}
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
+                <TouchableOpacity
+                  style={[styles.authButton, { backgroundColor: colors.primary }, loading && { opacity: 0.6 }]}
+                  onPress={isSignUp ? handleSignup : handleLogin}
+                  disabled={loading}
+                  activeOpacity={0.7}
+                >
+                  {loading ? (
+                    <View style={styles.loadingContainer}>
+                      <ActivityIndicator color="#fff" size="small" />
+                      <Text style={[styles.authButtonText, { marginLeft: 12 }]}>{isSignUp ? 'Opretter konto...' : 'Logger ind...'}</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.authButtonText}>{isSignUp ? 'Opret konto' : 'Log ind'}</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
 
-                <View style={[styles.infoBox, { backgroundColor: Platform.OS === 'ios' ? 'rgba(128,128,128,0.1)' : (isDark ? '#2a3a4a' : '#e3f2fd') }]}>
-                  <IconSymbol 
-                    ios_icon_name="info.circle" 
-                    android_material_icon_name="info" 
-                    size={Platform.OS === 'ios' ? 24 : 28} 
-                    color={Platform.OS === 'ios' ? colors.primary : colors.secondary} 
-                  />
-                  <View style={Platform.OS !== 'ios' && styles.infoTextContainer}>
-                    {Platform.OS !== 'ios' && (
-                      <Text style={[styles.infoTitle, { color: textColor }]}>
-                        {isSignUp ? 'Hvad sker der efter oprettelse?' : 'Hvorfor skal jeg logge ind?'}
-                      </Text>
-                    )}
-                    <Text style={[styles.infoBoxText, { color: textSecondaryColor }]}>
-                      {isSignUp 
-                        ? 'Efter du opretter din konto, bliver du automatisk logget ind og kan begynde at bruge appen med det samme. Du vil modtage en bekræftelsesmail som du kan bekræfte når du har tid.\n\nDu vil blive bedt om at vælge din rolle (spiller eller træner) og derefter vælge et abonnement hvis du er træner.'
-                        : Platform.OS === 'ios' 
-                          ? 'Log ind for at gemme dine data sikkert i skyen.'
-                          : 'For at gemme eksterne kalendere og synkronisere dine data på tværs af enheder, skal du oprette en gratis konto.\n\nDine data gemmes sikkert i Supabase og er kun tilgængelige for dig.'
-                      }
+              <View
+                style={[
+                  styles.infoBox,
+                  { backgroundColor: Platform.OS === 'ios' ? 'rgba(128,128,128,0.1)' : isDark ? '#2a3a4a' : '#e3f2fd' },
+                ]}
+              >
+                <IconSymbol
+                  ios_icon_name="info.circle"
+                  android_material_icon_name="info"
+                  size={Platform.OS === 'ios' ? 24 : 28}
+                  color={Platform.OS === 'ios' ? colors.primary : colors.secondary}
+                />
+                <View style={Platform.OS !== 'ios' && styles.infoTextContainer}>
+                  {Platform.OS !== 'ios' && (
+                    <Text style={[styles.infoTitle, { color: textColor }]}>
+                      {isSignUp ? 'Hvad sker der efter oprettelse?' : 'Hvorfor skal jeg logge ind?'}
                     </Text>
-                  </View>
+                  )}
+                  <Text style={[styles.infoBoxText, { color: textSecondaryColor }]}>
+                    {isSignUp
+                      ? 'Efter du opretter din konto, bliver du automatisk logget ind og kan begynde at bruge appen med det samme. Du vil modtage en bekræftelsesmail som du kan bekræfte når du har tid.\n\nDu vil blive bedt om at vælge din rolle (spiller eller træner) og derefter vælge et abonnement hvis du er træner.'
+                      : Platform.OS === 'ios'
+                        ? 'Log ind for at gemme dine data sikkert i skyen.'
+                        : 'For at gemme eksterne kalendere og synkronisere dine data på tværs af enheder, skal du oprette en gratis konto.\n\nDine data gemmes sikkert i Supabase og er kun tilgængelige for dig.'}
+                  </Text>
                 </View>
-              </>
-            )}
-          </CardWrapper>
-        )}
-      </ScrollView>
+              </View>
+            </>
+          )}
+        </CardWrapper>
+      )}
+    </View>
+  );
+
+  return (
+    <ContainerWrapper style={[styles.safeArea, { backgroundColor: bgColor }]} edges={containerEdges}>
+      <FlatList
+        ref={scrollViewRef}
+        data={[]}
+        keyExtractor={(_, index) => `profile-flatlist-${index}`}
+        renderItem={() => null}
+        ListHeaderComponent={renderProfileContent}
+        ListFooterComponent={() => <View style={{ height: 120 }} />}
+        contentContainerStyle={[styles.contentContainer, Platform.OS !== 'ios' && { paddingTop: 60 }]}
+        showsVerticalScrollIndicator={false}
+      />
     </ContainerWrapper>
   );
 }
@@ -1721,11 +1730,7 @@ function ManagePlayersSection({
     const maxPlayers = subscriptionStatus?.maxPlayers;
     const currentPlayers = subscriptionStatus?.currentPlayers;
 
-    if (
-      typeof maxPlayers === 'number' &&
-      typeof currentPlayers === 'number' &&
-      currentPlayers >= maxPlayers
-    ) {
+    if (typeof maxPlayers === 'number' && typeof currentPlayers === 'number' && currentPlayers >= maxPlayers) {
       Alert.alert(
         'Spillergrænse nået',
         `Din ${subscriptionStatus?.planName ?? 'nuværende'} plan tillader op til ${maxPlayers} spiller${maxPlayers > 1 ? 'e' : ''}. Opgrader din plan for at tilføje flere spillere.`,
@@ -1739,22 +1744,10 @@ function ManagePlayersSection({
 
   return (
     <>
-      <CardWrapperComponent
-        style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]}
-        {...cardWrapperProps}
-      >
-        <TouchableOpacity
-          style={styles.collapsibleHeader}
-          onPress={() => setIsExpanded(prev => !prev)}
-          activeOpacity={0.7}
-        >
+      <CardWrapperComponent style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
+        <TouchableOpacity style={styles.collapsibleHeader} onPress={() => setIsExpanded(prev => !prev)} activeOpacity={0.7}>
           <View style={styles.sectionTitleContainer}>
-            <IconSymbol
-              ios_icon_name="person.3.fill"
-              android_material_icon_name="groups"
-              size={28}
-              color={colors.primary}
-            />
+            <IconSymbol ios_icon_name="person.3.fill" android_material_icon_name="groups" size={28} color={colors.primary} />
             <Text style={[styles.sectionTitle, { color: textColor }]}>Administrer spillere</Text>
           </View>
           <IconSymbol
@@ -1767,33 +1760,27 @@ function ManagePlayersSection({
 
         {isExpanded && (
           <>
-            <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>Opret teams, tilføj spillere og administrer dine eksisterende relationer direkte fra din profil.</Text>
+            <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
+              Opret teams, tilføj spillere og administrer dine eksisterende relationer direkte fra din profil.
+            </Text>
 
             <View style={[styles.manageBlock, { backgroundColor: nestedCardBgColor }]}>
               <View style={styles.sectionHeader}>
                 <View style={styles.sectionTitleContainer}>
-                  <IconSymbol
-                    ios_icon_name="person.3"
-                    android_material_icon_name="groups"
-                    size={24}
-                    color={colors.primary}
-                  />
+                  <IconSymbol ios_icon_name="person.3" android_material_icon_name="groups" size={24} color={colors.primary} />
                   <Text style={[styles.manageBlockTitle, { color: textColor }]}>Teams</Text>
                 </View>
               </View>
-              <Text style={[styles.manageBlockDescription, { color: textSecondaryColor }]}>Opret og administrer teams, og tilknyt spillere til de rigtige hold.</Text>
+              <Text style={[styles.manageBlockDescription, { color: textSecondaryColor }]}>
+                Opret og administrer teams, og tilknyt spillere til de rigtige hold.
+              </Text>
               <TeamManagement />
             </View>
 
             <View style={[styles.manageBlock, { backgroundColor: nestedCardBgColor }]}>
               <View style={styles.sectionHeader}>
                 <View style={styles.sectionTitleContainer}>
-                  <IconSymbol
-                    ios_icon_name="person.2.fill"
-                    android_material_icon_name="group"
-                    size={24}
-                    color={colors.primary}
-                  />
+                  <IconSymbol ios_icon_name="person.2.fill" android_material_icon_name="group" size={24} color={colors.primary} />
                   <Text style={[styles.manageBlockTitle, { color: textColor }]}>Spillere</Text>
                 </View>
                 <TouchableOpacity
@@ -1805,20 +1792,13 @@ function ManagePlayersSection({
                   <Text style={styles.manageActionButtonText}>Tilføj spiller</Text>
                 </TouchableOpacity>
               </View>
-              <PlayersList
-                onCreatePlayer={handleOpenCreatePlayer}
-                refreshTrigger={playersRefreshTrigger}
-              />
+              <PlayersList onCreatePlayer={handleOpenCreatePlayer} refreshTrigger={playersRefreshTrigger} />
             </View>
           </>
         )}
       </CardWrapperComponent>
 
-      <CreatePlayerModal
-        visible={showCreatePlayerModal}
-        onClose={() => setShowCreatePlayerModal(false)}
-        onPlayerCreated={handleManagePlayerCreated}
-      />
+      <CreatePlayerModal visible={showCreatePlayerModal} onClose={() => setShowCreatePlayerModal(false)} onPlayerCreated={handleManagePlayerCreated} />
     </>
   );
 }

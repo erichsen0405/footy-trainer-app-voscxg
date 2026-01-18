@@ -1,14 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ActivityIndicator,
-  ScrollView,
-  useColorScheme,
-  Platform,
-} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useColorScheme, Platform } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAppleIAP, PRODUCT_IDS, ORDERED_PRODUCT_IDS } from '@/contexts/AppleIAPContext';
@@ -61,6 +52,9 @@ const getPlanTypeFromProductId = (productId: string): PlanType => {
   }
 };
 
+const trialFeature = (): PlanFeature => ({ label: '14 dages gratis prøveperiode', status: 'included' });
+const cancelFeature = (): PlanFeature => ({ label: 'Opsig når som helst via App Store', status: 'included' });
+
 const getPlanFeatures = (productId: string, maxPlayers: number): PlanFeature[] => {
   const planType = getPlanTypeFromProductId(productId);
   const capacityFeature: PlanFeature = {
@@ -93,9 +87,6 @@ const getPlanFeatures = (productId: string, maxPlayers: number): PlanFeature[] =
   if (planType.startsWith('trainer')) return [capacityFeature, ...trainerFeatures, trialFeature(), cancelFeature()];
   return [capacityFeature, { label: 'Fuld adgang til alle funktioner', status: 'included' }, trialFeature(), cancelFeature()];
 };
-
-const trialFeature = (): PlanFeature => ({ label: '14 dages gratis prøveperiode', status: 'included' });
-const cancelFeature = (): PlanFeature => ({ label: 'Opsig når som helst via App Store', status: 'included' });
 
 const getPlanName = (product: { productId: string }) => {
   switch (getPlanTypeFromProductId(product.productId)) {
@@ -141,8 +132,7 @@ export default function AppleSubscriptionManager({
   } = useAppleIAP();
 
   const trainerProductSet = useMemo(() => new Set(TRAINER_PRODUCT_IDS), []);
-  const hasApplePlayerPremium =
-    subscriptionStatus?.isActive && subscriptionStatus.productId === PRODUCT_IDS.PLAYER_PREMIUM;
+  const hasApplePlayerPremium = subscriptionStatus?.isActive && subscriptionStatus.productId === PRODUCT_IDS.PLAYER_PREMIUM;
   const hasAppleTrainerPlan =
     subscriptionStatus?.isActive && !!subscriptionStatus.productId && trainerProductSet.has(subscriptionStatus.productId);
   const showComplimentaryPlayerBanner = hasComplimentaryPlayerPremium && !hasApplePlayerPremium;
@@ -166,10 +156,12 @@ export default function AppleSubscriptionManager({
     [hasComplimentaryPlayerPremium, hasComplimentaryTrainerPremium, trainerProductSet]
   );
 
-  const [showPlans, setShowPlans] = useState(() => isSignupFlow || !subscriptionStatus?.isActive);
+  const [showPlans, setShowPlans] = useState(true);
   const [isOrangeBoxExpanded, setIsOrangeBoxExpanded] = useState(false);
-  const [debugVisible, setDebugVisible] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const hasRequestedProductsRef = useRef(false);
+  const skeletonItems = useMemo(() => ['skeleton-0', 'skeleton-1', 'skeleton-2'], []);
+
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
@@ -199,17 +191,39 @@ export default function AppleSubscriptionManager({
     });
   }, [filteredProducts, planOrder]);
 
-  const handleSelectPlan = async (productId: string) => {
-    if (isSignupFlow && onPlanSelected) {
-      onPlanSelected(productId);
-      return;
-    }
-    await purchaseSubscription(productId);
-  };
+  const handleSelectPlan = useCallback(
+    async (productId: string) => {
+      if (isSignupFlow && onPlanSelected) {
+        onPlanSelected(productId);
+        return;
+      }
+      await purchaseSubscription(productId);
+    },
+    [isSignupFlow, onPlanSelected, purchaseSubscription]
+  );
 
-  const handleRestorePurchases = async () => {
+  const executeProductRefresh = useCallback(async () => {
+    await ensureIapReady();
+    await refetchProducts();
+    await refreshSubscriptionStatus({ force: true });
+  }, [ensureIapReady, refetchProducts, refreshSubscriptionStatus]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await executeProductRefresh();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [executeProductRefresh]);
+
+  const handleRetry = useCallback(() => {
+    void handleRefresh();
+  }, [handleRefresh]);
+
+  const handleRestorePurchases = useCallback(async () => {
     await restorePurchases();
-  };
+  }, [restorePurchases]);
 
   const getPlanIcon = (productId: string) => {
     const planType = getPlanTypeFromProductId(productId);
@@ -321,55 +335,6 @@ export default function AppleSubscriptionManager({
     }
   }, [showPlans, iapReady, loading, purchasing, products.length, refetchProducts]);
 
-  const handleHeaderLongPress = () => {
-    setDebugVisible(prev => !prev);
-  };
-
-  if (Platform.OS !== 'ios') {
-    return (
-      <View style={styles.notAvailableContainer}>
-        <IconSymbol ios_icon_name="exclamationmark.triangle.fill" android_material_icon_name="warning" size={48} color={colors.warning} />
-        <Text style={[styles.notAvailableTitle, { color: textColor }]}>Ikke tilgængelig</Text>
-        <Text style={[styles.notAvailableText, { color: textSecondaryColor }]}>
-          Apple In-App Purchases er kun tilgængelige på iOS enheder.
-        </Text>
-      </View>
-    );
-  }
-
-  if (iapUnavailableReason) {
-    return (
-      <View style={styles.notAvailableContainer}>
-        <IconSymbol ios_icon_name="exclamationmark.triangle.fill" android_material_icon_name="warning" size={48} color={colors.warning} />
-        <Text style={[styles.notAvailableTitle, { color: textColor }]}>Ikke tilgængelig</Text>
-        <Text style={[styles.notAvailableText, { color: textSecondaryColor }]}>{iapUnavailableReason}</Text>
-      </View>
-    );
-  }
-
-  if (loading || !iapReady) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={[styles.loadingText, { color: textColor }]}>
-          {iapReady ? 'Henter abonnementer fra App Store...' : 'Forbinder til App Store…'}
-        </Text>
-      </View>
-    );
-  }
-
-  const renderSkuList = (label: string, data: string[], highlightMissing?: boolean) => {
-    const listText = (data ?? []).filter(Boolean).join(', ') || '—';
-    return (
-      <View style={styles.debugRow}>
-        <Text style={[styles.debugLabel, highlightMissing && (data ?? []).filter(Boolean).length > 0 ? styles.debugWarningText : null]}>
-          {label}: {(data ?? []).filter(Boolean).length}
-        </Text>
-        <Text style={styles.debugValue}>{listText}</Text>
-      </View>
-    );
-  };
-
   const renderPendingDowngrade = () => {
     if (!pendingProductId || !pendingEffectiveDate) return null;
     return (
@@ -380,63 +345,242 @@ export default function AppleSubscriptionManager({
     );
   };
 
-  return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false} nestedScrollEnabled>
+  const renderPlanItem = useCallback(
+    (item: (typeof products)[number], index: number) => {
+      const isPopular = index === Math.floor(sortedProducts.length / 2);
+      const isCurrentActive =
+        isCurrentPlan(item.productId) || isComplimentaryForProduct(item.productId);
+      const isHighlightTarget = highlightProductId === item.productId;
+      const features = getPlanFeatures(item.productId, item.maxPlayers || 1);
+      const disabledByComplimentary = isPlanLockedByComplimentary(item.productId);
+
+      return (
+        <TouchableOpacity
+          key={item.productId}
+          style={[
+            styles.planCard,
+            { backgroundColor: cardBgColor },
+            isPopular && !isCurrentActive && styles.popularPlan,
+            isCurrentActive && styles.currentPlanCard,
+            isHighlightTarget && styles.highlightedPlan,
+          ]}
+          onPress={() => handleSelectPlan(item.productId)}
+          disabled={purchasing || isCurrentActive || disabledByComplimentary}
+          activeOpacity={0.7}
+        >
+          {isComplimentaryForProduct(item.productId) && (
+            <View style={[styles.partnerBadge, { backgroundColor: colors.secondary }]}>
+              <Text style={styles.partnerBadgeText}>Partner-adgang</Text>
+            </View>
+          )}
+          {isPopular && !isCurrentActive && (
+            <View style={[styles.popularBadge, { backgroundColor: colors.primary }]}>
+              <Text style={styles.popularBadgeText}>Mest populær</Text>
+            </View>
+          )}
+          {isCurrentActive && (
+            <View style={[styles.currentBadge, { backgroundColor: colors.success }]}>
+              <IconSymbol
+                ios_icon_name="checkmark.circle.fill"
+                android_material_icon_name="check_circle"
+                size={16}
+                color="#fff"
+              />
+              <Text style={styles.currentBadgeText}>Dit aktive abonnement</Text>
+            </View>
+          )}
+          <View style={styles.planHeader}>
+            <Text style={[styles.planName, { color: textColor }]}>{getPlanName(item)}</Text>
+            {isCurrentActive && (
+              <View style={styles.activeIndicatorCircle}>
+                <IconSymbol
+                  ios_icon_name="checkmark"
+                  android_material_icon_name="check"
+                  size={20}
+                  color="#fff"
+                />
+              </View>
+            )}
+          </View>
+          <View style={styles.priceContainer}>
+            <Text
+              style={[
+                styles.price,
+                { color: isCurrentActive ? colors.success : colors.primary },
+              ]}
+            >
+              {item.localizedPrice}
+            </Text>
+            <Text style={[styles.priceUnit, { color: textSecondaryColor }]}>/ måned</Text>
+          </View>
+          <View style={styles.featuresContainer}>
+            {features.map((feature, featureIndex) => {
+              const isIncluded = feature.status === 'included';
+              const iconColor = isIncluded
+                ? isCurrentActive
+                  ? colors.success
+                  : colors.primary
+                : colors.error;
+              return (
+                <View
+                  style={styles.featureRow}
+                  key={`${item.productId}-feature-${featureIndex}`}
+                >
+                  <IconSymbol
+                    ios_icon_name={isIncluded ? 'checkmark.circle.fill' : 'xmark.circle'}
+                    android_material_icon_name={isIncluded ? 'check_circle' : 'block'}
+                    size={20}
+                    color={iconColor}
+                  />
+                  <Text
+                    style={[
+                      styles.featureText,
+                      { color: isIncluded ? textColor : textSecondaryColor },
+                      !isIncluded && styles.lockedFeatureText,
+                    ]}
+                  >
+                    {feature.label}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+          {!isCurrentActive && (
+            <TouchableOpacity
+              style={[
+                styles.selectButton,
+                { backgroundColor: isPopular ? colors.primary : colors.highlight },
+                (purchasing || disabledByComplimentary) && { opacity: 0.6 },
+              ]}
+              onPress={() => handleSelectPlan(item.productId)}
+              disabled={purchasing || disabledByComplimentary}
+            >
+              {purchasing ? (
+                <ActivityIndicator color={isPopular ? '#fff' : colors.primary} size="small" />
+              ) : (
+                <Text
+                  style={[
+                    styles.selectButtonText,
+                    { color: isPopular ? '#fff' : colors.primary },
+                  ]}
+                >
+                  {isSignupFlow ? 'Vælg denne plan' : 'Skift til denne plan'}
+                </Text>
+              )}
+            </TouchableOpacity>
+          )}
+          {isCurrentActive && (
+            <View style={[styles.currentPlanIndicator, { backgroundColor: colors.success }]}>
+              <IconSymbol
+                ios_icon_name="checkmark.circle.fill"
+                android_material_icon_name="check_circle"
+                size={20}
+                color="#fff"
+              />
+              <Text style={styles.currentPlanIndicatorText}>Din aktive plan</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      );
+    },
+    [
+      cardBgColor,
+      colors.error,
+      colors.highlight,
+      colors.primary,
+      colors.secondary,
+      colors.success,
+      handleSelectPlan,
+      highlightProductId,
+      isComplimentaryForProduct,
+      isCurrentPlan,
+      isPlanLockedByComplimentary,
+      isSignupFlow,
+      purchasing,
+      sortedProducts.length,
+      textColor,
+      textSecondaryColor,
+    ],
+  );
+
+  const renderListHeader = useCallback(() => (
+    <View style={styles.listHeader}>
       {showComplimentaryPlayerBanner && (
         <View style={[styles.partnerBanner, { backgroundColor: colors.secondary }]}>
-          <IconSymbol ios_icon_name="gift.fill" android_material_icon_name="redeem" size={20} color="#fff" />
+          <IconSymbol
+            ios_icon_name="gift.fill"
+            android_material_icon_name="redeem"
+            size={20}
+            color="#fff"
+          />
           <Text style={styles.partnerBannerText}>Partner-adgang: Premium spiller</Text>
         </View>
       )}
       {showComplimentaryTrainerBanner && (
         <View style={[styles.partnerBanner, { backgroundColor: colors.primary }]}>
-          <IconSymbol ios_icon_name="briefcase.fill" android_material_icon_name="workspace_premium" size={20} color="#fff" />
+          <IconSymbol
+            ios_icon_name="briefcase.fill"
+            android_material_icon_name="workspace_premium"
+            size={20}
+            color="#fff"
+          />
           <Text style={styles.partnerBannerText}>Partner-adgang: Træner Premium</Text>
         </View>
       )}
-
-      {/* Header */}
       {!isSignupFlow && !subscriptionStatus?.isActive && (
-        <TouchableOpacity style={styles.header} onLongPress={handleHeaderLongPress} delayLongPress={400} activeOpacity={0.8}>
+        <View style={styles.header}>
           <Text style={[styles.headerTitle, { color: textColor }]}>Vælg dit abonnement</Text>
-          <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>Alle abonnementer inkluderer 14 dages gratis prøveperiode</Text>
-        </TouchableOpacity>
+          <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
+            Alle abonnementer inkluderer 14 dages gratis prøveperiode
+          </Text>
+        </View>
       )}
-
-      {/* Current Subscription Banner */}
       {!isSignupFlow && subscriptionStatus?.isActive && subscriptionStatus.productId && (
         <TouchableOpacity
-          style={[styles.currentPlanBanner, { backgroundColor: getPlanColor(subscriptionStatus.productId) }]}
-          onPress={() => setIsOrangeBoxExpanded(!isOrangeBoxExpanded)}
-          onLongPress={handleHeaderLongPress}
-          delayLongPress={400}
+          style={[
+            styles.currentPlanBanner,
+            { backgroundColor: getPlanColor(subscriptionStatus.productId) },
+          ]}
+          onPress={() => setIsOrangeBoxExpanded(prev => !prev)}
           activeOpacity={0.8}
         >
           <View style={styles.currentPlanContent}>
-            <IconSymbol ios_icon_name={getPlanIcon(subscriptionStatus.productId)} android_material_icon_name="verified" size={32} color="#fff" />
+            <IconSymbol
+              ios_icon_name={getPlanIcon(subscriptionStatus.productId)}
+              android_material_icon_name="verified"
+              size={32}
+              color="#fff"
+            />
             <View style={styles.currentPlanInfo}>
               <Text style={styles.currentPlanLabel}>Dit aktive abonnement:</Text>
-              <Text style={styles.currentPlanName}>{getPlanName({ productId: subscriptionStatus.productId })}</Text>
+              <Text style={styles.currentPlanName}>
+                {getPlanName({ productId: subscriptionStatus.productId })}
+              </Text>
               {renderPendingDowngrade()}
             </View>
             <View style={styles.currentPlanBadge}>
               <Text style={styles.currentPlanBadgeText}>Aktiv</Text>
             </View>
           </View>
-
           {isOrangeBoxExpanded && subscriptionStatus.expiryDate && (
             <View style={styles.orangeBoxExpandedContent}>
               <View style={styles.orangeBoxDivider} />
               <View style={styles.orangeBoxDetailRow}>
                 <View style={styles.orangeBoxDetailItem}>
-                  <IconSymbol ios_icon_name="clock" android_material_icon_name="schedule" size={20} color="#fff" />
+                  <IconSymbol
+                    ios_icon_name="clock"
+                    android_material_icon_name="schedule"
+                    size={20}
+                    color="#fff"
+                  />
                   <Text style={styles.orangeBoxDetailLabel}>Fornyes</Text>
                 </View>
-                <Text style={styles.orangeBoxDetailValue}>{new Date(subscriptionStatus.expiryDate).toLocaleDateString('da-DK')}</Text>
+                <Text style={styles.orangeBoxDetailValue}>
+                  {new Date(subscriptionStatus.expiryDate).toLocaleDateString('da-DK')}
+                </Text>
               </View>
             </View>
           )}
-
           <View style={styles.expandIndicator}>
             <IconSymbol
               ios_icon_name={isOrangeBoxExpanded ? 'chevron.up' : 'chevron.down'}
@@ -447,26 +591,42 @@ export default function AppleSubscriptionManager({
           </View>
         </TouchableOpacity>
       )}
-
-      {/* Restore Purchases Button */}
       {!isSignupFlow && (
         <TouchableOpacity
-          style={[styles.restoreButton, { backgroundColor: cardBgColor }, (!iapReady || purchasing) && styles.disabledButton]}
+          style={[
+            styles.restoreButton,
+            { backgroundColor: cardBgColor },
+            (!iapReady || purchasing) && styles.disabledButton,
+          ]}
           onPress={handleRestorePurchases}
           activeOpacity={0.7}
           disabled={!iapReady || purchasing}
         >
-          <IconSymbol ios_icon_name="arrow.clockwise" android_material_icon_name="restore" size={20} color={colors.primary} />
+          <IconSymbol
+            ios_icon_name="arrow.clockwise"
+            android_material_icon_name="restore"
+            size={20}
+            color={colors.primary}
+          />
           <Text style={[styles.restoreButtonText, { color: colors.primary }]}>Gendan køb</Text>
         </TouchableOpacity>
       )}
-
-      {/* Toggle Plans Button */}
       {!isSignupFlow && (
-        <TouchableOpacity style={[styles.expandButton, { backgroundColor: cardBgColor }]} onPress={() => setShowPlans(!showPlans)} activeOpacity={0.7}>
+        <TouchableOpacity
+          style={[styles.expandButton, { backgroundColor: cardBgColor }]}
+          onPress={() => setShowPlans(prev => !prev)}
+          activeOpacity={0.7}
+        >
           <View style={styles.expandButtonContent}>
-            <IconSymbol ios_icon_name="list.bullet" android_material_icon_name="list" size={24} color={colors.primary} />
-            <Text style={[styles.expandButtonText, { color: textColor }]}>{showPlans ? 'Skjul abonnementer' : 'Se tilgængelige abonnementer'}</Text>
+            <IconSymbol
+              ios_icon_name="list.bullet"
+              android_material_icon_name="list"
+              size={24}
+              color={colors.primary}
+            />
+            <Text style={[styles.expandButtonText, { color: textColor }]}>
+              {showPlans ? 'Skjul abonnementer' : 'Se tilgængelige abonnementer'}
+            </Text>
           </View>
           <IconSymbol
             ios_icon_name={showPlans ? 'chevron.up' : 'chevron.down'}
@@ -476,267 +636,183 @@ export default function AppleSubscriptionManager({
           />
         </TouchableOpacity>
       )}
+    </View>
+  ), [
+    cardBgColor,
+    colors.primary,
+    colors.secondary,
+    handleRestorePurchases,
+    iapReady,
+    isOrangeBoxExpanded,
+    isSignupFlow,
+    purchasing,
+    renderPendingDowngrade,
+    setShowPlans,
+    showComplimentaryPlayerBanner,
+    showComplimentaryTrainerBanner,
+    showPlans,
+    subscriptionStatus?.expiryDate,
+    subscriptionStatus?.isActive,
+    subscriptionStatus?.productId,
+    textColor,
+    textSecondaryColor,
+  ]);
 
-      {/* Plans List */}
-      {showPlans && iapReady && (
-        <>
-          {!sortedProducts.length && (
-            <View style={[styles.infoBox, { backgroundColor: isDark ? '#3a2a2a' : '#fff5f5' }]}>
-              <IconSymbol ios_icon_name="exclamationmark.triangle" android_material_icon_name="warning" size={22} color={colors.error} />
-              <Text style={[styles.infoText, { color: isDark ? '#ffb4a2' : colors.error }]}>
-                App Store returnerede ingen produkter ({iapDiagnostics.lastFetchCount}). Tjek App Store Connect eller tryk “Refresh products”.
-              </Text>
-            </View>
-          )}
-          <TouchableOpacity
-            style={[styles.refreshButton, { backgroundColor: colors.primary }]}
-            onPress={refetchProducts}
-            activeOpacity={0.8}
-            disabled={purchasing || loading}
-          >
-            {purchasing || loading ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={styles.refreshButtonText}>Refresh products</Text>
-            )}
-          </TouchableOpacity>
-          <View style={styles.plansContainer}>
-            {sortedProducts.map((product, index) => {
-              const cardKey = product.productId ?? `unknown-${index}`;
-              const isPopular = index === Math.floor(sortedProducts.length / 2);
-              const isCurrentActive = isCurrentPlan(product.productId) || isComplimentaryForProduct(product.productId);
-              const isHighlightTarget = highlightProductId === product.productId;
-              const features = getPlanFeatures(product.productId, product.maxPlayers || 1);
-              const disabledByComplimentary = isPlanLockedByComplimentary(product.productId);
-
-              return (
-                <TouchableOpacity
-                  key={cardKey}
-                  style={[
-                    styles.planCard,
-                    { backgroundColor: cardBgColor },
-                    isPopular && !isCurrentActive && styles.popularPlan,
-                    isCurrentActive && styles.currentPlanCard,
-                    isHighlightTarget && styles.highlightedPlan,
-                  ]}
-                  onPress={() => handleSelectPlan(product.productId)}
-                  disabled={purchasing || isCurrentActive || disabledByComplimentary}
-                  activeOpacity={0.7}
-                >
-                  {isComplimentaryForProduct(product.productId) && (
-                    <View style={[styles.partnerBadge, { backgroundColor: colors.secondary }]}>
-                      <Text style={styles.partnerBadgeText}>Partner-adgang</Text>
-                    </View>
-                  )}
-
-                  {isPopular && !isCurrentActive && (
-                    <View style={[styles.popularBadge, { backgroundColor: colors.primary }]}>
-                      <Text style={styles.popularBadgeText}>Mest populær</Text>
-                    </View>
-                  )}
-
-                  {isCurrentActive && (
-                    <View style={[styles.currentBadge, { backgroundColor: colors.success }]}>
-                      <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name="check_circle" size={16} color="#fff" />
-                      <Text style={styles.currentBadgeText}>Dit aktive abonnement</Text>
-                    </View>
-                  )}
-
-                  <View style={styles.planHeader}>
-                    <Text style={[styles.planName, { color: textColor }]}>{getPlanName(product)}</Text>
-                    {isCurrentActive && (
-                      <View style={styles.activeIndicatorCircle}>
-                        <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={20} color="#fff" />
-                      </View>
-                    )}
-                  </View>
-
-                  <View style={styles.priceContainer}>
-                    <Text style={[styles.price, { color: isCurrentActive ? colors.success : colors.primary }]}>{product.localizedPrice}</Text>
-                    <Text style={[styles.priceUnit, { color: textSecondaryColor }]}>/ måned</Text>
-                  </View>
-
-                  <View style={styles.featuresContainer}>
-                    {features.map((feature, featureIndex) => {
-                      const isIncluded = feature.status === 'included';
-                      const iconColor = isIncluded ? (isCurrentActive ? colors.success : colors.primary) : colors.error;
-                      return (
-                        <View style={styles.featureRow} key={`${cardKey}-feature-${featureIndex}`}>
-                          <IconSymbol
-                            ios_icon_name={isIncluded ? 'checkmark.circle.fill' : 'xmark.circle'}
-                            android_material_icon_name={isIncluded ? 'check_circle' : 'block'}
-                            size={20}
-                            color={iconColor}
-                          />
-                          <Text
-                            style={[
-                              styles.featureText,
-                              { color: isIncluded ? textColor : textSecondaryColor },
-                              !isIncluded && styles.lockedFeatureText,
-                            ]}
-                          >
-                            {feature.label}
-                          </Text>
-                        </View>
-                      );
-                    })}
-                  </View>
-
-                  {!isCurrentActive && (
-                    <TouchableOpacity
-                      style={[
-                        styles.selectButton,
-                        { backgroundColor: isPopular ? colors.primary : colors.highlight },
-                        (purchasing || disabledByComplimentary) && { opacity: 0.6 },
-                      ]}
-                      onPress={() => handleSelectPlan(product.productId)}
-                      disabled={purchasing || disabledByComplimentary}
-                    >
-                      {purchasing ? (
-                        <ActivityIndicator color={isPopular ? '#fff' : colors.primary} size="small" />
-                      ) : (
-                        <Text style={[styles.selectButtonText, { color: isPopular ? '#fff' : colors.primary }]}>
-                          {isSignupFlow ? 'Vælg denne plan' : 'Skift til denne plan'}
-                        </Text>
-                      )}
-                    </TouchableOpacity>
-                  )}
-
-                  {isCurrentActive && (
-                    <View style={[styles.currentPlanIndicator, { backgroundColor: colors.success }]}>
-                      <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name="check_circle" size={20} color="#fff" />
-                      <Text style={styles.currentPlanIndicatorText}>Din aktive plan</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </>
-      )}
-
-      {/* Info Box */}
-      {showPlans && (
-        <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a2a' : '#e3f2fd' }]}>
-          <IconSymbol ios_icon_name="info.circle.fill" android_material_icon_name="info" size={24} color={colors.secondary} />
-          <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
-            Abonnementer håndteres via App Store. Du kan opsige når som helst i dine App Store indstillinger.
-            {'\n\n'}
-            Alle abonnementer inkluderer 14 dages gratis prøveperiode.
-          </Text>
-        </View>
-      )}
-
-      {/* Debug Toggle */}
-      <TouchableOpacity style={styles.debugToggle} onPress={() => setDebugVisible(prev => !prev)} activeOpacity={0.7}>
+  const renderListFooter = useCallback(() => (
+    <View style={styles.footerSpacing}>
+      <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a2a' : '#e3f2fd' }]}>
         <IconSymbol
-          ios_icon_name={debugVisible ? 'eye.slash' : 'ant.fill'}
-          android_material_icon_name={debugVisible ? 'visibility_off' : 'bug_report'}
-          size={18}
-          color={colors.textSecondary}
+          ios_icon_name="info.circle.fill"
+          android_material_icon_name="info"
+          size={24}
+          color={colors.secondary}
         />
-        <Text style={styles.debugToggleText}>{debugVisible ? 'Skjul debug info' : 'Vis debug info'}</Text>
-      </TouchableOpacity>
+        <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
+          Abonnementer håndteres via App Store. Du kan opsige når som helst i dine App Store
+          indstillinger.{'\n\n'}Alle abonnementer inkluderer 14 dages gratis prøveperiode.
+        </Text>
+      </View>
+    </View>
+  ), [isDark]);
 
-      {/* Debug Section */}
-      {debugVisible && (
-        <View style={[styles.debugContainer, { backgroundColor: isDark ? '#1f1f1f' : '#f5f5f5' }]}>
-          <Text style={styles.debugTitle}>StoreKit Debug</Text>
-          {renderSkuList('Requested', iapDiagnostics.requestedSkus)}
-          {renderSkuList('Returned', iapDiagnostics.returnedSkus)}
-          {renderSkuList('Missing', iapDiagnostics.missingSkus, true)}
+  const fetchErrorMessage = iapUnavailableReason ?? iapDiagnostics?.lastFetchError ?? null;
+  const hasProducts = showPlans && sortedProducts.length > 0;
+  const showSkeletonState =
+    showPlans && !hasProducts && (loading || (!iapReady && Platform.OS === 'ios'));
+  const showErrorState = showPlans && !hasProducts && !loading && !!fetchErrorMessage;
+  const showEmptyState = showPlans && !hasProducts && !loading && !fetchErrorMessage;
 
-          <View style={styles.debugRow}>
-            <Text style={styles.debugLabel}>lastFetchMethod</Text>
-            <Text style={styles.debugValue}>{iapDiagnostics.lastFetchMethod ?? 'N/A'}</Text>
-          </View>
-          <View style={styles.debugRow}>
-            <Text style={styles.debugLabel}>configBundleId</Text>
-            <Text style={styles.debugValue}>{iapDiagnostics.configBundleId ?? 'N/A'}</Text>
-          </View>
-          <View style={styles.debugRow}>
-            <Text style={styles.debugLabel}>runtimeBundleId</Text>
-            <Text style={styles.debugValue}>{iapDiagnostics.runtimeBundleId ?? 'N/A'}</Text>
-          </View>
-          <View style={styles.debugRow}>
-            <Text style={styles.debugLabel}>bundleIdMismatch</Text>
-            <Text style={[styles.debugValue, iapDiagnostics.bundleIdMismatch ? styles.debugWarningText : null]}>
-              {iapDiagnostics.bundleIdMismatch ? 'YES' : 'NO'}
-            </Text>
-          </View>
-          <View style={styles.debugRow}>
-            <Text style={styles.debugLabel}>appOwnership</Text>
-            <Text style={styles.debugValue}>{iapDiagnostics.appOwnership ?? 'N/A'}</Text>
-          </View>
-          <View style={styles.debugRow}>
-            <Text style={styles.debugLabel}>Platform</Text>
-            <Text style={styles.debugValue}>{iapDiagnostics.platform}</Text>
-          </View>
-          <View style={styles.debugRow}>
-            <Text style={styles.debugLabel}>iapReady</Text>
-            <Text style={styles.debugValue}>{iapReady ? 'true' : 'false'}</Text>
-          </View>
-          <View style={styles.debugRow}>
-            <Text style={styles.debugLabel}>loading</Text>
-            <Text style={styles.debugValue}>{loading ? 'true' : 'false'}</Text>
-          </View>
-          <View style={styles.debugRow}>
-            <Text style={styles.debugLabel}>Last fetch</Text>
-            <Text style={styles.debugValue}>{iapDiagnostics.lastFetchAt ? new Date(iapDiagnostics.lastFetchAt).toLocaleString() : 'N/A'}</Text>
-          </View>
-          {iapDiagnostics.lastFetchError && (
-            <View style={styles.debugRow}>
-              <Text style={[styles.debugLabel, styles.debugWarningText]}>Last error</Text>
-              <Text style={[styles.debugValue, styles.debugWarningText]}>{iapDiagnostics.lastFetchError}</Text>
-            </View>
-          )}
+  if (Platform.OS !== 'ios') {
+    return (
+      <View style={styles.notAvailableContainer}>
+        <IconSymbol
+          ios_icon_name="exclamationmark.triangle.fill"
+          android_material_icon_name="warning"
+          size={48}
+          color={colors.warning}
+        />
+        <Text style={[styles.notAvailableTitle, { color: textColor }]}>Ikke tilgængelig</Text>
+        <Text style={[styles.notAvailableText, { color: textSecondaryColor }]}>
+          Apple In-App Purchases er kun tilgængelige på iOS enheder.
+        </Text>
+      </View>
+    );
+  }
 
-          {iapDiagnostics.returnedSkus.length === 0 && (
-            <Text style={styles.debugHelp}>
-              Hvis 0 produkter i TestFlight: tjek Sandbox tester, bundle ID match i App Store Connect, og Agreements/Tax/Banking.
-            </Text>
-          )}
-
+  let plansContent: React.ReactNode = null;
+  if (showPlans) {
+    if (showSkeletonState) {
+      plansContent = (
+        <View style={styles.stateContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.stateTitle}>Forbinder til App Store…</Text>
+          <View style={styles.skeletonList}>
+            {skeletonItems.map(key => (
+              <View
+                key={key}
+                style={[styles.planCard, { backgroundColor: cardBgColor }, styles.skeletonCard]}
+              >
+                <View style={[styles.skeletonLine, { width: '60%', height: 28 }]} />
+                <View style={[styles.skeletonLine, { width: '40%', height: 20 }]} />
+                <View style={styles.skeletonLine} />
+                <View style={styles.skeletonLine} />
+              </View>
+            ))}
+          </View>
+        </View>
+      );
+    } else if (showErrorState && fetchErrorMessage) {
+      plansContent = (
+        <View style={styles.stateContainer}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle.fill"
+            android_material_icon_name="warning"
+            size={32}
+            color={colors.error}
+          />
+          <Text style={styles.stateTitle}>Kunne ikke hente abonnementer</Text>
+          <Text style={styles.stateText}>{fetchErrorMessage}</Text>
           <TouchableOpacity
             style={[
-              styles.refreshButton,
-              { backgroundColor: purchasing || loading ? colors.textDisabled : colors.primary },
+              styles.stateButton,
+              (purchasing || refreshing) && styles.disabledButton,
             ]}
-            onPress={refetchProducts}
-            disabled={purchasing || loading}
+            onPress={handleRetry}
             activeOpacity={0.8}
+            disabled={purchasing || refreshing}
           >
-            {purchasing || loading ? (
-              <ActivityIndicator size="small" color="#fff" />
+            {refreshing ? (
+              <ActivityIndicator color="#fff" size="small" />
             ) : (
-              <Text style={styles.refreshButtonText}>Refresh products</Text>
+              <Text style={styles.stateButtonText}>Prøv igen</Text>
             )}
           </TouchableOpacity>
         </View>
-      )}
-    </ScrollView>
+      );
+    } else if (showEmptyState) {
+      plansContent = (
+        <View style={styles.stateContainer}>
+          <IconSymbol
+            ios_icon_name="tray"
+            android_material_icon_name="inbox"
+            size={32}
+            color={colors.textSecondary}
+          />
+          <Text style={styles.stateTitle}>Ingen abonnementer fundet</Text>
+          <Text style={styles.stateText}>Træk ned for at opdatere eller tryk “Prøv igen”.</Text>
+          <TouchableOpacity
+            style={[
+              styles.stateButton,
+              (purchasing || refreshing) && styles.disabledButton,
+            ]}
+            onPress={handleRetry}
+            activeOpacity={0.8}
+            disabled={purchasing || refreshing}
+          >
+            {refreshing ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={styles.stateButtonText}>Prøv igen</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      );
+    } else if (hasProducts) {
+      plansContent = (
+        <View style={styles.planList}>
+          {sortedProducts.map((product, index) => renderPlanItem(product, index))}
+        </View>
+      );
+    }
+  }
+
+  return (
+    <View style={styles.container}>
+      {renderListHeader()}
+      {plansContent}
+      {showPlans ? renderListFooter() : null}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 16,
-    minHeight: 200,
+  container: { width: '100%', gap: 12 },
+  listHeader: { gap: 12, marginBottom: 16 },
+  footerSpacing: { marginTop: 12 },
+  planList: { gap: 16 },
+  stateContainer: { alignItems: 'center', gap: 12, paddingVertical: 32 },
+  stateTitle: { fontSize: 18, fontWeight: '700', color: colors.text, textAlign: 'center' },
+  stateText: { fontSize: 14, color: colors.textSecondary, textAlign: 'center' },
+  stateButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
   },
-  loadingText: { fontSize: 16, textAlign: 'center' },
-  notAvailableContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-    gap: 16,
-  },
-  notAvailableTitle: { fontSize: 24, fontWeight: 'bold' },
-  notAvailableText: { fontSize: 16, textAlign: 'center' },
+  stateButtonText: { color: '#fff', fontWeight: '600', fontSize: 15 },
+  skeletonList: { width: '100%', gap: 12 },
+  skeletonCard: { opacity: 0.4 },
+  skeletonLine: { width: '100%', height: 16, borderRadius: 8, backgroundColor: '#dfe3e6', marginTop: 12 },
   header: { marginBottom: 24, alignItems: 'center' },
   headerTitle: { fontSize: 28, fontWeight: 'bold', marginBottom: 8 },
   headerSubtitle: { fontSize: 16, textAlign: 'center' },
@@ -774,6 +850,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 12,
   },
+  restoreButtonText: { fontWeight: '600', fontSize: 15 },
   disabledButton: { opacity: 0.5 },
   expandButton: {
     flexDirection: 'row',
@@ -785,7 +862,6 @@ const styles = StyleSheet.create({
   },
   expandButtonContent: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   expandButtonText: { fontSize: 16, fontWeight: '600' },
-  plansContainer: { gap: 16, marginBottom: 20 },
   planCard: { borderRadius: 16, padding: 24, borderWidth: 2, borderColor: 'transparent' },
   highlightedPlan: {
     borderColor: colors.warning,
@@ -818,6 +894,23 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   currentBadgeText: { fontSize: 12, fontWeight: 'bold', color: '#fff' },
+  partnerBadge: {
+    position: 'absolute',
+    right: 12,
+    top: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  partnerBadgeText: { fontSize: 12, fontWeight: '700', color: '#fff' },
+  partnerBanner: {
+    padding: 14,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  partnerBannerText: { color: '#fff', fontWeight: '600', fontSize: 15 },
   planHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   planName: { fontSize: 24, fontWeight: 'bold', flex: 1 },
   activeIndicatorCircle: {
@@ -849,42 +942,7 @@ const styles = StyleSheet.create({
   currentPlanIndicatorText: { fontSize: 16, fontWeight: '600', color: '#fff' },
   infoBox: { flexDirection: 'row', gap: 14, padding: 16, borderRadius: 12, marginTop: 20 },
   infoText: { flex: 1, fontSize: 15, lineHeight: 22 },
-  debugToggle: {
-    marginTop: 12,
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    padding: 6,
-  },
-  debugToggleText: { color: colors.textSecondary, fontSize: 13 },
-  debugContainer: { marginTop: 12, borderRadius: 12, padding: 16, gap: 8 },
-  debugTitle: { fontSize: 16, fontWeight: '700', marginBottom: 4, color: colors.text },
-  debugRow: { flexDirection: 'column', gap: 2 },
-  debugLabel: { fontSize: 13, fontWeight: '600', color: colors.text },
-  debugValue: { fontSize: 12, color: colors.textSecondary },
-  debugWarningText: { color: colors.warning },
-  debugHelp: { marginTop: 6, fontSize: 12, color: colors.warning, lineHeight: 16 },
-  refreshButton: { marginTop: 12, paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
-  refreshButtonText: { color: '#fff', fontWeight: '600' },
-  partnerBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 12,
-    borderRadius: 12,
-    marginHorizontal: 4,
-    marginBottom: 12,
-    gap: 8,
-  },
-  partnerBannerText: { color: '#fff', fontWeight: '600' },
-  partnerBadge: {
-    position: 'absolute',
-    top: -12,
-    right: -12,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  partnerBadgeText: { fontSize: 11, fontWeight: '700', color: '#fff' },
+  notAvailableContainer: { alignItems: 'center', gap: 12, padding: 24 },
+  notAvailableTitle: { fontSize: 20, fontWeight: '700' },
+  notAvailableText: { fontSize: 14, textAlign: 'center' },
 });

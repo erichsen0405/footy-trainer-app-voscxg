@@ -25,7 +25,7 @@ interface AppleIAPContextType {
   purchasing: boolean;
   purchaseSubscription: (productId: string) => Promise<void>;
   restorePurchases: () => Promise<void>;
-  refreshSubscriptionStatus: () => Promise<void>;
+  refreshSubscriptionStatus: (options?: { force?: boolean }) => Promise<void>;
   iapReady: boolean;
   ensureIapReady: () => Promise<boolean>;
   iapUnavailableReason: string | null;
