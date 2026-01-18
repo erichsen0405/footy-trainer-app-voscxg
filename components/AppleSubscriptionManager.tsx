@@ -268,14 +268,17 @@ export default function AppleSubscriptionManager({
     );
   }
 
-  const renderSkuList = (label: string, data: string[], highlightMissing?: boolean) => (
-    <View style={styles.debugRow}>
-      <Text style={[styles.debugLabel, highlightMissing && data.length > 0 ? styles.debugWarningText : null]}>
-        {label}: {data.length}
-      </Text>
-      <Text style={styles.debugValue}>{data.length ? data.join(', ') : '—'}</Text>
-    </View>
-  );
+  const renderSkuList = (label: string, data: string[], highlightMissing?: boolean) => {
+    const listText = (data ?? []).filter(Boolean).join(', ') || '—';
+    return (
+      <View style={styles.debugRow}>
+        <Text style={[styles.debugLabel, highlightMissing && (data ?? []).filter(Boolean).length > 0 ? styles.debugWarningText : null]}>
+          {label}: {(data ?? []).filter(Boolean).length}
+        </Text>
+        <Text style={styles.debugValue}>{listText}</Text>
+      </View>
+    );
+  };
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false} nestedScrollEnabled>
@@ -385,6 +388,7 @@ export default function AppleSubscriptionManager({
           </TouchableOpacity>
           <View style={styles.plansContainer}>
             {sortedProducts.map((product, index) => {
+              const cardKey = product.productId ?? `unknown-${index}`;
               const isPopular = index === Math.floor(sortedProducts.length / 2);
               const isCurrentActive = isCurrentPlan(product.productId);
               const isHighlightTarget = highlightProductId === product.productId;
@@ -392,7 +396,7 @@ export default function AppleSubscriptionManager({
 
               return (
                 <TouchableOpacity
-                  key={product.productId}
+                  key={cardKey}
                   style={[
                     styles.planCard,
                     { backgroundColor: cardBgColor },
@@ -432,11 +436,11 @@ export default function AppleSubscriptionManager({
                   </View>
 
                   <View style={styles.featuresContainer}>
-                    {features.map((feature) => {
+                    {features.map((feature, featureIndex) => {
                       const isIncluded = feature.status === 'included';
                       const iconColor = isIncluded ? (isCurrentActive ? colors.success : colors.primary) : colors.error;
                       return (
-                        <View style={styles.featureRow} key={`${product.productId}-${feature.label}`}>
+                        <View style={styles.featureRow} key={`${cardKey}-feature-${featureIndex}`}>
                           <IconSymbol
                             ios_icon_name={isIncluded ? 'checkmark.circle.fill' : 'xmark.circle'}
                             android_material_icon_name={isIncluded ? 'check_circle' : 'block'}

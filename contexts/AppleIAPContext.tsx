@@ -157,7 +157,7 @@ interface IapDiagnostics {
   platform: string;
   hermesEnabled: boolean;
   lastFetchCount: number;
-  returnedProductsDetailed: Array<{ productId: string; title: string; localizedPrice: string }>;
+  returnedProductsDetailed: Array<{ productId: string; title: string; localizedPrice: string; rawKeys?: string[] }>;
   lastFetchMethod: string | null;
 }
 
@@ -253,6 +253,76 @@ const resolveFetchMethod = (): {
   );
 };
 
+type NormalizedStoreProduct = {
+  productId: string;
+  title: string;
+  description: string;
+  price: string;
+  currency: string;
+  localizedPrice: string;
+  rawKeys: string[];
+};
+
+const normalizeProductId = (product: any): string | null => {
+  const candidates = [
+    product?.productId,
+    product?.id,
+    product?.sku,
+    product?.productIdentifier,
+    product?.identifier,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string') {
+      const trimmed = candidate.trim();
+      if (trimmed.length) return trimmed;
+    }
+  }
+  return null;
+};
+
+const coerceString = (value: any, fallback = '') => {
+  if (typeof value === 'string' && value.trim().length) return value.trim();
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return fallback;
+};
+
+const tryConvertProduct = (product: any) => {
+  if (typeof RNIap?.convertNitroProductToProduct === 'function') {
+    try {
+      const converted = RNIap.convertNitroProductToProduct(product);
+      if (converted) return converted;
+    } catch (error) {
+      console.warn('[AppleIAP] convertNitroProductToProduct failed – using original payload.', error);
+    }
+  }
+  return product;
+};
+
+const normalizeStoreProduct = (product: any): NormalizedStoreProduct | null => {
+  const converted = tryConvertProduct(product);
+  const productId = normalizeProductId(converted);
+  if (!productId) return null;
+
+  const title = coerceString(converted?.title ?? converted?.name ?? converted?.displayName ?? productId, productId);
+  const description = coerceString(converted?.description ?? converted?.subtitle ?? '', '');
+  const price = coerceString(converted?.price ?? converted?.formattedPrice ?? '', '');
+  const currency = coerceString(converted?.currency ?? converted?.priceLocaleCurrencyCode ?? '', '');
+  const localizedPrice = coerceString(
+    converted?.localizedPrice ?? converted?.formattedPrice ?? converted?.price ?? '',
+    price
+  );
+
+  return {
+    productId,
+    title,
+    description,
+    price,
+    currency,
+    localizedPrice,
+    rawKeys: Object.keys(converted ?? {}),
+  };
+};
+
 export function AppleIAPProvider({ children }: { children: ReactNode }) {
   const [products, setProducts] = useState<SubscriptionProduct[]>([]);
   const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus | null>(null);
@@ -337,12 +407,29 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       updateDiagnostics({ lastFetchMethod: fetchMethod });
       const availableProducts = await run(requestedSkus);
 
-      const returnedSkus = (availableProducts ?? []).map((product: any) => product.productId);
+      const normalizationResults = (availableProducts ?? []).map((original: any) => ({
+        original,
+        normalized: normalizeStoreProduct(original),
+      }));
+      const normalizedProducts = normalizationResults
+        .map(result => result.normalized)
+        .filter((product): product is NormalizedStoreProduct => Boolean(product));
+      const invalidProducts = normalizationResults.filter(result => !result.normalized);
+
+      if (invalidProducts.length) {
+        console.warn('[AppleIAP] ⚠️ Dropping products without valid productId', {
+          invalidProductCount: invalidProducts.length,
+          sampleInvalidProductKeys: invalidProducts.slice(0, 2).map(item => Object.keys(item.original ?? {})),
+        });
+      }
+
+      const returnedSkus = normalizedProducts.map(product => product.productId);
       const missingSkus = requestedSkus.filter(sku => !returnedSkus.includes(sku));
       console.log('[AppleIAP] Fetch completed', {
         fetchMethod,
         returnedCount: returnedSkus.length,
         returnedSkus,
+        invalidProductCount: invalidProducts.length,
       });
 
       if (!returnedSkus.length) {
@@ -354,19 +441,15 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
         );
       }
 
-      const mappedProducts: SubscriptionProduct[] = (availableProducts ?? []).map((product: any) => {
+      const mappedProducts: SubscriptionProduct[] = normalizedProducts.map(product => {
         let maxPlayers = 1;
         if (product.productId === PRODUCT_IDS.TRAINER_BASIC) maxPlayers = 5;
         else if (product.productId === PRODUCT_IDS.TRAINER_STANDARD) maxPlayers = 15;
         else if (product.productId === PRODUCT_IDS.TRAINER_PREMIUM) maxPlayers = 50;
 
+        const { rawKeys, ...storeProduct } = product;
         return {
-          productId: product.productId,
-          title: product.title,
-          description: product.description,
-          price: product.price,
-          currency: product.currency,
-          localizedPrice: product.localizedPrice,
+          ...storeProduct,
           maxPlayers,
         };
       });
@@ -377,10 +460,11 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
         lastFetchAt: new Date().toISOString(),
         lastFetchError: null,
         lastFetchCount: returnedSkus.length,
-        returnedProductsDetailed: (availableProducts ?? []).map((product: any) => ({
+        returnedProductsDetailed: normalizedProducts.map(product => ({
           productId: product.productId,
           title: product.title,
           localizedPrice: product.localizedPrice,
+          rawKeys: product.rawKeys,
         })),
       });
 
