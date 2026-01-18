@@ -7,6 +7,7 @@
     "icon": "./assets/images/58c4d2ff-1987-46af-803d-c0231fc33c42.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "jsEngine": "hermes",
     "splash": {
       "image": "./assets/images/58c4d2ff-1987-46af-803d-c0231fc33c42.png",
       "resizeMode": "contain",
@@ -16,10 +17,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.erichsen.footballcoach",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false,
-        "UIBackgroundModes": [
-          "remote-notification"
-        ]
+        "ITSAppUsesNonExemptEncryption": false
       },
       "config": {
         "usesNonExemptEncryption": false
