@@ -126,37 +126,27 @@ export function useSubscriptionFeatures(): SubscriptionFeatures {
     }
   }, [subscriptionStatus?.productId, entitlements?.length, fetchProfileData]);
 
-  const tierFromEntitlements = useMemo<SubscriptionTier | null>(() => {
+  const tierFromComplimentary = useMemo<SubscriptionTier | null>(() => {
     if (!entitlements?.length) return null;
     if (entitlements.some(e => e.entitlement === 'træner_premium')) return 'trainer_premium';
     if (entitlements.some(e => e.entitlement === 'spiller_premium')) return 'player_premium';
     return null;
   }, [entitlements]);
 
-  const tierFromProfile = useMemo<SubscriptionTier | null>(() => {
-    if (!profileData) return null;
-    const directTier = normalizeTier(profileData.subscription_tier ?? null);
-    if (directTier) return directTier;
-    return tierFromProductId(profileData.subscription_product_id ?? null);
-  }, [profileData]);
+  const tierFromProfile = useMemo<SubscriptionTier | null>(
+    () => normalizeTier(profileData?.subscription_tier ?? null),
+    [profileData?.subscription_tier]
+  );
 
   const tierFromStore = useMemo<SubscriptionTier | null>(() => {
     if (Platform.OS !== 'ios') return null;
     return tierFromProductId(subscriptionStatus?.productId ?? null);
   }, [subscriptionStatus?.productId]);
 
-  const subscriptionTier = useMemo<SubscriptionTier | null>(() => {
-    if (Platform.OS === 'ios') {
-      const allowProfile = Boolean(iapUnavailableReason);
-      return pickBestTier([
-        tierFromStore,
-        tierFromEntitlements,
-        allowProfile ? tierFromProfile : null,
-        (!tierFromStore && !tierFromEntitlements) ? tierFromProfile : null,
-      ]);
-    }
-    return pickBestTier([tierFromEntitlements, tierFromProfile]);
-  }, [tierFromStore, tierFromEntitlements, tierFromProfile, iapUnavailableReason]);
+  const subscriptionTier = useMemo<SubscriptionTier | null>(
+    () => tierFromComplimentary ?? tierFromStore ?? tierFromProfile,
+    [tierFromComplimentary, tierFromStore, tierFromProfile]
+  );
 
   const maxPlayers = useMemo(() => {
     if (Platform.OS === 'ios' && subscriptionStatus?.isActive && subscriptionStatus.productId) {
@@ -182,12 +172,12 @@ export function useSubscriptionFeatures(): SubscriptionFeatures {
   const hasActiveSubscription = useMemo(() => {
     if (Platform.OS === 'ios') {
       if (subscriptionStatus?.isActive) return true;
-      if (tierFromEntitlements) return true;
+      if (tierFromComplimentary) return true;
       if (iapUnavailableReason && subscriptionTier) return true;
       return false;
     }
     return subscriptionTier != null;
-  }, [subscriptionStatus?.isActive, tierFromEntitlements, iapUnavailableReason, subscriptionTier]);
+  }, [subscriptionStatus?.isActive, tierFromComplimentary, iapUnavailableReason, subscriptionTier]);
 
   const featureAccess = useMemo(() => featureAccessForTier(subscriptionTier), [subscriptionTier]);
 

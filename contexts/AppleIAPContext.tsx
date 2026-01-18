@@ -105,12 +105,12 @@ export const APP_STORE_SUBSCRIPTION_SKUS = [
 ] as const;
 const APP_STORE_SKU_SET = new Set(APP_STORE_SUBSCRIPTION_SKUS);
 
-const TRAINER_PRODUCT_IDS = [
+export const TRAINER_PRODUCT_IDS = [
   PRODUCT_IDS.TRAINER_BASIC,
   PRODUCT_IDS.TRAINER_STANDARD,
   PRODUCT_IDS.TRAINER_PREMIUM,
 ] as const;
-const TRAINER_PRODUCT_SET = new Set(TRAINER_PRODUCT_IDS);
+export const TRAINER_PRODUCT_SET = new Set<string>(TRAINER_PRODUCT_IDS);
 
 // Shared ordering for UI components that need deterministic plan sorting
 export const ORDERED_PRODUCT_IDS = [...APP_STORE_SUBSCRIPTION_SKUS];
@@ -1131,7 +1131,10 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    if (!RNIap || typeof RNIap.requestPurchase !== 'function') {
+    const hasRequestSubscription = typeof RNIap?.requestSubscription === 'function';
+    const hasRequestPurchase = typeof RNIap?.requestPurchase === 'function';
+
+    if (!hasRequestSubscription && !hasRequestPurchase) {
       const reason = getIapUnavailableMessage();
       setIapUnavailableReason(reason);
       Alert.alert('Ikke tilgængelig', reason, [{ text: 'OK' }]);
@@ -1148,17 +1151,37 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
     setPurchasing(true);
     try {
       console.log('[AppleIAP] Requesting subscription:', productId);
-      await RNIap.requestPurchase({
-        request: {
-          apple: { sku: productId },
-          google: { skus: [productId] },
-        },
-        type: 'subs',
-      });
+
+      let usedRequestMethod: 'subscription' | 'purchase' | null = null;
+
+      if (hasRequestSubscription) {
+        try {
+          await RNIap.requestSubscription(productId);
+          usedRequestMethod = 'subscription';
+        } catch (subscriptionError) {
+          console.warn('[AppleIAP] requestSubscription failed, falling back to requestPurchase', subscriptionError);
+        }
+      }
+
+      if (usedRequestMethod !== 'subscription' && hasRequestPurchase) {
+        await RNIap.requestPurchase({
+          request: {
+            apple: { sku: productId },
+            google: { skus: [productId] },
+          },
+          type: 'subs',
+        });
+        usedRequestMethod = 'purchase';
+      }
+
+      if (!usedRequestMethod) {
+        throw new Error('Ingen kompatibel IAP-request metode tilgængelig');
+      }
+
       const currentStatus = subscriptionStatusRef.current;
       const currentSku = currentStatus?.productId ?? null;
-      const purchasedMeta = getPlanMeta(productId);
       const currentMeta = getPlanMeta(currentSku);
+      const purchasedMeta = getPlanMeta(productId);
       const isDowngradeWithinGroup = Boolean(
         currentSku &&
           purchasedMeta.group &&
@@ -1194,7 +1217,6 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       showAlertOnceByKey(flowKey, alertTitle, alertMessage);
 
       void queueRefreshAfterPurchase(productId);
-
       setPurchasing(false);
     } catch (error: any) {
       console.error('[AppleIAP] Error purchasing subscription:', error);
