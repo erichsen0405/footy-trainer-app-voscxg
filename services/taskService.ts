@@ -1,4 +1,4 @@
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import { emitTaskCompletionEvent } from '@/utils/taskEvents';
 import type { TaskCompletionEvent } from '@/utils/taskEvents';
 import { Task } from '@/types';
@@ -43,43 +43,111 @@ type SeriesFeedbackSummary = {
   dryRun?: boolean;
 };
 
+type TaskSubtaskInput = { id?: string; title: string };
+
+export interface P8CreateTaskArgs {
+  task: Task;
+  subtasks: TaskSubtaskInput[];
+  adminMode?: string;
+  adminTargetType?: string | null;
+  adminTargetId?: string | null;
+}
+
+const isP8CreateTaskArgs = (value: unknown): value is P8CreateTaskArgs =>
+  !!value && typeof value === 'object' && 'task' in value;
+
 export const taskService = {
   /* ======================================================
      CREATE (P8 – autoriseret entry point)
      ====================================================== */
-  async createTask(data: CreateTaskData, signal?: AbortSignal): Promise<Task> {
-    console.log('[P8] createTask called', data);
+  async createTask(rawData: CreateTaskData | P8CreateTaskArgs, signal?: AbortSignal): Promise<Task> {
+    console.log('[P8] createTask called', rawData);
 
     const { data: sessionData, error: authError } = await supabase.auth.getSession();
     const user = sessionData?.session?.user ?? null;
     if (authError) throw authError;
     if (!user) throw new Error('No authenticated user');
 
-    const enableScore = data.afterTrainingFeedbackEnableScore ?? true;
-    const trimmedScoreExplanation = enableScore ? data.afterTrainingFeedbackScoreExplanation?.trim() : null;
+    const isP8Payload = isP8CreateTaskArgs(rawData);
+    const sourceTask = isP8Payload ? rawData.task ?? ({} as Task) : (rawData as CreateTaskData);
+    const title = String((sourceTask as any).title ?? '').trim();
+    if (!title) {
+      throw new Error('Titel mangler');
+    }
+    if (__DEV__) {
+      console.log('[taskService.createTask] title=', title);
+    }
 
-    /* ----------------------------------
-       1. Insert task template
-       ---------------------------------- */
+    const resolvedDescription = String((sourceTask as any).description ?? '');
+    const resolvedCategoryIds = (isP8Payload
+      ? ((sourceTask as any).categoryIds ?? [])
+      : (rawData as CreateTaskData).categoryIds ?? []) as string[];
+    const resolvedReminder =
+      ('reminder' in sourceTask ? (sourceTask as any).reminder : (rawData as CreateTaskData).reminder) ?? null;
+    const resolvedVideoUrl =
+      ('videoUrl' in sourceTask ? (sourceTask as any).videoUrl : (rawData as CreateTaskData).videoUrl) ?? null;
+    const resolvedAfterTrainingEnabled =
+      ('afterTrainingEnabled' in sourceTask
+        ? (sourceTask as any).afterTrainingEnabled
+        : (rawData as CreateTaskData).afterTrainingEnabled) ?? false;
+    const resolvedAfterTrainingDelay =
+      resolvedAfterTrainingEnabled
+        ? ('afterTrainingDelayMinutes' in sourceTask
+            ? (sourceTask as any).afterTrainingDelayMinutes
+            : (rawData as CreateTaskData).afterTrainingDelayMinutes) ?? 0
+        : null;
+    const resolvedAfterTrainingFeedbackEnableScore =
+      ('afterTrainingFeedbackEnableScore' in sourceTask
+        ? (sourceTask as any).afterTrainingFeedbackEnableScore
+        : (rawData as CreateTaskData).afterTrainingFeedbackEnableScore) ?? true;
+    const resolvedAfterTrainingFeedbackScoreExplanation =
+      resolvedAfterTrainingFeedbackEnableScore
+        ? String(
+            ('afterTrainingFeedbackScoreExplanation' in sourceTask
+              ? (sourceTask as any).afterTrainingFeedbackScoreExplanation
+              : (rawData as CreateTaskData).afterTrainingFeedbackScoreExplanation) ?? ''
+          ).trim()
+        : '';
+    const resolvedAfterTrainingFeedbackEnableNote =
+      ('afterTrainingFeedbackEnableNote' in sourceTask
+        ? (sourceTask as any).afterTrainingFeedbackEnableNote
+        : (rawData as CreateTaskData).afterTrainingFeedbackEnableNote) ?? true;
+
+    let resolvedPlayerId: string | null =
+      (rawData as CreateTaskData).playerId ?? null;
+    let resolvedTeamId: string | null =
+      (rawData as CreateTaskData).teamId ?? null;
+
+    if (isP8Payload) {
+      resolvedPlayerId = null;
+      resolvedTeamId = null;
+      if (rawData.adminMode && rawData.adminMode !== 'self') {
+        if (rawData.adminTargetType === 'player') {
+          resolvedPlayerId = rawData.adminTargetId ?? null;
+        } else if (rawData.adminTargetType === 'team') {
+          resolvedTeamId = rawData.adminTargetId ?? null;
+        }
+      }
+    }
+
     const { data: template, error: templateError } = await supabase
       .from('task_templates')
       .insert({
         user_id: user.id,
-        title: data.title,
-        description: data.description ?? '',
-        reminder_minutes: data.reminder ?? null,
-        video_url: data.videoUrl ?? null,
-        after_training_enabled: data.afterTrainingEnabled ?? false,
-        after_training_delay_minutes: data.afterTrainingDelayMinutes ?? null,
-        after_training_feedback_enable_score: enableScore,
-        after_training_feedback_score_explanation: trimmedScoreExplanation?.length ? trimmedScoreExplanation : null,
-        // Force intensity feedback to be enabled for consistency
+        title,
+        description: resolvedDescription,
+        reminder_minutes: resolvedReminder ?? null,
+        video_url: resolvedVideoUrl ?? null,
+        after_training_enabled: resolvedAfterTrainingEnabled,
+        after_training_delay_minutes: resolvedAfterTrainingDelay,
+        after_training_feedback_enable_score: resolvedAfterTrainingFeedbackEnableScore,
+        after_training_feedback_score_explanation: resolvedAfterTrainingFeedbackEnableScore
+          ? resolvedAfterTrainingFeedbackScoreExplanation || null
+          : null,
         after_training_feedback_enable_intensity: true,
-        after_training_feedback_enable_note: data.afterTrainingFeedbackEnableNote ?? true,
-
-        // admin-scope
-        player_id: data.playerId ?? null,
-        team_id: data.teamId ?? null,
+        after_training_feedback_enable_note: resolvedAfterTrainingFeedbackEnableNote,
+        player_id: resolvedPlayerId,
+        team_id: resolvedTeamId,
       })
       .select('id, title, description, reminder_minutes, video_url, source_folder, after_training_enabled, after_training_delay_minutes, after_training_feedback_enable_score, after_training_feedback_score_explanation, after_training_feedback_enable_intensity, after_training_feedback_enable_note')
       .abortSignal(signal)
@@ -89,11 +157,8 @@ export const taskService = {
       throw templateError;
     }
 
-    /* ----------------------------------
-       2. Insert category relations
-       ---------------------------------- */
-    if (data.categoryIds?.length) {
-      const rows = data.categoryIds.map(categoryId => ({
+    if (resolvedCategoryIds?.length) {
+      const rows = resolvedCategoryIds.map(categoryId => ({
         task_template_id: template.id,
         category_id: categoryId,
       }));
@@ -108,6 +173,29 @@ export const taskService = {
       }
     }
 
+    if (isP8Payload) {
+      const validSubtasks = (rawData.subtasks ?? [])
+        .map(s => ({ ...s, title: String(s.title ?? '').trim() }))
+        .filter(s => s.title.length > 0);
+
+      if (validSubtasks.length) {
+        const subtaskRows = validSubtasks.map((subtask, index) => ({
+          task_template_id: template.id,
+          title: subtask.title,
+          sort_order: index,
+        }));
+
+        const { error: subtaskError } = await supabase
+          .from('task_template_subtasks')
+          .insert(subtaskRows)
+          .abortSignal(signal);
+
+        if (subtaskError) {
+          throw subtaskError;
+        }
+      }
+    }
+
     // Return the created task in the expected format
     return {
       id: template.id,
@@ -115,7 +203,7 @@ export const taskService = {
       description: template.description || '',
       completed: false,
       isTemplate: true,
-      categoryIds: data.categoryIds || [],
+      categoryIds: resolvedCategoryIds || [],
       reminder: template.reminder_minutes ?? undefined,
       subtasks: [],
       videoUrl: template.video_url ?? undefined,
