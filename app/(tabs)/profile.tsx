@@ -30,6 +30,7 @@ import { useFootball } from '@/contexts/FootballContext';
 import { deleteAllExternalActivities } from '@/utils/deleteExternalActivities';
 import { useSubscriptionFeatures } from '@/hooks/useSubscriptionFeatures';
 import { PRODUCT_IDS } from '@/contexts/AppleIAPContext';
+import { forceUserRoleRefresh } from '@/hooks/useUserRole';
 
 // Conditionally import GlassView only on native platforms
 let GlassView: any = View;
@@ -115,7 +116,7 @@ export default function ProfileScreen() {
   const isDark = colorScheme === 'dark';
 
   // Get subscription status
-  const { subscriptionStatus, refreshSubscription } = useSubscription();
+  const { subscriptionStatus, refreshSubscription, createSubscription } = useSubscription();
   const { refreshAll } = useFootball();
   const { featureAccess, isLoading: subscriptionFeaturesLoading } = useSubscriptionFeatures();
 
@@ -579,6 +580,7 @@ export default function ProfileScreen() {
       setSelectedRole(role);
       setUserRole(role);
       setNeedsRoleSelection(false);
+      forceUserRoleRefresh('role-selection');
 
       // If trainer, show subscription selection
       if (role === 'trainer') {
@@ -611,32 +613,29 @@ export default function ProfileScreen() {
     }
 
     try {
-      // Call the create-subscription edge function
-      const { data, error } = await supabase.functions.invoke('create-subscription', {
-        body: { planId },
-      });
+      const result = await createSubscription(planId);
 
-      if (error) {
-        if (__DEV__) {
-          console.log(`[PROFILE] Error creating subscription: ${error.message}`);
-        }
-        Alert.alert('Fejl', 'Kunne ikke oprette abonnement. Prøv venligst igen.');
+      if (result.success) {
+        setNeedsSubscription(false);
+        Alert.alert(
+          'Velkommen! 🎉',
+          'Dit abonnement er aktiveret med 14 dages gratis prøveperiode. Du kan nu oprette spillere og hold!',
+          [{ text: 'OK' }]
+        );
         return;
       }
 
-      if (__DEV__) {
-        console.log('[PROFILE] Subscription created successfully');
+      if (result.alreadyHasSubscription) {
+        setNeedsSubscription(false);
+        Alert.alert(
+          'Du har allerede et abonnement',
+          result.error || 'Dit nuværende abonnement er aktivt.',
+          [{ text: 'OK' }]
+        );
+        return;
       }
-      setNeedsSubscription(false);
 
-      // Refresh subscription status
-      await refreshSubscription();
-
-      Alert.alert(
-        'Velkommen! 🎉',
-        'Dit abonnement er aktiveret med 14 dages gratis prøveperiode. Du kan nu oprette spillere og hold!',
-        [{ text: 'OK' }]
-      );
+      Alert.alert('Fejl', result.error || 'Kunne ikke oprette abonnement. Prøv venligst igen.');
     } catch (error: any) {
       if (__DEV__) {
         console.log(`[PROFILE] Unexpected error: ${error.message}`);

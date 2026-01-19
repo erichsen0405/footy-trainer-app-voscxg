@@ -365,6 +365,7 @@ export default function TasksScreen() {
 
   const duplicateTask = footballData?.duplicateTask as ((taskId: string) => any) | undefined;
   const deleteTask = footballData?.deleteTask as ((taskId: string) => any) | undefined;
+  const refreshAll = footballData?.refreshAll as (() => Promise<any>) | undefined;
   const refreshData = footballData?.refreshData as (() => Promise<any>) | undefined;
   const updateTask = footballData?.updateTask as ((taskId: string, data: any) => Promise<any>) | undefined;
   const isLoading = !!footballData?.isLoading;
@@ -503,34 +504,28 @@ export default function TasksScreen() {
 
     try {
       const categoryIds = Array.from(new Set((((selectedTask as any)?.categoryIds ?? []) as string[]).filter(Boolean)));
+      const taskToSave = {
+        ...selectedTask,
+        reminder: normalizedReminder,
+        videoUrl: videoUrl.trim() ? videoUrl.trim() : null,
+        categoryIds,
+        afterTrainingEnabled: selectedTask.afterTrainingEnabled ?? false,
+        afterTrainingDelayMinutes: selectedTask.afterTrainingEnabled ? (selectedTask.afterTrainingDelayMinutes ?? 0) : null,
+        afterTrainingFeedbackEnableScore: selectedTask.afterTrainingFeedbackEnableScore ?? true,
+        afterTrainingFeedbackScoreExplanation: selectedTask.afterTrainingFeedbackScoreExplanation ?? null,
+        afterTrainingFeedbackEnableNote: selectedTask.afterTrainingFeedbackEnableNote ?? true,
+        // Always enable intensity when persisting feedback settings
+        afterTrainingFeedbackEnableIntensity: true,
+      } as Task;
 
       if (isCreating) {
-        let playerId: string | null = null;
-        let teamId: string | null = null;
-
-        if (adminMode !== 'self' && adminTargetId) {
-          if (adminTargetType === 'player') playerId = adminTargetId;
-          if (adminTargetType === 'team') teamId = adminTargetId;
-        }
-
         await taskService.createTask({
-          title: String((selectedTask as any).title ?? ''),
-          description: String((selectedTask as any).description ?? ''),
-          categoryIds,
-          reminder: normalizedReminder,
-          videoUrl: videoUrl.trim() ? videoUrl.trim() : null,
-          afterTrainingEnabled: !!selectedTask.afterTrainingEnabled,
-          afterTrainingDelayMinutes: selectedTask.afterTrainingEnabled ? (selectedTask.afterTrainingDelayMinutes ?? 0) : null,
-          afterTrainingFeedbackEnableScore: selectedTask.afterTrainingFeedbackEnableScore ?? true,
-          afterTrainingFeedbackScoreExplanation: selectedTask.afterTrainingFeedbackScoreExplanation ?? null,
-          // Always enable intensity at create (UI no longer exposes a toggle)
-          afterTrainingFeedbackEnableIntensity: true,
-          afterTrainingFeedbackEnableNote: selectedTask.afterTrainingFeedbackEnableNote ?? true,
-          playerId,
-          teamId,
+          task: taskToSave,
+          subtasks,
+          adminMode,
+          adminTargetType,
+          adminTargetId,
         });
-
-        Alert.alert('Succes', 'Opgaveskabelon oprettet');
       } else {
         if (!updateTask) throw new Error('updateTask er ikke tilgængelig i FootballContext');
 
@@ -563,14 +558,18 @@ export default function TasksScreen() {
         Alert.alert('Succes', 'Opgaveskabelon opdateret');
       }
 
-      await refreshData?.();
+      if (!refreshAll) {
+        throw new Error('refreshAll er ikke tilgængelig');
+      }
+
+      await refreshAll();
       closeTaskModal();
     } catch (error: any) {
       Alert.alert('Fejl', 'Kunne ikke gemme opgave: ' + (error?.message || 'Ukendt fejl'));
     } finally {
       setIsSaving(false);
     }
-  }, [selectedTask, isCreating, adminMode, adminTargetId, adminTargetType, videoUrl, subtasks, updateTask, refreshData, closeTaskModal]);
+  }, [selectedTask, isCreating, adminMode, adminTargetId, adminTargetType, videoUrl, subtasks, updateTask, refreshAll, closeTaskModal]);
 
   const handleSaveTask = useCallback(async () => {
     if (!selectedTask) return;

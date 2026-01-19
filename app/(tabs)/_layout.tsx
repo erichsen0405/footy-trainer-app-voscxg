@@ -5,6 +5,7 @@ import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
 import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
 import { colors } from '@/styles/commonStyles';
 import { useUserRole } from '@/hooks/useUserRole';
+import { useSubscription } from '@/contexts/SubscriptionContext';
 
 /* ======================================================
    ROOT TAB LAYOUT
@@ -12,8 +13,10 @@ import { useUserRole } from '@/hooks/useUserRole';
 
 export default function TabLayout() {
   const { userRole, loading } = useUserRole();
+  const { entitlementVersion } = useSubscription();
 
   const isLoggedIn = !!userRole;
+  const entitlementKey = `${userRole ?? 'anon'}-${entitlementVersion}`;
 
   if (Platform.OS === 'ios') {
     return (
@@ -21,6 +24,7 @@ export default function TabLayout() {
         isLoggedIn={isLoggedIn}
         userRole={userRole}
         loading={loading}
+        entitlementKey={entitlementKey}
       />
     );
   }
@@ -29,6 +33,7 @@ export default function TabLayout() {
     <AndroidWebTabLayout
       isLoggedIn={isLoggedIn}
       userRole={userRole}
+      entitlementKey={entitlementKey}
     />
   );
 }
@@ -41,10 +46,12 @@ function IOSTabLayout({
   isLoggedIn,
   userRole,
   loading,
+  entitlementKey,
 }: {
   isLoggedIn: boolean;
   userRole: string | null;
   loading: boolean;
+  entitlementKey: string;
 }) {
   const isPlayer = userRole === 'player';
   const isTrainer = userRole === 'admin' || userRole === 'trainer';
@@ -58,6 +65,7 @@ function IOSTabLayout({
 
   return (
     <NativeTabs
+      key={`native-tabs-${entitlementKey}`}
       tintColor={colors.primary}
       unselectedItemTintColor="#8E8E93"
       translucent={false}
@@ -116,9 +124,11 @@ function IOSTabLayout({
 function AndroidWebTabLayout({
   isLoggedIn,
   userRole,
+  entitlementKey,
 }: {
   isLoggedIn: boolean;
   userRole: string | null;
+  entitlementKey: string;
 }) {
   const tabs: TabBarItem[] = useMemo(() => {
     if (!isLoggedIn) {
@@ -189,6 +199,7 @@ function AndroidWebTabLayout({
   return (
     <>
       <Stack
+        key={`stack-${entitlementKey}`}
         screenOptions={{
           headerShown: false,
           animation: 'none',
@@ -201,7 +212,7 @@ function AndroidWebTabLayout({
         <Stack.Screen name="profile" />
       </Stack>
 
-      <FloatingTabBar tabs={tabs} />
+      <FloatingTabBar key={`floating-tabs-${entitlementKey}`} tabs={tabs} />
     </>
   );
 }
