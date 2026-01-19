@@ -500,6 +500,7 @@ export default function TasksScreen() {
     if (!selectedTask) return;
 
     const normalizedReminder = normalizeReminderValue((selectedTask as any).reminder);
+    const successMessage = isCreating ? 'Opgaveskabelon oprettet' : 'Opgaveskabelon opdateret';
     setIsSaving(true);
 
     try {
@@ -554,16 +555,15 @@ export default function TasksScreen() {
 
           await supabase.from('task_template_subtasks').insert(subtasksToInsert);
         }
-
-        Alert.alert('Succes', 'Opgaveskabelon opdateret');
       }
+      closeTaskModal();
 
       if (!refreshAll) {
         throw new Error('refreshAll er ikke tilgængelig');
       }
 
       await refreshAll();
-      closeTaskModal();
+      Alert.alert('Succes', successMessage);
     } catch (error: any) {
       Alert.alert('Fejl', 'Kunne ikke gemme opgave: ' + (error?.message || 'Ukendt fejl'));
     } finally {
