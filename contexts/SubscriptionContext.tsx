@@ -7,6 +7,9 @@ interface SubscriptionPlan {
   name: string;
   price_dkk: number;
   max_players: number;
+  currency_code?: string | null;
+  price_amount?: number | null;
+  localized_price?: string | null;
 }
 
 interface SubscriptionStatus {

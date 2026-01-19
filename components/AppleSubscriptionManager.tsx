@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useColorSc
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAppleIAP, PRODUCT_IDS, ORDERED_PRODUCT_IDS, TRAINER_PRODUCT_IDS } from '@/contexts/AppleIAPContext';
+import { formatPrice } from '@/utils/formatPrice';
 
 interface AppleSubscriptionManagerProps {
   onPlanSelected?: (productId: string) => void;
@@ -126,6 +127,22 @@ export default function AppleSubscriptionManager({
     hasComplimentaryPlayerPremium,
     hasComplimentaryTrainerPremium,
   } = useAppleIAP();
+
+  type AppleProduct = (typeof products)[number];
+
+  const getProductCurrency = useCallback(
+    (product: AppleProduct) =>
+      product?.currency ?? product?.priceCurrencyCode ?? product?.priceLocale?.currencyCode ?? 'DKK',
+    [],
+  );
+
+  const getProductPriceLabel = useCallback(
+    (product: AppleProduct) => {
+      const value = (product?.price ?? product?.localizedPrice) as number | string | null;
+      return formatPrice(value, getProductCurrency(product));
+    },
+    [getProductCurrency],
+  );
 
   const trainerProductSet = useMemo(() => new Set(TRAINER_PRODUCT_IDS), []);
   const hasApplePlayerPremium = subscriptionStatus?.isActive && subscriptionStatus.productId === PRODUCT_IDS.PLAYER_PREMIUM;
@@ -359,6 +376,7 @@ export default function AppleSubscriptionManager({
       const isHighlightTarget = highlightProductId === item.productId;
       const features = getPlanFeatures(item.productId, item.maxPlayers || 1);
       const disabledByComplimentary = isPlanLockedByComplimentary(item.productId);
+      const priceLabel = getProductPriceLabel(item);
 
       return (
         <TouchableOpacity
@@ -415,7 +433,7 @@ export default function AppleSubscriptionManager({
                 { color: isCurrentActive ? colors.success : colors.primary },
               ]}
             >
-              {item.localizedPrice}
+              {priceLabel}
             </Text>
             <Text style={[styles.priceUnit, { color: textSecondaryColor }]}>/ måned</Text>
           </View>
@@ -496,6 +514,7 @@ export default function AppleSubscriptionManager({
       colors.primary,
       colors.secondary,
       colors.success,
+      getProductPriceLabel,
       handleSelectPlan,
       highlightProductId,
       isComplimentaryForProduct,

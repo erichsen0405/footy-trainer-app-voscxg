@@ -13,6 +13,7 @@ import {
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import { formatPrice } from '@/utils/formatPrice';
 
 interface SubscriptionManagerProps {
   onPlanSelected?: (planId: string) => void;
@@ -246,6 +247,14 @@ export default function SubscriptionManager({
     }
   }, []);
 
+  const getPlanPriceLabel = useCallback(
+    (plan: { price_amount?: number | null; price_dkk?: number | null; localized_price?: string | null; currency_code?: string | null }) => {
+      const amountOrLabel = plan.price_amount ?? plan.price_dkk ?? plan.localized_price ?? null;
+      return formatPrice(amountOrLabel, (plan.currency_code ?? 'DKK') || 'DKK');
+    },
+    [],
+  );
+
   if (loading && !isSignupFlow) {
     return (
       <View style={styles.loadingContainer}>
@@ -461,7 +470,9 @@ export default function SubscriptionManager({
                 </View>
                 
                 <View style={styles.priceContainer}>
-                  <Text style={[styles.price, { color: isCurrentPlan ? colors.success : colors.primary }]}>{plan.price_dkk} kr</Text>
+                  <Text style={[styles.price, { color: isCurrentPlan ? colors.success : colors.primary }]}>
+                    {getPlanPriceLabel(plan)}
+                  </Text>
                   <Text style={[styles.priceUnit, { color: textSecondaryColor }]}>/ måned</Text>
                 </View>
 
