@@ -858,77 +858,79 @@ export default function ProfileScreen() {
           data={[]}
           keyExtractor={(_, index) => `profile-role-${index}`}
           renderItem={() => null}
-          ListHeaderComponent={() => (
-            <View style={Platform.OS !== 'ios' ? { paddingTop: 60 } : undefined}>
-              <Text style={[styles.title, { color: textColor }]}>Vælg din rolle</Text>
-              <Text style={[styles.subtitle, { color: textSecondaryColor }]}>
-                Vælg om du er spiller eller træner for at fortsætte
-              </Text>
-
-              <CardWrapper
-                style={[styles.onboardingCard, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]}
-                {...cardWrapperProps}
-              >
-                <Text style={[styles.onboardingTitle, { color: textColor }]}>Velkommen til din nye konto! 🎉</Text>
-                <Text style={[styles.onboardingDescription, { color: textSecondaryColor }]}>
-                  For at komme i gang skal du vælge din rolle. Dette hjælper os med at tilpasse oplevelsen til dig.
+          ListHeaderComponent={
+            <React.Fragment>
+              <View style={Platform.OS !== 'ios' ? { paddingTop: 60 } : undefined}>
+                <Text style={[styles.title, { color: textColor }]}>Vælg din rolle</Text>
+                <Text style={[styles.subtitle, { color: textSecondaryColor }]}>
+                  Vælg om du er spiller eller træner for at fortsætte
                 </Text>
 
-                <TouchableOpacity
-                  style={[
-                    styles.roleCard,
-                    {
-                      backgroundColor:
-                        Platform.OS === 'ios'
-                          ? isDark
-                            ? 'rgba(255,255,255,0.1)'
-                            : 'rgba(0,0,0,0.05)'
-                          : bgColor,
-                    },
-                  ]}
-                  onPress={() => handleRoleSelection('player')}
-                  disabled={loading}
-                  activeOpacity={0.7}
+                <CardWrapper
+                  style={[styles.onboardingCard, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]}
+                  {...cardWrapperProps}
                 >
-                  <IconSymbol ios_icon_name="figure.run" android_material_icon_name="directions_run" size={48} color={colors.primary} />
-                  <Text style={[styles.roleTitle, { color: textColor }]}>Spiller</Text>
-                  <Text style={[styles.roleDescription, { color: textSecondaryColor }]}>
-                    Jeg er en spiller og vil holde styr på min træning
+                  <Text style={[styles.onboardingTitle, { color: textColor }]}>Velkommen til din nye konto! 🎉</Text>
+                  <Text style={[styles.onboardingDescription, { color: textSecondaryColor }]}>
+                    For at komme i gang skal du vælge din rolle. Dette hjælper os med at tilpasse oplevelsen til dig.
                   </Text>
-                </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[
-                    styles.roleCard,
-                    {
-                      backgroundColor:
-                        Platform.OS === 'ios'
-                          ? isDark
-                            ? 'rgba(255,255,255,0.1)'
-                            : 'rgba(0,0,0,0.05)'
-                          : bgColor,
-                    },
-                  ]}
-                  onPress={() => handleRoleSelection('trainer')}
-                  disabled={loading}
-                  activeOpacity={0.7}
-                >
-                  <IconSymbol ios_icon_name="person.3.fill" android_material_icon_name="group" size={48} color={colors.primary} />
-                  <Text style={[styles.roleTitle, { color: textColor }]}>Træner</Text>
-                  <Text style={[styles.roleDescription, { color: textSecondaryColor }]}>
-                    Jeg er træner og vil administrere spillere og hold
-                  </Text>
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.roleCard,
+                      {
+                        backgroundColor:
+                          Platform.OS === 'ios'
+                            ? isDark
+                              ? 'rgba(255,255,255,0.1)'
+                              : 'rgba(0,0,0,0.05)'
+                            : bgColor,
+                      },
+                    ]}
+                    onPress={() => handleRoleSelection('player')}
+                    disabled={loading}
+                    activeOpacity={0.7}
+                  >
+                    <IconSymbol ios_icon_name="figure.run" android_material_icon_name="directions_run" size={48} color={colors.primary} />
+                    <Text style={[styles.roleTitle, { color: textColor }]}>Spiller</Text>
+                    <Text style={[styles.roleDescription, { color: textSecondaryColor }]}>
+                      Jeg er en spiller og vil holde styr på min træning
+                    </Text>
+                  </TouchableOpacity>
 
-                {loading && (
-                  <View style={styles.loadingOverlay}>
-                    <ActivityIndicator size="large" color={colors.primary} />
-                    <Text style={[styles.loadingText, { color: textColor }]}>Gemmer din rolle...</Text>
-                  </View>
-                )}
-              </CardWrapper>
-            </View>
-          )}
+                  <TouchableOpacity
+                    style={[
+                      styles.roleCard,
+                      {
+                        backgroundColor:
+                          Platform.OS === 'ios'
+                            ? isDark
+                              ? 'rgba(255,255,255,0.1)'
+                              : 'rgba(0,0,0,0.05)'
+                            : bgColor,
+                      },
+                    ]}
+                    onPress={() => handleRoleSelection('trainer')}
+                    disabled={loading}
+                    activeOpacity={0.7}
+                  >
+                    <IconSymbol ios_icon_name="person.3.fill" android_material_icon_name="group" size={48} color={colors.primary} />
+                    <Text style={[styles.roleTitle, { color: textColor }]}>Træner</Text>
+                    <Text style={[styles.roleDescription, { color: textSecondaryColor }]}>
+                      Jeg er træner og vil administrere spillere og hold
+                    </Text>
+                  </TouchableOpacity>
+
+                  {loading && (
+                    <View style={styles.loadingOverlay}>
+                      <ActivityIndicator size="large" color={colors.primary} />
+                      <Text style={[styles.loadingText, { color: textColor }]}>Gemmer din rolle...</Text>
+                    </View>
+                  )}
+                </CardWrapper>
+              </View>
+            </React.Fragment>
+          }
           contentContainerStyle={[styles.contentContainer]}
           showsVerticalScrollIndicator={false}
         />
@@ -945,21 +947,23 @@ export default function ProfileScreen() {
           data={[]}
           keyExtractor={(_, index) => `profile-sub-${index}`}
           renderItem={() => null}
-          ListHeaderComponent={() => (
-            <View style={Platform.OS !== 'ios' ? { paddingTop: 60 } : undefined}>
-              <Text style={[styles.title, { color: textColor }]}>Vælg dit abonnement</Text>
-              <Text style={[styles.subtitle, { color: textSecondaryColor }]}>
-                Som træner skal du vælge et abonnement for at administrere spillere
-              </Text>
+          ListHeaderComponent={
+            <React.Fragment>
+              <View style={Platform.OS !== 'ios' ? { paddingTop: 60 } : undefined}>
+                <Text style={[styles.title, { color: textColor }]}>Vælg dit abonnement</Text>
+                <Text style={[styles.subtitle, { color: textSecondaryColor }]}>
+                  Som træner skal du vælge et abonnement for at administrere spillere
+                </Text>
 
-              <CardWrapper
-                style={[styles.subscriptionCard, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]}
-                {...cardWrapperProps}
-              >
-                <SubscriptionManager onPlanSelected={handleCompleteSubscription} isSignupFlow={true} selectedRole="trainer" />
-              </CardWrapper>
-            </View>
-          )}
+                <CardWrapper
+                  style={[styles.subscriptionCard, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]}
+                  {...cardWrapperProps}
+                >
+                  <SubscriptionManager onPlanSelected={handleCompleteSubscription} isSignupFlow={true} selectedRole="trainer" />
+                </CardWrapper>
+              </View>
+            </React.Fragment>
+          }
           contentContainerStyle={[styles.contentContainer]}
           showsVerticalScrollIndicator={false}
         />
@@ -1462,8 +1466,12 @@ export default function ProfileScreen() {
         data={[]}
         keyExtractor={(_, index) => `profile-flatlist-${index}`}
         renderItem={() => null}
-        ListHeaderComponent={renderProfileContent}
-        ListFooterComponent={() => <View style={{ height: 120 }} />}
+        ListHeaderComponent={
+          <React.Fragment>
+            {renderProfileContent()}
+          </React.Fragment>
+        }
+        ListFooterComponent={<View style={{ height: 120 }} />}
         contentContainerStyle={[styles.contentContainer, Platform.OS !== 'ios' && { paddingTop: 60 }]}
         showsVerticalScrollIndicator={false}
       />
