@@ -21,7 +21,7 @@ import SmartVideoPlayer from '@/components/SmartVideoPlayer';
 
 import { useFootball } from '@/contexts/FootballContext';
 
-// ✅ Robust import: avoid runtime crash if named export "colors" changes
+// Ô£à Robust import: avoid runtime crash if named export "colors" changes
 import * as CommonStyles from '@/styles/commonStyles';
 
 import { IconSymbol } from '@/components/IconSymbol';
@@ -38,7 +38,7 @@ import { fetchSelfFeedbackForTemplates, upsertSelfFeedback } from '@/services/fe
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { resolveActivityIntensityEnabled } from '@/utils/activityIntensity';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import TaskDetailsModal from '@/components/TaskDetailsModal';
 
 const FALLBACK_COLORS = {
@@ -60,7 +60,7 @@ const colors =
 const V2_WAVE_HEIGHT = 60; // was 44; give the wave enough vertical space for a deeper center dip
 const V2_CTA_HEIGHT = 56;
 
-// ✅ Make header action buttons visually closer (not just margin tweaks)
+// Ô£à Make header action buttons visually closer (not just margin tweaks)
 const HEADER_ACTION_BUTTON_SIZE = 36; // smaller than 44 => icons appear closer
 const HEADER_ACTION_BUTTON_GAP = 0;   // set to 1-2 if you want a tiny gap
 const HEADER_ACTION_HITSLOP = { top: 6, bottom: 6, left: 6, right: 6 }; // ~36+6+6 => 48-ish touch target
@@ -135,7 +135,7 @@ function DetailsCard(props: {
   flex?: number; // Added flex prop
   icon?: { ios: string; android: string };
   iconColor?: string;
-  leadingEmoji?: string; // ✅ category icon via emoji
+  leadingEmoji?: string; // Ô£à category icon via emoji
 }) {
   const {
     label,
@@ -235,6 +235,42 @@ const timeToMinutes = (value?: string | null): number | null => {
   if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
   return hours * 60 + minutes;
 };
+
+function formatDate(date: Date): string {
+  return new Date(date).toLocaleDateString('da-DK', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function formatDateTime(date: Date, time: string): string {
+  const timeDisplay = time.substring(0, 5);
+  return `${formatDate(date)} kl. ${timeDisplay}`;
+}
+
+function formatTimeDisplay(time?: string | null): string {
+  if (!time || typeof time !== 'string') {
+    return 'Tilføj tid';
+  }
+  return time.substring(0, 5);
+}
+
+function parseTimeToDate(baseDate: Date, time?: string | null): Date {
+  const next = new Date(baseDate);
+  if (!time) {
+    next.setHours(12, 0, 0, 0);
+    return next;
+  }
+  const [hoursStr, minutesStr] = time.split(':');
+  const hours = Number(hoursStr);
+  const minutes = Number(minutesStr);
+  const safeHours = Number.isFinite(hours) ? hours : 0;
+  const safeMinutes = Number.isFinite(minutes) ? minutes : 0;
+  next.setHours(safeHours, safeMinutes, 0, 0);
+  return next;
+}
 
 const getTaskVideoUrl = (task: any): string | null => {
   if (!task) return null;
@@ -453,7 +489,7 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
         id: internalActivityAny.activity_categories?.id || internalActivityAny.category_id || '',
         name: internalActivityAny.activity_categories?.name || 'Ukendt kategori',
         color: internalActivityAny.activity_categories?.color || '#999999',
-        emoji: internalActivityAny.activity_categories?.emoji || '❓',
+        emoji: internalActivityAny.activity_categories?.emoji || 'ÔØô',
       };
 
       const tasks: FeedbackTask[] = (internalActivityAny.activity_tasks ?? []).map((task: any) => {
@@ -545,7 +581,7 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
             id: '',
             name: 'Unknown',
             color: '#999999',
-            emoji: '❓',
+            emoji: 'ÔØô',
           },
         tasks: (localMetaAny.external_event_tasks || []).map((task: any) => {
           const markerTemplateId = parseTemplateIdFromMarker(task.description || '');
@@ -607,7 +643,7 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
           id: '',
           name: 'Unknown',
           color: '#999999',
-          emoji: '❓',
+          emoji: 'ÔØô',
         },
         tasks: [],
         isExternal: true,
@@ -634,7 +670,7 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
 
     return null;
   } catch (error) {
-    console.error('❌ Error fetching activity from database:', error);
+    console.error('ÔØî Error fetching activity from database:', error);
     return null;
   }
 }
@@ -644,7 +680,7 @@ function ActivityDetailsSkeleton({ isDark }: { isDark: boolean }) {
   const bgColor = isDark ? '#1a1a1a' : colors.background;
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
   const skeletonColor = isDark ? '#3a3a3a' : '#e0e0e0';
-  const waveFillColor = isDark ? 'rgba(42,42,42,0.92)' : 'rgba(255,255,255,0.92)'; // ✅ subtle bleed-through
+  const waveFillColor = isDark ? 'rgba(42,42,42,0.92)' : 'rgba(255,255,255,0.92)'; // Ô£à subtle bleed-through
   const insets = useSafeAreaInsets();
 
   return (
@@ -653,7 +689,7 @@ function ActivityDetailsSkeleton({ isDark }: { isDark: boolean }) {
         colors={[skeletonColor, skeletonColor] as [string, string]}
         style={[styles.header, styles.v2Topbar, { paddingTop: insets.top + 8 }]}
       >
-        {/* ✅ centered close chevron placeholder (don't block touches in header) */}
+        {/* Ô£à centered close chevron placeholder (don't block touches in header) */}
         <View style={styles.headerChevronWrap} pointerEvents="box-none">
           <View
             style={{
@@ -686,7 +722,7 @@ function ActivityDetailsSkeleton({ isDark }: { isDark: boolean }) {
         </View>
       </LinearGradient>
 
-      {/* ✅ sheet must be transparent; fill + wave provide the white background */}
+      {/* Ô£à sheet must be transparent; fill + wave provide the white background */}
       <View style={styles.v2Sheet}>
         <View pointerEvents="none" style={[styles.v2SheetFill, { backgroundColor: cardBgColor }]} />
         <View pointerEvents="none" style={styles.v2WaveOverlay}>
@@ -800,7 +836,7 @@ function buildFeedbackSummary(
     );
   }
 
-  return parts.length ? parts.join(' · ') : null;
+  return parts.length ? parts.join(' – ') : null;
 }
 
 function extractFeedbackNote(
@@ -859,7 +895,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     initialOpenIntensity,
   } = props;
   const router = useRouter();
-  const insets = useSafeAreaInsets(); // ✅ Fix crash (insets used in header + paddingBottom)
+  const insets = useSafeAreaInsets(); // Ô£à Fix crash (insets used in header + paddingBottom)
   const safeDismiss = useCallback(() => {
     try {
       const r: any = router;
@@ -938,8 +974,12 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#9aa0a6' : colors.textSecondary;
-  const waveFillColor = isDark ? 'rgba(42,42,42,0.92)' : 'rgba(255,255,255,0.92)'; // ✅ subtle bleed-through
+  const waveFillColor = isDark ? 'rgba(42,42,42,0.92)' : 'rgba(255,255,255,0.92)'; // Ô£à subtle bleed-through
   const sectionTitleColor = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(15,23,42,0.35)';
+  const fieldBackgroundColor = isDark ? '#0f1116' : '#f2f4f7';
+  const fieldBorderColor = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(15,23,42,0.08)';
+  const infoBackgroundColor = isDark ? 'rgba(255,255,255,0.08)' : '#f8fafc';
+  const infoTextColor = isDark ? '#f8fafc' : colors.text;
 
   const headerGradientColors = useMemo(() => {
     const base = activity?.category?.color || colors.primary;
@@ -1091,6 +1131,11 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const shouldShowActivityIntensityField = isInternalActivity && !!activityIntensityEnabled;
   const showIntensityTaskRow = isInternalActivity && activityIntensityEnabled;
   const intensityTaskCompleted = showIntensityTaskRow && typeof activity.intensity === 'number';
+  const startTimeDate = useMemo(() => parseTimeToDate(editDate, editTime), [editDate, editTime]);
+  const endTimeDate = useMemo(
+    () => parseTimeToDate(editDate, editEndTime ?? editTime),
+    [editDate, editEndTime, editTime]
+  );
 
   useEffect(() => {
     if (isIntensityModalVisible) return;
@@ -1129,15 +1174,6 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const [endDate, setEndDate] = useState(new Date(Date.now() + 90 * 24 * 60 * 60 * 1000));
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
 
-  // Scroll to bottom when picker is shown
-  useEffect(() => {
-    if (showDatePicker || showTimePicker || showEndTimePicker || showEndDatePicker) {
-      setTimeout(() => {
-        listRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-    }
-  }, [showDatePicker, showTimePicker, showEndTimePicker, showEndDatePicker]);
-
   // --- sync edit state when activity changes ---
   useEffect(() => {
     setEditTitle(activity.title);
@@ -1158,6 +1194,14 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   useEffect(() => {
     setPendingFeedbackTaskId(initialFeedbackTaskId ?? null);
   }, [activity.id, initialFeedbackTaskId]);
+
+  useEffect(() => {
+    if (isEditing) return;
+    setShowDatePicker(false);
+    setShowTimePicker(false);
+    setShowEndTimePicker(false);
+    setShowEndDatePicker(false);
+  }, [isEditing]);
 
   const applyActivityUpdates = useCallback(
     (updates: Partial<Activity>) => {
@@ -1221,13 +1265,13 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
     Alert.alert(
       'Duplikér aktivitet',
-      `Er du sikker på at du vil duplikerte "${activity.title}"? En kopi vil blive oprettet med samme dato, tid, lokation og opgaver.`,
+      `Er du sikker på at du vil duplikere "${activity.title}"? En kopi vil blive oprettet med samme dato, tid, lokation og opgaver.`,
       [
         { text: 'Annuller', style: 'cancel' },
         {
           text: 'Duplikér',
           onPress: () => setPendingAction({ type: 'duplicate' }),
-        }
+        },
       ]
     );
   };
@@ -1292,6 +1336,65 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     setIntensityModalError(null);
     setIsIntensityModalVisible(true);
   }, [activity.intensity, isIntensityModalSaving, showIntensityTaskRow]);
+
+  const renderPicker = useCallback(
+    ({
+      visible,
+      mode,
+      value,
+      onChange,
+      onClose,
+    }: {
+      visible: boolean;
+      mode: 'date' | 'time';
+      value: Date;
+      onChange: (event: DateTimePickerEvent, selected?: Date) => void;
+      onClose: () => void;
+    }) => {
+      if (!visible || Platform.OS === 'web') {
+        return null;
+      }
+
+      if (Platform.OS === 'ios') {
+        return (
+          <View
+            style={[
+              styles.pickerContainer,
+              { backgroundColor: cardBgColor, borderColor: fieldBorderColor, borderWidth: 1 },
+            ]}
+          >
+            <DateTimePicker value={value} mode={mode} display="spinner" onChange={onChange} style={styles.iosPicker} />
+            <TouchableOpacity
+              style={[
+                styles.pickerDoneButton,
+                { borderTopColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(15,23,42,0.1)' },
+              ]}
+              onPress={onClose}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.pickerDoneText, { color: colors.primary }]}>Færdig</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      }
+
+      return (
+        <DateTimePicker
+          value={value}
+          mode={mode}
+          display="default"
+          is24Hour
+          onChange={(event, selected) => {
+            onChange(event, selected);
+            if (Platform.OS === 'android') {
+              onClose();
+            }
+          }}
+        />
+      );
+    },
+    [cardBgColor, colors.primary, fieldBorderColor, isDark]
+  );
 
   const handleSave = async () => {
     if (!activity) return;
@@ -1465,18 +1568,24 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     setEditIntensity(resolvedValue);
   };
 
-  const handleDateChange = (event: any, selectedDate?: Date) => {
+  const handleDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
     if (Platform.OS === 'android') {
       setShowDatePicker(false);
+    }
+    if (event.type === 'dismissed') {
+      return;
     }
     if (selectedDate) {
       setEditDate(selectedDate);
     }
   };
 
-  const handleTimeChange = (event: any, selectedTime?: Date) => {
+  const handleTimeChange = (event: DateTimePickerEvent, selectedTime?: Date) => {
     if (Platform.OS === 'android') {
       setShowTimePicker(false);
+    }
+    if (event.type === 'dismissed') {
+      return;
     }
     if (selectedTime) {
       const hours = selectedTime.getHours().toString().padStart(2, '0');
@@ -1492,9 +1601,12 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     }
   };
 
-  const handleEndTimeChange = (event: any, selectedTime?: Date) => {
+  const handleEndTimeChange = (event: DateTimePickerEvent, selectedTime?: Date) => {
     if (Platform.OS === 'android') {
       setShowEndTimePicker(false);
+    }
+    if (event.type === 'dismissed') {
+      return;
     }
     if (selectedTime) {
       const hours = selectedTime.getHours().toString().padStart(2, '0');
@@ -1508,9 +1620,12 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     setEditEndTime(value);
   };
 
-  const handleEndDateChange = (event: any, selectedDate?: Date) => {
+  const handleEndDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
     if (Platform.OS === 'android') {
       setShowEndDatePicker(false);
+    }
+    if (event.type === 'dismissed') {
+      return;
     }
     if (selectedDate) {
       setEndDate(selectedDate);
@@ -1563,10 +1678,10 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     );
   }, [activity, isAdmin]);
 
-  const handleAddTask = () => {
+  const handleAddTask = useCallback(() => {
     console.log('Opening create task modal for activity:', activity?.id);
     setShowCreateTaskModal(true);
-  };
+  }, [activity?.id]);
 
   const handleTaskCreated = useCallback(async () => {
     console.log('Task created successfully, refreshing activity data');
@@ -1626,7 +1741,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             activeOpacity={0.7}
             disabled={isIntensityModalSaving}
           >
-            {/* ✅ Fixed left slot + body + right actions */}
+            {/* Ô£à Fixed left slot + body + right actions */}
             <View style={styles.taskLeftSlot}>
               <View
                 style={[
@@ -1691,7 +1806,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       if (isFeedbackTaskLocal) {
         if (isFeedbackCompleted) {
           const parts = [summary].filter(Boolean) as string[];
-          helperText = parts.length ? parts.join(' · ') : 'Feedback udfyldt';
+          helperText = parts.length ? parts.join(' – ') : 'Feedback udfyldt';
         } else {
           if (config.enableScore !== false) {
             helperText = 'Tryk for at give feedback';
@@ -1709,7 +1824,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           onPress={() => handleTaskRowPress(task)}
           activeOpacity={0.7}
         >
-          {/* ✅ Fixed left slot */}
+          {/* Ô£à Fixed left slot */}
           <View style={styles.taskLeftSlot}>
             <View
               style={[
@@ -1731,7 +1846,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             </View>
           </View>
 
-          {/* ✅ Body: ALL text lives here, so x-start matches intensity row */}
+          {/* Ô£à Body: ALL text lives here, so x-start matches intensity row */}
           <View style={styles.taskBody}>
             <Text
               style={[
@@ -1806,6 +1921,588 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   );
 
   const taskKeyExtractor = useCallback((item: TaskListItem) => ('__type' in item ? item.key : String(item.id)), []);
+
+  const renderListHeader = useCallback(() => {
+    const selectableCategories = Array.isArray(categories) ? categories : [];
+    const selectedCategoryId = editCategory?.id ?? null;
+    const needsDaySelection =
+      recurrenceType === 'weekly' || recurrenceType === 'biweekly' || recurrenceType === 'triweekly';
+
+    const renderCategorySelector = () => (
+      <View style={styles.fieldContainer}>
+        <Text style={[styles.fieldLabel, { color: textSecondaryColor }]}>Kategori</Text>
+        {selectableCategories.length ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoryScroll}
+          >
+            {selectableCategories.map(category => {
+              const isSelected = selectedCategoryId === category.id;
+              return (
+                <TouchableOpacity
+                  key={category.id || category.name}
+                  style={[
+                    styles.categoryChip,
+                    {
+                      backgroundColor: isSelected ? colors.primary : fieldBackgroundColor,
+                      borderWidth: 1,
+                      borderColor: isSelected ? colors.primary : fieldBorderColor,
+                    },
+                  ]}
+                  onPress={() => setEditCategory(category)}
+                  activeOpacity={0.8}
+                >
+                  {category.emoji ? (
+                    <Text style={styles.categoryEmoji}>{category.emoji}</Text>
+                  ) : null}
+                  <Text style={[styles.categoryName, { color: isSelected ? '#fff' : textColor }]}>
+                    {category.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        ) : (
+          <Text style={{ color: textSecondaryColor, marginTop: 8 }}>Ingen kategorier</Text>
+        )}
+      </View>
+    );
+
+    const editingContent = (
+      <View>
+        {activity.isExternal && (
+          <View
+            style={[
+              styles.infoBox,
+              {
+                backgroundColor: infoBackgroundColor,
+                marginHorizontal: 16,
+                marginBottom: 16,
+              },
+            ]}
+          >
+            <Text style={{ color: infoTextColor, fontWeight: '700' }}>Ekstern aktivitet</Text>
+            <Text style={{ color: textSecondaryColor, marginTop: 6 }}>
+              Du kan kun ændre kategori for eksterne aktiviteter.
+            </Text>
+          </View>
+        )}
+
+        <View style={[styles.section, { backgroundColor: cardBgColor }]}>
+          <Text style={[styles.sectionTitle, { color: sectionTitleColor }]}>Grundoplysninger</Text>
+          {isInternalActivity && (
+            <>
+              <View style={styles.fieldContainer}>
+                <Text style={[styles.fieldLabel, { color: textSecondaryColor }]}>Titel</Text>
+                <TextInput
+                  value={editTitle}
+                  onChangeText={setEditTitle}
+                  placeholder="Angiv titel"
+                  placeholderTextColor={textSecondaryColor}
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: fieldBackgroundColor,
+                      color: textColor,
+                      borderWidth: 1,
+                      borderColor: fieldBorderColor,
+                    },
+                  ]}
+                />
+              </View>
+
+              <View style={styles.fieldContainer}>
+                <Text style={[styles.fieldLabel, { color: textSecondaryColor }]}>Lokation</Text>
+                <TextInput
+                  value={editLocation}
+                  onChangeText={setEditLocation}
+                  placeholder="Angiv lokation"
+                  placeholderTextColor={textSecondaryColor}
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: fieldBackgroundColor,
+                      color: textColor,
+                      borderWidth: 1,
+                      borderColor: fieldBorderColor,
+                    },
+                  ]}
+                />
+              </View>
+            </>
+          )}
+
+          {renderCategorySelector()}
+        </View>
+
+        {isInternalActivity && (
+          <>
+            <View style={[styles.section, { backgroundColor: cardBgColor }]}>
+              <Text style={[styles.sectionTitle, { color: sectionTitleColor }]}>Dato & tid</Text>
+
+              <View style={styles.fieldContainer}>
+                <Text style={[styles.fieldLabel, { color: textSecondaryColor }]}>Dato</Text>
+                <TouchableOpacity
+                  style={[
+                    styles.dateTimeButton,
+                    {
+                      backgroundColor: fieldBackgroundColor,
+                      borderWidth: 1,
+                      borderColor: fieldBorderColor,
+                    },
+                  ]}
+                  onPress={() => setShowDatePicker(true)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.dateTimeText, { color: textColor }]}>{formatDate(editDate)}</Text>
+                  <IconSymbol
+                    ios_icon_name="chevron.down"
+                    android_material_icon_name="expand_more"
+                    size={18}
+                    color={textSecondaryColor}
+                  />
+                </TouchableOpacity>
+                {renderPicker({
+                  visible: showDatePicker,
+                  mode: 'date',
+                  value: editDate,
+                  onChange: handleDateChange,
+                  onClose: () => setShowDatePicker(false),
+                })}
+              </View>
+
+              <View style={{ flexDirection: 'row', marginTop: 12 }}>
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <Text style={[styles.fieldLabel, { color: textSecondaryColor }]}>Starttid</Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.dateTimeButton,
+                      {
+                        backgroundColor: fieldBackgroundColor,
+                        borderWidth: 1,
+                        borderColor: fieldBorderColor,
+                      },
+                    ]}
+                    onPress={() => setShowTimePicker(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.dateTimeText, { color: textColor }]}>
+                      {formatTimeDisplay(editTime)}
+                    </Text>
+                    <IconSymbol
+                     
+                      ios_icon_name="chevron.down"
+                      android_material_icon_name="expand_more"
+                      size={18}
+                      color={textSecondaryColor}
+                    />
+                  </TouchableOpacity>
+                  {renderPicker({
+                    visible: showTimePicker,
+                    mode: 'time',
+                    value: startTimeDate,
+                    onChange: handleTimeChange,
+                    onClose: () => setShowTimePicker(false),
+                  })}
+                </View>
+
+                <View style={{ flex: 1, marginLeft: 8 }}>
+                  <Text style={[styles.fieldLabel, { color: textSecondaryColor }]}>Sluttid</Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.dateTimeButton,
+                      {
+                        backgroundColor: fieldBackgroundColor,
+                        borderWidth: 1,
+                        borderColor: fieldBorderColor,
+                      },
+                    ]}
+                    onPress={() => setShowEndTimePicker(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.dateTimeText, { color: textColor }]}>
+                      {editEndTime ? formatTimeDisplay(editEndTime) : 'Tilføj sluttid'}
+                    </Text>
+                    <IconSymbol
+                      ios_icon_name="chevron.down"
+                      android_material_icon_name="expand_more"
+                      size={18}
+                      color={textSecondaryColor}
+                    />
+                  </TouchableOpacity>
+                  {renderPicker({
+                    visible: showEndTimePicker,
+                    mode: 'time',
+                    value: endTimeDate,
+                    onChange: handleEndTimeChange,
+                    onClose: () => setShowEndTimePicker(false),
+                  })}
+                </View>
+              </View>
+            </View>
+
+            {shouldShowActivityIntensityField && (
+              <View style={[styles.section, { backgroundColor: cardBgColor }]}>
+                <Text style={[styles.sectionTitle, { color: sectionTitleColor }]}>Intensitet</Text>
+                <View
+                  style={[
+                    styles.intensityToggleRow,
+                    { backgroundColor: fieldBackgroundColor, paddingHorizontal: 16 },
+                  ]}
+                >
+                  <View style={styles.intensityToggleLabel}>
+                    <IconSymbol
+                      ios_icon_name="flame"
+                      android_material_icon_name="local_fire_department"
+                      size={18}
+                      color={colors.primary}
+                    />
+                    <Text style={[styles.switchLabel, { color: textColor }]}>Aktiver intensitet</Text>
+                  </View>
+                  <Switch
+                    value={editIntensityEnabled}
+                    onValueChange={handleIntensityToggle}
+                    trackColor={{ true: colors.primary, false: isDark ? '#3a3a3c' : '#d1d5db' }}
+                    thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
+                  />
+                </View>
+
+                {editIntensityEnabled && (
+                  <>
+                    <Text style={[styles.intensityHint, { color: textSecondaryColor }]}>Vælg niveau (1-10)</Text>
+                    <View style={styles.intensityPickerRow}>
+                      {intensityOptions.map(option => {
+                        const selected = option === editIntensity;
+                        return (
+                          <TouchableOpacity
+                            key={option}
+                            style={[
+                              styles.intensityPickerChip,
+                              {
+                                backgroundColor: selected ? colors.primary : fieldBackgroundColor,
+                                borderWidth: 1,
+                                borderColor: selected ? colors.primary : fieldBorderColor,
+                              },
+                            ]}
+                            onPress={() => handleIntensitySelect(option)}
+                          >
+                            <Text
+                              style={[
+                                styles.intensityPickerText,
+                                selected
+                                  ? styles.intensityPickerTextSelected
+                                  : { color: textColor },
+                              ]}
+                            >
+                              {option}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </>
+                )}
+              </View>
+            )}
+
+            {!activity.seriesId && (
+              <View style={[styles.section, { backgroundColor: cardBgColor }]}>
+                <Text style={[styles.sectionTitle, { color: sectionTitleColor }]}>Gentagelse</Text>
+                <View
+                  style={[
+                    styles.recurringToggle,
+                    { backgroundColor: fieldBackgroundColor, paddingHorizontal: 16 },
+                  ]}
+                >
+                  <View style={styles.recurringToggleLeft}>
+                    <IconSymbol
+                      ios_icon_name="repeat"
+                      android_material_icon_name="repeat"
+                      size={18}
+                      color={colors.primary}
+                    />
+                    <Text style={[styles.recurringToggleText, { color: textColor }]}>
+                      Gentag aktivitet
+                    </Text>
+                  </View>
+                  <Switch
+                    value={convertToRecurring}
+                    onValueChange={setConvertToRecurring}
+                    trackColor={{ true: colors.primary, false: isDark ? '#3a3a3c' : '#d1d5db' }}
+                    thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
+                  />
+                </View>
+
+                {convertToRecurring && (
+                  <>
+                    <Text style={[styles.fieldLabel, { color: textSecondaryColor, marginTop: 12 }]}>Frekvens</Text>
+                    <View style={styles.recurrenceOptions}>
+                      {RECURRENCE_OPTIONS.map(option => {
+                        const selected = recurrenceType === option.value;
+                        return (
+                          <TouchableOpacity
+                            key={option.value}
+                            style={[
+                              styles.recurrenceOption,
+                              {
+                                backgroundColor: selected ? colors.primary : fieldBackgroundColor,
+                                borderWidth: 1,
+                                borderColor: selected ? colors.primary : fieldBorderColor,
+                              },
+                            ]}
+                            onPress={() => setRecurrenceType(option.value)}
+                          >
+                            <Text
+                              style={[
+                                styles.recurrenceOptionText,
+                                { color: selected ? '#fff' : textColor },
+                              ]}
+                            >
+                              {option.label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+
+                    {needsDaySelection && (
+                      <>
+                        <Text style={[styles.fieldLabel, { color: textSecondaryColor }]}>Dage</Text>
+                        <View style={styles.daysContainer}>
+                          {DAYS_OF_WEEK.map(day => {
+                            const selected = selectedDays.includes(day.value);
+                            return (
+                              <TouchableOpacity
+                                key={day.value}
+                                style={[
+                                  styles.dayButton,
+                                  {
+                                    backgroundColor: selected ? colors.primary : fieldBackgroundColor,
+                                    borderWidth: 1,
+                                    borderColor: selected ? colors.primary : fieldBorderColor,
+                                  },
+                                ]}
+                                onPress={() => toggleDay(day.value)}
+                              >
+                                <Text style={[styles.dayButtonText, { color: selected ? '#fff' : textColor }]}>
+                                  {day.label}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      </>
+                    )}
+
+                    <View
+                      style={[
+                        styles.recurringToggle,
+                        { backgroundColor: fieldBackgroundColor, marginTop: 12, paddingHorizontal: 16 },
+                      ]}
+                    >
+                      <View style={styles.recurringToggleLeft}>
+                        <IconSymbol
+                          ios_icon_name="calendar"
+                          android_material_icon_name="event"
+                          size={18}
+                          color={colors.primary}
+                        />
+                        <Text style={[styles.recurringToggleText, { color: textColor }]}>Slutdato</Text>
+                      </View>
+                      <Switch
+                        value={hasEndDate}
+                        onValueChange={(value) => {
+                          setHasEndDate(value);
+                          if (!value) {
+                            setShowEndDatePicker(false);
+                          }
+                        }}
+                        trackColor={{ true: colors.primary, false: isDark ? '#3a3a3c' : '#d1d5db' }}
+                        thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
+                      />
+                    </View>
+
+                    {hasEndDate && (
+                      <View style={{ marginTop: 12 }}>
+                        <TouchableOpacity
+                          style={[
+                            styles.dateTimeButton,
+                            {
+                              backgroundColor: fieldBackgroundColor,
+                              borderWidth: 1,
+                              borderColor: fieldBorderColor,
+                            },
+                          ]}
+                          onPress={() => setShowEndDatePicker(true)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.dateTimeText, { color: textColor }]}>{formatDate(endDate)}</Text>
+                          <IconSymbol
+                            ios_icon_name="chevron.down"
+                            android_material_icon_name="expand_more"
+                            size={18}
+                            color={textSecondaryColor}
+                          />
+                        </TouchableOpacity>
+                        {renderPicker({
+                          visible: showEndDatePicker,
+                          mode: 'date',
+                          value: endDate,
+                          onChange: handleEndDateChange,
+                          onClose: () => setShowEndDatePicker(false),
+                        })}
+                      </View>
+                    )}
+                  </>
+                )}
+              </View>
+            )}
+          </>
+        )}
+      </View>
+    );
+
+    const detailsContent = (
+      <View>
+        <Text style={styles.v2SectionTitle}>Detaljer</Text>
+
+        <View style={styles.v2CardWrap}>
+          <DetailsCard
+            label="Dato & Tidspunkt"
+            value={`${formatDateTime(activity.date, activity.time)}${
+              activity.endTime ? ` - ${activity.endTime.substring(0, 5)}` : ''
+            }`}
+            backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
+            textColor={textColor}
+            secondaryTextColor={textSecondaryColor}
+            fullWidth
+            icon={{ ios: 'calendar', android: 'calendar_today' }}
+            iconColor={colors.primary}
+          />
+        </View>
+
+        <View style={styles.v2DetailsRowWrap}>
+          <View style={styles.v2DetailBleedLeft}>
+            <DetailsCard
+              flex={1}
+              label="Lokation"
+              value={activity.location?.trim() ? activity.location : 'Ikke angivet'}
+              backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
+              textColor={textColor}
+              secondaryTextColor={textSecondaryColor}
+              icon={{ ios: 'mappin.and.ellipse', android: 'place' }}
+              iconColor={colors.primary}
+            />
+          </View>
+
+          <View style={{ width: 12 }} />
+
+          <View style={styles.v2DetailBleedRight}>
+            <DetailsCard
+              flex={1}
+              label="Kategori"
+              value={activity.category?.name ?? 'Ukendt'}
+              backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
+              textColor={textColor}
+              secondaryTextColor={textSecondaryColor}
+              leadingEmoji={activity.category?.emoji}
+            />
+          </View>
+        </View>
+
+        {!activity.isExternal && !isEditing && shouldShowActivityIntensityField ? (
+          <View style={[styles.v2CardWrap, { marginTop: 12 }]}>
+            <DetailsCard
+              label="Intensitet"
+              value={typeof activity.intensity === 'number' ? `${activity.intensity}/10` : 'Ikke angivet'}
+              backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
+              textColor={textColor}
+              secondaryTextColor={textSecondaryColor}
+              fullWidth
+              icon={{ ios: 'flame', android: 'local_fire_department' }}
+              iconColor={colors.primary}
+            />
+          </View>
+        ) : null}
+      </View>
+    );
+
+    return (
+      <View>
+        {isEditing ? editingContent : detailsContent}
+
+        <View style={styles.v2TasksHeaderRow}>
+          <Text style={[styles.v2SectionTitle, styles.v2SectionTitleInRow]}>Opgaver</Text>
+          {isAdmin && !activity.isExternal && (
+            <TouchableOpacity
+              style={[styles.addTaskHeaderButton, { backgroundColor: colors.primary }]}
+              onPress={handleAddTask}
+              activeOpacity={0.7}
+            >
+              <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={20} color="#fff" />
+              <Text style={styles.addTaskHeaderButtonText}>Tilføj opgave</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+    );
+  }, [
+    activity,
+    cardBgColor,
+    categories,
+    colors.primary,
+    convertToRecurring,
+    editCategory,
+    editDate,
+    editEndTime,
+    editIntensity,
+    editIntensityEnabled,
+    editLocation,
+    editTime,
+    editTitle,
+    endDate,
+    fieldBackgroundColor,
+    fieldBorderColor,
+    handleAddTask,
+    handleDateChange,
+    handleEndDateChange,
+    handleEndTimeChange,
+    handleIntensitySelect,
+    handleIntensityToggle,
+    handleTimeChange,
+    hasEndDate,
+    infoBackgroundColor,
+    infoTextColor,
+    intensityOptions,
+    isAdmin,
+    isDark,
+    isEditing,
+    isInternalActivity,
+    recurrenceType,
+    renderPicker,
+    selectedDays,
+    setConvertToRecurring,
+    setEditCategory,
+    setEditLocation,
+    setEditTitle,
+    setHasEndDate,
+    setRecurrenceType,
+    setShowDatePicker,
+    setShowEndDatePicker,
+    setShowEndTimePicker,
+    setShowTimePicker,
+    shouldShowActivityIntensityField,
+    showDatePicker,
+    showEndDatePicker,
+    showEndTimePicker,
+    showTimePicker,
+    startTimeDate,
+    endTimeDate,
+    textColor,
+    textSecondaryColor,
+    toggleDay,
+  ]);
 
   const handleDeleteClick = () => {
     if (activity?.isExternal) {
@@ -1888,7 +2585,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             } catch (error: any) {
               console.error('Error duplicating activity:', error);
               if (!cancelled) {
-                Alert.alert('Fejl', error?.message || 'Kunne ikke duplikerte aktiviteten');
+                Alert.alert('Fejl', error?.message || 'Kunne ikke duplikere aktiviteten');
               }
             } finally {
               if (!cancelled) setIsDuplicating(false);
@@ -1906,7 +2603,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                 Alert.alert('Slettet', 'Opgaven er blevet slettet fra denne aktivitet');
               }
             } catch (error: any) {
-              console.error('❌ Error deleting task:', error);
+              console.error('ÔØî Error deleting task:', error);
               if (!cancelled) {
                 Alert.alert('Fejl', `Kunne ikke slette opgaven: ${error?.message || 'Ukendt fejl'}`);
               }
@@ -1929,7 +2626,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                 }, 300);
               }
             } catch (error: any) {
-              console.error('❌ Error deleting external activity:', error);
+              console.error('ÔØî Error deleting external activity:', error);
               if (!cancelled) {
                 Alert.alert('Fejl', `Kunne ikke slette aktiviteten: ${error?.message || 'Ukendt fejl'}`);
               }
@@ -1949,7 +2646,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                 }, 300);
               }
             } catch (error: any) {
-              console.error('❌ Error deleting activity:', error);
+              console.error('ÔØî Error deleting activity:', error);
               if (!cancelled) {
                 Alert.alert('Fejl', `Kunne ikke slette aktiviteten: ${error?.message || 'Ukendt fejl'}`);
               }
@@ -1970,7 +2667,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                 }, 300);
               }
             } catch (error: any) {
-              console.error('❌ Error deleting series:', error);
+              console.error('ÔØî Error deleting series:', error);
               if (!cancelled) {
                 Alert.alert('Fejl', `Kunne ikke slette serien: ${error?.message || 'Ukendt fejl'}`);
               }
@@ -2001,23 +2698,6 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     refreshData,
     router,
   ]);
-
-  const formatDate = (date: Date) => {
-    return new Date(date).toLocaleDateString('da-DK', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    });
-  };
-
-  const formatDateTime = (date: Date, time: string) => {
-    const timeDisplay = time.substring(0, 5);
-    return `${formatDate(date)} kl. ${timeDisplay}`;
-  };
-
-  const needsDaySelection =
-    recurrenceType === 'weekly' || recurrenceType === 'biweekly' || recurrenceType === 'triweekly';
 
   const handleFeedbackClose = useCallback(() => {
     setFeedbackModalTask(null);
@@ -2120,11 +2800,11 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     };
   }, [feedbackModalTask, selfFeedbackByTemplate]);
 
-  // --- Helper: Strip leading "Feedback på" from a title (case-insensitive, trims) ---
+  // --- Helper: Strip leading "Feedback p├Ñ" from a title (case-insensitive, trims) ---
   function stripLeadingFeedbackPrefix(title: string): string {
     if (typeof title !== 'string') return title;
     let t = title.trim();
-    // Remove leading "Feedback på" (case-insensitive), plus any following whitespace
+    // Remove leading "Feedback p├Ñ" (case-insensitive), plus any following whitespace
     t = t.replace(/^feedback på\s*/i, '');
     // Fallback: if empty, return original
     return t.length ? t : title;
@@ -2145,8 +2825,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               safeDismiss();
             },
           },
-                            
-               ]
+        ]
       );
 
 
@@ -2165,7 +2844,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         colors={headerGradientColors}
         style={[styles.header, styles.v2Topbar, { paddingTop: insets.top + 8 }]}
       >
-        {/* ✅ centered chevron (down) fixed 16px from top (don't block header buttons) */}
+        {/* Ô£à centered chevron (down) fixed 16px from top (don't block header buttons) */}
         <View style={styles.headerChevronWrap} pointerEvents="box-none">
           <TouchableOpacity
             style={styles.headerChevronButton}
@@ -2197,7 +2876,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           )}
         </View>
 
-        {/* ✅ remove inline top override; position handled in styles to match chevron */}
+        {/* Ô£à remove inline top override; position handled in styles to match chevron */}
         <View style={styles.headerButtons}>
           {isEditing ? (
             <TouchableOpacity
@@ -2280,7 +2959,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       </LinearGradient>
 
       <View style={styles.v2Sheet}>
-        {/* ✅ background fill behind list */}
+        {/* Ô£à background fill behind list */}
         <View pointerEvents="none" style={[styles.v2SheetFill, { backgroundColor: cardBgColor }]} />
         <View pointerEvents="none" style={styles.v2WaveOverlay}>
           <SheetWaveTop color={cardBgColor} />
@@ -2291,6 +2970,8 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           data={taskListItems}
           keyExtractor={taskKeyExtractor}
           renderItem={renderTaskItem}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             styles.scrollContent,
@@ -2300,94 +2981,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             },
           ]}
           ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
-          ListHeaderComponent={
-            <View>
-              {/* ✅ Title aligned with task cards */
-              }
-              <Text style={styles.v2SectionTitle}>Detaljer</Text>
-
-              {/* ✅ Dato card full-width aligned with task cards */
-              }
-              <View style={styles.v2CardWrap}>
-                <DetailsCard
-                  label="Dato & Tidspunkt"
-                  value={`${formatDateTime(activity.date, activity.time)}${
-                    activity.endTime ? ` - ${activity.endTime.substring(0, 5)}` : ''
-                  }`}
-                  backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
-                  textColor={textColor}
-                  secondaryTextColor={textSecondaryColor}
-                  fullWidth
-                  icon={{ ios: 'calendar', android: 'calendar_today' }}
-                  iconColor={colors.primary}
-                />
-              </View>
-
-              {/* ✅ Lokation/Kategori row: keep inner split, only “bleed” outwards */
-              }
-              <View style={styles.v2DetailsRowWrap}>
-                <View style={styles.v2DetailBleedLeft}>
-                  <DetailsCard
-                    flex={1}
-                    label="Lokation"
-                    value={activity.location?.trim() ? activity.location : 'Ikke angivet'}
-                    backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
-                    textColor={textColor}
-                    secondaryTextColor={textSecondaryColor}
-                    icon={{ ios: 'mappin.and.ellipse', android: 'place' }}
-                    iconColor={colors.primary}
-                  />
-                </View>
-
-                <View style={{ width: 12 }} />
-
-                <View style={styles.v2DetailBleedRight}>
-                  <DetailsCard
-                    flex={1}
-                    label="Kategori"
-                    value={activity.category?.name ?? 'Ukendt'}
-                    backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
-                    textColor={textColor}
-                    secondaryTextColor={textSecondaryColor}
-                    leadingEmoji={activity.category?.emoji} // ✅ system icon
-                  />
-                </View>
-              </View>
-
-              {/* ✅ Intensitet: same width as task cards + same spacing as other blocks */
-              }
-              {!activity.isExternal && !isEditing && shouldShowActivityIntensityField ? (
-                <View style={[styles.v2CardWrap, { marginTop: 12 }]}>
-                  <DetailsCard
-                    label="Intensitet"
-                    value={typeof activity.intensity === 'number' ? `${activity.intensity}/10` : 'Ikke angivet'}
-                    backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
-                    textColor={textColor}
-                    secondaryTextColor={textSecondaryColor}
-                    fullWidth
-                    icon={{ ios: 'flame', android: 'local_fire_department' }}
-                    iconColor={colors.primary}
-                  />
-                </View>
-              ) : null}
-
-              {/* ✅ “Opgaver” title: aligned left + spacing to first task matches “Detaljer”→Dato */
-              }
-              <View style={styles.v2TasksHeaderRow}>
-                <Text style={[styles.v2SectionTitle, styles.v2SectionTitleInRow]}>Opgaver</Text>
-                {isAdmin && !activity.isExternal && (
-                  <TouchableOpacity
-                    style={[styles.addTaskHeaderButton, { backgroundColor: colors.primary }]}
-                    onPress={handleAddTask}
-                    activeOpacity={0.7}
-                  >
-                    <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={20} color="#fff" />
-                    <Text style={styles.addTaskHeaderButtonText}>Tilføj opgave</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-          }
+          ListHeaderComponent={renderListHeader}
         />
       </View>
 
@@ -2417,7 +3011,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             : 'Feedback'
         }
         introText={feedbackModalConfig?.scoreExplanation ?? 'Hvordan gik træningen?'}
-        helperText="1 = let · 10 = maks"
+        helperText="1 = let – 10 = maks"
         initialScore={feedbackModalDefaults.rating}
         initialNote={feedbackModalDefaults.note ?? ''}
         enableScore={feedbackModalConfig?.enableScore !== false}
@@ -2432,7 +3026,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         visible={isIntensityModalVisible}
         title="Intensitet"
         introText="Hvordan gik træningen?"
-        helperText="1 = let · 10 = maks"
+        helperText="1 = let – 10 = maks"
         initialScore={intensityModalDraft}
         initialNote=""
         enableScore
@@ -2668,7 +3262,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     position: 'absolute',
     right: 16,
-    top: 16, // ✅ align vertically with chevron wrap top
+    top: 16, // Ô£à align vertically with chevron wrap top
     alignItems: 'center',
     zIndex: 3,
     elevation: 3,
@@ -2679,7 +3273,7 @@ const styles = StyleSheet.create({
     borderRadius: HEADER_ACTION_BUTTON_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 0, // ✅ moved out to headerButtonGap (prevents “first button margin” from masking changes)
+    marginLeft: 0, // Ô£à moved out to headerButtonGap (prevents ÔÇ£first button marginÔÇØ from masking changes)
   },
   headerButtonGap: {
     marginLeft: HEADER_ACTION_BUTTON_GAP,
@@ -2691,8 +3285,8 @@ const styles = StyleSheet.create({
   v2Sheet: {
     flex: 1,
     marginTop: -V2_WAVE_HEIGHT,
-    borderTopLeftRadius: 0,  // ✅ no rounded corners under the wave
-    borderTopRightRadius: 0, // ✅ no rounded corners under the wave
+    borderTopLeftRadius: 0,  // Ô£à no rounded corners under the wave
+    borderTopRightRadius: 0, // Ô£à no rounded corners under the wave
     paddingTop: V2_WAVE_HEIGHT,
     overflow: 'hidden',
     backgroundColor: 'transparent',
@@ -2711,7 +3305,7 @@ const styles = StyleSheet.create({
     right: 0,
   },
 
-  // ✅ shared section title (Detaljer + Opgaver)
+  // Ô£à shared section title (Detaljer + Opgaver)
   sectionHeaderTitle: {
     marginHorizontal: 16,
     marginBottom: 12,
@@ -2729,27 +3323,27 @@ const styles = StyleSheet.create({
   v2TasksHeaderRow: {
     marginHorizontal: 16,
     marginTop: 20,
-    marginBottom: 12, // ✅ same title→content spacing as "Detaljer"→Dato card
+    marginBottom: 12, // Ô£à same titleÔåÆcontent spacing as "Detaljer"ÔåÆDato card
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   v2SectionTitleInRow: {
-    marginHorizontal: 0, // ✅ prevent double indent (row already has marginHorizontal)
-    marginBottom: 0,    // ✅ spacing handled by v2TasksHeaderRow
+    marginHorizontal: 0, // Ô£à prevent double indent (row already has marginHorizontal)
+    marginBottom: 0,    // Ô£à spacing handled by v2TasksHeaderRow
   },
 
-  // ✅ detail card alignment wrappers (match taskCard gutter)
+  // Ô£à detail card alignment wrappers (match taskCard gutter)
   v2CardWrap: {
     marginHorizontal: 16,
   },
   v2DetailsRowWrap: {
     marginHorizontal: 16,
-    marginTop: 12, // ✅ matches Dato→row spacing
+    marginTop: 12, // Ô£à matches DatoÔåÆrow spacing
     flexDirection: 'row',
   },
 
-  // ✅ directional widen: keep inner geometry, extend only outward
+  // Ô£à directional widen: keep inner geometry, extend only outward
   v2DetailBleedLeft: {
     flex: 1,
     marginLeft: -16,   // widen left only
@@ -2764,7 +3358,7 @@ const styles = StyleSheet.create({
   v2DetailCard: {
     borderRadius: 16,
     padding: 16,
-    justifyContent: 'center', // ✅ vertical center icon/text inside stretched cards
+    justifyContent: 'center', // Ô£à vertical center icon/text inside stretched cards
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.12,
@@ -2953,7 +3547,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingVertical: 8,
     paddingHorizontal: 12,
-    marginBottom: 8, // ✅ replaces rowGap when wrapping
+    marginBottom: 8, // Ô£à replaces rowGap when wrapping
   },
   intensityPickerChipSelected: {
     backgroundColor: colors.primary,
@@ -3026,7 +3620,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 8,
     paddingHorizontal: 12,
-    marginBottom: 8, // ✅ replaces rowGap when wrapping
+    marginBottom: 8, // Ô£à replaces rowGap when wrapping
   },
   dayButtonText: {
     fontSize: 14,
@@ -3046,7 +3640,7 @@ const styles = StyleSheet.create({
   externalBadgeText: {
     color: '#fff',
     fontWeight: '700',
-    marginLeft: 8, // ✅ replaces rowGap
+    marginLeft: 8, // Ô£à replaces rowGap
   },
 
   infoBox: {
@@ -3067,7 +3661,7 @@ const styles = StyleSheet.create({
   feedbackInfoTitle: {
     fontSize: 16,
     fontWeight: '600',
-    marginLeft: 8, // ✅ replaces rowGap
+    marginLeft: 8, // Ô£à replaces rowGap
   },
   feedbackInfoRow: {
     marginBottom: 12,
@@ -3100,7 +3694,7 @@ const styles = StyleSheet.create({
   addTaskHeaderButtonText: {
     color: '#fff',
     fontWeight: '700',
-    marginLeft: 8, // ✅ replaces rowGap between icon + text
+    marginLeft: 8, // Ô£à replaces rowGap between icon + text
   },
 
   taskRow: {
@@ -3130,7 +3724,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    // marginRight: 12, // ❌ spacing controlled by taskLeftSlot
+    // marginRight: 12, // ÔØî spacing controlled by taskLeftSlot
   },
 
   feedbackTaskCheckbox: {
@@ -3193,7 +3787,7 @@ const styles = StyleSheet.create({
   reminderText: {
     fontSize: 14,
     color: colors.textSecondary,
-    marginLeft: 8, // ✅ replaces gap
+    marginLeft: 8, // Ô£à replaces gap
   },
   footer: {
     marginTop: 20,
@@ -3214,7 +3808,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // ✅ Restore original look + width for task boxes
+  // Ô£à Restore original look + width for task boxes
   taskCard: {
     marginHorizontal: 16,
     borderRadius: 16,
@@ -3236,12 +3830,12 @@ const styles = StyleSheet.create({
   },
   headerChevronWrap: {
     position: 'absolute',
-    top: 16, // ✅ fixed spacing to top of modal header
+    top: 16, // Ô£à fixed spacing to top of modal header
     left: 0,
     right: 0,
     alignItems: 'center',
-    zIndex: 2,       // ✅ below headerButtons
-    elevation: 2,    // ✅ Android
+    zIndex: 2,       // Ô£à below headerButtons
+    elevation: 2,    // Ô£à Android
   },
   headerChevronButton: {
     width: HEADER_ACTION_BUTTON_SIZE,
