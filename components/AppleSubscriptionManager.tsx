@@ -102,6 +102,90 @@ const getPlanName = (product: { productId: string }) => {
   }
 };
 
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const daDateFormatter = new Intl.DateTimeFormat('da-DK', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'Europe/Copenhagen',
+});
+const daDatePartsFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Europe/Copenhagen',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+const toCopenhagenStartOfDayMs = (date: Date) => {
+  const parts = daDatePartsFormatter.formatToParts(date);
+  const year = Number(parts.find(part => part.type === 'year')?.value);
+  const month = Number(parts.find(part => part.type === 'month')?.value);
+  const day = Number(parts.find(part => part.type === 'day')?.value);
+  return Number.isFinite(year) && Number.isFinite(month) && Number.isFinite(day)
+    ? Date.UTC(year, month - 1, day)
+    : NaN;
+};
+
+const formatDateDa = (value?: string | null) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return daDateFormatter.format(date);
+};
+
+const getDaysRemaining = (value?: string | null) => {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const diff = toCopenhagenStartOfDayMs(date) - toCopenhagenStartOfDayMs(new Date());
+  if (Number.isNaN(diff)) return null;
+  return Math.max(0, Math.round(diff / MS_PER_DAY));
+};
+
+type AppleSubscriptionStatus = ReturnType<typeof useAppleIAP>['subscriptionStatus'];
+type AppleRenewalSummary = {
+  isTrial: boolean;
+  primaryDate: string | null;
+  renewalDate: string | null;
+  daysRemaining: number | null;
+};
+
+const dateStringsEqual = (a?: string | null, b?: string | null) => {
+  if (!a || !b) return false;
+  const aTime = new Date(a).getTime();
+  const bTime = new Date(b).getTime();
+  if (Number.isNaN(aTime) || Number.isNaN(bTime)) {
+    return a.trim() === b.trim();
+  }
+  return aTime === bTime;
+};
+
+const buildAppleRenewalSummary = (status: AppleSubscriptionStatus | null | undefined): AppleRenewalSummary => {
+  const raw = (status as Record<string, any>) || null;
+  const trialEnd = raw?.trialEndDate ?? raw?.trialEnd ?? raw?.trialEndsAt ?? null;
+  const renewalDate =
+    raw?.renewalDate ??
+    raw?.expiryDate ??
+    raw?.expirationDate ??
+    raw?.expiration_at ??
+    trialEnd ??
+    null;
+  const isTrial =
+    Boolean(
+      raw?.isTrialPeriod ||
+        raw?.isTrial ||
+        raw?.periodType === 'trial' ||
+        raw?.status === 'trial'
+    ) && Boolean(trialEnd);
+  const primaryDate = isTrial ? trialEnd : renewalDate;
+  return {
+    isTrial,
+    primaryDate,
+    renewalDate,
+    daysRemaining: primaryDate ? getDaysRemaining(primaryDate) : null,
+  };
+};
+
 export default function AppleSubscriptionManager({
   onPlanSelected,
   isSignupFlow = false,
@@ -363,10 +447,19 @@ export default function AppleSubscriptionManager({
     return (
       <Text style={styles.pendingDowngradeText}>
         Skifter til {getPlanName({ productId: pendingProductId })} ved næste fornyelse (
-        {new Date(pendingEffectiveDate).toLocaleDateString('da-DK')})
+        {formatDateDa(pendingEffectiveDate)})
       </Text>
     );
   };
+
+  const appleRenewalSummary = useMemo(
+    () => buildAppleRenewalSummary(subscriptionStatus),
+    [subscriptionStatus],
+  );
+  const showTrialFollowUp =
+    appleRenewalSummary.isTrial &&
+    !!appleRenewalSummary.renewalDate &&
+    !dateStringsEqual(appleRenewalSummary.renewalDate, appleRenewalSummary.primaryDate);
 
   const renderPlanItem = useCallback(
     (item: (typeof products)[number], index: number) => {
@@ -587,23 +680,53 @@ export default function AppleSubscriptionManager({
               <Text style={styles.currentPlanBadgeText}>Aktiv</Text>
             </View>
           </View>
-          {isOrangeBoxExpanded && subscriptionStatus.expiryDate && (
+          {isOrangeBoxExpanded && (
             <View style={styles.orangeBoxExpandedContent}>
               <View style={styles.orangeBoxDivider} />
-              <View style={styles.orangeBoxDetailRow}>
-                <View style={styles.orangeBoxDetailItem}>
-                  <IconSymbol
-                    ios_icon_name="clock"
-                    android_material_icon_name="schedule"
-                    size={20}
-                    color="#fff"
-                  />
-                  <Text style={styles.orangeBoxDetailLabel}>Fornyes</Text>
+              {appleRenewalSummary.primaryDate ? (
+                <View style={styles.orangeBoxDetailRow}>
+                  <View style={styles.orangeBoxDetailItem}>
+                    <IconSymbol
+                      ios_icon_name="calendar"
+                      android_material_icon_name="event"
+                      size={20}
+                      color="#fff"
+                    />
+                    <Text style={styles.orangeBoxDetailLabel}>
+                      {appleRenewalSummary.isTrial ? 'Gratis prøveperiode til' : 'Fornyes'}
+                    </Text>
+                  </View>
+                  <View style={styles.currentPlanDateMeta}>
+                    <Text style={styles.currentPlanDatePrimary}>
+                      {formatDateDa(appleRenewalSummary.primaryDate)}
+                    </Text>
+                    {appleRenewalSummary.daysRemaining !== null && (
+                      <Text style={styles.currentPlanDateSecondary}>
+                        {appleRenewalSummary.isTrial
+                          ? `${appleRenewalSummary.daysRemaining} dage tilbage af prøveperioden`
+                          : `${appleRenewalSummary.daysRemaining} dage tilbage`}
+                      </Text>
+                    )}
+                  </View>
                 </View>
-                <Text style={styles.orangeBoxDetailValue}>
-                  {new Date(subscriptionStatus.expiryDate).toLocaleDateString('da-DK')}
-                </Text>
-              </View>
+              ) : null}
+
+              {showTrialFollowUp ? (
+                <View style={styles.orangeBoxDetailRow}>
+                  <View style={styles.orangeBoxDetailItem}>
+                    <IconSymbol
+                      ios_icon_name="clock"
+                      android_material_icon_name="schedule"
+                      size={20}
+                      color="#fff"
+                    />
+                    <Text style={styles.orangeBoxDetailLabel}>Herefter fornyes</Text>
+                  </View>
+                  <Text style={styles.orangeBoxDetailValue}>
+                    {formatDateDa(appleRenewalSummary.renewalDate)}
+                  </Text>
+                </View>
+              ) : null}
             </View>
           )}
           <View style={styles.expandIndicator}>
@@ -699,6 +822,8 @@ export default function AppleSubscriptionManager({
     subscriptionStatus?.productId,
     textColor,
     textSecondaryColor,
+    appleRenewalSummary,
+    showTrialFollowUp,
   ]);
 
   const renderListFooter = useCallback(() => (
@@ -862,6 +987,19 @@ const styles = StyleSheet.create({
   orangeBoxDetailItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   orangeBoxDetailLabel: { fontSize: 15, color: '#fff', opacity: 0.9 },
   orangeBoxDetailValue: { fontSize: 16, fontWeight: '600', color: '#fff' },
+  currentPlanDateMeta: {
+    alignItems: 'flex-end',
+  },
+  currentPlanDatePrimary: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  currentPlanDateSecondary: {
+    fontSize: 13,
+    color: '#fff',
+    opacity: 0.85,
+  },
   expandIndicator: { alignItems: 'center', marginTop: 12 },
   restoreButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 14, borderRadius: 12, marginBottom: 12 },
   restoreButtonText: { fontWeight: '600', fontSize: 15 },

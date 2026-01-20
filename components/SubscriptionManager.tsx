@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -23,6 +23,72 @@ interface SubscriptionManagerProps {
 
 const PRIVACY_POLICY_URL = 'https://footballcoach.online/privacy';
 const APPLE_STANDARD_EULA_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
+
+type SubscriptionStatusType = ReturnType<typeof useSubscription>['subscriptionStatus'];
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const copenhagenDateFormatter = new Intl.DateTimeFormat('da-DK', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'Europe/Copenhagen',
+});
+const copenhagenDatePartsFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Europe/Copenhagen',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+const toCopenhagenStartOfDayMs = (date: Date) => {
+  const parts = copenhagenDatePartsFormatter.formatToParts(date);
+  const year = Number(parts.find(part => part.type === 'year')?.value);
+  const month = Number(parts.find(part => part.type === 'month')?.value);
+  const day = Number(parts.find(part => part.type === 'day')?.value);
+  return Number.isFinite(year) && Number.isFinite(month) && Number.isFinite(day)
+    ? Date.UTC(year, month - 1, day)
+    : NaN;
+};
+
+const formatDate = (dateString: string | null) => {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return '';
+  return copenhagenDateFormatter.format(date);
+};
+
+const getDaysRemaining = (dateString: string | null) => {
+  if (!dateString) return null;
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return null;
+  const diff = toCopenhagenStartOfDayMs(date) - toCopenhagenStartOfDayMs(new Date());
+  if (Number.isNaN(diff)) return null;
+  return Math.max(0, Math.round(diff / MS_PER_DAY));
+};
+
+const datesEqual = (a?: string | null, b?: string | null) => {
+  if (!a || !b) return false;
+  const aTime = new Date(a).getTime();
+  const bTime = new Date(b).getTime();
+  if (Number.isNaN(aTime) || Number.isNaN(bTime)) {
+    return a.trim() === b.trim();
+  }
+  return aTime === bTime;
+};
+
+const buildRenewalSummary = (status?: SubscriptionStatusType | null) => {
+  const isTrial = status?.status === 'trial';
+  const trialEnd = status?.trialEnd ?? null;
+  const renewalDate = status?.currentPeriodEnd ?? trialEnd ?? null;
+  const primaryDate = isTrial ? trialEnd : renewalDate;
+  return {
+    isTrial,
+    trialEnd,
+    renewalDate,
+    primaryDate,
+    daysRemaining: getDaysRemaining(primaryDate),
+  };
+};
 
 export default function SubscriptionManager({ 
   onPlanSelected, 
@@ -168,92 +234,11 @@ export default function SubscriptionManager({
     }
   };
 
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('da-DK', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    });
-  };
-
-  const getDaysRemaining = (endDate: string | null) => {
-    if (!endDate) return 0;
-    const end = new Date(endDate);
-    const now = new Date();
-    const diff = end.getTime() - now.getTime();
-    return Math.ceil(diff / (1000 * 60 * 60 * 24));
-  };
-
-  const getPlanIcon = (planName: string | null) => {
-    if (!planName) return 'star.fill';
-    
-    const lowerName = planName.toLowerCase();
-    if (lowerName.includes('bronze') || lowerName.includes('basic') || lowerName.includes('spiller')) {
-      return 'star.fill';
-    } else if (lowerName.includes('silver') || lowerName.includes('standard')) {
-      return 'star.leadinghalf.filled';
-    } else if (lowerName.includes('gold') || lowerName.includes('premium')) {
-      return 'star.circle.fill';
-    }
-    return 'star.fill';
-  };
-
-  const getPlanColor = (planName: string | null) => {
-    if (!planName) return '#CD7F32';
-    
-    const lowerName = planName.toLowerCase();
-    if (lowerName.includes('bronze') || lowerName.includes('basic') || lowerName.includes('spiller')) {
-      return '#CD7F32'; // Bronze
-    } else if (lowerName.includes('silver') || lowerName.includes('standard')) {
-      return '#C0C0C0'; // Silver
-    } else if (lowerName.includes('gold') || lowerName.includes('premium')) {
-      return '#FFD700'; // Gold
-    }
-    return colors.primary;
-  };
-
-  // Helper function to check if a plan is the current plan
-  const isCurrentPlanCheck = (planName: string): boolean => {
-    if (isSignupFlow || !subscriptionStatus?.hasSubscription || !subscriptionStatus?.planName) {
-      return false;
-    }
-    
-    // Normalize both strings for comparison (trim whitespace and compare case-insensitively)
-    const normalizedCurrentPlan = subscriptionStatus.planName.trim().toLowerCase();
-    const normalizedPlanName = planName.trim().toLowerCase();
-    
-    const isMatch = normalizedCurrentPlan === normalizedPlanName;
-    
-    console.log('[SubscriptionManager] Plan comparison:', {
-      currentPlan: subscriptionStatus.planName,
-      checkingPlan: planName,
-      normalizedCurrentPlan,
-      normalizedPlanName,
-      isMatch,
-    });
-    
-    return isMatch;
-  };
-
-  const openLegalLink = useCallback(async (url: string) => {
-    try {
-      const supported = await Linking.canOpenURL(url);
-      if (!supported) throw new Error('unsupported');
-      await Linking.openURL(url);
-    } catch {
-      Alert.alert('Kunne ikke åbne link', 'Prøv igen senere.');
-    }
-  }, []);
-
-  const getPlanPriceLabel = useCallback(
-    (plan: { price_amount?: number | null; price_dkk?: number | null; localized_price?: string | null; currency_code?: string | null }) => {
-      const amountOrLabel = plan.price_amount ?? plan.price_dkk ?? plan.localized_price ?? null;
-      return formatPrice(amountOrLabel, (plan.currency_code ?? 'DKK') || 'DKK');
-    },
-    [],
-  );
+  const renewalSummary = useMemo(() => buildRenewalSummary(subscriptionStatus), [subscriptionStatus]);
+  const shouldShowRenewalAfterTrial =
+    renewalSummary.isTrial &&
+    !!renewalSummary.renewalDate &&
+    !datesEqual(renewalSummary.renewalDate, renewalSummary.primaryDate);
 
   if (loading && !isSignupFlow) {
     return (
@@ -309,7 +294,6 @@ export default function SubscriptionManager({
           {isOrangeBoxExpanded && (
             <View style={styles.orangeBoxExpandedContent}>
               <View style={styles.orangeBoxDivider} />
-              
               <View style={styles.orangeBoxDetailRow}>
                 <View style={styles.orangeBoxDetailItem}>
                   <IconSymbol
@@ -325,7 +309,7 @@ export default function SubscriptionManager({
                 </Text>
               </View>
 
-              {subscriptionStatus.status === 'trial' && (
+              {renewalSummary.primaryDate ? (
                 <View style={styles.orangeBoxDetailRow}>
                   <View style={styles.orangeBoxDetailItem}>
                     <IconSymbol
@@ -334,28 +318,41 @@ export default function SubscriptionManager({
                       size={20}
                       color="#fff"
                     />
-                    <Text style={styles.orangeBoxDetailLabel}>Prøveperiode</Text>
+                    <Text style={styles.orangeBoxDetailLabel}>
+                      {renewalSummary.isTrial ? 'Gratis prøveperiode til' : 'Fornyes'}
+                    </Text>
+                  </View>
+                  <View style={styles.orangeBoxDateMeta}>
+                    <Text style={styles.orangeBoxDatePrimary}>
+                      {formatDate(renewalSummary.primaryDate)}
+                    </Text>
+                    {renewalSummary.daysRemaining !== null && (
+                      <Text style={styles.orangeBoxDateSecondary}>
+                        {renewalSummary.isTrial
+                          ? `${renewalSummary.daysRemaining} dage tilbage af prøveperioden`
+                          : `${renewalSummary.daysRemaining} dage tilbage`}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              ) : null}
+
+              {shouldShowRenewalAfterTrial ? (
+                <View style={styles.orangeBoxDetailRow}>
+                  <View style={styles.orangeBoxDetailItem}>
+                    <IconSymbol
+                      ios_icon_name="clock"
+                      android_material_icon_name="schedule"
+                      size={20}
+                      color="#fff"
+                    />
+                    <Text style={styles.orangeBoxDetailLabel}>Herefter fornyes</Text>
                   </View>
                   <Text style={styles.orangeBoxDetailValue}>
-                    {getDaysRemaining(subscriptionStatus.trialEnd)} dage tilbage
+                    {formatDate(renewalSummary.renewalDate)}
                   </Text>
                 </View>
-              )}
-
-              <View style={styles.orangeBoxDetailRow}>
-                <View style={styles.orangeBoxDetailItem}>
-                  <IconSymbol
-                    ios_icon_name="clock"
-                    android_material_icon_name="schedule"
-                    size={20}
-                    color="#fff"
-                  />
-                  <Text style={styles.orangeBoxDetailLabel}>Udløber</Text>
-                </View>
-                <Text style={[styles.orangeBoxDetailValue, { fontSize: 13 }]}>
-                  {formatDate(subscriptionStatus.status === 'trial' ? subscriptionStatus.trialEnd : subscriptionStatus.currentPeriodEnd)}
-                </Text>
-              </View>
+              ) : null}
             </View>
           )}
           
@@ -682,6 +679,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
+  },
+  orangeBoxDateMeta: {
+    alignItems: 'flex-end',
+  },
+  orangeBoxDatePrimary: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  orangeBoxDateSecondary: {
+    fontSize: 13,
+    color: '#fff',
+    opacity: 0.85,
   },
   expandIndicator: {
     alignItems: 'center',
