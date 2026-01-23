@@ -18,7 +18,7 @@ import { colors, getColors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { AssignExerciseModal } from '@/components/AssignExerciseModal';
 import { useUserRole } from '@/hooks/useUserRole';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 
 type Exercise = {
   id: string;
@@ -69,6 +69,7 @@ export default function ExerciseDetailsScreen() {
   const [exercise, setExercise] = useState<Exercise | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [assignModalVisible, setAssignModalVisible] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const load = useCallback(async (id: string) => {
     try {
@@ -173,13 +174,16 @@ export default function ExerciseDetailsScreen() {
   const hasTrophy = typeof exercise?.last_score === 'number' && Number.isFinite(exercise?.last_score);
   const hasVideo = !!exercise?.video_url;
   const assignModalExercise = useMemo(() => (exercise ? { id: exercise.id, title: exercise.title } : null), [exercise]);
-  const canShowAssignButton = useMemo(() => {
+  const canManageExercise = useMemo(() => {
     if (!exercise || !currentUserId) return false;
-    if (!isTrainerUser) return false;
     if (exercise.is_system) return false;
     if (!exercise.trainer_id) return false;
     return exercise.trainer_id === currentUserId;
-  }, [exercise, currentUserId, isTrainerUser]);
+  }, [exercise, currentUserId]);
+  const canShowAssignButton = useMemo(() => {
+    if (!isTrainerUser) return false;
+    return canManageExercise;
+  }, [canManageExercise, isTrainerUser]);
   const handleOpenAssignModal = useCallback(() => {
     setAssignModalVisible(true);
   }, []);
@@ -191,6 +195,43 @@ export default function ExerciseDetailsScreen() {
       load(exerciseId);
     }
   }, [exerciseId, load]);
+
+  const handleEditExercise = useCallback(() => {
+    if (!exercise || !canManageExercise) return;
+    router.push({ pathname: '/create-exercise', params: { exerciseId: exercise.id, mode: 'edit' } } as any);
+  }, [exercise, canManageExercise, router]);
+
+  const executeDeleteExercise = useCallback(async () => {
+    if (!exercise || !currentUserId) return;
+    if (isDeleting) return;
+    setIsDeleting(true);
+    try {
+      const { error } = await supabase
+        .from('exercise_library')
+        .delete()
+        .eq('id', exercise.id)
+        .eq('trainer_id', currentUserId);
+      if (error) throw error;
+      router.back();
+    } catch (err: any) {
+      Alert.alert('Fejl', err?.message || 'Kunne ikke slette øvelsen.');
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [exercise, currentUserId, isDeleting, router]);
+
+  const handleDeleteExercise = useCallback(() => {
+    if (!exercise || !canManageExercise) return;
+    Alert.alert(
+      'Slet øvelse',
+      `Er du sikker på at du vil slette "${exercise.title}"?`,
+      [
+        { text: 'Annuller', style: 'cancel' },
+        { text: 'Slet', style: 'destructive', onPress: executeDeleteExercise },
+      ],
+      { cancelable: true }
+    );
+  }, [canManageExercise, executeDeleteExercise, exercise]);
 
   // --- JSX render ---
   return (
@@ -322,6 +363,33 @@ export default function ExerciseDetailsScreen() {
                       <Text style={styles.assignButtonText}>Tildel</Text>
                     </TouchableOpacity>
                   ) : null}
+
+                  {canManageExercise ? (
+                    <View style={styles.manageRow}>
+                      <TouchableOpacity
+                        onPress={handleEditExercise}
+                        activeOpacity={0.85}
+                        disabled={isDeleting}
+                        style={[styles.manageButton, { backgroundColor: theme.highlight }]}
+                      >
+                        <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={16} color={theme.text} />
+                        <Text style={[styles.manageButtonText, { color: theme.text }]}>Rediger</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={handleDeleteExercise}
+                        activeOpacity={0.85}
+                        disabled={isDeleting}
+                        style={[styles.manageButton, { backgroundColor: 'rgba(255,59,48,0.12)' }]}
+                      >
+                        {isDeleting ? (
+                          <ActivityIndicator size="small" color={colors.error} />
+                        ) : (
+                          <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={16} color={colors.error} />
+                        )}
+                        <Text style={[styles.manageButtonText, { color: colors.error }]}>{isDeleting ? 'Sletter...' : 'Slet'}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
                 </View>
 
                 <View style={{ height: 24 }} />
@@ -425,6 +493,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   assignButtonText: { color: '#fff', fontSize: 15, fontWeight: '900' },
+  manageRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+  manageButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 14,
+    paddingVertical: 10,
+  },
+  manageButtonText: { fontSize: 13, fontWeight: '800' },
 
   thumbSkeleton: { width: '100%', height: 210, borderRadius: 16 },
   lineSkeleton: { height: 14, borderRadius: 8 },
