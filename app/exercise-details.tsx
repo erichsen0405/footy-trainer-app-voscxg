@@ -16,6 +16,8 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 
 import { colors, getColors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
+import { AssignExerciseModal } from '@/components/AssignExerciseModal';
+import { useUserRole } from '@/hooks/useUserRole';
 import { supabase } from '@/app/integrations/supabase/client';
 
 type Exercise = {
@@ -31,6 +33,8 @@ type Exercise = {
   updated_at: string | null;
   last_score?: number | null;
   execution_count?: number | null;
+  trainer_id: string | null;
+  is_system: boolean | null;
 };
 
 const clampDifficulty = (value: any): number => {
@@ -49,6 +53,10 @@ export default function ExerciseDetailsScreen() {
   const router = useRouter();
   const theme = getColors(useColorScheme() === 'dark');
   const params = useLocalSearchParams();
+  const roleInfo = useUserRole() as any;
+  const roleRaw = roleInfo?.userRole ?? roleInfo?.role ?? null;
+  const roleStr = typeof roleRaw === 'string' ? roleRaw.toLowerCase() : '';
+  const isTrainerUser = Boolean(roleInfo?.isTrainer || roleStr.includes('trainer') || roleStr.includes('coach'));
 
   const exerciseId = useMemo(() => {
     const raw = (params as any)?.exerciseId;
@@ -59,6 +67,8 @@ export default function ExerciseDetailsScreen() {
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [exercise, setExercise] = useState<Exercise | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [assignModalVisible, setAssignModalVisible] = useState(false);
 
   const load = useCallback(async (id: string) => {
     try {
@@ -103,6 +113,8 @@ export default function ExerciseDetailsScreen() {
             : (data as any)?.execution_count != null
             ? Number((data as any).execution_count)
             : null,
+        trainer_id: (data as any)?.trainer_id ? String((data as any).trainer_id) : null,
+        is_system: typeof (data as any)?.is_system === 'boolean' ? (data as any).is_system : !!(data as any)?.is_system,
       };
 
       setExercise(normalized);
@@ -117,6 +129,18 @@ export default function ExerciseDetailsScreen() {
     if (!exerciseId) return;
     load(exerciseId);
   }, [exerciseId, load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.auth.getUser();
+      if (cancelled) return;
+      setCurrentUserId(data?.user?.id ?? null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleBack = useCallback(() => {
     router.back();
@@ -148,6 +172,25 @@ export default function ExerciseDetailsScreen() {
 
   const hasTrophy = typeof exercise?.last_score === 'number' && Number.isFinite(exercise?.last_score);
   const hasVideo = !!exercise?.video_url;
+  const assignModalExercise = useMemo(() => (exercise ? { id: exercise.id, title: exercise.title } : null), [exercise]);
+  const canShowAssignButton = useMemo(() => {
+    if (!exercise || !currentUserId) return false;
+    if (!isTrainerUser) return false;
+    if (exercise.is_system) return false;
+    if (!exercise.trainer_id) return false;
+    return exercise.trainer_id === currentUserId;
+  }, [exercise, currentUserId, isTrainerUser]);
+  const handleOpenAssignModal = useCallback(() => {
+    setAssignModalVisible(true);
+  }, []);
+  const handleCloseAssignModal = useCallback(() => {
+    setAssignModalVisible(false);
+  }, []);
+  const handleAssignSuccess = useCallback(() => {
+    if (exerciseId) {
+      load(exerciseId);
+    }
+  }, [exerciseId, load]);
 
   // --- JSX render ---
   return (
@@ -269,6 +312,16 @@ export default function ExerciseDetailsScreen() {
                   ) : (
                     <Text style={[styles.descriptionMuted, { color: theme.textSecondary }]}>Ingen beskrivelse endnu.</Text>
                   )}
+
+                  {canShowAssignButton ? (
+                    <TouchableOpacity
+                      onPress={handleOpenAssignModal}
+                      activeOpacity={0.9}
+                      style={[styles.assignButton, { backgroundColor: colors.success }]}
+                    >
+                      <Text style={styles.assignButtonText}>Tildel</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
 
                 <View style={{ height: 24 }} />
@@ -279,6 +332,13 @@ export default function ExerciseDetailsScreen() {
           </ScrollView>
         </View>
       )}
+      <AssignExerciseModal
+        visible={assignModalVisible}
+        exercise={assignModalExercise}
+        trainerId={currentUserId}
+        onClose={handleCloseAssignModal}
+        onSuccess={handleAssignSuccess}
+      />
     </>
   );
 }
@@ -357,6 +417,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   primaryButtonText: { color: '#fff', fontSize: 14, fontWeight: '900' },
+
+  assignButton: {
+    marginTop: 18,
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  assignButtonText: { color: '#fff', fontSize: 15, fontWeight: '900' },
 
   thumbSkeleton: { width: '100%', height: 210, borderRadius: 16 },
   lineSkeleton: { height: 14, borderRadius: 8 },
