@@ -2,6 +2,8 @@ import React, { createContext, useContext, ReactNode, useMemo } from 'react';
 import { useFootballData } from '@/hooks/useFootballData';
 import { Activity, ActivityCategory, Task, Trophy, ExternalCalendar } from '@/types';
 
+type AddTaskOptions = { skipRefresh?: boolean; sourceFolder?: string | null };
+
 interface FootballContextType {
   categories: ActivityCategory[];
   tasks: Task[];
@@ -58,7 +60,7 @@ interface FootballContextType {
   deleteActivitySingle: (activityId: string) => Promise<void>;
   deleteActivitySeries: (seriesId: string) => Promise<void>;
   duplicateActivity: (id: string) => void;
-  addTask: (task: Omit<Task, 'id'>) => Promise<void>;
+  addTask: (task: Omit<Task, 'id'>, options?: AddTaskOptions) => Promise<Task>;
   updateTask: (id: string, updates: Partial<Task>) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
   duplicateTask: (id: string) => Promise<void>;
