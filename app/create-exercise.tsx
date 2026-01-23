@@ -12,7 +12,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 
 import { colors, getColors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -40,6 +40,23 @@ export default function CreateExerciseScreen() {
   const { subscriptionTier } = useSubscriptionFeatures();
   const isTrainerByTier = subscriptionTier?.startsWith('trainer') ?? false;
   const canCreate = isAdmin || isTrainerLike || isTrainerByTier;
+  const params = useLocalSearchParams();
+  const exerciseId = useMemo(() => {
+    const raw = (params as any)?.exerciseId;
+    if (raw == null) return null;
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    const trimmed = String(value ?? '').trim();
+    return trimmed.length ? trimmed : null;
+  }, [params]);
+  const modeParam = useMemo(() => {
+    const raw = (params as any)?.mode;
+    if (raw == null) return null;
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    const trimmed = String(value ?? '').trim().toLowerCase();
+    return trimmed.length ? trimmed : null;
+  }, [params]);
+  const isEditMode = useMemo(() => Boolean(exerciseId && (!modeParam || modeParam === 'edit')), [exerciseId, modeParam]);
+  const screenTitle = isEditMode ? 'Rediger øvelse' : 'Opret øvelse';
 
   const [userId, setUserId] = useState<string | null>(null);
   const [fetchingUser, setFetchingUser] = useState(true);
@@ -52,6 +69,8 @@ export default function CreateExerciseScreen() {
 
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [loadingExercise, setLoadingExercise] = useState(false);
+  const [editLockMessage, setEditLockMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,6 +96,62 @@ export default function CreateExerciseScreen() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!exerciseId) {
+      setLoadingExercise(false);
+      setEditLockMessage(null);
+      return;
+    }
+    if (!userId || fetchingUser) return;
+    let cancelled = false;
+    setLoadingExercise(true);
+    setEditLockMessage(null);
+    setErrorMessage(null);
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('exercise_library')
+          .select('*')
+          .eq('id', exerciseId)
+          .maybeSingle();
+        if (cancelled) return;
+        if (error) throw error;
+        if (!data) throw new Error('Øvelsen blev ikke fundet.');
+
+        const trainerId = (data as any)?.trainer_id ? String((data as any).trainer_id) : null;
+        const isSystem = Boolean((data as any)?.is_system);
+
+        if (isSystem || trainerId !== userId) {
+          Alert.alert('Ingen adgang', 'Du kan ikke redigere denne øvelse.');
+          setEditLockMessage('Du kan ikke redigere denne øvelse.');
+          setErrorMessage('Du kan ikke redigere denne øvelse.');
+          return;
+        }
+
+        setTitle(String((data as any)?.title ?? ''));
+        setDescription((data as any)?.description ?? '');
+        setVideoUrl((data as any)?.video_url ?? '');
+        setCategoryPath((data as any)?.category_path ?? '');
+        const rawDifficulty = typeof (data as any)?.difficulty === 'number' ? (data as any).difficulty : Number((data as any)?.difficulty);
+        const normalizedDifficulty = Number.isFinite(rawDifficulty) ? Number(rawDifficulty) : 3;
+        setDifficulty(clampDifficulty(normalizedDifficulty));
+      } catch (err: any) {
+        if (!cancelled) {
+          const message = err?.message ?? 'Kunne ikke hente øvelsen.';
+          setErrorMessage(message);
+          setEditLockMessage(message);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingExercise(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [exerciseId, fetchingUser, userId]);
+
   const handleBack = useCallback(() => {
     router.back();
   }, [router]);
@@ -85,7 +160,8 @@ export default function CreateExerciseScreen() {
     setDifficulty(prev => clampDifficulty(prev + delta));
   }, []);
 
-  const canSave = canCreate && !saving && title.trim().length > 0;
+  const trimmedTitle = title.trim();
+  const canSave = canCreate && !saving && !loadingExercise && !editLockMessage && trimmedTitle.length > 0;
 
   const handleSave = useCallback(async () => {
     if (!canCreate) {
@@ -93,48 +169,74 @@ export default function CreateExerciseScreen() {
       return;
     }
     if (!userId) {
-      Alert.alert('Ingen bruger', 'Du skal være logget ind for at oprette en øvelse.');
+      Alert.alert('Ingen bruger', 'Du skal være logget ind for at oprette eller redigere en øvelse.');
       return;
     }
-
-    const trimmedTitle = title.trim();
+    if (loadingExercise) return;
+    if (editLockMessage) {
+      Alert.alert('Kan ikke gemme', editLockMessage);
+      return;
+    }
     if (!trimmedTitle) {
       setErrorMessage('Tilføj en titel til øvelsen.');
       return;
     }
 
-    // canCreate already enforces trainer/admin access
-
     setSaving(true);
     setErrorMessage(null);
 
+    const normalizedDescription = description.trim();
+    const normalizedVideo = videoUrl.trim();
+    const normalizedCategory = categoryPath.trim();
+
+    const payload = {
+      title: trimmedTitle,
+      description: normalizedDescription ? normalizedDescription : null,
+      video_url: normalizedVideo ? normalizedVideo : null,
+      category_path: normalizedCategory ? normalizedCategory : null,
+      difficulty,
+    };
+
     try {
-      const payload = {
-        title: trimmedTitle,
-        trainer_id: userId,
-        description: description.trim() ? description.trim() : null,
-        video_url: videoUrl.trim() ? videoUrl.trim() : null,
-        category_path: categoryPath.trim() ? categoryPath.trim() : null,
-        difficulty,
-        is_system: false,
-      };
-
-      const { data, error } = await supabase.from('exercise_library').insert(payload).select('id').single();
-
-      if (error) throw error;
-
-      const newId = data?.id ? String(data.id) : null;
-      if (newId) {
-        router.replace({ pathname: '/exercise-details', params: { exerciseId: newId } } as any);
+      if (isEditMode && exerciseId) {
+        const { error } = await supabase
+          .from('exercise_library')
+          .update(payload)
+          .eq('id', exerciseId)
+          .eq('trainer_id', userId);
+        if (error) throw error;
+        router.replace({ pathname: '/exercise-details', params: { exerciseId } } as any);
       } else {
-        router.back();
+        const insertPayload = { ...payload, trainer_id: userId, is_system: false };
+        const { data, error } = await supabase.from('exercise_library').insert(insertPayload).select('id').single();
+        if (error) throw error;
+        const newId = data?.id ? String(data.id) : null;
+        if (newId) {
+          router.replace({ pathname: '/exercise-details', params: { exerciseId: newId } } as any);
+        } else {
+          router.back();
+        }
       }
     } catch (err: any) {
-      setErrorMessage(err?.message || 'Kunne ikke oprette øvelse.');
+      const fallbackMessage = isEditMode ? 'Kunne ikke opdatere øvelsen.' : 'Kunne ikke oprette øvelse.';
+      setErrorMessage(err?.message || fallbackMessage);
     } finally {
       setSaving(false);
     }
-  }, [canCreate, userId, categoryPath, description, difficulty, router, title, videoUrl, saving]);
+  }, [
+    canCreate,
+    categoryPath,
+    description,
+    difficulty,
+    editLockMessage,
+    exerciseId,
+    isEditMode,
+    loadingExercise,
+    router,
+    trimmedTitle,
+    userId,
+    videoUrl,
+  ]);
 
   const renderStars = useMemo(
     () => (
@@ -243,7 +345,7 @@ export default function CreateExerciseScreen() {
     </ScrollView>
   );
 
-  const screenHeader = <Stack.Screen options={{ headerShown: false, title: 'Opret øvelse' }} />;
+  const screenHeader = <Stack.Screen options={{ headerShown: false, title: screenTitle }} />;
 
   if (roleLoading || fetchingUser) {
     return (
@@ -281,7 +383,7 @@ export default function CreateExerciseScreen() {
           <TouchableOpacity onPress={handleBack} activeOpacity={0.8} style={styles.iconButton}>
             <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="chevron_left" size={22} color={theme.text} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: theme.text }]}>Opret øvelse</Text>
+          <Text style={[styles.title, { color: theme.text }]}>{screenTitle}</Text>
           <TouchableOpacity
             onPress={handleSave}
             activeOpacity={0.9}
@@ -294,6 +396,13 @@ export default function CreateExerciseScreen() {
 
         {errorMessage ? (
           <Text style={[styles.errorText, { color: theme.error }]}>{errorMessage}</Text>
+        ) : null}
+
+        {isEditMode && loadingExercise ? (
+          <View style={[styles.stateCard, { backgroundColor: theme.card }]}>
+            <ActivityIndicator color={theme.primary} />
+            <Text style={[styles.stateMessage, { color: theme.textSecondary, marginTop: 10 }]}>Henter øvelse...</Text>
+          </View>
         ) : null}
 
         {renderForm()}
