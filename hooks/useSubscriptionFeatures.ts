@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Platform } from 'react-native';
 import { useAppleIAP, PRODUCT_IDS } from '@/contexts/AppleIAPContext';
+import { useSubscription } from '@/contexts/SubscriptionContext';
+import type { SubscriptionTier } from '@/services/entitlementsSync';
 import { supabase } from '@/integrations/supabase/client';
 
 interface SubscriptionFeatures {
@@ -13,13 +15,6 @@ interface SubscriptionFeatures {
   isPlayerBasic: boolean;
   featureAccess: FeatureAccess;
 }
-
-type SubscriptionTier =
-  | 'player_basic'
-  | 'player_premium'
-  | 'trainer_basic'
-  | 'trainer_standard'
-  | 'trainer_premium';
 
 type FeatureAccess = {
   library: boolean;
@@ -85,6 +80,7 @@ export function useSubscriptionFeatures(): SubscriptionFeatures {
     entitlements,
     iapUnavailableReason,
   } = useAppleIAP();
+  const { entitlementVersion } = useSubscription();
 
   const [profileData, setProfileData] = useState<{ subscription_tier?: string | null; subscription_product_id?: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -101,11 +97,24 @@ export function useSubscriptionFeatures(): SubscriptionFeatures {
         .from('profiles')
         .select('subscription_tier, subscription_product_id')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
 
       if (error) {
+        if (error.code === 'PGRST116') {
+          if (__DEV__) {
+            console.log('[useSubscriptionFeatures] No profile row yet for user – treating as empty');
+          }
+          setProfileData(null);
+          return;
+        }
         console.error('[useSubscriptionFeatures] Error fetching profile:', error);
         return;
+      }
+      if (__DEV__) {
+        console.log('[useSubscriptionFeatures] Profile snapshot fetched', {
+          subscription_tier: data?.subscription_tier ?? null,
+          subscription_product_id: data?.subscription_product_id ?? null,
+        });
       }
       setProfileData(data ?? null);
     } catch (error) {
@@ -117,7 +126,7 @@ export function useSubscriptionFeatures(): SubscriptionFeatures {
 
   useEffect(() => {
     fetchProfileData();
-  }, [fetchProfileData]);
+  }, [fetchProfileData, entitlementVersion]);
 
   // Refetch profile when StoreKit sku changes or entitlements change (so UI catches up after purchase)
   useEffect(() => {
@@ -184,6 +193,16 @@ export function useSubscriptionFeatures(): SubscriptionFeatures {
   const canAddMorePlayers = (currentPlayerCount: number): boolean => {
     return hasActiveSubscription && currentPlayerCount < maxPlayers;
   };
+
+  useEffect(() => {
+    if (!__DEV__) return;
+    console.log('[useSubscriptionFeatures] Derived feature access', {
+      subscriptionTier,
+      hasActiveSubscription,
+      featureAccess,
+      isCreatorCandidate: subscriptionTier?.startsWith('trainer') ?? false,
+    });
+  }, [subscriptionTier, hasActiveSubscription, featureAccess]);
 
   return {
     hasActiveSubscription,

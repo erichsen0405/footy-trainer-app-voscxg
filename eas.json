@@ -3,6 +3,9 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "env": {
+        "APP_VARIANT": "dev"
+      },
       "autoIncrement": true
     },
     "preview": {

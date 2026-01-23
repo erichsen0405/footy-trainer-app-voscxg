@@ -21,7 +21,6 @@ import { supabase } from '@/integrations/supabase/client';
 import ExternalCalendarManager from '@/components/ExternalCalendarManager';
 import SubscriptionManager from '@/components/SubscriptionManager';
 import AppleSubscriptionManager from '@/components/AppleSubscriptionManager';
-import CreatePlayerModal from '@/components/CreatePlayerModal';
 import PlayersList from '@/components/PlayersList';
 import TeamManagement from '@/components/TeamManagement';
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -31,6 +30,7 @@ import { deleteAllExternalActivities } from '@/utils/deleteExternalActivities';
 import { useSubscriptionFeatures } from '@/hooks/useSubscriptionFeatures';
 import { PRODUCT_IDS } from '@/contexts/AppleIAPContext';
 import { forceUserRoleRefresh } from '@/hooks/useUserRole';
+import Constants from 'expo-constants';
 
 // Conditionally import GlassView only on native platforms
 let GlassView: any = View;
@@ -73,6 +73,143 @@ const normalizeUpgradeTarget = (value: string | string[] | undefined): UpgradeTa
 const DELETE_ACCOUNT_CONFIRMATION_PHRASE = 'SLET';
 const ACCOUNT_DELETION_REVIEW_PATH = 'Profil -> Indstillinger -> Konto -> Slet konto';
 
+const extra =
+  (Constants.expoConfig?.extra as any) ??
+  ((Constants as any).manifest?.extra as any) ??
+  ((Constants as any).manifest2?.extra as any) ??
+  {};
+
+const authRedirectScheme: string =
+  extra?.authRedirectScheme ??
+  (Array.isArray(Constants.expoConfig?.scheme)
+    ? (Constants.expoConfig?.scheme?.[0] as string | undefined)
+    : (Constants.expoConfig?.scheme as string | undefined)) ??
+  'footballcoach';
+const authRedirectUrl = `${authRedirectScheme}://auth-callback`;
+
+const styles = StyleSheet.create({
+  safeArea: { flex: 1 },
+  container: { flex: 1 },
+  contentContainer: { paddingHorizontal: 16, paddingBottom: 120 },
+  title: { fontSize: 28, fontWeight: '800', textAlign: 'center', marginBottom: 8 },
+  subtitle: { fontSize: 16, textAlign: 'center', lineHeight: 22 },
+  onboardingCard: { borderRadius: 20, padding: 20, marginTop: 24, gap: 16 },
+  onboardingTitle: { fontSize: 20, fontWeight: '800', textAlign: 'center' },
+  onboardingDescription: { fontSize: 14, lineHeight: 20, textAlign: 'center' },
+  roleCard: { borderRadius: 18, padding: 18, marginTop: 12, alignItems: 'center', gap: 8 },
+  roleTitle: { fontSize: 18, fontWeight: '700', textAlign: 'center' },
+  roleDescription: { fontSize: 14, lineHeight: 20, textAlign: 'center' },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: { marginTop: 12, fontSize: 14, fontWeight: '600' },
+  subscriptionCard: { borderRadius: 20, padding: 20, marginTop: 24 },
+  profileHeader: { borderRadius: 24, padding: 24, marginHorizontal: 16, marginTop: 16, alignItems: 'center' },
+  avatarContainer: { position: 'relative', marginBottom: 16 },
+  avatar: { width: 96, height: 96, borderRadius: 48, alignItems: 'center', justifyContent: 'center' },
+  subscriptionBadge: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: '#fff',
+  },
+  name: { fontSize: 24, fontWeight: '800', textAlign: 'center' },
+  email: { fontSize: 14, textAlign: 'center' },
+  badgesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginTop: 12 },
+  planBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  planBadgeText: { fontSize: 12, fontWeight: '700', color: '#fff' },
+  section: { borderRadius: 20, padding: 20, marginHorizontal: 16, marginTop: 16 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+  sectionTitle: { fontSize: 18, fontWeight: '800' },
+  editForm: { gap: 12 },
+  label: { fontSize: 14, fontWeight: '600' },
+  input: { borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16 },
+  editButtons: { flexDirection: 'row', gap: 12 },
+  button: { flex: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
+  buttonText: { fontSize: 15, fontWeight: '600' },
+  profileInfo: { gap: 12, marginTop: 8 },
+  infoRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  infoText: { fontSize: 15, fontWeight: '600' },
+  emptyText: { fontSize: 14, fontStyle: 'italic' },
+  collapsibleHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  sectionTitleContainer: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  sectionDescription: { fontSize: 14, lineHeight: 20, marginTop: 12 },
+  deleteExternalButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 14,
+    marginTop: 16,
+  },
+  deleteExternalButtonText: { fontSize: 14, fontWeight: '700' },
+  loadingContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  settingsCard: { borderRadius: 20, padding: 20, marginHorizontal: 16, marginTop: 16 },
+  settingsGroup: { gap: 12, marginTop: 12 },
+  settingsGroupTitle: { fontSize: 13, fontWeight: '700', textTransform: 'uppercase' },
+  settingsRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: 14 },
+  settingsRowContent: { flex: 1 },
+  settingsRowTitle: { fontSize: 16, fontWeight: '700' },
+  settingsRowSubtitle: { fontSize: 13, lineHeight: 18 },
+  signOutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    marginHorizontal: 16,
+    marginVertical: 24,
+    borderRadius: 16,
+    paddingVertical: 16,
+  },
+  signOutButtonText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  authCard: { borderRadius: 24, padding: 24, marginHorizontal: 16, marginTop: 24 },
+  successMessage: { borderRadius: 20, padding: 24, alignItems: 'center', gap: 12 },
+  successTitle: { fontSize: 22, fontWeight: '800', textAlign: 'center' },
+  successText: { fontSize: 15, lineHeight: 22, textAlign: 'center' },
+  authToggle: { flexDirection: 'row', gap: 12, marginBottom: 24 },
+  authToggleButton: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', borderWidth: 1 },
+  authToggleButtonActive: { borderWidth: 0 },
+  authToggleText: { fontSize: 16, fontWeight: '600' },
+  authToggleTextActive: { color: '#fff' },
+  form: { gap: 12 },
+  authButton: { borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 12 },
+  authButtonText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  infoBox: { flexDirection: 'row', gap: 12, padding: 16, borderRadius: 16 },
+  infoTextContainer: { flex: 1 },
+  infoTitle: { fontSize: 16, fontWeight: '700', marginBottom: 6 },
+  infoBoxText: { fontSize: 14, lineHeight: 20 },
+  deleteModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  deleteModalCard: { width: '100%', borderRadius: 20, padding: 24, gap: 16 },
+  deleteModalTitle: { fontSize: 20, fontWeight: '800', textAlign: 'center' },
+  deleteModalDescription: { fontSize: 14, lineHeight: 20, textAlign: 'center' },
+  deleteModalInput: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, textAlign: 'center' },
+  deleteModalError: { fontSize: 13, fontWeight: '600', color: '#ff3b30', textAlign: 'center' },
+  deleteModalActions: { flexDirection: 'row', gap: 12 },
+  deleteModalButton: { flex: 1, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  deleteModalCancel: { borderWidth: 1 },
+  paywallContainer: { flex: 1 },
+  paywallContent: { flex: 1, paddingHorizontal: 20, paddingBottom: 24 },
+  paywallHeader: { flexDirection: 'row', justifyContent: 'flex-end', paddingVertical: 16 },
+  paywallCloseButton: { padding: 8 },
+  paywallTitle: { fontSize: 28, fontWeight: '800', textAlign: 'center', marginBottom: 8 },
+  paywallSubtitle: { fontSize: 16, lineHeight: 22, textAlign: 'center', marginBottom: 24 },
+  paywallBody: { flex: 1 },
+});
+
 export default function ProfileScreen() {
   const [user, setUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<'admin' | 'trainer' | 'player' | null>(null);
@@ -83,6 +220,8 @@ export default function ProfileScreen() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [showPaywallModal, setShowPaywallModal] = useState(false);
+  const [paywallProcessing, setPaywallProcessing] = useState(false);
 
   // New onboarding flow states
   const [needsRoleSelection, setNeedsRoleSelection] = useState(false);
@@ -104,6 +243,7 @@ export default function ProfileScreen() {
   const params = useLocalSearchParams<{ upgradeTarget?: string }>();
   const routeUpgradeTarget = normalizeUpgradeTarget(params.upgradeTarget);
   const [manualUpgradeTarget, setManualUpgradeTarget] = useState<UpgradeTarget | null>(null);
+  const hasAutoOpenedUpgradeTargetRef = useRef<UpgradeTarget | null>(null);
 
   // Delete external activities state
   const [isDeletingExternalActivities, setIsDeletingExternalActivities] = useState(false);
@@ -154,6 +294,17 @@ export default function ProfileScreen() {
     },
     [scrollToSubscription]
   );
+
+  const closePaywallModal = useCallback(() => {
+    setShowPaywallModal(false);
+    setPaywallProcessing(false);
+  }, []);
+
+  const openPaywallModal = useCallback((target?: UpgradeTarget) => {
+    if (target) setManualUpgradeTarget(target);
+    setShowPaywallModal(true);
+    setPaywallProcessing(false);
+  }, []);
 
   const fetchUserProfile = async (userId: string) => {
     try {
@@ -351,6 +502,15 @@ export default function ProfileScreen() {
     return () => clearTimeout(timer);
   }, [shouldHighlightPremiumPlan, subscriptionSectionY, scrollToSubscription]);
 
+  useEffect(() => {
+    if (!user) return;
+    if (needsRoleSelection || needsSubscription) return;
+    if (!effectiveUpgradeTarget) return;
+    if (hasAutoOpenedUpgradeTargetRef.current === effectiveUpgradeTarget) return;
+    hasAutoOpenedUpgradeTargetRef.current = effectiveUpgradeTarget;
+    openPaywallModal(effectiveUpgradeTarget);
+  }, [user, needsRoleSelection, needsSubscription, effectiveUpgradeTarget, openPaywallModal]);
+
   const handleSaveProfile = async () => {
     if (!user) {
       setLoading(false);
@@ -430,7 +590,7 @@ export default function ProfileScreen() {
         email,
         password,
         options: {
-          emailRedirectTo: 'natively://auth-callback',
+          emailRedirectTo: authRedirectUrl,
         },
       });
 
@@ -468,7 +628,7 @@ export default function ProfileScreen() {
       if (data.session) {
         // User is logged in immediately - show success and they'll be prompted for role
         Alert.alert(
-          'Velkommen! 🎉',
+          'Velkommen!',
           `Din konto er oprettet og du er nu logget ind!\n\nVi har sendt en bekræftelsesmail til ${email}. Bekræft venligst din email når du får tid.\n\nNu skal du vælge din rolle for at fortsætte.`,
           [{ text: 'OK' }]
         );
@@ -482,8 +642,8 @@ export default function ProfileScreen() {
         }, 5000);
 
         Alert.alert(
-          'Bekræft din email ✉️',
-          `Din konto er oprettet!\n\nVi har sendt en bekræftelsesmail til ${email}.\n\nTjek venligst din indbakke og klik på linket for at bekræfte din email. Derefter kan du logge ind.\n\n⚠️ Bemærk: Tjek også din spam-mappe hvis du ikke kan finde emailen.`,
+          'Bekræft din email',
+          `Din konto er oprettet!\n\nVi har sendt en bekræftelsesmail til ${email}.\n\nTjek venligst din indbakke og klik på linket for at bekræfte din email. Derefter kan du logge ind.\n\nBemærk: Tjek også din spam-mappe hvis du ikke kan finde emailen.`,
           [{ text: 'OK' }]
         );
       }
@@ -539,7 +699,7 @@ export default function ProfileScreen() {
       }
 
       if (data.session) {
-        Alert.alert('Succes! 🎉', 'Du er nu logget ind!');
+        Alert.alert('Succes!', 'Du er nu logget ind!');
         setEmail('');
         setPassword('');
       }
@@ -592,7 +752,9 @@ export default function ProfileScreen() {
         );
       } else {
         // Player doesn't need subscription
-        Alert.alert('Velkommen! 🎉', 'Din konto er nu klar til brug!', [{ text: 'OK' }]);
+        Alert.alert('Velkommen!',
+          'Din konto er nu klar til brug!',
+          [{ text: 'OK' }]);
       }
     } catch (error: any) {
       if (__DEV__) {
@@ -618,7 +780,7 @@ export default function ProfileScreen() {
       if (result.success) {
         setNeedsSubscription(false);
         Alert.alert(
-          'Velkommen! 🎉',
+          'Velkommen!',
           'Dit abonnement er aktiveret med 14 dages gratis prøveperiode. Du kan nu oprette spillere og hold!',
           [{ text: 'OK' }]
         );
@@ -668,7 +830,7 @@ export default function ProfileScreen() {
 
     Alert.alert(
       'Slet alle eksterne aktiviteter',
-      'Er du sikker på at du vil slette ALLE dine eksterne aktiviteter?\n\nDette vil slette alle aktiviteter importeret fra eksterne kalendere. Aktiviteterne vil blive importeret igen ved næste synkronisering, medmindre du fjerner kalenderne fra din profil.\n\n⚠️ Denne handling kan ikke fortrydes!',
+      'Er du sikker på at du vil slette ALLE dine eksterne aktiviteter?\n\nDette vil slette alle aktiviteter importeret fra eksterne kalendere. Aktiviteterne vil blive importeret igen ved næste synkronisering, medmindre du fjerner kalenderne fra din profil.\n\nBemærk: Denne handling kan ikke fortrydes!',
       [
         { text: 'Annuller', style: 'cancel' },
         {
@@ -847,6 +1009,9 @@ export default function ProfileScreen() {
   // Platform-specific container
   const ContainerWrapper = Platform.OS === 'ios' ? SafeAreaView : View;
   const containerEdges = Platform.OS === 'ios' ? (['top'] as const) : undefined;
+  const PaywallWrapper = Platform.OS === 'ios' ? SafeAreaView : View;
+  const paywallEdges = Platform.OS === 'ios' ? (['top', 'bottom'] as const) : undefined;
+  const paywallWrapperProps = Platform.OS === 'ios' ? { edges: paywallEdges } : {};
 
   // Show role selection if user is logged in but has no role
   if (user && needsRoleSelection) {
@@ -869,7 +1034,7 @@ export default function ProfileScreen() {
                   style={[styles.onboardingCard, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]}
                   {...cardWrapperProps}
                 >
-                  <Text style={[styles.onboardingTitle, { color: textColor }]}>Velkommen til din nye konto! 🎉</Text>
+                  <Text style={[styles.onboardingTitle, { color: textColor }]}>Velkommen til din nye konto! </Text>
                   <Text style={[styles.onboardingDescription, { color: textSecondaryColor }]}>
                     For at komme i gang skal du vælge din rolle. Dette hjælper os med at tilpasse oplevelsen til dig.
                   </Text>
@@ -1129,7 +1294,7 @@ export default function ProfileScreen() {
                 <PremiumFeatureGate
                   title="Tilslut din træner med Premium"
                   description="Opgrader for at give din træner adgang til dine aktiviteter og opgaver."
-                  onPress={() => handleOpenSubscriptionSection('trainerLinking')}
+                  onPress={() => openPaywallModal('trainerLinking')}
                   icon={{ ios: 'person.2.circle', android: 'groups' }}
                   align="left"
                 />
@@ -1137,15 +1302,26 @@ export default function ProfileScreen() {
             ))}
 
           {canManagePlayers && (
-            <ManagePlayersSection
-              CardWrapperComponent={CardWrapper}
-              cardWrapperProps={cardWrapperProps}
-              cardBgColor={cardBgColor}
-              nestedCardBgColor={nestedCardBgColor}
-              textColor={textColor}
-              textSecondaryColor={textSecondaryColor}
-              subscriptionStatus={subscriptionStatus}
-            />
+            <CardWrapper
+              style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}
+            >
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionTitleContainer}>
+                  <IconSymbol
+                    ios_icon_name="person.3.fill"
+                    android_material_icon_name="groups"
+                    size={28}
+                    color={colors.primary}
+                  />
+                  <Text style={[styles.sectionTitle, { color: textColor }]}>Hold & spillere</Text>
+                </View>
+              </View>
+              <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>Administrer dine teams og spillere direkte fra din profil.</Text>
+              <TeamManagement />
+              <View style={{ marginTop: 16 }}>
+                <PlayersList />
+              </View>
+            </CardWrapper>
           )}
 
           {/* Calendar Sync Section - Collapsible - Available for all users */}
@@ -1214,7 +1390,7 @@ export default function ProfileScreen() {
                 <PremiumFeatureGate
                   title="Kalendersynk er en Premium-fordel"
                   description="Importer dine aktiviteter automatisk fra eksterne kalendere ved at opgradere."
-                  onPress={() => handleOpenSubscriptionSection('calendarSync')}
+                  onPress={() => openPaywallModal('calendarSync')}
                   icon={{ ios: 'calendar.badge.plus', android: 'event' }}
                   align="left"
                 />
@@ -1307,10 +1483,10 @@ export default function ProfileScreen() {
           {showSuccessMessage && (
             <View style={[styles.successMessage, { backgroundColor: colors.primary }]}>
               <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name="check_circle" size={Platform.OS === 'ios' ? 64 : 48} color="#fff" />
-              <Text style={styles.successTitle}>Konto oprettet! 🎉</Text>
+              <Text style={styles.successTitle}>Konto oprettet!</Text>
               <Text style={styles.successText}>
                 Din konto er blevet oprettet succesfuldt.{'\n'}
-                Tjek din email for at bekræfte din konto, og log derefter ind.
+                Tjek din email for at bekræftet din konto, og log derefter ind.
               </Text>
             </View>
           )}
@@ -1560,558 +1736,50 @@ export default function ProfileScreen() {
           </View>
         </View>
       </Modal>
-    </ContainerWrapper>
-  );
-}
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
-  container: {
-    flex: 1,
-  },
-  contentContainer: {
-    padding: 20,
-    paddingBottom: 100,
-  },
-  profileHeader: {
-    alignItems: 'center',
-    borderRadius: 12,
-    padding: 32,
-    marginBottom: 16,
-    gap: 12,
-  },
-  avatarContainer: {
-    position: 'relative',
-  },
-  avatar: {
-    width: Platform.OS === 'ios' ? 100 : 80,
-    height: Platform.OS === 'ios' ? 100 : 80,
-    borderRadius: Platform.OS === 'ios' ? 50 : 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  subscriptionBadge: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: Platform.OS === 'ios' ? 32 : 28,
-    height: Platform.OS === 'ios' ? 32 : 28,
-    borderRadius: Platform.OS === 'ios' ? 16 : 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: '#fff',
-  },
-  name: {
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  email: {
-    fontSize: 16,
-  },
-  badgesRow: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-    marginTop: 8,
-  },
-  planBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: Platform.OS === 'ios' ? 12 : 10,
-    paddingVertical: Platform.OS === 'ios' ? 6 : 4,
-    borderRadius: Platform.OS === 'ios' ? 20 : 12,
-  },
-  planBadgeText: {
-    fontSize: Platform.OS === 'ios' ? 14 : 12,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  section: {
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 16,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  collapsibleHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 0,
-  },
-  sectionTitleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  sectionDescription: {
-    fontSize: 15,
-    lineHeight: 22,
-    marginTop: 16,
-    marginBottom: 20,
-  },
-  manageBlock: {
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 16,
-    marginBottom: 8,
-    gap: 12,
-  },
-  manageBlockTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  manageBlockDescription: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 12,
-  },
-  manageActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 24,
-  },
-  manageActionButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  profileInfo: {
-    gap: 12,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  infoText: {
-    fontSize: 16,
-  },
-  emptyText: {
-    fontSize: 14,
-    fontStyle: 'italic',
-  },
-  editForm: {
-    gap: 8,
-  },
-  label: {
-    fontSize: Platform.OS === 'ios' ? 14 : 17,
-    fontWeight: '600',
-    marginBottom: Platform.OS === 'ios' ? 4 : 8,
-    marginTop: 8,
-  },
-  input: {
-    borderRadius: Platform.OS === 'ios' ? 8 : 12,
-    padding: Platform.OS === 'ios' ? 12 : 16,
-    fontSize: Platform.OS === 'ios' ? 16 : 17,
-    marginBottom: Platform.OS === 'ios' ? 8 : 12,
-  },
-  editButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 16,
-  },
-  button: {
-    flex: 1,
-    paddingVertical: Platform.OS === 'ios' ? 12 : 14,
-    borderRadius: Platform.OS === 'ios' ? 8 : 12,
-    alignItems: 'center',
-  },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  signOutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    paddingVertical: Platform.OS === 'ios' ? 16 : 18,
-    borderRadius: Platform.OS === 'ios' ? 12 : 14,
-    marginTop: Platform.OS === 'ios' ? 16 : 8,
-  },
-  signOutButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  authCard: {
-    borderRadius: Platform.OS === 'ios' ? 12 : 20,
-    padding: 24,
-  },
-  successMessage: {
-    borderRadius: Platform.OS === 'ios' ? 12 : 16,
-    padding: Platform.OS === 'ios' ? 40 : 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Platform.OS === 'ios' ? 20 : 16,
-  },
-  successTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#fff',
-    textAlign: 'center',
-  },
-  successText: {
-    fontSize: 17,
-    color: '#fff',
-    textAlign: 'center',
-    lineHeight: 24,
-  },
-  title: {
-    fontSize: Platform.OS === 'ios' ? 28 : 36,
-    fontWeight: 'bold',
-    marginBottom: 24,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 16,
-    marginBottom: 24,
-    textAlign: 'center',
-  },
-  authToggle: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: Platform.OS === 'ios' ? 24 : 32,
-  },
-  authToggleButton: {
-    flex: 1,
-    paddingVertical: Platform.OS === 'ios' ? 12 : 14,
-    borderRadius: Platform.OS === 'ios' ? 8 : 12,
-    alignItems: 'center',
-    backgroundColor: Platform.OS === 'ios' ? 'rgba(128,128,128,0.2)' : colors.highlight,
-  },
-  authToggleButtonActive: {},
-  authToggleText: {
-    fontSize: Platform.OS === 'ios' ? 16 : 17,
-    fontWeight: '600',
-  },
-  authToggleTextActive: {
-    fontWeight: 'bold',
-  },
-  form: {
-    gap: 8,
-  },
-  authButton: {
-    paddingVertical: Platform.OS === 'ios' ? 16 : 18,
-    borderRadius: Platform.OS === 'ios' ? 8 : 14,
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  authButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  loadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  infoBox: {
-    flexDirection: 'row',
-    gap: Platform.OS === 'ios' ? 12 : 16,
-    marginTop: 24,
-    padding: Platform.OS === 'ios' ? 16 : 20,
-    borderRadius: Platform.OS === 'ios' ? 8 : 16,
-  },
-  infoTextContainer: {
-    flex: 1,
-  },
-  infoTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  infoBoxText: {
-    flex: Platform.OS === 'ios' ? 1 : undefined,
-    fontSize: Platform.OS === 'ios' ? 14 : 15,
-    lineHeight: Platform.OS === 'ios' ? 20 : 22,
-  },
-  onboardingCard: {
-    borderRadius: 12,
-    padding: 24,
-    marginBottom: 16,
-  },
-  onboardingTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  onboardingDescription: {
-    fontSize: 16,
-    lineHeight: 24,
-    marginBottom: 32,
-    textAlign: 'center',
-  },
-  roleCard: {
-    padding: 24,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: Platform.OS === 'ios' ? 'rgba(0,122,255,0.5)' : colors.primary,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  roleTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginTop: 12,
-    marginBottom: 8,
-  },
-  roleDescription: {
-    fontSize: 15,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  loadingOverlay: {
-    marginTop: 24,
-    alignItems: 'center',
-    gap: 12,
-  },
-  loadingText: {
-    fontSize: 16,
-  },
-  subscriptionCard: {
-    borderRadius: 12,
-    padding: 24,
-    marginBottom: 16,
-  },
-  settingsCard: {
-    gap: 16,
-  },
-  settingsGroup: {
-    marginTop: 20,
-    gap: 12,
-  },
-  settingsGroupTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
-  settingsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    paddingVertical: Platform.OS === 'ios' ? 14 : 16,
-    paddingHorizontal: Platform.OS === 'ios' ? 12 : 16,
-    borderRadius: Platform.OS === 'ios' ? 12 : 14,
-  },
-  settingsRowContent: {
-    flex: 1,
-    gap: 2,
-  },
-  settingsRowTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  settingsRowSubtitle: {
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  deleteExternalButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    paddingVertical: Platform.OS === 'ios' ? 16 : 16,
-    borderRadius: Platform.OS === 'ios' ? 12 : 14,
-    marginTop: 20,
-  },
-  deleteExternalButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  deleteModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  deleteModalCard: {
-    width: '100%',
-    maxWidth: 420,
-    borderRadius: Platform.OS === 'ios' ? 16 : 20,
-    padding: Platform.OS === 'ios' ? 24 : 28,
-    alignItems: 'center',
-    gap: 16,
-  },
-  deleteModalTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  deleteModalDescription: {
-    fontSize: 15,
-    lineHeight: 22,
-    textAlign: 'center',
-  },
-  deleteModalInput: {
-    width: '100%',
-    marginTop: 8,
-    borderWidth: 1,
-    borderRadius: Platform.OS === 'ios' ? 10 : 12,
-    paddingVertical: Platform.OS === 'ios' ? 12 : 14,
-    paddingHorizontal: 16,
-    fontSize: 16,
-    textTransform: 'uppercase',
-  },
-  deleteModalError: {
-    width: '100%',
-    marginTop: 8,
-    fontSize: 13,
-    textAlign: 'center',
-    fontWeight: '600',
-    color: Platform.OS === 'ios' ? '#ff3b30' : colors.error,
-  },
-  deleteModalActions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 12,
-    width: '100%',
-  },
-  deleteModalButton: {
-    flex: 1,
-    paddingVertical: Platform.OS === 'ios' ? 14 : 16,
-    borderRadius: Platform.OS === 'ios' ? 12 : 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  deleteModalCancel: {
-    borderWidth: 1,
-    borderColor: Platform.OS === 'ios' ? 'rgba(60,60,67,0.18)' : 'rgba(0,0,0,0.3)',
-  },
-});
-
-interface ManagePlayersSectionProps {
-  CardWrapperComponent: React.ComponentType<any>;
-  cardWrapperProps: Record<string, unknown>;
-  cardBgColor: string;
-  nestedCardBgColor: string;
-  textColor: string;
-  textSecondaryColor: string;
-  subscriptionStatus: SubscriptionStatusType;
-}
-
-function ManagePlayersSection({
-  CardWrapperComponent,
-  cardWrapperProps,
-  cardBgColor,
-  nestedCardBgColor,
-  textColor,
-  textSecondaryColor,
-  subscriptionStatus,
-}: ManagePlayersSectionProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [showCreatePlayerModal, setShowCreatePlayerModal] = useState(false);
-  const [playersRefreshTrigger, setPlayersRefreshTrigger] = useState(0);
-  const { refreshTeams, refreshPlayers } = useTeamPlayer();
-
-  const handleManagePlayerCreated = useCallback(() => {
-    setPlayersRefreshTrigger(prev => prev + 1);
-    refreshPlayers();
-    refreshTeams();
-  }, [refreshPlayers, refreshTeams]);
-
-  const handleOpenCreatePlayer = useCallback(() => {
-    if (!subscriptionStatus?.hasSubscription) {
-      Alert.alert(
-        'Abonnement påkrævet',
-        'Du skal have et aktivt abonnement for at oprette spillere. Start din 14-dages gratis prøveperiode nu!',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-
-    const maxPlayers = subscriptionStatus?.maxPlayers;
-    const currentPlayers = subscriptionStatus?.currentPlayers;
-
-    if (typeof maxPlayers === 'number' && typeof currentPlayers === 'number' && currentPlayers >= maxPlayers) {
-      Alert.alert(
-        'Spillergrænse nået',
-        `Din ${subscriptionStatus?.planName ?? 'nuværende'} plan tillader op til ${maxPlayers} spiller${maxPlayers > 1 ? 'e' : ''}. Opgrader din plan for at tilføje flere spillere.`,
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-
-    setShowCreatePlayerModal(true);
-  }, [subscriptionStatus]);
-
-  return (
-    <>
-      <CardWrapperComponent style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
-        <TouchableOpacity style={styles.collapsibleHeader} onPress={() => setIsExpanded(prev => !prev)} activeOpacity={0.7}>
-          <View style={styles.sectionTitleContainer}>
-            <IconSymbol ios_icon_name="person.3.fill" android_material_icon_name="groups" size={28} color={colors.primary} />
-            <Text style={[styles.sectionTitle, { color: textColor }]}>Administrer spillere</Text>
-          </View>
-          <IconSymbol
-            ios_icon_name={isExpanded ? 'chevron.up' : 'chevron.down'}
-            android_material_icon_name={isExpanded ? 'expand_less' : 'expand_more'}
-            size={24}
-            color={textSecondaryColor}
-          />
-        </TouchableOpacity>
-
-        {isExpanded && (
-          <>
-            <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
-              Opret teams, tilføj spillere og administrer dine eksisterende relationer direkte fra din profil.
+      <Modal
+        visible={showPaywallModal}
+        transparent={false}
+        animationType="slide"
+        presentationStyle={Platform.OS === 'ios' ? 'fullScreen' : undefined}
+        onRequestClose={closePaywallModal}
+      >
+        <PaywallWrapper
+          style={[styles.paywallContainer, { backgroundColor: bgColor }]} {...paywallWrapperProps}
+        >
+          <View style={styles.paywallContent}>
+            <View style={styles.paywallHeader}>
+              <TouchableOpacity
+                onPress={closePaywallModal}
+                style={styles.paywallCloseButton}
+                activeOpacity={0.7}
+              >
+                <IconSymbol
+                  ios_icon_name="xmark"
+                  android_material_icon_name="close"
+                  size={24}
+                  color={textColor}
+                />
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.paywallTitle, { color: textColor }]}>Opgrader til Premium</Text>
+            <Text style={[styles.paywallSubtitle, { color: textSecondaryColor }]}>
+              Få adgang til denne funktion ved at opgradere dit abonnement.
             </Text>
-
-            <View style={[styles.manageBlock, { backgroundColor: nestedCardBgColor }]}>
-              <View style={styles.sectionHeader}>
-                <View style={styles.sectionTitleContainer}>
-                  <IconSymbol ios_icon_name="person.3" android_material_icon_name="groups" size={24} color={colors.primary} />
-                  <Text style={[styles.manageBlockTitle, { color: textColor }]}>Teams</Text>
-                </View>
-              </View>
-              <Text style={[styles.manageBlockDescription, { color: textSecondaryColor }]}>
-                Opret og administrer teams, og tilknyt spillere til de rigtige hold.
-              </Text>
-              <TeamManagement />
+            <View style={styles.paywallBody}>
+              {userRole === 'player' ? (
+                <AppleSubscriptionManager
+                  highlightProductId={highlightProductId}
+                  forceShowPlans={userRole === 'player' && !subscriptionStatus?.hasSubscription}
+                />
+              ) : (
+                <SubscriptionManager forceShowPlans={!subscriptionStatus?.hasSubscription} />
+              )}
             </View>
+          </View>
+        </PaywallWrapper>
+      </Modal>
 
-            <View style={[styles.manageBlock, { backgroundColor: nestedCardBgColor }]}>
-              <View style={styles.sectionHeader}>
-                <View style={styles.sectionTitleContainer}>
-                  <IconSymbol ios_icon_name="person.2.fill" android_material_icon_name="group" size={24} color={colors.primary} />
-                  <Text style={[styles.manageBlockTitle, { color: textColor }]}>Spillere</Text>
-                </View>
-                <TouchableOpacity
-                  style={[styles.manageActionButton, { backgroundColor: colors.primary }]}
-                  onPress={handleOpenCreatePlayer}
-                  activeOpacity={0.7}
-                >
-                  <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={18} color="#fff" />
-                  <Text style={styles.manageActionButtonText}>Tilføj spiller</Text>
-                </TouchableOpacity>
-              </View>
-              <PlayersList onCreatePlayer={handleOpenCreatePlayer} refreshTrigger={playersRefreshTrigger} />
-            </View>
-          </>
-        )}
-      </CardWrapperComponent>
-
-      <CreatePlayerModal visible={showCreatePlayerModal} onClose={() => setShowCreatePlayerModal(false)} onPlayerCreated={handleManagePlayerCreated} />
-    </>
+    </ContainerWrapper>
   );
 }

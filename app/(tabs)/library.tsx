@@ -358,11 +358,25 @@ const resolveFootballCoachPosId = (categoryPath: string | null): string | null =
 };
 
 export default function LibraryScreen() {
-  const { isAdmin } = useUserRole();
+  const roleInfo = useUserRole() as any;
+  const roleRaw = roleInfo?.userRole ?? roleInfo?.role ?? null;
+  const roleStr = typeof roleRaw === 'string' ? roleRaw.toLowerCase() : '';
+  const isTrainerLike =
+    !!roleInfo?.isTrainer ||
+    roleStr.includes('trainer') ||
+    roleStr.includes('coach');
+  const isAdmin =
+    !!roleInfo?.isAdmin ||
+    roleStr === 'admin' ||
+    roleStr.includes('admin');
+  const { featureAccess, isLoading: subscriptionFeaturesLoading, subscriptionTier } = useSubscriptionFeatures();
+  const isTrainerByTier = subscriptionTier?.startsWith('trainer') ?? false;
+  const canCreateExercise = isAdmin || isTrainerLike || isTrainerByTier;
+  const isCreator = canCreateExercise;
+
   const { teams } = useTeamPlayer();
   const router = useRouter();
   const theme = getColors(useColorScheme() === 'dark');
-  const { featureAccess, isLoading: subscriptionFeaturesLoading } = useSubscriptionFeatures();
 
   const [status, setStatus] = useState<'loading' | 'success' | 'empty' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -437,7 +451,7 @@ export default function LibraryScreen() {
           .eq('is_system', true)
           .order('created_at', { ascending: true });
 
-        const personalPromise = isAdmin
+        const personalPromise = isCreator
           ? supabase
               .from('exercise_library')
               .select('*')
@@ -447,7 +461,7 @@ export default function LibraryScreen() {
           : Promise.resolve({ data: [], error: null } as any);
 
         const teamIds = (teams || []).map(t => t.id).filter(Boolean);
-        const assignmentsPromise = !isAdmin
+        const assignmentsPromise = !isCreator
           ? supabase
               .from('exercise_assignments')
               .select('*')
@@ -467,7 +481,7 @@ export default function LibraryScreen() {
         const systemExercises = applyAdded(system.map(normalizeExercise));
 
         let trainerGrouped: Array<{ trainerId: string; trainerName: string; exercises: Exercise[] }> = [];
-        if (!isAdmin) {
+        if (!isCreator) {
           const exerciseIds = Array.from(new Set(assignments.map((a: any) => String(a.exercise_id)).filter(Boolean)));
           let assignedExercises: Exercise[] = [];
 
@@ -509,7 +523,7 @@ export default function LibraryScreen() {
           }));
         }
 
-        const personalExercises = isAdmin ? applyAdded(personal.map(normalizeExercise)) : [];
+        const personalExercises = isCreator ? applyAdded(personal.map(normalizeExercise)) : [];
 
         if (!isMountedRef.current) return;
 
@@ -529,7 +543,7 @@ export default function LibraryScreen() {
         setErrorMessage(e?.message || 'Kunne ikke hente bibliotek');
       }
     },
-    [isAdmin, teams, normalizeExercise, applyAdded]
+    [isCreator, teams, normalizeExercise, applyAdded]
   );
 
   useEffect(() => {
@@ -550,9 +564,9 @@ export default function LibraryScreen() {
     }, [])
   );
 
-  const isPlayer = !isAdmin;
+  const isPlayer = !isAdmin && !isTrainerLike && !isTrainerByTier;
   const entitlementsReady = !subscriptionFeaturesLoading;
-  const gateLibrary = entitlementsReady && isPlayer && !featureAccess.library;
+  const gateLibrary = entitlementsReady && isPlayer && !featureAccess?.library;
 
   useEffect(() => {
     if (!currentUserId || gateLibrary) return;
@@ -571,8 +585,9 @@ export default function LibraryScreen() {
 
   useEffect(() => {
     if (!__DEV__) return;
-    console.log('[Holdtræning] counts by category_path', Object.fromEntries(footballCoachCountsByPosition));
-  }, [footballCoachCountsByPosition]);
+    console.log('[Library] roleInfo', roleInfo);
+    console.log('[Library] derived', { isAdmin, isCreator, roleStr, isTrainerLike, isTrainerByTier, subscriptionTier, canCreateExercise, isPlayer });
+  }, [roleInfo, isAdmin, isCreator, roleStr, isTrainerLike, isTrainerByTier, subscriptionTier, canCreateExercise, isPlayer]);
 
   const footballCoachCountsByCategory = useMemo(() => {
     const m = new Map<string, number>();
@@ -588,7 +603,7 @@ export default function LibraryScreen() {
   }, [trainerFolders]);
 
   const rootFolders: FolderVM[] = useMemo(() => {
-    if (isAdmin) {
+    if (isCreator) {
       return [
         {
           id: 'personal',
@@ -638,7 +653,7 @@ export default function LibraryScreen() {
         payload: { root: 'footballcoach' },
       },
     ];
-  }, [isAdmin, personalExercises.length, footballCoachExercises.length, trainerTotalExercises]);
+  }, [isCreator, personalExercises.length, footballCoachExercises.length, trainerTotalExercises]);
 
   const footballCoachCategories: FolderVM[] = useMemo(() => {
     return FOOTBALLCOACH_STRUCTURE.map(cat => {
@@ -799,6 +814,9 @@ export default function LibraryScreen() {
     return false;
   }, [nav, searchOpen, searchQuery]);
 
+  const listRef = useRef<SectionList<any>>(null);
+  const pendingScrollToExercisesRef = useRef(false);
+
   const handleFolderPress = useCallback((folder: FolderVM) => {
     const root = folder.payload?.root ?? null;
     setSearchOpen(false);
@@ -879,6 +897,10 @@ export default function LibraryScreen() {
     setSearchQuery('');
   }, []);
 
+  const handleCreateExercise = useCallback(() => {
+    router.push('/create-exercise');
+  }, [router]);
+
   useEffect(() => {
     if (!addedToTasksIds.size) return;
     setPersonalExercises(prev => prev.map(e => (addedToTasksIds.has(e.id) ? { ...e, is_added_to_tasks: true } : e)));
@@ -893,9 +915,6 @@ export default function LibraryScreen() {
     const exerciseSection: LibrarySection = { key: 'exercises', title: selectedExerciseHeaderTitle, data: displayedExercises };
     return [folderSection, exerciseSection];
   }, [visibleFolderStack, selectedExerciseHeaderTitle, displayedExercises]);
-
-  const listRef = useRef<SectionList<any>>(null);
-  const pendingScrollToExercisesRef = useRef(false);
 
   const scrollToTop = useCallback(() => {
     const ref = listRef.current as any;
@@ -931,6 +950,8 @@ export default function LibraryScreen() {
     }, 60);
     return () => clearTimeout(t);
   }, [nav.root, nav.level2Id, nav.level3Id, displayedExercises.length, scrollToExercises]);
+
+  const showAddModal = addModalOpen && !!addModalExercise;
 
   const renderSectionHeader = useCallback(
     ({ section }: { section: LibrarySection }) => {
@@ -1011,16 +1032,41 @@ export default function LibraryScreen() {
     </View>
   );
 
+  const renderTopBar = () => (
+    <View style={styles.topBar}>
+      <Text
+        style={[styles.screenTitle, { color: theme.text }]}
+        numberOfLines={1}
+        ellipsizeMode="tail"
+      >
+        Bibliotek
+      </Text>
+      <View style={styles.topBarRight}>
+        {canCreateExercise ? (
+          <TouchableOpacity
+            activeOpacity={0.9}
+            style={[styles.createButton, { backgroundColor: theme.primary }]}
+            onPress={handleCreateExercise}
+          >
+            <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color="#fff" />
+            <Text style={styles.createButtonText}>Opret øvelse</Text>
+          </TouchableOpacity>
+        ) : null}
+        <TouchableOpacity activeOpacity={0.8} style={styles.iconButton} onPress={handleToggleSearch}>
+          <IconSymbol
+            ios_icon_name={searchOpen ? 'xmark' : 'magnifyingglass'}
+            android_material_icon_name={searchOpen ? 'close' : 'search'}
+            size={22}
+            color={theme.text}
+          />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
   const renderLoadingSkeleton = () => (
     <View style={[styles.screen, { backgroundColor: theme.background }]}>
-      <View style={styles.topBar}>
-        <Text style={[styles.screenTitle, { color: theme.text }]}>Bibliotek</Text>
-        <View style={styles.topBarRight}>
-          <TouchableOpacity activeOpacity={0.8} style={styles.iconButton} onPress={handleToggleSearch}>
-            <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={22} color={theme.text} />
-          </TouchableOpacity>
-        </View>
-      </View>
+      {renderTopBar()}
       {searchOpen ? (
         <View style={[styles.searchBarWrap, { backgroundColor: theme.card, borderColor: theme.highlight }]}>
           <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={18} color={theme.textSecondary} />
@@ -1059,14 +1105,7 @@ export default function LibraryScreen() {
   if (gateLibrary) {
     return (
       <View style={[styles.screen, { backgroundColor: theme.background }]}>
-        <View style={styles.topBar}>
-          <Text style={[styles.screenTitle, { color: theme.text }]}>Bibliotek</Text>
-          <View style={styles.topBarRight}>
-            <TouchableOpacity activeOpacity={0.8} style={styles.iconButton} onPress={handleToggleSearch}>
-              <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={22} color={theme.text} />
-            </TouchableOpacity>
-          </View>
-        </View>
+        {renderTopBar()}
         <View style={styles.listPad}>{renderUpgradeGate()}</View>
       </View>
     );
@@ -1079,14 +1118,7 @@ export default function LibraryScreen() {
   if (status === 'error') {
     return (
       <View style={[styles.screen, { backgroundColor: theme.background }]}>
-        <View style={styles.topBar}>
-          <Text style={[styles.screenTitle, { color: theme.text }]}>Bibliotek</Text>
-          <View style={styles.topBarRight}>
-            <TouchableOpacity activeOpacity={0.8} style={styles.iconButton} onPress={handleToggleSearch}>
-              <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={22} color={theme.text} />
-            </TouchableOpacity>
-          </View>
-        </View>
+        {renderTopBar()}
         {searchOpen ? (
           <View style={[styles.searchBarWrap, { backgroundColor: theme.card, borderColor: theme.highlight }]}>
             <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={18} color={theme.textSecondary} />
@@ -1118,14 +1150,7 @@ export default function LibraryScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.background }]}>
-      <View style={styles.topBar}>
-        <Text style={[styles.screenTitle, { color: theme.text }]}>Bibliotek</Text>
-        <View style={styles.topBarRight}>
-          <TouchableOpacity activeOpacity={0.8} style={styles.iconButton} onPress={handleToggleSearch}>
-            <IconSymbol ios_icon_name={searchOpen ? "xmark" : "magnifyingglass"} android_material_icon_name={searchOpen ? "close" : "search"} size={22} color={theme.text} />
-          </TouchableOpacity>
-        </View>
-      </View>
+      {renderTopBar()}
       {searchOpen ? (
         <View style={[styles.searchBarWrap, { backgroundColor: theme.card, borderColor: theme.highlight }]}>
           <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={18} color={theme.textSecondary} />
@@ -1171,14 +1196,11 @@ export default function LibraryScreen() {
                 <>
                   <Text style={[styles.stateTitle, { color: theme.text }]}>Denne mappe er tom</Text>
                   <Text style={[styles.stateMessage, { color: theme.textSecondary }]}>Der er ingen øvelser i denne mappe endnu.</Text>
-                  {isAdmin ? (
+                  {canCreateExercise ? (
                     <TouchableOpacity
                       activeOpacity={0.9}
                       style={[styles.retryButton, { backgroundColor: theme.primary }]}
-                      onPress={() => {
-                        setAddModalExercise(null);
-                        setAddModalOpen(true);
-                      }}
+                      onPress={handleCreateExercise}
                     >
                       <Text style={styles.retryButtonText}>Opret øvelse</Text>
                     </TouchableOpacity>
@@ -1191,17 +1213,20 @@ export default function LibraryScreen() {
         ListFooterComponent={<View style={{ height: 90 }} />}
         ref={listRef}
       />
-      <Modal visible={addModalOpen} transparent animationType="fade" onRequestClose={handleCloseAddModal}>
+      <Modal visible={showAddModal} transparent animationType="fade" onRequestClose={handleCloseAddModal}>
         <Pressable style={styles.modalBackdrop} onPress={handleCloseAddModal}>
           <View style={[styles.modalSheet, { backgroundColor: theme.card }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.text }]}>{addModalExercise ? 'Tilføj til opgaver' : 'Opret øvelse'}</Text>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Tilføj til opgaver</Text>
               <TouchableOpacity onPress={handleCloseAddModal} style={styles.iconButton}>
                 <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={20} color={theme.text} />
               </TouchableOpacity>
             </View>
             {addModalExercise ? (
               <>
+                <Text style={[styles.modalExerciseName, { color: theme.text }]} numberOfLines={2}>
+                  {addModalExercise.title}
+                </Text>
                 <Text style={[styles.modalBodyText, { color: theme.textSecondary }]}>
                   Vælg aktivitet/opgave i bundsheet-flowet (tilkobles senere). For nu toggles UI-state lokalt.
                 </Text>
@@ -1214,16 +1239,7 @@ export default function LibraryScreen() {
                   </TouchableOpacity>
                 </View>
               </>
-            ) : (
-              <>
-                <Text style={[styles.modalBodyText, { color: theme.textSecondary }]}>Opret-flowet kan kobles på en eksisterende skærm. (Ingen DB-kald her.)</Text>
-                <View style={styles.modalActions}>
-                  <TouchableOpacity activeOpacity={0.9} style={[styles.modalActionSecondary, { borderColor: theme.highlight }]} onPress={handleCloseAddModal}>
-                    <Text style={[styles.modalActionSecondaryText, { color: theme.textSecondary }]}>Luk</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
+            ) : null}
           </View>
         </Pressable>
       </Modal>
@@ -1241,9 +1257,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  screenTitle: { fontSize: 34, fontWeight: '800' },
-  topBarRight: { flexDirection: 'row', gap: 12, alignItems: 'center' },
+  screenTitle: {
+    fontSize: 34,
+    fontWeight: '800',
+    flex: 1,
+    minWidth: 0,
+    marginRight: 8,
+  },
+  topBarRight: { flexDirection: 'row', gap: 12, alignItems: 'center', flexShrink: 0 },
   iconButton: { padding: 6 },
+  createButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  createButtonText: { color: '#fff', fontSize: 13, fontWeight: '800' },
 
   searchBarWrap: {
     marginHorizontal: 18,
@@ -1372,6 +1403,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   modalTitle: { fontSize: 16, fontWeight: '900' },
+  modalExerciseName: { marginTop: 8, fontSize: 15, fontWeight: '800' },
   modalBodyText: { marginTop: 10, fontSize: 13, fontWeight: '600', lineHeight: 18 },
   modalActions: { marginTop: 14, gap: 10 },
   modalActionPrimary: { paddingVertical: 12, borderRadius: 12, alignItems: 'center' },

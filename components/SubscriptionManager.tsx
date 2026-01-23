@@ -9,6 +9,7 @@ import {
   ScrollView,
   useColorScheme,
   Linking,
+  Platform,
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -19,6 +20,7 @@ interface SubscriptionManagerProps {
   onPlanSelected?: (planId: string) => void;
   isSignupFlow?: boolean;
   selectedRole?: 'player' | 'trainer' | null;
+  forceShowPlans?: boolean;
 }
 
 const PRIVACY_POLICY_URL = 'https://footballcoach.online/privacy';
@@ -90,16 +92,60 @@ const buildRenewalSummary = (status?: SubscriptionStatusType | null) => {
   };
 };
 
+const getPlanColor = (planName?: string | null) => {
+  const name = (planName ?? '').toLowerCase();
+  if (name.includes('premium') || name.includes('gold')) return '#FFD700';
+  if (name.includes('standard') || name.includes('silver')) return '#C0C0C0';
+  if (name.includes('basic') || name.includes('bronze') || name.includes('spiller')) return '#CD7F32';
+  return colors.primary;
+};
+
+const getPlanIcon = (planName?: string | null) => {
+  const name = (planName ?? '').toLowerCase();
+  if (name.includes('premium') || name.includes('gold')) return 'star.circle.fill';
+  if (name.includes('standard') || name.includes('silver')) return 'star.leadinghalf.filled';
+  if (name.includes('basic') || name.includes('bronze') || name.includes('spiller')) return 'star.fill';
+  return 'checkmark.seal.fill';
+};
+
+const getPlanPriceLabel = (plan: { price_amount?: number | null; price_dkk?: number | null; localized_price?: string | null; currency_code?: string | null }) => {
+  const amountOrLabel = plan.price_amount ?? plan.price_dkk ?? plan.localized_price ?? null;
+  return formatPrice(amountOrLabel, (plan.currency_code ?? 'DKK') || 'DKK') ?? '—';
+};
+
+const openLegalLink = async (url: string) => {
+  try {
+    const supported = await Linking.canOpenURL(url);
+    if (!supported) throw new Error('unsupported');
+    await Linking.openURL(url);
+  } catch {
+    Alert.alert('Kunne ikke åbne linket', 'Prøv igen senere.');
+  }
+};
+
 export default function SubscriptionManager({ 
   onPlanSelected, 
   isSignupFlow = false,
-  selectedRole = null 
+  selectedRole = null,
+  forceShowPlans = false,
 }: SubscriptionManagerProps) {
-  const { subscriptionStatus, subscriptionPlans, loading, createSubscription, refreshSubscription } = useSubscription();
+  const {
+    subscriptionStatus,
+    subscriptionPlans,
+    loading,
+    createSubscription,
+    changeSubscriptionPlan,
+    refreshSubscription,
+  } = useSubscription();
   const [creatingPlanId, setCreatingPlanId] = useState<string | null>(null);
-  const [showPlans, setShowPlans] = useState(isSignupFlow); // Collapsed by default unless in signup flow
+  const [showPlans, setShowPlans] = useState(isSignupFlow || forceShowPlans); // Collapsed by default unless in signup flow
+    useEffect(() => {
+      if (forceShowPlans) {
+        setShowPlans(true);
+      }
+    }, [forceShowPlans]);
+
   const [retryCount, setRetryCount] = useState(0);
-  const [isOrangeBoxExpanded, setIsOrangeBoxExpanded] = useState(false); // Collapsible orange box
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
@@ -132,14 +178,92 @@ export default function SubscriptionManager({
       : subscriptionPlans.filter(plan => plan.max_players > 1)  // Trainer plans
     : subscriptionPlans;
 
+  const openManageSubscription = useCallback(async (): Promise<boolean> => {
+    const url =
+      Platform.OS === 'ios'
+        ? 'https://apps.apple.com/account/subscriptions'
+        : Platform.OS === 'android'
+          ? 'https://play.google.com/store/account/subscriptions'
+          : null;
+
+    if (!url) {
+      Alert.alert(
+        'Administrer abonnement',
+        'Plan-skift skal håndteres via “Administrer abonnement”.'
+      );
+      return false;
+    }
+
+    try {
+      const canOpen = await Linking.canOpenURL(url);
+      if (!canOpen) {
+        Alert.alert(
+          'Kunne ikke åbne abonnements-administration',
+          'Plan-skift skal håndteres via “Administrer abonnement”.'
+        );
+        return false;
+      }
+      await Linking.openURL(url);
+      return true;
+    } catch {
+      Alert.alert(
+        'Kunne ikke åbne abonnements-administration',
+        'Plan-skift skal håndteres via “Administrer abonnement”.'
+      );
+      return false;
+    }
+  }, []);
+
+  const handleChangePlan = async (planId: string, planName: string) => {
+    setCreatingPlanId(planId);
+    try {
+      const result = await changeSubscriptionPlan(planId);
+
+      if (result.success) {
+        setShowPlans(false);
+        setRetryCount(0);
+        Alert.alert('Plan opdateret', `Dit abonnement er opdateret til ${planName}.`);
+        return;
+      }
+
+      if (result.unsupported) {
+        setShowPlans(false);
+        await openManageSubscription();
+        return;
+      }
+
+      if (result.alreadyOnPlan) {
+        Alert.alert('Ingen ændring', 'Du bruger allerede denne plan.');
+        return;
+      }
+
+      Alert.alert('Plan-skift fejlede', result.error || 'Kunne ikke skifte plan. Prøv igen.');
+    } catch (error: any) {
+      Alert.alert('Plan-skift fejlede', error?.message || 'Der opstod en uventet fejl.');
+    } finally {
+      setCreatingPlanId(null);
+    }
+  };
+
   const handleSelectPlan = async (planId: string, planName: string, maxPlayers: number) => {
     if (isSignupFlow && onPlanSelected) {
-      // In signup flow, just pass the plan ID back
       onPlanSelected(planId);
       return;
     }
 
-    // Normal flow - create subscription
+    if (subscriptionStatus?.hasSubscription) {
+      const normalizedCurrent = (subscriptionStatus.planName ?? '').trim().toLowerCase();
+      const normalizedSelected = (planName ?? '').trim().toLowerCase();
+
+      if (normalizedCurrent.length > 0 && normalizedCurrent === normalizedSelected) {
+        Alert.alert('Allerede aktiv', 'Du er allerede på denne plan.');
+        return;
+      }
+
+      await handleChangePlan(planId, planName);
+      return;
+    }
+
     Alert.alert(
       'Start prøveperiode',
       `Vil du starte en 14-dages gratis prøveperiode med ${planName} planen?\n\nDu kan oprette op til ${maxPlayers} spiller${maxPlayers > 1 ? 'e' : ''}.`,
@@ -157,6 +281,11 @@ export default function SubscriptionManager({
 
   const attemptCreateSubscription = async (productId: string, planName: string, isRetry: boolean = false) => {
     setCreatingPlanId(productId);
+
+    if (subscriptionStatus?.hasSubscription) {
+      await handleChangePlan(productId, planName);
+      return;
+    }
     
     try {
       console.log(`[SubscriptionManager] Attempting to create subscription (retry: ${isRetry})`);
@@ -173,17 +302,8 @@ export default function SubscriptionManager({
           [{ text: 'OK' }]
         );
       } else if (result.alreadyHasSubscription) {
-        // User already has a subscription - hide plans and show current subscription
-        console.log('[SubscriptionManager] User already has subscription, hiding plans and showing current subscription');
-        setShowPlans(false);
-        setRetryCount(0);
-        
-        // Show a friendly message
-        Alert.alert(
-          'Du har allerede et abonnement',
-          'Dit nuværende abonnement vises nu.',
-          [{ text: 'OK' }]
-        );
+        console.log('[SubscriptionManager] Subscription exists - attempting plan change instead');
+        await handleChangePlan(productId, planName);
       } else {
         console.error('[SubscriptionManager] Subscription creation failed:', result.error);
         
@@ -240,6 +360,52 @@ export default function SubscriptionManager({
     !!renewalSummary.renewalDate &&
     !datesEqual(renewalSummary.renewalDate, renewalSummary.primaryDate);
 
+  const normalizedStatus = (subscriptionStatus?.status ?? '').toLowerCase();
+  const statusLabel = useMemo(() => {
+    switch (normalizedStatus) {
+      case 'trial':
+        return 'Prøveperiode';
+      case 'active':
+        return 'Aktiv';
+      case 'past_due':
+        return 'Betaling afventer';
+      case 'canceled':
+      case 'cancelled':
+        return 'Annulleret';
+      case 'incomplete':
+        return 'Ufuldstændig betaling';
+      default:
+        return subscriptionStatus?.hasSubscription ? 'Aktivt abonnement' : 'Ingen abonnement';
+    }
+  }, [normalizedStatus, subscriptionStatus?.hasSubscription]);
+
+  const statusTone = useMemo(() => {
+    if (normalizedStatus === 'trial') return { bg: isDark ? '#20361c' : '#e4f4e0', text: isDark ? '#b6e3a3' : '#2d6a2d', border: isDark ? '#2e4a28' : '#b7ddb1' };
+    if (normalizedStatus === 'active') return { bg: isDark ? '#1f303e' : '#e6f0fb', text: isDark ? '#9ecbff' : '#1f5ca8', border: isDark ? '#2e4861' : '#c5dcfa' };
+    if (normalizedStatus === 'past_due' || normalizedStatus === 'incomplete') return { bg: isDark ? '#3a241f' : '#fbe9e7', text: isDark ? '#f5b19f' : '#c62828', border: isDark ? '#5a3a32' : '#ef9a9a' };
+    if (normalizedStatus === 'canceled' || normalizedStatus === 'cancelled') return { bg: isDark ? '#2f2f2f' : '#f0f0f0', text: isDark ? '#dcdcdc' : '#4f4f4f', border: isDark ? '#3d3d3d' : '#d6d6d6' };
+    return { bg: isDark ? '#2b2b2b' : '#f4f6f8', text: isDark ? '#d5d7da' : '#3a3f45', border: isDark ? '#3a3a3a' : '#e0e4e8' };
+  }, [isDark, normalizedStatus]);
+
+  const playerUsageLabel = useMemo(() => {
+    if (!subscriptionStatus?.hasSubscription) return '—';
+    const current = Number.isFinite(subscriptionStatus.currentPlayers) ? subscriptionStatus.currentPlayers : 0;
+    const max = Number.isFinite(subscriptionStatus.maxPlayers) && subscriptionStatus.maxPlayers > 0 ? subscriptionStatus.maxPlayers : null;
+    return max ? `${current} / ${max}` : `${current}`;
+  }, [subscriptionStatus?.currentPlayers, subscriptionStatus?.hasSubscription, subscriptionStatus?.maxPlayers]);
+
+  const isCurrentPlan = useCallback(
+    (planName: string | null | undefined): boolean => {
+      if (isSignupFlow || !subscriptionStatus?.hasSubscription || !subscriptionStatus?.planName) {
+        return false;
+      }
+      const normalizedCurrent = subscriptionStatus.planName.trim().toLowerCase();
+      const normalizedPlan = (planName ?? '').trim().toLowerCase();
+      return normalizedCurrent.length > 0 && normalizedCurrent === normalizedPlan;
+    },
+    [isSignupFlow, subscriptionStatus?.hasSubscription, subscriptionStatus?.planName]
+  );
+
   if (loading && !isSignupFlow) {
     return (
       <View style={styles.loadingContainer}>
@@ -265,107 +431,86 @@ export default function SubscriptionManager({
         </View>
       )}
 
-      {/* Current Plan Display - Collapsible Orange Box */}
+      {/* Current Plan Display */}
       {!isSignupFlow && subscriptionStatus?.hasSubscription && (
-        <TouchableOpacity
-          style={[styles.currentPlanBanner, { backgroundColor: getPlanColor(subscriptionStatus.planName) }]}
-          onPress={() => setIsOrangeBoxExpanded(!isOrangeBoxExpanded)}
-          activeOpacity={0.8}
+        <View
+          style={[
+            styles.currentPlanSummaryCard,
+            {
+              backgroundColor: cardBgColor,
+              borderColor: statusTone.border,
+            },
+          ]}
         >
-          <View style={styles.currentPlanContent}>
-            <IconSymbol
-              ios_icon_name={getPlanIcon(subscriptionStatus.planName)}
-              android_material_icon_name="verified"
-              size={32}
-              color="#fff"
-            />
-            <View style={styles.currentPlanInfo}>
-              <Text style={styles.currentPlanLabel}>Din nuværende plan:</Text>
-              <Text style={styles.currentPlanName}>{subscriptionStatus.planName}</Text>
-            </View>
-            <View style={styles.currentPlanBadge}>
-              <Text style={styles.currentPlanBadgeText}>
-                {subscriptionStatus.status === 'trial' ? 'Prøveperiode' : 'Aktiv'}
-              </Text>
-            </View>
-          </View>
-          
-          {/* Collapsible Content */}
-          {isOrangeBoxExpanded && (
-            <View style={styles.orangeBoxExpandedContent}>
-              <View style={styles.orangeBoxDivider} />
-              <View style={styles.orangeBoxDetailRow}>
-                <View style={styles.orangeBoxDetailItem}>
-                  <IconSymbol
-                    ios_icon_name="person.3.fill"
-                    android_material_icon_name="group"
-                    size={20}
-                    color="#fff"
-                  />
-                  <Text style={styles.orangeBoxDetailLabel}>Spillere</Text>
-                </View>
-                <Text style={styles.orangeBoxDetailValue}>
-                  {subscriptionStatus.currentPlayers} / {subscriptionStatus.maxPlayers}
+          <View style={styles.currentPlanHeaderRow}>
+            <View style={styles.currentPlanTitleGroup}>
+              <IconSymbol
+                ios_icon_name={getPlanIcon(subscriptionStatus.planName)}
+                android_material_icon_name="verified"
+                size={32}
+                color={colors.primary}
+              />
+              <View style={styles.currentPlanTextGroup}>
+                <Text style={[styles.currentPlanLabel, { color: textSecondaryColor }]}>Nuværende plan</Text>
+                <Text style={[styles.currentPlanName, { color: textColor }]}>
+                  {subscriptionStatus.planName ?? 'Aktivt abonnement'}
                 </Text>
               </View>
-
-              {renewalSummary.primaryDate ? (
-                <View style={styles.orangeBoxDetailRow}>
-                  <View style={styles.orangeBoxDetailItem}>
-                    <IconSymbol
-                      ios_icon_name="calendar"
-                      android_material_icon_name="event"
-                      size={20}
-                      color="#fff"
-                    />
-                    <Text style={styles.orangeBoxDetailLabel}>
-                      {renewalSummary.isTrial ? 'Gratis prøveperiode til' : 'Fornyes'}
-                    </Text>
-                  </View>
-                  <View style={styles.orangeBoxDateMeta}>
-                    <Text style={styles.orangeBoxDatePrimary}>
-                      {formatDate(renewalSummary.primaryDate)}
-                    </Text>
-                    {renewalSummary.daysRemaining !== null && (
-                      <Text style={styles.orangeBoxDateSecondary}>
-                        {renewalSummary.isTrial
-                          ? `${renewalSummary.daysRemaining} dage tilbage af prøveperioden`
-                          : `${renewalSummary.daysRemaining} dage tilbage`}
-                      </Text>
-                    )}
-                  </View>
-                </View>
-              ) : null}
-
-              {shouldShowRenewalAfterTrial ? (
-                <View style={styles.orangeBoxDetailRow}>
-                  <View style={styles.orangeBoxDetailItem}>
-                    <IconSymbol
-                      ios_icon_name="clock"
-                      android_material_icon_name="schedule"
-                      size={20}
-                      color="#fff"
-                    />
-                    <Text style={styles.orangeBoxDetailLabel}>Herefter fornyes</Text>
-                  </View>
-                  <Text style={styles.orangeBoxDetailValue}>
-                    {formatDate(renewalSummary.renewalDate)}
-                  </Text>
-                </View>
-              ) : null}
             </View>
-          )}
-          
-          {/* Expand/Collapse Indicator */}
-          <View style={styles.expandIndicator}>
-            <IconSymbol
-              ios_icon_name={isOrangeBoxExpanded ? 'chevron.up' : 'chevron.down'}
-              android_material_icon_name={isOrangeBoxExpanded ? 'expand_less' : 'expand_more'}
-              size={20}
-              color="#fff"
-            />
+
+            <View style={[styles.statusPill, { backgroundColor: statusTone.bg, borderColor: statusTone.border }]}>
+              <Text style={[styles.statusPillText, { color: statusTone.text }]}>{statusLabel}</Text>
+            </View>
           </View>
-        </TouchableOpacity>
+
+          <View style={styles.currentPlanMetaBlock}>
+            <View style={styles.metaRow}>
+              <IconSymbol
+                ios_icon_name="person.3.fill"
+                android_material_icon_name="group"
+                size={22}
+                color={colors.primary}
+              />
+              <View style={styles.metaTextGroup}>
+                <Text style={[styles.metaLabel, { color: textSecondaryColor }]}>Spillerforbrug</Text>
+                <Text style={[styles.metaValue, { color: textColor }]}>{playerUsageLabel}</Text>
+                {subscriptionStatus?.maxPlayers ? (
+                  <Text style={[styles.metaHint, { color: textSecondaryColor }]}>Opgrader for flere spillere</Text>
+                ) : null}
+              </View>
+            </View>
+
+            <View style={styles.metaRow}>
+              <IconSymbol
+                ios_icon_name="calendar"
+                android_material_icon_name="event"
+                size={22}
+                color={colors.primary}
+              />
+              <View style={styles.metaTextGroup}>
+                <Text style={[styles.metaLabel, { color: textSecondaryColor }]}>
+                  {renewalSummary.isTrial ? 'Prøveperiode til' : 'Fornyes'}
+                </Text>
+                <Text style={[styles.metaValue, { color: textColor }]}>
+                  {renewalSummary.primaryDate ? formatDate(renewalSummary.primaryDate) : 'Dato ikke tilgængelig'}
+                </Text>
+                {renewalSummary.daysRemaining !== null && (
+                  <Text style={[styles.metaHint, { color: textSecondaryColor }]}>
+                    {renewalSummary.isTrial
+                      ? `${renewalSummary.daysRemaining} dage tilbage af prøveperioden`
+                      : `${renewalSummary.daysRemaining} dage til næste fornyelse`}
+                  </Text>
+                )}
+                {shouldShowRenewalAfterTrial && renewalSummary.renewalDate ? (
+                  <Text style={[styles.metaHint, { color: textSecondaryColor }]}>
+                    Herefter fornyes {formatDate(renewalSummary.renewalDate)}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+          </View>
+
+        </View>
       )}
 
       {/* Collapsible Plans Section - Moved to bottom */}
@@ -419,7 +564,7 @@ export default function SubscriptionManager({
           {filteredPlans.map((plan, index) => {
             const isPopular = index === Math.floor(filteredPlans.length / 2); // Middle plan is popular
             const isCreating = creatingPlanId === plan.id;
-            const isCurrentPlan = isCurrentPlanCheck(plan.name);
+            const isPlanCurrent = isCurrentPlan(plan.name);
 
             return (
               <TouchableOpacity
@@ -427,20 +572,20 @@ export default function SubscriptionManager({
                 style={[
                   styles.planCard,
                   { backgroundColor: cardBgColor },
-                  isPopular && !isCurrentPlan && styles.popularPlan,
-                  isCurrentPlan && styles.currentPlanCard,
+                  isPopular && !isPlanCurrent && styles.popularPlan,
+                  isPlanCurrent && styles.currentPlanCard,
                 ]}
                 onPress={() => handleSelectPlan(plan.id, plan.name, plan.max_players)}
-                disabled={isCreating || isCurrentPlan}
+                disabled={isCreating || isPlanCurrent}
                 activeOpacity={0.7}
               >
-                {isPopular && !isCurrentPlan && (
+                {isPopular && !isPlanCurrent && (
                   <View style={[styles.popularBadge, { backgroundColor: colors.primary }]}>
                     <Text style={styles.popularBadgeText}>Mest populær</Text>
                   </View>
                 )}
 
-                {isCurrentPlan && (
+                {isPlanCurrent && (
                   <View style={[styles.currentBadge, { backgroundColor: colors.success }]}>
                     <IconSymbol
                       ios_icon_name="checkmark.circle.fill"
@@ -454,7 +599,7 @@ export default function SubscriptionManager({
 
                 <View style={styles.planHeader}>
                   <Text style={[styles.planName, { color: textColor }]}>{plan.name}</Text>
-                  {isCurrentPlan && (
+                  {isPlanCurrent && (
                     <View style={styles.activeIndicatorCircle}>
                       <IconSymbol
                         ios_icon_name="checkmark"
@@ -467,7 +612,7 @@ export default function SubscriptionManager({
                 </View>
                 
                 <View style={styles.priceContainer}>
-                  <Text style={[styles.price, { color: isCurrentPlan ? colors.success : colors.primary }]}>
+                  <Text style={[styles.price, { color: isPlanCurrent ? colors.success : colors.primary }]}>
                     {getPlanPriceLabel(plan)}
                   </Text>
                   <Text style={[styles.priceUnit, { color: textSecondaryColor }]}>/ måned</Text>
@@ -479,7 +624,7 @@ export default function SubscriptionManager({
                       ios_icon_name="checkmark.circle.fill"
                       android_material_icon_name="check_circle"
                       size={20}
-                      color={isCurrentPlan ? colors.success : colors.primary}
+                      color={isPlanCurrent ? colors.success : colors.primary}
                     />
                     <Text style={[styles.featureText, { color: textColor }]}>
                       {plan.max_players === 1 
@@ -494,7 +639,7 @@ export default function SubscriptionManager({
                       ios_icon_name="checkmark.circle.fill"
                       android_material_icon_name="check_circle"
                       size={20}
-                      color={isCurrentPlan ? colors.success : colors.primary}
+                      color={isPlanCurrent ? colors.success : colors.primary}
                     />
                     <Text style={[styles.featureText, { color: textColor }]}>
                       14 dages gratis prøveperiode
@@ -506,7 +651,7 @@ export default function SubscriptionManager({
                       ios_icon_name="checkmark.circle.fill"
                       android_material_icon_name="check_circle"
                       size={20}
-                      color={isCurrentPlan ? colors.success : colors.primary}
+                      color={isPlanCurrent ? colors.success : colors.primary}
                     />
                     <Text style={[styles.featureText, { color: textColor }]}>
                       Fuld adgang til alle funktioner
@@ -518,7 +663,7 @@ export default function SubscriptionManager({
                       ios_icon_name="checkmark.circle.fill"
                       android_material_icon_name="check_circle"
                       size={20}
-                      color={isCurrentPlan ? colors.success : colors.primary}
+                      color={isPlanCurrent ? colors.success : colors.primary}
                     />
                     <Text style={[styles.featureText, { color: textColor }]}>
                       Opsig når som helst
@@ -526,7 +671,7 @@ export default function SubscriptionManager({
                   </View>
                 </View>
 
-                {!isCurrentPlan && (
+                {!isPlanCurrent && (
                   <TouchableOpacity
                     style={[
                       styles.selectButton,
@@ -551,7 +696,7 @@ export default function SubscriptionManager({
                   </TouchableOpacity>
                 )}
 
-                {isCurrentPlan && (
+                {isPlanCurrent && (
                   <View style={[styles.currentPlanIndicator, { backgroundColor: colors.success }]}>
                     <IconSymbol
                       ios_icon_name="checkmark.circle.fill"
@@ -616,86 +761,71 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
   },
-  currentPlanBanner: {
+  currentPlanSummaryCard: {
     borderRadius: 16,
     padding: 20,
     marginBottom: 20,
+    borderWidth: 1,
   },
-  currentPlanContent: {
+  currentPlanHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    gap: 12,
   },
-  currentPlanInfo: {
+  currentPlanTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     flex: 1,
   },
+  currentPlanTextGroup: {
+    flex: 1,
+    gap: 2,
+  },
   currentPlanLabel: {
-    fontSize: 14,
-    color: '#fff',
-    opacity: 0.9,
-    marginBottom: 4,
+    fontSize: 13,
+    fontWeight: '600',
   },
   currentPlanName: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#fff',
   },
-  currentPlanBadge: {
-    backgroundColor: 'rgba(255,255,255,0.25)',
+  statusPill: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 8,
+    borderRadius: 999,
+    borderWidth: 1,
   },
-  currentPlanBadgeText: {
+  statusPillText: {
     fontSize: 12,
-    fontWeight: '600',
-    color: '#fff',
+    fontWeight: '700',
   },
-  orangeBoxExpandedContent: {
-    marginTop: 16,
-  },
-  orangeBoxDivider: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.3)',
+  currentPlanMetaBlock: {
+    gap: 14,
+    marginTop: 6,
     marginBottom: 16,
   },
-  orangeBoxDetailRow: {
+  metaRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+    gap: 12,
+    alignItems: 'flex-start',
   },
-  orangeBoxDetailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  metaTextGroup: {
+    flex: 1,
+    gap: 2,
   },
-  orangeBoxDetailLabel: {
-    fontSize: 15,
-    color: '#fff',
-    opacity: 0.9,
-  },
-  orangeBoxDetailValue: {
-    fontSize: 16,
+  metaLabel: {
+    fontSize: 13,
     fontWeight: '600',
-    color: '#fff',
   },
-  orangeBoxDateMeta: {
-    alignItems: 'flex-end',
-  },
-  orangeBoxDatePrimary: {
+  metaValue: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#fff',
   },
-  orangeBoxDateSecondary: {
+  metaHint: {
     fontSize: 13,
-    color: '#fff',
-    opacity: 0.85,
-  },
-  expandIndicator: {
-    alignItems: 'center',
-    marginTop: 12,
   },
   expandButton: {
     flexDirection: 'row',
