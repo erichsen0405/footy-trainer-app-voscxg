@@ -248,7 +248,9 @@ const ExerciseCard = memo(function ExerciseCard({
               ))}
             </View>
 
-            <View style={[styles.positionPill, { backgroundColor: theme.highlight }, positionIsPlaceholder ? { opacity: 0.55 } : null]}>
+            <View
+              style={[styles.positionPill, { backgroundColor: theme.highlight }, positionIsPlaceholder ? { opacity: 0.55 } : null]}
+            >
               <Text style={[styles.positionPillText, { color: theme.textSecondary }]} numberOfLines={1}>
                 {positionText}
               </Text>
@@ -1012,7 +1014,16 @@ export default function LibraryScreen() {
         />
       );
     },
-    [handleFolderPress, handlePressCard, handlePressCta, selectedPathIds, nav.root, nav.level3Id, searchOpen, searchQuery]
+    [
+      handleFolderPress,
+      handlePressCard,
+      handlePressCta,
+      selectedPathIds,
+      nav.root,
+      nav.level3Id,
+      searchOpen,
+      searchQuery,
+    ]
   );
 
   const keyExtractor = useCallback((item: any, index: number) => {
@@ -1373,7 +1384,6 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   ctaText: { fontSize: 13, fontWeight: '800' },
-
   stateCard: {
     marginHorizontal: 18,
     marginTop: 18,
