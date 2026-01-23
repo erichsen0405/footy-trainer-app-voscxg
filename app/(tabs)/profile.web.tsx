@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, useColorScheme, Platform, ActivityIndicator } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { PremiumFeatureGate } from '@/components/PremiumFeatureGate';
@@ -38,7 +38,25 @@ const normalizeUpgradeTarget = (value: string | string[] | undefined): UpgradeTa
   return null;
 };
 
+const extractFirstParamValue = (value?: string | string[]) => (Array.isArray(value) ? value[0] : value);
+
+const isTruthySearchParam = (value?: string | null) => {
+  if (!value) {
+    return false;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes';
+};
+
+const FullScreenLoading = ({ message }: { message: string }) => (
+  <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+    <ActivityIndicator size="large" color={colors.primary} />
+    <Text style={{ marginTop: 16, color: colors.text, fontSize: 16 }}>{message}</Text>
+  </View>
+);
+
 export default function ProfileScreen() {
+  const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<'admin' | 'trainer' | 'player' | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -52,9 +70,8 @@ export default function ProfileScreen() {
   const [playersRefreshTrigger, setPlayersRefreshTrigger] = useState(0);
   
   // New onboarding flow states
-  const [needsRoleSelection, setNeedsRoleSelection] = useState(false);
-  const [needsSubscription, setNeedsSubscription] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<'player' | 'trainer' | null>(null);
+  const [, setNeedsRoleSelection] = useState(false);
+  const [, setNeedsSubscription] = useState(false);
   
   // Profile editing
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -66,9 +83,53 @@ export default function ProfileScreen() {
   const [isSubscriptionExpanded, setIsSubscriptionExpanded] = useState(false);
   const [subscriptionSectionY, setSubscriptionSectionY] = useState<number | null>(null);
   const scrollViewRef = useRef<ScrollView | null>(null);
-  const params = useLocalSearchParams<{ upgradeTarget?: string }>();
+  const params = useLocalSearchParams<{ upgradeTarget?: string | string[]; openSubscription?: string | string[] }>();
   const routeUpgradeTarget = normalizeUpgradeTarget(params.upgradeTarget);
+  const openSubscriptionParam = extractFirstParamValue(params.openSubscription);
+  const shouldAutoOpenSubscription = isTruthySearchParam(openSubscriptionParam);
   const [manualUpgradeTarget, setManualUpgradeTarget] = useState<UpgradeTarget | null>(null);
+  const hasConsumedOpenSubscriptionRef = useRef(false);
+  const [forceShowPlansOnce, setForceShowPlansOnce] = useState(false);
+  const forceShowPlansTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoOpenTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const updateOpenSubscriptionParam = useCallback(
+    (value?: string) => {
+      try {
+        router.setParams({ openSubscription: value } as any);
+      } catch (error) {
+        console.warn('[PROFILE WEB] Failed to update openSubscription param', error);
+      }
+    },
+    [router],
+  );
+
+  const clearForceShowPlansTimeout = useCallback(() => {
+    if (forceShowPlansTimeoutRef.current) {
+      clearTimeout(forceShowPlansTimeoutRef.current);
+      forceShowPlansTimeoutRef.current = null;
+    }
+  }, []);
+
+  const clearAutoOpenTimeout = useCallback(() => {
+    if (autoOpenTimeoutRef.current) {
+      clearTimeout(autoOpenTimeoutRef.current);
+      autoOpenTimeoutRef.current = null;
+    }
+  }, []);
+
+  const scheduleForceShowPlansReset = useCallback(
+    (delay = 800) => {
+      clearForceShowPlansTimeout();
+      forceShowPlansTimeoutRef.current = setTimeout(() => {
+        setForceShowPlansOnce(false);
+        forceShowPlansTimeoutRef.current = null;
+      }, delay);
+    },
+    [clearForceShowPlansTimeout],
+  );
+
+  useEffect(() => () => clearForceShowPlansTimeout(), [clearForceShowPlansTimeout]);
+  useEffect(() => () => clearAutoOpenTimeout(), [clearAutoOpenTimeout]);
   
   // Debug state
   const [debugInfo, setDebugInfo] = useState<string[]>([]);
@@ -76,19 +137,34 @@ export default function ProfileScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
+  const [authTransitioning, setAuthTransitioning] = useState(false);
+  const [authTransitionMessage, setAuthTransitionMessage] = useState('Opdaterer abonnement...');
+  const lastKnownUserRef = useRef<any>(null);
+  const graceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Get subscription status
   const { subscriptionStatus, refreshSubscription } = useSubscription();
-  const {
-    featureAccess,
-    isLoading: subscriptionFeaturesLoading,
-  } = useSubscriptionFeatures();
+  const subscriptionStatusRef = useRef(subscriptionStatus);
+  useEffect(() => {
+    subscriptionStatusRef.current = subscriptionStatus;
+  }, [subscriptionStatus]);
 
-  const canUseCalendarSync = featureAccess.calendarSync;
-  const canLinkTrainer = featureAccess.trainerLinking;
+  const { featureAccess, isLoading: subscriptionFeaturesLoading } = useSubscriptionFeatures();
+  const resolvedFeatureAccess = featureAccess ?? {
+    calendarSync: false,
+    trainerLinking: false,
+    library: false,
+  };
+
+  const canUseCalendarSync = resolvedFeatureAccess.calendarSync;
+  const canLinkTrainer = resolvedFeatureAccess.trainerLinking;
   const effectiveUpgradeTarget = manualUpgradeTarget ?? routeUpgradeTarget;
   const highlightProductId =
     userRole === 'player' && effectiveUpgradeTarget ? PRODUCT_IDS.PLAYER_PREMIUM : undefined;
   const shouldHighlightPremiumPlan = Boolean(highlightProductId);
+  const forcePlayerPlanListOpen =
+    forceShowPlansOnce ||
+    (userRole === 'player' && !subscriptionStatus?.hasSubscription);
 
   const addDebugInfo = (message: string) => {
     console.log('[PROFILE DEBUG]', message);
@@ -106,32 +182,41 @@ export default function ProfileScreen() {
     if (target) {
       setManualUpgradeTarget(target);
     }
+    clearForceShowPlansTimeout();
+    setForceShowPlansOnce(true);
+    scheduleForceShowPlansReset();
     setIsSubscriptionExpanded(true);
     setTimeout(() => {
       scrollToSubscription();
     }, 200);
-  }, [scrollToSubscription]);
+  }, [clearForceShowPlansTimeout, scheduleForceShowPlansReset, scrollToSubscription]);
+
+  const handleToggleSubscriptionSection = useCallback(() => {
+    clearForceShowPlansTimeout();
+    setForceShowPlansOnce(false);
+    setIsSubscriptionExpanded(prev => !prev);
+  }, [clearForceShowPlansTimeout]);
 
   const checkUserOnboarding = useCallback(async (userId: string) => {
     addDebugInfo('Checking user onboarding status...');
     
-    // Check if user has a role
-    const { data: roleData, error: roleError } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', userId)
-      .single();
+      const { data: roleData, error: roleError } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .single();
 
-    if (roleError || !roleData) {
-      addDebugInfo('No role found - needs role selection');
-      setNeedsRoleSelection(true);
-      setNeedsSubscription(false);
-      return;
-    }
+      if (roleError || !roleData) {
+        addDebugInfo('No role found - defer to subscription for role');
+        setUserRole(null);
+        setNeedsRoleSelection(false);
+        setNeedsSubscription(true);
+        return;
+      }
 
-    const role = roleData.role as 'admin' | 'trainer' | 'player';
-    setUserRole(role);
-    addDebugInfo(`Role found: ${role}`);
+      const role = roleData.role as 'admin' | 'trainer' | 'player';
+      setUserRole(role);
+      addDebugInfo(`Role found: ${role}`);
 
     // If role is trainer or admin, check if they have a subscription
     if (role === 'trainer' || role === 'admin') {
@@ -166,32 +251,57 @@ export default function ProfileScreen() {
   useEffect(() => {
     const checkUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      console.log('Current user:', user);
       setUser(user);
-      
+      lastKnownUserRef.current = user;
       if (user) {
+        await refreshSubscription();
         await checkUserOnboarding(user.id);
       }
     };
     checkUser();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      console.log('Auth state changed:', _event, session?.user);
-      setUser(session?.user || null);
-      
-      if (session?.user) {
-        await checkUserOnboarding(session.user.id);
-      } else {
-        setUserRole(null);
-        setProfile(null);
-        setAdminInfo(null);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_OUT') {
+        setAuthTransitioning(false);
+        setUser(null);
+        lastKnownUserRef.current = null;
         setNeedsRoleSelection(false);
         setNeedsSubscription(false);
+        hasConsumedOpenSubscriptionRef.current = false;
+        clearForceShowPlansTimeout();
+        setForceShowPlansOnce(false);
+        return;
       }
+      if (session?.user) {
+        if (graceTimeoutRef.current) clearTimeout(graceTimeoutRef.current);
+        setAuthTransitioning(false);
+        setUser(session.user);
+        lastKnownUserRef.current = session.user;
+        await refreshSubscription();
+        await checkUserOnboarding(session.user.id);
+        return;
+      }
+      setAuthTransitioning(true);
+      setUser(lastKnownUserRef.current);
+      if (graceTimeoutRef.current) clearTimeout(graceTimeoutRef.current);
+      graceTimeoutRef.current = setTimeout(async () => {
+        const { data } = await supabase.auth.getSession();
+        const stable = data.session?.user ?? null;
+        setUser(stable);
+        lastKnownUserRef.current = stable;
+        if (stable) {
+          await refreshSubscription();
+          await checkUserOnboarding(stable.id);
+        }
+        setAuthTransitioning(false);
+      }, 600);
     });
 
-    return () => subscription.unsubscribe();
-  }, [checkUserOnboarding]);
+    return () => {
+      subscription.unsubscribe();
+      if (graceTimeoutRef.current) clearTimeout(graceTimeoutRef.current);
+    };
+  }, [checkUserOnboarding, refreshSubscription]);
 
   useEffect(() => {
     if (shouldHighlightPremiumPlan) {
@@ -208,6 +318,44 @@ export default function ProfileScreen() {
     }, 300);
     return () => clearTimeout(timer);
   }, [shouldHighlightPremiumPlan, subscriptionSectionY, scrollToSubscription]);
+
+  useEffect(() => {
+    if (!shouldAutoOpenSubscription) {
+      if (hasConsumedOpenSubscriptionRef.current) {
+        hasConsumedOpenSubscriptionRef.current = false;
+      }
+      return;
+    }
+
+    if (hasConsumedOpenSubscriptionRef.current) {
+      return;
+    }
+
+    hasConsumedOpenSubscriptionRef.current = true;
+    clearForceShowPlansTimeout();
+    clearAutoOpenTimeout();
+    setForceShowPlansOnce(true);
+    setManualUpgradeTarget(null);
+    setIsSubscriptionExpanded(true);
+
+    autoOpenTimeoutRef.current = setTimeout(() => {
+      scrollToSubscription();
+      scheduleForceShowPlansReset();
+      updateOpenSubscriptionParam(undefined);
+      autoOpenTimeoutRef.current = null;
+    }, 250);
+
+    return () => {
+      clearAutoOpenTimeout();
+    };
+  }, [
+    clearAutoOpenTimeout,
+    clearForceShowPlansTimeout,
+    scheduleForceShowPlansReset,
+    scrollToSubscription,
+    shouldAutoOpenSubscription,
+    updateOpenSubscriptionParam,
+  ]);
 
   const fetchUserProfile = async (userId: string) => {
     try {
@@ -370,7 +518,7 @@ export default function ProfileScreen() {
       if (data.session) {
         // User is logged in immediately - show success and they'll be prompted for role
         addDebugInfo('✅ User logged in automatically - will show role selection');
-        window.alert(`Velkommen! 🎉\n\nDin konto er oprettet og du er nu logget ind!\n\nVi har sendt en bekræftelsesmail til ${email}. Bekræft venligst din email når du får tid.\n\nNu skal du vælge din rolle for at fortsætte.`);
+        window.alert(`Velkommen! 🎉\n\nDin konto er oprettet og du er nu logget ind!\n\nVi har sendt en bekræftelsesmail til ${email}. Bekræft venligst din email når du får tid.\n\nVælg et abonnement (spiller eller træner) for at komme videre.`);
       } else {
         // Email confirmation required before login
         addDebugInfo('📧 Email confirmation required before login');
@@ -439,103 +587,50 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleRoleSelection = async (role: 'player' | 'trainer') => {
-    if (!user) return;
-
-    setLoading(true);
-    addDebugInfo(`Setting role to: ${role}`);
-
+  const handleSignOut = useCallback(async () => {
     try {
-      // Insert role into user_roles table
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .insert({
-          user_id: user.id,
-          role: role
-        });
-
-      if (roleError) {
-        addDebugInfo(`❌ Error setting role: ${roleError.message}`);
-        window.alert('Fejl: Kunne ikke gemme rolle. Prøv venligst igen.');
-        return;
-      }
-
-      addDebugInfo(`✅ Role set successfully`);
-      setSelectedRole(role);
-      setUserRole(role);
-      setNeedsRoleSelection(false);
-
-      // If trainer, show subscription selection
-      if (role === 'trainer') {
-        setNeedsSubscription(true);
-        window.alert('Vælg abonnement\n\nSom træner skal du vælge et abonnement for at kunne administrere spillere.');
-      } else {
-        // Player doesn't need subscription
-        window.alert('Velkommen! 🎉\n\nDin konto er nu klar til brug!');
-      }
-    } catch (error: any) {
-      addDebugInfo(`❌ Unexpected error: ${error.message}`);
-      window.alert(`Fejl: ${error.message || 'Der opstod en fejl. Prøv venligst igen.'}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCompleteSubscription = async (planId: string) => {
-    if (!user) return;
-
-    setLoading(true);
-    addDebugInfo(`Creating subscription with plan: ${planId}`);
-
-    try {
-      // Call the create-subscription edge function
-      const { data, error } = await supabase.functions.invoke('create-subscription', {
-        body: { planId }
-      });
-
-      if (error) {
-        addDebugInfo(`❌ Error creating subscription: ${error.message}`);
-        window.alert('Fejl: Kunne ikke oprette abonnement. Prøv venligst igen.');
-        return;
-      }
-
-      addDebugInfo(`✅ Subscription created successfully`);
-      setNeedsSubscription(false);
-      
-      // Refresh subscription status
-      await refreshSubscription();
-      
-      window.alert('Velkommen! 🎉\n\nDit abonnement er aktiveret med 14 dages gratis prøveperiode. Du kan nu oprette spillere og hold!');
-    } catch (error: any) {
-      addDebugInfo(`❌ Unexpected error: ${error.message}`);
-      window.alert(`Fejl: ${error.message || 'Der opstod en fejl. Prøv venligst igen.'}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSignOut = async () => {
-    try {
+      setLoading(true);
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
+
+      setUser(null);
+      setUserRole(null);
+      setProfile(null);
+      setAdminInfo(null);
+      setNeedsRoleSelection(false);
+      setNeedsSubscription(false);
+      setManualUpgradeTarget(null);
+      setIsEditingProfile(false);
+      setShowCreatePlayerModal(false);
+      setPlayersRefreshTrigger(0);
+      setEditName('');
+      setEditPhone('');
+      setEmail('');
+      setPassword('');
+      setShowSuccessMessage(false);
+      setDebugInfo([]);
+      setAuthTransitioning(false);
+      setAuthTransitionMessage('Opdaterer abonnement...');
+      setIsSubscriptionExpanded(false);
+      setIsCalendarSyncExpanded(false);
+      hasConsumedOpenSubscriptionRef.current = false;
+      clearForceShowPlansTimeout();
+      setForceShowPlansOnce(false);
+
       window.alert('Logget ud\n\nDu er nu logget ud');
     } catch (error: any) {
-      console.error('Sign out error:', error);
-      window.alert(`Fejl: ${error.message || 'Der opstod en fejl'}`);
+      window.alert(`Fejl\n\n${error?.message || 'Der opstod en fejl. Prøv igen.'}`);
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [clearForceShowPlansTimeout]);
 
   const getPlanColor = (planName: string | null) => {
     if (!planName) return colors.primary;
-    
-    const lowerName = planName.toLowerCase();
-    if (lowerName.includes('bronze') || lowerName.includes('basic')) {
-      return '#CD7F32'; // Bronze
-    } else if (lowerName.includes('silver') || lowerName.includes('standard')) {
-      return '#C0C0C0'; // Silver
-    } else if (lowerName.includes('gold') || lowerName.includes('premium')) {
-      return '#FFD700'; // Gold
-    }
+    const normalized = planName.toLowerCase();
+    if (normalized.includes('premium') || normalized.includes('gold')) return '#FFD700';
+    if (normalized.includes('standard') || normalized.includes('silver')) return '#C0C0C0';
+    if (normalized.includes('basic') || normalized.includes('bronze') || normalized.includes('spiller')) return '#CD7F32';
     return colors.primary;
   };
 
@@ -546,135 +641,9 @@ export default function ProfileScreen() {
 
   const isTrainer = userRole === 'admin' || userRole === 'trainer';
 
-  // Show role selection if user is logged in but has no role
-  if (user && needsRoleSelection) {
-    return (
-      <View style={[styles.container, { backgroundColor: bgColor }]}>
-        <ScrollView 
-          ref={scrollViewRef}
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.header}>
-            <Text style={[styles.headerTitle, { color: textColor }]}>Vælg din rolle</Text>
-            <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
-              Vælg om du er spiller eller træner for at fortsætte
-            </Text>
-          </View>
-
-          <View style={[styles.card, { backgroundColor: cardBgColor }]}>
-            <Text style={[styles.onboardingTitle, { color: textColor }]}>
-              Velkommen til din nye konto! 🎉
-            </Text>
-            <Text style={[styles.onboardingDescription, { color: textSecondaryColor }]}>
-              For at komme i gang skal du vælge din rolle. Dette hjælper os med at tilpasse oplevelsen til dig.
-            </Text>
-
-            <TouchableOpacity
-              style={[styles.roleCard, { backgroundColor: bgColor }]}
-              onPress={() => handleRoleSelection('player')}
-              disabled={loading}
-              activeOpacity={0.7}
-            >
-              <IconSymbol
-                ios_icon_name="figure.run"
-                android_material_icon_name="directions_run"
-                size={48}
-                color={colors.primary}
-              />
-              <Text style={[styles.roleTitle, { color: textColor }]}>Spiller</Text>
-              <Text style={[styles.roleDescription, { color: textSecondaryColor }]}>
-                Jeg er en spiller og vil holde styr på min træning
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.roleCard, { backgroundColor: bgColor }]}
-              onPress={() => handleRoleSelection('trainer')}
-              disabled={loading}
-              activeOpacity={0.7}
-            >
-              <IconSymbol
-                ios_icon_name="person.3.fill"
-                android_material_icon_name="group"
-                size={48}
-                color={colors.primary}
-              />
-              <Text style={[styles.roleTitle, { color: textColor }]}>Træner</Text>
-              <Text style={[styles.roleDescription, { color: textSecondaryColor }]}>
-                Jeg er træner og vil administrere spillere og hold
-              </Text>
-            </TouchableOpacity>
-
-            {loading && (
-              <View style={styles.loadingOverlay}>
-                <ActivityIndicator size="large" color={colors.primary} />
-                <Text style={[styles.loadingText, { color: textColor }]}>
-                  Gemmer din rolle...
-                </Text>
-              </View>
-            )}
-          </View>
-
-          {/* Debug Info */}
-          {debugInfo.length > 0 && (
-            <View style={[styles.card, { backgroundColor: cardBgColor }]}>
-              <Text style={[styles.debugTitle, { color: textColor }]}>📋 Debug Log:</Text>
-              <View style={styles.debugScroll}>
-                {debugInfo.map((info, index) => (
-                  <Text key={index} style={[styles.debugText, { color: textSecondaryColor }]}>
-                    {info}
-                  </Text>
-                ))}
-              </View>
-            </View>
-          )}
-        </ScrollView>
-      </View>
-    );
-  }
-
-  // Show subscription selection if user is trainer but has no subscription
-  if (user && needsSubscription) {
-    return (
-      <View style={[styles.container, { backgroundColor: bgColor }]}>
-        <ScrollView 
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.header}>
-            <Text style={[styles.headerTitle, { color: textColor }]}>Vælg dit abonnement</Text>
-            <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
-              Som træner skal du vælge et abonnement for at administrere spillere
-            </Text>
-          </View>
-
-          <View style={[styles.card, { backgroundColor: cardBgColor }]}>
-            <SubscriptionManager 
-              onPlanSelected={handleCompleteSubscription}
-              isSignupFlow={true}
-              selectedRole="trainer"
-            />
-          </View>
-
-          {/* Debug Info */}
-          {debugInfo.length > 0 && (
-            <View style={[styles.card, { backgroundColor: cardBgColor, marginTop: 16 }]}>
-              <Text style={[styles.debugTitle, { color: textColor }]}>📋 Debug Log:</Text>
-              <View style={styles.debugScroll}>
-                {debugInfo.map((info, index) => (
-                  <Text key={index} style={[styles.debugText, { color: textSecondaryColor }]}>
-                    {info}
-                  </Text>
-                ))}
-              </View>
-            </View>
-          )}
-        </ScrollView>
-      </View>
-    );
+  // Auth-transition gate FIRST
+  if (authTransitioning) {
+    return <FullScreenLoading message={authTransitionMessage} />;
   }
 
   return (
@@ -966,7 +935,7 @@ export default function ProfileScreen() {
             >
               <TouchableOpacity
                 style={styles.collapsibleHeader}
-                onPress={() => setIsSubscriptionExpanded(!isSubscriptionExpanded)}
+                onPress={handleToggleSubscriptionSection}
                 activeOpacity={0.7}
               >
                 <View style={styles.sectionTitleContainer}>
@@ -991,13 +960,22 @@ export default function ProfileScreen() {
                   <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
                     Administrer dit abonnement
                   </Text>
-                  {userRole === 'player' ? (
+                  {userRole === null ? (
+                    <View style={{ paddingVertical: 24, alignItems: 'center', gap: 8 }}>
+                      <ActivityIndicator size="small" color={colors.primary} />
+                      <Text style={{ color: textSecondaryColor, fontSize: 14 }}>
+                        Klargør rolle...
+                      </Text>
+                    </View>
+                  ) : userRole === 'player' ? (
                     <AppleSubscriptionManager
                       highlightProductId={highlightProductId}
-                      forceShowPlans={userRole === 'player' && !subscriptionStatus?.hasSubscription}
+                      forceShowPlans={forcePlayerPlanListOpen}
                     />
+                  ) : Platform.OS === 'ios' ? (
+                    <AppleSubscriptionManager forceShowPlans={forceShowPlansOnce} />
                   ) : (
-                    <SubscriptionManager />
+                    <SubscriptionManager forceShowPlans={forceShowPlansOnce} />
                   )}
                 </>
               )}
@@ -1149,7 +1127,7 @@ export default function ProfileScreen() {
                     </Text>
                     <Text style={[styles.infoBoxText, { color: textSecondaryColor }]}>
                       {isSignUp 
-                        ? 'Efter du opretter din konto, bliver du automatisk logget ind og kan begynde at bruge appen med det samme. Du vil modtage en bekræftelsesmail som du kan bekræfte når du har tid.\n\nDu vil blive bedt om at vælge din rolle (spiller eller træner) og derefter vælge et abonnement hvis du er træner.'
+                        ? 'Efter du opretter din konto, bliver du automatisk logget ind og kan begynde at bruge appen. Du modtager en bekræftelsesmail. Din rolle bestemmes af det abonnement du vælger (spiller eller træner).'
                         : 'For at gemme eksterne kalendere og synkronisere dine data på tværs af enheder, skal du oprette en gratis konto.\n\nDine data gemmes sikkert i Supabase og er kun tilgængelige for dig.'
                       }
                     </Text>

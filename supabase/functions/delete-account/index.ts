@@ -4,87 +4,87 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-Deno.serve(async req => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
-  }
-
-  if (req.method !== 'POST') {
-    return new Response(
-      JSON.stringify({ success: false, error: 'Method not allowed' }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 405 }
-    );
   }
 
   try {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
+      return new Response(JSON.stringify({ success: false, error: 'No authorization header' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 401,
+      });
+    }
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+    const serviceKey =
+      Deno.env.get('SERVICE_ROLE_KEY') ??
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ??
+      '';
+
+    if (!serviceKey) {
+      console.error('[delete-account] Missing SERVICE_ROLE_KEY secret');
       return new Response(
-        JSON.stringify({ success: false, error: 'Missing Authorization header' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+        JSON.stringify({ success: false, error: 'Missing SERVICE_ROLE_KEY secret' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 },
       );
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-
-    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) {
-      console.error('[delete-account] Missing Supabase environment variables');
-      return new Response(
-        JSON.stringify({ success: false, error: 'Server misconfigured' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-      );
-    }
-
-    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+    const supabaseClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authHeader } },
-    });
-
-    const {
-      data: { user },
-      error: getUserError,
-    } = await supabaseClient.auth.getUser();
-
-    if (getUserError || !user) {
-      console.error('[delete-account] Auth error', getUserError);
-      return new Response(
-        JSON.stringify({ success: false, error: 'Unauthorized' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
-      );
-    }
-
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    console.log('[delete-account] Deleting relational data for user', user.id);
-    const { error: dataDeleteError } = await supabaseAdmin.rpc('delete_user_account', { p_user_id: user.id });
-    if (dataDeleteError) {
-      console.error('[delete-account] Data cleanup failed', dataDeleteError);
-      throw new Error(`Failed to remove profile data: ${dataDeleteError.message}`);
+    const { data: userData, error: userError } = await supabaseClient.auth.getUser();
+    if (userError || !userData?.user) {
+      return new Response(JSON.stringify({ success: false, error: userError?.message || 'Unauthorized' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 401,
+      });
     }
 
-    console.log('[delete-account] Removing auth user', user.id);
-    const { error: authDeleteError } = await supabaseAdmin.auth.admin.deleteUser(user.id);
-    const authDeleteMessage = authDeleteError?.message?.toLowerCase() ?? '';
-    if (authDeleteError && !authDeleteMessage.includes('not found')) {
-      console.error('[delete-account] Auth deletion failed', authDeleteError);
-      throw new Error(authDeleteError.message || 'Unable to delete auth user');
+    const userId = userData.user.id;
+    const supabaseAdmin = createClient(supabaseUrl, serviceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    console.log('[delete-account] Deleting data for user', userId);
+
+    const deletes = [
+      supabaseAdmin.from('user_roles').delete().eq('user_id', userId),
+      supabaseAdmin.from('profiles').delete().eq('user_id', userId),
+      supabaseAdmin.from('admin_player_relationships').delete().or(`player_id.eq.${userId},admin_id.eq.${userId}`),
+      supabaseAdmin.from('subscriptions').delete().eq('admin_id', userId),
+    ];
+
+    for (const op of deletes) {
+      const { error } = await op;
+      if (error) {
+        console.error('[delete-account] Delete error', error);
+        throw error;
+      }
     }
 
-    return new Response(
-      JSON.stringify({ success: true, deletedUserId: user.id }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-    );
-  } catch (error) {
-    console.error('[delete-account] Unexpected error', error);
-    return new Response(
-      JSON.stringify({ success: false, error: error?.message ?? 'Unexpected error' }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-    );
+    const { error: authDeleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+    if (authDeleteError) {
+      console.error('[delete-account] Auth delete failed', authDeleteError);
+      throw authDeleteError;
+    }
+
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 200,
+    });
+  } catch (error: any) {
+    console.error('[delete-account] Failed', error);
+    return new Response(JSON.stringify({ success: false, error: error?.message || 'Unknown error' }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500,
+    });
   }
 });
