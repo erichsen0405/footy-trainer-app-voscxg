@@ -1,40 +1,84 @@
-import React, { useMemo } from 'react';
-import { Stack } from 'expo-router';
+import React, { useMemo, useEffect } from 'react';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { Platform } from 'react-native';
 import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
 import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
 import { colors } from '@/styles/commonStyles';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import { OnboardingGate } from '@/components/OnboardingGate';
+import { useSubscriptionFeatures } from '@/hooks/useSubscriptionFeatures';
 
 /* ======================================================
    ROOT TAB LAYOUT
    ====================================================== */
 
 export default function TabLayout() {
+  const router = useRouter();
+  const segments = useSegments();
   const { userRole, loading } = useUserRole();
-  const { entitlementVersion } = useSubscription();
+  const { entitlementVersion, subscriptionStatus: serverSubscriptionStatus } = useSubscription();
+  const {
+    hasActiveSubscription,
+    subscriptionTier,
+    isLoading: subscriptionFeaturesLoading,
+  } = useSubscriptionFeatures();
 
-  const isLoggedIn = !!userRole;
-  const entitlementKey = `${userRole ?? 'anon'}-${entitlementVersion}`;
+  const hasSubscription =
+    Platform.OS === 'ios'
+      ? hasActiveSubscription
+      : Boolean(serverSubscriptionStatus?.hasSubscription);
+
+  const locked =
+    !userRole || (!hasSubscription && !(Platform.OS === 'ios' && subscriptionFeaturesLoading));
+
+  const navigationKey = useMemo(() => {
+    const rolePart = userRole ?? 'anon';
+    const planPart =
+      Platform.OS === 'ios'
+        ? subscriptionTier ?? 'none'
+        : serverSubscriptionStatus?.planName ?? 'none';
+    const activePart = hasSubscription ? 'active' : 'inactive';
+    return `${rolePart}-${planPart}-${activePart}`;
+  }, [userRole, subscriptionTier, serverSubscriptionStatus?.planName, hasSubscription]);
+
+  const entitlementKey = `${navigationKey}-${entitlementVersion}`;
+
+  useEffect(() => {
+    if (Platform.OS === 'ios' && subscriptionFeaturesLoading) {
+      return;
+    }
+    const current = Array.isArray(segments) ? segments[1] : undefined;
+    if (locked && current !== 'profile') {
+      router.replace('/(tabs)/profile');
+    }
+  }, [locked, router, segments, subscriptionFeaturesLoading]);
 
   if (Platform.OS === 'ios') {
     return (
-      <IOSTabLayout
-        isLoggedIn={isLoggedIn}
-        userRole={userRole}
-        loading={loading}
-        entitlementKey={entitlementKey}
-      />
+      <OnboardingGate>
+        <IOSTabLayout
+          isLoggedIn={!!userRole}
+          userRole={userRole}
+          loading={loading || subscriptionFeaturesLoading}
+          entitlementKey={entitlementKey}
+          locked={locked}
+          navigationKey={navigationKey}
+        />
+      </OnboardingGate>
     );
   }
 
   return (
-    <AndroidWebTabLayout
-      isLoggedIn={isLoggedIn}
-      userRole={userRole}
-      entitlementKey={entitlementKey}
-    />
+    <OnboardingGate>
+      <AndroidWebTabLayout
+        isLoggedIn={!!userRole}
+        userRole={userRole}
+        entitlementKey={entitlementKey}
+        locked={locked}
+        navigationKey={navigationKey}
+      />
+    </OnboardingGate>
   );
 }
 
@@ -47,25 +91,25 @@ function IOSTabLayout({
   userRole,
   loading,
   entitlementKey,
+  locked,
+  navigationKey,
 }: {
   isLoggedIn: boolean;
   userRole: string | null;
   loading: boolean;
   entitlementKey: string;
+  locked: boolean;
+  navigationKey: string;
 }) {
   const isPlayer = userRole === 'player';
   const isTrainer = userRole === 'admin' || userRole === 'trainer';
 
-  // Tabs må ALDRIG skjules under loading
-  const hideForAuth = !loading && !isLoggedIn;
-
-  // Performance tab should be visible for both players and trainers (coaches/admins).
-  // Hide only when not logged in or when role is neither player nor trainer/admin.
-  const hideForPlayerOrTrainer = !loading && (!isLoggedIn || !(isPlayer || isTrainer));
+  const hideForAuth = locked;
+  const hideForPlayerOrTrainer = locked || (!loading && (!isLoggedIn || !(isPlayer || isTrainer)));
 
   return (
     <NativeTabs
-      key={`native-tabs-${entitlementKey}`}
+      key={`native-tabs-${navigationKey}`}
       tintColor={colors.primary}
       unselectedItemTintColor="#8E8E93"
       translucent={false}
@@ -84,31 +128,26 @@ function IOSTabLayout({
         tabBarInactiveTintColor: '#8E8E93',
       }}
     >
-      {/* HOME */}
       <NativeTabs.Trigger name="(home)" hidden={hideForAuth}>
         <Icon sf={{ default: 'house', selected: 'house.fill' }} />
         <Label>Hjem</Label>
       </NativeTabs.Trigger>
 
-      {/* TASKS */}
       <NativeTabs.Trigger name="tasks" hidden={hideForAuth}>
         <Icon sf={{ default: 'checklist', selected: 'checklist' }} />
         <Label>Opgaver</Label>
       </NativeTabs.Trigger>
 
-      {/* PERFORMANCE – PLAYER & TRAINER */}
       <NativeTabs.Trigger name="performance" hidden={hideForPlayerOrTrainer}>
         <Icon sf={{ default: 'trophy', selected: 'trophy.fill' }} />
         <Label>Performance</Label>
       </NativeTabs.Trigger>
 
-      {/* LIBRARY */}
       <NativeTabs.Trigger name="library" hidden={hideForAuth}>
         <Icon sf={{ default: 'book', selected: 'book.fill' }} />
         <Label>Bibliotek</Label>
       </NativeTabs.Trigger>
 
-      {/* PROFILE – ALTID */}
       <NativeTabs.Trigger name="profile">
         <Icon sf={{ default: 'person', selected: 'person.fill' }} />
         <Label>Profil</Label>
@@ -125,13 +164,17 @@ function AndroidWebTabLayout({
   isLoggedIn,
   userRole,
   entitlementKey,
+  locked,
+  navigationKey,
 }: {
   isLoggedIn: boolean;
   userRole: string | null;
   entitlementKey: string;
+  locked: boolean;
+  navigationKey: string;
 }) {
   const tabs: TabBarItem[] = useMemo(() => {
-    if (!isLoggedIn) {
+    if (locked) {
       return [
         {
           name: 'profile',
@@ -145,6 +188,7 @@ function AndroidWebTabLayout({
 
     const isPlayer = userRole === 'player';
     const isTrainer = userRole === 'admin' || userRole === 'trainer';
+
     const homeTab: TabBarItem = {
       name: '(home)',
       route: '/(tabs)/(home)/',
@@ -194,12 +238,12 @@ function AndroidWebTabLayout({
     tabsForRole.push(libraryTab, profileTab);
 
     return tabsForRole;
-  }, [isLoggedIn, userRole]);
+  }, [locked, userRole]);
 
   return (
     <>
       <Stack
-        key={`stack-${entitlementKey}`}
+        key={`stack-${navigationKey}`}
         screenOptions={{
           headerShown: false,
           animation: 'none',
@@ -212,7 +256,7 @@ function AndroidWebTabLayout({
         <Stack.Screen name="profile" />
       </Stack>
 
-      <FloatingTabBar key={`floating-tabs-${entitlementKey}`} tabs={tabs} />
+      <FloatingTabBar key={`floating-tabs-${navigationKey}`} tabs={tabs} />
     </>
   );
 }

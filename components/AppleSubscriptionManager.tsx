@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useColorScheme, Platform, Alert, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useColorScheme, Platform, Alert, Linking, ScrollView } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAppleIAP, PRODUCT_IDS, ORDERED_PRODUCT_IDS, TRAINER_PRODUCT_IDS } from '@/contexts/AppleIAPContext';
@@ -11,6 +11,8 @@ interface AppleSubscriptionManagerProps {
   selectedRole?: 'player' | 'trainer' | null;
   highlightProductId?: string;
   forceShowPlans?: boolean;
+  onPurchaseStarted?: () => void;
+  onPurchaseFinished?: (success: boolean) => void;
 }
 
 type PlanType =
@@ -192,6 +194,8 @@ export default function AppleSubscriptionManager({
   selectedRole = null,
   highlightProductId,
   forceShowPlans = false,
+  onPurchaseStarted,
+  onPurchaseFinished,
 }: AppleSubscriptionManagerProps) {
   const {
     products,
@@ -290,13 +294,30 @@ export default function AppleSubscriptionManager({
 
   const handleSelectPlan = useCallback(
     async (productId: string) => {
-      if (isSignupFlow && onPlanSelected) {
-        onPlanSelected(productId);
-        return;
+      async function safeInvoke<T extends any[]>(
+        fn: ((...args: T) => any) | undefined,
+        ...args: T
+      ) {
+        try {
+          await Promise.resolve(fn?.(...args));
+        } catch (e) {
+          console.warn('[AppleSubscriptionManager] callback error', e);
+        }
       }
-      await purchaseSubscription(productId);
+
+      let success = false;
+      await safeInvoke(onPurchaseStarted);
+      try {
+        await purchaseSubscription(productId);
+        success = true;
+        await safeInvoke(onPlanSelected, productId);
+      } catch (error) {
+        console.warn('[AppleSubscriptionManager] Purchase failed', error);
+      } finally {
+        await safeInvoke(onPurchaseFinished, success);
+      }
     },
-    [isSignupFlow, onPlanSelected, purchaseSubscription]
+    [purchaseSubscription, onPlanSelected, onPurchaseFinished, onPurchaseStarted]
   );
 
   const executeProductRefresh = useCallback(async () => {
@@ -954,17 +975,33 @@ export default function AppleSubscriptionManager({
     }
   }
 
-  return (
-    <View style={styles.container}>
+  const content = (
+    <>
       {renderListHeader()}
       {plansContent}
       {showPlans ? renderListFooter() : null}
-    </View>
+    </>
   );
+
+  if (isSignupFlow) {
+    return (
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        bounces
+      >
+        {content}
+      </ScrollView>
+    );
+  }
+
+  return <View style={styles.container}>{content}</View>;
 }
 
 const styles = StyleSheet.create({
   container: { width: '100%', gap: 12 },
+  scrollContent: { gap: 12, paddingBottom: 12 },
   loadingContainer: { alignItems: 'center', gap: 12, paddingVertical: 24 },
   loadingText: { fontSize: 14, color: colors.textSecondary },
   notAvailableContainer: { alignItems: 'center', gap: 12, padding: 24 },
