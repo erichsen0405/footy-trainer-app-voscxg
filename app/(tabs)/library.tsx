@@ -11,6 +11,8 @@ import {
   useColorScheme,
   Pressable,
   TextInput,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
@@ -22,6 +24,8 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import { useSubscriptionFeatures } from '@/hooks/useSubscriptionFeatures';
 import { PremiumFeatureGate } from '@/components/PremiumFeatureGate';
+import { useFootball } from '@/contexts/FootballContext';
+import { Task } from '@/types';
 
 type RootFolderId = 'personal' | 'trainer' | 'footballcoach';
 type SortKey = 'recent' | 'difficulty';
@@ -201,11 +205,13 @@ const ExerciseCard = memo(function ExerciseCard({
   onPressCard,
   onPressCta,
   positionLabelOverride,
+  isAddingToTasks,
 }: {
   exercise: Exercise;
   onPressCard: (exercise: Exercise) => void;
   onPressCta: (exercise: Exercise) => void;
   positionLabelOverride?: string | null;
+  isAddingToTasks?: boolean;
 }) {
   const theme = getColors(useColorScheme() === 'dark');
 
@@ -215,6 +221,9 @@ const ExerciseCard = memo(function ExerciseCard({
   const difficulty = clampDifficulty(exercise.difficulty);
   const metaLine = formatMetaLine(exercise.last_score ?? null, exercise.execution_count ?? null);
   const isAdded = !!exercise.is_added_to_tasks;
+  const isAdding = !!isAddingToTasks;
+  const ctaDisabled = isAdded || isAdding;
+  const ctaBgColor = isAdded ? theme.highlight : colors.success;
 
   const positionLabel = positionLabelOverride ?? exercise.position ?? null;
   const positionText = positionLabel ? positionLabel : 'Position: –';
@@ -284,12 +293,24 @@ const ExerciseCard = memo(function ExerciseCard({
         <TouchableOpacity
           onPress={handleCtaPress}
           activeOpacity={0.9}
-          style={[styles.ctaBadge, isAdded ? { backgroundColor: theme.highlight } : { backgroundColor: colors.success }]}
+          style={[styles.ctaBadge, { backgroundColor: ctaBgColor }]}
+          disabled={ctaDisabled}
         >
-          {isAdded ? <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={14} color={theme.textSecondary} /> : null}
-          <Text style={[styles.ctaText, { color: isAdded ? theme.textSecondary : '#fff' }]}>
-            {isAdded ? 'Allerede tilføjet til opgaver' : 'Tilføj til opgaver'}
-          </Text>
+          {isAdding ? (
+            <>
+              <ActivityIndicator size="small" color={isAdded ? theme.textSecondary : '#fff'} />
+              <Text style={[styles.ctaText, { color: isAdded ? theme.textSecondary : '#fff' }]}>Tilføjer...</Text>
+            </>
+          ) : (
+            <>
+              {isAdded ? (
+                <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={14} color={theme.textSecondary} />
+              ) : null}
+              <Text style={[styles.ctaText, { color: isAdded ? theme.textSecondary : '#fff' }]}>
+                {isAdded ? 'Allerede tilføjet til opgaver' : 'Tilføj til opgaver'}
+              </Text>
+            </>
+          )}
         </TouchableOpacity>
       </View>
     </View>
@@ -379,6 +400,8 @@ export default function LibraryScreen() {
   const { teams } = useTeamPlayer();
   const router = useRouter();
   const theme = getColors(useColorScheme() === 'dark');
+  const { addTask: addTaskToContext, tasks: tasksFromContext } = useFootball();
+  const isTrainerUser = isAdmin || isTrainerLike || isTrainerByTier;
 
   const [status, setStatus] = useState<'loading' | 'success' | 'empty' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -404,8 +427,71 @@ export default function LibraryScreen() {
     addedToTasksIdsRef.current = addedToTasksIds;
   }, [addedToTasksIds]);
 
+  const [exerciseTaskMap, setExerciseTaskMap] = useState<Record<string, string>>({});
+  const exerciseTaskMapRef = useRef<Record<string, string>>({});
+  useEffect(() => {
+    exerciseTaskMapRef.current = exerciseTaskMap;
+  }, [exerciseTaskMap]);
+
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addModalExercise, setAddModalExercise] = useState<Exercise | null>(null);
+  const [isAddModalSaving, setIsAddModalSaving] = useState(false);
+  const [addingTaskIds, setAddingTaskIds] = useState<Set<string>>(() => new Set());
+  const addingTaskIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    addingTaskIdsRef.current = addingTaskIds;
+  }, [addingTaskIds]);
+
+  const updateExerciseAddingState = useCallback((exerciseId: string, inFlight: boolean) => {
+    if (!exerciseId) return;
+    setAddingTaskIds(prev => {
+      const next = new Set(prev);
+      if (inFlight) next.add(exerciseId);
+      else next.delete(exerciseId);
+      return next;
+    });
+  }, []);
+
+  const isExerciseAddInFlight = useCallback((exerciseId: string) => addingTaskIdsRef.current.has(exerciseId), []);
+
+  const isExerciseAlreadyAdded = useCallback((exercise?: Exercise | null) => {
+    if (!exercise) return false;
+    if (exercise.is_added_to_tasks) return true;
+    return addedToTasksIdsRef.current.has(exercise.id);
+  }, []);
+
+  const buildTaskPayload = useCallback(
+    (exerciseNode: Exercise): Omit<Task, 'id'> => ({
+      title: exerciseNode.title,
+      description: exerciseNode.description ?? '',
+      completed: false,
+      isTemplate: true,
+      categoryIds: [],
+      reminder: undefined,
+      subtasks: [] as Task['subtasks'],
+      videoUrl: exerciseNode.video_url ?? undefined,
+      afterTrainingEnabled: false,
+      afterTrainingDelayMinutes: null,
+      afterTrainingFeedbackEnableScore: true,
+      afterTrainingFeedbackScoreExplanation: null,
+      afterTrainingFeedbackEnableIntensity: false,
+      afterTrainingFeedbackEnableNote: true,
+    }),
+    []
+  );
+
+  const deriveSourceFolder = useCallback(
+    (exerciseNode: Exercise): string | null => {
+      if (exerciseNode?.is_system) return 'FootballCoach inspiration';
+      if (!isTrainerUser) {
+        const trainerName = (exerciseNode?.trainer_name || '').trim();
+        if (trainerName.length) return `Fra træner: ${trainerName}`;
+        if (exerciseNode?.trainer_id) return 'Fra træner';
+      }
+      return null;
+    },
+    [isTrainerUser]
+  );
 
   const isMountedRef = useRef(true);
   useEffect(() => {
@@ -859,25 +945,82 @@ export default function LibraryScreen() {
     [router]
   );
 
-  const handlePressCta = useCallback((exercise: Exercise) => {
-    setAddModalExercise(exercise);
-    setAddModalOpen(true);
-  }, []);
+  const handlePressCta = useCallback(
+    (exercise: Exercise) => {
+      if (!exercise) return;
+      if (!addTaskToContext) {
+        Alert.alert('Ikke tilgængelig', 'Kan ikke tilføje opgaver lige nu. Prøv igen om lidt.');
+        return;
+      }
+      if (isExerciseAlreadyAdded(exercise)) {
+        Alert.alert('Allerede tilføjet', 'Denne øvelse ligger allerede i dine opgaver.');
+        return;
+      }
+      if (isExerciseAddInFlight(exercise.id)) {
+        return;
+      }
+      setAddModalExercise(exercise);
+      setAddModalOpen(true);
+    },
+    [addTaskToContext, isExerciseAddInFlight, isExerciseAlreadyAdded]
+  );
 
   const handleCloseAddModal = useCallback(() => {
     setAddModalOpen(false);
     setAddModalExercise(null);
   }, []);
 
-  const handleConfirmAddToTasks = useCallback(() => {
+  const handleConfirmAddToTasks = useCallback(async () => {
     if (!addModalExercise) return;
-    setAddedToTasksIds(prev => {
-      const next = new Set(prev);
-      next.add(addModalExercise.id);
-      return next;
-    });
-    handleCloseAddModal();
-  }, [addModalExercise, handleCloseAddModal]);
+    if (!addTaskToContext) {
+      Alert.alert('Ikke tilgængelig', 'Kan ikke tilføje opgaver lige nu. Prøv igen senere.');
+      return;
+    }
+    if (isExerciseAlreadyAdded(addModalExercise)) {
+      Alert.alert('Allerede tilføjet', 'Denne øvelse ligger allerede i dine opgaver.');
+      handleCloseAddModal();
+      return;
+    }
+
+    const targetExercise = addModalExercise;
+    setIsAddModalSaving(true);
+    updateExerciseAddingState(targetExercise.id, true);
+
+    try {
+      const created = await addTaskToContext(buildTaskPayload(targetExercise), {
+        skipRefresh: true,
+        sourceFolder: deriveSourceFolder(targetExercise),
+      });
+
+      setExerciseTaskMap(prev => ({
+        ...prev,
+        [targetExercise.id]: String(created.id),
+      }));
+      setAddedToTasksIds(prev => {
+        const next = new Set(prev);
+        next.add(targetExercise.id);
+        return next;
+      });
+      handleCloseAddModal();
+    } catch (error: any) {
+      console.error('[Library] Failed to add exercise to tasks', error);
+      const message = typeof error?.message === 'string' ? error.message : 'Kunne ikke tilføje øvelse til opgaver.';
+      Alert.alert('Noget gik galt', message);
+    } finally {
+      if (isMountedRef.current) {
+        setIsAddModalSaving(false);
+        updateExerciseAddingState(targetExercise.id, false);
+      }
+    }
+  }, [
+    addModalExercise,
+    addTaskToContext,
+    buildTaskPayload,
+    deriveSourceFolder,
+    handleCloseAddModal,
+    isExerciseAlreadyAdded,
+    updateExerciseAddingState,
+  ]);
 
   const handleRetry = useCallback(() => {
     setReloadNonce(n => n + 1);
@@ -911,6 +1054,46 @@ export default function LibraryScreen() {
       prev.map(t => ({ ...t, exercises: t.exercises.map(e => (addedToTasksIds.has(e.id) ? { ...e, is_added_to_tasks: true } : e)) }))
     );
   }, [addedToTasksIds]);
+
+  useEffect(() => {
+    const map = exerciseTaskMapRef.current;
+    const exerciseIds = Object.keys(map || {});
+    if (!exerciseIds.length) return;
+
+    const existingTaskIds = new Set((tasksFromContext ?? []).map(t => String((t as any)?.id ?? '')));
+    const removedExerciseIds = exerciseIds.filter(exId => {
+      const taskId = map[exId];
+      return !!taskId && !existingTaskIds.has(String(taskId));
+    });
+
+    if (!removedExerciseIds.length) return;
+
+    const removedSet = new Set(removedExerciseIds);
+
+    setExerciseTaskMap(prev => {
+      const next = { ...prev };
+      removedExerciseIds.forEach(id => {
+        delete next[id];
+      });
+      return next;
+    });
+
+    setAddedToTasksIds(prev => {
+      if (!prev.size) return prev;
+      const next = new Set(prev);
+      removedExerciseIds.forEach(id => next.delete(id));
+      return next;
+    });
+
+    setPersonalExercises(prev => prev.map(e => (removedSet.has(e.id) ? { ...e, is_added_to_tasks: false } : e)));
+    setFootballCoachExercises(prev => prev.map(e => (removedSet.has(e.id) ? { ...e, is_added_to_tasks: false } : e)));
+    setTrainerFolders(prev =>
+      prev.map(t => ({
+        ...t,
+        exercises: t.exercises.map(e => (removedSet.has(e.id) ? { ...e, is_added_to_tasks: false } : e)),
+      }))
+    );
+  }, [tasksFromContext]);
 
   const sections: LibrarySection[] = useMemo(() => {
     const folderSection: LibrarySection = { key: 'folders', data: visibleFolderStack };
@@ -1011,6 +1194,7 @@ export default function LibraryScreen() {
           onPressCard={handlePressCard}
           onPressCta={handlePressCta}
           positionLabelOverride={positionOverride}
+          isAddingToTasks={addingTaskIds.has(ex.id)}
         />
       );
     },
@@ -1023,6 +1207,7 @@ export default function LibraryScreen() {
       nav.level3Id,
       searchOpen,
       searchQuery,
+      addingTaskIds,
     ]
   );
 
@@ -1224,12 +1409,21 @@ export default function LibraryScreen() {
         ListFooterComponent={<View style={{ height: 90 }} />}
         ref={listRef}
       />
-      <Modal visible={showAddModal} transparent animationType="fade" onRequestClose={handleCloseAddModal}>
-        <Pressable style={styles.modalBackdrop} onPress={handleCloseAddModal}>
+      <Modal
+        visible={showAddModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!isAddModalSaving) {
+            handleCloseAddModal();
+          }
+        }}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={isAddModalSaving ? undefined : handleCloseAddModal}>
           <View style={[styles.modalSheet, { backgroundColor: theme.card }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: theme.text }]}>Tilføj til opgaver</Text>
-              <TouchableOpacity onPress={handleCloseAddModal} style={styles.iconButton}>
+              <TouchableOpacity onPress={handleCloseAddModal} style={styles.iconButton} disabled={isAddModalSaving}>
                 <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={20} color={theme.text} />
               </TouchableOpacity>
             </View>
@@ -1239,13 +1433,27 @@ export default function LibraryScreen() {
                   {addModalExercise.title}
                 </Text>
                 <Text style={[styles.modalBodyText, { color: theme.textSecondary }]}>
-                  Vælg aktivitet/opgave i bundsheet-flowet (tilkobles senere). For nu toggles UI-state lokalt.
+                  Øvelsen tilføjes som opgave og vises straks under Tasks. Du kan redigere den senere fra Opgaver-fanen.
                 </Text>
                 <View style={styles.modalActions}>
-                  <TouchableOpacity activeOpacity={0.9} style={[styles.modalActionPrimary, { backgroundColor: colors.success }]} onPress={handleConfirmAddToTasks}>
-                    <Text style={styles.modalActionPrimaryText}>Tilføj</Text>
+                  <TouchableOpacity
+                    activeOpacity={0.9}
+                    style={[styles.modalActionPrimary, { backgroundColor: colors.success }]}
+                    onPress={handleConfirmAddToTasks}
+                    disabled={isAddModalSaving}
+                  >
+                    {isAddModalSaving ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.modalActionPrimaryText}>Tilføj</Text>
+                    )}
                   </TouchableOpacity>
-                  <TouchableOpacity activeOpacity={0.9} style={[styles.modalActionSecondary, { borderColor: theme.highlight }]} onPress={handleCloseAddModal}>
+                  <TouchableOpacity
+                    activeOpacity={0.9}
+                    style={[styles.modalActionSecondary, { borderColor: theme.highlight }]}
+                    onPress={handleCloseAddModal}
+                    disabled={isAddModalSaving}
+                  >
                     <Text style={[styles.modalActionSecondaryText, { color: theme.textSecondary }]}>Annuller</Text>
                   </TouchableOpacity>
                 </View>

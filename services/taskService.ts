@@ -17,6 +17,7 @@ export interface CreateTaskData {
   afterTrainingFeedbackEnableNote?: boolean;
   playerId?: string | null;
   teamId?: string | null;
+  sourceFolder?: string | null;
 }
 
 export interface UpdateTaskData {
@@ -112,6 +113,12 @@ export const taskService = {
       ('afterTrainingFeedbackEnableNote' in sourceTask
         ? (sourceTask as any).afterTrainingFeedbackEnableNote
         : (rawData as CreateTaskData).afterTrainingFeedbackEnableNote) ?? true;
+    const resolvedSourceFolder =
+      ('source_folder' in sourceTask
+        ? (sourceTask as any).source_folder
+        : ('sourceFolder' in sourceTask
+            ? (sourceTask as any).sourceFolder
+            : (rawData as CreateTaskData).sourceFolder)) ?? null;
 
     let resolvedPlayerId: string | null =
       (rawData as CreateTaskData).playerId ?? null;
@@ -146,6 +153,7 @@ export const taskService = {
           : null,
         after_training_feedback_enable_intensity: true,
         after_training_feedback_enable_note: resolvedAfterTrainingFeedbackEnableNote,
+        source_folder: resolvedSourceFolder,
         player_id: resolvedPlayerId,
         team_id: resolvedTeamId,
       })
