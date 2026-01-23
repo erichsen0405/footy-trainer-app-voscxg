@@ -631,8 +631,10 @@ export const useFootballData = () => {
     await forceRefreshNotificationQueue();
   }, [fetchAllData]);
 
+  type AddTaskOptions = { skipRefresh?: boolean; sourceFolder?: string | null };
+
   const addTask = useCallback(
-    async (task: Omit<Task, 'id'>) => {
+    async (task: Omit<Task, 'id'>, options?: AddTaskOptions) => {
       try {
         console.log('[addTask] Creating task with data:', task);
 
@@ -662,6 +664,7 @@ export const useFootballData = () => {
           afterTrainingFeedbackEnableNote: task.afterTrainingFeedbackEnableNote ?? true,
           playerId,
           teamId,
+          sourceFolder: options?.sourceFolder ?? null,
         });
 
         if (!created?.id) {
@@ -675,10 +678,11 @@ export const useFootballData = () => {
           return [created, ...prev];
         });
 
-        console.log('[addTask] Task created successfully, refreshing tasks...');
-
-        // Refresh tasks after creation to ensure consistency
-        await fetchTasks();
+        console.log('[addTask] Task created successfully');
+        if (!options?.skipRefresh) {
+          console.log('[addTask] Refreshing tasks for consistency');
+          await fetchTasks();
+        }
         return created;
       } catch (error) {
         console.error('[addTask] Error adding task:', error);
