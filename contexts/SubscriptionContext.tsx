@@ -2,6 +2,19 @@ import React, { createContext, useContext, useState, useEffect, useCallback, Rea
 import { supabase } from '@/integrations/supabase/client';
 import { forceUserRoleRefresh } from '@/hooks/useUserRole';
 
+type EntitlementVersionListener = (reason?: string) => void;
+const entitlementVersionListeners = new Set<EntitlementVersionListener>();
+
+export function forceEntitlementVersionBump(reason = 'external') {
+  for (const listener of entitlementVersionListeners) {
+    try {
+      listener(reason);
+    } catch (error) {
+      console.warn('[SubscriptionContext] Entitlement bump listener failed', error, { reason });
+    }
+  }
+}
+
 interface SubscriptionPlan {
   id: string;
   name: string;
@@ -40,6 +53,14 @@ interface SubscriptionContextType {
   createSubscription: (
     planId: string
   ) => Promise<{ success: boolean; error?: string; alreadyHasSubscription?: boolean }>;
+  changeSubscriptionPlan: (
+    planId: string
+  ) => Promise<{
+    success: boolean;
+    error?: string;
+    unsupported?: boolean;
+    alreadyOnPlan?: boolean;
+  }>;
   entitlementVersion: number;
 }
 
@@ -226,9 +247,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   }, [fetchSubscriptionStatus]);
 
   const createSubscription = useCallback(
-    async (
-      planId: string
-    ): Promise<{ success: boolean; error?: string; alreadyHasSubscription?: boolean }> => {
+    async (planId: string) => {
       try {
         console.log('[SubscriptionContext] Creating subscription', { planId });
 
@@ -308,6 +327,104 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     [applyOptimisticSubscription, fetchSubscriptionStatus]
   );
 
+  const changeSubscriptionPlan = useCallback(
+    async (
+      planId: string
+    ): Promise<{
+      success: boolean;
+      error?: string;
+      unsupported?: boolean;
+      alreadyOnPlan?: boolean;
+    }> => {
+      const endpointBase = 'https://lhpczofddvwcyrgotzha.supabase.co/functions/v1';
+      const endpointCandidates = ['change-subscription', 'update-subscription'];
+
+      try {
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (sessionError || !session) {
+          return {
+            success: false,
+            error:
+              'Du skal være logget ind for at skifte abonnement. Log ud og ind igen, og prøv derefter at skifte plan.',
+          };
+        }
+
+        let lastError = 'Plan-skift fejlede';
+        let sawUnsupported = false;
+
+        for (const path of endpointCandidates) {
+          const functionUrl = `${endpointBase}/${path}`;
+          let response: Response | null = null;
+          let responseData: any = null;
+
+          try {
+            response = await fetch(functionUrl, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${session.access_token}`,
+                'Content-Type': 'application/json',
+                apikey:
+                  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxocGN6b2ZkZHZ3Y3lyZ290emhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQxNTgzMjQsImV4cCI6MjA3OTczNDMyNH0.5oWZ_G5ryy_ae77CG8YMeEDEyAJkSS7Jv4cFZy-G7qA',
+              },
+              body: JSON.stringify({ planId }),
+            });
+
+            responseData = await response.json().catch(() => ({}));
+
+            if (response.status === 404) {
+              sawUnsupported = true;
+              continue;
+            }
+
+            if (!response.ok || !responseData?.success) {
+              const errorMessage = responseData?.error || `HTTP ${response.status}: Kunne ikke skifte plan`;
+              lastError = errorMessage;
+
+              if (responseData?.alreadyOnPlan) {
+                return { success: false, error: errorMessage, alreadyOnPlan: true };
+              }
+
+              // Try next candidate endpoint if available
+              continue;
+            }
+
+            applyOptimisticSubscription(planId);
+            await new Promise(resolve => setTimeout(resolve, 900));
+            await fetchSubscriptionStatus();
+            forceUserRoleRefresh('subscription-change-success');
+            return { success: true };
+          } catch (error: any) {
+            lastError =
+              error?.message?.includes('network') || error?.message?.includes('fetch')
+                ? 'Netværksfejl. Tjek forbindelsen og prøv igen.'
+                : 'Plan-skift fejlede. Prøv igen om lidt.';
+          }
+        }
+
+        if (sawUnsupported) {
+          return {
+            success: false,
+            unsupported: true,
+            error:
+              'Plan-skift er ikke aktiveret endnu. Brug "Administrer abonnement" for at ændre din plan.',
+          };
+        }
+
+        return { success: false, error: lastError };
+      } catch {
+        return {
+          success: false,
+          error: 'Der opstod en uventet fejl under plan-skift. Prøv igen.',
+        };
+      }
+    },
+    [applyOptimisticSubscription, fetchSubscriptionStatus]
+  );
+
   useEffect(() => {
     console.log('[SubscriptionContext] Context initialized');
     fetchSubscriptionPlans();
@@ -320,6 +437,26 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     }
   }, [subscriptionStatus]);
 
+  useEffect(() => {
+    const listener: EntitlementVersionListener = reason => {
+      setEntitlementVersion(prev => {
+        const next = prev + 1;
+        if (__DEV__) {
+          console.log('[SubscriptionContext] External entitlement bump', {
+            reason,
+            version: next,
+          });
+        }
+        return next;
+      });
+    };
+
+    entitlementVersionListeners.add(listener);
+    return () => {
+      entitlementVersionListeners.delete(listener);
+    };
+  }, []);
+
   return (
     <SubscriptionContext.Provider
       value={{
@@ -328,6 +465,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         loading,
         refreshSubscription,
         createSubscription,
+        changeSubscriptionPlan,
         entitlementVersion,
       }}
     >
