@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import * as CommonStyles from '@/styles/commonStyles';
 import { Task } from '@/types';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import { scheduleTaskReminderImmediate } from '@/utils/notificationScheduler';
 
 /*

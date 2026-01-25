@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import { colors } from '@/styles/commonStyles';
 
 export default function EmailConfirmedScreen() {

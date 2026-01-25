@@ -12,7 +12,7 @@ import {
   FlatList,
   Modal,
 } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -241,6 +241,7 @@ export default function ProfileScreen() {
   const [subscriptionSectionY, setSubscriptionSectionY] = useState<number | null>(null);
   const scrollViewRef = useRef<any>(null);
   const params = useLocalSearchParams<{ upgradeTarget?: string }>();
+  const router = useRouter();
   const routeUpgradeTarget = normalizeUpgradeTarget(params.upgradeTarget);
   const [manualUpgradeTarget, setManualUpgradeTarget] = useState<UpgradeTarget | null>(null);
   const hasAutoOpenedUpgradeTargetRef = useRef<UpgradeTarget | null>(null);
@@ -755,6 +756,10 @@ export default function ProfileScreen() {
         Alert.alert('Velkommen!',
           'Din konto er nu klar til brug!',
           [{ text: 'OK' }]);
+      }
+
+      if (!subscriptionStatus?.hasSubscription) {
+        router.replace('/choose-plan');
       }
     } catch (error: any) {
       if (__DEV__) {

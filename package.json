@@ -11,7 +11,8 @@
     "build:android": "expo prebuild -p android",
     "lint": "eslint .",
     "seed:holdtraening": "tsx scripts/holdtraening/importHoldtraening.ts",
-    "seed:holdtraening:dry-run": "tsx scripts/holdtraening/importHoldtraening.ts --dry-run"
+    "seed:holdtraening:dry-run": "tsx scripts/holdtraening/importHoldtraening.ts --dry-run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@babel/plugin-proposal-export-namespace-from": "^7.18.9",

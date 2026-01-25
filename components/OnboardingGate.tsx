@@ -6,17 +6,15 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import { usePathname, useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { supabase } from '@/integrations/supabase/client';
 import AppleSubscriptionManager from '@/components/AppleSubscriptionManager';
 import SubscriptionManager from '@/components/SubscriptionManager';
 import { useSubscription } from '@/contexts/SubscriptionContext';
-import { PRODUCT_IDS, TRAINER_PRODUCT_IDS } from '@/contexts/AppleIAPContext';
-
-const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+import { useAppleIAP, PRODUCT_IDS, TRAINER_PRODUCT_IDS } from '@/contexts/AppleIAPContext';
 
 type Role = 'admin' | 'trainer' | 'player';
 
@@ -27,6 +25,11 @@ type GateState = {
   needsSubscription: boolean;
 };
 
+interface OnboardingGateProps {
+  children: React.ReactNode;
+  renderInlinePaywall?: boolean;
+}
+
 const FullScreenLoader = ({ message }: { message: string }) => (
   <View style={styles.loaderContainer}>
     <ActivityIndicator size="large" color={colors.primary} />
@@ -34,7 +37,7 @@ const FullScreenLoader = ({ message }: { message: string }) => (
   </View>
 );
 
-export function OnboardingGate({ children }: { children: React.ReactNode }) {
+export function OnboardingGate({ children, renderInlinePaywall = false }: OnboardingGateProps) {
   const [state, setState] = useState<GateState>({
     hydrating: true,
     user: null,
@@ -44,32 +47,69 @@ export function OnboardingGate({ children }: { children: React.ReactNode }) {
   const [activatingSubscription, setActivatingSubscription] = useState(false);
   const [activationMessage, setActivationMessage] = useState('Aktiverer abonnement...');
   const { subscriptionStatus, refreshSubscription, createSubscription } = useSubscription();
-  const subscriptionStatusRef = useRef(subscriptionStatus);
+  const { entitlementSnapshot, refreshSubscriptionStatus } = useAppleIAP();
+  const { isEntitled, resolving } = entitlementSnapshot;
+  const currentUserId = state.user?.id ?? null;
+  const router = useRouter();
+  const pathname = usePathname();
+  const trainerProductSet = useMemo(
+    () => new Set(TRAINER_PRODUCT_IDS.map(id => id.toLowerCase())),
+    []
+  );
+  const lastNavRef = useRef<number>(0);
+  const safeReplace = useCallback(
+    (target: string) => {
+      const now = Date.now();
+      if (now - lastNavRef.current < 400) return;
+      lastNavRef.current = now;
+      router.replace(target as any);
+    },
+    [router]
+  );
 
   useEffect(() => {
+    setState(prev => {
+      if (prev.hydrating) return prev;
+      const shouldNeed = Boolean(prev.user && !isEntitled && !resolving);
+      if (shouldNeed === prev.needsSubscription) return prev;
+      console.log('[OnboardingGate] needsSubscription updated', {
+        shouldNeed,
+        user: prev.user?.id ?? null,
+        role: prev.role,
+        resolving,
+        isEntitled,
+      });
+      return { ...prev, needsSubscription: shouldNeed };
+    });
+  }, [isEntitled, resolving]);
+  useEffect(() => {
     subscriptionStatusRef.current = subscriptionStatus;
-    if (subscriptionStatus?.hasSubscription) {
-      setState(prev => ({ ...prev, needsSubscription: false }));
-    }
   }, [subscriptionStatus]);
-
-  const waitForActiveSubscription = useCallback(async () => {
-    const deadline = Date.now() + 4000;
-    let lastStatus: any = null;
-
-    while (Date.now() < deadline) {
-      await refreshSubscription();
-      lastStatus = subscriptionStatusRef.current;
-      if (lastStatus?.hasSubscription) {
-        return lastStatus;
-      }
-      await wait(300);
+  useEffect(() => {
+    if (!resolving) {
+      setActivatingSubscription(false);
     }
-    return lastStatus;
+  }, [resolving]);
+  const subscriptionStatusRef = useRef(subscriptionStatus);
+  const refreshCalledRef = useRef(false);
+  const ensureSubscriptionStatus = useCallback(async () => {
+    if (subscriptionStatusRef.current || refreshCalledRef.current) {
+      return subscriptionStatusRef.current;
+    }
+    refreshCalledRef.current = true;
+    try {
+      await refreshSubscription();
+      const next = subscriptionStatusRef.current;
+      if (!next) {
+        refreshCalledRef.current = false;
+      }
+      return next ?? null;
+    } catch (error) {
+      console.warn('[OnboardingGate] Subscription refresh failed', error);
+      refreshCalledRef.current = false;
+      return subscriptionStatusRef.current ?? null;
+    }
   }, [refreshSubscription]);
-
-  const trainerProductSet = useMemo(() => new Set(TRAINER_PRODUCT_IDS.map(id => id.toLowerCase())), []);
-
   const deriveRoleFromSubscription = useCallback((status: any): Role | null => {
     if (!status) return null;
     const maxPlayers = status.maxPlayers ?? status.max_players ?? status.playerLimit ?? null;
@@ -93,7 +133,6 @@ export function OnboardingGate({ children }: { children: React.ReactNode }) {
     if (planName.includes('spiller') || planName.includes('player')) return 'player';
     return null;
   }, [trainerProductSet]);
-
   const upsertRole = useCallback(async (userId: string, role: Role | null) => {
     if (!role) return;
     try {
@@ -104,7 +143,6 @@ export function OnboardingGate({ children }: { children: React.ReactNode }) {
       console.warn('[OnboardingGate] Failed to upsert role', error);
     }
   }, []);
-
   const refreshRoleAndSubscription = useCallback(
     async (user: any) => {
       setState(prev => ({ ...prev, hydrating: true, user }));
@@ -122,23 +160,21 @@ export function OnboardingGate({ children }: { children: React.ReactNode }) {
 
       const roleFromDb = (roleData?.role as Role | null) ?? null;
 
-      const visibleStatus = await waitForActiveSubscription();
+      const visibleStatus = await ensureSubscriptionStatus();
       const derivedRole = deriveRoleFromSubscription(visibleStatus) ?? roleFromDb;
 
       if (derivedRole) {
         await upsertRole(user.id, derivedRole);
       }
 
-      const needsSubscription = !visibleStatus?.hasSubscription;
-
       setState({
         hydrating: false,
         user,
         role: derivedRole ?? roleFromDb,
-        needsSubscription,
+        needsSubscription: !(isEntitled || visibleStatus?.hasSubscription),
       });
     },
-    [deriveRoleFromSubscription, refreshSubscription, upsertRole, waitForActiveSubscription]
+    [deriveRoleFromSubscription, ensureSubscriptionStatus, isEntitled, upsertRole]
   );
 
   useEffect(() => {
@@ -164,76 +200,74 @@ export function OnboardingGate({ children }: { children: React.ReactNode }) {
     };
   }, [refreshRoleAndSubscription]);
 
-  const waitForSubscriptionVisible = useCallback(async () => {
-    return waitForActiveSubscription();
-  }, [waitForActiveSubscription]);
-
-  const handleCreateSubscription = useCallback(
-    async (planId: string) => {
-      if (!state.user) return;
-      setActivationMessage('Aktiverer abonnement...');
-      setActivatingSubscription(true);
-
-      try {
-        const result = await createSubscription(planId);
-        if (!result.success && !result.alreadyHasSubscription) {
-          Alert.alert('Fejl', result.error || 'Kunne ikke oprette abonnement. Prøv igen.');
-          return;
-        }
-
-        const visible = await waitForSubscriptionVisible();
-        if (visible?.hasSubscription) {
-          const derivedRole = deriveRoleFromSubscription(visible);
-          if (derivedRole) {
-            await upsertRole(state.user.id, derivedRole);
-          }
-          setState(prev => ({ ...prev, needsSubscription: false, role: derivedRole ?? prev.role }));
-        }
-      } catch (error: any) {
-        Alert.alert('Fejl', error?.message || 'Der opstod en fejl.');
-      } finally {
-        setActivatingSubscription(false);
+  const handleCreateSubscription = useCallback(async (planId: string) => {
+    if (!state.user) return;
+    setActivationMessage('Aktiverer abonnement...');
+    setActivatingSubscription(true);
+    try {
+      const result = await createSubscription(planId);
+      if (!result.success && !result.alreadyHasSubscription) {
+        Alert.alert('Fejl', result.error || 'Kunne ikke oprette abonnement. Prøv igen.');
+        return;
       }
-    },
-    [createSubscription, deriveRoleFromSubscription, state.user, upsertRole, waitForSubscriptionVisible]
-  );
+      await refreshSubscription();
+      await refreshSubscriptionStatus({ force: true, reason: 'onboarding_create' });
+    } catch (error: any) {
+      Alert.alert('Fejl', error?.message || 'Der opstod en fejl.');
+    } finally {
+      setActivatingSubscription(false);
+    }
+  }, [createSubscription, refreshSubscription, refreshSubscriptionStatus, state.user]);
 
   const handleIOSPurchaseStarted = useCallback(() => {
     setActivationMessage('Aktiverer abonnement...');
     setActivatingSubscription(true);
   }, []);
 
-  const handleIOSPurchaseFinished = useCallback(
-    async (success: boolean) => {
-      if (success) {
-        const visible = await waitForSubscriptionVisible();
-        if (visible?.hasSubscription) {
-          const derivedRole = deriveRoleFromSubscription(visible);
-          if (derivedRole) {
-            await upsertRole(state.user?.id, derivedRole);
-          }
-          setState(prev => ({ ...prev, needsSubscription: false, role: derivedRole ?? prev.role }));
-        }
-      }
+  const handleIOSPurchaseFinished = useCallback(async (success: boolean) => {
+    if (!success) {
       setActivatingSubscription(false);
-    },
-    [deriveRoleFromSubscription, upsertRole, waitForSubscriptionVisible]
-  );
+      return;
+    }
+    try {
+      await refreshSubscriptionStatus({ force: true, reason: 'onboarding_ios_finish' });
+    } finally {
+      if (!resolving) {
+        setActivatingSubscription(false);
+      }
+    }
+  }, [refreshSubscriptionStatus, resolving]);
 
-  const needsPaywall = useMemo(() => {
-    if (!state.user) return false;
-    const hasSubscription = subscriptionStatusRef.current?.hasSubscription;
-    if (state.role === null) return true;
-    const isTrainer = state.role === 'trainer' || state.role === 'admin';
-    if (isTrainer && (!hasSubscription || state.needsSubscription)) return true;
-    return false;
-  }, [state.needsSubscription, state.role, state.user]);
+  const needsPaywall = Boolean(state.user && state.needsSubscription && !resolving);
+
+  useEffect(() => {
+    if (renderInlinePaywall) return;
+
+    if (needsPaywall) {
+      if (pathname !== '/choose-plan') {
+        safeReplace('/choose-plan');
+      }
+      return;
+    }
+
+    if (pathname === '/choose-plan') {
+      safeReplace('/(tabs)');
+    }
+  }, [needsPaywall, pathname, renderInlinePaywall, safeReplace]);
 
   if (state.hydrating) {
     return <FullScreenLoader message="Klargør konto..." />;
   }
 
   if (needsPaywall) {
+    if (!renderInlinePaywall) {
+      // Important: allow the dedicated paywall route to render.
+      if (pathname === '/choose-plan') {
+        return <>{children}</>;
+      }
+      return <FullScreenLoader message="Åbner Vælg abonnement..." />;
+    }
+
     const PaywallManager = Platform.OS === 'ios' ? AppleSubscriptionManager : SubscriptionManager;
     const paywallProps = Platform.OS === 'ios'
       ? {

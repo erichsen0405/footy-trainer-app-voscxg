@@ -1,21 +1,22 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { forceUserRoleRefresh } from '@/hooks/useUserRole';
-
-type EntitlementVersionListener = (reason?: string) => void;
-const entitlementVersionListeners = new Set<EntitlementVersionListener>();
+import { useAppleIAP, PRODUCT_IDS } from '@/contexts/AppleIAPContext';
+import { bumpEntitlementsVersion, subscribeToEntitlementVersion } from '@/services/entitlementsEvents';
 
 export function forceEntitlementVersionBump(reason = 'external') {
-  for (const listener of entitlementVersionListeners) {
-    try {
-      listener(reason);
-    } catch (error) {
-      console.warn('[SubscriptionContext] Entitlement bump listener failed', error, { reason });
-    }
+  bumpEntitlementsVersion(reason);
+}
+
+function forceUserRoleRefresh(reason: string) {
+  try {
+    console.log('[SubscriptionContext] forceUserRoleRefresh', { reason });
+    bumpEntitlementsVersion(`role-refresh:${reason}`);
+  } catch (error) {
+    console.warn('[SubscriptionContext] forceUserRoleRefresh failed', error, { reason });
   }
 }
 
-interface SubscriptionPlan {
+type SubscriptionPlan = {
   id: string;
   name: string;
   price_dkk: number;
@@ -23,9 +24,9 @@ interface SubscriptionPlan {
   currency_code?: string | null;
   price_amount?: number | null;
   localized_price?: string | null;
-}
+};
 
-interface SubscriptionStatus {
+type SubscriptionStatus = {
   hasSubscription: boolean;
   status: string | null;
   planName: string | null;
@@ -33,7 +34,7 @@ interface SubscriptionStatus {
   currentPlayers: number;
   trialEnd: string | null;
   currentPeriodEnd: string | null;
-}
+};
 
 const buildEmptyStatus = (): SubscriptionStatus => ({
   hasSubscription: false,
@@ -78,6 +79,23 @@ const buildEntitlementSignature = (s: SubscriptionStatus | null): string => {
     s.planName ?? 'none',
     String(s.maxPlayers ?? 0),
   ].join('|');
+};
+
+const derivePlanMetaFromSku = (sku: string | null) => {
+  switch (sku) {
+    case PRODUCT_IDS.PLAYER_PREMIUM:
+      return { name: 'Premium spiller', maxPlayers: 1 };
+    case PRODUCT_IDS.PLAYER_BASIC:
+      return { name: 'Basis spiller', maxPlayers: 1 };
+    case PRODUCT_IDS.TRAINER_BASIC:
+      return { name: 'Træner Basis', maxPlayers: 5 };
+    case PRODUCT_IDS.TRAINER_STANDARD:
+      return { name: 'Træner Standard', maxPlayers: 15 };
+    case PRODUCT_IDS.TRAINER_PREMIUM:
+      return { name: 'Træner Premium', maxPlayers: 50 };
+    default:
+      return null;
+  }
 };
 
 export function SubscriptionProvider({ children }: { children: ReactNode }) {
@@ -161,6 +179,35 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     [applyStatus, subscriptionPlans]
   );
 
+  const { entitlementSnapshot } = useAppleIAP();
+  const appleResolving = Boolean(entitlementSnapshot?.resolving);
+  const appleIsEntitled = Boolean(entitlementSnapshot?.isEntitled);
+  const appleActiveProductId = entitlementSnapshot?.activeProductId ?? null;
+
+  const coerceWithEntitlements = useCallback(
+    (status: SubscriptionStatus, source: string): SubscriptionStatus => {
+      if (!appleIsEntitled) return status;
+      const planMeta = derivePlanMetaFromSku(appleActiveProductId);
+      const merged: SubscriptionStatus = {
+        ...status,
+        hasSubscription: true,
+        status: 'active',
+        planName: planMeta?.name ?? status.planName ?? 'Aktivt abonnement',
+        maxPlayers: planMeta?.maxPlayers ?? status.maxPlayers ?? 1,
+      };
+      if (!status.hasSubscription) {
+        console.warn('[SubscriptionContext] Backend reported no subscription while Apple is active', {
+          source,
+          backend: status,
+          appleSku: appleActiveProductId,
+          appleResolving,
+        });
+      }
+      return merged;
+    },
+    [appleIsEntitled, appleActiveProductId, appleResolving]
+  );
+
   const fetchSubscriptionStatus = useCallback(async () => {
     try {
       console.log('[SubscriptionContext] Fetching subscription status');
@@ -172,8 +219,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       } = await supabase.auth.getUser();
 
       if (userError || !user) {
-        console.log('[SubscriptionContext] No user found');
-        applyStatus(buildEmptyStatus(), 'no-user');
+        applyStatus(coerceWithEntitlements(buildEmptyStatus(), 'no-user'), 'no-user');
         return;
       }
 
@@ -184,7 +230,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
       if (sessionError || !session) {
         console.warn('[SubscriptionContext] No valid session');
-        applyStatus(buildEmptyStatus(), 'no-session');
+        applyStatus(coerceWithEntitlements(buildEmptyStatus(), 'no-session'), 'no-session');
         return;
       }
 
@@ -208,7 +254,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
         // Undgå at “nulstille” hvis vi allerede har en status (forhindrer flicker/remounts ved net-issues)
         if (!statusRef.current) {
-          applyStatus(buildEmptyStatus(), 'edge-nok-initial');
+          applyStatus(coerceWithEntitlements(buildEmptyStatus(), 'edge-nok-initial'), 'edge-nok-initial');
         }
         return;
       }
@@ -225,13 +271,13 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         currentPeriodEnd: data?.currentPeriodEnd ?? null,
       };
 
-      applyStatus(statusData, 'fetch-success');
+      applyStatus(coerceWithEntitlements(statusData, 'fetch-success'), 'fetch-success');
     } catch {
       console.warn('[SubscriptionContext] Network request failed');
 
       // Kun set empty hvis vi ikke har noget i forvejen
       if (!statusRef.current) {
-        applyStatus(buildEmptyStatus(), 'network-error-initial');
+        applyStatus(coerceWithEntitlements(buildEmptyStatus(), 'network-error-initial'), 'network-error-initial');
       }
     } finally {
       setLoading(false);
@@ -239,7 +285,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         console.log('[SubscriptionContext] Loading set to false');
       }
     }
-  }, [applyStatus]);
+  }, [applyStatus, coerceWithEntitlements]);
 
   const refreshSubscription = useCallback(async () => {
     console.log('[SubscriptionContext] Manual refresh requested');
@@ -388,7 +434,6 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
                 return { success: false, error: errorMessage, alreadyOnPlan: true };
               }
 
-              // Try next candidate endpoint if available
               continue;
             }
 
@@ -409,8 +454,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
           return {
             success: false,
             unsupported: true,
-            error:
-              'Plan-skift er ikke aktiveret endnu. Brug "Administrer abonnement" for at ændre din plan.',
+            error: 'Plan-skift er ikke aktiveret endnu. Brug "Administrer abonnement" for at ændre din plan.',
           };
         }
 
@@ -438,22 +482,18 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   }, [subscriptionStatus]);
 
   useEffect(() => {
-    const listener: EntitlementVersionListener = reason => {
+    const listener = (reason?: string) => {
       setEntitlementVersion(prev => {
         const next = prev + 1;
         if (__DEV__) {
-          console.log('[SubscriptionContext] External entitlement bump', {
-            reason,
-            version: next,
-          });
+          console.log('[SubscriptionContext] External entitlement bump', { reason, version: next });
         }
         return next;
       });
     };
-
-    entitlementVersionListeners.add(listener);
+    const unsubscribe = subscribeToEntitlementVersion(listener);
     return () => {
-      entitlementVersionListeners.delete(listener);
+      unsubscribe();
     };
   }, []);
 

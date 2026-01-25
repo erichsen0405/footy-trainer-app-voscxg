@@ -156,7 +156,8 @@ const FolderRow = memo(function FolderRow({
   onPress: (folder: FolderVM) => void;
   isSelected: boolean;
 }) {
-  const theme = getColors(useColorScheme() === 'dark');
+  const colorScheme = useColorScheme();
+  const theme = getColors(colorScheme);
   const handlePress = useCallback(() => onPress(item), [onPress, item]);
 
   return (
@@ -213,7 +214,8 @@ const ExerciseCard = memo(function ExerciseCard({
   positionLabelOverride?: string | null;
   isAddingToTasks?: boolean;
 }) {
-  const theme = getColors(useColorScheme() === 'dark');
+  const colorScheme = useColorScheme();
+  const theme = getColors(colorScheme);
 
   const handleCardPress = useCallback(() => onPressCard(exercise), [onPressCard, exercise]);
   const handleCtaPress = useCallback(() => onPressCta(exercise), [onPressCta, exercise]);
@@ -318,7 +320,8 @@ const ExerciseCard = memo(function ExerciseCard({
 });
 
 const SkeletonFolderRow = memo(function SkeletonFolderRow({ level }: { level: 1 | 2 | 3 }) {
-  const theme = getColors(useColorScheme() === 'dark');
+  const colorScheme = useColorScheme();
+  const theme = getColors(colorScheme);
   return (
     <View
       style={[
@@ -338,7 +341,8 @@ const SkeletonFolderRow = memo(function SkeletonFolderRow({ level }: { level: 1 
 });
 
 const SkeletonExerciseCard = memo(function SkeletonExerciseCard() {
-  const theme = getColors(useColorScheme() === 'dark');
+  const colorScheme = useColorScheme();
+  const theme = getColors(colorScheme);
   return (
     <View style={[styles.exerciseCard, { backgroundColor: theme.card }]}>
       <View style={styles.exerciseTop}>
@@ -399,7 +403,8 @@ export default function LibraryScreen() {
 
   const { teams } = useTeamPlayer();
   const router = useRouter();
-  const theme = getColors(useColorScheme() === 'dark');
+  const colorScheme = useColorScheme();
+  const theme = getColors(colorScheme);
   const { addTask: addTaskToContext, tasks: tasksFromContext } = useFootball();
   const isTrainerUser = isAdmin || isTrainerLike || isTrainerByTier;
 

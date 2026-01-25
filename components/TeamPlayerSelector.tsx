@@ -13,7 +13,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import { useAdmin } from '@/contexts/AdminContext';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function TeamPlayerSelector() {
   const {

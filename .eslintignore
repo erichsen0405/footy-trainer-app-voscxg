@@ -1,4 +1,3 @@
-
 # Ignore generated files
 _expo/
 dist/
@@ -13,3 +12,12 @@ node_modules/
 
 # Ignore Supabase Edge Functions (Deno environment)
 supabase/functions/
+
+# tooling / node scripts (not part of app runtime)
+scripts/**
+
+# tmp tooling
+scripts/tmp/**
+
+# file flagged as binary by eslint parser
+head_profile.tsx

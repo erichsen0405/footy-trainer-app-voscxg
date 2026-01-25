@@ -52,16 +52,16 @@ type CategoryMeta = {
 };
 
 // Category gradient mapping (color-based, supports new resolved fields)
-const getCategoryGradientFromColor = (color?: string): string[] => {
+const getCategoryGradientFromColor = (color?: string): readonly [string, string] => {
   const baseColor = String(color ?? '').trim();
   if (!baseColor) {
     // Warn only when we truly have no usable color
     console.warn('ActivityCard: No category color found, using fallback gradient');
-    return ['#6B7280', '#4B5563'];
+    return ['#6B7280', '#4B5563'] as const;
   }
   const lighterColor = lightenColor(baseColor, 0.15);
   const darkerColor = darkenColor(baseColor, 0.2);
-  return [lighterColor, darkerColor];
+  return [lighterColor, darkerColor] as const;
 };
 
 // Get emoji for category

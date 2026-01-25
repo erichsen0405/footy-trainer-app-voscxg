@@ -214,6 +214,7 @@ export default function AppleSubscriptionManager({
     refreshSubscriptionStatus,
     hasComplimentaryPlayerPremium,
     hasComplimentaryTrainerPremium,
+    isRestoring,
   } = useAppleIAP();
 
   type AppleProduct = (typeof products)[number];
@@ -262,6 +263,14 @@ export default function AppleSubscriptionManager({
   const [refreshing, setRefreshing] = useState(false);
   const hasRequestedProductsRef = useRef(false);
   const skeletonItems = useMemo(() => ['skeleton-0', 'skeleton-1', 'skeleton-2'], []);
+  const blockInteractions = purchasing || refreshing || loading || !iapReady || isRestoring;
+
+  const resetCheckoutUi = useCallback(() => {
+    setIsOrangeBoxExpanded(false);
+    setShowPlans(true);
+    setRefreshing(false);
+    hasRequestedProductsRef.current = false;
+  }, []);
 
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -269,13 +278,6 @@ export default function AppleSubscriptionManager({
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
-
-  const filteredProducts =
-    isSignupFlow && selectedRole
-      ? selectedRole === 'player'
-        ? products.filter(p => p.maxPlayers <= 1)
-        : products.filter(p => p.maxPlayers > 1)
-      : products;
 
   const planOrder = useMemo(() => {
     return ORDERED_PRODUCT_IDS.reduce<Record<string, number>>((acc, id, index) => {
@@ -285,40 +287,88 @@ export default function AppleSubscriptionManager({
   }, []);
 
   const sortedProducts = useMemo(() => {
-    return [...filteredProducts].sort((a, b) => {
-      const orderA = planOrder[a.productId] ?? Number.MAX_SAFE_INTEGER;
-      const orderB = planOrder[b.productId] ?? Number.MAX_SAFE_INTEGER;
-      return orderA - orderB;
+    const list = Array.isArray(products) ? [...products] : [];
+
+    const predicate =
+      isSignupFlow && selectedRole
+        ? selectedRole === 'player'
+          ? (plan: AppleProduct) => (plan.maxPlayers ?? 1) <= 1
+          : (plan: AppleProduct) => (plan.maxPlayers ?? 1) > 1
+        : null;
+
+    const preferredRank = (plan: AppleProduct) => {
+      if (!predicate) return 0;
+      return predicate(plan) ? 0 : 1;
+    };
+
+    const orderRank = (plan: AppleProduct) => planOrder[plan.productId] ?? Number.MAX_SAFE_INTEGER;
+
+    return list.sort((a, b) => {
+      const prefDiff = preferredRank(a) - preferredRank(b);
+      if (prefDiff !== 0) return prefDiff;
+      return orderRank(a) - orderRank(b);
     });
-  }, [filteredProducts, planOrder]);
+  }, [isSignupFlow, planOrder, products, selectedRole]);
 
   const handleSelectPlan = useCallback(
     async (productId: string) => {
-      async function safeInvoke<T extends any[]>(
-        fn: ((...args: T) => any) | undefined,
-        ...args: T
-      ) {
-        try {
-          await Promise.resolve(fn?.(...args));
-        } catch (e) {
-          console.warn('[AppleSubscriptionManager] callback error', e);
-        }
+      if (purchasing) {
+        Alert.alert('Vent lidt', 'Der behandles allerede et køb.');
+        return;
       }
-
+      if (!iapReady) {
+        Alert.alert('Vent lidt', 'Forbinder til App Store – prøv igen om et øjeblik.');
+        return;
+      }
       let success = false;
       await safeInvoke(onPurchaseStarted);
       try {
         await purchaseSubscription(productId);
         success = true;
+        resetCheckoutUi();
         await safeInvoke(onPlanSelected, productId);
       } catch (error) {
         console.warn('[AppleSubscriptionManager] Purchase failed', error);
+        if ((error as any)?.code === 'E_USER_CANCELLED') {
+          return;
+        }
+        const details = buildIapErrorDetails(error);
+        Alert.alert('Køb fejlede', `${details.message}\n(Kode: ${details.code})`);
       } finally {
         await safeInvoke(onPurchaseFinished, success);
       }
     },
-    [purchaseSubscription, onPlanSelected, onPurchaseFinished, onPurchaseStarted]
+    [iapReady, onPlanSelected, onPurchaseFinished, onPurchaseStarted, purchaseSubscription, resetCheckoutUi]
   );
+
+  const handleRestorePurchases = useCallback(async () => {
+    if (blockInteractions) {
+      Alert.alert(
+        'Vent lidt',
+        purchasing ? 'Der behandles allerede et køb.' : 'Forbinder til App Store – prøv igen om et øjeblik.',
+      );
+      return;
+    }
+    let success = false;
+    await safeInvoke(onPurchaseStarted);
+    try {
+      const { restoredCount } = await restorePurchases();
+      const title = restoredCount > 0 ? 'Køb gendannet! ✅' : 'Ingen køb fundet';
+      const message =
+        restoredCount > 0
+          ? 'Dine tidligere køb er blevet gendannet.'
+          : 'Der blev ikke fundet nogen tidligere køb at gendanne.';
+      Alert.alert(title, message);
+      resetCheckoutUi();
+      success = restoredCount > 0;
+    } catch (error) {
+      console.warn('[AppleSubscriptionManager] Restore failed', error);
+      const details = buildIapErrorDetails(error);
+      Alert.alert('Gendan køb fejlede', `${details.message}\n(Kode: ${details.code})`);
+    } finally {
+      await safeInvoke(onPurchaseFinished, success);
+    }
+  }, [blockInteractions, purchasing, onPurchaseFinished, onPurchaseStarted, resetCheckoutUi, restorePurchases]);
 
   const executeProductRefresh = useCallback(async () => {
     await ensureIapReady();
@@ -338,10 +388,6 @@ export default function AppleSubscriptionManager({
   const handleRetry = useCallback(() => {
     void handleRefresh();
   }, [handleRefresh]);
-
-  const handleRestorePurchases = useCallback(async () => {
-    await restorePurchases();
-  }, [restorePurchases]);
 
   const openLegalLink = useCallback(async (url: string) => {
     try {
@@ -501,9 +547,10 @@ export default function AppleSubscriptionManager({
             isPopular && !isCurrentActive && styles.popularPlan,
             isCurrentActive && styles.currentPlanCard,
             isHighlightTarget && styles.highlightedPlan,
+            (blockInteractions || disabledByComplimentary) && styles.disabledCard,
           ]}
           onPress={() => handleSelectPlan(item.productId)}
-          disabled={purchasing || isCurrentActive || disabledByComplimentary}
+          disabled={blockInteractions || isCurrentActive || disabledByComplimentary}
           activeOpacity={0.7}
         >
           {isComplimentaryForProduct(item.productId) && (
@@ -588,10 +635,10 @@ export default function AppleSubscriptionManager({
               style={[
                 styles.selectButton,
                 { backgroundColor: isPopular ? colors.primary : colors.highlight },
-                (purchasing || disabledByComplimentary) && { opacity: 0.6 },
+                (blockInteractions || disabledByComplimentary) && { opacity: 0.6 },
               ]}
               onPress={() => handleSelectPlan(item.productId)}
-              disabled={purchasing || disabledByComplimentary}
+              disabled={blockInteractions || disabledByComplimentary}
             >
               {purchasing ? (
                 <ActivityIndicator color={isPopular ? '#fff' : colors.primary} size="small" />
@@ -635,7 +682,7 @@ export default function AppleSubscriptionManager({
       isCurrentPlan,
       isPlanLockedByComplimentary,
       isSignupFlow,
-      purchasing,
+      blockInteractions,
       sortedProducts.length,
       textColor,
       textSecondaryColor,
@@ -760,26 +807,24 @@ export default function AppleSubscriptionManager({
           </View>
         </TouchableOpacity>
       )}
-      {!isSignupFlow && (
-        <TouchableOpacity
-          style={[
-            styles.restoreButton,
-            { backgroundColor: cardBgColor },
-            (!iapReady || purchasing) && styles.disabledButton,
-          ]}
-          onPress={handleRestorePurchases}
-          activeOpacity={0.7}
-          disabled={!iapReady || purchasing}
-        >
-          <IconSymbol
-            ios_icon_name="arrow.clockwise"
-            android_material_icon_name="restore"
-            size={20}
-            color={colors.primary}
-          />
-          <Text style={[styles.restoreButtonText, { color: colors.primary }]}>Gendan køb</Text>
-        </TouchableOpacity>
-      )}
+      <TouchableOpacity
+        style={[
+          styles.restoreButton,
+          { backgroundColor: cardBgColor },
+          blockInteractions && styles.disabledButton,
+        ]}
+        onPress={handleRestorePurchases}
+        activeOpacity={0.7}
+        disabled={blockInteractions}
+      >
+        <IconSymbol
+          ios_icon_name="arrow.clockwise"
+          android_material_icon_name="restore"
+          size={20}
+          color={colors.primary}
+        />
+        <Text style={[styles.restoreButtonText, { color: colors.primary }]}>Gendan køb</Text>
+      </TouchableOpacity>
       <View style={styles.legalLinksRow}>
         <TouchableOpacity
           style={styles.legalLinkButton}
@@ -825,14 +870,13 @@ export default function AppleSubscriptionManager({
     </View>
   ), [
     cardBgColor,
+    blockInteractions,
     colors.primary,
     colors.secondary,
     handleRestorePurchases,
-    iapReady,
     isOrangeBoxExpanded,
     isSignupFlow,
     openLegalLink,
-    purchasing,
     renderPendingDowngrade,
     setShowPlans,
     showComplimentaryPlayerBanner,
@@ -999,6 +1043,45 @@ export default function AppleSubscriptionManager({
   return <View style={styles.container}>{content}</View>;
 }
 
+const safeInvoke = async <T extends any[]>(
+  fn: ((...args: T) => any) | undefined,
+  ...args: T
+) => {
+  try {
+    await Promise.resolve(fn?.(...args));
+  } catch (error) {
+    console.warn('[AppleSubscriptionManager] callback error', error);
+  }
+};
+
+const buildIapErrorDetails = (error: unknown) => {
+  const err = error as Record<string, any>;
+  const code =
+    typeof err?.code === 'string'
+      ? err.code
+      : typeof err?.name === 'string'
+      ? err.name
+      : 'ukendt';
+  const rawMessage =
+    typeof err?.reason === 'string'
+      ? err.reason
+      : typeof err?.message === 'string'
+      ? err.message
+      : null;
+  let serialized = rawMessage;
+  if (!serialized) {
+    try {
+      serialized = JSON.stringify(err);
+    } catch {
+      serialized = null;
+    }
+  }
+  return {
+    code,
+    message: serialized && serialized !== '{}' ? serialized : 'Prøv igen om lidt.',
+  };
+};
+
 const styles = StyleSheet.create({
   container: { width: '100%', gap: 12 },
   scrollContent: { gap: 12, paddingBottom: 12 },
@@ -1106,4 +1189,5 @@ const styles = StyleSheet.create({
   partnerBannerText: { color: '#fff', fontWeight: '600', fontSize: 15 },
   partnerBadge: { position: 'absolute', right: 12, top: 12, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 999 },
   partnerBadgeText: { fontSize: 12, fontWeight: '700', color: '#fff' },
+  disabledCard: { opacity: 0.6 },
 });

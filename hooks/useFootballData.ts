@@ -8,7 +8,7 @@ import {
   ExternalCalendar,
   ActivitySeries,
 } from '@/types';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import { checkNotificationPermissions } from '@/utils/notificationService';
 import {
   refreshNotificationQueue,
