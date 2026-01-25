@@ -19,6 +19,13 @@
   ],
   "exclude": [
     "node_modules",
-    "supabase/functions/**"
+    "scripts/**",
+    "supabase/functions/**",
+    "head_profile.tsx",
+    "**/*.dev.ts",
+    "**/*.dev.tsx",
+    "dist/**",
+    "web-build/**",
+    "_expo/**"
   ]
 }

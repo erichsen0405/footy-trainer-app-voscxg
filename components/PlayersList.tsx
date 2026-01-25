@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 
 interface Player {

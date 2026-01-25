@@ -247,7 +247,7 @@ interface AppleIAPContextType {
   loading: boolean;
   purchasing: boolean;
   purchaseSubscription: (productId: string) => Promise<void>;
-  restorePurchases: () => Promise<void>;
+  restorePurchases: () => Promise<{ restoredCount: number }>;
   refreshSubscriptionStatus: (options?: { force?: boolean; reason?: string }) => Promise<void>;
   refetchProducts: () => Promise<void>;
   iapReady: boolean;
@@ -261,6 +261,16 @@ interface AppleIAPContextType {
   hasComplimentaryTrainerPremium: boolean;
   hasPlayerPremium: boolean;
   hasTrainerPremium: boolean;
+  isRestoring: boolean;
+  entitlementSnapshot: {
+    resolving: boolean;
+    hasActiveSubscription: boolean;
+    activeProductId: string | null;
+    subscriptionTier: SubscriptionTier | null;
+    isEntitled: boolean;
+  };
+  verifiedActiveProductId: string | null;
+  verifying: boolean;
 }
 
 const AppleIAPContext = createContext<AppleIAPContextType | undefined>(undefined);
@@ -410,6 +420,40 @@ const normalizeEpochMs = (value: any): number => {
   return numeric < 1e12 ? Math.trunc(numeric * 1000) : Math.trunc(numeric);
 };
 
+const buildPurchaseDebugSnapshot = (purchase: any, sku: string | null) => {
+  const transactionId =
+    purchase?.transactionId ??
+    purchase?.transactionIdIOS ??
+    purchase?.transactionIdentifier ??
+    purchase?.originalTransactionIdentifierIOS ??
+    purchase?.orderId ??
+    null;
+  const environmentIOS = purchase?.environment ?? purchase?.environmentIOS ?? null;
+  const expirationDateIOS =
+    purchase?.expirationDateIOS ??
+    purchase?.expiresDate ??
+    purchase?.expiryTimeMs ??
+    purchase?.purchaseTokenExpirationDate ??
+    null;
+  return {
+    productId: sku,
+    transactionId,
+    environmentIOS,
+    expirationDateIOS,
+  };
+};
+
+const finishPurchaseWithLogging = async (purchase: any, sku: string | null, label: string) => {
+  const debug = buildPurchaseDebugSnapshot(purchase, sku);
+  console.log('[AppleIAP] FLOW FINISH_TRANSACTION_START', { label, ...debug });
+  try {
+    await RNIap?.finishTransaction?.({ purchase, isConsumable: false });
+    console.log('[AppleIAP] FLOW FINISH_TRANSACTION_DONE', { label, ...debug });
+  } catch (finishError) {
+    console.error('[AppleIAP] FLOW FINISH_TRANSACTION_ERROR', { label, ...debug, error: finishError });
+  }
+};
+
 export function AppleIAPProvider({ children }: { children: ReactNode }) {
   const [products, setProducts] = useState<SubscriptionProduct[]>([]);
   const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus | null>(null);
@@ -420,6 +464,9 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
   const [iapUnavailableReason, setIapUnavailableReason] = useState<string | null>(null);
   const [pendingPlan, setPendingPlan] = useState<{ productId: string; effectiveDate: number | null } | null>(null);
   const [entitlements, setEntitlements] = useState<UserEntitlement[]>([]);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [verifiedActiveProductId, setVerifiedActiveProductId] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState(false);
   const lastRequestedSkuRef = useRef<string | null>(null);
   const lastRequestedAtRef = useRef<number | null>(null);
   const subscriptionStatusRef = useRef<SubscriptionStatus | null>(null);
@@ -435,6 +482,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
   const lastRefreshAtRef = useRef(0);
   const entitlementsUnsupportedRef = useRef(false);
   const entitlementsWarnedRef = useRef(false);
+  const autoRestoreAttemptedRef = useRef(false);
 
   useEffect(() => {
     subscriptionStatusRef.current = subscriptionStatus;
@@ -519,6 +567,51 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
     void fetchEntitlements();
   }, [fetchEntitlements]);
 
+  const syncIapReadyState = useCallback(async () => {
+    const ready = await ensureIapReady();
+    setIapReady(ready);
+    return ready;
+  }, []);
+
+  const getAvailablePurchasesSafe = useCallback(async () => {
+    if (!RNIap || typeof RNIap.getAvailablePurchases !== 'function') {
+      throw Object.assign(new Error('iap_module_unavailable'), { code: 'iap_module_unavailable' });
+    }
+    try {
+      return await RNIap.getAvailablePurchases({ ios: { onlyIncludeActiveItemsIOS: true } });
+    } catch (error) {
+      console.warn('[AppleIAP] getAvailablePurchases (filtered) failed – retrying unfiltered.', error);
+      return await RNIap.getAvailablePurchases();
+    }
+  }, []);
+
+  const performRestore = useCallback(
+    async (reason: string) => {
+      if (Platform.OS !== 'ios') {
+        return { restoredCount: 0, purchases: [] as any[] };
+      }
+      const ready = await syncIapReadyState();
+      if (!ready) {
+        const message = getIapUnavailableMessage();
+        setIapUnavailableReason(message);
+        throw Object.assign(new Error('iap_not_ready'), { code: 'iap_not_ready', reason: message });
+      }
+      setIapUnavailableReason(null);
+      setIsRestoring(true);
+      try {
+        const purchases = await getAvailablePurchasesSafe();
+        const restoredCount = (purchases ?? [])
+          .map(normalizePurchaseProductId)
+          .filter(productId => productId && APP_STORE_SKU_SET.has(productId)).length;
+        console.log(`[AppleIAP] Restore (${reason}) completed`, { restoredCount });
+        return { restoredCount, purchases };
+      } finally {
+        setIsRestoring(false);
+      }
+    },
+    [getAvailablePurchasesSafe, syncIapReadyState],
+  );
+
   const refreshSubscriptionStatus = useCallback(
     async ({ force = false, reason = 'refresh' }: { force?: boolean; reason?: string } = {}) => {
       if (refreshInFlightRef.current) {
@@ -533,7 +626,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       const runner = (async () => {
         try {
           await fetchEntitlements();
-          const ready = await ensureIapReady();
+          const ready = await syncIapReadyState();
           if (!ready) {
             setIapUnavailableReason(getIapUnavailableMessage());
             const emptyStatus: SubscriptionStatus = { isActive: false, productId: null, expiryDate: null, isInTrialPeriod: false };
@@ -554,18 +647,8 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
           setIapUnavailableReason(null);
           try {
             console.log('[AppleIAP] Refreshing subscription status…');
-
-            let availablePurchases: any[] = [];
-            try {
-              availablePurchases = await RNIap.getAvailablePurchases({
-                ios: { onlyIncludeActiveItemsIOS: true },
-              });
-            } catch (fetchError) {
-              console.warn('[AppleIAP] getAvailablePurchases with iOS options failed, retrying without filters.', fetchError);
-              availablePurchases = await RNIap.getAvailablePurchases();
-            }
-
-            const normalizedPurchases: NormalizedPurchase[] = (availablePurchases ?? [])
+            const availablePurchases = await getAvailablePurchasesSafe();
+            let normalizedPurchases: NormalizedPurchase[] = (availablePurchases ?? [])
               .map(purchase => {
                 const productId = normalizePurchaseProductId(purchase);
                 if (!productId || !APP_STORE_SKU_SET.has(productId)) return null;
@@ -711,6 +794,18 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
               subscriptionStatusRef.current = emptyStatus;
               setPendingPlan(null);
               console.log('[AppleIAP] No active subscriptions found');
+              if (!autoRestoreAttemptedRef.current && Platform.OS === 'ios') {
+                autoRestoreAttemptedRef.current = true;
+                console.log('[AppleIAP] Triggering auto-restore (no active subscriptions detected)');
+                void (async () => {
+                  try {
+                    await performRestore('auto_no_active');
+                    await refreshSubscriptionStatus({ force: true, reason: 'post_auto_restore' });
+                  } catch (error) {
+                    console.warn('[AppleIAP] Auto-restore failed', error);
+                  }
+                })();
+              }
             }
           } catch (error) {
             console.error('[AppleIAP] Error refreshing subscription status:', error);
@@ -723,13 +818,14 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       refreshPromiseRef.current = runner;
       return runner;
     },
-    [fetchEntitlements]
+    [fetchEntitlements, getAvailablePurchasesSafe, performRestore, syncIapReadyState],
   );
 
   useEffect(() => {
     const emptyStatus: SubscriptionStatus = { isActive: false, productId: null, expiryDate: null, isInTrialPeriod: false };
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
+        autoRestoreAttemptedRef.current = false;
         void refreshSubscriptionStatus({ force: true, reason: 'auth_login' });
         return;
       }
@@ -780,12 +876,6 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
     console.log('[AppleIAP] Runtime bundle ID (expo-application):', runtimeBundleId ?? 'unknown');
   }, []);
 
-  const syncIapReadyState = useCallback(async () => {
-    const ready = await ensureIapReady();
-    setIapReady(ready);
-    return ready;
-  }, []);
-
   const updateDiagnostics = useCallback(
     (partial: Partial<IapDiagnostics>) => {
       setIapDiagnostics(prev => ({
@@ -800,7 +890,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
   );
 
   const fetchProducts = useCallback(async () => {
-    const ready = await ensureIapReady();
+    const ready = await syncIapReadyState();
     if (!ready) {
       const reason = getIapUnavailableMessage();
       setIapUnavailableReason(reason);
@@ -822,7 +912,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
     }
 
     setIapUnavailableReason(null);
-    const requestedSkus = [...APP_STORE_SUBSCRIPTION_SKUS];
+    const requestedSkus = [...ORDERED_PRODUCT_IDS];
     const configBundleId = getConfigBundleId();
     const runtimeBundleId = getRuntimeBundleId();
     const bundleIdMismatch = Boolean(
@@ -923,7 +1013,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
         returnedProductsDetailed: [],
       });
     }
-  }, [updateDiagnostics]);
+  }, [updateDiagnostics, syncIapReadyState]);
 
   const initializeIAP = useCallback(async () => {
     if (Platform.OS !== 'ios' || isExpoGo) {
@@ -976,6 +1066,9 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       setPurchasing(false);
 
       const normalizedSku = normalizePurchaseProductId(purchase);
+      const receivedDebug = buildPurchaseDebugSnapshot(purchase, normalizedSku);
+      console.log('[AppleIAP] FLOW PURCHASE_RECEIVED', receivedDebug);
+
       const eventTimestamp = Date.now();
       const activeFlow = activePurchaseFlowRef.current;
       const candidateSku = normalizedSku ?? activeFlow?.sku ?? lastRequestedSkuRef.current;
@@ -993,15 +1086,8 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       );
       const isUserInitiatedEvent = flowMatch || recentRequestMatch;
       if (!normalizedSku && !isUserInitiatedEvent) {
-        const finishTransactionSilently = async () => {
-          try {
-            await RNIap.finishTransaction?.({ purchase, isConsumable: false });
-          } catch (finishError) {
-            console.error('[AppleIAP] Error finishing transaction:', finishError);
-          }
-        };
         console.warn('[AppleIAP] Ignoring purchase event without productId', { purchase });
-        await finishTransactionSilently();
+        await finishPurchaseWithLogging(purchase, null, 'no_product_id');
         return;
       }
       const purchasedSku = normalizedSku ?? activeFlow?.sku ?? lastRequestedSkuRef.current;
@@ -1016,16 +1102,10 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
 
       pruneHandledPurchaseEvents();
       const purchaseEventKey = buildPurchaseEventKey(purchase, purchasedSku);
-      const finishTransactionSilently = async () => {
-        try {
-          await RNIap.finishTransaction?.({ purchase, isConsumable: false });
-        } catch (finishError) {
-          console.error('[AppleIAP] Error finishing transaction:', finishError);
-        }
-      };
+
       if (handledPurchaseEventsRef.current.has(purchaseEventKey)) {
         console.log('[AppleIAP] Duplicate purchase update – finishing silently', { purchaseEventKey });
-        await finishTransactionSilently();
+        await finishPurchaseWithLogging(purchase, purchasedSku, 'duplicate_event');
         return;
       }
       handledPurchaseEventsRef.current.set(purchaseEventKey, Date.now());
@@ -1071,7 +1151,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       }
 
       const receiptOrToken = purchase?.transactionReceipt ?? purchase?.purchaseToken ?? null;
-      await finishTransactionSilently();
+      await finishPurchaseWithLogging(purchase, purchasedSku, 'normal_flow');
 
       const shouldAlert = isUserInitiatedEvent && shouldShowPurchaseAlerts(purchasedSku);
       if (shouldAlert) {
@@ -1090,6 +1170,11 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       void queueRefreshAfterPurchase(purchasedSku);
 
       if (receiptOrToken && !isDowngradeWithinGroup) {
+        console.log('[AppleIAP] FLOW PURCHASE_VERIFY_START', {
+          productId: purchasedSku,
+          hasReceipt: Boolean(receiptOrToken),
+          source: 'purchase',
+        });
         void persistAppleEntitlements({
           productId: purchasedSku,
           receipt: receiptOrToken,
@@ -1186,88 +1271,50 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
 
   const purchaseSubscription = async (productId: string) => {
     if (Platform.OS !== 'ios') {
-      Alert.alert('Ikke tilgængelig', 'Apple In-App Purchases er kun tilgængelige på iOS.', [{ text: 'OK' }]);
-      return;
+      throw Object.assign(new Error('iap_ios_only'), { code: 'iap_ios_only' });
     }
 
     const ready = await syncIapReadyState();
     if (!ready) {
       const reason = iapUnavailableReason ?? getIapUnavailableMessage();
       setIapUnavailableReason(reason);
-      Alert.alert('Ikke tilgængelig', reason, [{ text: 'OK' }]);
-      return;
+      throw Object.assign(new Error('iap_not_ready'), { code: 'iap_not_ready', reason });
+    }
+
+    if (!RNIap) {
+      throw Object.assign(new Error('iap_module_unavailable'), { code: 'iap_module_unavailable' });
     }
 
     setIapUnavailableReason(null);
-
-    if (!products.length) {
-      try {
-        await fetchProducts();
-      } catch (error) {
-        console.warn('[AppleIAP] Failed to prefetch products before purchase', error);
-      }
-    }
-
     lastRequestedSkuRef.current = productId;
     lastRequestedAtRef.current = Date.now();
-    activePurchaseFlowRef.current = {
+    const flow = {
       key: buildFlowKey(productId),
       sku: productId,
       startedAt: Date.now(),
     };
+    activePurchaseFlowRef.current = flow;
     setPurchasing(true);
 
     try {
       await startSubscriptionPurchase(productId);
-    } catch (error: any) {
-      activePurchaseFlowRef.current = null;
-      setPurchasing(false);
-      if (error?.code === 'E_USER_CANCELLED') {
-        return;
+      void refreshSubscriptionStatus({ force: true, reason: 'post_purchase_request' });
+    } catch (error) {
+      if (activePurchaseFlowRef.current?.key === flow.key) {
+        activePurchaseFlowRef.current = null;
       }
-      console.error('[AppleIAP] Error purchasing subscription:', error);
-      const errorKey = buildFlowKey(productId);
-      showAlertOnceByKey(
-        errorKey,
-        'Fejl ved køb',
-        'Der opstod en fejl ved køb af abonnement. Prøv venligst igen.'
-      );
+      lastRequestedSkuRef.current = null;
+      lastRequestedAtRef.current = null;
+      throw error;
+    } finally {
+      setPurchasing(false);
     }
   };
 
-  const restorePurchases = async () => {
-    if (Platform.OS !== 'ios') {
-      Alert.alert('Ikke tilgængelig', 'Apple In-App Purchases er kun tilgængelige på iOS.', [{ text: 'OK' }]);
-      return;
-    }
-
-    if (iapUnavailableReason) {
-      Alert.alert('Ikke tilgængelig', iapUnavailableReason, [{ text: 'OK' }]);
-      return;
-    }
-
-    if (!RNIap || typeof RNIap.getAvailablePurchases !== 'function') {
-      const reason = getIapUnavailableMessage();
-      setIapUnavailableReason(reason);
-      Alert.alert('Ikke tilgængelig', reason, [{ text: 'OK' }]);
-      return;
-    }
-
-    try {
-      console.log('[AppleIAP] Restoring purchases...');
-      const availablePurchases = await RNIap.getAvailablePurchases();
-      console.log('[AppleIAP] Restored purchases:', availablePurchases);
-
-      if (availablePurchases.length > 0) {
-        await refreshSubscriptionStatus({ force: true, reason: 'restore' });
-        Alert.alert('Køb gendannet! ✅', 'Dine tidligere køb er blevet gendannet.', [{ text: 'OK' }]);
-      } else {
-        Alert.alert('Ingen køb fundet', 'Der blev ikke fundet nogen tidligere køb at gendanne.', [{ text: 'OK' }]);
-      }
-    } catch (error) {
-      console.error('[AppleIAP] Error restoring purchases:', error);
-      Alert.alert('Fejl ved gendannelse', 'Der opstod en fejl ved gendannelse af køb. Prøv venligst igen.', [{ text: 'OK' }]);
-    }
+  const restorePurchases = async (): Promise<{ restoredCount: number }> => {
+    const { restoredCount } = await performRestore('manual_restore');
+    await refreshSubscriptionStatus({ force: true, reason: 'manual_restore' });
+    return { restoredCount };
   };
 
   const refetchProducts = useCallback(async () => {
@@ -1355,6 +1402,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       if (__DEV__) {
         console.log('[AppleIAP] Skipping entitlement persist – unknown tier for sku', productId);
       }
+      setVerifiedActiveProductId(null);
       return;
     }
 
@@ -1363,10 +1411,19 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
     } = await supabase.auth.getUser();
     if (!user) {
       console.warn('[AppleIAP] Cannot persist entitlements without authenticated user');
+      setVerifiedActiveProductId(null);
       return;
     }
 
     try {
+      setVerifying(true);
+      console.log('[AppleIAP] FLOW PROFILE_UPSERT_START', {
+        userId: user.id,
+        productId,
+        subscriptionTier: tier,
+        reason,
+      });
+
       const result = await syncEntitlementsSnapshot({
         userId: user.id,
         productId,
@@ -1375,7 +1432,29 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
         source: reason,
       });
 
-      if (!result.success) {
+      console.log('[AppleIAP] FLOW PURCHASE_VERIFY_RESULT', {
+        userId: user.id,
+        productId,
+        subscriptionTier: tier,
+        reason,
+        success: result.success,
+        resolvedRole: result.resolvedRole,
+        roleChanged: result.roleChanged,
+        profileError: result.profileError ?? null,
+        roleError: result.roleError ?? null,
+      });
+
+      console.log('[AppleIAP] FLOW PROFILE_UPSERT_DONE', {
+        userId: user.id,
+        subscription_product_id: productId,
+        subscription_tier: tier,
+        roleChanged: result.roleChanged,
+      });
+
+      if (result.success) {
+        setVerifiedActiveProductId(productId);
+      } else {
+        setVerifiedActiveProductId(null);
         console.warn('[AppleIAP] Entitlement persistence reported errors', {
           productId,
           reason,
@@ -1384,9 +1463,38 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
         });
       }
     } catch (error) {
+      setVerifiedActiveProductId(null);
       console.error('[AppleIAP] Entitlement persistence failed', error, { productId, reason });
+    } finally {
+      setVerifying(false);
     }
   };
+
+  const entitlementSnapshot = useMemo(() => {
+    const resolving =
+      Platform.OS === 'ios'
+        ? loading || isRestoring || verifying || (!iapReady && !isExpoGo)
+        : loading;
+    const hasActiveSubscription = Boolean(verifiedActiveProductId);
+    const activeProductId = verifiedActiveProductId;
+    const subscriptionTier = subscriptionTierFromSku(activeProductId);
+    return {
+      resolving,
+      hasActiveSubscription,
+      activeProductId,
+      subscriptionTier,
+      isEntitled: hasActiveSubscription,
+    };
+  }, [loading, isRestoring, verifying, iapReady, verifiedActiveProductId]);
+
+  const lastEntitlementSignatureRef = useRef<string | null>(null);
+  useEffect(() => {
+    const signature = JSON.stringify(entitlementSnapshot);
+    if (signature !== lastEntitlementSignatureRef.current) {
+      lastEntitlementSignatureRef.current = signature;
+      console.log('[Entitlements] SNAPSHOT', entitlementSnapshot);
+    }
+  }, [entitlementSnapshot]);
 
   return (
     <AppleIAPContext.Provider
@@ -1410,6 +1518,10 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
         hasComplimentaryTrainerPremium,
         hasPlayerPremium,
         hasTrainerPremium,
+        isRestoring,
+        entitlementSnapshot,
+        verifiedActiveProductId,
+        verifying,
       }}
     >
       {children}

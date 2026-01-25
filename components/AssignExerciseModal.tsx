@@ -40,7 +40,8 @@ type TeamRow = {
 };
 
 export function AssignExerciseModal({ visible, exercise, trainerId, onClose, onSuccess }: AssignExerciseModalProps) {
-  const theme = getColors(useColorScheme() === 'dark');
+  const colorScheme = useColorScheme();
+  const theme = getColors(colorScheme);
   const {
     players,
     teams,

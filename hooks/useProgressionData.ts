@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { subDays, startOfDay, parseISO, format, differenceInCalendarDays, addDays } from 'date-fns';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import { ActivityCategory } from '@/types';
 
 export type ProgressionMetric = 'rating' | 'intensity';

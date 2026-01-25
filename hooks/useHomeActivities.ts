@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import { getCategories, DatabaseActivityCategory } from '@/services/activities';
 import { resolveActivityCategory, type CategoryMappingRecord } from '@/shared/activityCategoryResolver';
 import { subscribeToTaskCompletion } from '@/utils/taskEvents';

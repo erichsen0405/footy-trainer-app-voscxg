@@ -89,8 +89,7 @@ function organizeFolders(templateTasks: Task[]): FolderItem[] {
 export default function TasksScreen() {
   const { tasks, duplicateTask, deleteTask, refreshData, isLoading } = useFootballData();
   const scheme = useColorScheme();
-  const isDark = scheme === 'dark';
-  const theme = getColors(isDark);
+  const theme = getColors(scheme);
 
   const [refreshing, setRefreshing] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());

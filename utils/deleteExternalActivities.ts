@@ -1,5 +1,5 @@
 
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 
 /**
  * Delete all external activities for the current user

@@ -32,7 +32,7 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { CreateActivityTaskModal } from '@/components/CreateActivityTaskModal';
 import { deleteSingleExternalActivity } from '@/utils/deleteExternalActivities';
 import { TaskDescriptionRenderer } from '@/components/TaskDescriptionRenderer';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import { TaskScoreNoteModal, TaskScoreNoteModalPayload } from '@/components/TaskScoreNoteModal';
 import { fetchSelfFeedbackForTemplates, upsertSelfFeedback } from '@/services/feedbackService';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';

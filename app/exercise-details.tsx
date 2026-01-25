@@ -51,7 +51,8 @@ const formatMetaLine = (lastScore?: number | null, executionCount?: number | nul
 
 export default function ExerciseDetailsScreen() {
   const router = useRouter();
-  const theme = getColors(useColorScheme() === 'dark');
+  const colorScheme = useColorScheme();
+  const theme = getColors(colorScheme);
   const params = useLocalSearchParams();
   const roleInfo = useUserRole() as any;
   const roleRaw = roleInfo?.userRole ?? roleInfo?.role ?? null;

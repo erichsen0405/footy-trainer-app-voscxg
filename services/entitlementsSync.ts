@@ -1,6 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { forceUserRoleRefresh } from '@/hooks/useUserRole';
-import { forceEntitlementVersionBump } from '@/contexts/SubscriptionContext';
+import { bumpEntitlementsVersion } from '@/services/entitlementsEvents';
 
 export type SubscriptionTier =
   | 'player_basic'
@@ -95,7 +95,7 @@ export async function syncEntitlementsSnapshot(
     forceUserRoleRefresh(`entitlements-sync:${source}`);
   }
 
-  forceEntitlementVersionBump(`entitlements-sync:${source}`);
+  bumpEntitlementsVersion(`entitlements-sync:${source}`);
 
   if (__DEV__) {
     const isCreator = resolvedRole === 'trainer';
