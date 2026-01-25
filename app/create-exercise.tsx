@@ -24,7 +24,8 @@ const clampDifficulty = (value: number) => Math.max(0, Math.min(5, Math.round(va
 
 export default function CreateExerciseScreen() {
   const router = useRouter();
-  const theme = getColors(useColorScheme() === 'dark');
+  const colorScheme = useColorScheme();
+  const theme = getColors(colorScheme);
   const roleInfo = useUserRole() as any;
   const roleLoading = roleInfo?.isLoading ?? roleInfo?.loading ?? false;
   const roleRaw = roleInfo?.userRole ?? roleInfo?.role ?? null;

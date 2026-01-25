@@ -1,5 +1,5 @@
 
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import { Activity, ActivityCategory } from '@/types';
 
 export interface CreateActivityData {

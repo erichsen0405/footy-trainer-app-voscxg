@@ -1,5 +1,5 @@
 
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import { Platform } from 'react-native';
 
 export async function triggerManualSync() {

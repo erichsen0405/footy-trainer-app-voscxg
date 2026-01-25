@@ -14,7 +14,7 @@ import {
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { ActivityCategory } from '@/types';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 
 /*

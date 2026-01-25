@@ -111,21 +111,11 @@ function IOSTabLayout({
     <NativeTabs
       key={`native-tabs-${navigationKey}`}
       tintColor={colors.primary}
-      unselectedItemTintColor="#8E8E93"
-      translucent={false}
-      style={{
-        backgroundColor: '#FFFFFF',
-        borderTopWidth: 0.5,
-        borderTopColor: '#E5E5E5',
-      }}
-      screenOptions={{
-        tabBarStyle: {
-          backgroundColor: '#FFFFFF',
-          borderTopWidth: 0.5,
-          borderTopColor: '#E5E5E5',
-        },
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: '#8E8E93',
+      backgroundColor="#FFFFFF"
+      iconColor={{ default: colors.textSecondary, selected: colors.primary }}
+      labelStyle={{
+        default: { color: colors.textSecondary },
+        selected: { color: colors.primary },
       }}
     >
       <NativeTabs.Trigger name="(home)" hidden={hideForAuth}>

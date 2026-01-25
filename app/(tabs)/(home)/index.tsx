@@ -75,7 +75,7 @@ import { AdminContextWrapper } from '@/components/AdminContextWrapper';
 import { colors, getColors } from '@/styles/commonStyles';
 import { format, startOfWeek, endOfWeek, getWeek } from 'date-fns';
 import { da } from 'date-fns/locale';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import { canTrainerManageActivity } from '@/utils/permissions';
 import { TaskScoreNoteModal, TaskScoreNoteModalPayload } from '@/components/TaskScoreNoteModal';
 

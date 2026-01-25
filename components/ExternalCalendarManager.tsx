@@ -15,7 +15,7 @@ import {
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { PremiumFeatureGate } from '@/components/PremiumFeatureGate';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import { triggerManualSync, checkSyncStatus } from '@/utils/calendarAutoSync';
 import { deleteExternalActivitiesForCalendar } from '@/utils/deleteExternalActivities';
 import { useSubscriptionFeatures } from '@/hooks/useSubscriptionFeatures';
