@@ -47,6 +47,16 @@ export function useSubscriptionFeatures(): SubscriptionFeatures {
   const canAddMorePlayers = (currentPlayerCount: number) =>
     hasActiveSubscription && currentPlayerCount < maxPlayers;
 
+  useEffect(() => {
+    if (!__DEV__) return;
+    console.log('[useSubscriptionFeatures] Derived feature access', {
+      subscriptionTier,
+      hasActiveSubscription,
+      featureAccess,
+      isCreatorCandidate: subscriptionTier?.startsWith('trainer') ?? false,
+    });
+  }, [subscriptionTier, hasActiveSubscription, featureAccess]);
+
   return {
     hasActiveSubscription,
     maxPlayers,
