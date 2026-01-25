@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useAppleIAP } from '@/contexts/AppleIAPContext';
 import type { SubscriptionTier } from '@/services/entitlementsSync';
+import { Platform } from 'react-native';
 
 interface SubscriptionFeatures {
   hasActiveSubscription: boolean;

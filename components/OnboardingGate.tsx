@@ -7,11 +7,9 @@ import {
   StyleSheet,
   Text,
   View,
+  TouchableOpacity,
 } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
-  TouchableOpacity,
-  View,
-} from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { supabase } from '@/integrations/supabase/client';
 import AppleSubscriptionManager from '@/components/AppleSubscriptionManager';
