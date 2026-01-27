@@ -40,6 +40,15 @@ interface ActivityWithCategory {
   tasks?: ActivityTask[];
 }
 
+const parseIntensityValue = (raw: any): number | null => {
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  if (typeof raw === 'string') {
+    const parsed = parseFloat(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
+
 interface UseHomeActivitiesResult {
   activities: ActivityWithCategory[];
   loading: boolean;
@@ -346,9 +355,10 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       // Map internal activities with tasks and resolved category
       const internalActivities: ActivityWithCategory[] = (internalData || []).map(activity => {
         const resolvedCategory = resolveCategory(activity.title, activity.category_id);
+        const intensityValue = parseIntensityValue(activity.intensity);
         const intensityEnabled = typeof activity.intensity_enabled === 'boolean'
           ? activity.intensity_enabled
-          : typeof activity.intensity === 'number';
+          : intensityValue !== null;
         
         // Map tasks to the expected format
         const tasks: ActivityTask[] = (activity.activity_tasks || []).map((task: any) => ({
@@ -368,7 +378,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           location: activity.location || '',
           category_id: activity.category_id,
           category: resolvedCategory,
-          intensity: activity.intensity ?? null,
+          intensity: intensityValue,
           intensityEnabled,
           intensity_enabled: intensityEnabled,
           is_external: false,
@@ -405,6 +415,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
               external_event_id,
               category_id,
               user_id,
+              intensity,
+              intensity_enabled,
               local_title_override,
               external_event_tasks (
                 id,
@@ -433,6 +445,11 @@ export function useHomeActivities(): UseHomeActivitiesResult {
               categoryId,
               providerCategories,
             );
+
+            const intensityValue = parseIntensityValue(meta?.intensity);
+            const metaIntensityEnabled = typeof meta?.intensity_enabled === 'boolean'
+              ? meta.intensity_enabled
+              : intensityValue !== null;
             
             // Map tasks to the expected format
             const tasks: ActivityTask[] = (meta?.external_event_tasks || []).map((task: any) => ({
@@ -452,9 +469,9 @@ export function useHomeActivities(): UseHomeActivitiesResult {
               location: event.location || '',
               category_id: categoryId,
               category: resolvedCategory,
-              intensity: null,
-              intensityEnabled: false,
-              intensity_enabled: false,
+              intensity: intensityValue,
+              intensityEnabled: metaIntensityEnabled,
+              intensity_enabled: metaIntensityEnabled,
               is_external: true,
               external_calendar_id: event.provider_calendar_id,
               external_event_id: event.provider_event_uid,

@@ -1,6 +1,4 @@
-
 import { supabase } from '@/integrations/supabase/client';
-import { Activity, ActivityCategory } from '@/types';
 
 export interface CreateActivityData {
   title: string;
@@ -41,10 +39,11 @@ const normalizeEndTime = (value?: string | null): string | null => {
 };
 
 const normalizeIntensity = (value?: number | null): number | null => {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value;
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return null;
   }
-  return null;
+  const rounded = Math.round(value);
+  return rounded >= 1 && rounded <= 10 ? rounded : null;
 };
 
 const buildIntensityUpdate = (
@@ -132,11 +131,16 @@ export const activityService = {
     console.log('Creating activity:', data);
 
     const normalizedEndTime = normalizeEndTime(data.endTime);
-    const normalizedIntensityEnabled =
+    let normalizedIntensity = normalizeIntensity(data.intensity);
+    let normalizedIntensityEnabled =
       typeof data.intensityEnabled === 'boolean'
         ? data.intensityEnabled
         : data.intensity !== undefined && data.intensity !== null;
-    const normalizedIntensity = normalizedIntensityEnabled ? normalizeIntensity(data.intensity) : null;
+
+    if (!normalizedIntensity) {
+      normalizedIntensity = null;
+      normalizedIntensityEnabled = false;
+    }
 
     if (data.isRecurring) {
       const { data: seriesData, error: seriesError } = await supabase
@@ -216,6 +220,8 @@ export const activityService = {
   },
 
   async updateActivitySingle(activityId: string, updates: UpdateActivityData, isExternal: boolean, signal?: AbortSignal): Promise<void> {
+    const intensityChanges = buildIntensityUpdate(updates.intensity, updates.intensityEnabled);
+
     if (isExternal) {
       const updateData: any = {};
       
@@ -227,6 +233,14 @@ export const activityService = {
       
       if (updates.title !== undefined) {
         updateData.local_title_override = updates.title;
+      }
+
+      if (intensityChanges?.intensity !== undefined) {
+        updateData.intensity = intensityChanges.intensity;
+      }
+
+      if (intensityChanges?.intensity_enabled !== undefined) {
+        updateData.intensity_enabled = intensityChanges.intensity_enabled;
       }
       
       updateData.last_local_modified = new Date().toISOString();
@@ -247,7 +261,6 @@ export const activityService = {
       if (updates.date !== undefined) updateData.activity_date = updates.date.toISOString().split('T')[0];
       if (updates.time !== undefined) updateData.activity_time = updates.time;
       if (updates.endTime !== undefined) updateData.activity_end_time = normalizeEndTime(updates.endTime);
-      const intensityChanges = buildIntensityUpdate(updates.intensity, updates.intensityEnabled);
       if (intensityChanges?.intensity !== undefined) {
         updateData.intensity = intensityChanges.intensity;
       }
@@ -284,6 +297,11 @@ export const activityService = {
     if (updates.time !== undefined) seriesUpdate.activity_time = updates.time;
     if (updates.endTime !== undefined) seriesUpdate.activity_end_time = normalizeEndTime(updates.endTime);
 
+    const intensityChanges = buildIntensityUpdate(updates.intensity, updates.intensityEnabled);
+    if (intensityChanges?.intensity_enabled !== undefined) {
+      seriesUpdate.intensity_enabled = intensityChanges.intensity_enabled;
+    }
+
     const { error: seriesError } = await supabase
       .from('activity_series')
       .update(seriesUpdate)
@@ -304,12 +322,10 @@ export const activityService = {
     }
     if (updates.time !== undefined) activityUpdate.activity_time = updates.time;
     if (updates.endTime !== undefined) activityUpdate.activity_end_time = normalizeEndTime(updates.endTime);
-    const intensityChanges = buildIntensityUpdate(updates.intensity, updates.intensityEnabled);
     if (intensityChanges?.intensity !== undefined) {
       activityUpdate.intensity = intensityChanges.intensity;
     }
     if (intensityChanges?.intensity_enabled !== undefined) {
-      seriesUpdate.intensity_enabled = intensityChanges.intensity_enabled;
       activityUpdate.intensity_enabled = intensityChanges.intensity_enabled;
     }
 

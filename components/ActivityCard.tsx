@@ -291,16 +291,22 @@ export default function ActivityCard({
 
   const intensityValue = useMemo(() => {
     const raw = activity?.intensity ?? activity?.activity_intensity;
-    return typeof raw === 'number' ? raw : null;
+    if (typeof raw === 'number') return raw;
+    if (typeof raw === 'string') {
+      const parsed = parseFloat(raw);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
   }, [activity]);
 
   const intensityEnabled = useMemo(() => resolveActivityIntensityEnabled(activity), [activity]);
   const hasIntensityValue = typeof intensityValue === 'number';
   const showIntensityRow = intensityEnabled || hasIntensityValue;
   const intensityMissing = !hasIntensityValue;
+  const intensityBadgeLabel = intensityMissing ? '–/10' : `${intensityValue}/10`;
 
   const taskListItems = useMemo<TaskListItem[]>(() => {
-    const baseTasks = Array.isArray(optimisticTasks) ? optimisticTasks : [];
+    const baseTasks = showTasks ? (Array.isArray(optimisticTasks) ? optimisticTasks : []) : [];
     const items: TaskListItem[] = [];
 
     if (showIntensityRow) {
@@ -317,9 +323,9 @@ export default function ActivityCard({
     });
 
     return items;
-  }, [activity?.id, activityId, optimisticTasks, showIntensityRow]);
+  }, [activity?.id, activityId, optimisticTasks, showIntensityRow, showTasks]);
 
-  const shouldRenderTasksSection = showTasks && taskListItems.length > 0;
+  const shouldRenderTasksSection = taskListItems.length > 0;
 
   return (
     <>
@@ -411,14 +417,21 @@ export default function ActivityCard({
                               Intensitet
                             </Text>
 
-                            <Text
+                            <View
                               style={[
-                                styles.intensityTaskValue,
-                                intensityMissing && styles.intensityTaskValueNeutral,
+                                styles.intensityBadge,
+                                intensityMissing ? styles.intensityBadgeNeutral : styles.intensityBadgeFilled,
                               ]}
                             >
-                              {intensityMissing ? 'Ikke angivet' : `${intensityValue}/10`}
-                            </Text>
+                              <Text
+                                style={[
+                                  styles.intensityBadgeText,
+                                  intensityMissing ? styles.intensityBadgeTextNeutral : styles.intensityBadgeTextFilled,
+                                ]}
+                              >
+                                {intensityBadgeLabel}
+                              </Text>
+                            </View>
                           </View>
 
                           {/* Helper text ONLY when enabled AND missing */}
@@ -658,15 +671,34 @@ const styles = StyleSheet.create({
     textDecorationLine: 'line-through',
     color: 'rgba(255, 255, 255, 0.6)',
   },
-
-  intensityTaskValue: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#4CAF50',
+  intensityBadge: {
+    borderRadius: 999,
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    minWidth: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
-  intensityTaskValueNeutral: {
-    // "Ikke angivet" should NOT look disabled/dimmed
-    color: 'rgba(255, 255, 255, 0.95)',
+  intensityBadgeFilled: {
+    backgroundColor: 'rgba(6, 17, 31, 0.5)',
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+  },
+  intensityBadgeNeutral: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderColor: 'rgba(15, 23, 42, 0.2)',
+  },
+  intensityBadgeText: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  intensityBadgeTextFilled: {
+    color: '#FFFFFF',
+  },
+  intensityBadgeTextNeutral: {
+    color: '#0F172A',
   },
   intensityRowInner: {
     flexDirection: 'row',
