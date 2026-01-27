@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useAppleIAP } from '@/contexts/AppleIAPContext';
 import type { SubscriptionTier } from '@/services/entitlementsSync';
-import { Platform } from 'react-native';
 
 interface SubscriptionFeatures {
   hasActiveSubscription: boolean;
@@ -50,6 +49,9 @@ export function useSubscriptionFeatures(): SubscriptionFeatures {
 
   useEffect(() => {
     if (!__DEV__) return;
+    if (hasActiveSubscription && !subscriptionTier) {
+      console.warn('[useSubscriptionFeatures] Active subscription without tier detected');
+    }
     console.log('[useSubscriptionFeatures] Derived feature access', {
       subscriptionTier,
       hasActiveSubscription,
