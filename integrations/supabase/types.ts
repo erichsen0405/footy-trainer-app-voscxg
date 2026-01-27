@@ -502,6 +502,8 @@ export type Database = {
           custom_fields: Json | null
           external_event_id: string | null
           id: string
+          intensity: number | null
+          intensity_enabled: boolean
           last_local_modified: string | null
           local_description: string | null
           local_end_override: string | null
@@ -522,6 +524,8 @@ export type Database = {
           custom_fields?: Json | null
           external_event_id?: string | null
           id?: string
+          intensity?: number | null
+          intensity_enabled?: boolean
           last_local_modified?: string | null
           local_description?: string | null
           local_end_override?: string | null
@@ -542,6 +546,8 @@ export type Database = {
           custom_fields?: Json | null
           external_event_id?: string | null
           id?: string
+          intensity?: number | null
+          intensity_enabled?: boolean
           last_local_modified?: string | null
           local_description?: string | null
           local_end_override?: string | null

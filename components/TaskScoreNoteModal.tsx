@@ -43,6 +43,7 @@ interface TaskScoreNoteModalProps {
   error?: string | null;
   onSave?: (payload: TaskScoreNoteModalPayload) => void | Promise<void>; // was required
   onClose: () => void;
+  showLabels?: boolean; // default true
 }
 
 function TaskScoreNoteModalComponent({
@@ -64,6 +65,7 @@ function TaskScoreNoteModalComponent({
   error,
   onSave = () => {},
   onClose,
+  showLabels = true,
 }: TaskScoreNoteModalProps) {
   const [score, setScore] = useState<number | null>(initialScore ?? null);
   const [note, setNote] = useState(initialNote ?? '');
@@ -138,16 +140,27 @@ function TaskScoreNoteModalComponent({
         contentContainerStyle={styles.scoringRow}
       >
         {SCORE_VALUES.map(value => {
-          const selected = score === value;
+          const isSelected = score === value;
           return (
             <Pressable
               key={`score-${value}`}
-              style={[styles.chip, selected && styles.chipSelected, disableInteractions && styles.chipDisabled]}
+              style={[styles.chip, isSelected && styles.chipSelected, disableInteractions && styles.chipDisabled]}
+              accessibilityRole="button"
+              accessibilityLabel={`Score ${value}`}
               hitSlop={CHIP_HIT_SLOP}
               onPress={() => handleSelectScore(value)}
               disabled={disableInteractions}
             >
-              <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{value}</Text>
+              <Text
+                style={[
+                  styles.chipText,
+                  isSelected && styles.chipTextSelected,
+                  !showLabels && styles.chipTextHidden,
+                ]}
+                accessible={false}
+              >
+                {value}
+              </Text>
             </Pressable>
           );
         })}
@@ -359,6 +372,9 @@ const styles = StyleSheet.create({
   },
   chipTextSelected: {
     color: colors.primary,
+  },
+  chipTextHidden: {
+    opacity: 0,
   },
   resetText: {
     fontSize: 14,
