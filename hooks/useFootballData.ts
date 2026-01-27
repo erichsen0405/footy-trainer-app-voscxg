@@ -123,6 +123,7 @@ export const useFootballData = () => {
       time?: string;
       endTime?: string;
       intensity?: number | null;
+      intensityEnabled?: boolean;
     }) => {
       const payload: Record<string, any> = {};
 

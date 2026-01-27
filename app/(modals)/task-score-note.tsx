@@ -60,29 +60,47 @@ export default function TaskScoreNoteScreen() {
       }
 
       try {
-        const { data, error: fetchError } = await supabase
+        const { data: internalActivity, error: internalError } = await supabase
           .from('activities')
-          .select('id,intensity,intensity_enabled,is_external')
+          .select('id,intensity,intensity_enabled')
           .eq('id', activityId)
-          .single();
+          .maybeSingle();
 
         if (cancelled) return;
 
-        if (fetchError) return;
+        if (internalError) {
+          console.error('[task-score-note] Failed fetching internal activity:', internalError);
+        }
 
-        if (data?.is_external) {
-          Alert.alert('Intensitet ikke tilgængelig', 'Denne aktivitet kommer fra en ekstern kalender.');
+        let intensityCarrier = internalActivity ?? null;
+
+        if (!intensityCarrier) {
+          const { data: externalMeta, error: externalError } = await supabase
+            .from('events_local_meta')
+            .select('id,intensity,intensity_enabled')
+            .eq('id', activityId)
+            .maybeSingle();
+
+          if (externalError) {
+            console.error('[task-score-note] Failed fetching external meta:', externalError);
+          }
+
+          intensityCarrier = externalMeta ?? null;
+        }
+
+        if (!intensityCarrier) {
+          Alert.alert('Intensitet ikke tilgængelig', 'Aktiviteten blev ikke fundet.');
           safeDismiss();
           return;
         }
 
-        if (!data?.intensity_enabled) {
+        if (!intensityCarrier.intensity_enabled) {
           Alert.alert('Intensitet ikke tilgængelig', 'Intensitet er ikke aktiveret for denne aktivitet.');
           safeDismiss();
           return;
         }
 
-        const intensity = typeof (data as any).intensity === 'number' ? (data as any).intensity : null;
+        const intensity = typeof intensityCarrier.intensity === 'number' ? intensityCarrier.intensity : null;
         setInitialScore(intensity);
       } catch {
         // ignore

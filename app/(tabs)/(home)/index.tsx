@@ -985,6 +985,7 @@ export default function HomeScreen() {
         error={intensityModalError}
         onSave={handleIntensityModalSave}
         onClose={handleCloseIntensityModal}
+        showLabels={false}
       />
     </AdminContextWrapper>
   );
