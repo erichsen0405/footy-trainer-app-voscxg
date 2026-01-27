@@ -3,6 +3,7 @@ import { Platform, Alert } from 'react-native';
 import Constants from 'expo-constants';
 import * as Application from 'expo-application';
 import { supabase } from '@/integrations/supabase/client';
+import { bumpEntitlementsVersion } from '@/services/entitlementsEvents';
 import { syncEntitlementsSnapshot, SubscriptionTier } from '@/services/entitlementsSync';
 
 const executionEnvironment =
@@ -464,6 +465,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
   const [iapUnavailableReason, setIapUnavailableReason] = useState<string | null>(null);
   const [pendingPlan, setPendingPlan] = useState<{ productId: string; effectiveDate: number | null } | null>(null);
   const [entitlements, setEntitlements] = useState<UserEntitlement[]>([]);
+  const entitlementsSignatureRef = useRef<string | null>(null);
   const [isRestoring, setIsRestoring] = useState(false);
   const [verifiedActiveProductId, setVerifiedActiveProductId] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
@@ -566,6 +568,14 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void fetchEntitlements();
   }, [fetchEntitlements]);
+
+  useEffect(() => {
+    const signature = JSON.stringify(entitlements);
+    if (entitlementsSignatureRef.current !== signature) {
+      entitlementsSignatureRef.current = signature;
+      bumpEntitlementsVersion('complimentary-entitlements');
+    }
+  }, [entitlements]);
 
   const syncIapReadyState = useCallback(async () => {
     const ready = await ensureIapReady();
@@ -870,6 +880,23 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
   }, [entitlements, subscriptionStatus?.isActive, subscriptionStatus?.productId]);
 
   const { hasComplimentaryPlayerPremium, hasComplimentaryTrainerPremium, hasPlayerPremium, hasTrainerPremium } = complimentaryFlags;
+
+  const complimentaryTier = useMemo<SubscriptionTier | null>(() => {
+    if (hasComplimentaryTrainerPremium) return 'trainer_premium';
+    if (hasComplimentaryPlayerPremium) return 'player_premium';
+    return null;
+  }, [hasComplimentaryPlayerPremium, hasComplimentaryTrainerPremium]);
+
+  const appleActiveSku = subscriptionStatus?.isActive ? subscriptionStatus.productId ?? null : null;
+  const appleTierSourceSku = appleActiveSku ?? verifiedActiveProductId ?? null;
+
+  const appleTier = useMemo(() => {
+    return subscriptionTierFromSku(appleTierSourceSku);
+  }, [appleTierSourceSku]);
+
+  const effectiveSubscriptionTier = useMemo<SubscriptionTier | null>(() => {
+    return appleTier ?? complimentaryTier;
+  }, [appleTier, complimentaryTier]);
 
   useEffect(() => {
     const runtimeBundleId = getRuntimeBundleId();
@@ -1475,17 +1502,15 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       Platform.OS === 'ios'
         ? loading || isRestoring || verifying || (!iapReady && !isExpoGo)
         : loading;
-    const hasActiveSubscription = Boolean(verifiedActiveProductId);
-    const activeProductId = verifiedActiveProductId;
-    const subscriptionTier = subscriptionTierFromSku(activeProductId);
+    const hasActiveSubscription = Boolean(effectiveSubscriptionTier);
     return {
       resolving,
       hasActiveSubscription,
-      activeProductId,
-      subscriptionTier,
+      activeProductId: appleActiveSku ?? verifiedActiveProductId ?? null,
+      subscriptionTier: effectiveSubscriptionTier,
       isEntitled: hasActiveSubscription,
     };
-  }, [loading, isRestoring, verifying, iapReady, verifiedActiveProductId]);
+  }, [appleActiveSku, effectiveSubscriptionTier, iapReady, isRestoring, loading, verifying, verifiedActiveProductId]);
 
   const lastEntitlementSignatureRef = useRef<string | null>(null);
   useEffect(() => {

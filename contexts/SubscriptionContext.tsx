@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, Rea
 import { supabase } from '@/integrations/supabase/client';
 import { useAppleIAP, PRODUCT_IDS } from '@/contexts/AppleIAPContext';
 import { bumpEntitlementsVersion, subscribeToEntitlementVersion } from '@/services/entitlementsEvents';
+import type { SubscriptionTier } from '@/services/entitlementsSync';
 
 export function forceEntitlementVersionBump(reason = 'external') {
   bumpEntitlementsVersion(reason);
@@ -34,6 +35,7 @@ type SubscriptionStatus = {
   currentPlayers: number;
   trialEnd: string | null;
   currentPeriodEnd: string | null;
+  subscriptionTier: SubscriptionTier | null;
 };
 
 const buildEmptyStatus = (): SubscriptionStatus => ({
@@ -44,6 +46,7 @@ const buildEmptyStatus = (): SubscriptionStatus => ({
   currentPlayers: 0,
   trialEnd: null,
   currentPeriodEnd: null,
+  subscriptionTier: null,
 });
 
 interface SubscriptionContextType {
@@ -77,6 +80,7 @@ const buildEntitlementSignature = (s: SubscriptionStatus | null): string => {
     s.hasSubscription ? '1' : '0',
     s.status ?? 'none',
     s.planName ?? 'none',
+    s.subscriptionTier ?? 'none',
     String(s.maxPlayers ?? 0),
   ].join('|');
 };
@@ -93,6 +97,40 @@ const derivePlanMetaFromSku = (sku: string | null) => {
       return { name: 'Træner Standard', maxPlayers: 15 };
     case PRODUCT_IDS.TRAINER_PREMIUM:
       return { name: 'Træner Premium', maxPlayers: 50 };
+    default:
+      return null;
+  }
+};
+
+const derivePlanMetaFromTier = (tier: SubscriptionTier | null) => {
+  switch (tier) {
+    case 'player_premium':
+      return { name: 'Premium spiller', maxPlayers: 1 };
+    case 'player_basic':
+      return { name: 'Basis spiller', maxPlayers: 1 };
+    case 'trainer_basic':
+      return { name: 'Træner Basis', maxPlayers: 5 };
+    case 'trainer_standard':
+      return { name: 'Træner Standard', maxPlayers: 15 };
+    case 'trainer_premium':
+      return { name: 'Træner Premium', maxPlayers: 50 };
+    default:
+      return null;
+  }
+};
+
+const subscriptionTierFromSku = (sku: string | null): SubscriptionTier | null => {
+  switch (sku) {
+    case PRODUCT_IDS.PLAYER_PREMIUM:
+      return 'player_premium';
+    case PRODUCT_IDS.PLAYER_BASIC:
+      return 'player_basic';
+    case PRODUCT_IDS.TRAINER_BASIC:
+      return 'trainer_basic';
+    case PRODUCT_IDS.TRAINER_STANDARD:
+      return 'trainer_standard';
+    case PRODUCT_IDS.TRAINER_PREMIUM:
+      return 'trainer_premium';
     default:
       return null;
   }
@@ -171,6 +209,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         status: fallback.status ?? 'trial',
         planName: plan?.name ?? fallback.planName ?? 'Aktivt abonnement',
         maxPlayers: plan?.max_players ?? fallback.maxPlayers,
+        subscriptionTier: fallback.subscriptionTier,
       };
 
       console.log('[SubscriptionContext] Applying optimistic subscription state', optimisticStatus);
@@ -183,29 +222,41 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const appleResolving = Boolean(entitlementSnapshot?.resolving);
   const appleIsEntitled = Boolean(entitlementSnapshot?.isEntitled);
   const appleActiveProductId = entitlementSnapshot?.activeProductId ?? null;
+  const appleEntitlementTier = entitlementSnapshot?.subscriptionTier ?? null;
 
   const coerceWithEntitlements = useCallback(
     (status: SubscriptionStatus, source: string): SubscriptionStatus => {
       if (!appleIsEntitled) return status;
-      const planMeta = derivePlanMetaFromSku(appleActiveProductId);
+
+      const tierFromSku = subscriptionTierFromSku(appleActiveProductId);
+      const tierOverride = appleEntitlementTier ?? tierFromSku;
+      if (!tierOverride) return status;
+
+      const planMeta =
+        derivePlanMetaFromTier(appleEntitlementTier) ??
+        derivePlanMetaFromSku(appleActiveProductId) ??
+        derivePlanMetaFromTier(tierOverride);
+
       const merged: SubscriptionStatus = {
         ...status,
         hasSubscription: true,
         status: 'active',
         planName: planMeta?.name ?? status.planName ?? 'Aktivt abonnement',
         maxPlayers: planMeta?.maxPlayers ?? status.maxPlayers ?? 1,
+        subscriptionTier: appleEntitlementTier ?? tierFromSku ?? status.subscriptionTier,
       };
       if (!status.hasSubscription) {
         console.warn('[SubscriptionContext] Backend reported no subscription while Apple is active', {
           source,
           backend: status,
           appleSku: appleActiveProductId,
+          appleTier: appleEntitlementTier,
           appleResolving,
         });
       }
       return merged;
     },
-    [appleIsEntitled, appleActiveProductId, appleResolving]
+    [appleIsEntitled, appleActiveProductId, appleEntitlementTier, appleResolving]
   );
 
   const fetchSubscriptionStatus = useCallback(async () => {
@@ -269,6 +320,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         currentPlayers: Number(data?.currentPlayers) || 0,
         trialEnd: data?.trialEnd ?? null,
         currentPeriodEnd: data?.currentPeriodEnd ?? null,
+        subscriptionTier: (data?.subscriptionTier as SubscriptionTier | null) ?? null,
       };
 
       applyStatus(coerceWithEntitlements(statusData, 'fetch-success'), 'fetch-success');
