@@ -1,14 +1,16 @@
-import React, { useEffect } from 'react';
-import { Stack } from 'expo-router';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Stack, usePathname, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
 import 'react-native-reanimated';
 
 import { FootballProvider } from '@/contexts/FootballContext';
-import { SubscriptionProvider } from '@/contexts/SubscriptionContext';
+import { SubscriptionProvider, useSubscription } from '@/contexts/SubscriptionContext';
 import { TeamPlayerProvider } from '@/contexts/TeamPlayerContext';
 import { AdminProvider } from '@/contexts/AdminContext';
+import { AppleIAPProvider, useAppleIAP } from '@/contexts/AppleIAPContext';
+import { supabase } from '@/integrations/supabase/client';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -16,21 +18,58 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 /* CRITICAL: Block tolt.js runtime    */
 /* ---------------------------------- */
 if (typeof window !== 'undefined') {
-  // Ensure tolt.js never executes on Web
   if ((window as any).tolt) {
     console.warn('[RN Web] Detected tolt.js - removing for React Native Web compatibility');
-    delete (window as any).tolt;
+    try {
+      delete (window as any).tolt;
+    } catch (error) {
+      console.warn('[RN Web] Unable to delete tolt.js reference', error);
+    }
   }
-  
-  // Block any future tolt injection
-  Object.defineProperty(window, 'tolt', {
-    get: () => undefined,
-    set: () => {
-      console.warn('[RN Web] Blocked tolt.js injection attempt');
-    },
-    configurable: false,
-  });
+
+  const toltDescriptor = Object.getOwnPropertyDescriptor(window, 'tolt');
+  const shouldPatchTolt = !toltDescriptor || isDescriptorConfigurable(toltDescriptor);
+
+  if (shouldPatchTolt) {
+    try {
+      Object.defineProperty(window, 'tolt', {
+        get: () => undefined,
+        set: () => {
+          console.warn('[RN Web] Blocked tolt.js injection attempt');
+        },
+        configurable: false,
+      });
+    } catch (error) {
+      console.warn('[RN Web] Failed to lock tolt.js property', error);
+    }
+  } else if (__DEV__) {
+    console.log('[RN Web] tolt.js guard already installed');
+  }
 }
+
+function isDescriptorConfigurable(descriptor: PropertyDescriptor) {
+  return descriptor.configurable !== false;
+}
+
+const NO_PLAN_TIER_VALUES = new Set([
+  'none',
+  '(none)',
+  'no_plan',
+  'no_subscription',
+  'unknown',
+  'unsubscribed',
+  'null',
+  'undefined',
+]);
+
+const normalizeSubscriptionTier = (tier?: string | null) => {
+  if (!tier) return { tier: null as string | null, tierKey: null as string | null };
+  const tierKey = tier.trim().toLowerCase();
+  if (!tierKey || NO_PLAN_TIER_VALUES.has(tierKey)) {
+    return { tier: null as string | null, tierKey: null as string | null };
+  }
+  return { tier: tier.trim(), tierKey };
+};
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -43,15 +82,6 @@ export default function RootLayout() {
     }
   }, [fontsLoaded]);
 
-  // Additional runtime check for tolt.js
-  useEffect(() => {
-    if (typeof window !== 'undefined' && (window as any).tolt) {
-      console.error('[RN Web] CRITICAL: tolt.js detected after mount - this should not happen');
-      delete (window as any).tolt;
-    }
-  }, []);
-
-  // Hermes log mirroring
   useEffect(() => {
     if (__DEV__) {
       const hermesEnabled = typeof (globalThis as any).HermesInternal === 'object';
@@ -59,32 +89,158 @@ export default function RootLayout() {
     }
   }, []);
 
-  // Don't return null - always render the router
-  // Fonts will load in the background
   return (
     <SubscriptionProvider>
-      <TeamPlayerProvider>
-        <AdminProvider>
-          <FootballProvider>
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="(tabs)" />
-              <Stack.Screen name="+not-found" />
-              <Stack.Screen name="activity-details" options={{ presentation: 'modal' }} />
-              <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-              <Stack.Screen name="formsheet" options={{ presentation: 'formSheet' }} />
-              <Stack.Screen
-                name="transparent-modal"
-                options={{ presentation: 'transparentModal', animation: 'fade' }}
-              />
-              <Stack.Screen name="console-logs" options={{ headerShown: true }} />
-              <Stack.Screen name="notification-debug" options={{ headerShown: true }} />
-              <Stack.Screen name="email-confirmed" />
-              <Stack.Screen name="update-password" />
-            </Stack>
-            <StatusBar style="auto" />
-          </FootballProvider>
-        </AdminProvider>
-      </TeamPlayerProvider>
+      <AppleIAPProvider>
+        <SubscriptionRedirectObserver />
+        <TeamPlayerProvider>
+          <AdminProvider>
+            <FootballProvider>
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="index" />
+                <Stack.Screen name="choose-plan" />
+                <Stack.Screen name="(tabs)" />
+                <Stack.Screen name="+not-found" />
+                <Stack.Screen name="activity-details" options={{ presentation: 'modal' }} />
+                <Stack.Screen name="email-confirmed" />
+                <Stack.Screen name="update-password" />
+                {__DEV__ ? <Stack.Screen name="console-logs" options={{ headerShown: true }} /> : null}
+                {__DEV__ ? (
+                  <Stack.Screen name="notification-debug" options={{ headerShown: true }} />
+                ) : null}
+              </Stack>
+              <StatusBar style="auto" />
+            </FootballProvider>
+          </AdminProvider>
+        </TeamPlayerProvider>
+      </AppleIAPProvider>
     </SubscriptionProvider>
   );
+}
+
+function SubscriptionRedirectObserver() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const { subscriptionStatus, loading: subscriptionLoading } = useSubscription();
+  const { entitlementSnapshot } = useAppleIAP();
+
+  const appleResolving = entitlementSnapshot.resolving;
+  const resolving = Boolean(subscriptionLoading || appleResolving);
+
+  const rawSubscriptionTier =
+    subscriptionStatus?.subscriptionTier ?? entitlementSnapshot.subscriptionTier;
+  const { tier: subscriptionTier, tierKey } = normalizeSubscriptionTier(rawSubscriptionTier);
+
+  const backendHasSubscription = Boolean(subscriptionStatus?.hasSubscription);
+  const hasAnyPlan = backendHasSubscription || Boolean(tierKey);
+
+  const [authChecked, setAuthChecked] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const lastRedirectRef = useRef(0);
+  const paywallRedirectedRef = useRef(false);
+  const lastSuppressedLogAtRef = useRef(0);
+
+  useEffect(() => {
+    paywallRedirectedRef.current = false;
+    lastRedirectRef.current = 0;
+  }, [userId]);
+
+  const triggerRedirect = useCallback(
+    (target: string) => {
+      if (!target || pathname === target) return;
+      const now = Date.now();
+      if (now - lastRedirectRef.current < 400) return;
+      lastRedirectRef.current = now;
+      router.replace(target as any);
+    },
+    [pathname, router]
+  );
+
+  useEffect(() => {
+    let isActive = true;
+
+    const syncSession = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!isActive) return;
+      setUserId(data.session?.user?.id ?? null);
+      setAuthChecked(true);
+    };
+
+    syncSession();
+
+    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!isActive) return;
+      setUserId(session?.user?.id ?? null);
+      setAuthChecked(true);
+    });
+
+    return () => {
+      isActive = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  const isCreatorCandidate = Boolean(tierKey?.startsWith('trainer'));
+
+  const PAYWALL_EXEMPT_PREFIXES = ['/choose-plan', '/update-password', '/email-confirmed'];
+  const isPaywallExemptRoute = PAYWALL_EXEMPT_PREFIXES.some(prefix => pathname?.startsWith(prefix));
+  const onPaywall = pathname?.startsWith('/choose-plan');
+
+  const entitlementReady = authChecked && Boolean(userId) && !resolving;
+
+  useEffect(() => {
+    if (!authChecked || resolving || !userId) {
+      const now = Date.now();
+      if (now - lastSuppressedLogAtRef.current > 2000) {
+        lastSuppressedLogAtRef.current = now;
+        console.log('[WebSubscriptionRedirect] Paywall suppressed (still resolving)', {
+          userId,
+          entitlementReady: false,
+          loading: subscriptionLoading,
+          hasAnyPlan,
+          subscriptionTier,
+          isCreatorCandidate,
+        });
+      }
+      return;
+    }
+
+    if (!hasAnyPlan && !onPaywall && !isPaywallExemptRoute && !paywallRedirectedRef.current) {
+      paywallRedirectedRef.current = true;
+      console.log('[WebSubscriptionRedirect] Redirecting to paywall (missing plan)', {
+        userId,
+        hasAnyPlan,
+        subscriptionTier,
+        isCreatorCandidate,
+        entitlementReady,
+      });
+      triggerRedirect('/choose-plan');
+      return;
+    }
+
+    if (onPaywall && hasAnyPlan) {
+      console.log('[WebSubscriptionRedirect] Leaving paywall (plan detected)', {
+        userId,
+        hasAnyPlan,
+        subscriptionTier,
+        isCreatorCandidate,
+        entitlementReady,
+      });
+      triggerRedirect('/(tabs)');
+    }
+  }, [
+    authChecked,
+    resolving,
+    userId,
+    subscriptionLoading,
+    hasAnyPlan,
+    subscriptionTier,
+    onPaywall,
+    isPaywallExemptRoute,
+    triggerRedirect,
+    isCreatorCandidate,
+    entitlementReady,
+  ]);
+
+  return null;
 }
