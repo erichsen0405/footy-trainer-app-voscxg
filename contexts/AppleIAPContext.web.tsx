@@ -1,4 +1,5 @@
-import React, { createContext, useContext, ReactNode } from 'react';
+import React, { createContext, useContext, ReactNode, useEffect } from 'react';
+import { useSubscription } from '@/contexts/SubscriptionContext';
 
 // Stub types for web
 interface SubscriptionProduct {
@@ -62,6 +63,15 @@ interface AppleIAPContextType {
   hasPlayerPremium: boolean;
   hasTrainerPremium: boolean;
   isRestoring: boolean;
+  entitlementSnapshot: {
+    resolving: boolean;
+    hasActiveSubscription: boolean;
+    activeProductId: string | null;
+    subscriptionTier: string | null;
+    isEntitled: boolean;
+  };
+  verifiedActiveProductId: string | null;
+  verifying: boolean;
 }
 
 const defaultDiagnostics: IapDiagnostics = {
@@ -85,6 +95,16 @@ const AppleIAPContext = createContext<AppleIAPContextType | undefined>(undefined
 
 // Stub provider for web - Apple IAP is not available on web
 export function AppleIAPProvider({ children }: { children: ReactNode }) {
+  const { ingestAppleEntitlements } = useSubscription();
+  useEffect(() => {
+    ingestAppleEntitlements?.({
+      resolving: false,
+      isEntitled: false,
+      activeProductId: null,
+      subscriptionTier: null,
+    });
+  }, [ingestAppleEntitlements]);
+
   const stubValue: AppleIAPContextType = {
     products: [],
     subscriptionStatus: null,
@@ -115,6 +135,15 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
     hasPlayerPremium: false,
     hasTrainerPremium: false,
     isRestoring: false,
+    entitlementSnapshot: {
+      resolving: false,
+      hasActiveSubscription: false,
+      activeProductId: null,
+      subscriptionTier: null,
+      isEntitled: false,
+    },
+    verifiedActiveProductId: null,
+    verifying: false,
   };
 
   return (

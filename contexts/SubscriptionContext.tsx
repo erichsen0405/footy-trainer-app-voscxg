@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useAppleIAP, PRODUCT_IDS } from '@/contexts/AppleIAPContext';
+import { PRODUCT_IDS } from '@/contexts/appleProductIds';
 import { bumpEntitlementsVersion, subscribeToEntitlementVersion } from '@/services/entitlementsEvents';
 import type { SubscriptionTier } from '@/services/entitlementsSync';
 
@@ -38,6 +38,20 @@ type SubscriptionStatus = {
   subscriptionTier: SubscriptionTier | null;
 };
 
+export type AppleEntitlementIngest = {
+  resolving: boolean;
+  isEntitled: boolean;
+  activeProductId: string | null;
+  subscriptionTier: SubscriptionTier | null;
+};
+
+const defaultAppleEntitlements: AppleEntitlementIngest = {
+  resolving: true,
+  isEntitled: false,
+  activeProductId: null,
+  subscriptionTier: null,
+};
+
 const buildEmptyStatus = (): SubscriptionStatus => ({
   hasSubscription: false,
   status: null,
@@ -66,6 +80,7 @@ interface SubscriptionContextType {
     alreadyOnPlan?: boolean;
   }>;
   entitlementVersion: number;
+  ingestAppleEntitlements?: (snapshot: AppleEntitlementIngest | null) => void;
 }
 
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
@@ -141,13 +156,25 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [entitlementVersion, setEntitlementVersion] = useState(0);
+  const [appleEntitlements, setAppleEntitlements] = useState<AppleEntitlementIngest>(defaultAppleEntitlements);
 
   const lastSignatureRef = useRef<string>(buildEntitlementSignature(null));
   const statusRef = useRef<SubscriptionStatus | null>(null);
+  const lastAppleSignatureRef = useRef<string>('');
 
   useEffect(() => {
     statusRef.current = subscriptionStatus;
   }, [subscriptionStatus]);
+
+  const ingestAppleEntitlements = useCallback((snapshot: AppleEntitlementIngest | null) => {
+    const next = snapshot ?? defaultAppleEntitlements;
+    const signature = `${next.resolving ? 1 : 0}|${next.isEntitled ? 1 : 0}|${next.activeProductId ?? 'none'}|${next.subscriptionTier ?? 'none'}`;
+    if (lastAppleSignatureRef.current === signature) {
+      return;
+    }
+    lastAppleSignatureRef.current = signature;
+    setAppleEntitlements(next);
+  }, []);
 
   const applyStatus = useCallback((next: SubscriptionStatus, reason: string) => {
     setSubscriptionStatus(next);
@@ -218,11 +245,10 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     [applyStatus, subscriptionPlans]
   );
 
-  const { entitlementSnapshot } = useAppleIAP();
-  const appleResolving = Boolean(entitlementSnapshot?.resolving);
-  const appleIsEntitled = Boolean(entitlementSnapshot?.isEntitled);
-  const appleActiveProductId = entitlementSnapshot?.activeProductId ?? null;
-  const appleEntitlementTier = entitlementSnapshot?.subscriptionTier ?? null;
+  const appleResolving = appleEntitlements.resolving;
+  const appleIsEntitled = appleEntitlements.isEntitled;
+  const appleActiveProductId = appleEntitlements.activeProductId ?? null;
+  const appleEntitlementTier = appleEntitlements.subscriptionTier ?? null;
 
   const coerceWithEntitlements = useCallback(
     (status: SubscriptionStatus, source: string): SubscriptionStatus => {
@@ -559,6 +585,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         createSubscription,
         changeSubscriptionPlan,
         entitlementVersion,
+        ingestAppleEntitlements,
       }}
     >
       {children}

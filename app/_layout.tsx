@@ -7,12 +7,9 @@ import 'react-native-reanimated';
 import { FootballProvider } from '@/contexts/FootballContext';
 import { SubscriptionProvider, useSubscription } from '@/contexts/SubscriptionContext';
 import { TeamPlayerProvider } from '@/contexts/TeamPlayerContext';
-import { AppleIAPProvider } from '@/contexts/AppleIAPContext';
+import { AppleIAPProvider, useAppleIAP } from '@/contexts/AppleIAPContext';
 import { AdminProvider } from '@/contexts/AdminContext';
 import { supabase } from '@/integrations/supabase/client';
-import { useSubscriptionFeatures } from '@/hooks/useSubscriptionFeatures';
-import { useAppleIAP } from '@/contexts/AppleIAPContext';
-
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -60,6 +57,25 @@ if (__DEV__) {
   }
 }
 
+const NO_PLAN_TIER_VALUES = new Set([
+  'none',
+  '(none)',
+  'no_plan',
+  'no_subscription',
+  'unknown',
+  'unsubscribed',
+  'null',
+  'undefined',
+]);
+const normalizeSubscriptionTier = (tier?: string | null) => {
+  if (!tier) return { tier: null, tierKey: null };
+  const tierKey = tier.trim().toLowerCase();
+  if (!tierKey || NO_PLAN_TIER_VALUES.has(tierKey)) {
+    return { tier: null, tierKey: null };
+  }
+  return { tier: tier.trim(), tierKey };
+};
+
 export default function RootLayout() {
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
@@ -90,8 +106,8 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <AppleIAPProvider>
-      <SubscriptionProvider>
+    <SubscriptionProvider>
+      <AppleIAPProvider>
         <SubscriptionRedirectObserver />
         <TeamPlayerProvider>
           <AdminProvider>
@@ -158,26 +174,37 @@ export default function RootLayout() {
             </FootballProvider>
           </AdminProvider>
         </TeamPlayerProvider>
-      </SubscriptionProvider>
-    </AppleIAPProvider>
+      </AppleIAPProvider>
+    </SubscriptionProvider>
   );
 }
 
 function SubscriptionRedirectObserver() {
   const router = useRouter();
   const pathname = usePathname();
-  const { loading } = useSubscription();
+  const { subscriptionStatus, loading: subscriptionLoading } = useSubscription();
   const { entitlementSnapshot } = useAppleIAP();
-  const { resolving, isEntitled, hasActiveSubscription, subscriptionTier } = entitlementSnapshot;
+
+  const appleResolving = entitlementSnapshot.resolving;
+  const resolving = Boolean(subscriptionLoading || appleResolving);
+
+  const rawSubscriptionTier =
+    subscriptionStatus?.subscriptionTier ?? entitlementSnapshot.subscriptionTier;
+  const { tier: subscriptionTier, tierKey } = normalizeSubscriptionTier(rawSubscriptionTier);
+  const backendHasSubscription = Boolean(subscriptionStatus?.hasSubscription);
+  const hasAnyPlan = backendHasSubscription || Boolean(tierKey);
+
   const [authChecked, setAuthChecked] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const lastRedirectRef = useRef(0);
   const paywallRedirectedRef = useRef(false);
   const lastSuppressedLogAtRef = useRef(0);
+
   useEffect(() => {
     paywallRedirectedRef.current = false;
     lastRedirectRef.current = 0;
   }, [userId]);
+
   const triggerRedirect = useCallback(
     (target: string) => {
       if (!target || pathname === target) return;
@@ -228,9 +255,17 @@ function SubscriptionRedirectObserver() {
       listener.subscription.unsubscribe();
     };
   }, []);
-  const isCreatorCandidate = Boolean(subscriptionTier?.startsWith('trainer'));
+
+  const isCreatorCandidate = Boolean(tierKey?.startsWith('trainer'));
+
+  const PAYWALL_EXEMPT_PREFIXES = ['/choose-plan', '/update-password', '/email-confirmed'];
+  const isPaywallExemptRoute = PAYWALL_EXEMPT_PREFIXES.some(prefix =>
+    pathname?.startsWith(prefix)
+  );
   const onPaywall = pathname?.startsWith('/choose-plan');
-  const entitlementReady = authChecked && !resolving;
+
+  const entitlementReady = authChecked && Boolean(userId) && !resolving;
+
   useEffect(() => {
     if (!authChecked || resolving || !userId) {
       const now = Date.now();
@@ -239,39 +274,56 @@ function SubscriptionRedirectObserver() {
         console.log('[SubscriptionRedirectObserver] Paywall suppressed (still resolving)', {
           userId,
           entitlementReady: false,
-          loading,
-          hasActiveSubscription,
+          loading: subscriptionLoading,
+          hasAnyPlan,
           subscriptionTier,
           isCreatorCandidate,
-          isEntitled,
         });
       }
       return;
     }
-    if (!isEntitled && !onPaywall && !paywallRedirectedRef.current) {
+
+    if (
+      !hasAnyPlan &&
+      !onPaywall &&
+      !isPaywallExemptRoute &&
+      !paywallRedirectedRef.current
+    ) {
       paywallRedirectedRef.current = true;
-      console.log('[SubscriptionRedirectObserver] Redirecting to paywall (missing subscription)', {
+      console.log('[SubscriptionRedirectObserver] Redirecting to paywall (missing plan)', {
         userId,
-        hasActiveSubscription,
+        hasAnyPlan,
         subscriptionTier,
         isCreatorCandidate,
-        isEntitled,
-        entitlementReady: true,
+        entitlementReady,
       });
       triggerRedirect('/choose-plan');
       return;
     }
-    if (onPaywall && isEntitled) {
-      console.log('[SubscriptionRedirectObserver] Leaving paywall (subscription restored)', {
+
+    if (onPaywall && hasAnyPlan) {
+      console.log('[SubscriptionRedirectObserver] Leaving paywall (plan detected)', {
         userId,
-        hasActiveSubscription,
+        hasAnyPlan,
         subscriptionTier,
         isCreatorCandidate,
-        isEntitled,
-        entitlementReady: true,
+        entitlementReady,
       });
       triggerRedirect('/(tabs)');
     }
-  }, [authChecked, resolving, userId, loading, hasActiveSubscription, subscriptionTier, isEntitled, onPaywall, triggerRedirect]);
+  }, [
+    authChecked,
+    resolving,
+    userId,
+    subscriptionLoading,
+    hasAnyPlan,
+    subscriptionTier,
+    onPaywall,
+    isPaywallExemptRoute,
+    triggerRedirect,
+    isCreatorCandidate,
+    entitlementReady,
+  ]);
+
   return null;
 }
