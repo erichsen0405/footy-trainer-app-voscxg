@@ -5,6 +5,10 @@ import * as Application from 'expo-application';
 import { supabase } from '@/integrations/supabase/client';
 import { bumpEntitlementsVersion } from '@/services/entitlementsEvents';
 import { syncEntitlementsSnapshot, SubscriptionTier } from '@/services/entitlementsSync';
+import { useSubscription } from '@/contexts/SubscriptionContext';
+import { PRODUCT_IDS } from '@/contexts/appleProductIds';
+
+export { PRODUCT_IDS } from '@/contexts/appleProductIds';
 
 const executionEnvironment =
   (Constants as any)?.executionEnvironment ??
@@ -97,15 +101,6 @@ if ((Platform.OS === 'ios' || Platform.OS === 'android') && !isExpoGo) {
       throw error;
     });
 }
-
-// Product IDs from App Store Connect - MUST MATCH EXACTLY
-export const PRODUCT_IDS = {
-  PLAYER_BASIC: 'fc_spiller_monthly',
-  PLAYER_PREMIUM: 'fc_player_premium_monthly',
-  TRAINER_BASIC: 'fc_trainer_basic_monthly',
-  TRAINER_STANDARD: 'fc_trainer_standard_monthly',
-  TRAINER_PREMIUM: 'fc_trainer_premium_monthly',
-} as const;
 
 export const APP_STORE_SUBSCRIPTION_SKUS = [
   PRODUCT_IDS.PLAYER_BASIC,
@@ -485,6 +480,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
   const entitlementsUnsupportedRef = useRef(false);
   const entitlementsWarnedRef = useRef(false);
   const autoRestoreAttemptedRef = useRef(false);
+  const { ingestAppleEntitlements } = useSubscription();
 
   useEffect(() => {
     subscriptionStatusRef.current = subscriptionStatus;
@@ -1520,6 +1516,16 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       console.log('[Entitlements] SNAPSHOT', entitlementSnapshot);
     }
   }, [entitlementSnapshot]);
+
+  useEffect(() => {
+    if (!ingestAppleEntitlements) return;
+    ingestAppleEntitlements({
+      resolving: entitlementSnapshot.resolving,
+      isEntitled: entitlementSnapshot.isEntitled,
+      activeProductId: entitlementSnapshot.activeProductId,
+      subscriptionTier: entitlementSnapshot.subscriptionTier,
+    });
+  }, [entitlementSnapshot, ingestAppleEntitlements]);
 
   return (
     <AppleIAPContext.Provider
