@@ -16,8 +16,10 @@ interface ActivityTask {
   title: string;
   description?: string;
   completed: boolean;
-  reminder_minutes?: number;
+  reminder_minutes?: number | null;
   video_url?: string;
+  feedback_template_id?: string | null;
+  task_template_id?: string | null;
 }
 
 interface ActivityWithCategory {
@@ -38,7 +40,29 @@ interface ActivityWithCategory {
   created_at: string;
   updated_at: string;
   tasks?: ActivityTask[];
+  minReminderMinutes?: number | null;
+  external_event_row_id?: string;
 }
+
+const coerceReminderMinutes = (val: any): number | null => {
+  if (val === null || val === undefined) return null;
+  const str = typeof val === 'string' ? val.trim().toLowerCase() : null;
+  if (str === 'null' || str === 'undefined' || str === '') return null;
+  const num = typeof val === 'string' ? parseFloat(val) : val;
+  if (!Number.isFinite(num)) return null;
+  return Math.round(num as number);
+};
+
+const computeMinReminder = (tasks: ActivityTask[] | undefined | null): number | null => {
+  if (!Array.isArray(tasks) || !tasks.length) return null;
+  let min: number | null = null;
+  for (const t of tasks) {
+    const val = coerceReminderMinutes(t?.reminder_minutes);
+    if (val === null) continue;
+    if (min === null || val < min) min = val;
+  }
+  return min;
+};
 
 const parseIntensityValue = (raw: any): number | null => {
   if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
@@ -48,6 +72,33 @@ const parseIntensityValue = (raw: any): number | null => {
   }
   return null;
 };
+
+const extractExternalEventTasks = (
+  meta: Record<string, any> | null | undefined,
+  matchedKeysOut?: string[]
+): any[] => {
+  if (!meta || typeof meta !== 'object') {
+    return [];
+  }
+
+  if (Array.isArray(meta.external_event_tasks)) {
+    matchedKeysOut?.push('external_event_tasks');
+    return meta.external_event_tasks;
+  }
+
+  const dynamicKeys = Object.keys(meta).filter(
+    key => key.startsWith('external_event_tasks') && Array.isArray(meta[key])
+  );
+
+  if (dynamicKeys.length > 0) {
+    matchedKeysOut?.push(...dynamicKeys);
+    return meta[dynamicKeys[0]];
+  }
+
+  return [];
+};
+
+let loggedExternalMetaSample = false;
 
 interface UseHomeActivitiesResult {
   activities: ActivityWithCategory[];
@@ -388,54 +439,94 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         };
       });
       
-      const calendarIds = calendarsData?.map(c => c.id) || [];
-      console.log('[useHomeActivities] Found enabled calendars:', calendarIds.length);
-      
+      const calendarIdsNormalized = (calendarsData || [])
+        .map(c => c?.id)
+        .filter(Boolean)
+        .map(v => String(v));
+
+      if (__DEV__) {
+        console.log('[useHomeActivities] Normalized calendars', {
+          length: calendarIdsNormalized.length,
+          sample: calendarIdsNormalized.slice(0, 3),
+        });
+      }
+
       let externalActivities: ActivityWithCategory[] = [];
-      
-      if (calendarIds.length > 0) {
-        // ✅ SEQUENTIAL FETCH GROUP 2: External Events (depends on calendar IDs)
+      let externalMetaData: any[] = [];
+
+      if (calendarIdsNormalized.length > 0) {
         const { data: eventsData, error: eventsError } = await supabase
           .from('events_external')
           .select('id, title, start_date, start_time, location, provider_calendar_id, provider_event_uid, raw_payload')
-          .in('provider_calendar_id', calendarIds)
+          .in('provider_calendar_id', calendarIdsNormalized)
           .eq('deleted', false);
-        
+
         if (eventsError) {
-          console.error('[useHomeActivities] Error fetching external events:', eventsError);
+          console.error('[useHomeActivities] Error fetching external events:', {
+            code: eventsError?.code,
+            message: eventsError?.message,
+            details: eventsError?.details,
+            hint: eventsError?.hint,
+          });
         } else if (eventsData) {
           console.log('[useHomeActivities] External events found:', eventsData.length);
-          
-          // ✅ SEQUENTIAL FETCH GROUP 3: External Metadata (depends on event IDs)
-          const externalEventIds = eventsData.map(e => e.id);
-          const { data: metaData, error: metaError } = await supabase
-            .from('events_local_meta')
-            .select(`
+
+          const eventRowIds = eventsData.map(e => String(e.id)).filter(Boolean);
+          const providerUids = eventsData.map(e => String(e.provider_event_uid)).filter(Boolean);
+
+          const metaSelect = `
               id,
               external_event_id,
+              external_event_uid,
               category_id,
               user_id,
               intensity,
               intensity_enabled,
               local_title_override,
-              external_event_tasks (
-                id,
-                title,
-                description,
-                completed,
-                reminder_minutes
-              )
-            `)
-            .eq('user_id', userId)
-            .in('external_event_id', externalEventIds);
-          
-          if (metaError) {
-            console.error('[useHomeActivities] Error fetching external event metadata:', metaError);
+              external_event_tasks ( * )
+            `;
+
+          const [metaByEventIdRes, metaByUidRes] = await Promise.all([
+            eventRowIds.length
+              ? supabase
+                  .from('events_local_meta')
+                  .select(metaSelect)
+                  .eq('user_id', userId)
+                  .in('external_event_id', eventRowIds)
+              : Promise.resolve({ data: [], error: null }),
+            providerUids.length
+              ? supabase
+                  .from('events_local_meta')
+                  .select(metaSelect)
+                  .eq('user_id', userId)
+                  .in('external_event_uid', providerUids)
+              : Promise.resolve({ data: [], error: null }),
+          ]);
+
+          if (metaByEventIdRes.error) {
+            console.error('[useHomeActivities] Error fetching external event metadata by id:', metaByEventIdRes.error);
           }
-          
-          // Map external events to activity format with resolved category and tasks
+          if (metaByUidRes.error) {
+            console.error('[useHomeActivities] Error fetching external event metadata by uid:', metaByUidRes.error);
+          }
+
+          const mergedMetaMap = new Map<string, any>();
+          [...(metaByEventIdRes.data || []), ...(metaByUidRes.data || [])].forEach(metaRow => {
+            if (!metaRow?.id) return;
+            mergedMetaMap.set(String(metaRow.id), metaRow);
+          });
+          const mergedMeta = Array.from(mergedMetaMap.values());
+          externalMetaData = mergedMeta;
+
+          let matchedCount = 0;
+
           externalActivities = eventsData.map(event => {
-            const meta = metaData?.find(m => m.external_event_id === event.id);
+            const meta = mergedMeta.find(m =>
+              (m?.external_event_id && String(m.external_event_id) === String(event.id)) ||
+              (m?.external_event_uid && String(m.external_event_uid) === String(event.provider_event_uid))
+            );
+            if (meta) matchedCount += 1;
+
             const categoryId = meta?.category_id || null;
             const providerCategories = Array.isArray(event.raw_payload?.categories)
               ? (event.raw_payload.categories as string[]).filter((cat) => typeof cat === 'string' && cat.trim().length > 0)
@@ -450,16 +541,30 @@ export function useHomeActivities(): UseHomeActivitiesResult {
             const metaIntensityEnabled = typeof meta?.intensity_enabled === 'boolean'
               ? meta.intensity_enabled
               : intensityValue !== null;
-            
-            // Map tasks to the expected format
-            const tasks: ActivityTask[] = (meta?.external_event_tasks || []).map((task: any) => ({
+
+            const matchedTaskKeys: string[] = [];
+            const rawExternalTasks = extractExternalEventTasks(meta, matchedTaskKeys);
+
+            if (__DEV__ && !loggedExternalMetaSample && meta) {
+              loggedExternalMetaSample = true;
+              console.log('[useHomeActivities] External meta task sample', {
+                metaId: meta?.id ?? null,
+                matchedTaskKeys,
+                taskCount: Array.isArray(rawExternalTasks) ? rawExternalTasks.length : 0,
+              });
+            }
+
+            const tasks: ActivityTask[] = (rawExternalTasks || []).map((task: any) => ({
               id: task.id,
               title: task.title,
               description: task.description || '',
               completed: task.completed,
-              reminder_minutes: task.reminder_minutes,
+              reminder_minutes: coerceReminderMinutes(task.reminder_minutes),
+              video_url: task.video_url ?? undefined,
+              feedback_template_id: task.feedback_template_id ?? null,
+              task_template_id: task.task_template_id ?? null,
             }));
-            
+
             return {
               id: meta?.id || event.id,
               user_id: userId,
@@ -475,24 +580,29 @@ export function useHomeActivities(): UseHomeActivitiesResult {
               is_external: true,
               external_calendar_id: event.provider_calendar_id,
               external_event_id: event.provider_event_uid,
+              external_event_row_id: String(event.id),
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
               tasks,
             } as ActivityWithCategory;
           });
+
+          if (__DEV__) {
+            console.log('[useHomeActivities] meta matched', { events: eventsData.length, matched: matchedCount });
+          }
         }
       }
       
       console.log('[useHomeActivities] External activities:', externalActivities.length);
       
       // 4. Merge internal and external activities
-      const mergedActivities = [...internalActivities, ...externalActivities];
-      console.log('[useHomeActivities] Total merged activities:', mergedActivities.length);
-      console.log('[useHomeActivities] Activities with resolved category:', mergedActivities.filter(a => a.category).length);
-      console.log('[useHomeActivities] Activities WITHOUT resolved category:', mergedActivities.filter(a => !a.category).length);
+      const preHydratedActivities = [...internalActivities, ...externalActivities];
+      console.log('[useHomeActivities] Total merged activities:', preHydratedActivities.length);
+      console.log('[useHomeActivities] Activities with resolved category:', preHydratedActivities.filter(a => a.category).length);
+      console.log('[useHomeActivities] Activities WITHOUT resolved category:', preHydratedActivities.filter(a => !a.category).length);
       
       // 🔍 DEBUG: Log activities with tasks
-      const activitiesWithTasks = mergedActivities.filter(a => a.tasks && a.tasks.length > 0);
+      const activitiesWithTasks = preHydratedActivities.filter(a => a.tasks && a.tasks.length > 0);
       console.log('[useHomeActivities] Activities with tasks:', activitiesWithTasks.length);
       if (activitiesWithTasks.length > 0) {
         console.log('═══════════════════════════════════════════════════════');
@@ -508,7 +618,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       }
       
       // 🔍 DEBUG: Log all activities without resolved categories
-      const activitiesWithoutCategory = mergedActivities.filter(a => !a.category);
+      const activitiesWithoutCategory = preHydratedActivities.filter(a => !a.category);
       if (activitiesWithoutCategory.length > 0) {
         console.log('═══════════════════════════════════════════════════════');
         console.log('⚠️ ACTIVITIES WITHOUT RESOLVED CATEGORY:');
@@ -530,7 +640,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       const todayEnd = new Date(todayStart);
       todayEnd.setHours(23, 59, 59, 999);
       
-      const todayActivities = mergedActivities.filter(a => {
+      const todayActivities = preHydratedActivities.filter(a => {
         const activityDate = new Date(a.activity_date);
         return activityDate >= todayStart && activityDate <= todayEnd;
       });
@@ -541,7 +651,137 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         }
       });
       
-      setActivities(mergedActivities);
+      const internalIds = internalActivities.map(a => String(a.id)).filter(Boolean);
+      const externalMetaIds = externalMetaData.map(m => String(m.id)).filter(Boolean);
+      const externalEventRowIds = Array.isArray(externalActivities)
+        ? externalActivities
+            .map(a => (a as any)?.external_event_row_id)
+            .filter(id => typeof id === 'string' && id.trim().length > 0)
+        : [];
+
+      const [internalTasksRes, externalEventTasksRes, externalActivityTasksRes] = await Promise.all([
+        internalIds.length
+          ? supabase
+              .from('activity_tasks')
+              .select('id, activity_id, title, description, completed, reminder_minutes, feedback_template_id, task_template_id, video_url')
+              .in('activity_id', internalIds)
+          : Promise.resolve({ data: [], error: null }),
+        externalMetaIds.length
+          ? supabase
+              .from('external_event_tasks')
+              .select('*')
+              .in('local_meta_id', externalMetaIds)
+          : Promise.resolve({ data: [], error: null }),
+        externalEventRowIds.length
+          ? supabase
+              .from('activity_tasks')
+              .select('id, activity_id, title, description, completed, reminder_minutes, feedback_template_id, task_template_id, video_url')
+              .in('activity_id', externalEventRowIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+
+      const internalTaskGroups = new Map<string, ActivityTask[]>();
+      (internalTasksRes.data || []).forEach((task: any) => {
+        const key = String(task.activity_id);
+        const list = internalTaskGroups.get(key) || [];
+        list.push({
+          id: task.id,
+          title: task.title,
+          description: task.description || '',
+          completed: !!task.completed,
+          reminder_minutes: coerceReminderMinutes(task.reminder_minutes) ?? null,
+          video_url: task.video_url ?? undefined,
+          feedback_template_id: task.feedback_template_id ?? null,
+          task_template_id: task.task_template_id ?? null,
+        });
+        internalTaskGroups.set(key, list);
+      });
+
+      const externalEventTaskGroups = new Map<string, ActivityTask[]>();
+      (externalEventTasksRes.data || []).forEach((task: any) => {
+        const key = String(task.local_meta_id);
+        const list = externalEventTaskGroups.get(key) || [];
+        list.push({
+          id: task.id,
+          title: task.title,
+          description: task.description || '',
+          completed: !!task.completed,
+          reminder_minutes: coerceReminderMinutes(task.reminder_minutes) ?? null,
+          video_url: task.video_url ?? undefined,
+          feedback_template_id: task.feedback_template_id ?? null,
+          task_template_id: task.task_template_id ?? null,
+        });
+        externalEventTaskGroups.set(key, list);
+      });
+
+      const externalActivityTaskGroups = new Map<string, ActivityTask[]>();
+      (externalActivityTasksRes.data || []).forEach((task: any) => {
+        const key = String(task.activity_id);
+        const list = externalActivityTaskGroups.get(key) || [];
+        list.push({
+          id: task.id,
+          title: task.title,
+          description: task.description || '',
+          completed: !!task.completed,
+          reminder_minutes: coerceReminderMinutes(task.reminder_minutes) ?? null,
+          video_url: task.video_url ?? undefined,
+          feedback_template_id: task.feedback_template_id ?? null,
+          task_template_id: task.task_template_id ?? null,
+        });
+        externalActivityTaskGroups.set(key, list);
+      });
+
+      const dedupeTasks = (lists: ActivityTask[][]): ActivityTask[] => {
+        const seen = new Set<string>();
+        const out: ActivityTask[] = [];
+        lists.forEach(list =>
+          (list || []).forEach(task => {
+            const id = task?.id ? String(task.id) : null;
+            if (id && seen.has(id)) return;
+            if (id) seen.add(id);
+            out.push(task);
+          })
+        );
+        return out;
+      };
+
+      const finalActivities = [...internalActivities, ...externalActivities].map(activity => {
+        const key = String(activity.id);
+        const rowKey = String((activity as any).external_event_row_id ?? '');
+        let tasks: ActivityTask[] = [];
+        if (activity.is_external) {
+          tasks = dedupeTasks([
+            externalEventTaskGroups.get(key) ?? [],
+            (rowKey ? externalActivityTaskGroups.get(rowKey) : []) ?? [],
+            activity.tasks ?? [],
+          ]);
+        } else {
+          tasks = dedupeTasks([
+            internalTaskGroups.get(key) ?? [],
+            activity.tasks ?? [],
+          ]);
+        }
+        return {
+          ...activity,
+          tasks,
+          minReminderMinutes: computeMinReminder(tasks),
+        };
+      });
+
+      setActivities(finalActivities);
+
+      if (__DEV__) {
+        const ext = finalActivities.find(a => a.is_external && Array.isArray(a.tasks) && a.tasks.length > 0);
+        if (ext) {
+          console.log('[useHomeActivities] External sample post-set', {
+            title: ext.title,
+            id: ext.id,
+            external_event_row_id: (ext as any).external_event_row_id ?? null,
+            tasks: ext.tasks.length,
+            minReminderMinutes: ext.minReminderMinutes ?? null,
+          });
+        }
+      }
     } catch (err) {
       console.error('Failed to fetch activities:', err);
       setActivities([]);

@@ -671,7 +671,13 @@ export default function HomeScreen() {
         };
 
         return (
-          <View style={[styles.activityWrapper, shouldDim && styles.activityWrapperDimmed]}>
+          <View
+            style={[
+              styles.activityWrapper,
+              shouldDim && styles.activityWrapperDimmed,
+              // Remove any fixed height/maxHeight/overflow here!
+            ]}
+          >
             <ActivityCard
               activity={activity}
               resolvedDate={activity.__resolvedDateTime}
