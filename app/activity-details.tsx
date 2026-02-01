@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   FlatList,
   TouchableOpacity,
   TextInput,
@@ -17,19 +16,16 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import SmartVideoPlayer from '@/components/SmartVideoPlayer';
 
 import { useFootball } from '@/contexts/FootballContext';
+import { useUserRole } from '@/hooks/useUserRole';
+import CreateActivityTaskModal from '@/components/CreateActivityTaskModal';
 
 // Ô£à Robust import: avoid runtime crash if named export "colors" changes
 import * as CommonStyles from '@/styles/commonStyles';
 
 import { IconSymbol } from '@/components/IconSymbol';
 import { Activity, ActivityCategory, Task, TaskTemplateSelfFeedback } from '@/types';
-import EditSeriesDialog from '@/components/EditSeriesDialog';
-import DeleteActivityDialog from '@/components/DeleteActivityDialog';
-import { useUserRole } from '@/hooks/useUserRole';
-import { CreateActivityTaskModal } from '@/components/CreateActivityTaskModal';
 import { deleteSingleExternalActivity } from '@/utils/deleteExternalActivities';
 import { TaskDescriptionRenderer } from '@/components/TaskDescriptionRenderer';
 import { supabase } from '@/integrations/supabase/client';
@@ -59,6 +55,8 @@ const colors =
 
 const V2_WAVE_HEIGHT = 60; // was 44; give the wave enough vertical space for a deeper center dip
 const V2_CTA_HEIGHT = 56;
+
+const TaskListSeparator = React.memo(() => <View style={{ height: 16 }} />);
 
 // Ô£à Make header action buttons visually closer (not just margin tweaks)
 const HEADER_ACTION_BUTTON_SIZE = 36; // smaller than 44 => icons appear closer
@@ -318,11 +316,46 @@ const INTERNAL_SELECT_WITH_VIDEO = `
     completed,
     reminder_minutes,
     task_template_id,
+    feedback_template_id,
+    is_feedback_task,
     video_url
   )
 `;
 
 const INTERNAL_SELECT_NO_VIDEO = `
+  id,
+  title,
+  activity_date,
+  activity_time,
+  activity_end_time,
+  location,
+  category_id,
+  intensity,
+  intensity_enabled,
+  is_external,
+  external_calendar_id,
+  external_event_id,
+  series_id,
+  series_instance_date,
+  activity_categories (
+    id,
+    name,
+    color,
+    emoji
+  ),
+  activity_tasks (
+    id,
+    title,
+    description,
+    completed,
+    reminder_minutes,
+    task_template_id,
+    feedback_template_id,
+    is_feedback_task
+  )
+`;
+
+const INTERNAL_SELECT_MINIMAL = `
   id,
   title,
   activity_date,
@@ -379,6 +412,8 @@ const EXTERNAL_META_SELECT_WITH_VIDEO = `
   external_event_tasks (
     id,
     task_template_id,
+    feedback_template_id,
+    is_feedback_task,
     title,
     description,
     completed,
@@ -388,6 +423,41 @@ const EXTERNAL_META_SELECT_WITH_VIDEO = `
 `;
 
 const EXTERNAL_META_SELECT_NO_VIDEO = `
+  id,
+  external_event_id,
+  category_id,
+  intensity,
+  intensity_enabled,
+  local_title_override,
+  activity_categories (
+    id,
+    name,
+    color,
+    emoji
+  ),
+  events_external (
+    id,
+    title,
+    location,
+    start_date,
+    start_time,
+    end_time,
+    provider_calendar_id,
+    raw_payload
+  ),
+  external_event_tasks (
+    id,
+    task_template_id,
+    feedback_template_id,
+    is_feedback_task,
+    title,
+    description,
+    completed,
+    reminder_minutes
+  )
+`;
+
+const EXTERNAL_META_SELECT_MINIMAL = `
   id,
   external_event_id,
   category_id,
@@ -435,64 +505,80 @@ function isMissingColumn(err: any, colName: string): boolean {
   return hay.includes(needle);
 }
 
-async function selectSingleWithOptionalColumn<T>(opts: {
+async function selectSingleWithOptionalColumns<T>(opts: {
   table: string;
-  selectWith: string;
-  selectWithout: string;
+  variants: SelectVariant[];
   eqColumn: string;
   eqValue: string;
-  optionalColumnName: string; // e.g. 'video_url'
-  context: string; // for dev logs
-}): Promise<{ data: T | null; error: any | null; usedFallback: boolean }> {
-  const { table, selectWith, selectWithout, eqColumn, eqValue, optionalColumnName, context } = opts;
+  context: string;
+}): Promise<{ data: T | null; error: any | null; usedVariantIndex: number }> {
+  const { table, variants, eqColumn, eqValue, context } = opts;
+  let lastError: any = null;
 
-  const first = await (supabase as any).from(table).select(selectWith).eq(eqColumn, eqValue).single();
-  if (!first.error) return { data: (first.data as T) ?? null, error: null, usedFallback: false };
+  for (let i = 0; i < variants.length; i++) {
+    const variant = variants[i];
+    const response = await (supabase as any)
+      .from(table)
+      .select(variant.select)
+      .eq(eqColumn, eqValue)
+      .single();
 
-  if (__DEV__) {
-    console.log(`[ActivityDetails][${context}] select(with optional) failed`, {
-      table,
-      eqColumn,
-      eqValue,
-      message: first.error?.message,
-      details: first.error?.details,
-      hint: first.error?.hint,
-      code: first.error?.code,
-    });
+    if (!response.error) {
+      return { data: (response.data as T) ?? null, error: null, usedVariantIndex: i };
+    }
+
+    if (__DEV__) {
+      console.log(`[ActivityDetails][${context}] select variant ${i} failed`, {
+        table,
+        eqColumn,
+        eqValue,
+        message: response.error?.message,
+        details: response.error?.details,
+        hint: response.error?.hint,
+        code: response.error?.code,
+      });
+    }
+
+    lastError = response.error;
+    const optionalCols = variant.optionalColumns ?? [];
+    const isOptionalMissing = optionalCols.some((col) => isMissingColumn(response.error, col));
+
+    if (!isOptionalMissing) {
+      return { data: null, error: response.error, usedVariantIndex: i };
+    }
   }
 
-  if (!isMissingColumn(first.error, optionalColumnName)) {
-    return { data: null, error: first.error, usedFallback: false };
-  }
-
-  const second = await (supabase as any).from(table).select(selectWithout).eq(eqColumn, eqValue).single();
-
-  if (__DEV__) {
-    console.log(`[ActivityDetails][${context}] retry(select without "${optionalColumnName}")`, {
-      ok: !second.error,
-      table,
-      eqColumn,
-      eqValue,
-      message: second.error?.message,
-      details: second.error?.details,
-      hint: second.error?.hint,
-      code: second.error?.code,
-    });
-  }
-
-  return { data: (second.data as T) ?? null, error: second.error ?? null, usedFallback: true };
+  return { data: null, error: lastError, usedVariantIndex: variants.length - 1 };
 }
+
+type SelectVariant = {
+  select: string;
+  optionalColumns?: string[];
+};
 
 // Helper function to fetch activity directly from database
 async function fetchActivityFromDatabase(activityId: string): Promise<Activity | null> {
   try {
-    const { data: internalActivity, error: internalError } = await selectSingleWithOptionalColumn<any>({
+    const internalVariants: SelectVariant[] = [
+      {
+        select: INTERNAL_SELECT_WITH_VIDEO,
+        optionalColumns: ['video_url', 'feedback_template_id', 'is_feedback_task'],
+      },
+      {
+        select: INTERNAL_SELECT_NO_VIDEO,
+        optionalColumns: ['feedback_template_id', 'is_feedback_task'],
+      },
+      {
+        select: INTERNAL_SELECT_MINIMAL,
+        optionalColumns: [],
+      },
+    ];
+
+    const { data: internalActivity, error: internalError } = await selectSingleWithOptionalColumns<any>({
       table: 'activities',
-      selectWith: INTERNAL_SELECT_WITH_VIDEO,
-      selectWithout: INTERNAL_SELECT_NO_VIDEO,
+      variants: internalVariants,
       eqColumn: 'id',
       eqValue: activityId,
-      optionalColumnName: 'video_url',
       context: `activities.id=${activityId}`,
     });
 
@@ -502,13 +588,17 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
         id: internalActivityAny.activity_categories?.id || internalActivityAny.category_id || '',
         name: internalActivityAny.activity_categories?.name || 'Ukendt kategori',
         color: internalActivityAny.activity_categories?.color || '#999999',
-        emoji: internalActivityAny.activity_categories?.emoji || 'ÔØô',
+        emoji: internalActivityAny.activity_categories?.emoji || '⚽',
       };
 
       const tasks: FeedbackTask[] = (internalActivityAny.activity_tasks ?? []).map((task: any) => {
+        const dbFeedbackTemplateId = task.feedback_template_id ?? null;
         const markerTemplateId = parseTemplateIdFromMarker(task.description || '');
-        const isFeedbackTask = !task.task_template_id && !!markerTemplateId;
+        const feedbackTemplateId = dbFeedbackTemplateId ?? markerTemplateId ?? null;
+        const isFeedbackTask =
+          task.is_feedback_task === true || (!task.task_template_id && !!feedbackTemplateId);
         const resolvedVideo = getTaskVideoUrl(task);
+
         const mapped: any = {
           id: task.id,
           title: task.title,
@@ -522,16 +612,18 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
           videoUrl: resolvedVideo ?? undefined,
           video_url: resolvedVideo,
           taskTemplateId: task.task_template_id,
-          feedbackTemplateId: markerTemplateId,
+          feedbackTemplateId,
           isFeedbackTask,
+          is_feedback_task: task.is_feedback_task,
         };
         return mapped as FeedbackTask;
       });
 
       const intensityValue = parseIntensityValue(internalActivityAny.intensity);
-      const intensityEnabled = typeof internalActivityAny.intensity_enabled === 'boolean'
-        ? internalActivityAny.intensity_enabled
-        : intensityValue !== null;
+      const intensityEnabled =
+        typeof internalActivityAny.intensity_enabled === 'boolean'
+          ? internalActivityAny.intensity_enabled
+          : intensityValue !== null;
 
       return {
         id: internalActivityAny.id,
@@ -554,14 +646,27 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
       };
     }
 
+    const externalVariants: SelectVariant[] = [
+      {
+        select: EXTERNAL_META_SELECT_WITH_VIDEO,
+        optionalColumns: ['video_url', 'feedback_template_id', 'is_feedback_task'],
+      },
+      {
+        select: EXTERNAL_META_SELECT_NO_VIDEO,
+        optionalColumns: ['feedback_template_id', 'is_feedback_task'],
+      },
+      {
+        select: EXTERNAL_META_SELECT_MINIMAL,
+        optionalColumns: [],
+      },
+    ];
+
     const selectExternalMetaBy = async (column: 'id' | 'external_event_id') =>
-      selectSingleWithOptionalColumn<any>({
+      selectSingleWithOptionalColumns<any>({
         table: 'events_local_meta',
-        selectWith: EXTERNAL_META_SELECT_WITH_VIDEO,
-        selectWithout: EXTERNAL_META_SELECT_NO_VIDEO,
+        variants: externalVariants,
         eqColumn: column,
         eqValue: activityId,
-        optionalColumnName: 'video_url',
         context: `events_local_meta.${column}=${activityId}`,
       });
 
@@ -588,9 +693,10 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
       }
 
       const metaIntensity = parseIntensityValue(localMetaAny.intensity);
-      const metaIntensityEnabled = typeof localMetaAny.intensity_enabled === 'boolean'
-        ? localMetaAny.intensity_enabled
-        : metaIntensity !== null;
+      const metaIntensityEnabled =
+        typeof localMetaAny.intensity_enabled === 'boolean'
+          ? localMetaAny.intensity_enabled
+          : metaIntensity !== null;
 
       return {
         id: localMetaAny.id,
@@ -604,11 +710,14 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
             id: '',
             name: 'Unknown',
             color: '#999999',
-            emoji: 'ÔØô',
+            emoji: '⚽',
           },
         tasks: (localMetaAny.external_event_tasks || []).map((task: any) => {
+          const dbFeedbackTemplateId = task.feedback_template_id ?? null;
           const markerTemplateId = parseTemplateIdFromMarker(task.description || '');
-          const isFeedbackTask = !task.task_template_id && !!markerTemplateId;
+          const feedbackTemplateId = dbFeedbackTemplateId ?? markerTemplateId ?? null;
+          const isFeedbackTask =
+            task.is_feedback_task === true || (!task.task_template_id && !!feedbackTemplateId);
           const resolvedVideo = getTaskVideoUrl(task);
           const mapped: any = {
             id: task.id,
@@ -623,8 +732,9 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
             videoUrl: resolvedVideo ?? undefined,
             video_url: resolvedVideo,
             taskTemplateId: task.task_template_id,
-            feedbackTemplateId: markerTemplateId,
+            feedbackTemplateId,
             isFeedbackTask,
+            is_feedback_task: task.is_feedback_task,
           };
           return mapped as FeedbackTask;
         }),
@@ -666,7 +776,7 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
           id: '',
           name: 'Unknown',
           color: '#999999',
-          emoji: 'ÔØô',
+          emoji: '⚽',
         },
         tasks: [],
         isExternal: true,
@@ -693,7 +803,7 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
 
     return null;
   } catch (error) {
-    console.error('ÔØî Error fetching activity from database:', error);
+    console.error('⚠️ Error fetching activity from database:', error);
     return null;
   }
 }
@@ -808,6 +918,8 @@ interface AfterTrainingFeedbackConfig {
   enableScore: boolean;
   scoreExplanation?: string | null;
   enableNote: boolean;
+  afterTrainingEnabled: boolean;
+  afterTrainingDelayMinutes: number | null;
 }
 
 interface PreviousFeedbackEntry {
@@ -825,12 +937,27 @@ function normalizeScoreExplanation(value?: string | null): string | null {
   return trimmed.length ? trimmed : null;
 }
 
+function normalizeDelayMinutes(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
 function buildFeedbackConfig(row?: any): AfterTrainingFeedbackConfig {
   if (!row) {
     return {
       enableScore: true,
       scoreExplanation: null,
       enableNote: true,
+      afterTrainingEnabled: false,
+      afterTrainingDelayMinutes: null,
     };
   }
 
@@ -838,6 +965,8 @@ function buildFeedbackConfig(row?: any): AfterTrainingFeedbackConfig {
     enableScore: row.after_training_feedback_enable_score ?? true,
     scoreExplanation: normalizeScoreExplanation(row.after_training_feedback_score_explanation),
     enableNote: row.after_training_feedback_enable_note ?? true,
+    afterTrainingEnabled: row.after_training_enabled === true,
+    afterTrainingDelayMinutes: normalizeDelayMinutes(row.after_training_delay_minutes),
   };
 }
 
@@ -920,6 +1049,10 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets(); // Ô£à Fix crash (insets used in header + paddingBottom)
   const safeDismiss = useCallback(() => {
+    if (typeof onBack === 'function') {
+      onBack();
+      return;
+    }
     try {
       const r: any = router;
       if (typeof r.dismiss === 'function') return r.dismiss();
@@ -928,7 +1061,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     } catch {
       return router.replace('/(tabs)');
     }
-  }, [router]);
+  }, [onBack, router]);
   const {
     updateActivitySingle,
     updateActivitySeries,
@@ -997,7 +1130,6 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#9aa0a6' : colors.textSecondary;
-  const waveFillColor = isDark ? 'rgba(42,42,42,0.92)' : 'rgba(255,255,255,0.92)'; // Ô£à subtle bleed-through
   const sectionTitleColor = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(15,23,42,0.35)';
   const fieldBackgroundColor = isDark ? '#0f1116' : '#f2f4f7';
   const fieldBorderColor = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(15,23,42,0.08)';
@@ -1024,11 +1156,20 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
   const [pendingOpenIntensity, setPendingOpenIntensity] = useState<boolean>(initialOpenIntensity ?? false);
 
-  const resolveFeedbackTemplateId = useCallback(
-    (task: FeedbackTask | null | undefined): string | null =>
-      task ? task.feedbackTemplateId ?? parseTemplateIdFromMarker(task.description || '') ?? null : null,
-    []
-  );
+  const resolveFeedbackTemplateId = useCallback((task: FeedbackTask | null | undefined): string | null => {
+    if (!task) return null;
+
+    if (task.feedbackTemplateId) {
+      return String(task.feedbackTemplateId);
+    }
+
+    const normalTemplateId = (task as any)?.taskTemplateId ?? (task as any)?.task_template_id;
+    if (normalTemplateId) {
+      return null;
+    }
+
+    return parseTemplateIdFromMarker(task.description || '') ?? null;
+  }, []);
 
   const getFeedbackConfigForTemplate = useCallback(
     (templateId: string | null): AfterTrainingFeedbackConfig => {
@@ -1068,8 +1209,10 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const feedbackTemplateIds = useMemo(() => {
     const ids = new Set<string>();
     for (const t of tasksState) {
-      const templateId = resolveFeedbackTemplateId(t);
-      if (templateId) ids.add(String(templateId));
+      const feedbackId = resolveFeedbackTemplateId(t);
+      if (feedbackId) ids.add(String(feedbackId));
+      const normalId = (t as any)?.taskTemplateId ?? (t as any)?.task_template_id;
+      if (normalId) ids.add(String(normalId));
     }
     return Array.from(ids);
   }, [resolveFeedbackTemplateId, tasksState]);
@@ -1080,20 +1223,74 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     (async () => {
       if (!feedbackTemplateIds.length) return;
 
-      // configs (best-effort)
       try {
-        const { data } = await supabase
-          .from('task_templates')
-          .select('id, after_training_feedback_enable_score, after_training_feedback_score_explanation, after_training_feedback_enable_note')
-          .in('id', feedbackTemplateIds);
+        const templateSelectVariants: SelectVariant[] = [
+          {
+            select: TEMPLATE_SELECT_FULL,
+            optionalColumns: ['after_training_enabled', 'after_training_delay_minutes'],
+          },
+          {
+            select: TEMPLATE_SELECT_NO_TOGGLE,
+            optionalColumns: [
+              'after_training_feedback_enable_score',
+              'after_training_feedback_score_explanation',
+              'after_training_feedback_enable_note',
+            ],
+          },
+          {
+            select: TEMPLATE_SELECT_MINIMAL,
+            optionalColumns: [],
+          },
+        ];
 
-        if (!cancelled && Array.isArray(data)) {
+        let templateRows: any[] | null = null;
+        let templateError: any = null;
+
+        for (let i = 0; i < templateSelectVariants.length; i++) {
+          const variant = templateSelectVariants[i];
+          const { data, error } = await supabase
+            .from('task_templates')
+            .select(variant.select)
+            .in('id', feedbackTemplateIds);
+
+          if (!error) {
+            templateRows = Array.isArray(data) ? data : [];
+            break;
+          }
+
+          templateError = error;
+
+          if (__DEV__) {
+            console.log('[ActivityDetails][template-config] select variant failed', {
+              variant: i,
+              message: error?.message,
+              details: error?.details,
+              hint: error?.hint,
+              code: error?.code,
+            });
+          }
+
+          const optionalCols = variant.optionalColumns ?? [];
+          const missingOptional = optionalCols.some((col) => isMissingColumn(error, col));
+          if (!missingOptional) {
+            break;
+          }
+        }
+
+        if (!cancelled && Array.isArray(templateRows)) {
           const next: Record<string, AfterTrainingFeedbackConfig> = {};
-          for (const row of data as any[]) {
+          for (const row of templateRows) {
             if (!row?.id) continue;
             next[String(row.id)] = buildFeedbackConfig(row);
           }
-          setFeedbackConfigByTemplate(prev => ({ ...prev, ...next }));
+          setFeedbackConfigByTemplate((prev) => ({ ...prev, ...next }));
+        } else if (templateError && __DEV__) {
+          console.log('[ActivityDetails][template-config] giving up after fallbacks', {
+            message: templateError?.message,
+            details: templateError?.details,
+            hint: templateError?.hint,
+            code: templateError?.code,
+          });
         }
       } catch (e) {
         if (__DEV__) console.log('[ActivityDetails] feedback config fetch skipped/failed', e);
@@ -1118,11 +1315,85 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     };
   }, [currentUserId, feedbackTemplateIds]);
 
+  const displayTasks = useMemo(() => {
+    const baseTasks = Array.isArray(tasksState) ? tasksState : [];
+    const result: FeedbackTask[] = [...baseTasks];
+
+    if (!activity?.id) {
+      return result;
+    }
+
+    const existingFeedbackTemplateIds = new Set<string>();
+    const templateToOriginalTask = new Map<string, FeedbackTask>();
+
+    for (const task of baseTasks) {
+      const feedbackTemplateId = resolveFeedbackTemplateId(task);
+      const normalTemplateId = resolveNormalTemplateId(task);
+      const isFeedbackTask = task.isFeedbackTask === true || task.is_feedback_task === true || (!!feedbackTemplateId && !normalTemplateId);
+
+      if (isFeedbackTask && feedbackTemplateId) {
+        existingFeedbackTemplateIds.add(String(feedbackTemplateId));
+      }
+
+      if (isFeedbackTask) continue;
+
+      if (!normalTemplateId) continue;
+
+      const templateId = String(normalTemplateId);
+      if (!templateToOriginalTask.has(templateId)) {
+        templateToOriginalTask.set(templateId, task);
+      }
+    }
+
+    const syntheticTasks: FeedbackTask[] = [];
+
+    templateToOriginalTask.forEach((originalTask, templateId) => {
+      const config = feedbackConfigByTemplate[templateId];
+      if (!config || config.afterTrainingEnabled !== true) {
+        return;
+      }
+
+      if (existingFeedbackTemplateIds.has(templateId)) {
+        return;
+      }
+
+      syntheticTasks.push({
+        id: `feedback-${activity.id}-${templateId}`,
+        title: `Feedback på ${originalTask.title}`,
+        description: '',
+        completed: false,
+        isTemplate: false,
+        categoryIds: [],
+        reminder_minutes: null,
+        reminder: null,
+        subtasks: [],
+        videoUrl: undefined,
+        video_url: undefined,
+        taskTemplateId: null,
+        task_template_id: null,
+        feedbackTemplateId: templateId,
+        isFeedbackTask: true,
+        activityId: activity.id,
+        activity_id: activity.id,
+      } as FeedbackTask);
+    });
+
+    const combined = [...result, ...syntheticTasks];
+    return partitionFeedbackTasks(combined);
+  }, [
+    activity?.id,
+    feedbackConfigByTemplate,
+    partitionFeedbackTasks,
+    resolveFeedbackTemplateId,
+    resolveNormalTemplateId,
+    tasksState,
+  ]);
+
   // --- deep-link open feedback by task id ---
   useEffect(() => {
     if (!pendingFeedbackTaskId) return;
 
-    const task = tasksState.find(t => String(t.id) === String(pendingFeedbackTaskId));
+    const task = displayTasks.find(t => String(t.id) === String(pendingFeedbackTaskId));
     if (!task) return;
 
     const templateId = resolveFeedbackTemplateId(task);
@@ -1130,7 +1401,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
     setFeedbackModalTask({ task, templateId });
     setFeedbackModalError(null);
-  }, [pendingFeedbackTaskId, resolveFeedbackTemplateId, tasksState]);
+  }, [pendingFeedbackTaskId, resolveFeedbackTemplateId, displayTasks]);
 
   // Edit state
   const [editTitle, setEditTitle] = useState(activity.title);
@@ -1172,6 +1443,13 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     () => parseTimeToDate(editDate, editEndTime ?? editTime),
     [editDate, editEndTime, editTime]
   );
+  const activityAnchorDateTime = useMemo(() => {
+    if (!activity?.date) return null;
+    const base = new Date(activity.date);
+    const time = activity.endTime ?? activity.time;
+    if (!time) return null;
+    return parseTimeToDate(base, time);
+  }, [activity.date, activity.endTime, activity.time]);
 
   useEffect(() => {
     if (isIntensityModalVisible) return;
@@ -1744,7 +2022,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     const seen = new Set<string>();
     const entries: PreviousFeedbackEntry[] = [];
 
-    for (const t of tasksState) {
+    for (const t of displayTasks) {
       const templateId = resolveFeedbackTemplateId(t);
       if (!templateId || seen.has(templateId)) continue;
       seen.add(templateId);
@@ -1760,16 +2038,16 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     }
 
     return entries;
-  }, [resolveFeedbackTemplateId, selfFeedbackByTemplate, tasksState]);
+  }, [displayTasks, resolveFeedbackTemplateId, selfFeedbackByTemplate]);
 
   const taskListItems = useMemo<TaskListItem[]>(() => {
     const items: TaskListItem[] = [];
     if (showIntensityTaskRow) {
       items.push({ __type: 'intensity', key: `intensity-${String(activity.id)}` });
     }
-    items.push(...(tasksState || []));
+    items.push(...displayTasks);
     return items;
-  }, [activity.id, showIntensityTaskRow, tasksState]);
+  }, [activity.id, displayTasks, showIntensityTaskRow]);
 
   const renderTaskItem = useCallback(
     ({ item }: { item: TaskListItem }) => {
@@ -1861,6 +2139,31 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         }
       }
 
+      const nowTs = Date.now();
+      const afterTrainingEnabled = config.afterTrainingEnabled !== false;
+      const afterTrainingDelay = typeof config.afterTrainingDelayMinutes === 'number'
+        ? config.afterTrainingDelayMinutes
+        : null;
+
+      let showAfterTrainingBadge = false;
+      let afterTrainingBadgeLabel: string | null = null;
+
+      if (
+        isFeedbackTaskLocal &&
+        afterTrainingEnabled &&
+        afterTrainingDelay !== null &&
+        Number.isFinite(afterTrainingDelay) &&
+        activityAnchorDateTime
+      ) {
+        const reminderTimestamp = activityAnchorDateTime.getTime() + afterTrainingDelay * 60 * 1000;
+        if (!isFeedbackCompleted && reminderTimestamp <= nowTs) {
+          showAfterTrainingBadge = true;
+          afterTrainingBadgeLabel = afterTrainingDelay === 0
+            ? 'Efter aktivitet'
+            : `${afterTrainingDelay} min efter`;
+        }
+      }
+
       return (
         <TouchableOpacity
           style={[styles.taskRow, styles.taskCard, { backgroundColor: isDark ? '#111318' : '#ffffff' }]}
@@ -1913,6 +2216,32 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                   </Text>
                 ) : null}
                 <Text style={[styles.feedbackHelperText, { color: textSecondaryColor }]}>{helperText}</Text>
+                {showAfterTrainingBadge && afterTrainingBadgeLabel ? (
+                  <View
+                    style={[
+                      styles.afterTrainingBadge,
+                      {
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)',
+                        borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(15,23,42,0.1)',
+                      },
+                    ]}
+                  >
+                    <IconSymbol
+                      ios_icon_name="clock"
+                      android_material_icon_name="schedule"
+                      size={14}
+                      color={isDark ? '#fff' : colors.primary}
+                    />
+                    <Text
+                      style={[
+                        styles.afterTrainingBadgeText,
+                        { color: isDark ? '#fff' : colors.primary },
+                      ]}
+                    >
+                      {afterTrainingBadgeLabel}
+                    </Text>
+                  </View>
+                ) : null}
               </>
             )}
           </View>
@@ -1960,131 +2289,16 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       selfFeedbackByTemplate,
       textColor,
       textSecondaryColor,
-    ]
+      activityAnchorDateTime,
+    ],
   );
 
   const taskKeyExtractor = useCallback((item: TaskListItem) => ('__type' in item ? item.key : String(item.id)), []);
 
-  const renderListHeader = useCallback(() => {
-    const selectableCategories = Array.isArray(categories) ? categories : [];
-    const selectedCategoryId = editCategory?.id ?? null;
-    const needsDaySelection =
-      recurrenceType === 'weekly' || recurrenceType === 'biweekly' || recurrenceType === 'triweekly';
-    const showIntensityEditor = isInternalActivity ? true : !!activity.isExternal;
-
-    const renderCategorySelector = () => (
-      <View style={styles.fieldContainer}>
-        <Text style={[styles.fieldLabel, { color: textSecondaryColor }]}>Kategori</Text>
-        {selectableCategories.length ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoryScroll}
-          >
-            {selectableCategories.map(category => {
-              const isSelected = selectedCategoryId === category.id;
-              return (
-                <TouchableOpacity
-                  key={category.id || category.name}
-                  style={[
-                    styles.categoryChip,
-                    {
-                      backgroundColor: isSelected ? colors.primary : fieldBackgroundColor,
-                      borderWidth: 1,
-                      borderColor: isSelected ? colors.primary : fieldBorderColor,
-                    },
-                  ]}
-                  onPress={() => setEditCategory(category)}
-                  activeOpacity={0.8}
-                >
-                  {category.emoji ? (
-                    <Text style={styles.categoryEmoji}>{category.emoji}</Text>
-                  ) : null}
-                  <Text style={[styles.categoryName, { color: isSelected ? '#fff' : textColor }]}>
-                    {category.name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        ) : (
-          <Text style={{ color: textSecondaryColor, marginTop: 8 }}>Ingen kategorier</Text>
-        )}
-      </View>
-    );
-
-    const renderIntensitySection = () => {
-      if (!showIntensityEditor) return null;
-
-      return (
-        <View style={[styles.section, { backgroundColor: cardBgColor }]}>
-          <Text style={[styles.sectionTitle, { color: sectionTitleColor }]}>Intensitet</Text>
-          <View
-            style={[
-              styles.intensityToggleRow,
-              { backgroundColor: fieldBackgroundColor, paddingHorizontal: 16 },
-            ]}
-          >
-            <View style={styles.intensityToggleLabel}>
-              <IconSymbol
-                ios_icon_name="flame"
-                android_material_icon_name="local_fire_department"
-                size={18}
-                color={colors.primary}
-              />
-              <Text style={[styles.switchLabel, { color: textColor }]}>Aktiver intensitet</Text>
-            </View>
-            <Switch
-              value={editIntensityEnabled}
-              onValueChange={handleIntensityToggle}
-              trackColor={{ true: colors.primary, false: isDark ? '#3a3a3c' : '#d1d5db' }}
-              thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
-            />
-          </View>
-
-          {editIntensityEnabled && (
-            <>
-              <Text style={[styles.intensityHint, { color: textSecondaryColor }]}>Vælg niveau (1-10)</Text>
-              <View style={styles.intensityPickerRow}>
-                {intensityOptions.map(option => {
-                  const selected = option === editIntensity;
-                  return (
-                    <TouchableOpacity
-                      key={option}
-                      style={[
-                        styles.intensityPickerChip,
-                        {
-                          backgroundColor: selected ? colors.primary : fieldBackgroundColor,
-                          borderWidth: 1,
-                          borderColor: selected ? colors.primary : fieldBorderColor,
-                        },
-                      ]}
-                      onPress={() => handleIntensitySelect(option)}
-                    >
-                      <Text
-                        style={[
-                          styles.intensityPickerText,
-                          selected
-                            ? styles.intensityPickerTextSelected
-                            : { color: textColor },
-                        ]}
-                      >
-                        {option}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-              <Text style={[styles.intensitySelectionText, { color: textColor }]}>
-                Valgt: {editIntensity ?? '–'}/10
-              </Text>
-            </>
-          )}
-        </View>
-      );
-    };
-
-    const editingContent = (
+  const listHeader = useMemo(() => {
+    // Move the previous renderListHeader body here unchanged.
+    // It should still build editingContent/detailsContent and return the JSX wrapper.
+    return (
       <View>
         {activity.isExternal && (
           <View
@@ -2416,91 +2630,6 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         {!isInternalActivity && renderIntensitySection()}
       </View>
     );
-
-    const detailsContent = (
-      <View>
-        <Text style={styles.v2SectionTitle}>Detaljer</Text>
-
-        <View style={styles.v2CardWrap}>
-          <DetailsCard
-            label="Dato & Tidspunkt"
-            value={`${formatDateTime(activity.date, activity.time)}${
-              activity.endTime ? ` - ${activity.endTime.substring(0, 5)}` : ''
-            }`}
-            backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
-            textColor={textColor}
-            secondaryTextColor={textSecondaryColor}
-            fullWidth
-            icon={{ ios: 'calendar', android: 'calendar_today' }}
-            iconColor={colors.primary}
-          />
-        </View>
-
-        <View style={styles.v2DetailsRowWrap}>
-          <View style={styles.v2DetailBleedLeft}>
-            <DetailsCard
-              flex={1}
-              label="Lokation"
-              value={activity.location?.trim() ? activity.location : 'Ikke angivet'}
-              backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
-              textColor={textColor}
-              secondaryTextColor={textSecondaryColor}
-              icon={{ ios: 'mappin.and.ellipse', android: 'place' }}
-              iconColor={colors.primary}
-            />
-          </View>
-
-          <View style={{ width: 12 }} />
-
-          <View style={styles.v2DetailBleedRight}>
-            <DetailsCard
-              flex={1}
-              label="Kategori"
-              value={activity.category?.name ?? 'Ukendt'}
-              backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
-              textColor={textColor}
-              secondaryTextColor={textSecondaryColor}
-              leadingEmoji={activity.category?.emoji}
-            />
-          </View>
-        </View>
-
-        {!isEditing && shouldShowActivityIntensityField ? (
-          <View style={[styles.v2CardWrap, { marginTop: 12 }]}>
-            <DetailsCard
-              label="Intensitet"
-              value={typeof activity.intensity === 'number' ? `${activity.intensity}/10` : 'Ikke angivet'}
-              backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
-              textColor={textColor}
-              secondaryTextColor={textSecondaryColor}
-              fullWidth
-              icon={{ ios: 'flame', android: 'local_fire_department' }}
-              iconColor={colors.primary}
-            />
-          </View>
-        ) : null}
-      </View>
-    );
-
-    return (
-      <View>
-        {isEditing ? editingContent : detailsContent}
-
-        <View style={styles.v2TasksHeaderRow}>
-          <Text style={[styles.v2SectionTitle, styles.v2SectionTitleInRow]}>Opgaver</Text>
-          {isAdmin && !activity.isExternal && (
-            <TouchableOpacity
-              style={[styles.addTaskHeaderButton, { backgroundColor: colors.primary }]}
-              onPress={handleAddTask}
-              activeOpacity={0.7}
-            >
-              <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={20} color="#fff" />
-              <Text style={styles.addTaskHeaderButtonText}>Tilføj opgave</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-    );
   }, [
     activity,
     cardBgColor,
@@ -2514,7 +2643,6 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     editIntensityEnabled,
     editLocation,
     editTime,
-    editTitle,
     endDate,
     fieldBackgroundColor,
     fieldBorderColor,
@@ -3034,8 +3162,8 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                 32 + (!isEditing ? V2_CTA_HEIGHT + 24 : 0) + (insets.bottom ? insets.bottom : 0),
             },
           ]}
-          ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
-          ListHeaderComponent={renderListHeader}
+          ItemSeparatorComponent={TaskListSeparator}
+          ListHeaderComponent={listHeader}
         />
       </View>
 
@@ -3815,6 +3943,21 @@ const styles = StyleSheet.create({
   feedbackHelperText: {
     fontSize: 13,
     marginTop: 4,
+  },
+  afterTrainingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    marginTop: 6,
+  },
+  afterTrainingBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 6,
   },
   emptyTasksContainer: {
     alignItems: 'center',
