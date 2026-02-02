@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+﻿import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -18,14 +18,14 @@ import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useFootball } from '@/contexts/FootballContext';
-import { useUserRole } from '@/hooks/useUserRole';
-import CreateActivityTaskModal from '@/components/CreateActivityTaskModal';
 
-// Ô£à Robust import: avoid runtime crash if named export "colors" changes
+// Robust import: avoid runtime crash if named export "colors" changes
 import * as CommonStyles from '@/styles/commonStyles';
 
 import { IconSymbol } from '@/components/IconSymbol';
 import { Activity, ActivityCategory, Task, TaskTemplateSelfFeedback } from '@/types';
+import { useUserRole } from '@/hooks/useUserRole';
+import { CreateActivityTaskModal } from '@/components/CreateActivityTaskModal';
 import { deleteSingleExternalActivity } from '@/utils/deleteExternalActivities';
 import { TaskDescriptionRenderer } from '@/components/TaskDescriptionRenderer';
 import { supabase } from '@/integrations/supabase/client';
@@ -53,15 +53,13 @@ const FALLBACK_COLORS = {
 const colors =
   ((CommonStyles as any)?.colors as typeof FALLBACK_COLORS | undefined) ?? FALLBACK_COLORS;
 
-const V2_WAVE_HEIGHT = 60; // was 44; give the wave enough vertical space for a deeper center dip
+const V2_WAVE_HEIGHT = 60;
 const V2_CTA_HEIGHT = 56;
 
-const TaskListSeparator = React.memo(() => <View style={{ height: 16 }} />);
-
-// Ô£à Make header action buttons visually closer (not just margin tweaks)
-const HEADER_ACTION_BUTTON_SIZE = 36; // smaller than 44 => icons appear closer
-const HEADER_ACTION_BUTTON_GAP = 0;   // set to 1-2 if you want a tiny gap
-const HEADER_ACTION_HITSLOP = { top: 6, bottom: 6, left: 6, right: 6 }; // ~36+6+6 => 48-ish touch target
+// Header action buttons
+const HEADER_ACTION_BUTTON_SIZE = 36;
+const HEADER_ACTION_BUTTON_GAP = 0;
+const HEADER_ACTION_HITSLOP = { top: 6, bottom: 6, left: 6, right: 6 };
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 
@@ -108,7 +106,6 @@ function SheetWaveTop({ color, height = V2_WAVE_HEIGHT }: { color: string; heigh
   return (
     <View pointerEvents="none" style={{ width: '100%', height }}>
       <Svg width="100%" height="100%" viewBox="0 0 375 60" preserveAspectRatio="none">
-        {/* Outer peaks pushed towards the sides + deeper center dip (closer to the reference). */}
         <Path
           fill={color}
           d="M0,28
@@ -130,10 +127,10 @@ function DetailsCard(props: {
   textColor: string;
   secondaryTextColor: string;
   fullWidth?: boolean;
-  flex?: number; // Added flex prop
+  flex?: number;
   icon?: { ios: string; android: string };
   iconColor?: string;
-  leadingEmoji?: string; // Ô£à category icon via emoji
+  leadingEmoji?: string;
 }) {
   const {
     label,
@@ -316,46 +313,11 @@ const INTERNAL_SELECT_WITH_VIDEO = `
     completed,
     reminder_minutes,
     task_template_id,
-    feedback_template_id,
-    is_feedback_task,
     video_url
   )
 `;
 
 const INTERNAL_SELECT_NO_VIDEO = `
-  id,
-  title,
-  activity_date,
-  activity_time,
-  activity_end_time,
-  location,
-  category_id,
-  intensity,
-  intensity_enabled,
-  is_external,
-  external_calendar_id,
-  external_event_id,
-  series_id,
-  series_instance_date,
-  activity_categories (
-    id,
-    name,
-    color,
-    emoji
-  ),
-  activity_tasks (
-    id,
-    title,
-    description,
-    completed,
-    reminder_minutes,
-    task_template_id,
-    feedback_template_id,
-    is_feedback_task
-  )
-`;
-
-const INTERNAL_SELECT_MINIMAL = `
   id,
   title,
   activity_date,
@@ -412,8 +374,6 @@ const EXTERNAL_META_SELECT_WITH_VIDEO = `
   external_event_tasks (
     id,
     task_template_id,
-    feedback_template_id,
-    is_feedback_task,
     title,
     description,
     completed,
@@ -448,8 +408,6 @@ const EXTERNAL_META_SELECT_NO_VIDEO = `
   external_event_tasks (
     id,
     task_template_id,
-    feedback_template_id,
-    is_feedback_task,
     title,
     description,
     completed,
@@ -457,128 +415,92 @@ const EXTERNAL_META_SELECT_NO_VIDEO = `
   )
 `;
 
-const EXTERNAL_META_SELECT_MINIMAL = `
+// --- Task template selects (fix for refactor missing constants) ---
+const TEMPLATE_SELECT_FULL = `
   id,
-  external_event_id,
-  category_id,
-  intensity,
-  intensity_enabled,
-  local_title_override,
-  activity_categories (
-    id,
-    name,
-    color,
-    emoji
-  ),
-  events_external (
-    id,
-    title,
-    location,
-    start_date,
-    start_time,
-    end_time,
-    provider_calendar_id,
-    raw_payload
-  ),
-  external_event_tasks (
-    id,
-    task_template_id,
-    title,
-    description,
-    completed,
-    reminder_minutes
-  )
+  after_training_feedback_enable_score,
+  after_training_feedback_score_explanation,
+  after_training_feedback_enable_note,
+  after_training_enabled,
+  after_training_delay_minutes
 `;
+
+const TEMPLATE_SELECT_NO_TOGGLE = `
+  id,
+  after_training_feedback_enable_score,
+  after_training_feedback_score_explanation,
+  after_training_feedback_enable_note
+`;
+
+const TEMPLATE_SELECT_MINIMAL = `id`;
 
 function isMissingColumn(err: any, colName: string): boolean {
   const needle = String(colName ?? '').toLowerCase();
   if (!needle) return false;
-  const hay = [
-    err?.message,
-    err?.details,
-    err?.hint,
-    err?.code,
-  ]
+  const hay = [err?.message, err?.details, err?.hint, err?.code]
     .filter(Boolean)
     .map((v) => String(v).toLowerCase())
     .join(' | ');
   return hay.includes(needle);
 }
 
-async function selectSingleWithOptionalColumns<T>(opts: {
+async function selectSingleWithOptionalColumn<T>(opts: {
   table: string;
-  variants: SelectVariant[];
+  selectWith: string;
+  selectWithout: string;
   eqColumn: string;
   eqValue: string;
+  optionalColumnName: string;
   context: string;
-}): Promise<{ data: T | null; error: any | null; usedVariantIndex: number }> {
-  const { table, variants, eqColumn, eqValue, context } = opts;
-  let lastError: any = null;
+}): Promise<{ data: T | null; error: any | null; usedFallback: boolean }> {
+  const { table, selectWith, selectWithout, eqColumn, eqValue, optionalColumnName, context } = opts;
 
-  for (let i = 0; i < variants.length; i++) {
-    const variant = variants[i];
-    const response = await (supabase as any)
-      .from(table)
-      .select(variant.select)
-      .eq(eqColumn, eqValue)
-      .single();
+  const first = await (supabase as any).from(table).select(selectWith).eq(eqColumn, eqValue).single();
+  if (!first.error) return { data: (first.data as T) ?? null, error: null, usedFallback: false };
 
-    if (!response.error) {
-      return { data: (response.data as T) ?? null, error: null, usedVariantIndex: i };
-    }
-
-    if (__DEV__) {
-      console.log(`[ActivityDetails][${context}] select variant ${i} failed`, {
-        table,
-        eqColumn,
-        eqValue,
-        message: response.error?.message,
-        details: response.error?.details,
-        hint: response.error?.hint,
-        code: response.error?.code,
-      });
-    }
-
-    lastError = response.error;
-    const optionalCols = variant.optionalColumns ?? [];
-    const isOptionalMissing = optionalCols.some((col) => isMissingColumn(response.error, col));
-
-    if (!isOptionalMissing) {
-      return { data: null, error: response.error, usedVariantIndex: i };
-    }
+  if (__DEV__) {
+    console.log(`[ActivityDetails][${context}] select(with optional) failed`, {
+      table,
+      eqColumn,
+      eqValue,
+      message: first.error?.message,
+      details: first.error?.details,
+      hint: first.error?.hint,
+      code: first.error?.code,
+    });
   }
 
-  return { data: null, error: lastError, usedVariantIndex: variants.length - 1 };
+  if (!isMissingColumn(first.error, optionalColumnName)) {
+    return { data: null, error: first.error, usedFallback: false };
+  }
+
+  const second = await (supabase as any).from(table).select(selectWithout).eq(eqColumn, eqValue).single();
+
+  if (__DEV__) {
+    console.log(`[ActivityDetails][${context}] retry(select without "${optionalColumnName}")`, {
+      ok: !second.error,
+      table,
+      eqColumn,
+      eqValue,
+      message: second.error?.message,
+      details: second.error?.details,
+      hint: second.error?.hint,
+      code: second.error?.code,
+    });
+  }
+
+  return { data: (second.data as T) ?? null, error: second.error ?? null, usedFallback: true };
 }
 
-type SelectVariant = {
-  select: string;
-  optionalColumns?: string[];
-};
-
-// Helper function to fetch activity directly from database
 async function fetchActivityFromDatabase(activityId: string): Promise<Activity | null> {
   try {
-    const internalVariants: SelectVariant[] = [
-      {
-        select: INTERNAL_SELECT_WITH_VIDEO,
-        optionalColumns: ['video_url', 'feedback_template_id', 'is_feedback_task'],
-      },
-      {
-        select: INTERNAL_SELECT_NO_VIDEO,
-        optionalColumns: ['feedback_template_id', 'is_feedback_task'],
-      },
-      {
-        select: INTERNAL_SELECT_MINIMAL,
-        optionalColumns: [],
-      },
-    ];
-
-    const { data: internalActivity, error: internalError } = await selectSingleWithOptionalColumns<any>({
+    const { data: internalActivity, error: internalError } = await selectSingleWithOptionalColumn<any>({
       table: 'activities',
-      variants: internalVariants,
+      selectWith: INTERNAL_SELECT_WITH_VIDEO,
+      selectWithout: INTERNAL_SELECT_NO_VIDEO,
       eqColumn: 'id',
       eqValue: activityId,
+      optionalColumnName: 'video_url',
       context: `activities.id=${activityId}`,
     });
 
@@ -588,17 +510,13 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
         id: internalActivityAny.activity_categories?.id || internalActivityAny.category_id || '',
         name: internalActivityAny.activity_categories?.name || 'Ukendt kategori',
         color: internalActivityAny.activity_categories?.color || '#999999',
-        emoji: internalActivityAny.activity_categories?.emoji || '⚽',
+        emoji: internalActivityAny.activity_categories?.emoji || '⚽️',
       };
 
       const tasks: FeedbackTask[] = (internalActivityAny.activity_tasks ?? []).map((task: any) => {
-        const dbFeedbackTemplateId = task.feedback_template_id ?? null;
         const markerTemplateId = parseTemplateIdFromMarker(task.description || '');
-        const feedbackTemplateId = dbFeedbackTemplateId ?? markerTemplateId ?? null;
-        const isFeedbackTask =
-          task.is_feedback_task === true || (!task.task_template_id && !!feedbackTemplateId);
+        const isFeedbackTask = !task.task_template_id && !!markerTemplateId;
         const resolvedVideo = getTaskVideoUrl(task);
-
         const mapped: any = {
           id: task.id,
           title: task.title,
@@ -612,9 +530,8 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
           videoUrl: resolvedVideo ?? undefined,
           video_url: resolvedVideo,
           taskTemplateId: task.task_template_id,
-          feedbackTemplateId,
+          feedbackTemplateId: markerTemplateId,
           isFeedbackTask,
-          is_feedback_task: task.is_feedback_task,
         };
         return mapped as FeedbackTask;
       });
@@ -646,27 +563,14 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
       };
     }
 
-    const externalVariants: SelectVariant[] = [
-      {
-        select: EXTERNAL_META_SELECT_WITH_VIDEO,
-        optionalColumns: ['video_url', 'feedback_template_id', 'is_feedback_task'],
-      },
-      {
-        select: EXTERNAL_META_SELECT_NO_VIDEO,
-        optionalColumns: ['feedback_template_id', 'is_feedback_task'],
-      },
-      {
-        select: EXTERNAL_META_SELECT_MINIMAL,
-        optionalColumns: [],
-      },
-    ];
-
     const selectExternalMetaBy = async (column: 'id' | 'external_event_id') =>
-      selectSingleWithOptionalColumns<any>({
+      selectSingleWithOptionalColumn<any>({
         table: 'events_local_meta',
-        variants: externalVariants,
+        selectWith: EXTERNAL_META_SELECT_WITH_VIDEO,
+        selectWithout: EXTERNAL_META_SELECT_NO_VIDEO,
         eqColumn: column,
         eqValue: activityId,
+        optionalColumnName: 'video_url',
         context: `events_local_meta.${column}=${activityId}`,
       });
 
@@ -710,14 +614,11 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
             id: '',
             name: 'Unknown',
             color: '#999999',
-            emoji: '⚽',
+            emoji: '⚽️',
           },
         tasks: (localMetaAny.external_event_tasks || []).map((task: any) => {
-          const dbFeedbackTemplateId = task.feedback_template_id ?? null;
           const markerTemplateId = parseTemplateIdFromMarker(task.description || '');
-          const feedbackTemplateId = dbFeedbackTemplateId ?? markerTemplateId ?? null;
-          const isFeedbackTask =
-            task.is_feedback_task === true || (!task.task_template_id && !!feedbackTemplateId);
+          const isFeedbackTask = !task.task_template_id && !!markerTemplateId;
           const resolvedVideo = getTaskVideoUrl(task);
           const mapped: any = {
             id: task.id,
@@ -732,9 +633,8 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
             videoUrl: resolvedVideo ?? undefined,
             video_url: resolvedVideo,
             taskTemplateId: task.task_template_id,
-            feedbackTemplateId,
+            feedbackTemplateId: markerTemplateId,
             isFeedbackTask,
-            is_feedback_task: task.is_feedback_task,
           };
           return mapped as FeedbackTask;
         }),
@@ -746,7 +646,6 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
       };
     }
 
-    // --- Extra fallback: events_external direct (prevents hard failure on iOS deep links) ---
     if (__DEV__ && metaError) {
       console.log('[ActivityDetails] events_local_meta lookup failed; falling back to events_external', {
         activityId,
@@ -776,7 +675,7 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
           id: '',
           name: 'Unknown',
           color: '#999999',
-          emoji: '⚽',
+          emoji: '⚽️',
         },
         tasks: [],
         isExternal: true,
@@ -803,17 +702,15 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
 
     return null;
   } catch (error) {
-    console.error('⚠️ Error fetching activity from database:', error);
+    console.error('Error fetching activity from database:', error);
     return null;
   }
 }
 
-// Skeleton component for first paint
 function ActivityDetailsSkeleton({ isDark }: { isDark: boolean }) {
   const bgColor = isDark ? '#1a1a1a' : colors.background;
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
   const skeletonColor = isDark ? '#3a3a3a' : '#e0e0e0';
-  const waveFillColor = isDark ? 'rgba(42,42,42,0.92)' : 'rgba(255,255,255,0.92)'; // Ô£à subtle bleed-through
   const insets = useSafeAreaInsets();
 
   return (
@@ -822,7 +719,6 @@ function ActivityDetailsSkeleton({ isDark }: { isDark: boolean }) {
         colors={[skeletonColor, skeletonColor] as [string, string]}
         style={[styles.header, styles.v2Topbar, { paddingTop: insets.top + 8 }]}
       >
-        {/* Ô£à centered close chevron placeholder (don't block touches in header) */}
         <View style={styles.headerChevronWrap} pointerEvents="box-none">
           <View
             style={{
@@ -855,7 +751,6 @@ function ActivityDetailsSkeleton({ isDark }: { isDark: boolean }) {
         </View>
       </LinearGradient>
 
-      {/* Ô£à sheet must be transparent; fill + wave provide the white background */}
       <View style={styles.v2Sheet}>
         <View pointerEvents="none" style={[styles.v2SheetFill, { backgroundColor: cardBgColor }]} />
         <View pointerEvents="none" style={styles.v2WaveOverlay}>
@@ -863,10 +758,25 @@ function ActivityDetailsSkeleton({ isDark }: { isDark: boolean }) {
         </View>
 
         <View style={{ paddingTop: 12, paddingBottom: 32 + V2_CTA_HEIGHT + 24 + insets.bottom }}>
-          {/* Details cards skeleton */}
           <View style={[styles.section, { backgroundColor: 'transparent', marginBottom: 8 }]}>
-            <View style={{ width: 100, height: 20, backgroundColor: skeletonColor, borderRadius: 10, marginBottom: 14 }} />
-            <View style={{ width: '100%', height: 64, backgroundColor: skeletonColor, borderRadius: 16, marginBottom: 12 }} />
+            <View
+              style={{
+                width: 100,
+                height: 20,
+                backgroundColor: skeletonColor,
+                borderRadius: 10,
+                marginBottom: 14,
+              }}
+            />
+            <View
+              style={{
+                width: '100%',
+                height: 64,
+                backgroundColor: skeletonColor,
+                borderRadius: 16,
+                marginBottom: 12,
+              }}
+            />
             <View style={{ flexDirection: 'row', marginBottom: 12 }}>
               <View style={{ flex: 1, height: 64, backgroundColor: skeletonColor, borderRadius: 16 }} />
               <View style={{ width: 12 }} />
@@ -874,17 +784,39 @@ function ActivityDetailsSkeleton({ isDark }: { isDark: boolean }) {
             </View>
           </View>
 
-          {/* Tasks list skeleton */}
           <View style={[styles.section, { backgroundColor: 'transparent' }]}>
-            <View style={{ width: 100, height: 20, backgroundColor: skeletonColor, borderRadius: 10, marginBottom: 14 }} />
-            <View style={{ width: '100%', height: 60, backgroundColor: skeletonColor, borderRadius: 16, marginBottom: 12 }} />
-            <View style={{ width: '100%', height: 60, backgroundColor: skeletonColor, borderRadius: 16, marginBottom: 12 }} />
+            <View
+              style={{
+                width: 100,
+                height: 20,
+                backgroundColor: skeletonColor,
+                borderRadius: 10,
+                marginBottom: 14,
+              }}
+            />
+            <View
+              style={{
+                width: '100%',
+                height: 60,
+                backgroundColor: skeletonColor,
+                borderRadius: 16,
+                marginBottom: 12,
+              }}
+            />
+            <View
+              style={{
+                width: '100%',
+                height: 60,
+                backgroundColor: skeletonColor,
+                borderRadius: 16,
+                marginBottom: 12,
+              }}
+            />
             <View style={{ width: '100%', height: 60, backgroundColor: skeletonColor, borderRadius: 16 }} />
           </View>
         </View>
       </View>
 
-      {/* Sticky CTA skeleton */}
       <View style={[styles.v2StickyCtaWrap, { paddingBottom: insets.bottom + 12 }]}>
         <View style={[styles.v2StickyCtaButton, { backgroundColor: skeletonColor, opacity: 0.6 }]} />
       </View>
@@ -892,7 +824,6 @@ function ActivityDetailsSkeleton({ isDark }: { isDark: boolean }) {
   );
 }
 
-// Content component - only mounts after first paint
 interface ActivityDetailsContentProps {
   activity: Activity;
   categories: ActivityCategory[];
@@ -918,8 +849,9 @@ interface AfterTrainingFeedbackConfig {
   enableScore: boolean;
   scoreExplanation?: string | null;
   enableNote: boolean;
-  afterTrainingEnabled: boolean;
-  afterTrainingDelayMinutes: number | null;
+  // extra fields for compatibility if newer logic uses them:
+  afterTrainingEnabled?: boolean | null;
+  afterTrainingDelayMinutes?: number | null;
 }
 
 interface PreviousFeedbackEntry {
@@ -932,22 +864,8 @@ function normalizeScoreExplanation(value?: string | null): string | null {
   if (typeof value !== 'string') {
     return value ?? null;
   }
-
   const trimmed = value.trim();
   return trimmed.length ? trimmed : null;
-}
-
-function normalizeDelayMinutes(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value;
-  }
-
-  if (typeof value === 'string') {
-    const parsed = parseFloat(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  return null;
 }
 
 function buildFeedbackConfig(row?: any): AfterTrainingFeedbackConfig {
@@ -956,7 +874,7 @@ function buildFeedbackConfig(row?: any): AfterTrainingFeedbackConfig {
       enableScore: true,
       scoreExplanation: null,
       enableNote: true,
-      afterTrainingEnabled: false,
+      afterTrainingEnabled: null,
       afterTrainingDelayMinutes: null,
     };
   }
@@ -965,8 +883,8 @@ function buildFeedbackConfig(row?: any): AfterTrainingFeedbackConfig {
     enableScore: row.after_training_feedback_enable_score ?? true,
     scoreExplanation: normalizeScoreExplanation(row.after_training_feedback_score_explanation),
     enableNote: row.after_training_feedback_enable_note ?? true,
-    afterTrainingEnabled: row.after_training_enabled === true,
-    afterTrainingDelayMinutes: normalizeDelayMinutes(row.after_training_delay_minutes),
+    afterTrainingEnabled: row.after_training_enabled ?? null,
+    afterTrainingDelayMinutes: row.after_training_delay_minutes ?? null,
   };
 }
 
@@ -981,11 +899,7 @@ function buildFeedbackSummary(
   const parts: string[] = [];
 
   if (config?.enableScore !== false) {
-    parts.push(
-      typeof feedback.rating === 'number'
-        ? `Score ${feedback.rating}/10`
-        : 'Score mangler',
-    );
+    parts.push(typeof feedback.rating === 'number' ? `Score ${feedback.rating}/10` : 'Score mangler');
   }
 
   return parts.length ? parts.join(' – ') : null;
@@ -998,7 +912,6 @@ function extractFeedbackNote(
   if (!feedback || config?.enableNote === false) {
     return null;
   }
-
   const trimmed = feedback.note?.trim() ?? '';
   return trimmed.length ? trimmed : null;
 }
@@ -1046,22 +959,20 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     initialFeedbackTaskId,
     initialOpenIntensity,
   } = props;
+
   const router = useRouter();
-  const insets = useSafeAreaInsets(); // Ô£à Fix crash (insets used in header + paddingBottom)
+  const insets = useSafeAreaInsets();
   const safeDismiss = useCallback(() => {
-    if (typeof onBack === 'function') {
-      onBack();
-      return;
-    }
     try {
       const r: any = router;
       if (typeof r.dismiss === 'function') return r.dismiss();
-      if (router.canGoBack()) return router.back();
-      return router.replace('/(tabs)');
+      onBack();
+      return;
     } catch {
-      return router.replace('/(tabs)');
+      onBack();
     }
   }, [onBack, router]);
+
   const {
     updateActivitySingle,
     updateActivitySeries,
@@ -1073,12 +984,11 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     createActivity,
     duplicateActivity,
   } = useFootball();
+
   const listRef = useRef<FlatList<TaskListItem>>(null);
 
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [showSeriesDialog, setShowSeriesDialog] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
   const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -1086,7 +996,6 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const [tasksState, setTasksState] = useState<FeedbackTask[]>((activity.tasks as FeedbackTask[]) || []);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 
-  // --- Feedback template configs + cached self feedback ---
   const [feedbackConfigByTemplate, setFeedbackConfigByTemplate] = useState<
     Record<string, AfterTrainingFeedbackConfig>
   >({});
@@ -1095,37 +1004,34 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     Record<string, TemplateFeedbackSummary>
   >({});
 
-  // --- Currently opened feedback modal task ---
   const [feedbackModalTask, setFeedbackModalTask] = useState<FeedbackModalTaskState | null>(null);
 
   const [selectedNormalTask, setSelectedNormalTask] = useState<FeedbackTask | null>(null);
   const [isNormalTaskModalVisible, setIsNormalTaskModalVisible] = useState(false);
   const [isNormalTaskCompleting, setIsNormalTaskCompleting] = useState(false);
+
   const normalTaskVideoUrl = useMemo(
     () => (selectedNormalTask ? getTaskVideoUrl(selectedNormalTask) : null),
-    [selectedNormalTask]
+    [selectedNormalTask],
   );
 
   const handleNormalTaskComplete = useCallback(async () => {
     if (!selectedNormalTask || selectedNormalTask.completed) return;
     setIsNormalTaskCompleting(true);
-    setTasksState(prev =>
-      prev.map(t => (t.id === selectedNormalTask.id ? { ...t, completed: true } : t)),
-    );
+    setTasksState((prev) => prev.map((t) => (t.id === selectedNormalTask.id ? { ...t, completed: true } : t)));
     try {
       await toggleTaskCompletion(activity.id, selectedNormalTask.id, true);
       Promise.resolve(refreshData()).catch(() => {});
       setIsNormalTaskModalVisible(false);
       setSelectedNormalTask(null);
     } catch (err) {
-      setTasksState(prev =>
-        prev.map(t => (t.id === selectedNormalTask.id ? { ...t, completed: false } : t)),
-      );
+      setTasksState((prev) => prev.map((t) => (t.id === selectedNormalTask.id ? { ...t, completed: false } : t)));
       Alert.alert('Fejl', 'Kunne ikke markere opgaven som udført. Prøv igen.');
     } finally {
       setIsNormalTaskCompleting(false);
     }
   }, [selectedNormalTask, activity.id, toggleTaskCompletion, refreshData]);
+
   const bgColor = isDark ? '#1a1a1a' : colors.background;
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
   const textColor = isDark ? '#e3e3e3' : colors.text;
@@ -1148,38 +1054,26 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const [pendingFeedbackTaskId, setPendingFeedbackTaskId] = useState<string | null>(initialFeedbackTaskId ?? null);
 
   const [isIntensityModalVisible, setIsIntensityModalVisible] = useState(false);
-  const [intensityModalDraft, setIntensityModalDraft] = useState<number | null>(
-    parseIntensityValue(activity.intensity)
-  );
+  const [intensityModalDraft, setIntensityModalDraft] = useState<number | null>(parseIntensityValue(activity.intensity));
   const [isIntensityModalSaving, setIsIntensityModalSaving] = useState(false);
   const [intensityModalError, setIntensityModalError] = useState<string | null>(null);
 
   const [pendingOpenIntensity, setPendingOpenIntensity] = useState<boolean>(initialOpenIntensity ?? false);
 
-  const resolveFeedbackTemplateId = useCallback((task: FeedbackTask | null | undefined): string | null => {
-    if (!task) return null;
-
-    if (task.feedbackTemplateId) {
-      return String(task.feedbackTemplateId);
-    }
-
-    const normalTemplateId = (task as any)?.taskTemplateId ?? (task as any)?.task_template_id;
-    if (normalTemplateId) {
-      return null;
-    }
-
-    return parseTemplateIdFromMarker(task.description || '') ?? null;
-  }, []);
+  const resolveFeedbackTemplateId = useCallback(
+    (task: FeedbackTask | null | undefined): string | null =>
+      task ? task.feedbackTemplateId ?? parseTemplateIdFromMarker(task.description || '') ?? null : null,
+    [],
+  );
 
   const getFeedbackConfigForTemplate = useCallback(
     (templateId: string | null): AfterTrainingFeedbackConfig => {
       if (!templateId) return buildFeedbackConfig(undefined);
       return feedbackConfigByTemplate[templateId] ?? buildFeedbackConfig(undefined);
     },
-    [feedbackConfigByTemplate]
+    [feedbackConfigByTemplate],
   );
 
-  // --- fetch current user id (used for feedback calls) ---
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -1200,19 +1094,15 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     };
   }, []);
 
-  // --- keep tasksState in sync ---
   useEffect(() => {
     setTasksState((activity.tasks as FeedbackTask[]) || []);
   }, [activity.tasks]);
 
-  // --- best-effort: fetch feedback configs + self feedback for templates (non-blocking) ---
   const feedbackTemplateIds = useMemo(() => {
     const ids = new Set<string>();
     for (const t of tasksState) {
-      const feedbackId = resolveFeedbackTemplateId(t);
-      if (feedbackId) ids.add(String(feedbackId));
-      const normalId = (t as any)?.taskTemplateId ?? (t as any)?.task_template_id;
-      if (normalId) ids.add(String(normalId));
+      const templateId = resolveFeedbackTemplateId(t);
+      if (templateId) ids.add(String(templateId));
     }
     return Array.from(ids);
   }, [resolveFeedbackTemplateId, tasksState]);
@@ -1224,79 +1114,20 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       if (!feedbackTemplateIds.length) return;
 
       try {
-        const templateSelectVariants: SelectVariant[] = [
-          {
-            select: TEMPLATE_SELECT_FULL,
-            optionalColumns: ['after_training_enabled', 'after_training_delay_minutes'],
-          },
-          {
-            select: TEMPLATE_SELECT_NO_TOGGLE,
-            optionalColumns: [
-              'after_training_feedback_enable_score',
-              'after_training_feedback_score_explanation',
-              'after_training_feedback_enable_note',
-            ],
-          },
-          {
-            select: TEMPLATE_SELECT_MINIMAL,
-            optionalColumns: [],
-          },
-        ];
+        const { data } = await supabase.from('task_templates').select(TEMPLATE_SELECT_FULL).in('id', feedbackTemplateIds);
 
-        let templateRows: any[] | null = null;
-        let templateError: any = null;
-
-        for (let i = 0; i < templateSelectVariants.length; i++) {
-          const variant = templateSelectVariants[i];
-          const { data, error } = await supabase
-            .from('task_templates')
-            .select(variant.select)
-            .in('id', feedbackTemplateIds);
-
-          if (!error) {
-            templateRows = Array.isArray(data) ? data : [];
-            break;
-          }
-
-          templateError = error;
-
-          if (__DEV__) {
-            console.log('[ActivityDetails][template-config] select variant failed', {
-              variant: i,
-              message: error?.message,
-              details: error?.details,
-              hint: error?.hint,
-              code: error?.code,
-            });
-          }
-
-          const optionalCols = variant.optionalColumns ?? [];
-          const missingOptional = optionalCols.some((col) => isMissingColumn(error, col));
-          if (!missingOptional) {
-            break;
-          }
-        }
-
-        if (!cancelled && Array.isArray(templateRows)) {
+        if (!cancelled && Array.isArray(data)) {
           const next: Record<string, AfterTrainingFeedbackConfig> = {};
-          for (const row of templateRows) {
+          for (const row of data as any[]) {
             if (!row?.id) continue;
             next[String(row.id)] = buildFeedbackConfig(row);
           }
           setFeedbackConfigByTemplate((prev) => ({ ...prev, ...next }));
-        } else if (templateError && __DEV__) {
-          console.log('[ActivityDetails][template-config] giving up after fallbacks', {
-            message: templateError?.message,
-            details: templateError?.details,
-            hint: templateError?.hint,
-            code: templateError?.code,
-          });
         }
       } catch (e) {
         if (__DEV__) console.log('[ActivityDetails] feedback config fetch skipped/failed', e);
       }
 
-      // self feedback (best-effort)
       try {
         if (!currentUserId) return;
         const result = await (fetchSelfFeedbackForTemplates as any)(feedbackTemplateIds, currentUserId);
@@ -1315,85 +1146,10 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     };
   }, [currentUserId, feedbackTemplateIds]);
 
-  const displayTasks = useMemo(() => {
-    const baseTasks = Array.isArray(tasksState) ? tasksState : [];
-    const result: FeedbackTask[] = [...baseTasks];
-
-    if (!activity?.id) {
-      return result;
-    }
-
-    const existingFeedbackTemplateIds = new Set<string>();
-    const templateToOriginalTask = new Map<string, FeedbackTask>();
-
-    for (const task of baseTasks) {
-      const feedbackTemplateId = resolveFeedbackTemplateId(task);
-      const normalTemplateId = resolveNormalTemplateId(task);
-      const isFeedbackTask = task.isFeedbackTask === true || task.is_feedback_task === true || (!!feedbackTemplateId && !normalTemplateId);
-
-      if (isFeedbackTask && feedbackTemplateId) {
-        existingFeedbackTemplateIds.add(String(feedbackTemplateId));
-      }
-
-      if (isFeedbackTask) continue;
-
-      if (!normalTemplateId) continue;
-
-      const templateId = String(normalTemplateId);
-      if (!templateToOriginalTask.has(templateId)) {
-        templateToOriginalTask.set(templateId, task);
-      }
-    }
-
-    const syntheticTasks: FeedbackTask[] = [];
-
-    templateToOriginalTask.forEach((originalTask, templateId) => {
-      const config = feedbackConfigByTemplate[templateId];
-      if (!config || config.afterTrainingEnabled !== true) {
-        return;
-      }
-
-      if (existingFeedbackTemplateIds.has(templateId)) {
-        return;
-      }
-
-      syntheticTasks.push({
-        id: `feedback-${activity.id}-${templateId}`,
-        title: `Feedback på ${originalTask.title}`,
-        description: '',
-        completed: false,
-        isTemplate: false,
-        categoryIds: [],
-        reminder_minutes: null,
-        reminder: null,
-        subtasks: [],
-        videoUrl: undefined,
-        video_url: undefined,
-        taskTemplateId: null,
-        task_template_id: null,
-        feedbackTemplateId: templateId,
-        isFeedbackTask: true,
-        activityId: activity.id,
-        activity_id: activity.id,
-      } as FeedbackTask);
-    });
-
-    const combined = [...result, ...syntheticTasks];
-    return partitionFeedbackTasks(combined);
-  }, [
-    activity?.id,
-    feedbackConfigByTemplate,
-    partitionFeedbackTasks,
-    resolveFeedbackTemplateId,
-    resolveNormalTemplateId,
-    tasksState,
-  ]);
-
-  // --- deep-link open feedback by task id ---
   useEffect(() => {
     if (!pendingFeedbackTaskId) return;
 
-    const task = displayTasks.find(t => String(t.id) === String(pendingFeedbackTaskId));
+    const task = tasksState.find((t) => String(t.id) === String(pendingFeedbackTaskId));
     if (!task) return;
 
     const templateId = resolveFeedbackTemplateId(task);
@@ -1401,9 +1157,8 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
     setFeedbackModalTask({ task, templateId });
     setFeedbackModalError(null);
-  }, [pendingFeedbackTaskId, resolveFeedbackTemplateId, displayTasks]);
+  }, [pendingFeedbackTaskId, resolveFeedbackTemplateId, tasksState]);
 
-  // Edit state
   const [editTitle, setEditTitle] = useState(activity.title);
   const [editLocation, setEditLocation] = useState(activity.location);
   const [editDate, setEditDate] = useState(activity.date);
@@ -1414,9 +1169,10 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
   const [editScope, setEditScope] = useState<'single' | 'series'>('single');
+
   const activityIntensityValue = useMemo(
     () => parseIntensityValue((activity as any)?.intensity ?? (activity as any)?.activity_intensity),
-    [activity]
+    [activity],
   );
 
   const activityIntensityEnabled = useMemo(() => {
@@ -1434,22 +1190,17 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const [editIntensity, setEditIntensity] = useState<number | null>(activityIntensityValue);
   const intensityOptions = useMemo(() => Array.from({ length: 10 }, (_, idx) => idx + 1), []);
   const isInternalActivity = !activity.isExternal;
+
   const currentActivityIntensity = activityIntensityValue;
   const shouldShowActivityIntensityField = !!activityIntensityEnabled;
   const showIntensityTaskRow = activityIntensityEnabled;
   const intensityTaskCompleted = showIntensityTaskRow && typeof activity.intensity === 'number';
+
   const startTimeDate = useMemo(() => parseTimeToDate(editDate, editTime), [editDate, editTime]);
   const endTimeDate = useMemo(
     () => parseTimeToDate(editDate, editEndTime ?? editTime),
-    [editDate, editEndTime, editTime]
+    [editDate, editEndTime, editTime],
   );
-  const activityAnchorDateTime = useMemo(() => {
-    if (!activity?.date) return null;
-    const base = new Date(activity.date);
-    const time = activity.endTime ?? activity.time;
-    if (!time) return null;
-    return parseTimeToDate(base, time);
-  }, [activity.date, activity.endTime, activity.time]);
 
   useEffect(() => {
     if (isIntensityModalVisible) return;
@@ -1475,9 +1226,8 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     setIntensityModalDraft(currentActivityIntensity);
     setIntensityModalError(null);
     setIsIntensityModalVisible(true);
-  }, [activity.isExternal, currentActivityIntensity, pendingOpenIntensity, showIntensityTaskRow]);
+  }, [currentActivityIntensity, pendingOpenIntensity, showIntensityTaskRow]);
 
-  // Recurring event conversion state
   const [convertToRecurring, setConvertToRecurring] = useState(false);
   const [recurrenceType, setRecurrenceType] = useState<'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly'>('weekly');
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
@@ -1485,7 +1235,6 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const [endDate, setEndDate] = useState(new Date(Date.now() + 90 * 24 * 60 * 60 * 1000));
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
 
-  // --- sync edit state when activity changes ---
   useEffect(() => {
     setEditTitle(activity.title);
     setEditLocation(activity.location);
@@ -1493,6 +1242,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     setEditTime(activity.time);
     setEditEndTime(activity.endTime);
     setEditCategory(activity.category);
+
     const resolvedFlag = resolveActivityIntensityEnabled(activity);
     const resolvedValue = parseIntensityValue(activity.intensity);
     const hasExplicitFlag =
@@ -1529,53 +1279,44 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         tasks: updates.tasks ?? activity.tasks,
         intensity: updates.intensity !== undefined ? updates.intensity : activity.intensity,
         intensityEnabled:
-          updates.intensityEnabled !== undefined
-            ? updates.intensityEnabled
-            : activity.intensityEnabled,
+          updates.intensityEnabled !== undefined ? updates.intensityEnabled : activity.intensityEnabled,
       };
       onActivityUpdated(nextActivity);
     },
-    [activity, onActivityUpdated]
+    [activity, onActivityUpdated],
   );
 
-  const handleEditClick = () => {
+  const handleEditSingle = useCallback(() => {
+    setEditScope('single');
+    setIsEditing(true);
+  }, []);
+
+  const handleEditAll = useCallback(() => {
+    setEditScope('series');
+    setIsEditing(true);
+  }, []);
+
+  const handleEditClick = useCallback(() => {
     if (activity?.seriesId) {
-      // Previously: setShowSeriesDialog(true) (but dialog isn't rendered in this file right now)
-      Alert.alert(
-        'Rediger serie',
-        'Vil du redigere kun denne aktivitet eller hele serien?',
-        [
-          { text: 'Annuller', style: 'cancel' },
-          { text: 'Kun denne', onPress: handleEditSingle },
-          { text: 'Hele serien', onPress: handleEditAll },
-        ]
-      );
+      Alert.alert('Rediger serie', 'Vil du redigere kun denne aktivitet eller hele serien?', [
+        { text: 'Annuller', style: 'cancel' },
+        { text: 'Kun denne', onPress: handleEditSingle },
+        { text: 'Hele serien', onPress: handleEditAll },
+      ]);
       return;
     }
 
     setEditScope('single');
     setIsEditing(true);
-  };
+  }, [activity?.seriesId, handleEditAll, handleEditSingle]);
 
-  const handleEditSingle = () => {
-    setEditScope('single');
-    setShowSeriesDialog(false);
-    setIsEditing(true);
-  };
-
-  const handleEditAll = () => {
-    setEditScope('series');
-    setShowSeriesDialog(false);
-    setIsEditing(true);
-  };
-
-  const handleDuplicate = () => {
+  const handleDuplicate = useCallback(() => {
     if (!activity) return;
 
     if (activity.isExternal) {
       Alert.alert(
         'Kan ikke duplikere',
-        'Denne aktivitet er fra en ekstern kalender og kan ikke duplikeres. Kun manuelle aktiviteter kan duplikeres.'
+        'Denne aktivitet er fra en ekstern kalender og kan ikke duplikeres. Kun manuelle aktiviteter kan duplikeres.',
       );
       return;
     }
@@ -1585,13 +1326,10 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       `Er du sikker på at du vil duplikere "${activity.title}"? En kopi vil blive oprettet med samme dato, tid, lokation og opgaver.`,
       [
         { text: 'Annuller', style: 'cancel' },
-        {
-          text: 'Duplikér',
-          onPress: () => setPendingAction({ type: 'duplicate' }),
-        },
-      ]
+        { text: 'Duplikér', onPress: () => setPendingAction({ type: 'duplicate' }) },
+      ],
     );
-  };
+  }, [activity]);
 
   const handleIntensityToggle = useCallback((value: boolean) => {
     setEditIntensityEnabled(value);
@@ -1605,7 +1343,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       if (!editIntensityEnabled) return;
       setEditIntensity(value);
     },
-    [editIntensityEnabled]
+    [editIntensityEnabled],
   );
 
   const closeIntensityModal = useCallback(() => {
@@ -1636,14 +1374,14 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         setIntensityModalError('Kunne ikke gemme intensitet. Prøv igen.');
       }
     },
-    [activity.id, activity.intensity, applyActivityUpdates, refreshData, showIntensityTaskRow, updateActivitySingle]
+    [activity.id, activity.intensity, applyActivityUpdates, refreshData, showIntensityTaskRow, updateActivitySingle],
   );
 
   const handleIntensityModalSave = useCallback(
     ({ score }: TaskScoreNoteModalPayload) => {
       persistActivityIntensity(typeof score === 'number' ? score : null);
     },
-    [persistActivityIntensity]
+    [persistActivityIntensity],
   );
 
   const handleIntensityRowPress = useCallback(() => {
@@ -1674,12 +1412,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
       if (Platform.OS === 'ios') {
         return (
-          <View
-            style={[
-              styles.pickerContainer,
-              { backgroundColor: cardBgColor, borderColor: fieldBorderColor, borderWidth: 1 },
-            ]}
-          >
+          <View style={[styles.pickerContainer, { backgroundColor: cardBgColor, borderColor: fieldBorderColor, borderWidth: 1 }]}>
             <DateTimePicker value={value} mode={mode} display="spinner" onChange={onChange} style={styles.iosPicker} />
             <TouchableOpacity
               style={[
@@ -1710,12 +1443,10 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         />
       );
     },
-    [cardBgColor, colors.primary, fieldBorderColor, isDark]
+    [cardBgColor, colors.primary, fieldBorderColor, isDark],
   );
 
-  const handleSave = async () => {
-    if (!activity) return;
-
+  const handleSave = useCallback(async () => {
     const endTimePayload = isInternalActivity ? normalizeOptionalTime(editEndTime) : undefined;
     const intensityPayload = editIntensityEnabled ? editIntensity ?? null : null;
     const trimmedTime = (editTime ?? '').trim();
@@ -1754,7 +1485,10 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
     try {
       if (convertToRecurring && isInternalActivity && !activity.seriesId) {
-        if ((recurrenceType === 'weekly' || recurrenceType === 'biweekly' || recurrenceType === 'triweekly') && selectedDays.length === 0) {
+        if (
+          (recurrenceType === 'weekly' || recurrenceType === 'biweekly' || recurrenceType === 'triweekly') &&
+          selectedDays.length === 0
+        ) {
           Alert.alert('Fejl', 'Vælg venligst mindst én dag for gentagelse');
           return;
         }
@@ -1868,28 +1602,33 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [
+    activity,
+    applyActivityUpdates,
+    convertToRecurring,
+    createActivity,
+    deleteActivitySingle,
+    editCategory,
+    editDate,
+    editEndTime,
+    editIntensity,
+    editIntensityEnabled,
+    editLocation,
+    editScope,
+    editTime,
+    editTitle,
+    endDate,
+    hasEndDate,
+    isInternalActivity,
+    recurrenceType,
+    refreshData,
+    router,
+    selectedDays,
+    updateActivitySeries,
+    updateActivitySingle,
+  ]);
 
-  const handleCancel = () => {
-    if (!activity) return;
-
-    const resolvedFlag = resolveActivityIntensityEnabled(activity);
-    const resolvedValue = typeof activity.intensity === 'number' ? activity.intensity : null;
-
-    setEditTitle(activity.title);
-    setEditLocation(activity.location);
-    setEditDate(new Date(activity.date));
-    setEditTime(activity.time);
-    setEditEndTime(activity.endTime);
-    setEditCategory(activity.category);
-    setConvertToRecurring(false);
-    setIsEditing(false);
-    setEditScope('single');
-    setEditIntensityEnabled(resolvedFlag);
-    setEditIntensity(resolvedValue);
-  };
-
-  const handleDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+  const handleDateChange = useCallback((event: DateTimePickerEvent, selectedDate?: Date) => {
     if (Platform.OS === 'android') {
       setShowDatePicker(false);
     }
@@ -1899,9 +1638,9 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     if (selectedDate) {
       setEditDate(selectedDate);
     }
-  };
+  }, []);
 
-  const handleTimeChange = (event: DateTimePickerEvent, selectedTime?: Date) => {
+  const handleTimeChange = useCallback((event: DateTimePickerEvent, selectedTime?: Date) => {
     if (Platform.OS === 'android') {
       setShowTimePicker(false);
     }
@@ -1913,16 +1652,9 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       const minutes = selectedTime.getMinutes().toString().padStart(2, '0');
       setEditTime(`${hours}:${minutes}`);
     }
-  };
+  }, []);
 
-  const handleWebTimeChange = (event: any) => {
-    const value = event.target.value;
-    if (value) {
-      setEditTime(value);
-    }
-  };
-
-  const handleEndTimeChange = (event: DateTimePickerEvent, selectedTime?: Date) => {
+  const handleEndTimeChange = useCallback((event: DateTimePickerEvent, selectedTime?: Date) => {
     if (Platform.OS === 'android') {
       setShowEndTimePicker(false);
     }
@@ -1934,14 +1666,9 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       const minutes = selectedTime.getMinutes().toString().padStart(2, '0');
       setEditEndTime(`${hours}:${minutes}`);
     }
-  };
+  }, []);
 
-  const handleWebEndTimeChange = (event: any) => {
-    const value = event.target.value;
-    setEditEndTime(value);
-  };
-
-  const handleEndDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+  const handleEndDateChange = useCallback((event: DateTimePickerEvent, selectedDate?: Date) => {
     if (Platform.OS === 'android') {
       setShowEndDatePicker(false);
     }
@@ -1951,30 +1678,28 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     if (selectedDate) {
       setEndDate(selectedDate);
     }
-  };
+  }, []);
 
-  const toggleDay = (day: number) => {
-    setSelectedDays(prev =>
-      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort()
-    );
-  };
+  const toggleDay = useCallback((day: number) => {
+    setSelectedDays((prev) => (prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort()));
+  }, []);
 
-  const handleTaskRowPress = useCallback((task: FeedbackTask) => {
-    const templateId = resolveFeedbackTemplateId(task);
-    const isFeedbackTaskLocal =
-      task.isFeedbackTask === true ||
-      (!!templateId && !task.taskTemplateId);
+  const handleTaskRowPress = useCallback(
+    (task: FeedbackTask) => {
+      const templateId = resolveFeedbackTemplateId(task);
+      const isFeedbackTaskLocal = task.isFeedbackTask === true || (!!templateId && !task.taskTemplateId);
 
-    if (isFeedbackTaskLocal && templateId) {
-      setFeedbackModalTask({ task, templateId });
-      setPendingFeedbackTaskId(String(task.id));
-      return;
-    }
+      if (isFeedbackTaskLocal && templateId) {
+        setFeedbackModalTask({ task, templateId });
+        setPendingFeedbackTaskId(String(task.id));
+        return;
+      }
 
-    // --- C) Normal task: open shared modal, do not toggle directly ---
-    setSelectedNormalTask(task);
-    setIsNormalTaskModalVisible(true);
-  }, [resolveFeedbackTemplateId]);
+      setSelectedNormalTask(task);
+      setIsNormalTaskModalVisible(true);
+    },
+    [resolveFeedbackTemplateId],
+  );
 
   const handleNormalTaskModalClose = useCallback(() => {
     if (isNormalTaskCompleting) return;
@@ -1982,30 +1707,27 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     setSelectedNormalTask(null);
   }, [isNormalTaskCompleting]);
 
-  const handleDeleteTask = useCallback((taskId: string) => {
-    if (!activity || !isAdmin) return;
+  const handleDeleteTask = useCallback(
+    (taskId: string) => {
+      if (!activity || !isAdmin) return;
 
-    Alert.alert(
-      'Slet opgave',
-      'Er du sikker på at du vil slette denne opgave? Dette sletter kun opgaven fra denne aktivitet, ikke opgaveskabelonen.',
-      [
-        { text: 'Annuller', style: 'cancel' },
-        {
-          text: 'Slet',
-          style: 'destructive',
-          onPress: () => setPendingAction({ type: 'delete-task', taskId }),
-        }
-      ]
-    );
-  }, [activity, isAdmin]);
+      Alert.alert(
+        'Slet opgave',
+        'Er du sikker på at du vil slette denne opgave? Dette sletter kun opgaven fra denne aktivitet, ikke opgaveskabelonen.',
+        [
+          { text: 'Annuller', style: 'cancel' },
+          { text: 'Slet', style: 'destructive', onPress: () => setPendingAction({ type: 'delete-task', taskId }) },
+        ],
+      );
+    },
+    [activity, isAdmin],
+  );
 
   const handleAddTask = useCallback(() => {
-    console.log('Opening create task modal for activity:', activity?.id);
     setShowCreateTaskModal(true);
-  }, [activity?.id]);
+  }, []);
 
   const handleTaskCreated = useCallback(async () => {
-    console.log('Task created successfully, refreshing activity data');
     setShowCreateTaskModal(false);
     try {
       const refreshedActivity = await fetchActivityFromDatabase(activity.id);
@@ -2022,7 +1744,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     const seen = new Set<string>();
     const entries: PreviousFeedbackEntry[] = [];
 
-    for (const t of displayTasks) {
+    for (const t of tasksState) {
       const templateId = resolveFeedbackTemplateId(t);
       if (!templateId || seen.has(templateId)) continue;
       seen.add(templateId);
@@ -2038,16 +1760,177 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     }
 
     return entries;
-  }, [displayTasks, resolveFeedbackTemplateId, selfFeedbackByTemplate]);
+  }, [resolveFeedbackTemplateId, selfFeedbackByTemplate, tasksState]);
 
   const taskListItems = useMemo<TaskListItem[]>(() => {
     const items: TaskListItem[] = [];
     if (showIntensityTaskRow) {
       items.push({ __type: 'intensity', key: `intensity-${String(activity.id)}` });
     }
-    items.push(...displayTasks);
+    items.push(...(tasksState || []));
     return items;
-  }, [activity.id, displayTasks, showIntensityTaskRow]);
+  }, [activity.id, showIntensityTaskRow, tasksState]);
+
+  const taskKeyExtractor = useCallback((item: TaskListItem) => ('__type' in item ? item.key : String(item.id)), []);
+
+  // --- Missing render helpers (fix for refactor) ---
+  const renderCategorySelector = useCallback(() => {
+    const selected = editCategory ?? activity.category;
+
+    if (!isEditing) {
+      return (
+        <View style={styles.fieldContainer}>
+          <Text style={[styles.fieldLabel, { color: textSecondaryColor }]}>Kategori</Text>
+          <View
+            style={[
+              styles.categoryChip,
+              {
+                backgroundColor: fieldBackgroundColor,
+                borderWidth: 1,
+                borderColor: fieldBorderColor,
+              },
+            ]}
+          >
+            {selected?.emoji ? <Text style={styles.categoryEmoji}>{selected.emoji}</Text> : null}
+            <Text style={[styles.categoryName, { color: textColor }]}>{selected?.name ?? 'Ukendt'}</Text>
+            <View style={{ flex: 1 }} />
+            <View
+              style={[
+                styles.categoryIndicator,
+                { backgroundColor: selected?.color ? String(selected.color) : colors.primary },
+              ]}
+            />
+          </View>
+        </View>
+      );
+    }
+
+    const data = Array.isArray(categories) ? categories : [];
+    const selectedId = editCategory?.id ?? null;
+
+    return (
+      <View style={styles.fieldContainer}>
+        <Text style={[styles.fieldLabel, { color: textSecondaryColor }]}>Kategori</Text>
+        {data.length ? (
+          <FlatList
+            horizontal
+            data={data}
+            keyExtractor={(c) => String((c as any)?.id ?? (c as any)?.name ?? Math.random())}
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.categoryScroll}
+            renderItem={({ item }) => {
+              const isSelected = selectedId === item.id;
+              return (
+                <TouchableOpacity
+                  style={[
+                    styles.categoryChip,
+                    {
+                      backgroundColor: fieldBackgroundColor,
+                      borderColor: isSelected ? colors.primary : fieldBorderColor,
+                      borderWidth: isSelected ? 2 : 1,
+                    },
+                  ]}
+                  onPress={() => setEditCategory(item)}
+                  activeOpacity={0.8}
+                >
+                  {item.emoji ? <Text style={styles.categoryEmoji}>{item.emoji}</Text> : null}
+                  <Text style={[styles.categoryName, { color: textColor }]}>{item.name}</Text>
+                </TouchableOpacity>
+              );
+            }}
+          />
+        ) : (
+          <Text style={{ color: textSecondaryColor, marginTop: 8 }}>Ingen kategorier</Text>
+        )}
+      </View>
+    );
+  }, [
+    activity.category,
+    categories,
+    editCategory,
+    fieldBackgroundColor,
+    fieldBorderColor,
+    isEditing,
+    setEditCategory,
+    textColor,
+    textSecondaryColor,
+  ]);
+
+  const renderIntensitySection = useCallback(() => {
+    if (!isEditing) return null;
+
+    return (
+      <View style={[styles.section, { backgroundColor: cardBgColor }]}>
+        <Text style={[styles.sectionTitle, { color: sectionTitleColor }]}>Intensitet</Text>
+
+        <View style={[styles.intensityToggleRow, { backgroundColor: fieldBackgroundColor, paddingHorizontal: 16 }]}>
+          <View style={styles.intensityToggleLabel}>
+            <IconSymbol
+              ios_icon_name="flame"
+              android_material_icon_name="local_fire_department"
+              size={18}
+              color={colors.primary}
+            />
+            <Text style={[styles.switchLabel, { color: textColor }]}>Aktivér intensitet</Text>
+          </View>
+          <Switch
+            value={editIntensityEnabled}
+            onValueChange={handleIntensityToggle}
+            trackColor={{ true: colors.primary, false: isDark ? '#3a3a3c' : '#d1d5db' }}
+            thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
+          />
+        </View>
+
+        {editIntensityEnabled ? (
+          <>
+            <Text style={[styles.intensityHint, { color: textSecondaryColor }]}>Vælg niveau (1-10)</Text>
+            <View style={styles.intensityPickerRow}>
+              {intensityOptions.map((val) => {
+                const selected = val === editIntensity;
+                return (
+                  <TouchableOpacity
+                    key={String(val)}
+                    style={[
+                      styles.intensityPickerChip,
+                      {
+                        backgroundColor: selected ? colors.primary : fieldBackgroundColor,
+                        borderWidth: 1,
+                        borderColor: selected ? colors.primary : fieldBorderColor,
+                      },
+                    ]}
+                    onPress={() => handleIntensitySelect(val)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.intensityPickerText, selected ? styles.intensityPickerTextSelected : { color: textColor }]}>
+                      {val}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <Text style={[styles.intensitySelectionText, { color: textColor }]}>
+              Valgt: {editIntensity ?? '–'}/10
+            </Text>
+          </>
+        ) : null}
+      </View>
+    );
+  }, [
+    cardBgColor,
+    editIntensity,
+    editIntensityEnabled,
+    fieldBackgroundColor,
+    fieldBorderColor,
+    handleIntensitySelect,
+    handleIntensityToggle,
+    intensityOptions,
+    isDark,
+    isEditing,
+    sectionTitleColor,
+    textColor,
+    textSecondaryColor,
+  ]);
 
   const renderTaskItem = useCallback(
     ({ item }: { item: TaskListItem }) => {
@@ -2062,7 +1945,6 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             activeOpacity={0.7}
             disabled={isIntensityModalSaving}
           >
-            {/* Ô£à Fixed left slot + body + right actions */}
             <View style={styles.taskLeftSlot}>
               <View
                 style={[
@@ -2084,19 +1966,12 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                 )}
               </View>
               {!intensityTaskCompleted && (
-                <Text style={[styles.intensityTaskHelper, { color: textSecondaryColor }]}>
-                  Tryk for at angive intensitet
-                </Text>
+                <Text style={[styles.intensityTaskHelper, { color: textSecondaryColor }]}>Tryk for at angive intensitet</Text>
               )}
             </View>
 
             <View style={styles.taskRightActions}>
-              <IconSymbol
-                ios_icon_name="chevron.right"
-                android_material_icon_name="chevron_right"
-                size={20}
-                color={textSecondaryColor}
-              />
+              <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron_right" size={20} color={textSecondaryColor} />
             </View>
           </TouchableOpacity>
         );
@@ -2108,18 +1983,11 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       const config = getFeedbackConfigForTemplate(templateId);
       const feedback = templateId ? selfFeedbackByTemplate[templateId]?.current : undefined;
 
-      const isFeedbackTaskLocal =
-        task.isFeedbackTask === true ||
-        (!!templateId && !task.taskTemplateId);
+      const isFeedbackTaskLocal = task.isFeedbackTask === true || (!!templateId && !task.taskTemplateId);
 
-      const isFeedbackCompleted = isFeedbackTaskLocal
-        ? isFeedbackAnswered(feedback, config)
-        : false;
+      const isFeedbackCompleted = isFeedbackTaskLocal ? isFeedbackAnswered(feedback, config) : false;
 
-      const scoreExplanation =
-        isFeedbackTaskLocal && config.enableScore !== false
-          ? (config.scoreExplanation ?? null)
-          : null;
+      const scoreExplanation = isFeedbackTaskLocal && config.enableScore !== false ? (config.scoreExplanation ?? null) : null;
 
       const summary = isFeedbackTaskLocal ? buildFeedbackSummary(feedback, config) : null;
 
@@ -2139,38 +2007,12 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         }
       }
 
-      const nowTs = Date.now();
-      const afterTrainingEnabled = config.afterTrainingEnabled !== false;
-      const afterTrainingDelay = typeof config.afterTrainingDelayMinutes === 'number'
-        ? config.afterTrainingDelayMinutes
-        : null;
-
-      let showAfterTrainingBadge = false;
-      let afterTrainingBadgeLabel: string | null = null;
-
-      if (
-        isFeedbackTaskLocal &&
-        afterTrainingEnabled &&
-        afterTrainingDelay !== null &&
-        Number.isFinite(afterTrainingDelay) &&
-        activityAnchorDateTime
-      ) {
-        const reminderTimestamp = activityAnchorDateTime.getTime() + afterTrainingDelay * 60 * 1000;
-        if (!isFeedbackCompleted && reminderTimestamp <= nowTs) {
-          showAfterTrainingBadge = true;
-          afterTrainingBadgeLabel = afterTrainingDelay === 0
-            ? 'Efter aktivitet'
-            : `${afterTrainingDelay} min efter`;
-        }
-      }
-
       return (
         <TouchableOpacity
           style={[styles.taskRow, styles.taskCard, { backgroundColor: isDark ? '#111318' : '#ffffff' }]}
           onPress={() => handleTaskRowPress(task)}
           activeOpacity={0.7}
         >
-          {/* Ô£à Fixed left slot */}
           <View style={styles.taskLeftSlot}>
             <View
               style={[
@@ -2192,7 +2034,6 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             </View>
           </View>
 
-          {/* Ô£à Body: ALL text lives here, so x-start matches intensity row */}
           <View style={styles.taskBody}>
             <Text
               style={[
@@ -2211,48 +2052,15 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             {isFeedbackTaskLocal && (
               <>
                 {scoreExplanation ? (
-                  <Text style={[styles.feedbackExplanationText, { color: textSecondaryColor }]}>
-                    {scoreExplanation}
-                  </Text>
+                  <Text style={[styles.feedbackExplanationText, { color: textSecondaryColor }]}>{scoreExplanation}</Text>
                 ) : null}
                 <Text style={[styles.feedbackHelperText, { color: textSecondaryColor }]}>{helperText}</Text>
-                {showAfterTrainingBadge && afterTrainingBadgeLabel ? (
-                  <View
-                    style={[
-                      styles.afterTrainingBadge,
-                      {
-                        backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)',
-                        borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(15,23,42,0.1)',
-                      },
-                    ]}
-                  >
-                    <IconSymbol
-                      ios_icon_name="clock"
-                      android_material_icon_name="schedule"
-                      size={14}
-                      color={isDark ? '#fff' : colors.primary}
-                    />
-                    <Text
-                      style={[
-                        styles.afterTrainingBadgeText,
-                        { color: isDark ? '#fff' : colors.primary },
-                      ]}
-                    >
-                      {afterTrainingBadgeLabel}
-                    </Text>
-                  </View>
-                ) : null}
               </>
             )}
           </View>
 
           <View style={styles.taskRightActions}>
-            <IconSymbol
-              ios_icon_name="chevron.right"
-              android_material_icon_name="chevron_right"
-              size={20}
-              color={textSecondaryColor}
-            />
+            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron_right" size={20} color={textSecondaryColor} />
             {isAdmin && !isFeedbackTaskLocal && (
               <TouchableOpacity
                 style={[styles.taskDeleteButton, { backgroundColor: isDark ? '#3a1a1a' : '#ffe5e5' }]}
@@ -2289,16 +2097,13 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       selfFeedbackByTemplate,
       textColor,
       textSecondaryColor,
-      activityAnchorDateTime,
     ],
   );
 
-  const taskKeyExtractor = useCallback((item: TaskListItem) => ('__type' in item ? item.key : String(item.id)), []);
+  const renderListHeader = useCallback(() => {
+    const needsDaySelection = recurrenceType === 'weekly' || recurrenceType === 'biweekly' || recurrenceType === 'triweekly';
 
-  const listHeader = useMemo(() => {
-    // Move the previous renderListHeader body here unchanged.
-    // It should still build editingContent/detailsContent and return the JSX wrapper.
-    return (
+    const editingContent = (
       <View>
         {activity.isExternal && (
           <View
@@ -2320,6 +2125,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
         <View style={[styles.section, { backgroundColor: cardBgColor }]}>
           <Text style={[styles.sectionTitle, { color: sectionTitleColor }]}>Grundoplysninger</Text>
+
           {isInternalActivity && (
             <>
               <View style={styles.fieldContainer}>
@@ -2385,12 +2191,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                   activeOpacity={0.7}
                 >
                   <Text style={[styles.dateTimeText, { color: textColor }]}>{formatDate(editDate)}</Text>
-                  <IconSymbol
-                    ios_icon_name="chevron.down"
-                    android_material_icon_name="expand_more"
-                    size={18}
-                    color={textSecondaryColor}
-                  />
+                  <IconSymbol ios_icon_name="chevron.down" android_material_icon_name="expand_more" size={18} color={textSecondaryColor} />
                 </TouchableOpacity>
                 {renderPicker({
                   visible: showDatePicker,
@@ -2416,15 +2217,8 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                     onPress={() => setShowTimePicker(true)}
                     activeOpacity={0.7}
                   >
-                    <Text style={[styles.dateTimeText, { color: textColor }]}>
-                      {formatTimeDisplay(editTime)}
-                    </Text>
-                    <IconSymbol
-                      ios_icon_name="chevron.down"
-                      android_material_icon_name="expand_more"
-                      size={18}
-                      color={textSecondaryColor}
-                    />
+                    <Text style={[styles.dateTimeText, { color: textColor }]}>{formatTimeDisplay(editTime)}</Text>
+                    <IconSymbol ios_icon_name="chevron.down" android_material_icon_name="expand_more" size={18} color={textSecondaryColor} />
                   </TouchableOpacity>
                   {renderPicker({
                     visible: showTimePicker,
@@ -2449,15 +2243,8 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                     onPress={() => setShowEndTimePicker(true)}
                     activeOpacity={0.7}
                   >
-                    <Text style={[styles.dateTimeText, { color: textColor }]}>
-                      {editEndTime ? formatTimeDisplay(editEndTime) : 'Tilføj sluttid'}
-                    </Text>
-                    <IconSymbol
-                      ios_icon_name="chevron.down"
-                      android_material_icon_name="expand_more"
-                      size={18}
-                      color={textSecondaryColor}
-                    />
+                    <Text style={[styles.dateTimeText, { color: textColor }]}>{editEndTime ? formatTimeDisplay(editEndTime) : 'Tilføj sluttid'}</Text>
+                    <IconSymbol ios_icon_name="chevron.down" android_material_icon_name="expand_more" size={18} color={textSecondaryColor} />
                   </TouchableOpacity>
                   {renderPicker({
                     visible: showEndTimePicker,
@@ -2473,24 +2260,12 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             {renderIntensitySection()}
 
             {!activity.seriesId && (
-              <View style={[styles.section, { backgroundColor: cardBgColor }]}> 
+              <View style={[styles.section, { backgroundColor: cardBgColor }]}>
                 <Text style={[styles.sectionTitle, { color: sectionTitleColor }]}>Gentagelse</Text>
-                <View
-                  style={[
-                    styles.recurringToggle,
-                    { backgroundColor: fieldBackgroundColor, paddingHorizontal: 16 },
-                  ]}
-                >
+                <View style={[styles.recurringToggle, { backgroundColor: fieldBackgroundColor, paddingHorizontal: 16 }]}>
                   <View style={styles.recurringToggleLeft}>
-                    <IconSymbol
-                      ios_icon_name="repeat"
-                      android_material_icon_name="repeat"
-                      size={18}
-                      color={colors.primary}
-                    />
-                    <Text style={[styles.recurringToggleText, { color: textColor }]}>
-                      Gentag aktivitet
-                    </Text>
+                    <IconSymbol ios_icon_name="repeat" android_material_icon_name="repeat" size={18} color={colors.primary} />
+                    <Text style={[styles.recurringToggleText, { color: textColor }]}>Gentag aktivitet</Text>
                   </View>
                   <Switch
                     value={convertToRecurring}
@@ -2504,7 +2279,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                   <>
                     <Text style={[styles.fieldLabel, { color: textSecondaryColor, marginTop: 12 }]}>Frekvens</Text>
                     <View style={styles.recurrenceOptions}>
-                      {RECURRENCE_OPTIONS.map(option => {
+                      {RECURRENCE_OPTIONS.map((option) => {
                         const selected = recurrenceType === option.value;
                         return (
                           <TouchableOpacity
@@ -2518,15 +2293,9 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                               },
                             ]}
                             onPress={() => setRecurrenceType(option.value)}
+                            activeOpacity={0.8}
                           >
-                            <Text
-                              style={[
-                                styles.recurrenceOptionText,
-                                { color: selected ? '#fff' : textColor },
-                              ]}
-                            >
-                              {option.label}
-                            </Text>
+                            <Text style={[styles.recurrenceOptionText, { color: selected ? '#fff' : textColor }]}>{option.label}</Text>
                           </TouchableOpacity>
                         );
                       })}
@@ -2536,11 +2305,11 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                       <>
                         <Text style={[styles.fieldLabel, { color: textSecondaryColor }]}>Dage</Text>
                         <View style={styles.daysContainer}>
-                          {DAYS_OF_WEEK.map(day => {
+                          {DAYS_OF_WEEK.map((day) => {
                             const selected = selectedDays.includes(day.value);
                             return (
                               <TouchableOpacity
-                                key={day.value}
+                                key={String(day.value)}
                                 style={[
                                   styles.dayButton,
                                   {
@@ -2550,10 +2319,9 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                                   },
                                 ]}
                                 onPress={() => toggleDay(day.value)}
+                                activeOpacity={0.8}
                               >
-                                <Text style={[styles.dayButtonText, { color: selected ? '#fff' : textColor }]}>
-                                  {day.label}
-                                </Text>
+                                <Text style={[styles.dayButtonText, { color: selected ? '#fff' : textColor }]}>{day.label}</Text>
                               </TouchableOpacity>
                             );
                           })}
@@ -2561,19 +2329,9 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                       </>
                     )}
 
-                    <View
-                      style={[
-                        styles.recurringToggle,
-                        { backgroundColor: fieldBackgroundColor, marginTop: 12, paddingHorizontal: 16 },
-                      ]}
-                    >
+                    <View style={[styles.recurringToggle, { backgroundColor: fieldBackgroundColor, marginTop: 12, paddingHorizontal: 16 }]}>
                       <View style={styles.recurringToggleLeft}>
-                        <IconSymbol
-                          ios_icon_name="calendar"
-                          android_material_icon_name="event"
-                          size={18}
-                          color={colors.primary}
-                        />
+                        <IconSymbol ios_icon_name="calendar" android_material_icon_name="event" size={18} color={colors.primary} />
                         <Text style={[styles.recurringToggleText, { color: textColor }]}>Slutdato</Text>
                       </View>
                       <Switch
@@ -2604,12 +2362,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                           activeOpacity={0.7}
                         >
                           <Text style={[styles.dateTimeText, { color: textColor }]}>{formatDate(endDate)}</Text>
-                          <IconSymbol
-                            ios_icon_name="chevron.down"
-                            android_material_icon_name="expand_more"
-                            size={18}
-                            color={textSecondaryColor}
-                          />
+                          <IconSymbol ios_icon_name="chevron.down" android_material_icon_name="expand_more" size={18} color={textSecondaryColor} />
                         </TouchableOpacity>
                         {renderPicker({
                           visible: showEndDatePicker,
@@ -2627,22 +2380,102 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           </>
         )}
 
-        {!isInternalActivity && renderIntensitySection()}
+        {!isInternalActivity ? renderIntensitySection() : null}
+      </View>
+    );
+
+    const detailsContent = (
+      <View>
+        <Text style={styles.v2SectionTitle}>Detaljer</Text>
+
+        <View style={styles.v2CardWrap}>
+          <DetailsCard
+            label="Dato & Tidspunkt"
+            value={`${formatDateTime(activity.date, activity.time)}${activity.endTime ? ` - ${activity.endTime.substring(0, 5)}` : ''}`}
+            backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
+            textColor={textColor}
+            secondaryTextColor={textSecondaryColor}
+            fullWidth
+            icon={{ ios: 'calendar', android: 'calendar_today' }}
+            iconColor={colors.primary}
+          />
+        </View>
+
+        <View style={styles.v2DetailsRowWrap}>
+          <View style={styles.v2DetailBleedLeft}>
+            <DetailsCard
+              flex={1}
+              label="Lokation"
+              value={activity.location?.trim() ? activity.location : 'Ikke angivet'}
+              backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
+              textColor={textColor}
+              secondaryTextColor={textSecondaryColor}
+              icon={{ ios: 'mappin.and.ellipse', android: 'place' }}
+              iconColor={colors.primary}
+            />
+          </View>
+
+          <View style={{ width: 12 }} />
+
+          <View style={styles.v2DetailBleedRight}>
+            <DetailsCard
+              flex={1}
+              label="Kategori"
+              value={activity.category?.name ?? 'Ukendt'}
+              backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
+              textColor={textColor}
+              secondaryTextColor={textSecondaryColor}
+              leadingEmoji={activity.category?.emoji}
+            />
+          </View>
+        </View>
+
+        {!isEditing && shouldShowActivityIntensityField ? (
+          <View style={[styles.v2CardWrap, { marginTop: 12 }]}>
+            <DetailsCard
+              label="Intensitet"
+              value={typeof activity.intensity === 'number' ? `${activity.intensity}/10` : 'Ikke angivet'}
+              backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
+              textColor={textColor}
+              secondaryTextColor={textSecondaryColor}
+              fullWidth
+              icon={{ ios: 'flame', android: 'local_fire_department' }}
+              iconColor={colors.primary}
+            />
+          </View>
+        ) : null}
+      </View>
+    );
+
+    return (
+      <View>
+        {isEditing ? editingContent : detailsContent}
+
+        <View style={styles.v2TasksHeaderRow}>
+          <Text style={[styles.v2SectionTitle, styles.v2SectionTitleInRow]}>Opgaver</Text>
+          {isAdmin && !activity.isExternal && !isEditing && (
+            <TouchableOpacity
+              style={[styles.addTaskHeaderButton, { backgroundColor: colors.primary }]}
+              onPress={handleAddTask}
+              activeOpacity={0.7}
+            >
+              <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={20} color="#fff" />
+              <Text style={styles.addTaskHeaderButtonText}>Tilføj opgave</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     );
   }, [
     activity,
     cardBgColor,
-    categories,
     colors.primary,
     convertToRecurring,
-    editCategory,
     editDate,
     editEndTime,
-    editIntensity,
-    editIntensityEnabled,
     editLocation,
     editTime,
+    editTitle,
     endDate,
     fieldBackgroundColor,
     fieldBorderColor,
@@ -2650,31 +2483,20 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     handleDateChange,
     handleEndDateChange,
     handleEndTimeChange,
-    handleIntensitySelect,
-    handleIntensityToggle,
     handleTimeChange,
     hasEndDate,
     infoBackgroundColor,
     infoTextColor,
-    intensityOptions,
     isAdmin,
     isDark,
     isEditing,
     isInternalActivity,
     recurrenceType,
+    renderCategorySelector,
+    renderIntensitySection,
     renderPicker,
+    sectionTitleColor,
     selectedDays,
-    setConvertToRecurring,
-    setEditCategory,
-    setEditLocation,
-    setEditTitle,
-    setHasEndDate,
-    setRecurrenceType,
-    setShowDatePicker,
-    setShowEndDatePicker,
-    setShowEndTimePicker,
-    setShowTimePicker,
-    shouldShowActivityIntensityField,
     showDatePicker,
     showEndDatePicker,
     showEndTimePicker,
@@ -2684,62 +2506,37 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     textColor,
     textSecondaryColor,
     toggleDay,
+    shouldShowActivityIntensityField,
   ]);
 
-  const handleDeleteClick = () => {
+  const handleDeleteClick = useCallback(() => {
     if (activity?.isExternal) {
       Alert.alert(
         'Slet ekstern aktivitet',
         `Er du sikker på at du vil slette "${activity.title}"?\n\nDenne aktivitet er fra en ekstern kalender. Hvis du sletter den her, vil den blive importeret igen ved næste synkronisering, medmindre du sletter den i den eksterne kalender eller fjerner kalenderen fra din profil.`,
         [
           { text: 'Annuller', style: 'cancel' },
-          {
-            text: 'Slet',
-            style: 'destructive',
-            onPress: () => setPendingAction({ type: 'delete-external' }),
-          },
-        ]
+          { text: 'Slet', style: 'destructive', onPress: () => setPendingAction({ type: 'delete-external' }) },
+        ],
       );
       return;
     }
 
-    // Internal activity
     if (activity?.seriesId) {
-      Alert.alert(
-        'Slet aktivitet',
-        'Vil du slette kun denne aktivitet eller hele serien?',
-        [
-          { text: 'Annuller', style: 'cancel' },
-          {
-            text: 'Slet kun denne',
-            style: 'destructive',
-            onPress: () => setPendingAction({ type: 'delete-single' }),
-          },
-          {
-            text: 'Slet hele serien',
-            style: 'destructive',
-            onPress: () => setPendingAction({ type: 'delete-series' }),
-          },
-        ]
-      );
+      Alert.alert('Slet aktivitet', 'Vil du slette kun denne aktivitet eller hele serien?', [
+        { text: 'Annuller', style: 'cancel' },
+        { text: 'Slet kun denne', style: 'destructive', onPress: () => setPendingAction({ type: 'delete-single' }) },
+        { text: 'Slet hele serien', style: 'destructive', onPress: () => setPendingAction({ type: 'delete-series' }) },
+      ]);
       return;
     }
 
-    Alert.alert(
-      'Slet aktivitet',
-      `Er du sikker på at du vil slette "${activity?.title ?? ''}"?`,
-      [
-        { text: 'Annuller', style: 'cancel' },
-        {
-          text: 'Slet',
-          style: 'destructive',
-          onPress: () => setPendingAction({ type: 'delete-single' }),
-        },
-      ]
-    );
-  };
+    Alert.alert('Slet aktivitet', `Er du sikker på at du vil slette "${activity?.title ?? ''}"?`, [
+      { text: 'Annuller', style: 'cancel' },
+      { text: 'Slet', style: 'destructive', onPress: () => setPendingAction({ type: 'delete-single' }) },
+    ]);
+  }, [activity]);
 
-  // --- pendingAction handlers (duplicate/delete) ---
   useEffect(() => {
     if (!pendingAction) return;
 
@@ -2780,12 +2577,12 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             try {
               await deleteActivityTask(currentActivity.id, action.taskId);
               if (!cancelled) {
-                setTasksState(prev => prev.filter(task => String(task.id) !== String(action.taskId)));
+                setTasksState((prev) => prev.filter((task) => String(task.id) !== String(action.taskId)));
                 refreshData();
                 Alert.alert('Slettet', 'Opgaven er blevet slettet fra denne aktivitet');
               }
             } catch (error: any) {
-              console.error('ÔØî Error deleting task:', error);
+              console.error('Error deleting task:', error);
               if (!cancelled) {
                 Alert.alert('Fejl', `Kunne ikke slette opgaven: ${error?.message || 'Ukendt fejl'}`);
               }
@@ -2808,7 +2605,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                 }, 300);
               }
             } catch (error: any) {
-              console.error('ÔØî Error deleting external activity:', error);
+              console.error('Error deleting external activity:', error);
               if (!cancelled) {
                 Alert.alert('Fejl', `Kunne ikke slette aktiviteten: ${error?.message || 'Ukendt fejl'}`);
               }
@@ -2828,7 +2625,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                 }, 300);
               }
             } catch (error: any) {
-              console.error('ÔØî Error deleting activity:', error);
+              console.error('Error deleting activity:', error);
               if (!cancelled) {
                 Alert.alert('Fejl', `Kunne ikke slette aktiviteten: ${error?.message || 'Ukendt fejl'}`);
               }
@@ -2849,7 +2646,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                 }, 300);
               }
             } catch (error: any) {
-              console.error('ÔØî Error deleting series:', error);
+              console.error('Error deleting series:', error);
               if (!cancelled) {
                 Alert.alert('Fejl', `Kunne ikke slette serien: ${error?.message || 'Ukendt fejl'}`);
               }
@@ -2894,44 +2691,33 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       setFeedbackModalError(null);
       setIsFeedbackSaving(true);
 
-      // --- A) Robust resolvedActivityId logic ---
-      // Only try: a) activity?.id, b) feedbackModalTask.task.activity_id
       let resolvedActivityId: string | null = null;
       let triedActivityId: any = null;
       let triedFeedbackTaskActivityId: any = null;
 
       try {
-        // a) Current activity.id (from ActivityDetails state)
         triedActivityId = activity?.id;
         if (typeof triedActivityId === 'string' && String(triedActivityId).trim().length > 0) {
           resolvedActivityId = String(triedActivityId).trim();
         }
-        // b) feedbackModalTask.task.activity_id (if present)
         if (!resolvedActivityId) {
           triedFeedbackTaskActivityId = (feedbackModalTask.task as any)?.activity_id;
           if (typeof triedFeedbackTaskActivityId === 'string' && String(triedFeedbackTaskActivityId).trim().length > 0) {
             resolvedActivityId = String(triedFeedbackTaskActivityId).trim();
           }
         }
-      } catch (err) {
-        // Defensive: should never throw
+      } catch {
         resolvedActivityId = null;
       }
 
       if (!resolvedActivityId) {
-        console.error(
-          '[ActivityDetails] Feedback save failed: missing activity_id',
-          {
-            triedActivityId,
-            triedFeedbackTaskActivityId,
-            feedbackModalTask,
-            activity,
-          }
-        );
-        Alert.alert(
-          'Kunne ikke gemme',
-          'Aktiviteten mangler et ID. Prøv at lukke og åbne aktiviteten igen.'
-        );
+        console.error('[ActivityDetails] Feedback save failed: missing activity_id', {
+          triedActivityId,
+          triedFeedbackTaskActivityId,
+          feedbackModalTask,
+          activity,
+        });
+        Alert.alert('Kunne ikke gemme', 'Aktiviteten mangler et ID. Prøv at lukke og åbne aktiviteten igen.');
         setIsFeedbackSaving(false);
         return;
       }
@@ -2954,7 +2740,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           rating: score,
           note,
           activity_id: String(resolvedActivityId).trim(),
-          activityId: String(resolvedActivityId).trim() // <-- back-compat: always send both
+          activityId: String(resolvedActivityId).trim(),
         });
         Promise.resolve(refreshData()).catch(() => {});
         handleFeedbackClose();
@@ -2965,7 +2751,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         setIsFeedbackSaving(false);
       }
     },
-    [currentUserId, feedbackModalTask, handleFeedbackClose, refreshData, activity]
+    [currentUserId, feedbackModalTask, handleFeedbackClose, refreshData, activity],
   );
 
   const feedbackModalConfig = useMemo(() => {
@@ -2982,51 +2768,35 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     };
   }, [feedbackModalTask, selfFeedbackByTemplate]);
 
-  // --- Helper: Strip leading "Feedback p├Ñ" from a title (case-insensitive, trims) ---
   function stripLeadingFeedbackPrefix(title: string): string {
     if (typeof title !== 'string') return title;
     let t = title.trim();
-    // Remove leading "Feedback p├Ñ" (case-insensitive), plus any following whitespace
     t = t.replace(/^feedback på\s*/i, '');
-    // Fallback: if empty, return original
     return t.length ? t : title;
   }
 
   const handleBackPress = useCallback(() => {
     if (isEditing) {
-      Alert.alert(
-        'Afslut redigering',
-        'Du er i gang med at redigere. Vil du afslutte uden at gemme?',
-        [
-          { text: 'Annuller', style: 'cancel' },
-          {
-            text: 'Afslut',
-            style: 'destructive',
-            onPress: () => {
-              setIsEditing(false);
-              safeDismiss();
-            },
+      Alert.alert('Afslut redigering', 'Du er i gang med at redigere. Vil du afslutte uden at gemme?', [
+        { text: 'Annuller', style: 'cancel' },
+        {
+          text: 'Afslut',
+          style: 'destructive',
+          onPress: () => {
+            setIsEditing(false);
+            safeDismiss();
           },
-        ]
-      );
+        },
+      ]);
+      return;
+    }
 
-
-
-    } else {
-      safeDismiss();
-       }
+    safeDismiss();
   }, [isEditing, safeDismiss]);
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={[styles.container, { backgroundColor: bgColor }]}
-    >
-      <LinearGradient
-        colors={headerGradientColors}
-        style={[styles.header, styles.v2Topbar, { paddingTop: insets.top + 8 }]}
-      >
-        {/* Ô£à centered chevron (down) fixed 16px from top (don't block header buttons) */}
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.container, { backgroundColor: bgColor }]}>
+      <LinearGradient colors={headerGradientColors} style={[styles.header, styles.v2Topbar, { paddingTop: insets.top + 8 }]}>
         <View style={styles.headerChevronWrap} pointerEvents="box-none">
           <TouchableOpacity
             style={styles.headerChevronButton}
@@ -3036,12 +2806,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             accessibilityRole="button"
             accessibilityLabel="Luk aktivitet"
           >
-            <IconSymbol
-              ios_icon_name="chevron.down"
-              android_material_icon_name="expand_more"
-              size={28}
-              color="#fff"
-            />
+            <IconSymbol ios_icon_name="chevron.down" android_material_icon_name="expand_more" size={28} color="#fff" />
           </TouchableOpacity>
         </View>
 
@@ -3058,25 +2823,13 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           )}
         </View>
 
-        {/* Ô£à remove inline top override; position handled in styles to match chevron */}
         <View style={styles.headerButtons}>
           {isEditing ? (
-            <TouchableOpacity
-              style={styles.headerButton}
-              hitSlop={HEADER_ACTION_HITSLOP}
-              onPress={handleSave}
-              activeOpacity={0.7}
-              disabled={isSaving}
-            >
+            <TouchableOpacity style={styles.headerButton} hitSlop={HEADER_ACTION_HITSLOP} onPress={handleSave} activeOpacity={0.7} disabled={isSaving}>
               {isSaving ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <IconSymbol
-                  ios_icon_name="checkmark"
-                  android_material_icon_name="check"
-                  size={26}
-                  color="#fff"
-                />
+                <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={26} color="#fff" />
               )}
             </TouchableOpacity>
           ) : (
@@ -3092,48 +2845,22 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                   {isDuplicating ? (
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
-                    <IconSymbol
-                      ios_icon_name="doc.on.doc"
-                      android_material_icon_name="content_copy"
-                      size={24}
-                      color="#fff"
-                    />
+                    <IconSymbol ios_icon_name="doc.on.doc" android_material_icon_name="content_copy" size={24} color="#fff" />
                   )}
                 </TouchableOpacity>
               )}
 
               <TouchableOpacity
-                style={[
-                  styles.headerButton,
-                  !activity.isExternal ? styles.headerButtonGap : null,
-                ]}
+                style={[styles.headerButton, !activity.isExternal ? styles.headerButtonGap : null]}
                 hitSlop={HEADER_ACTION_HITSLOP}
                 onPress={handleEditClick}
                 activeOpacity={0.7}
               >
-                <IconSymbol
-                  ios_icon_name="pencil"
-                  android_material_icon_name="edit"
-                  size={24}
-                  color="#fff"
-                />
+                <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={24} color="#fff" />
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[
-                  styles.headerButton,
-                  styles.headerButtonGap,
-                ]}
-                hitSlop={HEADER_ACTION_HITSLOP}
-                onPress={handleDeleteClick}
-                activeOpacity={0.7}
-              >
-                <IconSymbol
-                  ios_icon_name="trash"
-                  android_material_icon_name="delete"
-                  size={24}
-                  color="#fff"
-                />
+              <TouchableOpacity style={[styles.headerButton, styles.headerButtonGap]} hitSlop={HEADER_ACTION_HITSLOP} onPress={handleDeleteClick} activeOpacity={0.7}>
+                <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={24} color="#fff" />
               </TouchableOpacity>
             </>
           )}
@@ -3141,7 +2868,6 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       </LinearGradient>
 
       <View style={styles.v2Sheet}>
-        {/* Ô£à background fill behind list */}
         <View pointerEvents="none" style={[styles.v2SheetFill, { backgroundColor: cardBgColor }]} />
         <View pointerEvents="none" style={styles.v2WaveOverlay}>
           <SheetWaveTop color={cardBgColor} />
@@ -3158,12 +2884,11 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           contentContainerStyle={[
             styles.scrollContent,
             {
-              paddingBottom:
-                32 + (!isEditing ? V2_CTA_HEIGHT + 24 : 0) + (insets.bottom ? insets.bottom : 0),
+              paddingBottom: 32 + (!isEditing ? V2_CTA_HEIGHT + 24 : 0) + (insets.bottom ? insets.bottom : 0),
             },
           ]}
-          ItemSeparatorComponent={TaskListSeparator}
-          ListHeaderComponent={listHeader}
+          ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
+          ListHeaderComponent={renderListHeader}
         />
       </View>
 
@@ -3174,10 +2899,8 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           categoryColor={activity.category?.color ?? colors.primary}
           isDark={isDark}
           description={selectedNormalTask.description}
-          reminderMinutes={
-            selectedNormalTask.reminder_minutes ?? selectedNormalTask.reminder ?? null
-          }
-          videoUrl={getTaskVideoUrl(selectedNormalTask)}
+          reminderMinutes={selectedNormalTask.reminder_minutes ?? selectedNormalTask.reminder ?? null}
+          videoUrl={normalTaskVideoUrl}
           completed={!!selectedNormalTask.completed}
           isSaving={isNormalTaskCompleting}
           onClose={handleNormalTaskModalClose}
@@ -3187,11 +2910,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
       <TaskScoreNoteModal
         visible={Boolean(feedbackModalTask)}
-        title={
-          feedbackModalTask
-            ? stripLeadingFeedbackPrefix(feedbackModalTask.task.title ?? 'Feedback')
-            : 'Feedback'
-        }
+        title={feedbackModalTask ? stripLeadingFeedbackPrefix(feedbackModalTask.task.title ?? 'Feedback') : 'Feedback'}
         introText={feedbackModalConfig?.scoreExplanation ?? 'Hvordan gik træningen?'}
         helperText="1 = let – 10 = maks"
         initialScore={feedbackModalDefaults.rating}
@@ -3231,8 +2950,6 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           activityTime={activity.time}
         />
       )}
-
-      {/* ...existing dialogs/modals (DeleteActivityDialog, EditSeriesDialog, etc.) */}
     </KeyboardAvoidingView>
   );
 }
@@ -3248,6 +2965,7 @@ export default function ActivityDetailsScreen() {
     openFeedbackTaskId?: string | string[];
     openIntensity?: string | string[];
   }>();
+
   const { categories } = useFootball();
   const { userRole } = useUserRole();
   const isAdmin = userRole === 'admin' || userRole === 'trainer';
@@ -3258,7 +2976,7 @@ export default function ActivityDetailsScreen() {
     let decoded = String(first);
     try {
       decoded = decodeURIComponent(decoded);
-    } catch (_err) {
+    } catch {
       decoded = String(first);
     }
     const trimmed = decoded.trim();
@@ -3320,35 +3038,18 @@ export default function ActivityDetailsScreen() {
     setActivity(updated);
   }, []);
 
-  const handleRefresh = useCallback(() => {
-    return loadActivity();
-  }, [loadActivity]);
-
   const renderErrorView = (normalizedId: string | null) => (
     <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
-      <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700', marginBottom: 8 }}>
-        Kunne ikke åbne aktiviteten
-      </Text>
+      <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700', marginBottom: 8 }}>Kunne ikke åbne aktiviteten</Text>
       {__DEV__ && (
-        <Text
-          style={{
-            color: colors.textSecondary,
-            fontSize: 12,
-            marginBottom: 12,
-            textAlign: 'center',
-          }}
-        >
-          id: {JSON.stringify(normalizedId)}{'\n'}
+        <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 12, textAlign: 'center' }}>
+          id: {JSON.stringify(normalizedId)}
+          {'\n'}
           params: {JSON.stringify(params)}
         </Text>
       )}
       <TouchableOpacity
-        style={{
-          paddingHorizontal: 16,
-          paddingVertical: 12,
-          backgroundColor: colors.primary,
-          borderRadius: 10,
-        }}
+        style={{ paddingHorizontal: 16, paddingVertical: 12, backgroundColor: colors.primary, borderRadius: 10 }}
         onPress={() => {
           if (router.canGoBack()) {
             router.back();
@@ -3356,6 +3057,7 @@ export default function ActivityDetailsScreen() {
             router.replace('/(tabs)/(home)');
           }
         }}
+        activeOpacity={0.7}
       >
         <Text style={{ color: '#fff', fontWeight: '700' }}>Tilbage</Text>
       </TouchableOpacity>
@@ -3402,11 +3104,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.highlight,
   },
-  backButtonHeader: {
-    position: 'absolute',
-    left: 16,
-    top: 20,
-  },
   headerContent: {
     flex: 1,
     alignItems: 'center',
@@ -3423,9 +3120,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     textAlign: 'center',
     lineHeight: 34,
-  },
-  headerIcon: {
-    marginHorizontal: 8,
   },
   seriesBadge: {
     flexDirection: 'row',
@@ -3445,7 +3139,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     position: 'absolute',
     right: 16,
-    top: 16, // Ô£à align vertically with chevron wrap top
+    top: 16,
     alignItems: 'center',
     zIndex: 3,
     elevation: 3,
@@ -3456,7 +3150,7 @@ const styles = StyleSheet.create({
     borderRadius: HEADER_ACTION_BUTTON_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 0, // Ô£à moved out to headerButtonGap (prevents ÔÇ£first button marginÔÇØ from masking changes)
+    marginLeft: 0,
   },
   headerButtonGap: {
     marginLeft: HEADER_ACTION_BUTTON_GAP,
@@ -3468,8 +3162,8 @@ const styles = StyleSheet.create({
   v2Sheet: {
     flex: 1,
     marginTop: -V2_WAVE_HEIGHT,
-    borderTopLeftRadius: 0,  // Ô£à no rounded corners under the wave
-    borderTopRightRadius: 0, // Ô£à no rounded corners under the wave
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
     paddingTop: V2_WAVE_HEIGHT,
     overflow: 'hidden',
     backgroundColor: 'transparent',
@@ -3488,14 +3182,6 @@ const styles = StyleSheet.create({
     right: 0,
   },
 
-  // Ô£à shared section title (Detaljer + Opgaver)
-  sectionHeaderTitle: {
-    marginHorizontal: 16,
-    marginBottom: 12,
-    fontSize: 22,
-    fontWeight: '800',
-    color: 'rgba(15, 23, 42, 0.40)',
-  },
   v2SectionTitle: {
     marginHorizontal: 16,
     marginBottom: 12,
@@ -3506,42 +3192,40 @@ const styles = StyleSheet.create({
   v2TasksHeaderRow: {
     marginHorizontal: 16,
     marginTop: 20,
-    marginBottom: 12, // Ô£à same titleÔåÆcontent spacing as "Detaljer"ÔåÆDato card
+    marginBottom: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   v2SectionTitleInRow: {
-    marginHorizontal: 0, // Ô£à prevent double indent (row already has marginHorizontal)
-    marginBottom: 0,    // Ô£à spacing handled by v2TasksHeaderRow
+    marginHorizontal: 0,
+    marginBottom: 0,
   },
 
-  // Ô£à detail card alignment wrappers (match taskCard gutter)
   v2CardWrap: {
     marginHorizontal: 16,
   },
   v2DetailsRowWrap: {
     marginHorizontal: 16,
-    marginTop: 12, // Ô£à matches DatoÔåÆrow spacing
+    marginTop: 12,
     flexDirection: 'row',
   },
 
-  // Ô£à directional widen: keep inner geometry, extend only outward
   v2DetailBleedLeft: {
     flex: 1,
-    marginLeft: -16,   // widen left only
-    paddingLeft: 16,   // keep content aligned
+    marginLeft: -16,
+    paddingLeft: 16,
   },
   v2DetailBleedRight: {
     flex: 1,
-    marginRight: -16,  // widen right only
-    paddingRight: 16,  // keep content aligned
+    marginRight: -16,
+    paddingRight: 16,
   },
 
   v2DetailCard: {
     borderRadius: 16,
     padding: 16,
-    justifyContent: 'center', // Ô£à vertical center icon/text inside stretched cards
+    justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.12,
@@ -3591,14 +3275,6 @@ const styles = StyleSheet.create({
     borderRadius: V2_CTA_HEIGHT / 2,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  v2StickyCtaText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  scrollView: {
-    flex: 1,
   },
   scrollContent: {
     paddingBottom: 32,
@@ -3652,26 +3328,8 @@ const styles = StyleSheet.create({
     borderTopColor: 'rgba(255, 255, 255, 0.2)',
   },
   pickerDoneText: {
-    color: '#fff',
     fontSize: 16,
     fontWeight: '500',
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  detailContent: {
-    marginLeft: 12,
-    flex: 1,
-  },
-  detailLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    marginBottom: 4,
-  },
-  detailValue: {
-    fontSize: 16,
   },
   categoryScroll: {
     paddingVertical: 8,
@@ -3730,10 +3388,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingVertical: 8,
     paddingHorizontal: 12,
-    marginBottom: 8, // Ô£à replaces rowGap when wrapping
-  },
-  intensityPickerChipSelected: {
-    backgroundColor: colors.primary,
+    marginBottom: 8,
   },
   intensityPickerText: {
     fontSize: 16,
@@ -3763,25 +3418,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginLeft: 8,
   },
-  toggle: {
-    width: 40,
-    height: 24,
-    borderRadius: 12,
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  toggleThumb: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#fff',
-    position: 'absolute',
-    top: 2,
-    left: 2,
-  },
-  toggleThumbActive: {
-    left: 18,
-  },
 
   recurrenceOptions: {
     flexDirection: 'row',
@@ -3808,27 +3444,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 8,
     paddingHorizontal: 12,
-    marginBottom: 8, // Ô£à replaces rowGap when wrapping
+    marginBottom: 8,
   },
   dayButtonText: {
     fontSize: 14,
     fontWeight: '600',
-  },
-
-  externalBadge: {
-    alignSelf: 'flex-start',
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 12,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  externalBadgeText: {
-    color: '#fff',
-    fontWeight: '700',
-    marginLeft: 8, // Ô£à replaces rowGap
   },
 
   infoBox: {
@@ -3836,42 +3456,7 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 16,
   },
-  feedbackInfoBox: {
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    marginHorizontal: 16,
-  },
-  feedbackInfoHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  feedbackInfoTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8, // Ô£à replaces rowGap
-  },
-  feedbackInfoRow: {
-    marginBottom: 12,
-  },
-  feedbackInfoTaskTitle: {
-    fontSize: 14,
-  },
-  feedbackInfoRating: {
-    fontSize: 14,
-    marginTop: 4,
-  },
-  feedbackInfoNote: {
-    fontSize: 14,
-    marginTop: 4,
-  },
 
-  tasksSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
   addTaskHeaderButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3882,7 +3467,7 @@ const styles = StyleSheet.create({
   addTaskHeaderButtonText: {
     color: '#fff',
     fontWeight: '700',
-    marginLeft: 8, // Ô£à replaces rowGap between icon + text
+    marginLeft: 8,
   },
 
   taskRow: {
@@ -3897,13 +3482,11 @@ const styles = StyleSheet.create({
   taskBody: {
     flex: 1,
   },
-
   taskRightActions: {
     flexDirection: 'row',
     alignItems: 'center',
     marginLeft: 12,
   },
-
   taskCheckbox: {
     width: 24,
     height: 24,
@@ -3912,9 +3495,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    // marginRight: 12, // ÔØî spacing controlled by taskLeftSlot
   },
-
   feedbackTaskCheckbox: {
     borderColor: colors.primary,
     backgroundColor: 'transparent',
@@ -3935,7 +3516,6 @@ const styles = StyleSheet.create({
   intensityTaskHelper: {
     fontSize: 14,
   },
-
   feedbackExplanationText: {
     marginTop: 6,
     fontSize: 13,
@@ -3944,74 +3524,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 4,
   },
-  afterTrainingBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-    marginTop: 6,
-  },
-  afterTrainingBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginLeft: 6,
-  },
-  emptyTasksContainer: {
-    alignItems: 'center',
-    paddingVertical: 24,
-    paddingHorizontal: 16,
-  },
-  emptyTasksText: {
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  emptyTasksHint: {
-    fontSize: 14,
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  videoSection: {
-    marginTop: 12,
-    marginBottom: 16,
-  },
-  videoContainer: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    backgroundColor: '#000',
-  },
-  reminderContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  reminderText: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginLeft: 8, // Ô£à replaces gap
-  },
-  footer: {
-    marginTop: 20,
-  },
-  primaryButton: {
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-  },
-  primaryButtonDisabled: {
-    opacity: 0.5,
-  },
-  primaryButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-
-  // Ô£à Restore original look + width for task boxes
   taskCard: {
     marginHorizontal: 16,
     borderRadius: 16,
@@ -4033,12 +3545,12 @@ const styles = StyleSheet.create({
   },
   headerChevronWrap: {
     position: 'absolute',
-    top: 16, // Ô£à fixed spacing to top of modal header
+    top: 16,
     left: 0,
     right: 0,
     alignItems: 'center',
-    zIndex: 2,       // Ô£à below headerButtons
-    elevation: 2,    // Ô£à Android
+    zIndex: 2,
+    elevation: 2,
   },
   headerChevronButton: {
     width: HEADER_ACTION_BUTTON_SIZE,
