@@ -9,6 +9,16 @@ module.exports = ({ config }) => {
   const iosBuildNumber = '3';
   const androidVersionCode = 3;
 
+  // Ensure plugins array exists and contains datetimepicker only once
+  const plugins = Array.isArray(config.plugins) ? [...config.plugins] : [];
+  if (!plugins.some(
+    p =>
+      (typeof p === "string" && p === "@react-native-community/datetimepicker") ||
+      (Array.isArray(p) && p[0] === "@react-native-community/datetimepicker")
+  )) {
+    plugins.push("@react-native-community/datetimepicker");
+  }
+
   return {
     ...config,
     version: expoVersion,
@@ -21,6 +31,7 @@ module.exports = ({ config }) => {
       ...config.android,
       versionCode: androidVersionCode,
     },
+    plugins,
     extra: {
       ...(config.extra ?? {}),
       appVariant,
