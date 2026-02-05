@@ -1326,7 +1326,7 @@ export default function HomeScreen() {
         <Text style={styles.createButtonText}>+  Opret Aktivitet</Text>
       </Pressable>
     </>
-  ), [isDark, currentWeekNumber, currentWeekLabel, performanceMetrics, adminMode, router]);
+  ), [isDark, currentWeekNumber, currentWeekLabel, performanceMetrics, adminMode, router, performanceGradientColors]);
 
   // List footer component
   const ListFooterComponent = useCallback(() => (

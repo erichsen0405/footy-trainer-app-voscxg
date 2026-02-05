@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -93,14 +93,14 @@ export default function ExternalCalendarManager() {
     fetchCalendars();
     fetchCategoryMappings();
     checkAutoSyncStatus();
-  }, [canUseCalendarSync]);
+  }, [canUseCalendarSync, checkAutoSyncStatus, fetchCalendars, fetchCategoryMappings]);
 
-  const checkAutoSyncStatus = async () => {
+  const checkAutoSyncStatus = useCallback(async () => {
     const status = await checkSyncStatus();
     setSyncStatus(status);
-  };
+  }, []);
 
-  const fetchCalendars = async () => {
+  const fetchCalendars = useCallback(async () => {
     if (!canUseCalendarSync) {
       return;
     }
@@ -132,9 +132,9 @@ export default function ExternalCalendarManager() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [canUseCalendarSync]);
 
-  const fetchCategoryMappings = async () => {
+  const fetchCategoryMappings = useCallback(async () => {
     if (!canUseCalendarSync) {
       return;
     }
@@ -177,7 +177,7 @@ export default function ExternalCalendarManager() {
     } catch (error: any) {
       console.error('Error in fetchCategoryMappings:', error);
     }
-  };
+  }, [canUseCalendarSync]);
 
   const handleAddCalendar = async () => {
     if (!ensureCalendarAccess()) {

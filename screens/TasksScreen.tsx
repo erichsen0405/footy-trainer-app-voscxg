@@ -172,6 +172,52 @@ export default function TasksScreen() {
     [handleDuplicateTask, handleDeleteTask],
   );
 
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        container: { flex: 1, backgroundColor: theme.background },
+        content: { paddingHorizontal: 16, paddingVertical: 12 },
+        loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.background },
+
+        folderWrap: { marginBottom: 10 },
+        folderHeader: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          padding: 14,
+          borderRadius: 12,
+          backgroundColor: theme.card,
+        },
+        folderTitle: { flex: 1, fontSize: 16, fontWeight: '700', color: theme.text },
+        badge: {
+          paddingHorizontal: 8,
+          paddingVertical: 3,
+          borderRadius: 10,
+          backgroundColor: theme.primary,
+          marginRight: 10,
+        },
+        badgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+        chevron: { fontSize: 16, fontWeight: '700', color: theme.textSecondary },
+        folderBody: { marginTop: 8 },
+
+        empty: { padding: 24, alignItems: 'center' },
+        emptyText: { fontSize: 14, opacity: 0.7, color: theme.textSecondary },
+
+        duplicatingOverlay: {
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 10,
+        },
+        duplicatingText: { marginTop: 10, fontSize: 16 },
+      }),
+    [theme],
+  );
+
   const renderFolder = useCallback(
     ({ item }: { item: FolderItem }) => {
       const isOpen = expanded.has(item.id);
@@ -203,50 +249,8 @@ export default function TasksScreen() {
         </View>
       );
     },
-    [expanded, toggleFolder, renderTask],
+    [expanded, renderTask, styles, toggleFolder],
   );
-
-  const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: theme.background },
-    content: { paddingHorizontal: 16, paddingVertical: 12 },
-    loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.background },
-
-    folderWrap: { marginBottom: 10 },
-    folderHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      padding: 14,
-      borderRadius: 12,
-      backgroundColor: theme.card,
-    },
-    folderTitle: { flex: 1, fontSize: 16, fontWeight: '700', color: theme.text },
-    badge: {
-      paddingHorizontal: 8,
-      paddingVertical: 3,
-      borderRadius: 10,
-      backgroundColor: theme.primary,
-      marginRight: 10,
-    },
-    badgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-    chevron: { fontSize: 16, fontWeight: '700', color: theme.textSecondary },
-    folderBody: { marginTop: 8 },
-
-    empty: { padding: 24, alignItems: 'center' },
-    emptyText: { fontSize: 14, opacity: 0.7, color: theme.textSecondary },
-
-    duplicatingOverlay: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0,0,0,0.5)',
-      justifyContent: 'center',
-      alignItems: 'center',
-      zIndex: 10,
-    },
-    duplicatingText: { marginTop: 10, fontSize: 16 },
-  });
 
   if (isLoading) {
     return (

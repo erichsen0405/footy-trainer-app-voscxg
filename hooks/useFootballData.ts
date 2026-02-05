@@ -1,4 +1,3 @@
-/* eslint-disable no-useless-catch */
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Activity,
@@ -609,6 +608,8 @@ export const useFootballData = () => {
     const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
       if (state === 'active') {
         refreshNotificationQueue();
+        // Keep permission status in sync when user returns from iOS settings
+        checkNotificationPermissions();
       }
     });
 
@@ -1186,7 +1187,6 @@ export const useFootballData = () => {
     getCurrentUserId,
     fetchActivities,
     fetchActivitySeries,
-    forceRefreshNotificationQueue,
   ]);
 
   const deleteActivity = useCallback((id: string) => {

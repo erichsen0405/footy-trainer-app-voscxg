@@ -9,6 +9,7 @@ import { SubscriptionProvider, useSubscription } from '@/contexts/SubscriptionCo
 import { TeamPlayerProvider } from '@/contexts/TeamPlayerContext';
 import { AppleIAPProvider, useAppleIAP } from '@/contexts/AppleIAPContext';
 import { AdminProvider } from '@/contexts/AdminContext';
+import NotificationPermissionPrompt from '@/components/NotificationPermissionPrompt';
 import { supabase } from '@/integrations/supabase/client';
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -112,6 +113,7 @@ export default function RootLayout() {
         <TeamPlayerProvider>
           <AdminProvider>
             <FootballProvider>
+              <NotificationPermissionPrompt />
               <Stack initialRouteName="index">
                 {/* Root redirect route (/) */}
                 <Stack.Screen name="index" options={{ headerShown: false }} />
