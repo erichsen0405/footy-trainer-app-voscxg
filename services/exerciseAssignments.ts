@@ -82,7 +82,7 @@ export const exerciseAssignmentsService = {
     const playersToInsert = requestedPlayerIds.filter(id => !existingPlayerSet.has(id));
     const teamsToInsert = requestedTeamIds.filter(id => !existingTeamSet.has(id));
 
-    const rows: Array<{ exercise_id: string; trainer_id: string; player_id?: string | null; team_id?: string | null }> = [];
+    const rows: { exercise_id: string; trainer_id: string; player_id?: string | null; team_id?: string | null }[] = [];
 
     playersToInsert.forEach(playerId => {
       rows.push({ exercise_id: exerciseId, trainer_id: trainerId, player_id: playerId, team_id: null });

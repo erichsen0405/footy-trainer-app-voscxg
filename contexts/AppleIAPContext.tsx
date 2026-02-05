@@ -193,7 +193,7 @@ interface IapDiagnostics {
   platform: string;
   hermesEnabled: boolean;
   lastFetchCount: number;
-  returnedProductsDetailed: Array<{ productId: string; title: string; localizedPrice: string; rawKeys?: string[] }>;
+  returnedProductsDetailed: { productId: string; title: string; localizedPrice: string; rawKeys?: string[] }[];
   lastFetchMethod: string | null;
 }
 
@@ -1232,10 +1232,10 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       purchaseUpdateSubscription.remove();
       purchaseErrorSubscription.remove();
     };
-  }, [iapReady, refreshSubscriptionStatus]);
+  }, [iapReady, queueRefreshAfterPurchase, refreshSubscriptionStatus]);
 
   const startSubscriptionPurchase = useCallback(async (sku: string) => {
-    const errors: Array<{ method: string; error: any }> = [];
+    const errors: { method: string; error: any }[] = [];
 
     if (typeof RNIap?.requestSubscription === 'function') {
       try {
@@ -1384,7 +1384,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const queueRefreshAfterPurchase = (targetSku: string | null) => {
+  const queueRefreshAfterPurchase = useCallback((targetSku: string | null) => {
     if (!targetSku) return Promise.resolve();
     if (refreshAfterPurchasePromiseRef.current) {
       return refreshAfterPurchasePromiseRef.current;
@@ -1409,7 +1409,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       refreshAfterPurchasePromiseRef.current = null;
     });
     return refreshAfterPurchasePromiseRef.current;
-  };
+  }, [refreshSubscriptionStatus]);
 
   const persistAppleEntitlements = async ({
     productId,

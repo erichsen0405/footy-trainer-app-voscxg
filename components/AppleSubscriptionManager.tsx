@@ -338,7 +338,7 @@ export default function AppleSubscriptionManager({
         await safeInvoke(onPurchaseFinished, success);
       }
     },
-    [iapReady, onPlanSelected, onPurchaseFinished, onPurchaseStarted, purchaseSubscription, resetCheckoutUi]
+    [iapReady, onPlanSelected, onPurchaseFinished, onPurchaseStarted, purchaseSubscription, purchasing, resetCheckoutUi]
   );
 
   const handleRestorePurchases = useCallback(async () => {
@@ -428,9 +428,11 @@ export default function AppleSubscriptionManager({
     }
   };
 
-  const isCurrentPlan = (productId: string): boolean => {
-    return !!(subscriptionStatus?.isActive && subscriptionStatus.productId === productId);
-  };
+  const isCurrentPlan = useCallback(
+    (productId: string): boolean =>
+      !!(subscriptionStatus?.isActive && subscriptionStatus.productId === productId),
+    [subscriptionStatus?.isActive, subscriptionStatus?.productId],
+  );
 
   useEffect(() => {
     if (!isSignupFlow && !subscriptionStatus?.isActive) {
@@ -509,7 +511,7 @@ export default function AppleSubscriptionManager({
     }
   }, [showPlans, iapReady, loading, purchasing, products.length, refetchProducts]);
 
-  const renderPendingDowngrade = () => {
+  const renderPendingDowngrade = useCallback(() => {
     if (!pendingProductId || !pendingEffectiveDate) return null;
     return (
       <Text style={styles.pendingDowngradeText}>
@@ -517,7 +519,7 @@ export default function AppleSubscriptionManager({
         {formatDateDa(pendingEffectiveDate)})
       </Text>
     );
-  };
+  }, [pendingEffectiveDate, pendingProductId]);
 
   const appleRenewalSummary = useMemo(
     () => buildAppleRenewalSummary(subscriptionStatus),
@@ -669,12 +671,8 @@ export default function AppleSubscriptionManager({
       );
     },
     [
+      blockInteractions,
       cardBgColor,
-      colors.error,
-      colors.highlight,
-      colors.primary,
-      colors.secondary,
-      colors.success,
       getProductPriceLabel,
       handleSelectPlan,
       highlightProductId,
@@ -682,7 +680,7 @@ export default function AppleSubscriptionManager({
       isCurrentPlan,
       isPlanLockedByComplimentary,
       isSignupFlow,
-      blockInteractions,
+      purchasing,
       sortedProducts.length,
       textColor,
       textSecondaryColor,
@@ -869,10 +867,9 @@ export default function AppleSubscriptionManager({
       )}
     </View>
   ), [
-    cardBgColor,
+    appleRenewalSummary,
     blockInteractions,
-    colors.primary,
-    colors.secondary,
+    cardBgColor,
     handleRestorePurchases,
     isOrangeBoxExpanded,
     isSignupFlow,
@@ -882,13 +879,10 @@ export default function AppleSubscriptionManager({
     showComplimentaryPlayerBanner,
     showComplimentaryTrainerBanner,
     showPlans,
-    subscriptionStatus?.expiryDate,
-    subscriptionStatus?.isActive,
-    subscriptionStatus?.productId,
+    showTrialFollowUp,
+    subscriptionStatus,
     textColor,
     textSecondaryColor,
-    appleRenewalSummary,
-    showTrialFollowUp,
   ]);
 
   const renderListFooter = useCallback(() => (

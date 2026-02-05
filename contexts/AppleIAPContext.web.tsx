@@ -32,7 +32,7 @@ interface IapDiagnostics {
   platform: string;
   hermesEnabled: boolean;
   lastFetchCount: number;
-  returnedProductsDetailed: Array<{ productId: string; title: string; localizedPrice: string; rawKeys?: string[] }>;
+  returnedProductsDetailed: { productId: string; title: string; localizedPrice: string; rawKeys?: string[] }[];
   lastFetchMethod: string | null;
 }
 

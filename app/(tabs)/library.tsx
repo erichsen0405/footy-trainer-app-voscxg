@@ -415,7 +415,7 @@ export default function LibraryScreen() {
   const [reloadNonce, setReloadNonce] = useState(0);
 
   const [personalExercises, setPersonalExercises] = useState<Exercise[]>([]);
-  const [trainerFolders, setTrainerFolders] = useState<Array<{ trainerId: string; trainerName: string; exercises: Exercise[] }>>([]);
+  const [trainerFolders, setTrainerFolders] = useState<{ trainerId: string; trainerName: string; exercises: Exercise[] }[]>([]);
   const [footballCoachExercises, setFootballCoachExercises] = useState<Exercise[]>([]);
 
   const [nav, setNav] = useState<NavigationState>({ root: null, level2Id: null, level3Id: null });
@@ -573,7 +573,7 @@ export default function LibraryScreen() {
 
         const systemExercises = applyAdded(system.map(normalizeExercise));
 
-        let trainerGrouped: Array<{ trainerId: string; trainerName: string; exercises: Exercise[] }> = [];
+        let trainerGrouped: { trainerId: string; trainerName: string; exercises: Exercise[] }[] = [];
         if (!isCreator) {
           const exerciseIds = Array.from(new Set(assignments.map((a: any) => String(a.exercise_id)).filter(Boolean)));
           let assignedExercises: Exercise[] = [];
@@ -585,7 +585,7 @@ export default function LibraryScreen() {
           }
 
           const trainerIds = Array.from(new Set(assignments.map((a: any) => String(a.trainer_id)).filter(Boolean)));
-          let trainerProfiles: Array<{ user_id: string; full_name: string | null }> = [];
+          let trainerProfiles: { user_id: string; full_name: string | null }[] = [];
 
           if (trainerIds.length) {
             const { data: profRows, error: profErr } = await supabase.from('profiles').select('user_id, full_name').in('user_id', trainerIds);
