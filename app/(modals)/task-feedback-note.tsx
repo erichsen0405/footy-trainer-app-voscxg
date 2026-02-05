@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert } from 'react-native';
+import { Alert, DeviceEventEmitter } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { TaskScoreNoteModal, type TaskScoreNoteModalPayload } from '@/components/TaskScoreNoteModal';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchSelfFeedbackForTemplates, upsertSelfFeedback } from '@/services/feedbackService';
 import { useFootball } from '@/contexts/FootballContext';
+import type { TaskTemplateSelfFeedback } from '@/types';
 
 function decodeParam(value: unknown): string | null {
   const first = Array.isArray(value) ? value[0] : value;
@@ -23,8 +24,110 @@ function decodeParam(value: unknown): string | null {
 
 function stripLeadingFeedbackPrefix(title: string): string {
   if (typeof title !== 'string') return title;
-  const t = title.trim().replace(/^feedback på\s*/i, '');
-  return t.length ? t : title;
+  const trimmed = title.trim();
+  const stripped = trimmed.replace(/^feedback\s+p[\u00e5a]\s*/i, '');
+  return stripped.length ? stripped : title;
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function normalizeUuid(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const trimmed = String(value).trim();
+  if (!trimmed.length) return null;
+  return isUuid(trimmed) ? trimmed : null;
+}
+
+function safeDateMs(value: unknown): number {
+  const ms = new Date(String(value ?? '')).getTime();
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+async function fetchEventsLocalMetaBy(
+  column: 'id' | 'external_event_row_id' | 'external_event_id',
+  value: string,
+): Promise<any | null> {
+  if (!value) return null;
+  const selectWithRowId = 'id, external_event_id, external_event_row_id';
+  const selectWithoutRowId = 'id, external_event_id';
+
+  try {
+    const { data, error } = await supabase.from('events_local_meta').select(selectWithRowId).eq(column, value).maybeSingle();
+
+    if (error) {
+      const isMissingColumn = error?.code === '42703';
+      const message = String(error?.message ?? '');
+      const isMissingRowIdColumn = message.includes('external_event_row_id');
+
+      if (isMissingColumn && column === 'external_event_row_id') {
+        if (__DEV__) {
+          console.log('[task-feedback-note] events_local_meta missing external_event_row_id column');
+        }
+        return null;
+      }
+
+      if (isMissingColumn && isMissingRowIdColumn) {
+        const retry = await supabase
+          .from('events_local_meta')
+          .select(selectWithoutRowId)
+          .eq(column, value)
+          .maybeSingle();
+
+        if (retry.error && __DEV__) {
+          console.log('[task-feedback-note] events_local_meta lookup failed', retry.error);
+        }
+
+        return retry.data ?? null;
+      }
+
+      if (__DEV__) {
+        console.log('[task-feedback-note] events_local_meta lookup failed', error);
+      }
+
+      return null;
+    }
+
+    return data ?? null;
+  } catch (e) {
+    if (__DEV__) console.log('[task-feedback-note] events_local_meta lookup error', e);
+  }
+
+  return null;
+}
+
+async function getActivityIdCandidates(inputActivityId: string): Promise<string[]> {
+  const candidates: string[] = [];
+  const push = (value: unknown) => {
+    const normalized = normalizeUuid(value);
+    if (!normalized) return;
+    if (!candidates.includes(normalized)) candidates.push(normalized);
+  };
+
+  const rawInput = String(inputActivityId ?? '').trim();
+  if (!rawInput.length) return candidates;
+
+  const inputUuid = normalizeUuid(rawInput);
+  if (inputUuid) push(inputUuid);
+
+  let meta: any | null = null;
+  if (inputUuid) {
+    meta =
+      (await fetchEventsLocalMetaBy('id', inputUuid)) ??
+      (await fetchEventsLocalMetaBy('external_event_row_id', inputUuid)) ??
+      (await fetchEventsLocalMetaBy('external_event_id', inputUuid));
+  } else {
+    meta = await fetchEventsLocalMetaBy('external_event_id', rawInput);
+  }
+
+  if (meta) {
+    push((meta as any)?.id);
+    push((meta as any)?.external_event_row_id);
+    push((meta as any)?.external_event_id);
+  }
+
+  return candidates;
 }
 
 type AfterTrainingFeedbackConfig = {
@@ -77,6 +180,7 @@ export default function TaskFeedbackNoteScreen() {
   }, [router]);
 
   const [userId, setUserId] = useState<string | null>(null);
+  const [activityIdCandidates, setActivityIdCandidates] = useState<string[]>([]);
   const [config, setConfig] = useState<AfterTrainingFeedbackConfig>(() => buildFeedbackConfig(undefined));
   const [initialScore, setInitialScore] = useState<number | null>(null);
   const [initialNote, setInitialNote] = useState<string>('');
@@ -95,6 +199,9 @@ export default function TaskFeedbackNoteScreen() {
 
     (async () => {
       if (!activityId || !templateId) return;
+
+      const candidates = await getActivityIdCandidates(activityId);
+      if (!cancelled) setActivityIdCandidates(candidates);
 
       try {
         const sessionRes = await supabase.auth.getSession();
@@ -121,12 +228,26 @@ export default function TaskFeedbackNoteScreen() {
         }
 
         try {
-          const result = await (fetchSelfFeedbackForTemplates as any)([templateId], uid);
+          const rows = await fetchSelfFeedbackForTemplates(uid, [templateId]);
           if (cancelled) return;
 
-          const current = result?.[templateId]?.current;
-          setInitialScore(typeof current?.rating === 'number' ? current.rating : null);
-          setInitialNote(typeof current?.note === 'string' ? current.note : '');
+          const candidateIds = candidates.filter((id) => normalizeUuid(id)) as string[];
+
+          const latestForActivity = rows.reduce<TaskTemplateSelfFeedback | undefined>((best, row) => {
+            if (!candidateIds.length) return best;
+            const rowActivityId = normalizeUuid((row as any)?.activityId ?? (row as any)?.activity_id);
+            if (!rowActivityId || !candidateIds.includes(rowActivityId)) return best;
+            return !best || safeDateMs(row.createdAt) > safeDateMs(best.createdAt) ? row : best;
+          }, undefined);
+
+          const latestOverall = rows.reduce<TaskTemplateSelfFeedback | undefined>((best, row) => {
+            return !best || safeDateMs(row.createdAt) > safeDateMs(best.createdAt) ? row : best;
+          }, undefined);
+
+          const selected = latestForActivity ?? latestOverall ?? null;
+
+          setInitialScore(typeof selected?.rating === 'number' ? selected.rating : null);
+          setInitialNote(typeof selected?.note === 'string' ? selected.note : '');
         } catch {
           // ignore
         }
@@ -151,25 +272,79 @@ export default function TaskFeedbackNoteScreen() {
         return;
       }
 
+      const candidateIds = activityIdCandidates.filter((id) => normalizeUuid(id));
+      if (!candidateIds.length) {
+        setError('Aktiviteten mangler et gyldigt ID. Prøv igen.');
+        return;
+      }
+
+      const optimisticActivityId = candidateIds[0];
+      const nowIso = new Date().toISOString();
+      const optimisticId = `optimistic:${optimisticActivityId}:${templateId}:${nowIso}`;
+
+      DeviceEventEmitter.emit('feedback:saved', {
+        activityId: optimisticActivityId,
+        templateId,
+        rating: typeof score === 'number' ? score : null,
+        note: typeof note === 'string' ? note : null,
+        createdAt: nowIso,
+        optimisticId,
+        source: 'task-feedback-note',
+      });
+
+      safeDismiss();
       setIsSaving(true);
+      let lastError: any = null;
+      let lastTriedId: string | null = null;
       try {
-        await (upsertSelfFeedback as any)({
-          templateId,
-          userId,
-          rating: score,
-          note,
-          activity_id: String(activityId).trim(),
-          activityId: String(activityId).trim(),
-        });
-        Promise.resolve(refreshData()).catch(() => {});
-        safeDismiss();
+        const tryUpsert = async (candidateActivityId: string) =>
+          upsertSelfFeedback({
+            templateId,
+            userId,
+            rating: score,
+            note,
+            activity_id: String(candidateActivityId).trim(),
+            activityId: String(candidateActivityId).trim(),
+          });
+
+        for (const candidateId of candidateIds) {
+          lastTriedId = candidateId;
+          try {
+            await tryUpsert(candidateId);
+            Promise.resolve(refreshData()).catch(() => {});
+            return;
+          } catch (e) {
+            lastError = e;
+          }
+        }
+
+        if (lastError) throw lastError;
       } catch (e) {
-        setError('Kunne ikke gemme feedback lige nu. Prøv igen.');
+        if (__DEV__) {
+          console.log('[task-feedback-note] save feedback error', {
+            activityId: lastTriedId,
+            activityIdCandidates: candidateIds,
+            message: (e as any)?.message,
+            details: (e as any)?.details,
+            hint: (e as any)?.hint,
+            code: (e as any)?.code,
+            status: (e as any)?.status,
+          });
+        }
+        const suffix = lastTriedId ? ` (activityId: ${lastTriedId})` : '';
+        DeviceEventEmitter.emit('feedback:save_failed', {
+          activityId: optimisticActivityId,
+          templateId,
+          optimisticId,
+          source: 'task-feedback-note',
+        });
+        setError(`Kunne ikke gemme feedback${suffix}. Prøv igen.`);
+        Alert.alert('Kunne ikke gemme', 'Feedback kunne ikke gemmes. Prøv igen.');
       } finally {
         setIsSaving(false);
       }
     },
-    [activityId, refreshData, safeDismiss, templateId, userId]
+    [activityId, activityIdCandidates, refreshData, safeDismiss, templateId, userId]
   );
 
   if (!activityId || !templateId) return null;
