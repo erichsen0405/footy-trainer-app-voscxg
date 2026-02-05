@@ -301,7 +301,7 @@ export default function ProfileScreen() {
       subscription.unsubscribe();
       if (graceTimeoutRef.current) clearTimeout(graceTimeoutRef.current);
     };
-  }, [checkUserOnboarding, refreshSubscription]);
+  }, [checkUserOnboarding, refreshSubscription, clearForceShowPlansTimeout]);
 
   useEffect(() => {
     if (shouldHighlightPremiumPlan) {

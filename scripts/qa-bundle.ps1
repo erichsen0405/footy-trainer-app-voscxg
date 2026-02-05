@@ -1,20 +1,49 @@
 # scripts/qa-bundle.ps1
-# === QA bundle after Codex — zip only (temp folder removed) ===
-# Usage (recommended):
+# === QA bundle after Codex - zip only (temp folder removed) ===
+# Default (koerer lint + typecheck):
 #   powershell -ExecutionPolicy Bypass -File scripts/qa-bundle.ps1
-# Optional: run QA commands and capture output:
+# Slaa QA fra:
+#   powershell -ExecutionPolicy Bypass -File scripts/qa-bundle.ps1 -NoQaCommands
+# Override QA-kommandoer (bagudkompatibelt):
 #   powershell -ExecutionPolicy Bypass -File scripts/qa-bundle.ps1 -QaCommands "npm run lint","npm run typecheck","npm test"
 
 param(
-  [string[]]$QaCommands = @()
+  [string[]]$QaCommands,
+  [switch]$NoQaCommands
 )
 
 $ErrorActionPreference = "Stop"
 
+# Detect whether QaCommands was explicitly supplied
+$qaParamProvided = $PSBoundParameters.ContainsKey('QaCommands')
+
 # 1) Find repo root
 $repoRoot = (git rev-parse --show-toplevel 2>$null).Trim()
-if (-not $repoRoot) { throw "Ikke et git-repo. Åbn PowerShell i projektmappen (eller en undermappe i repo'et)." }
+if (-not $repoRoot) { throw "Ikke et git-repo. Aabn PowerShell i projektmappen (eller en undermappe i repo'et)." }
 Set-Location $repoRoot
+
+# Default QA commands unless explicitly disabled or overridden
+if ($NoQaCommands) {
+  $QaCommands = @()
+} elseif (-not $qaParamProvided) {
+  $QaCommands = @("npm run lint", "npm run typecheck")
+}
+
+# Normalize null to empty array for downstream handling
+if ($null -eq $QaCommands) { $QaCommands = @() }
+
+# Load package.json scripts for helpful warnings
+$packageScripts = @{}
+try {
+  $pkg = Get-Content -Raw -Path (Join-Path $repoRoot "package.json") | ConvertFrom-Json
+  if ($pkg.scripts) {
+    foreach ($prop in $pkg.scripts.PSObject.Properties) {
+      $packageScripts[$prop.Name] = $true
+    }
+  }
+} catch {
+  # Keep going even if package.json cannot be read
+}
 
 # Helper: run cmd quietly (suppresses stderr warnings)
 function Get-CmdOut([string]$cmd) {
@@ -62,27 +91,76 @@ $npmV   = Get-CmdOut "npm -v"
 git status -sb | Out-File -Encoding utf8 $statusFile
 
 # 5) Diff artefacts (alt ift. HEAD)
-git diff --name-status HEAD | Out-File -Encoding utf8 $namesFile
-git diff --stat HEAD        | Out-File -Encoding utf8 $statFile
-git diff --check HEAD       | Out-File -Encoding utf8 $checkFile
-git diff --binary HEAD      | Out-File -Encoding utf8 $patchFile
+git --no-pager diff --name-status HEAD | Out-File -Encoding utf8 $namesFile
+git --no-pager diff --stat HEAD        | Out-File -Encoding utf8 $statFile
+git --no-pager diff --check HEAD       | Out-File -Encoding utf8 $checkFile
+git --no-pager diff --binary HEAD      | Out-File -Encoding utf8 $patchFile
 
-# 6) Optional QA commands output
+# 6) QA commands output
 "=== QA commands output ===" | Out-File -Encoding utf8 $cmdFile
+$qaOverallExit = 0
+
+function Invoke-QaCommand {
+  param(
+    [string]$Command,
+    [hashtable]$ScriptsMap,
+    [string]$LogFile
+  )
+
+  # Ensure native command failures don't become terminating errors on PS7+
+  $nativePrefVar = Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue
+  if ($nativePrefVar) {
+    $nativePrefOriginal = $nativePrefVar.Value
+    $PSNativeCommandUseErrorActionPreference = $false
+  }
+
+  "" | Out-File -Append -Encoding utf8 $LogFile
+  ">>> $Command" | Out-File -Append -Encoding utf8 $LogFile
+
+  $scriptName = $null
+  if ($Command -match '^\s*npm\s+run\s+([A-Za-z0-9:_\\-]+)') {
+    $scriptName = $matches[1]
+  }
+
+  if ($scriptName -and -not $ScriptsMap.ContainsKey($scriptName)) {
+    "WARN: package.json mangler scriptet '$scriptName' (forsoeger at koere alligevel)." |
+      Out-File -Append -Encoding utf8 $LogFile
+  }
+
+  $output = @()
+  $exitCode = $null
+
+  try {
+    # Run via cmd.exe to keep stderr merged and avoid PowerShell native command quirks
+    $cmdLine = "$Command 2>&1"
+    $output = cmd.exe /d /c $cmdLine
+    $exitCode = $LASTEXITCODE
+  } catch {
+    $output += $_.ToString()
+    if ($exitCode -eq $null) { $exitCode = 1 }
+  } finally {
+    if ($nativePrefVar) { $PSNativeCommandUseErrorActionPreference = $nativePrefOriginal }
+  }
+
+  if ($exitCode -eq $null) { $exitCode = 0 }
+
+  $output | Out-File -Append -Encoding utf8 $LogFile
+  "exitCode: $exitCode" | Out-File -Append -Encoding utf8 $LogFile
+  if ($exitCode -ne 0) {
+    "" | Out-File -Append -Encoding utf8 $LogFile
+    "NOTE: Kommando fejlede (exitCode != 0). Se output ovenfor." | Out-File -Append -Encoding utf8 $LogFile
+  }
+
+  return $exitCode
+}
+
 if ($QaCommands.Count -gt 0) {
   foreach ($c in $QaCommands) {
-    "" | Out-File -Append -Encoding utf8 $cmdFile
-    ">>> $c" | Out-File -Append -Encoding utf8 $cmdFile
-    cmd /c "$c" 2>&1 | Out-File -Append -Encoding utf8 $cmdFile
-    "exitCode: $LASTEXITCODE" | Out-File -Append -Encoding utf8 $cmdFile
-    if ($LASTEXITCODE -ne 0) {
-      "" | Out-File -Append -Encoding utf8 $cmdFile
-      "NOTE: Kommando fejlede (exitCode != 0). Se output ovenfor." | Out-File -Append -Encoding utf8 $cmdFile
-      # Fortsæt stadig med at lave bundle, så QA kan se fejlen.
-    }
+    $exit = Invoke-QaCommand -Command $c -ScriptsMap $packageScripts -LogFile $cmdFile
+    if ($exit -ne 0 -and $qaOverallExit -eq 0) { $qaOverallExit = $exit }
   }
 } else {
-  "NOTE: Ingen QA-kommandoer kørt. Kald scriptet med -QaCommands for at køre lint/typecheck/tests." |
+  "NOTE: QA-kommandoer blev ikke koert (deaktiveret eller tom liste). Default er at koere npm run lint og npm run typecheck. Brug -NoQaCommands for at springe over." |
     Out-File -Append -Encoding utf8 $cmdFile
 }
 
@@ -92,11 +170,14 @@ Remove-Item -Recurse -Force $outDir
 
 # 8) Summary + open base folder
 Write-Host ""
-Write-Host "✅ QA bundle (zip only) lavet:" -ForegroundColor Green
+Write-Host "[OK] QA bundle (zip only) lavet:" -ForegroundColor Green
 Write-Host "  Zip: $zipPath"
 Write-Host ""
-git diff --stat HEAD
+git --no-pager diff --stat HEAD
 Write-Host ""
 
 # Open folder in Explorer (Windows). No-op on non-Windows.
 try { Invoke-Item $baseDir | Out-Null } catch {}
+
+# Propagate non-zero QA exit code (zip er stadig lavet)
+if ($qaOverallExit -ne 0) { exit $qaOverallExit }

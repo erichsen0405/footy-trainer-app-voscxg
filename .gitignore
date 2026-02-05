@@ -40,3 +40,4 @@ package-lock.json
 
 # Supabase CLI temp
 supabase/.temp/
+.qa-export/

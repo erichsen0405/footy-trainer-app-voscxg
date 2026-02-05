@@ -329,7 +329,17 @@ export default function ActivityCard({
       setSelectedTask(task);
       setIsTaskModalOpen(true);
     },
-    [activity?.id, activityId, feedbackActivityId, handleCardPress, isFeedbackTask, resolveFeedbackTemplateId, router]
+    [
+      activity?.activityId,
+      activity?.activity_id,
+      activity?.id,
+      activityId,
+      feedbackActivityId,
+      handleCardPress,
+      isFeedbackTask,
+      resolveFeedbackTemplateId,
+      router,
+    ]
   );
 
   const handleModalClose = useCallback(() => {
@@ -538,7 +548,6 @@ export default function ActivityCard({
     hasTemplateOrFeedback,
     isFeedbackRenderTask,
     optimisticTasks,
-    resolveReminderMinutes,
     showIntensityRow,
     showTasks,
   ]);

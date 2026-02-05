@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -1235,6 +1235,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const fieldBorderColor = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(15,23,42,0.08)';
   const infoBackgroundColor = isDark ? 'rgba(255,255,255,0.08)' : '#f8fafc';
   const infoTextColor = isDark ? '#f8fafc' : colors.text;
+  const primaryColor = colors.primary;
 
   const headerGradientColors = useMemo(() => {
     const base = activity?.category?.color || colors.primary;
@@ -1254,6 +1255,14 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
   const [pendingOpenIntensity, setPendingOpenIntensity] = useState<boolean>(initialOpenIntensity ?? false);
 
+  const activityId = activity.id;
+  const activityIsExternal = activity.isExternal;
+  const activityExternalEventRowId =
+    (activity as any)?.externalEventRowId ?? (activity as any)?.external_event_row_id;
+  const activityExternalEventId =
+    activity.externalEventId ?? (activity as any)?.external_event_id;
+  const activityTasks = activity.tasks;
+
   const feedbackActivityCandidates = useMemo(() => {
     const ids: string[] = [];
     const push = (value: unknown) => {
@@ -1262,20 +1271,19 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       if (!ids.includes(normalized)) ids.push(normalized);
     };
 
-    push(activity.id);
+    push(activityId);
 
-    if (activity.isExternal) {
-      push((activity as any)?.externalEventRowId ?? (activity as any)?.external_event_row_id);
-      push(activity.externalEventId ?? (activity as any)?.external_event_id);
+    if (activityIsExternal) {
+      push(activityExternalEventRowId);
+      push(activityExternalEventId);
     }
 
     return ids;
   }, [
-    activity.externalEventId,
-    activity.id,
-    activity.isExternal,
-    (activity as any)?.externalEventRowId,
-    (activity as any)?.external_event_row_id,
+    activityExternalEventId,
+    activityExternalEventRowId,
+    activityId,
+    activityIsExternal,
   ]);
 
   const feedbackActivityCandidatesKey = useMemo(
@@ -1325,9 +1333,9 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   }, []);
 
   useEffect(() => {
-    const incomingTasks = (activity.tasks as FeedbackTask[]) || [];
+    const incomingTasks = (activityTasks as FeedbackTask[]) || [];
 
-    if (!activity.isExternal) {
+    if (!activityIsExternal) {
       setTasksState(incomingTasks);
       return;
     }
@@ -1342,8 +1350,8 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
     if (orphanIds.length && __DEV__) {
       console.log('[OrphanFeedbackCleanup]', {
-        activityId: activity.id,
-        externalEventRowId: (activity as any)?.externalEventRowId ?? (activity as any)?.external_event_row_id ?? null,
+        activityId,
+        externalEventRowId: activityExternalEventRowId,
         orphanCount: orphanIds.length,
         orphanIdsSample: orphanIds.slice(0, 3),
       });
@@ -1361,7 +1369,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         } catch (error) {
           if (__DEV__ && !cancelled) {
             console.log('[OrphanFeedbackCleanup] failed to delete orphan feedback tasks', {
-              activityId: activity.id,
+              activityId,
               orphanCount: orphanIds.length,
               error,
             });
@@ -1372,7 +1380,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         cancelled = true;
       };
     }
-  }, [activity.id, activity.isExternal, activity.tasks, isAdmin]);
+  }, [activityExternalEventRowId, activityId, activityIsExternal, activityTasks, isAdmin]);
 
   const feedbackTemplateIds = useMemo(() => {
     const ids = new Set<string>();
@@ -1437,7 +1445,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     return () => {
       cancelled = true;
     };
-  }, [currentUserId, feedbackActivityCandidatesKey, feedbackTemplateIds]);
+  }, [currentUserId, feedbackActivityCandidates, feedbackActivityCandidatesKey, feedbackTemplateIds]);
 
   useEffect(() => {
     if (!pendingFeedbackTaskId) return;
@@ -1715,7 +1723,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               onPress={onClose}
               activeOpacity={0.8}
             >
-              <Text style={[styles.pickerDoneText, { color: colors.primary }]}>Færdig</Text>
+              <Text style={[styles.pickerDoneText, { color: primaryColor }]}>Færdig</Text>
             </TouchableOpacity>
           </View>
         );
@@ -1736,7 +1744,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         />
       );
     },
-    [cardBgColor, colors.primary, fieldBorderColor, isDark],
+    [cardBgColor, fieldBorderColor, isDark, primaryColor],
   );
 
   const handleSave = useCallback(async () => {
@@ -2710,7 +2718,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               textColor={textColor}
               secondaryTextColor={textSecondaryColor}
               icon={{ ios: 'mappin.and.ellipse', android: 'place' }}
-              iconColor={colors.primary}
+              iconColor={primaryColor}
             />
           </View>
 
@@ -2752,12 +2760,12 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
         <View style={styles.v2TasksHeaderRow}>
           <Text style={[styles.v2SectionTitle, styles.v2SectionTitleInRow]}>Opgaver</Text>
-          {isAdmin && !activity.isExternal && !isEditing && (
-            <TouchableOpacity
-              style={[styles.addTaskHeaderButton, { backgroundColor: colors.primary }]}
-              onPress={handleAddTask}
-              activeOpacity={0.7}
-            >
+            {isAdmin && !activity.isExternal && !isEditing && (
+              <TouchableOpacity
+                style={[styles.addTaskHeaderButton, { backgroundColor: primaryColor }]}
+                onPress={handleAddTask}
+                activeOpacity={0.7}
+              >
               <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={20} color="#fff" />
               <Text style={styles.addTaskHeaderButtonText}>Tilføj opgave</Text>
             </TouchableOpacity>
@@ -2768,7 +2776,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   }, [
     activity,
     cardBgColor,
-    colors.primary,
+    primaryColor,
     convertToRecurring,
     editDate,
     editEndTime,
@@ -3031,6 +3039,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     pendingAction,
     refreshData,
     router,
+    tasksState,
   ]);
 
   const handleFeedbackClose = useCallback(() => {
