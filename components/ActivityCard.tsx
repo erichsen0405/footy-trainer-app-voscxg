@@ -80,11 +80,19 @@ const getCategoryEmoji = (emoji?: string): string => {
 // Resolve reminder minutes robustly
 const resolveReminderMinutes = (task: any): number | null => {
   if (!task) return null;
-  const candidate =
+  let candidate =
     task.reminder_minutes ??
     task.reminderMinutes ??
     task.reminder_minute ??
     task.reminderMinute;
+
+  if (candidate === null || candidate === undefined) {
+    candidate =
+      task.after_training_delay_minutes ??
+      task.afterTrainingDelayMinutes ??
+      task.after_training_delay_minutes_value ??
+      task.afterTrainingDelayMinutesValue;
+  }
 
   if (candidate === null || candidate === undefined) return null;
 
@@ -102,6 +110,46 @@ const resolveReminderMinutes = (task: any): number | null => {
 
   // Keep it numeric; minutes are expected to be whole numbers
   return Math.round(val);
+};
+
+const siblingReminderMinutes = (task: any): number | null => {
+  if (!task) return null;
+  return resolveReminderMinutes(task);
+};
+
+// Decode common UTF-8 garbling (e.g., "pÃ¥" -> "på") without altering clean text
+const decodeUtf8Garble = (value: unknown): string => {
+  const asString = typeof value === 'string' ? value : String(value ?? '');
+  const fixScandi = (s: string) =>
+    s
+      .replace(/Ã¥|Ã…/g, 'å')
+      .replace(/Ã¦|Ã†/g, 'æ')
+      .replace(/Ã¸|Ã˜/g, 'ø')
+      .replace(/Ã¼/g, 'ü')
+      .replace(/Ã¶/g, 'ö')
+      .replace(/Ã¤/g, 'ä')
+      .replace(/Â·/g, '·')
+      .replace(/Â°/g, '°')
+      .replace(/Â©/g, '©')
+      .replace(/Â®/g, '®');
+
+  const looksGarbled = /Ã.|Â./.test(asString);
+  const decodeOnce = (s: string) => {
+    try {
+      return decodeURIComponent(escape(s));
+    } catch {
+      return s;
+    }
+  };
+
+  if (!looksGarbled) return fixScandi(asString);
+
+  const first = decodeOnce(asString);
+  if (/Ã.|Â./.test(first)) {
+    const second = decodeOnce(first);
+    return fixScandi(second);
+  }
+  return fixScandi(first);
 };
 
 const coerceMinutes = (val: any): number | null => {
@@ -693,6 +741,32 @@ export default function ActivityCard({
 
                 const task = (item as any).task;
                 const taskCompleted = isTaskDone(task);
+                const taskReminder = resolveReminderMinutes(task);
+                const templateIdForTask = resolveFeedbackTemplateId(task);
+                const siblingReminder =
+                  templateIdForTask && isFeedbackTask(task)
+                    ? (() => {
+                        const sibling = optimisticTasks.find((candidate) => {
+                          if (!candidate || candidate === task) return false;
+                          const siblingTemplateId =
+                            candidate.task_template_id ?? candidate.taskTemplateId;
+                          return (
+                            siblingTemplateId !== null &&
+                            siblingTemplateId !== undefined &&
+                            String(siblingTemplateId).trim() === String(templateIdForTask)
+                          );
+                        });
+                        return siblingReminderMinutes(sibling);
+                      })()
+                    : null;
+                const effectiveReminder =
+                  taskReminder !== null
+                    ? taskReminder
+                    : siblingReminder !== null
+                      ? siblingReminder
+                      : isFeedbackTask(task)
+                        ? reminderMinutesValue
+                        : null;
 
                 return (
                   <React.Fragment key={item.key}>
@@ -723,25 +797,24 @@ export default function ActivityCard({
                         <View style={styles.taskTitleRow}>
                           <Text
                             style={[styles.taskTitle, taskCompleted && styles.taskTitleCompleted]}
-                            numberOfLines={1}
                           >
-                            {task.title}
+                            {decodeUtf8Garble(task.title)}
                           </Text>
-
-                          {resolveReminderMinutes(task) !== null && (
-                            <View style={styles.reminderBadge}>
-                              <IconSymbol
-                                ios_icon_name="bell.fill"
-                                android_material_icon_name="notifications"
-                                size={10}
-                                color="rgba(255, 255, 255, 0.8)"
-                              />
-                              <Text style={styles.reminderText}>
-                                {formatReminderTime(resolveReminderMinutes(task)!)}
-                              </Text>
-                            </View>
-                          )}
                         </View>
+
+                        {effectiveReminder !== null && (
+                          <View style={styles.reminderBadge}>
+                            <IconSymbol
+                              ios_icon_name="bell.fill"
+                              android_material_icon_name="notifications"
+                              size={10}
+                              color="rgba(255, 255, 255, 0.8)"
+                            />
+                            <Text style={styles.reminderText}>
+                              {formatReminderTime(effectiveReminder!)}
+                            </Text>
+                          </View>
+                        )}
                       </TouchableOpacity>
 
                       {task.video_url && (
@@ -899,14 +972,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   taskTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
   },
   taskTitle: {
     fontSize: 16,
     fontWeight: '500',
     color: 'rgba(255, 255, 255, 0.95)',
+    flexShrink: 1,
   },
   taskTitleCompleted: {
     textDecorationLine: 'line-through',
@@ -960,7 +1033,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 2,
     paddingHorizontal: 8,
-    marginLeft: 8,
+    marginLeft: 0,
+    marginTop: 6,
+    alignSelf: 'flex-start',
   },
   reminderText: {
     fontSize: 12,

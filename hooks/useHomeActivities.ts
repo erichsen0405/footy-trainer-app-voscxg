@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
+import * as FileSystem from 'expo-file-system';
 import { supabase } from '@/integrations/supabase/client';
 import { getCategories, DatabaseActivityCategory } from '@/services/activities';
 import { resolveActivityCategory, type CategoryMappingRecord } from '@/shared/activityCategoryResolver';
@@ -19,6 +20,7 @@ interface ActivityTask {
   description?: string;
   completed: boolean;
   reminder_minutes?: number | null;
+  after_training_delay_minutes?: number | null;
   video_url?: string;
   feedback_template_id?: string | null;
   task_template_id?: string | null;
@@ -59,11 +61,45 @@ const computeMinReminder = (tasks: ActivityTask[] | undefined | null): number | 
   if (!Array.isArray(tasks) || !tasks.length) return null;
   let min: number | null = null;
   for (const t of tasks) {
-    const val = coerceReminderMinutes(t?.reminder_minutes);
+    const val =
+      coerceReminderMinutes(t?.reminder_minutes) ??
+      coerceReminderMinutes((t as any)?.after_training_delay_minutes);
     if (val === null) continue;
     if (min === null || val < min) min = val;
   }
   return min;
+};
+
+const decodeUtf8Garble = (value: unknown): string => {
+  const asString = typeof value === 'string' ? value : String(value ?? '');
+  const fixScandi = (s: string) =>
+    s
+      .replace(/Ã¥|Ã…/g, 'å')
+      .replace(/Ã¦|Ã†/g, 'æ')
+      .replace(/Ã¸|Ã˜/g, 'ø')
+      .replace(/Ã¼/g, 'ü')
+      .replace(/Ã¶/g, 'ö')
+      .replace(/Ã¤/g, 'ä')
+      .replace(/Â·/g, '·')
+      .replace(/Â°/g, '°')
+      .replace(/Â©/g, '©')
+      .replace(/Â®/g, '®');
+
+  const looksGarbled = /Ã.|Â./.test(asString);
+  const decodeOnce = (s: string) => {
+    try {
+      return decodeURIComponent(escape(s));
+    } catch {
+      return s;
+    }
+  };
+  if (!looksGarbled) return fixScandi(asString);
+  const first = decodeOnce(asString);
+  if (/Ã.|Â./.test(first)) {
+    const second = decodeOnce(first);
+    return fixScandi(second);
+  }
+  return fixScandi(first);
 };
 
 const parseIntensityValue = (raw: any): number | null => {
@@ -118,6 +154,17 @@ const isFeedbackTask = (task: ActivityTask | null | undefined): boolean => {
   const direct = normalizeId(task.feedback_template_id);
   if (direct) return true;
   return !!getMarkerTemplateId(task) || isFeedbackTitle(task.title);
+};
+
+const resolveTaskTemplateId = (task: any): string | null => {
+  const direct = normalizeId(task?.task_template_id);
+  if (direct) return direct;
+  const feedback = normalizeId(task?.feedback_template_id);
+  if (feedback) return feedback;
+  const marker =
+    parseTemplateIdFromMarker(typeof task?.description === 'string' ? task.description : '') ||
+    parseTemplateIdFromMarker(typeof task?.title === 'string' ? task.title : '');
+  return normalizeId(marker);
 };
 
 const computeOrphanFeedbackTaskIds = (tasks: ActivityTask[]): string[] => {
@@ -735,7 +782,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           console.warn(`⚠️ "I DAG" activity "${activity.title}" (${activity.id}) has 0 tasks`);
         }
       });
-      
+
       const internalIds = internalActivities.map(a => String(a.id)).filter(Boolean);
       const externalMetaIds = externalMetaData.map(m => String(m.id)).filter(Boolean);
       const externalEventRowIds = Array.isArray(externalActivities)
@@ -748,7 +795,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         internalIds.length
           ? supabase
               .from('activity_tasks')
-              .select('id, activity_id, title, description, completed, reminder_minutes, feedback_template_id, task_template_id, video_url')
+              .select('id, activity_id, title, description, completed, reminder_minutes, feedback_template_id, task_template_id, video_url, task_templates(after_training_delay_minutes)')
               .in('activity_id', internalIds)
           : Promise.resolve({ data: [], error: null }),
         externalMetaIds.length
@@ -760,21 +807,63 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         externalEventRowIds.length
           ? supabase
               .from('activity_tasks')
-              .select('id, activity_id, title, description, completed, reminder_minutes, feedback_template_id, task_template_id, video_url')
+              .select('id, activity_id, title, description, completed, reminder_minutes, feedback_template_id, task_template_id, video_url, task_templates(after_training_delay_minutes)')
               .in('activity_id', externalEventRowIds)
           : Promise.resolve({ data: [], error: null }),
       ]);
+
+      // Preload after_training_delay_minutes for any task templates referenced directly or via markers
+      const templateIdCandidates = new Set<string>();
+      [internalActivities, externalActivities].forEach(list =>
+        (list || []).forEach(activity => {
+          const tasks = Array.isArray(activity.tasks) ? activity.tasks : [];
+          tasks.forEach(task => {
+            const tid =
+              normalizeId(task.task_template_id) ??
+              normalizeId(task.feedback_template_id) ??
+              getMarkerTemplateId(task);
+            if (tid) templateIdCandidates.add(tid);
+          });
+        })
+      );
+      [internalTasksRes.data, externalEventTasksRes.data, externalActivityTasksRes.data].forEach(list =>
+        (list || []).forEach((task: any) => {
+          const tid = resolveTaskTemplateId(task);
+          if (tid) templateIdCandidates.add(tid);
+        })
+      );
+
+      let templateDelayById: Record<string, number | null> = {};
+      if (templateIdCandidates.size) {
+        const { data: templateRows } = await supabase
+          .from('task_templates')
+          .select('id, after_training_delay_minutes')
+          .in('id', Array.from(templateIdCandidates));
+        if (Array.isArray(templateRows)) {
+          templateRows.forEach((row: any) => {
+            const tid = normalizeId(row?.id);
+            if (!tid) return;
+            templateDelayById[tid] = coerceReminderMinutes(row.after_training_delay_minutes);
+          });
+        }
+      }
 
       const internalTaskGroups = new Map<string, ActivityTask[]>();
       (internalTasksRes.data || []).forEach((task: any) => {
         const key = String(task.activity_id);
         const list = internalTaskGroups.get(key) || [];
+        const templateId = resolveTaskTemplateId(task);
+        const templateDelay =
+          coerceReminderMinutes(task?.task_templates?.after_training_delay_minutes) ??
+          (templateId ? templateDelayById[templateId] ?? null : null);
+        const reminderMinutes = coerceReminderMinutes(task.reminder_minutes) ?? templateDelay ?? null;
         list.push({
           id: task.id,
-          title: task.title,
-          description: task.description || '',
+          title: decodeUtf8Garble(task.title),
+          description: decodeUtf8Garble(task.description || ''),
           completed: !!task.completed,
-          reminder_minutes: coerceReminderMinutes(task.reminder_minutes) ?? null,
+          reminder_minutes: reminderMinutes,
+          after_training_delay_minutes: templateDelay ?? null,
           video_url: task.video_url ?? undefined,
           feedback_template_id: task.feedback_template_id ?? null,
           task_template_id: task.task_template_id ?? null,
@@ -786,12 +875,18 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       (externalEventTasksRes.data || []).forEach((task: any) => {
         const key = String(task.local_meta_id);
         const list = externalEventTaskGroups.get(key) || [];
+        const templateId = resolveTaskTemplateId(task);
+        const templateDelay =
+          coerceReminderMinutes(task?.task_templates?.after_training_delay_minutes) ??
+          (templateId ? templateDelayById[templateId] ?? null : null);
+        const reminderMinutes = coerceReminderMinutes(task.reminder_minutes) ?? templateDelay ?? null;
         list.push({
           id: task.id,
-          title: task.title,
-          description: task.description || '',
+          title: decodeUtf8Garble(task.title),
+          description: decodeUtf8Garble(task.description || ''),
           completed: !!task.completed,
-          reminder_minutes: coerceReminderMinutes(task.reminder_minutes) ?? null,
+          reminder_minutes: reminderMinutes,
+          after_training_delay_minutes: templateDelay ?? null,
           video_url: task.video_url ?? undefined,
           feedback_template_id: task.feedback_template_id ?? null,
           task_template_id: task.task_template_id ?? null,
@@ -803,12 +898,18 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       (externalActivityTasksRes.data || []).forEach((task: any) => {
         const key = String(task.activity_id);
         const list = externalActivityTaskGroups.get(key) || [];
+        const templateId = resolveTaskTemplateId(task);
+        const templateDelay =
+          coerceReminderMinutes(task?.task_templates?.after_training_delay_minutes) ??
+          (templateId ? templateDelayById[templateId] ?? null : null);
+        const reminderMinutes = coerceReminderMinutes(task.reminder_minutes) ?? templateDelay ?? null;
         list.push({
           id: task.id,
-          title: task.title,
-          description: task.description || '',
+          title: decodeUtf8Garble(task.title),
+          description: decodeUtf8Garble(task.description || ''),
           completed: !!task.completed,
-          reminder_minutes: coerceReminderMinutes(task.reminder_minutes) ?? null,
+          reminder_minutes: reminderMinutes,
+          after_training_delay_minutes: templateDelay ?? null,
           video_url: task.video_url ?? undefined,
           feedback_template_id: task.feedback_template_id ?? null,
           task_template_id: task.task_template_id ?? null,
@@ -863,12 +964,87 @@ export function useHomeActivities(): UseHomeActivitiesResult {
             activity.tasks ?? [],
           ]);
         }
+
+        // Decode any lingering garbled UTF-8 titles/descriptions (e.g., "pÃ¥" -> "på")
+        tasks = tasks.map(task => ({
+          ...task,
+          title: decodeUtf8Garble(task.title),
+          description: decodeUtf8Garble(task.description),
+        }));
+
+        // Enrich feedback tasks with reminder from their base template (via marker/templateId)
+        const templateReminderById = new Map<string, number | null>();
+        tasks.forEach((task) => {
+          if (isFeedbackTask(task)) return;
+          const tid = resolveTaskTemplateId(task);
+          if (!tid) return;
+          const val =
+            coerceReminderMinutes(task.reminder_minutes) ??
+            coerceReminderMinutes((task as any).after_training_delay_minutes);
+          if (val !== null && !templateReminderById.has(tid)) {
+            templateReminderById.set(tid, val);
+          }
+        });
+        tasks = tasks.map((task) => {
+          if (!isFeedbackTask(task)) return task;
+          const tid = resolveTaskTemplateId(task);
+          const existing =
+            coerceReminderMinutes(task.reminder_minutes) ??
+            coerceReminderMinutes((task as any).after_training_delay_minutes);
+          if (existing !== null) return task;
+          const inherited = tid ? templateReminderById.get(tid) ?? null : null;
+          if (inherited === null) return task;
+          return {
+            ...task,
+            reminder_minutes: inherited,
+            after_training_delay_minutes:
+              (task as any).after_training_delay_minutes ?? inherited,
+          };
+        });
+
         return {
           ...activity,
           tasks,
           minReminderMinutes: computeMinReminder(tasks),
         };
       });
+
+      if (__DEV__) {
+        const sampleInternal = finalActivities.find(a => !a.is_external && Array.isArray(a.tasks) && a.tasks.length);
+        if (sampleInternal) {
+          const firstTask = sampleInternal.tasks[0];
+          const payload = {
+            id: sampleInternal.id,
+            title: sampleInternal.title,
+            taskCount: sampleInternal.tasks.length,
+            firstTask: firstTask
+              ? {
+                  id: firstTask.id,
+                  reminder_minutes: firstTask.reminder_minutes,
+                  after_training_delay_minutes: (firstTask as any).after_training_delay_minutes ?? null,
+                  task_template_id: firstTask.task_template_id ?? null,
+                  feedback_template_id: firstTask.feedback_template_id ?? null,
+                  descriptionSnippet:
+                    typeof firstTask.description === 'string'
+                      ? firstTask.description.slice(0, 60)
+                      : null,
+                }
+              : null,
+          };
+          console.log('[useHomeActivities][internal-sample]', payload);
+          // Easy-to-copy JSON in Metro/VS Code terminal
+          try {
+            console.log('[useHomeActivities][internal-sample][json]', JSON.stringify(payload));
+          } catch {}
+
+          // Write to a debug file for easy sharing
+          const debugPath = `${(FileSystem as any).cacheDirectory ?? ''}feedback-badge-sample.json`;
+          if (debugPath) {
+            FileSystem.writeAsStringAsync(debugPath, JSON.stringify(payload, null, 2)).catch(() => {});
+            console.log('[useHomeActivities][internal-sample][file]', debugPath);
+          }
+        }
+      }
 
       setActivities(finalActivities);
 
