@@ -264,9 +264,7 @@ export function useProgressionData({
         note,
         created_at,
         task_template_id,
-        activity_id,
-        task_templates ( title ),
-        activities ( activity_date, title )
+        activity_id
       `;
 
       const activityTaskSelect = `
@@ -340,26 +338,115 @@ export function useProgressionData({
       if (intensityCurrentError) throw intensityCurrentError;
       if (intensityPreviousError) throw intensityPreviousError;
 
-      const mappedFocusCurrent = (focusCurrent || []).map(mapFocusFeedbackRow);
-      const mappedFocusPrevious = (focusPrevious || []).map(mapFocusFeedbackRow);
+      const focusRows = [...(focusCurrent || []), ...(focusPrevious || [])];
+      const uniqueTemplateIds = Array.from(
+        new Set(
+          focusRows
+            .map(row => row?.task_template_id)
+            .filter(Boolean)
+            .map((id: any) => String(id))
+        )
+      );
+      const uniqueActivityIds = Array.from(
+        new Set(
+          focusRows
+            .map(row => row?.activity_id)
+            .filter(Boolean)
+            .map((id: any) => String(id))
+        )
+      );
+
+      const chunkArray = <T,>(items: T[], size: number): T[][] => {
+        if (!Array.isArray(items) || items.length === 0) return [];
+        const chunks: T[][] = [];
+        for (let i = 0; i < items.length; i += size) {
+          chunks.push(items.slice(i, i + size));
+        }
+        return chunks;
+      };
+
+      const templateTitleById = new Map<string, string>();
+      if (uniqueTemplateIds.length) {
+        for (const chunk of chunkArray(uniqueTemplateIds, 50)) {
+          const { data, error } = await supabase
+            .from('task_templates')
+            .select('id, title')
+            .in('id', chunk);
+          if (error) throw error;
+          (data || []).forEach((row: any) => {
+            if (row?.id) templateTitleById.set(String(row.id), row.title ?? 'Fokusopgave');
+          });
+        }
+      }
+
+      const activityMetaById = new Map<string, { activity_date: string | null; title: string | null }>();
+      if (uniqueActivityIds.length) {
+        for (const chunk of chunkArray(uniqueActivityIds, 50)) {
+          const { data, error } = await supabase
+            .from('activities')
+            .select('id, activity_date, title')
+            .in('id', chunk);
+          if (error) throw error;
+          (data || []).forEach((row: any) => {
+            if (!row?.id) return;
+            activityMetaById.set(String(row.id), {
+              activity_date: row.activity_date ?? null,
+              title: row.title ?? null,
+            });
+          });
+        }
+      }
+
+      const missingActivityIds = uniqueActivityIds.filter(id => !activityMetaById.has(id));
+      if (missingActivityIds.length) {
+        for (const chunk of chunkArray(missingActivityIds, 50)) {
+          const { data, error } = await supabase
+            .from('events_external')
+            .select('id, start_date, title')
+            .in('id', chunk);
+          if (error) throw error;
+          (data || []).forEach((row: any) => {
+            if (!row?.id) return;
+            activityMetaById.set(String(row.id), {
+              activity_date: row.start_date ?? null,
+              title: row.title ?? null,
+            });
+          });
+        }
+      }
+
+      const enrichFocusRow = (row: any) => {
+        const activityId = row?.activity_id ? String(row.activity_id) : '';
+        const templateId = row?.task_template_id ? String(row.task_template_id) : '';
+        return {
+          ...row,
+          activities: activityId && activityMetaById.has(activityId) ? activityMetaById.get(activityId) : null,
+          task_templates: templateId && templateTitleById.has(templateId)
+            ? { title: templateTitleById.get(templateId) }
+            : null,
+        };
+      };
+
+      const mappedFocusCurrent = (focusCurrent || []).map(row => mapFocusFeedbackRow(enrichFocusRow(row)));
+      const mappedFocusPrevious = (focusPrevious || []).map(row => mapFocusFeedbackRow(enrichFocusRow(row)));
       const mappedPossibleCurrent = (possibleCurrent || []).map(mapFocusPossibleRow);
       const mappedPossiblePrevious = (possiblePrevious || []).map(mapFocusPossibleRow);
       const mappedIntensityCurrent = (intensityCurrent || []).map(mapIntensityRow);
       const mappedIntensityPrevious = (intensityPrevious || []).map(mapIntensityRow);
 
-      const templateLookup = new Map<string, string>();
+      const templateNameLookup = new Map<string, string>();
       [...mappedFocusCurrent, ...mappedFocusPrevious].forEach(entry => {
         if (entry.taskTemplateId) {
-          templateLookup.set(entry.taskTemplateId, entry.focusName);
+          templateNameLookup.set(entry.taskTemplateId, entry.focusName);
         }
       });
       [...mappedPossibleCurrent, ...mappedPossiblePrevious].forEach(entry => {
         if (entry.templateId) {
-          templateLookup.set(entry.templateId, entry.templateName);
+          templateNameLookup.set(entry.templateId, entry.templateName);
         }
       });
 
-      const templateOptions: FocusTemplateOption[] = Array.from(templateLookup.entries())
+      const templateOptions: FocusTemplateOption[] = Array.from(templateNameLookup.entries())
         .map(([id, name]) => ({ id, name }))
         .sort((a, b) => a.name.localeCompare(b.name));
 

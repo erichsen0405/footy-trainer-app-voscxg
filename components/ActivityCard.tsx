@@ -16,6 +16,9 @@ interface ActivityCardProps {
   onPress?: () => void;
   onPressIntensity?: () => void;
   showTasks?: boolean;
+  feedbackActivityId?: string | null;
+  feedbackCompletionByTemplateId?: Record<string, boolean>;
+  feedbackDone?: boolean;
 }
 
 type TaskListItem =
@@ -110,12 +113,38 @@ const coerceMinutes = (val: any): number | null => {
   return Math.round(num as number);
 };
 
+const normalizeFeedbackTitle = (value?: string | null): string => {
+  if (typeof value !== 'string') return '';
+  return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+};
+
+const isFeedbackTitle = (title?: string | null): boolean => {
+  if (typeof title !== 'string') return false;
+  const normalized = normalizeFeedbackTitle(title);
+  return normalized.startsWith('feedback pa');
+};
+
+const getMarkerTemplateId = (task: any): string | null => {
+  if (!task) return null;
+  const fromMarker =
+    typeof task.description === 'string' ? parseTemplateIdFromMarker(task.description) : null;
+  if (fromMarker) return fromMarker;
+  if (typeof task.title === 'string') {
+    const fromTitle = parseTemplateIdFromMarker(task.title);
+    if (fromTitle) return fromTitle;
+  }
+  return null;
+};
+
 export default function ActivityCard({
   activity,
   resolvedDate,
   onPress: _deprecatedOnPress,
   onPressIntensity: _deprecatedOnPressIntensity,
   showTasks = false,
+  feedbackActivityId,
+  feedbackCompletionByTemplateId,
+  feedbackDone,
 }: ActivityCardProps) {
   const router = useRouter();
   const { toggleTaskCompletion, refreshData } = useFootball();
@@ -123,13 +152,13 @@ export default function ActivityCard({
   const isDark = useColorScheme() === 'dark';
 
   const activityId = useMemo(() => {
-    const raw = activity?.id ?? activity?.activity_id;
+    const raw = activity?.id ?? activity?.activity_id ?? activity?.activityId;
     if (raw === null || raw === undefined) return null;
     const trimmed = String(raw).trim();
     const lowered = trimmed.toLowerCase();
     if (!trimmed.length || lowered === 'undefined' || lowered === 'null') return null;
     return trimmed;
-  }, [activity?.activity_id, activity?.id]);
+  }, [activity?.activityId, activity?.activity_id, activity?.id]);
 
   // Local optimistic state for tasks
   const [optimisticTasks, setOptimisticTasks] = useState<any[]>([]);
@@ -164,10 +193,18 @@ export default function ActivityCard({
       if (trimmed.length) return trimmed;
     }
 
-    const fromMarker =
-      typeof task.description === 'string' ? parseTemplateIdFromMarker(task.description) : null;
+    const markerTemplateId = getMarkerTemplateId(task);
+    if (markerTemplateId) return markerTemplateId;
 
-    return fromMarker ?? null;
+    if (isFeedbackTitle(task.title)) {
+      const fallbackTemplateId = task.taskTemplateId ?? task.task_template_id;
+      if (fallbackTemplateId !== null && fallbackTemplateId !== undefined) {
+        const trimmed = String(fallbackTemplateId).trim();
+        if (trimmed.length) return trimmed;
+      }
+    }
+
+    return null;
   }, []);
 
   const isFeedbackTask = useCallback(
@@ -177,27 +214,40 @@ export default function ActivityCard({
         return true;
       }
 
-      return !!resolveFeedbackTemplateId(task);
+      const direct = task.feedbackTemplateId ?? task.feedback_template_id;
+      if (direct !== null && direct !== undefined && String(direct).trim().length > 0) {
+        return true;
+      }
+      return !!getMarkerTemplateId(task) || isFeedbackTitle(task.title);
     },
-    [resolveFeedbackTemplateId]
+    []
   );
 
   const isFeedbackRenderTask = useCallback(
     (task: any): boolean => {
       if (!task) return false;
       if (isFeedbackTask(task)) return true;
-
-      if (
-        task?.feedback_template_id !== null &&
-        task?.feedback_template_id !== undefined
-      ) {
-        return true;
-      }
-
-      const title = typeof task?.title === 'string' ? task.title.trim().toLowerCase() : '';
-      return title.startsWith('feedback på');
+      return isFeedbackTitle(task?.title);
     },
     [isFeedbackTask]
+  );
+
+  const isTaskDone = useCallback(
+    (task: any): boolean => {
+      if (!task) return false;
+      const templateId = resolveFeedbackTemplateId(task);
+      if (isFeedbackTask(task)) {
+        if (templateId) {
+          return (
+            feedbackCompletionByTemplateId?.[String(templateId)] === true ||
+            task.completed === true
+          );
+        }
+        return feedbackDone === true || task.completed === true;
+      }
+      return task.completed === true;
+    },
+    [feedbackCompletionByTemplateId, feedbackDone, isFeedbackTask, resolveFeedbackTemplateId]
   );
 
   const hasTemplateOrFeedback = useCallback((task: any): boolean => {
@@ -256,12 +306,17 @@ export default function ActivityCard({
     (task: any, event?: any) => {
       event?.stopPropagation?.();
       const templateId = resolveFeedbackTemplateId(task);
+      const routeActivityId =
+        feedbackActivityId ??
+        (activity?.activity_id ?? activity?.activityId) ??
+        activity?.id ??
+        activityId;
       if (isFeedbackTask(task)) {
-        if (templateId && activityId) {
+        if (templateId && routeActivityId) {
           router.push({
             pathname: '/(modals)/task-feedback-note',
             params: {
-              activityId: String(activity.id ?? activityId),
+              activityId: String(routeActivityId),
               templateId: String(templateId),
               title: String(task.title ?? 'opgave'),
             },
@@ -274,7 +329,7 @@ export default function ActivityCard({
       setSelectedTask(task);
       setIsTaskModalOpen(true);
     },
-    [activity.id, activityId, handleCardPress, isFeedbackTask, resolveFeedbackTemplateId, router]
+    [activity?.id, activityId, feedbackActivityId, handleCardPress, isFeedbackTask, resolveFeedbackTemplateId, router]
   );
 
   const handleModalClose = useCallback(() => {
@@ -458,15 +513,6 @@ export default function ActivityCard({
     });
     const orderedTasks = normalTasks.concat(feedbackTasks);
 
-    if (__DEV__) {
-      console.log('[ActivityCard][taskListItems]', {
-        allTasks: allTasks.length,
-        visibleTasks: orderedTasks.length,
-        showTasks,
-        isExternal: activity?.is_external,
-      });
-    }
-
     const items: TaskListItem[] = [];
 
     if (showIntensityRow) {
@@ -637,6 +683,7 @@ export default function ActivityCard({
                 }
 
                 const task = (item as any).task;
+                const taskCompleted = isTaskDone(task);
 
                 return (
                   <React.Fragment key={item.key}>
@@ -647,13 +694,13 @@ export default function ActivityCard({
                         onPress={(e) => handleTaskPress(task, e)}
                         activeOpacity={0.7}
                       >
-                        <View style={[styles.taskCheckbox, task.completed && styles.taskCheckboxCompleted]}>
-                          {task.completed && (
+                        <View style={[styles.taskCheckbox, taskCompleted && styles.taskCheckboxCompleted]}>
+                          {taskCompleted && (
                             <IconSymbol
                               ios_icon_name="checkmark"
                               android_material_icon_name="check"
                               size={14}
-                              color={task.completed ? '#4CAF50' : '#fff'}
+                              color={taskCompleted ? '#4CAF50' : '#fff'}
                             />
                           )}
                         </View>
@@ -666,7 +713,7 @@ export default function ActivityCard({
                       >
                         <View style={styles.taskTitleRow}>
                           <Text
-                            style={[styles.taskTitle, task.completed && styles.taskTitleCompleted]}
+                            style={[styles.taskTitle, taskCompleted && styles.taskTitleCompleted]}
                             numberOfLines={1}
                           >
                             {task.title}

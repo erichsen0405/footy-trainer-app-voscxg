@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Switch,
+  DeviceEventEmitter,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path } from 'react-native-svg';
@@ -30,7 +31,7 @@ import { deleteSingleExternalActivity } from '@/utils/deleteExternalActivities';
 import { TaskDescriptionRenderer } from '@/components/TaskDescriptionRenderer';
 import { supabase } from '@/integrations/supabase/client';
 import { TaskScoreNoteModal, TaskScoreNoteModalPayload } from '@/components/TaskScoreNoteModal';
-import { fetchSelfFeedbackForTemplates, upsertSelfFeedback } from '@/services/feedbackService';
+import { fetchSelfFeedbackForActivities, fetchSelfFeedbackForTemplates, upsertSelfFeedback } from '@/services/feedbackService';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { resolveActivityIntensityEnabled } from '@/utils/activityIntensity';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -313,6 +314,7 @@ const INTERNAL_SELECT_WITH_VIDEO = `
     completed,
     reminder_minutes,
     task_template_id,
+    feedback_template_id,
     video_url
   )
 `;
@@ -344,7 +346,8 @@ const INTERNAL_SELECT_NO_VIDEO = `
     description,
     completed,
     reminder_minutes,
-    task_template_id
+    task_template_id,
+    feedback_template_id
   )
 `;
 
@@ -374,6 +377,7 @@ const EXTERNAL_META_SELECT_WITH_VIDEO = `
   external_event_tasks (
     id,
     task_template_id,
+    feedback_template_id,
     title,
     description,
     completed,
@@ -408,6 +412,7 @@ const EXTERNAL_META_SELECT_NO_VIDEO = `
   external_event_tasks (
     id,
     task_template_id,
+    feedback_template_id,
     title,
     description,
     completed,
@@ -514,8 +519,10 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
       };
 
       const tasks: FeedbackTask[] = (internalActivityAny.activity_tasks ?? []).map((task: any) => {
-        const markerTemplateId = parseTemplateIdFromMarker(task.description || '');
-        const isFeedbackTask = !task.task_template_id && !!markerTemplateId;
+        const directFeedbackTemplateId = normalizeId(task.feedback_template_id ?? task.feedbackTemplateId);
+        const markerTemplateId = getMarkerTemplateId({ description: task.description, title: task.title });
+        const feedbackTemplateId = directFeedbackTemplateId ?? markerTemplateId ?? null;
+        const isFeedbackTask = Boolean(feedbackTemplateId) || isFeedbackTitle(task.title);
         const resolvedVideo = getTaskVideoUrl(task);
         const mapped: any = {
           id: task.id,
@@ -530,7 +537,8 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
           videoUrl: resolvedVideo ?? undefined,
           video_url: resolvedVideo,
           taskTemplateId: task.task_template_id,
-          feedbackTemplateId: markerTemplateId,
+          feedback_template_id: task.feedback_template_id,
+          feedbackTemplateId,
           isFeedbackTask,
         };
         return mapped as FeedbackTask;
@@ -617,8 +625,10 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
             emoji: '⚽️',
           },
         tasks: (localMetaAny.external_event_tasks || []).map((task: any) => {
-          const markerTemplateId = parseTemplateIdFromMarker(task.description || '');
-          const isFeedbackTask = !task.task_template_id && !!markerTemplateId;
+          const directFeedbackTemplateId = normalizeId(task.feedback_template_id ?? task.feedbackTemplateId);
+          const markerTemplateId = getMarkerTemplateId({ description: task.description, title: task.title });
+          const feedbackTemplateId = directFeedbackTemplateId ?? markerTemplateId ?? null;
+          const isFeedbackTask = Boolean(feedbackTemplateId) || isFeedbackTitle(task.title);
           const resolvedVideo = getTaskVideoUrl(task);
           const mapped: any = {
             id: task.id,
@@ -633,7 +643,8 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
             videoUrl: resolvedVideo ?? undefined,
             video_url: resolvedVideo,
             taskTemplateId: task.task_template_id,
-            feedbackTemplateId: markerTemplateId,
+            feedback_template_id: task.feedback_template_id,
+            feedbackTemplateId,
             isFeedbackTask,
           };
           return mapped as FeedbackTask;
@@ -641,6 +652,8 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
         isExternal: true,
         externalCalendarId: externalEvent.provider_calendar_id,
         externalEventId: localMetaAny.external_event_id,
+        externalEventRowId:
+          normalizeId(localMetaAny.external_event_row_id ?? externalEvent.id) ?? undefined,
         intensity: metaIntensity,
         intensityEnabled: metaIntensityEnabled,
       };
@@ -681,6 +694,7 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
         isExternal: true,
         externalCalendarId: externalOnlyAny.provider_calendar_id ?? undefined,
         externalEventId: String(externalOnlyAny.id),
+        externalEventRowId: String(externalOnlyAny.id),
         intensity: null,
         intensityEnabled: false,
       };
@@ -858,6 +872,186 @@ interface PreviousFeedbackEntry {
   templateId: string;
   taskTitle: string;
   feedback?: TaskTemplateSelfFeedback;
+}
+
+function normalizeId(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const trimmed = String(value).trim();
+  return trimmed.length ? trimmed : null;
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function normalizeUuid(value: unknown): string | null {
+  const trimmed = normalizeId(value);
+  if (!trimmed) return null;
+  return isUuid(trimmed) ? trimmed : null;
+}
+
+function normalizeTitle(value?: string | null): string {
+  if (typeof value !== 'string') return '';
+  return value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeFeedbackTitle(value?: string | null): string {
+  return normalizeTitle(value);
+}
+
+function stripLeadingFeedbackPrefix(title: string): string {
+  if (typeof title !== 'string') return title;
+  const trimmed = title.trim();
+  const stripped = trimmed.replace(/^feedback\s+p[\u00e5a]\s*/i, '');
+  return stripped.length ? stripped : title;
+}
+
+function isFeedbackTitle(title?: string | null): boolean {
+  if (typeof title !== 'string') return false;
+  const normalized = normalizeFeedbackTitle(title);
+  return normalized.startsWith('feedback pa');
+}
+
+function getMarkerTemplateId(task: { description?: string | null; title?: string | null }): string | null {
+  return (
+    parseTemplateIdFromMarker(task.description ?? '') ??
+    parseTemplateIdFromMarker(task.title ?? '') ??
+    null
+  );
+}
+
+function isFeedbackTask(task: {
+  description?: string | null;
+  title?: string | null;
+  feedbackTemplateId?: string | null;
+  feedback_template_id?: string | null;
+  isFeedbackTask?: boolean;
+}): boolean {
+  if (!task) return false;
+  const direct = normalizeId(task.feedbackTemplateId ?? (task as any)?.feedback_template_id);
+  if (direct) return true;
+  if (task.isFeedbackTask === true) return true;
+  return !!getMarkerTemplateId(task) || isFeedbackTitle(task.title);
+}
+
+function computeOrphanFeedbackTaskIds(tasks: FeedbackTask[]): {
+  orphanIds: string[];
+  orphanTasks: FeedbackTask[];
+} {
+  const parentsByTemplate = new Set<string>();
+  const parentsByTitle = new Set<string>();
+
+  for (const task of Array.isArray(tasks) ? tasks : []) {
+    if (isFeedbackTask(task)) continue;
+    const templateId = normalizeId(task.taskTemplateId ?? (task as any)?.task_template_id);
+    if (templateId) parentsByTemplate.add(templateId);
+    const normalizedTitle = normalizeTitle(task.title);
+    if (normalizedTitle) parentsByTitle.add(normalizedTitle);
+  }
+
+  const orphanIds: string[] = [];
+  const orphanTasks: FeedbackTask[] = [];
+
+  for (const task of Array.isArray(tasks) ? tasks : []) {
+    if (!isFeedbackTask(task)) continue;
+
+    const linkedTemplateId =
+      normalizeId(task.feedbackTemplateId ?? (task as any)?.feedback_template_id) ??
+      getMarkerTemplateId(task);
+    const linkedTitle = normalizeTitle(stripLeadingFeedbackPrefix(task.title ?? ''));
+
+    let isOrphan = false;
+    if (linkedTemplateId) {
+      isOrphan = !parentsByTemplate.has(linkedTemplateId);
+    } else if (linkedTitle) {
+      isOrphan = !parentsByTitle.has(linkedTitle);
+    } else {
+      continue;
+    }
+
+    if (isOrphan) {
+      orphanIds.push(String(task.id));
+      orphanTasks.push(task);
+    }
+  }
+
+  return { orphanIds, orphanTasks };
+}
+
+function safeDateMs(value: unknown): number {
+  const ms = new Date(String(value ?? '')).getTime();
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function buildSelfFeedbackLookup(args: {
+  templateIds: string[];
+  allTemplateRows: TaskTemplateSelfFeedback[];
+  currentActivityRows: TaskTemplateSelfFeedback[];
+  currentActivityIds: string[];
+}): Record<string, TemplateFeedbackSummary> {
+  const { templateIds, allTemplateRows, currentActivityRows, currentActivityIds } = args;
+
+  if (!Array.isArray(templateIds) || templateIds.length === 0) {
+    return {};
+  }
+
+  const normalizedTemplateIds = templateIds
+    .map((id) => normalizeId(id))
+    .filter(Boolean) as string[];
+
+  if (!normalizedTemplateIds.length) {
+    return {};
+  }
+
+  const templateIdSet = new Set(normalizedTemplateIds);
+  const currentActivityIdSet = new Set(
+    (currentActivityIds ?? []).map((id) => normalizeId(id)).filter(Boolean) as string[],
+  );
+
+  const currentByTemplate: Record<string, TaskTemplateSelfFeedback> = {};
+  for (const row of Array.isArray(currentActivityRows) ? currentActivityRows : []) {
+    const templateId = normalizeId((row as any)?.taskTemplateId ?? (row as any)?.task_template_id);
+    if (!templateId || !templateIdSet.has(templateId)) continue;
+
+    const rowMs = safeDateMs((row as any)?.createdAt ?? (row as any)?.created_at);
+    const existingMs = currentByTemplate[templateId] ? safeDateMs((currentByTemplate[templateId] as any).createdAt) : -1;
+    if (!currentByTemplate[templateId] || rowMs > existingMs) {
+      currentByTemplate[templateId] = row;
+    }
+  }
+
+  const previousByTemplate: Record<string, TaskTemplateSelfFeedback> = {};
+  for (const row of Array.isArray(allTemplateRows) ? allTemplateRows : []) {
+    const templateId = normalizeId((row as any)?.taskTemplateId ?? (row as any)?.task_template_id);
+    if (!templateId || !templateIdSet.has(templateId)) continue;
+
+    const rowActivityId = normalizeId((row as any)?.activityId ?? (row as any)?.activity_id);
+    if (rowActivityId && currentActivityIdSet.has(rowActivityId)) continue;
+
+    const rowMs = safeDateMs((row as any)?.createdAt ?? (row as any)?.created_at);
+    const existingMs = previousByTemplate[templateId] ? safeDateMs((previousByTemplate[templateId] as any).createdAt) : -1;
+    if (!previousByTemplate[templateId] || rowMs > existingMs) {
+      previousByTemplate[templateId] = row;
+    }
+  }
+
+  const lookup: Record<string, TemplateFeedbackSummary> = {};
+  for (const templateId of normalizedTemplateIds) {
+    const current = currentByTemplate[templateId];
+    const previous = previousByTemplate[templateId];
+    if (current || previous) {
+      lookup[templateId] = { current, previous };
+    } else {
+      lookup[templateId] = {};
+    }
+  }
+
+  return lookup;
 }
 
 function normalizeScoreExplanation(value?: string | null): string | null {
@@ -1060,11 +1254,47 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
   const [pendingOpenIntensity, setPendingOpenIntensity] = useState<boolean>(initialOpenIntensity ?? false);
 
-  const resolveFeedbackTemplateId = useCallback(
-    (task: FeedbackTask | null | undefined): string | null =>
-      task ? task.feedbackTemplateId ?? parseTemplateIdFromMarker(task.description || '') ?? null : null,
-    [],
+  const feedbackActivityCandidates = useMemo(() => {
+    const ids: string[] = [];
+    const push = (value: unknown) => {
+      const normalized = normalizeUuid(value);
+      if (!normalized) return;
+      if (!ids.includes(normalized)) ids.push(normalized);
+    };
+
+    push(activity.id);
+
+    if (activity.isExternal) {
+      push((activity as any)?.externalEventRowId ?? (activity as any)?.external_event_row_id);
+      push(activity.externalEventId ?? (activity as any)?.external_event_id);
+    }
+
+    return ids;
+  }, [
+    activity.externalEventId,
+    activity.id,
+    activity.isExternal,
+    (activity as any)?.externalEventRowId,
+    (activity as any)?.external_event_row_id,
+  ]);
+
+  const feedbackActivityCandidatesKey = useMemo(
+    () => feedbackActivityCandidates.join('|'),
+    [feedbackActivityCandidates],
   );
+
+  const resolveFeedbackTemplateId = useCallback((task: FeedbackTask | null | undefined): string | null => {
+    if (!task) return null;
+    const direct = normalizeId(task.feedbackTemplateId ?? (task as any)?.feedback_template_id);
+    if (direct) return direct;
+    const markerTemplateId = getMarkerTemplateId(task);
+    if (markerTemplateId) return markerTemplateId;
+    if (isFeedbackTitle(task.title) || task.isFeedbackTask === true) {
+      const fallbackTemplateId = normalizeId(task.taskTemplateId ?? (task as any)?.task_template_id);
+      if (fallbackTemplateId) return fallbackTemplateId;
+    }
+    return null;
+  }, []);
 
   const getFeedbackConfigForTemplate = useCallback(
     (templateId: string | null): AfterTrainingFeedbackConfig => {
@@ -1095,8 +1325,54 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   }, []);
 
   useEffect(() => {
-    setTasksState((activity.tasks as FeedbackTask[]) || []);
-  }, [activity.tasks]);
+    const incomingTasks = (activity.tasks as FeedbackTask[]) || [];
+
+    if (!activity.isExternal) {
+      setTasksState(incomingTasks);
+      return;
+    }
+
+    const { orphanIds } = computeOrphanFeedbackTaskIds(incomingTasks);
+    const orphanIdSet = new Set(orphanIds.map((id) => String(id)));
+    const filteredTasks = orphanIds.length
+      ? incomingTasks.filter((task) => !orphanIdSet.has(String(task.id)))
+      : incomingTasks;
+
+    setTasksState(filteredTasks);
+
+    if (orphanIds.length && __DEV__) {
+      console.log('[OrphanFeedbackCleanup]', {
+        activityId: activity.id,
+        externalEventRowId: (activity as any)?.externalEventRowId ?? (activity as any)?.external_event_row_id ?? null,
+        orphanCount: orphanIds.length,
+        orphanIdsSample: orphanIds.slice(0, 3),
+      });
+    }
+
+    if (orphanIds.length && isAdmin) {
+      let cancelled = false;
+      (async () => {
+        try {
+          const { error } = await supabase
+            .from('external_event_tasks')
+            .delete()
+            .in('id', orphanIds);
+          if (error) throw error;
+        } catch (error) {
+          if (__DEV__ && !cancelled) {
+            console.log('[OrphanFeedbackCleanup] failed to delete orphan feedback tasks', {
+              activityId: activity.id,
+              orphanCount: orphanIds.length,
+              error,
+            });
+          }
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+  }, [activity.id, activity.isExternal, activity.tasks, isAdmin]);
 
   const feedbackTemplateIds = useMemo(() => {
     const ids = new Set<string>();
@@ -1111,7 +1387,12 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     let cancelled = false;
 
     (async () => {
-      if (!feedbackTemplateIds.length) return;
+      if (!feedbackTemplateIds.length) {
+        if (!cancelled) {
+          setSelfFeedbackByTemplate({});
+        }
+        return;
+      }
 
       try {
         const { data } = await supabase.from('task_templates').select(TEMPLATE_SELECT_FULL).in('id', feedbackTemplateIds);
@@ -1130,12 +1411,24 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
       try {
         if (!currentUserId) return;
-        const result = await (fetchSelfFeedbackForTemplates as any)(feedbackTemplateIds, currentUserId);
+        const uniqueCandidateIds = Array.from(new Set(feedbackActivityCandidates));
+
+        const [allTemplateRows, currentActivityRows] = await Promise.all([
+          fetchSelfFeedbackForTemplates(currentUserId, feedbackTemplateIds),
+          uniqueCandidateIds.length
+            ? fetchSelfFeedbackForActivities(currentUserId, uniqueCandidateIds)
+            : Promise.resolve([] as TaskTemplateSelfFeedback[]),
+        ]);
         if (cancelled) return;
 
-        if (result && typeof result === 'object' && !Array.isArray(result)) {
-          setSelfFeedbackByTemplate(result as Record<string, TemplateFeedbackSummary>);
-        }
+        setSelfFeedbackByTemplate(
+          buildSelfFeedbackLookup({
+            templateIds: feedbackTemplateIds,
+            allTemplateRows,
+            currentActivityRows,
+            currentActivityIds: uniqueCandidateIds,
+          }),
+        );
       } catch (e) {
         if (__DEV__) console.log('[ActivityDetails] self feedback fetch skipped/failed', e);
       }
@@ -1144,7 +1437,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     return () => {
       cancelled = true;
     };
-  }, [currentUserId, feedbackTemplateIds]);
+  }, [currentUserId, feedbackActivityCandidatesKey, feedbackTemplateIds]);
 
   useEffect(() => {
     if (!pendingFeedbackTaskId) return;
@@ -1687,7 +1980,9 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const handleTaskRowPress = useCallback(
     (task: FeedbackTask) => {
       const templateId = resolveFeedbackTemplateId(task);
-      const isFeedbackTaskLocal = task.isFeedbackTask === true || (!!templateId && !task.taskTemplateId);
+      const hasFeedbackTemplateId = !!normalizeId(task.feedbackTemplateId ?? (task as any)?.feedback_template_id);
+      const isFeedbackTaskLocal =
+        !!templateId && (hasFeedbackTemplateId || task.isFeedbackTask === true || isFeedbackTitle(task.title) || isFeedbackTask(task));
 
       if (isFeedbackTaskLocal && templateId) {
         setFeedbackModalTask({ task, templateId });
@@ -1815,7 +2110,9 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           <FlatList
             horizontal
             data={data}
-            keyExtractor={(c) => String((c as any)?.id ?? (c as any)?.name ?? Math.random())}
+            keyExtractor={(c, index) =>
+              c?.id ? String(c.id) : c?.name ? `${String(c.name)}-${index}` : String(index)
+            }
             showsHorizontalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.categoryScroll}
@@ -1983,7 +2280,9 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       const config = getFeedbackConfigForTemplate(templateId);
       const feedback = templateId ? selfFeedbackByTemplate[templateId]?.current : undefined;
 
-      const isFeedbackTaskLocal = task.isFeedbackTask === true || (!!templateId && !task.taskTemplateId);
+      const hasFeedbackTemplateId = !!normalizeId(task.feedbackTemplateId ?? (task as any)?.feedback_template_id);
+      const isFeedbackTaskLocal =
+        !!templateId && (hasFeedbackTemplateId || task.isFeedbackTask === true || isFeedbackTitle(task.title) || isFeedbackTask(task));
 
       const isFeedbackCompleted = isFeedbackTaskLocal ? isFeedbackAnswered(feedback, config) : false;
 
@@ -2575,9 +2874,65 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             if (!isAdmin) break;
             if (!cancelled) setDeletingTaskId(action.taskId);
             try {
+              const existingTasks = tasksState;
+              const deletedTask = existingTasks.find((task) => String(task.id) === String(action.taskId));
+              const deletedIsFeedback = deletedTask ? isFeedbackTask(deletedTask) : false;
+              const rawParentTemplateId = deletedTask
+                ? normalizeId(deletedTask?.taskTemplateId ?? (deletedTask as any)?.task_template_id)
+                : null;
+              const allowFeedbackCleanup = !deletedIsFeedback && !!rawParentTemplateId;
+              const parentTemplateId = allowFeedbackCleanup ? rawParentTemplateId : null;
+              const normalizedDeletedTitle = allowFeedbackCleanup ? normalizeTitle(deletedTask?.title ?? '') : '';
+
+              const feedbackTaskIds = allowFeedbackCleanup
+                ? existingTasks
+                    .filter((task) => {
+                      if (String(task.id) === String(action.taskId)) return false;
+                      if (!isFeedbackTask(task)) return false;
+
+                      const feedbackTemplateId = normalizeId(
+                        task.feedbackTemplateId ?? (task as any)?.feedback_template_id,
+                      );
+                      if (parentTemplateId && feedbackTemplateId && feedbackTemplateId === parentTemplateId) {
+                        return true;
+                      }
+
+                      const markerTemplateId = getMarkerTemplateId(task);
+                      if (parentTemplateId && markerTemplateId === parentTemplateId) {
+                        return true;
+                      }
+
+                      if (normalizedDeletedTitle && isFeedbackTitle(task.title)) {
+                        const linkedTitle = normalizeTitle(stripLeadingFeedbackPrefix(task.title ?? ''));
+                        if (linkedTitle && linkedTitle === normalizedDeletedTitle) {
+                          return true;
+                        }
+                      }
+
+                      return false;
+                    })
+                    .map((task) => String(task.id))
+                : [];
+
               await deleteActivityTask(currentActivity.id, action.taskId);
               if (!cancelled) {
-                setTasksState((prev) => prev.filter((task) => String(task.id) !== String(action.taskId)));
+                if (feedbackTaskIds.length) {
+                  try {
+                    const table = currentActivity.isExternal ? 'external_event_tasks' : 'activity_tasks';
+                    const { error } = await supabase.from(table).delete().in('id', feedbackTaskIds);
+                    if (error) throw error;
+                  } catch (error) {
+                    if (__DEV__) {
+                      console.log('[ActivityDetails] failed to delete feedback tasks', {
+                        feedbackTaskIds,
+                        error,
+                      });
+                    }
+                  }
+                }
+
+                const removedIds = new Set([String(action.taskId), ...feedbackTaskIds]);
+                setTasksState((prev) => prev.filter((task) => !removedIds.has(String(task.id))));
                 refreshData();
                 Alert.alert('Slettet', 'Opgaven er blevet slettet fra denne aktivitet');
               }
@@ -2691,29 +3046,11 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       setFeedbackModalError(null);
       setIsFeedbackSaving(true);
 
-      let resolvedActivityId: string | null = null;
-      let triedActivityId: any = null;
-      let triedFeedbackTaskActivityId: any = null;
+      const candidateActivityIds = feedbackActivityCandidates.length ? feedbackActivityCandidates : [];
 
-      try {
-        triedActivityId = activity?.id;
-        if (typeof triedActivityId === 'string' && String(triedActivityId).trim().length > 0) {
-          resolvedActivityId = String(triedActivityId).trim();
-        }
-        if (!resolvedActivityId) {
-          triedFeedbackTaskActivityId = (feedbackModalTask.task as any)?.activity_id;
-          if (typeof triedFeedbackTaskActivityId === 'string' && String(triedFeedbackTaskActivityId).trim().length > 0) {
-            resolvedActivityId = String(triedFeedbackTaskActivityId).trim();
-          }
-        }
-      } catch {
-        resolvedActivityId = null;
-      }
-
-      if (!resolvedActivityId) {
+      if (!candidateActivityIds.length) {
         console.error('[ActivityDetails] Feedback save failed: missing activity_id', {
-          triedActivityId,
-          triedFeedbackTaskActivityId,
+          feedbackActivityCandidates,
           feedbackModalTask,
           activity,
         });
@@ -2733,25 +3070,159 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         return;
       }
 
+      const templateId = feedbackModalTask.templateId;
+      const feedbackTaskId = feedbackModalTask.task.id;
+      const optimisticActivityId = candidateActivityIds[0];
+      const nowIso = new Date().toISOString();
+      const optimisticId = `optimistic:${optimisticActivityId}:${templateId}:${nowIso}`;
+      const previousEntry = selfFeedbackByTemplate[templateId];
+      const previousTaskCompleted = tasksState.find((t) => t.id === feedbackTaskId)?.completed ?? false;
+
+      const optimisticFeedback: TaskTemplateSelfFeedback = {
+        id: optimisticId,
+        userId: currentUserId,
+        taskTemplateId: templateId,
+        activityId: optimisticActivityId,
+        rating: typeof score === 'number' ? score : null,
+        note: typeof note === 'string' ? note : null,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      };
+
+      setSelfFeedbackByTemplate((prev) => ({
+        ...prev,
+        [templateId]: {
+          previous: previousEntry?.previous,
+          current: optimisticFeedback,
+        },
+      }));
+      setTasksState((prev) => prev.map((t) => (t.id === feedbackTaskId ? { ...t, completed: true } : t)));
+      handleFeedbackClose();
+      DeviceEventEmitter.emit('feedback:saved', {
+        activityId: optimisticActivityId,
+        templateId,
+        rating: optimisticFeedback.rating,
+        note: optimisticFeedback.note,
+        createdAt: nowIso,
+        optimisticId,
+        source: 'activity-details',
+      });
+
       try {
-        await (upsertSelfFeedback as any)({
-          templateId: feedbackModalTask.templateId,
-          userId: currentUserId,
-          rating: score,
-          note,
-          activity_id: String(resolvedActivityId).trim(),
-          activityId: String(resolvedActivityId).trim(),
+        const tryUpsert = async (candidateActivityId: string) =>
+          upsertSelfFeedback({
+            templateId,
+            userId: currentUserId,
+            rating: score,
+            note,
+            activity_id: String(candidateActivityId).trim(),
+            activityId: String(candidateActivityId).trim(),
+          });
+
+        let savedFeedback: TaskTemplateSelfFeedback | null = null;
+        let lastError: any = null;
+        let lastTriedId: string | null = null;
+
+        for (const candidateId of candidateActivityIds) {
+          lastTriedId = candidateId;
+          try {
+            savedFeedback = await tryUpsert(candidateId);
+            lastError = null;
+            break;
+          } catch (e) {
+            lastError = e;
+          }
+        }
+
+        if (!savedFeedback && lastError) {
+          if (__DEV__) {
+            console.log('[ActivityDetails] feedback save failed', {
+              activityId: lastTriedId,
+              message: (lastError as any)?.message,
+              details: (lastError as any)?.details,
+              hint: (lastError as any)?.hint,
+              code: (lastError as any)?.code,
+              status: (lastError as any)?.status,
+            });
+          }
+          throw lastError;
+        }
+        if (!savedFeedback) {
+          throw new Error('Feedback save failed');
+        }
+
+        setSelfFeedbackByTemplate((prev) => {
+          const prevEntry = prev[templateId] ?? {};
+          return {
+            ...prev,
+            [templateId]: {
+              previous: prevEntry.previous,
+              current: savedFeedback,
+            },
+          };
         });
+
+        try {
+          if (activity.isExternal) {
+            const { error } = await supabase
+              .from('external_event_tasks')
+              .update({ completed: true })
+              .eq('id', feedbackTaskId);
+            if (error) throw error;
+          } else {
+            const { error } = await supabase
+              .from('activity_tasks')
+              .update({ completed: true })
+              .eq('id', feedbackTaskId);
+            if (error) throw error;
+          }
+        } catch (e) {
+          if (__DEV__) console.log('[ActivityDetails] feedback completion update failed', e);
+        }
+
         Promise.resolve(refreshData()).catch(() => {});
-        handleFeedbackClose();
       } catch (e) {
         console.error('[ActivityDetails] feedback save failed:', e);
-        setFeedbackModalError('Kunne ikke gemme feedback lige nu. Prøv igen.');
+        setSelfFeedbackByTemplate((prev) => {
+          if (previousEntry) {
+            return { ...prev, [templateId]: previousEntry };
+          }
+          const { [templateId]: _removed, ...rest } = prev;
+          return rest;
+        });
+        setTasksState((prev) =>
+          prev.map((t) => (t.id === feedbackTaskId ? { ...t, completed: previousTaskCompleted } : t)),
+        );
+        DeviceEventEmitter.emit('feedback:save_failed', {
+          activityId: optimisticActivityId,
+          templateId,
+          optimisticId,
+          source: 'activity-details',
+        });
+        Alert.alert('Kunne ikke gemme', 'Feedback kunne ikke gemmes. Prøv igen.');
+        if (__DEV__) {
+          console.log('[ActivityDetails] feedback save error details', {
+            message: (e as any)?.message,
+            details: (e as any)?.details,
+            hint: (e as any)?.hint,
+            code: (e as any)?.code,
+            status: (e as any)?.status,
+          });
+        }
       } finally {
         setIsFeedbackSaving(false);
       }
     },
-    [currentUserId, feedbackModalTask, handleFeedbackClose, refreshData, activity],
+    [
+      activity,
+      currentUserId,
+      feedbackActivityCandidates,
+      feedbackModalTask,
+      handleFeedbackClose,
+      refreshData,
+      selfFeedbackByTemplate,
+      tasksState,
+    ],
   );
 
   const feedbackModalConfig = useMemo(() => {
@@ -2767,13 +3238,6 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       note: cur?.note ?? '',
     };
   }, [feedbackModalTask, selfFeedbackByTemplate]);
-
-  function stripLeadingFeedbackPrefix(title: string): string {
-    if (typeof title !== 'string') return title;
-    let t = title.trim();
-    t = t.replace(/^feedback på\s*/i, '');
-    return t.length ? t : title;
-  }
 
   const handleBackPress = useCallback(() => {
     if (isEditing) {
