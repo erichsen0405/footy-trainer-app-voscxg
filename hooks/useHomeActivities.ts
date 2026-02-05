@@ -4,6 +4,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { getCategories, DatabaseActivityCategory } from '@/services/activities';
 import { resolveActivityCategory, type CategoryMappingRecord } from '@/shared/activityCategoryResolver';
 import { subscribeToTaskCompletion } from '@/utils/taskEvents';
+import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
+import { useUserRole } from '@/hooks/useUserRole';
 import {
   subscribeToActivityPatch,
   subscribeToActivitiesRefreshRequested,
@@ -73,6 +75,88 @@ const parseIntensityValue = (raw: any): number | null => {
   return null;
 };
 
+const normalizeId = (value: unknown): string | null => {
+  if (value === null || value === undefined) return null;
+  const trimmed = String(value).trim();
+  return trimmed.length ? trimmed : null;
+};
+
+const normalizeTitle = (value?: string | null): string => {
+  if (typeof value !== 'string') return '';
+  return value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+};
+
+const stripLeadingFeedbackPrefix = (title: string): string => {
+  if (typeof title !== 'string') return title;
+  const trimmed = title.trim();
+  const stripped = trimmed.replace(/^feedback\s+p[\u00e5a]\s*/i, '');
+  return stripped.length ? stripped : title;
+};
+
+const isFeedbackTitle = (title?: string | null): boolean => {
+  if (typeof title !== 'string') return false;
+  const normalized = normalizeTitle(title);
+  return normalized.startsWith('feedback pa');
+};
+
+const getMarkerTemplateId = (task: ActivityTask | null | undefined): string | null => {
+  if (!task) return null;
+  const fromDescription =
+    typeof task.description === 'string' ? parseTemplateIdFromMarker(task.description) : null;
+  if (fromDescription) return fromDescription;
+  const fromTitle = typeof task.title === 'string' ? parseTemplateIdFromMarker(task.title) : null;
+  return fromTitle ?? null;
+};
+
+const isFeedbackTask = (task: ActivityTask | null | undefined): boolean => {
+  if (!task) return false;
+  const direct = normalizeId(task.feedback_template_id);
+  if (direct) return true;
+  return !!getMarkerTemplateId(task) || isFeedbackTitle(task.title);
+};
+
+const computeOrphanFeedbackTaskIds = (tasks: ActivityTask[]): string[] => {
+  const parentsByTemplate = new Set<string>();
+  const parentsByTitle = new Set<string>();
+
+  for (const task of Array.isArray(tasks) ? tasks : []) {
+    if (isFeedbackTask(task)) continue;
+    const templateId = normalizeId(task.task_template_id);
+    if (templateId) parentsByTemplate.add(templateId);
+    const normalized = normalizeTitle(task.title);
+    if (normalized) parentsByTitle.add(normalized);
+  }
+
+  const orphanIds: string[] = [];
+
+  for (const task of Array.isArray(tasks) ? tasks : []) {
+    if (!isFeedbackTask(task)) continue;
+
+    const linkedTemplateId = normalizeId(task.feedback_template_id) ?? getMarkerTemplateId(task);
+    const linkedTitle = normalizeTitle(stripLeadingFeedbackPrefix(task.title ?? ''));
+
+    let isOrphan = false;
+    if (linkedTemplateId) {
+      isOrphan = !parentsByTemplate.has(linkedTemplateId);
+    } else if (linkedTitle) {
+      isOrphan = !parentsByTitle.has(linkedTitle);
+    } else {
+      continue;
+    }
+
+    if (isOrphan) {
+      orphanIds.push(String(task.id));
+    }
+  }
+
+  return orphanIds;
+};
+
 const extractExternalEventTasks = (
   meta: Record<string, any> | null | undefined,
   matchedKeysOut?: string[]
@@ -107,6 +191,7 @@ interface UseHomeActivitiesResult {
 }
 
 export function useHomeActivities(): UseHomeActivitiesResult {
+  const { isAdmin } = useUserRole();
   const [userId, setUserId] = useState<string | null>(null);
   const [activities, setActivities] = useState<ActivityWithCategory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -745,6 +830,12 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         return out;
       };
 
+      const orphanCleanupResults: {
+        activityId: string;
+        externalEventRowId: string | null;
+        orphanIds: string[];
+      }[] = [];
+
       const finalActivities = [...internalActivities, ...externalActivities].map(activity => {
         const key = String(activity.id);
         const rowKey = String((activity as any).external_event_row_id ?? '');
@@ -755,6 +846,17 @@ export function useHomeActivities(): UseHomeActivitiesResult {
             (rowKey ? externalActivityTaskGroups.get(rowKey) : []) ?? [],
             activity.tasks ?? [],
           ]);
+
+          const orphanIds = computeOrphanFeedbackTaskIds(tasks);
+          if (orphanIds.length) {
+            orphanCleanupResults.push({
+              activityId: String(activity.id),
+              externalEventRowId: rowKey || null,
+              orphanIds,
+            });
+            const orphanSet = new Set(orphanIds.map(id => String(id)));
+            tasks = tasks.filter(task => !orphanSet.has(String(task.id)));
+          }
         } else {
           tasks = dedupeTasks([
             internalTaskGroups.get(key) ?? [],
@@ -769,6 +871,36 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       });
 
       setActivities(finalActivities);
+
+      if (orphanCleanupResults.length && __DEV__) {
+        orphanCleanupResults.forEach(result => {
+          console.log('[OrphanFeedbackCleanup]', {
+            activityId: result.activityId,
+            externalEventRowId: result.externalEventRowId,
+            orphanCount: result.orphanIds.length,
+            orphanIdsSample: result.orphanIds.slice(0, 3),
+          });
+        });
+      }
+
+      if (orphanCleanupResults.length && isAdmin) {
+        const allOrphanIds = Array.from(
+          new Set(orphanCleanupResults.flatMap(result => result.orphanIds.map(id => String(id))))
+        );
+        if (allOrphanIds.length) {
+          try {
+            const { error } = await supabase.from('external_event_tasks').delete().in('id', allOrphanIds);
+            if (error) throw error;
+          } catch (error) {
+            if (__DEV__) {
+              console.log('[OrphanFeedbackCleanup] failed to delete orphan feedback tasks (home)', {
+                orphanCount: allOrphanIds.length,
+                error,
+              });
+            }
+          }
+        }
+      }
 
       if (__DEV__) {
         const ext = finalActivities.find(a => a.is_external && Array.isArray(a.tasks) && a.tasks.length > 0);
@@ -786,7 +918,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       console.error('Failed to fetch activities:', err);
       setActivities([]);
     }
-  }, [userId]);
+  }, [userId, isAdmin]);
 
   const triggerRefetch = useCallback(
     async (reason: string = 'unspecified') => {
