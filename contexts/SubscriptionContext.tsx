@@ -182,8 +182,13 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const applyStatus = useCallback((next: SubscriptionStatus, reason: string) => {
+    const isAuthoritative = reason === 'fetch-success';
     const shouldPersist =
-      next.hasSubscription || next.isLifetime || Boolean(next.subscriptionTier) || Boolean(next.planName);
+      next.hasSubscription ||
+      next.isLifetime ||
+      Boolean(next.subscriptionTier) ||
+      Boolean(next.planName) ||
+      isAuthoritative;
 
     if (shouldPersist) {
       lastStableStatusRef.current = next;
