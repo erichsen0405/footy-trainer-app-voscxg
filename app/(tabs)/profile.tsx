@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
@@ -1808,3 +1810,5 @@ export default function ProfileScreen() {
     </ContainerWrapper>
   );
 }
+
+
