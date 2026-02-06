@@ -57,19 +57,6 @@ const coerceReminderMinutes = (val: any): number | null => {
   return Math.round(num as number);
 };
 
-const computeMinReminder = (tasks: ActivityTask[] | undefined | null): number | null => {
-  if (!Array.isArray(tasks) || !tasks.length) return null;
-  let min: number | null = null;
-  for (const t of tasks) {
-    const val =
-      coerceReminderMinutes(t?.reminder_minutes) ??
-      coerceReminderMinutes((t as any)?.after_training_delay_minutes);
-    if (val === null) continue;
-    if (min === null || val < min) min = val;
-  }
-  return min;
-};
-
 const decodeUtf8Garble = (value: unknown): string => {
   const asString = typeof value === 'string' ? value : String(value ?? '');
   const fixScandi = (s: string) =>
@@ -154,6 +141,21 @@ const isFeedbackTask = (task: ActivityTask | null | undefined): boolean => {
   const direct = normalizeId(task.feedback_template_id);
   if (direct) return true;
   return !!getMarkerTemplateId(task) || isFeedbackTitle(task.title);
+};
+
+const computeMinReminder = (tasks: ActivityTask[] | undefined | null): number | null => {
+  if (!Array.isArray(tasks) || !tasks.length) return null;
+  let min: number | null = null;
+  for (const t of tasks) {
+    const reminder = coerceReminderMinutes(t?.reminder_minutes);
+    const afterTraining = isFeedbackTask(t)
+      ? coerceReminderMinutes((t as any)?.after_training_delay_minutes)
+      : null;
+    const val = reminder ?? afterTraining;
+    if (val === null) continue;
+    if (min === null || val < min) min = val;
+  }
+  return min;
 };
 
 const resolveTaskTemplateId = (task: any): string | null => {
