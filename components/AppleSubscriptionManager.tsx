@@ -15,6 +15,7 @@ interface AppleSubscriptionManagerProps {
   forceShowPlans?: boolean;
   onPurchaseStarted?: () => void;
   onPurchaseFinished?: (success: boolean) => void;
+  transparentBackground?: boolean;
 }
 
 type PlanType =
@@ -198,6 +199,7 @@ export default function AppleSubscriptionManager({
   forceShowPlans = false,
   onPurchaseStarted,
   onPurchaseFinished,
+  transparentBackground = false,
 }: AppleSubscriptionManagerProps) {
   const {
     products,
@@ -294,6 +296,7 @@ export default function AppleSubscriptionManager({
   const planCardBgColor = isDark ? '#1d1d1f' : '#ffffff';
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
+  const containerBgColor = transparentBackground ? 'transparent' : planCardBgColor;
 
   const planOrder = useMemo(() => {
     return ORDERED_PRODUCT_IDS.reduce<Record<string, number>>((acc, id, index) => {
@@ -1113,13 +1116,13 @@ export default function AppleSubscriptionManager({
 
   if (isSignupFlow) {
     return (
-      <View style={[styles.container, styles.scrollContent, { backgroundColor: planCardBgColor }]}>
+      <View style={[styles.container, styles.scrollContent, { backgroundColor: containerBgColor }]}>
         {content}
       </View>
     );
   }
 
-  return <View style={[styles.container, styles.scrollContent, { backgroundColor: planCardBgColor }]}>{content}</View>;
+  return <View style={[styles.container, styles.scrollContent, { backgroundColor: containerBgColor }]}>{content}</View>;
 }
 
 const safeInvoke = async <T extends any[]>(
