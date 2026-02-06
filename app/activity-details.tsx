@@ -3129,6 +3129,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           });
 
         let savedFeedback: TaskTemplateSelfFeedback | null = null;
+        let savedActivityId: string | null = null;
         let lastError: any = null;
         let lastTriedId: string | null = null;
 
@@ -3136,6 +3137,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           lastTriedId = candidateId;
           try {
             savedFeedback = await tryUpsert(candidateId);
+            savedActivityId = candidateId;
             lastError = null;
             break;
           } catch (e) {
@@ -3158,6 +3160,40 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         }
         if (!savedFeedback) {
           throw new Error('Feedback save failed');
+        }
+
+        const finalActivityId = savedFeedback.activityId ?? savedActivityId ?? optimisticActivityId;
+
+        if (finalActivityId !== optimisticActivityId) {
+          DeviceEventEmitter.emit('feedback:save_failed', {
+            activityId: optimisticActivityId,
+            templateId,
+            optimisticId,
+            source: 'activity-details',
+          });
+
+          const correctedCreatedAt = savedFeedback.createdAt ?? nowIso;
+          const correctedOptimisticId = `optimistic:${finalActivityId}:${templateId}:${correctedCreatedAt}`;
+
+          DeviceEventEmitter.emit('feedback:saved', {
+            activityId: finalActivityId,
+            templateId,
+            rating:
+              typeof savedFeedback.rating === 'number'
+                ? savedFeedback.rating
+                : typeof score === 'number'
+                ? score
+                : null,
+            note:
+              typeof savedFeedback.note === 'string'
+                ? savedFeedback.note
+                : typeof note === 'string'
+                ? note
+                : null,
+            createdAt: correctedCreatedAt,
+            optimisticId: correctedOptimisticId,
+            source: 'activity-details',
+          });
         }
 
         setSelfFeedbackByTemplate((prev) => {
