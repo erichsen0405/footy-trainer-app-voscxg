@@ -372,6 +372,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       }
 
       const data = await response.json();
+      const payloadHasError = Boolean(data?.error);
 
       const statusData: SubscriptionStatus = {
         hasSubscription: Boolean(data?.hasSubscription),
@@ -384,7 +385,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         subscriptionTier: (data?.subscriptionTier as SubscriptionTier | null) ?? null,
       };
 
-      applyStatus(coerceWithEntitlements(statusData, 'fetch-success'), 'fetch-success');
+      const reason = payloadHasError ? 'fetch-fallback' : 'fetch-success';
+      applyStatus(coerceWithEntitlements(statusData, reason), reason);
     } catch {
       console.warn('[SubscriptionContext] Network request failed');
 
