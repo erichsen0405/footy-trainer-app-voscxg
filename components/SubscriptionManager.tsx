@@ -21,6 +21,7 @@ interface SubscriptionManagerProps {
   isSignupFlow?: boolean;
   selectedRole?: 'player' | 'trainer' | null;
   forceShowPlans?: boolean;
+  transparentBackground?: boolean;
 }
 
 const PRIVACY_POLICY_URL = 'https://footballcoach.online/privacy';
@@ -139,6 +140,7 @@ export default function SubscriptionManager({
   isSignupFlow = false,
   selectedRole = null,
   forceShowPlans = false,
+  transparentBackground = false,
 }: SubscriptionManagerProps) {
   const {
     subscriptionStatus,
@@ -164,6 +166,8 @@ export default function SubscriptionManager({
   const planCardBgColor = isDark ? '#1d1d1f' : '#ffffff';
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
+  const containerBgColor = transparentBackground ? 'transparent' : planCardBgColor;
+  const plansContainerBgColor = transparentBackground ? 'transparent' : planCardBgColor;
   const isLifetime = useMemo(
     () => Boolean(subscriptionStatus?.isLifetime || subscriptionStatus?.status === 'lifetime'),
     [subscriptionStatus?.isLifetime, subscriptionStatus?.status],
@@ -443,7 +447,7 @@ const statusTone = useMemo(() => {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: planCardBgColor }}>
+    <View style={{ flex: 1, backgroundColor: containerBgColor }}>
       <View style={[styles.container, { backgroundColor: 'transparent', paddingBottom: 20 }]}>
       {showOverlayLoader && null}
       {/* Header - Only show when user doesn't have a subscription */}
@@ -589,7 +593,7 @@ const statusTone = useMemo(() => {
 
       {/* Plans List (Collapsible) */}
       {showPlans && (
-        <View style={[styles.plansContainer, { backgroundColor: planCardBgColor }]}>
+        <View style={[styles.plansContainer, { backgroundColor: plansContainerBgColor }]}>
           {filteredPlans.map((plan, index) => {
             const isPopular = index === Math.floor(filteredPlans.length / 2); // Middle plan is popular
             const isCreating = creatingPlanId === plan.id;
