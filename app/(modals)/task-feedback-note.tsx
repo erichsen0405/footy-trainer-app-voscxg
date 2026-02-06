@@ -296,6 +296,8 @@ export default function TaskFeedbackNoteScreen() {
       setIsSaving(true);
       let lastError: any = null;
       let lastTriedId: string | null = null;
+      let savedActivityId: string | null = null;
+      let savedFeedback: TaskTemplateSelfFeedback | null = null;
       try {
         const tryUpsert = async (candidateActivityId: string) =>
           upsertSelfFeedback({
@@ -310,15 +312,53 @@ export default function TaskFeedbackNoteScreen() {
         for (const candidateId of candidateIds) {
           lastTriedId = candidateId;
           try {
-            await tryUpsert(candidateId);
-            Promise.resolve(refreshData()).catch(() => {});
-            return;
+            savedFeedback = await tryUpsert(candidateId);
+            savedActivityId = candidateId;
+            break;
           } catch (e) {
             lastError = e;
           }
         }
 
-        if (lastError) throw lastError;
+        if (!savedActivityId) {
+          if (lastError) throw lastError;
+          throw new Error('Feedback save failed');
+        }
+
+        if (savedActivityId !== optimisticActivityId) {
+          DeviceEventEmitter.emit('feedback:save_failed', {
+            activityId: optimisticActivityId,
+            templateId,
+            optimisticId,
+            source: 'task-feedback-note',
+          });
+
+          const correctedCreatedAt = savedFeedback?.createdAt ?? nowIso;
+          const correctedOptimisticId = `optimistic:${savedActivityId}:${templateId}:${correctedCreatedAt}`;
+
+          DeviceEventEmitter.emit('feedback:saved', {
+            activityId: savedActivityId,
+            templateId,
+            rating:
+              typeof savedFeedback?.rating === 'number'
+                ? savedFeedback.rating
+                : typeof score === 'number'
+                ? score
+                : null,
+            note:
+              typeof savedFeedback?.note === 'string'
+                ? savedFeedback.note
+                : typeof note === 'string'
+                ? note
+                : null,
+            createdAt: correctedCreatedAt,
+            optimisticId: correctedOptimisticId,
+            source: 'task-feedback-note',
+          });
+        }
+
+        Promise.resolve(refreshData()).catch(() => {});
+        return;
       } catch (e) {
         if (__DEV__) {
           console.log('[task-feedback-note] save feedback error', {
