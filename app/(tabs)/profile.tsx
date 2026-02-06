@@ -1647,10 +1647,8 @@ export default function ProfileScreen() {
                   )}
                   <Text style={[styles.infoBoxText, { color: textSecondaryColor }]}>
                     {isSignUp
-                      ? 'Efter du opretter din konto, bliver du automatisk logget ind og kan begynde at bruge appen med det samme. Du vil modtage en bekræftelsesmail som du kan bekræfte når du har tid.\n\nDu vil blive bedt om at vælge din rolle (spiller eller træner) og derefter vælge et abonnement hvis du er træner.'
-                      : Platform.OS === 'ios'
-                        ? 'Log ind for at gemme dine data sikkert i skyen.'
-                        : 'For at gemme eksterne kalendere og synkronisere dine data på tværs af enheder, skal du oprette en gratis konto.\n\nDine data gemmes sikkert i Supabase og er kun tilgængelige for dig.'}
+                      ? 'Bekræft mailen og log ind.\nAlle skal vælge et abonnement før start.\nVælg planen der passer til din rolle (spiller eller træner).'
+                      : 'Log ind for at bruge appen.'}
                   </Text>
                 </View>
               </View>
