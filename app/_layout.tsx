@@ -123,6 +123,7 @@ export default function RootLayout() {
 
                 {/* Main tabs */}
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                <Stack.Screen name="profile" options={{ headerShown: false }} />
 
                 {/* Modals overlay */}
                 <Stack.Screen

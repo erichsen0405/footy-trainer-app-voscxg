@@ -55,19 +55,10 @@ Deno.serve(async (req) => {
 
     console.log('[delete-account] Deleting data for user', userId);
 
-    const deletes = [
-      supabaseAdmin.from('user_roles').delete().eq('user_id', userId),
-      supabaseAdmin.from('profiles').delete().eq('user_id', userId),
-      supabaseAdmin.from('admin_player_relationships').delete().or(`player_id.eq.${userId},admin_id.eq.${userId}`),
-      supabaseAdmin.from('subscriptions').delete().eq('admin_id', userId),
-    ];
-
-    for (const op of deletes) {
-      const { error } = await op;
-      if (error) {
-        console.error('[delete-account] Delete error', error);
-        throw error;
-      }
+    const { error: cleanupError } = await supabaseAdmin.rpc('delete_user_account', { p_user_id: userId });
+    if (cleanupError) {
+      console.error('[delete-account] Cleanup error', cleanupError);
+      throw cleanupError;
     }
 
     const { error: authDeleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);

@@ -165,21 +165,8 @@ export default function SubscriptionManager({
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
   const isLifetime = useMemo(
-    () =>
-      Boolean(
-        subscriptionStatus?.isLifetime ||
-          (subscriptionStatus?.subscriptionTier &&
-            subscriptionStatus?.hasSubscription &&
-            !subscriptionStatus?.trialEnd &&
-            !subscriptionStatus?.currentPeriodEnd),
-      ),
-    [
-      subscriptionStatus?.currentPeriodEnd,
-      subscriptionStatus?.hasSubscription,
-      subscriptionStatus?.isLifetime,
-      subscriptionStatus?.subscriptionTier,
-      subscriptionStatus?.trialEnd,
-    ],
+    () => Boolean(subscriptionStatus?.isLifetime || subscriptionStatus?.status === 'lifetime'),
+    [subscriptionStatus?.isLifetime, subscriptionStatus?.status],
   );
 
   // LINT FIX: Include refreshSubscription in dependency array

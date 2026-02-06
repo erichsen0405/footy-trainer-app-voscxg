@@ -217,7 +217,12 @@ export default function AppleSubscriptionManager({
     hasComplimentaryPlayerPremium,
     hasComplimentaryTrainerPremium,
     isRestoring,
+    entitlementSnapshot,
   } = useAppleIAP();
+  const entitlementSnapshotRef = useRef(entitlementSnapshot);
+  useEffect(() => {
+    entitlementSnapshotRef.current = entitlementSnapshot;
+  }, [entitlementSnapshot]);
 
   type AppleProduct = (typeof products)[number];
 
@@ -340,8 +345,36 @@ export default function AppleSubscriptionManager({
         await safeInvoke(onPlanSelected, productId);
       } catch (error) {
         console.warn('[AppleSubscriptionManager] Purchase failed', error);
-        if ((error as any)?.code === 'E_USER_CANCELLED') {
+        const errorCode = (error as any)?.code;
+        if (errorCode === 'E_USER_CANCELLED') {
           return;
+        }
+        if (errorCode === 'already-owned' || errorCode === 'E_ALREADY_OWNED') {
+          try {
+            const { restoredCount } = await restorePurchases();
+            await refreshSubscriptionStatus({ force: true, reason: 'already_owned' });
+            await new Promise(resolve => setTimeout(resolve, 250));
+            const hasEntitlement = Boolean(entitlementSnapshotRef.current?.hasActiveSubscription);
+            if (restoredCount > 0 || hasEntitlement) {
+              resetCheckoutUi();
+              success = true;
+              await safeInvoke(onPlanSelected, productId);
+              Alert.alert(
+                'Abonnement allerede aktivt',
+                restoredCount > 0
+                  ? 'Vi har gendannet dit køb.'
+                  : 'Dit abonnement er allerede aktivt. Du kan fortsætte.'
+              );
+              return;
+            }
+            Alert.alert(
+              'Abonnement allerede aktivt',
+              'Vi kunne ikke gendanne et aktivt køb. Prøv at gendanne igen eller tjek dit Apple-abonnement.'
+            );
+            return;
+          } catch (restoreError) {
+            console.warn('[AppleSubscriptionManager] Auto-restore failed after already-owned', restoreError);
+          }
         }
         const details = buildIapErrorDetails(error);
         Alert.alert('Køb fejlede', `${details.message}\n(Kode: ${details.code})`);
@@ -349,7 +382,17 @@ export default function AppleSubscriptionManager({
         await safeInvoke(onPurchaseFinished, success);
       }
     },
-    [iapReady, onPlanSelected, onPurchaseFinished, onPurchaseStarted, purchaseSubscription, purchasing, resetCheckoutUi]
+    [
+      iapReady,
+      onPlanSelected,
+      onPurchaseFinished,
+      onPurchaseStarted,
+      purchaseSubscription,
+      purchasing,
+      refreshSubscriptionStatus,
+      resetCheckoutUi,
+      restorePurchases,
+    ]
   );
 
   const handleRestorePurchases = useCallback(async () => {

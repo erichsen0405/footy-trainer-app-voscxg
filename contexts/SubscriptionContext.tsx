@@ -271,6 +271,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
   const coerceWithEntitlements = useCallback(
     (status: SubscriptionStatus, source: string): SubscriptionStatus => {
+      if (!currentUserIdRef.current) return status;
       if (!appleIsEntitled) return status;
 
       const tierFromSku = subscriptionTierFromSku(appleActiveProductId);
@@ -397,6 +398,36 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       }
     }
   }, [applyStatus, coerceWithEntitlements]);
+
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      const nextUserId = session?.user?.id ?? null;
+
+      if (!nextUserId) {
+        currentUserIdRef.current = null;
+        lastStableStatusRef.current = null;
+        lastSignatureRef.current = buildEntitlementSignature(null);
+        statusRef.current = null;
+        applyStatus(buildEmptyStatus(), 'auth-signout');
+        setLoading(false);
+        return;
+      }
+
+      if (currentUserIdRef.current && currentUserIdRef.current !== nextUserId) {
+        lastStableStatusRef.current = null;
+        lastSignatureRef.current = buildEntitlementSignature(null);
+        statusRef.current = null;
+        applyStatus(buildEmptyStatus(), 'auth-user-change');
+      }
+
+      currentUserIdRef.current = nextUserId;
+      void fetchSubscriptionStatus();
+    });
+
+    return () => {
+      data.subscription.unsubscribe();
+    };
+  }, [applyStatus, fetchSubscriptionStatus]);
 
   const refreshSubscription = useCallback(async () => {
     console.log('[SubscriptionContext] Manual refresh requested');
