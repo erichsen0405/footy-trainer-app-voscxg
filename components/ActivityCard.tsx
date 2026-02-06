@@ -77,7 +77,16 @@ const getCategoryEmoji = (emoji?: string): string => {
   return emoji;
 };
 
-// Resolve reminder minutes robustly
+const looksLikeFeedbackTask = (task: any): boolean => {
+  if (!task) return false;
+  if (task.isFeedbackTask || task.is_feedback_task) return true;
+  const direct = task.feedbackTemplateId ?? task.feedback_template_id;
+  if (direct !== null && direct !== undefined && String(direct).trim().length > 0) return true;
+  if (typeof task.title === 'string' && isFeedbackTitle(task.title)) return true;
+  return !!getMarkerTemplateId(task);
+};
+
+// Resolve reminder minutes robustly; only inherit after_training_delay for feedback tasks
 const resolveReminderMinutes = (task: any): number | null => {
   if (!task) return null;
   let candidate =
@@ -87,6 +96,7 @@ const resolveReminderMinutes = (task: any): number | null => {
     task.reminderMinute;
 
   if (candidate === null || candidate === undefined) {
+    if (!looksLikeFeedbackTask(task)) return null;
     candidate =
       task.after_training_delay_minutes ??
       task.afterTrainingDelayMinutes ??
