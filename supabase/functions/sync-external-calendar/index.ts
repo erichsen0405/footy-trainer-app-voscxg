@@ -374,25 +374,35 @@ function parseICalendarData(icalData: string): ParsedEvent[] {
 
 async function ensureUnknownCategory(
   supabaseClient: any,
-  userId: string
+  _userId: string
 ): Promise<string> {
-  const { data: existingCategory } = await supabaseClient
+  // Always prefer a single canonical "Ukendt" row (system-wide)
+  const { data: found, error: findError } = await supabaseClient
     .from('activity_categories')
     .select('*')
-    .eq('user_id', userId)
-    .ilike('name', 'ukendt')
-    .single();
+    .ilike('name', 'ukendt%')
+    .order('is_system', { ascending: false })
+    .order('created_at', { ascending: true })
+    .limit(1);
 
-  if (existingCategory) {
-    console.log('Found existing "Ukendt" category:', existingCategory.id);
-    return existingCategory.id;
+  if (findError) {
+    console.error('Error looking up canonical "Ukendt" category:', findError);
   }
 
-  console.log('Creating "Ukendt" category for user:', userId);
+  const existing = Array.isArray(found) && found.length > 0 ? found[0] : null;
+  if (existing) {
+    console.log('Found canonical "Ukendt" category:', existing.id);
+    return existing.id;
+  }
+
+  console.log('Creating canonical system "Ukendt" category');
   const { data: newCategory, error: categoryError } = await supabaseClient
     .from('activity_categories')
     .insert({
-      user_id: userId,
+      user_id: null,
+      team_id: null,
+      player_id: null,
+      is_system: true,
       name: 'Ukendt',
       color: '#9E9E9E',
       emoji: '❓',
@@ -401,11 +411,11 @@ async function ensureUnknownCategory(
     .single();
 
   if (categoryError) {
-    console.error('Error creating "Ukendt" category:', categoryError);
+    console.error('Error creating canonical "Ukendt" category:', categoryError);
     throw categoryError;
   }
 
-  console.log('Created "Ukendt" category:', newCategory.id);
+  console.log('Created canonical "Ukendt" category:', newCategory.id);
   return newCategory.id;
 }
 

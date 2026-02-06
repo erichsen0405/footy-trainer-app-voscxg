@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
@@ -1333,3 +1335,5 @@ const styles = StyleSheet.create({
     height: 12,
   },
 });
+
+

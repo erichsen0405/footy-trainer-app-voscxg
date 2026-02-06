@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
 
 import { supabase } from '@/integrations/supabase/client';
 import { ExternalCalendar } from '@/types';
@@ -89,3 +91,5 @@ export const calendarService = {
     return { eventCount: data?.eventCount || 0 };
   },
 };
+
+

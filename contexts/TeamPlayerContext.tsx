@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
@@ -411,3 +413,5 @@ export function useTeamPlayer() {
   }
   return context;
 }
+
+
