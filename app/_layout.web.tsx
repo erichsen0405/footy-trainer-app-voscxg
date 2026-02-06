@@ -100,6 +100,7 @@ export default function RootLayout() {
                 <Stack.Screen name="index" />
                 <Stack.Screen name="choose-plan" />
                 <Stack.Screen name="(tabs)" />
+                <Stack.Screen name="profile" />
                 <Stack.Screen name="+not-found" />
                 <Stack.Screen name="activity-details" options={{ presentation: 'modal' }} />
                 <Stack.Screen name="email-confirmed" />
