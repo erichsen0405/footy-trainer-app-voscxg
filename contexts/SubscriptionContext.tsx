@@ -36,6 +36,7 @@ type SubscriptionStatus = {
   trialEnd: string | null;
   currentPeriodEnd: string | null;
   subscriptionTier: SubscriptionTier | null;
+  isLifetime?: boolean;
 };
 
 export type AppleEntitlementIngest = {
@@ -61,6 +62,7 @@ const buildEmptyStatus = (): SubscriptionStatus => ({
   trialEnd: null,
   currentPeriodEnd: null,
   subscriptionTier: null,
+  isLifetime: false,
 });
 
 interface SubscriptionContextType {
@@ -96,6 +98,7 @@ const buildEntitlementSignature = (s: SubscriptionStatus | null): string => {
     s.status ?? 'none',
     s.planName ?? 'none',
     s.subscriptionTier ?? 'none',
+    s.isLifetime ? '1' : '0',
     String(s.maxPlayers ?? 0),
   ].join('|');
 };
@@ -161,6 +164,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const lastSignatureRef = useRef<string>(buildEntitlementSignature(null));
   const statusRef = useRef<SubscriptionStatus | null>(null);
   const lastAppleSignatureRef = useRef<string>('');
+  const lastStableStatusRef = useRef<SubscriptionStatus | null>(null);
+  const currentUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     statusRef.current = subscriptionStatus;
@@ -177,9 +182,22 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const applyStatus = useCallback((next: SubscriptionStatus, reason: string) => {
-    setSubscriptionStatus(next);
+    const shouldPersist =
+      next.hasSubscription || next.isLifetime || Boolean(next.subscriptionTier) || Boolean(next.planName);
 
-    const nextSig = buildEntitlementSignature(next);
+    if (shouldPersist) {
+      lastStableStatusRef.current = next;
+    }
+
+    const stable = shouldPersist
+      ? next
+      : lastStableStatusRef.current && currentUserIdRef.current
+        ? lastStableStatusRef.current
+        : next;
+
+    setSubscriptionStatus(stable);
+
+    const nextSig = buildEntitlementSignature(stable);
     const prevSig = lastSignatureRef.current;
 
     if (nextSig !== prevSig) {
@@ -258,6 +276,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       const tierOverride = appleEntitlementTier ?? tierFromSku;
       if (!tierOverride) return status;
 
+       const isComplimentaryEntitlement = !appleActiveProductId && Boolean(tierOverride);
+
       const planMeta =
         derivePlanMetaFromTier(appleEntitlementTier) ??
         derivePlanMetaFromSku(appleActiveProductId) ??
@@ -266,10 +286,11 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       const merged: SubscriptionStatus = {
         ...status,
         hasSubscription: true,
-        status: 'active',
+        status: isComplimentaryEntitlement ? 'lifetime' : 'active',
         planName: planMeta?.name ?? status.planName ?? 'Aktivt abonnement',
         maxPlayers: planMeta?.maxPlayers ?? status.maxPlayers ?? 1,
         subscriptionTier: appleEntitlementTier ?? tierFromSku ?? status.subscriptionTier,
+        isLifetime: Boolean(status.isLifetime || isComplimentaryEntitlement || status.status === 'lifetime'),
       };
       if (!status.hasSubscription) {
         console.warn('[SubscriptionContext] Backend reported no subscription while Apple is active', {
@@ -296,9 +317,18 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       } = await supabase.auth.getUser();
 
       if (userError || !user) {
+        currentUserIdRef.current = null;
+        lastStableStatusRef.current = null;
+        lastSignatureRef.current = buildEntitlementSignature(null);
         applyStatus(coerceWithEntitlements(buildEmptyStatus(), 'no-user'), 'no-user');
         return;
       }
+
+      if (currentUserIdRef.current && currentUserIdRef.current !== user.id) {
+        lastStableStatusRef.current = null;
+        lastSignatureRef.current = buildEntitlementSignature(null);
+      }
+      currentUserIdRef.current = user.id;
 
       const {
         data: { session },
