@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, Animated, Easing, AppState, AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { colors } from '@/styles/commonStyles';
@@ -27,13 +27,28 @@ export default function NotificationPermissionPrompt() {
   const [dismissed, setDismissed] = useState(false);
   const stateRef = useRef<PromptState>(defaultState);
   const opacity = useRef(new Animated.Value(0)).current;
+  const mountedRef = useRef(true);
 
   const isIOS = Platform.OS === 'ios';
 
+  const refreshPermissions = useCallback(
+    async (stateOverride?: PromptState) => {
+      if (!isIOS || !mountedRef.current) return;
+
+      const perms = await Notifications.getPermissionsAsync();
+      if (!mountedRef.current) return;
+
+      setStatus(perms.status);
+
+      const nextState = stateOverride ?? stateRef.current;
+      const shouldShow = perms.status !== 'granted' && !nextState.dismissed;
+      setShow(shouldShow);
+    },
+    [isIOS]
+  );
+
   useEffect(() => {
     if (!isIOS) return;
-
-    let mounted = true;
 
     (async () => {
       try {
@@ -42,21 +57,31 @@ export default function NotificationPermissionPrompt() {
         stateRef.current = stored;
         setDismissed(stored.dismissed);
 
-        const perms = await Notifications.getPermissionsAsync();
-        if (!mounted) return;
-        setStatus(perms.status);
-
-        const shouldShow = perms.status !== 'granted' && !stored.dismissed;
-        setShow(shouldShow);
+        await refreshPermissions(stored);
       } finally {
-        if (mounted) setLoaded(true);
+        if (mountedRef.current) setLoaded(true);
       }
     })();
 
     return () => {
-      mounted = false;
+      mountedRef.current = false;
     };
-  }, [isIOS]);
+  }, [isIOS, refreshPermissions]);
+
+  useEffect(() => {
+    if (!isIOS) return;
+
+    const handleAppStateChange = (nextState: AppStateStatus) => {
+      if (nextState === 'active') {
+        refreshPermissions();
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => {
+      subscription.remove();
+    };
+  }, [isIOS, refreshPermissions]);
 
   useEffect(() => {
     if (!show) return;
