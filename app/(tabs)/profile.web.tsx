@@ -906,8 +906,8 @@ export default function ProfileScreen() {
                 />
               </TouchableOpacity>
               
-              {isCalendarSyncExpanded && (
-                subscriptionFeaturesLoading ? (
+              <View style={isCalendarSyncExpanded ? undefined : { display: 'none' }}>
+                {subscriptionFeaturesLoading ? (
                   <View style={{ paddingVertical: 24, alignItems: 'center' }}>
                     <ActivityIndicator size="small" color={colors.primary} />
                   </View>
@@ -926,8 +926,8 @@ export default function ProfileScreen() {
                     icon={{ ios: 'calendar.badge.plus', android: 'event' }}
                     align="left"
                   />
-                )
-              )}
+                )}
+              </View>
             </View>
 
             {/* Subscription Section - Collapsible - Available for all users */}
@@ -957,30 +957,28 @@ export default function ProfileScreen() {
                 />
               </TouchableOpacity>
               
-              {isSubscriptionExpanded && (
-                <>
-                  <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
-                    Administrer dit abonnement
-                  </Text>
-                  {userRole === null ? (
-                    <View style={{ paddingVertical: 24, alignItems: 'center', gap: 8 }}>
-                      <ActivityIndicator size="small" color={colors.primary} />
-                      <Text style={{ color: textSecondaryColor, fontSize: 14 }}>
-                        Klargør rolle...
-                      </Text>
-                    </View>
-                  ) : userRole === 'player' ? (
-                    <AppleSubscriptionManager
-                      highlightProductId={highlightProductId}
-                      forceShowPlans={forcePlayerPlanListOpen}
-                    />
-                  ) : Platform.OS === 'ios' ? (
-                    <AppleSubscriptionManager forceShowPlans={forceShowPlansOnce} />
-                  ) : (
-                    <SubscriptionManager forceShowPlans={forceShowPlansOnce} />
-                  )}
-                </>
-              )}
+              <View style={isSubscriptionExpanded ? undefined : { display: 'none' }}>
+                <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
+                  Administrer dit abonnement
+                </Text>
+                {userRole === null ? (
+                  <View style={{ paddingVertical: 24, alignItems: 'center', gap: 8 }}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                    <Text style={{ color: textSecondaryColor, fontSize: 14 }}>
+                      Klargør rolle...
+                    </Text>
+                  </View>
+                ) : userRole === 'player' ? (
+                  <AppleSubscriptionManager
+                    highlightProductId={highlightProductId}
+                    forceShowPlans={forcePlayerPlanListOpen}
+                  />
+                ) : Platform.OS === 'ios' ? (
+                  <AppleSubscriptionManager forceShowPlans={forceShowPlansOnce} />
+                ) : (
+                  <SubscriptionManager forceShowPlans={forceShowPlansOnce} />
+                )}
+              </View>
             </View>
 
             <TouchableOpacity

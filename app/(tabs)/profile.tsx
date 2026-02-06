@@ -1364,8 +1364,8 @@ export default function ProfileScreen() {
               />
             </TouchableOpacity>
 
-            {isCalendarSyncExpanded &&
-              (subscriptionFeaturesLoading ? (
+            <View style={isCalendarSyncExpanded ? undefined : { display: 'none' }}>
+              {subscriptionFeaturesLoading ? (
                 <View style={[styles.loadingContainer, { paddingVertical: 24 }]}>
                   <ActivityIndicator size="small" color={colors.primary} />
                 </View>
@@ -1415,7 +1415,8 @@ export default function ProfileScreen() {
                   icon={{ ios: 'calendar.badge.plus', android: 'event' }}
                   align="left"
                 />
-              ))}
+              )}
+            </View>
           </CardWrapper>
 
           {/* Subscription Section - Collapsible - Available for all users */}
@@ -1446,19 +1447,17 @@ export default function ProfileScreen() {
                 />
               </TouchableOpacity>
 
-                {isSubscriptionExpanded && (
-                  <>
-                    <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>Administrer dit abonnement</Text>
-                    {userRole === 'player' ? (
-                      <AppleSubscriptionManager
-                      highlightProductId={highlightProductId}
-                      forceShowPlans={userRole === 'player' && !subscriptionStatus?.hasSubscription}
-                    />
-                  ) : (
-                    <SubscriptionManager />
-                  )}
-                </>
-              )}
+              <View style={isSubscriptionExpanded ? undefined : { display: 'none' }}>
+                <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>Administrer dit abonnement</Text>
+                {userRole === 'player' ? (
+                  <AppleSubscriptionManager
+                    highlightProductId={highlightProductId}
+                    forceShowPlans={userRole === 'player' && !subscriptionStatus?.hasSubscription}
+                  />
+                ) : (
+                  <SubscriptionManager />
+                )}
+              </View>
             </SubscriptionCardWrapper>
           </View>
 
