@@ -7,7 +7,6 @@ import {
   StyleSheet,
   Text,
   View,
-  TouchableOpacity,
 } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
@@ -50,7 +49,7 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
   const { subscriptionStatus, refreshSubscription, createSubscription } = useSubscription();
   const { entitlementSnapshot, refreshSubscriptionStatus } = useAppleIAP();
   const { isEntitled, resolving } = entitlementSnapshot;
-  const currentUserId = state.user?.id ?? null;
+  const backendHasSubscription = Boolean(subscriptionStatus?.hasSubscription);
   const router = useRouter();
   const pathname = usePathname();
   const trainerProductSet = useMemo(
@@ -58,6 +57,7 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
     []
   );
   const lastNavRef = useRef<number>(0);
+  const lastGateUserIdRef = useRef<string | null>(null);
   const safeReplace = useCallback(
     (target: string) => {
       const now = Date.now();
@@ -67,11 +67,10 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
     },
     [router]
   );
-
   useEffect(() => {
     setState(prev => {
       if (prev.hydrating) return prev;
-      const shouldNeed = Boolean(prev.user && !isEntitled && !resolving);
+      const shouldNeed = Boolean(prev.user && !resolving && !isEntitled && !backendHasSubscription);
       if (shouldNeed === prev.needsSubscription) return prev;
       console.log('[OnboardingGate] needsSubscription updated', {
         shouldNeed,
@@ -79,10 +78,11 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
         role: prev.role,
         resolving,
         isEntitled,
+        backendHasSubscription,
       });
       return { ...prev, needsSubscription: shouldNeed };
     });
-  }, [isEntitled, resolving]);
+  }, [backendHasSubscription, isEntitled, resolving]);
   useEffect(() => {
     subscriptionStatusRef.current = subscriptionStatus;
   }, [subscriptionStatus]);
@@ -146,6 +146,12 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
   }, []);
   const refreshRoleAndSubscription = useCallback(
     async (user: any) => {
+      const nextUserId = user?.id ?? null;
+      if (lastGateUserIdRef.current !== nextUserId) {
+        lastGateUserIdRef.current = nextUserId;
+        refreshCalledRef.current = false;
+        subscriptionStatusRef.current = null;
+      }
       setState(prev => ({ ...prev, hydrating: true, user }));
 
       if (!user) {

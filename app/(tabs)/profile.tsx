@@ -37,11 +37,13 @@ import Constants from 'expo-constants';
 
 // Conditionally import GlassView only on native platforms
 let GlassView: any = View;
+let glassEffectAvailable = false;
 if (Platform.OS !== 'web') {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const glassModule = require('expo-glass-effect');
     GlassView = glassModule.GlassView;
+    glassEffectAvailable = true;
   } catch (error) {
     console.log('expo-glass-effect not available, using View instead');
   }
@@ -152,6 +154,16 @@ const styles = StyleSheet.create({
     padding: 20,
     marginHorizontal: 16,
     marginTop: 16,
+    shadowColor: 'rgba(0,0,0,0.08)',
+    shadowOpacity: 1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  sectionGlassFrame: {
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.6)',
     shadowColor: 'rgba(0,0,0,0.08)',
     shadowOpacity: 1,
     shadowRadius: 12,
@@ -283,6 +295,7 @@ export default function ProfileScreen() {
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [showPaywallModal, setShowPaywallModal] = useState(false);
   const [paywallProcessing, setPaywallProcessing] = useState(false);
+  const lastUserIdRef = useRef<string | null>(null);
 
   // New onboarding flow states
   const [needsRoleSelection, setNeedsRoleSelection] = useState(false);
@@ -297,12 +310,12 @@ export default function ProfileScreen() {
   const [originalPhone, setOriginalPhone] = useState('');
 
   // Collapsible sections
-  const [isProfileInfoExpanded, setIsProfileInfoExpanded] = useState(true);
-  const [isAdminInfoExpanded, setIsAdminInfoExpanded] = useState(true);
-  const [isTeamManagementExpanded, setIsTeamManagementExpanded] = useState(true);
-  const [isCalendarSyncExpanded, setIsCalendarSyncExpanded] = useState(true);
-  const [isSubscriptionExpanded, setIsSubscriptionExpanded] = useState(true);
-  const [isSettingsExpanded, setIsSettingsExpanded] = useState(true);
+  const [isProfileInfoExpanded, setIsProfileInfoExpanded] = useState(false);
+  const [isAdminInfoExpanded, setIsAdminInfoExpanded] = useState(false);
+  const [isTeamManagementExpanded, setIsTeamManagementExpanded] = useState(false);
+  const [isCalendarSyncExpanded, setIsCalendarSyncExpanded] = useState(false);
+  const [isSubscriptionExpanded, setIsSubscriptionExpanded] = useState(false);
+  const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
   const [subscriptionSectionY, setSubscriptionSectionY] = useState<number | null>(null);
   const scrollViewRef = useRef<any>(null);
   const params = useLocalSearchParams<{ upgradeTarget?: string }>();
@@ -325,6 +338,16 @@ export default function ProfileScreen() {
   const { subscriptionStatus, refreshSubscription, createSubscription } = useSubscription();
   const { refreshAll } = useFootball();
   const { featureAccess, isLoading: subscriptionFeaturesLoading } = useSubscriptionFeatures();
+  const subscriptionStatusRef = useRef(subscriptionStatus);
+  const hasActiveSubscription = Boolean(
+    subscriptionStatus?.hasSubscription ||
+      subscriptionStatus?.subscriptionTier ||
+      subscriptionStatus?.isLifetime
+  );
+
+  useEffect(() => {
+    subscriptionStatusRef.current = subscriptionStatus;
+  }, [subscriptionStatus]);
 
   const canUseCalendarSync = featureAccess.calendarSync;
   const canLinkTrainer = featureAccess.trainerLinking;
@@ -451,6 +474,18 @@ export default function ProfileScreen() {
 
   const checkUserOnboarding = useCallback(
     async (userId: string) => {
+      if (lastUserIdRef.current !== userId) {
+        lastUserIdRef.current = userId;
+        setProfile(null);
+        setAdminInfo(null);
+        setUserRole(null);
+        setNeedsRoleSelection(false);
+        setNeedsSubscription(false);
+        setSelectedRole(null);
+        setShowPaywallModal(false);
+        setPaywallProcessing(false);
+        setIsEditingProfile(false);
+      }
       if (__DEV__) {
         console.log('[PROFILE] Checking user onboarding status for user:', userId);
       }
@@ -479,24 +514,35 @@ export default function ProfileScreen() {
 
       // If role is trainer or admin, check if they have a subscription
       if (role === 'trainer' || role === 'admin') {
-        const { data: subData, error: subError } = await supabase
-          .from('subscriptions')
-          .select('id, status')
-          .eq('admin_id', userId)
-          .single();
+        const hasLocalSubscription = Boolean(
+          subscriptionStatusRef.current?.hasSubscription ||
+            subscriptionStatusRef.current?.subscriptionTier ||
+            subscriptionStatusRef.current?.isLifetime
+        );
 
-        if (subError || !subData) {
-          if (__DEV__) {
-            console.log('[PROFILE] No subscription found - needs subscription');
+        if (!hasLocalSubscription) {
+          const { data: subData, error: subError } = await supabase
+            .from('subscriptions')
+            .select('id, status')
+            .eq('admin_id', userId)
+            .single();
+
+          if (subError || !subData) {
+            if (__DEV__) {
+              console.log('[PROFILE] No subscription found - needs subscription');
+            }
+            setNeedsRoleSelection(false);
+            setNeedsSubscription(true);
+            return;
           }
-          setNeedsRoleSelection(false);
-          setNeedsSubscription(true);
-          return;
+
+          if (__DEV__) {
+            console.log(`[PROFILE] Subscription found: ${subData.status}`);
+          }
+        } else if (__DEV__) {
+          console.log('[PROFILE] Subscription already active (context)');
         }
 
-        if (__DEV__) {
-          console.log(`[PROFILE] Subscription found: ${subData.status}`);
-        }
         // Refresh subscription status
         await refreshSubscription();
       }
@@ -537,10 +583,23 @@ export default function ProfileScreen() {
       setUser(session?.user || null);
 
       if (session?.user) {
+        if (lastUserIdRef.current !== session.user.id) {
+          lastUserIdRef.current = session.user.id;
+          setProfile(null);
+          setAdminInfo(null);
+          setUserRole(null);
+          setNeedsRoleSelection(false);
+          setNeedsSubscription(false);
+          setSelectedRole(null);
+          setShowPaywallModal(false);
+          setPaywallProcessing(false);
+          setIsEditingProfile(false);
+        }
         // Refresh subscription status immediately on auth state change
         await refreshSubscription();
         await checkUserOnboarding(session.user.id);
       } else {
+        lastUserIdRef.current = null;
         setUserRole(null);
         setProfile(null);
         setAdminInfo(null);
@@ -557,6 +616,13 @@ export default function ProfileScreen() {
       setIsSubscriptionExpanded(true);
     }
   }, [shouldHighlightPremiumPlan]);
+
+  useEffect(() => {
+    if (!user) return;
+    if (userRole !== 'trainer' && userRole !== 'admin') return;
+    if (!hasActiveSubscription) return;
+    setNeedsSubscription(false);
+  }, [user, userRole, hasActiveSubscription]);
 
   useEffect(() => {
     if (!shouldHighlightPremiumPlan || subscriptionSectionY === null) {
@@ -1073,11 +1139,11 @@ export default function ProfileScreen() {
     deleteConfirmationInput.trim().toUpperCase() === DELETE_ACCOUNT_CONFIRMATION_PHRASE;
 
   // Platform-specific wrapper component
-  const CardWrapper = Platform.OS === 'ios' ? GlassView : View;
-  const cardWrapperProps = Platform.OS === 'ios' ? { glassEffectStyle: 'regular' as const } : {};
-  // Use a non-blurred wrapper for subscription card to avoid flicker while keeping a frame
-  const SubscriptionCardWrapper = Platform.OS === 'ios' ? View : CardWrapper;
-  const subscriptionCardProps = Platform.OS === 'ios' ? {} : cardWrapperProps;
+  const useGlass = Platform.OS === 'ios' && glassEffectAvailable;
+  const CardWrapper = useGlass ? GlassView : View;
+  const cardWrapperProps = useGlass ? { glassEffectStyle: 'regular' as const } : {};
+  const SubscriptionCardWrapper = CardWrapper;
+  const subscriptionCardProps = cardWrapperProps;
 
   // Platform-specific container
   const ContainerWrapper = Platform.OS === 'ios' ? SafeAreaView : View;
@@ -1104,7 +1170,7 @@ export default function ProfileScreen() {
                 </Text>
 
                 <CardWrapper
-                  style={[styles.onboardingCard, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]}
+                  style={[styles.onboardingCard, !useGlass && { backgroundColor: cardBgColor }]}
                   {...cardWrapperProps}
                 >
                   <Text style={[styles.onboardingTitle, { color: textColor }]}>Velkommen til din nye konto! </Text>
@@ -1193,7 +1259,7 @@ export default function ProfileScreen() {
                 </Text>
 
                 <CardWrapper
-                  style={[styles.subscriptionCard, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]}
+                  style={[styles.subscriptionCard, !useGlass && { backgroundColor: cardBgColor }]}
                   {...cardWrapperProps}
                 >
                   <SubscriptionManager onPlanSelected={handleCompleteSubscription} isSignupFlow={true} selectedRole="trainer" />
@@ -1213,7 +1279,7 @@ export default function ProfileScreen() {
     <View>
       {user ? (
         <>
-          <CardWrapper style={[styles.profileHeader, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
+          <CardWrapper style={[styles.profileHeader, !useGlass && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
             <View style={styles.avatarContainer}>
               <View
                 style={[
@@ -1245,7 +1311,10 @@ export default function ProfileScreen() {
           </CardWrapper>
 
           {/* Profile Info Section */}
-          <CardWrapper style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
+          <CardWrapper
+            style={[styles.section, useGlass ? styles.sectionGlassFrame : { backgroundColor: cardBgColor }]}
+            {...cardWrapperProps}
+          >
             <CollapsibleSection
               title="Profil Information"
               expanded={isProfileInfoExpanded}
@@ -1348,7 +1417,10 @@ export default function ProfileScreen() {
           {/* Admin Info for Players */}
           {userRole === 'player' &&
             (subscriptionFeaturesLoading ? (
-              <CardWrapper style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
+              <CardWrapper
+                style={[styles.section, useGlass ? styles.sectionGlassFrame : { backgroundColor: cardBgColor }]}
+                {...cardWrapperProps}
+              >
                 <CollapsibleSection
                   title="Din Træner"
                   expanded={isAdminInfoExpanded}
@@ -1364,7 +1436,10 @@ export default function ProfileScreen() {
               </CardWrapper>
             ) : canLinkTrainer ? (
               adminInfo ? (
-                <CardWrapper style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
+                <CardWrapper
+                  style={[styles.section, useGlass ? styles.sectionGlassFrame : { backgroundColor: cardBgColor }]}
+                  {...cardWrapperProps}
+                >
                   <CollapsibleSection
                     title="Din Træner"
                     expanded={isAdminInfoExpanded}
@@ -1389,7 +1464,10 @@ export default function ProfileScreen() {
                 </CardWrapper>
               ) : null
             ) : (
-              <CardWrapper style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
+              <CardWrapper
+                style={[styles.section, useGlass ? styles.sectionGlassFrame : { backgroundColor: cardBgColor }]}
+                {...cardWrapperProps}
+              >
                 <CollapsibleSection
                   title="Din Træner"
                   expanded={isAdminInfoExpanded}
@@ -1411,7 +1489,7 @@ export default function ProfileScreen() {
 
           {canManagePlayers && (
             <CardWrapper
-              style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}
+              style={[styles.section, !useGlass && { backgroundColor: cardBgColor }]} {...cardWrapperProps}
             >
               <CollapsibleSection
                 title="Hold & spillere"
@@ -1438,7 +1516,10 @@ export default function ProfileScreen() {
           )}
 
           {/* Calendar Sync Section - Collapsible - Available for all users */}
-          <CardWrapper style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
+          <CardWrapper
+            style={[styles.section, useGlass ? styles.sectionGlassFrame : { backgroundColor: cardBgColor }]}
+            {...cardWrapperProps}
+          >
             <CollapsibleSection
               title="Kalender Synkronisering"
               expanded={isCalendarSyncExpanded}
@@ -1504,12 +1585,7 @@ export default function ProfileScreen() {
           {/* Subscription Section - Collapsible - Available for all users */}
           <View onLayout={event => setSubscriptionSectionY(event.nativeEvent.layout.y)}>
             <SubscriptionCardWrapper
-              style={[
-                styles.section,
-                Platform.OS === 'ios'
-                  ? styles.subscriptionCardFrame
-                  : { backgroundColor: cardBgColor },
-              ]}
+              style={[styles.section, useGlass ? styles.sectionGlassFrame : { backgroundColor: cardBgColor }]}
               {...subscriptionCardProps}
             >
               <CollapsibleSection
@@ -1533,7 +1609,10 @@ export default function ProfileScreen() {
             </SubscriptionCardWrapper>
           </View>
 
-          <CardWrapper style={[styles.section, styles.settingsCard, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
+          <CardWrapper
+            style={[styles.section, styles.settingsCard, useGlass ? styles.sectionGlassFrame : { backgroundColor: cardBgColor }]}
+            {...cardWrapperProps}
+          >
             <CollapsibleSection
               title="Indstillinger"
               expanded={isSettingsExpanded}
@@ -1587,7 +1666,7 @@ export default function ProfileScreen() {
         </>
       ) : (
         // Login/Sign up view
-        <CardWrapper style={[styles.authCard, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
+        <CardWrapper style={[styles.authCard, !useGlass && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
           {showSuccessMessage && (
             <View style={[styles.successMessage, { backgroundColor: colors.primary }]}>
               <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name="check_circle" size={Platform.OS === 'ios' ? 64 : 48} color="#fff" />

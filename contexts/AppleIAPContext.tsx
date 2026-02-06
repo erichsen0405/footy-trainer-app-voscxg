@@ -834,12 +834,14 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         autoRestoreAttemptedRef.current = false;
+        setVerifiedActiveProductId(null);
         void refreshSubscriptionStatus({ force: true, reason: 'auth_login' });
         return;
       }
       setSubscriptionStatus(emptyStatus);
       subscriptionStatusRef.current = emptyStatus;
       setEntitlements([]);
+      setVerifiedActiveProductId(null);
       setPendingPlan(null);
       pendingPlanRef.current = null;
       lastRequestedSkuRef.current = null;
