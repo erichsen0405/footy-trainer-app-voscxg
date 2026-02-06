@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, useColorScheme, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable, TextInput, useColorScheme, Platform, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -28,6 +28,17 @@ interface AdminInfo {
 }
 
 type UpgradeTarget = 'library' | 'calendarSync' | 'trainerLinking';
+
+type CollapsibleSectionProps = {
+  title: string;
+  expanded: boolean;
+  onToggle: () => void;
+  titleColor: string;
+  chevronColor: string;
+  icon?: React.ReactNode;
+  headerActions?: React.ReactNode;
+  children: React.ReactNode;
+};
 
 const normalizeUpgradeTarget = (value: string | string[] | undefined): UpgradeTarget | null => {
   if (!value) {
@@ -57,6 +68,41 @@ const FullScreenLoading = ({ message }: { message: string }) => (
   </View>
 );
 
+const CollapsibleSection = ({
+  title,
+  expanded,
+  onToggle,
+  titleColor,
+  chevronColor,
+  icon,
+  headerActions,
+  children,
+}: CollapsibleSectionProps) => (
+  <>
+    <Pressable
+      style={styles.collapsibleHeader}
+      onPress={onToggle}
+      accessibilityRole="button"
+      accessibilityState={{ expanded }}
+    >
+      <View style={styles.sectionTitleContainer}>
+        {icon}
+        <Text style={[styles.sectionTitle, { color: titleColor }]}>{title}</Text>
+      </View>
+      <View style={styles.sectionHeaderRight}>
+        {headerActions}
+        <IconSymbol
+          ios_icon_name={expanded ? 'chevron.up' : 'chevron.down'}
+          android_material_icon_name={expanded ? 'expand_less' : 'expand_more'}
+          size={24}
+          color={chevronColor}
+        />
+      </View>
+    </Pressable>
+    {expanded ? children : null}
+  </>
+);
+
 export default function ProfileScreen() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
@@ -80,9 +126,11 @@ export default function ProfileScreen() {
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
   
-  // Collapsible sections - Calendar Sync now collapsed by default
-  const [isCalendarSyncExpanded, setIsCalendarSyncExpanded] = useState(false);
-  const [isSubscriptionExpanded, setIsSubscriptionExpanded] = useState(false);
+  // Collapsible sections
+  const [isProfileInfoExpanded, setIsProfileInfoExpanded] = useState(true);
+  const [isAdminInfoExpanded, setIsAdminInfoExpanded] = useState(true);
+  const [isCalendarSyncExpanded, setIsCalendarSyncExpanded] = useState(true);
+  const [isSubscriptionExpanded, setIsSubscriptionExpanded] = useState(true);
   const [subscriptionSectionY, setSubscriptionSectionY] = useState<number | null>(null);
   const scrollViewRef = useRef<ScrollView | null>(null);
   const params = useLocalSearchParams<{ upgradeTarget?: string | string[]; openSubscription?: string | string[] }>();
@@ -732,116 +780,79 @@ export default function ProfileScreen() {
 
             {/* Profile Info Section */}
             <View style={[styles.card, { backgroundColor: cardBgColor }]}>
-              <View style={styles.sectionHeader}>
-                <Text style={[styles.sectionTitle, { color: textColor }]}>
-                  Profil Information
-                </Text>
-                {!isEditingProfile && (
-                  <TouchableOpacity onPress={() => setIsEditingProfile(true)}>
-                    <IconSymbol
-                      ios_icon_name="pencil"
-                      android_material_icon_name="edit"
-                      size={20}
-                      color={colors.primary}
-                    />
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              {isEditingProfile ? (
-                <View style={styles.editForm}>
-                  <Text style={[styles.label, { color: textColor }]}>Navn</Text>
-                  <TextInput
-                    style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
-                    value={editName}
-                    onChangeText={setEditName}
-                    placeholder="Dit navn"
-                    placeholderTextColor={textSecondaryColor}
-                  />
-
-                  <Text style={[styles.label, { color: textColor }]}>Telefon</Text>
-                  <TextInput
-                    style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
-                    value={editPhone}
-                    onChangeText={setEditPhone}
-                    placeholder="+45 12 34 56 78"
-                    placeholderTextColor={textSecondaryColor}
-                  />
-
-                  <View style={styles.editButtons}>
-                    <TouchableOpacity
-                      style={[styles.button, { backgroundColor: colors.highlight }]}
-                      onPress={() => {
-                        setIsEditingProfile(false);
-                        setEditName(profile?.full_name || '');
-                        setEditPhone(profile?.phone_number || '');
+              <CollapsibleSection
+                title="Profil Information"
+                expanded={isProfileInfoExpanded}
+                onToggle={() => setIsProfileInfoExpanded(prev => !prev)}
+                titleColor={textColor}
+                chevronColor={textSecondaryColor}
+                icon={<IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={24} color={colors.primary} />}
+                headerActions={
+                  !isEditingProfile ? (
+                    <Pressable
+                      onPress={(event) => {
+                        event.stopPropagation?.();
+                        setIsEditingProfile(true);
                       }}
+                      accessibilityRole="button"
                     >
-                      <Text style={[styles.buttonText, { color: textColor }]}>Annuller</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.button, { backgroundColor: colors.primary }]}
-                      onPress={handleSaveProfile}
-                      disabled={loading}
-                    >
-                      {loading ? (
-                        <ActivityIndicator color="#fff" size="small" />
-                      ) : (
-                        <Text style={[styles.buttonText, { color: '#fff' }]}>Gem</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ) : (
-                <View style={styles.profileInfo}>
-                  {profile?.full_name && (
-                    <View style={styles.infoRow}>
                       <IconSymbol
-                        ios_icon_name="person.fill"
-                        android_material_icon_name="person"
+                        ios_icon_name="pencil"
+                        android_material_icon_name="edit"
                         size={20}
                         color={colors.primary}
                       />
-                      <Text style={[styles.infoText, { color: textColor }]}>
-                        {profile.full_name}
-                      </Text>
-                    </View>
-                  )}
-                  {profile?.phone_number && (
-                    <View style={styles.infoRow}>
-                      <IconSymbol
-                        ios_icon_name="phone.fill"
-                        android_material_icon_name="phone"
-                        size={20}
-                        color={colors.primary}
-                      />
-                      <Text style={[styles.infoText, { color: textColor }]}>
-                        {profile.phone_number}
-                      </Text>
-                    </View>
-                  )}
-                  {!profile?.full_name && !profile?.phone_number && (
-                    <Text style={[styles.emptyText, { color: textSecondaryColor }]}>
-                      Ingen profilinformation tilgængelig. Tryk på rediger for at tilføje.
-                    </Text>
-                  )}
-                </View>
-              )}
-            </View>
+                    </Pressable>
+                  ) : null
+                }
+              >
+                {isEditingProfile ? (
+                  <View style={styles.editForm}>
+                    <Text style={[styles.label, { color: textColor }]}>Navn</Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+                      value={editName}
+                      onChangeText={setEditName}
+                      placeholder="Dit navn"
+                      placeholderTextColor={textSecondaryColor}
+                    />
 
-            {/* Admin Info for Players */}
-            {userRole === 'player' && (
-              subscriptionFeaturesLoading ? (
-                <View style={[styles.card, { backgroundColor: cardBgColor, alignItems: 'center', paddingVertical: 24 }]}>
-                  <ActivityIndicator size="small" color={colors.primary} />
-                </View>
-              ) : canLinkTrainer ? (
-                adminInfo ? (
-                  <View style={[styles.card, { backgroundColor: cardBgColor }]}>
-                    <Text style={[styles.sectionTitle, { color: textColor }]}>
-                      Din Træner
-                    </Text>
-                    <View style={styles.profileInfo}>
+                    <Text style={[styles.label, { color: textColor }]}>Telefon</Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+                      value={editPhone}
+                      onChangeText={setEditPhone}
+                      placeholder="+45 12 34 56 78"
+                      placeholderTextColor={textSecondaryColor}
+                    />
+
+                    <View style={styles.editButtons}>
+                      <TouchableOpacity
+                        style={[styles.button, { backgroundColor: colors.highlight }]}
+                        onPress={() => {
+                          setIsEditingProfile(false);
+                          setEditName(profile?.full_name || '');
+                          setEditPhone(profile?.phone_number || '');
+                        }}
+                      >
+                        <Text style={[styles.buttonText, { color: textColor }]}>Annuller</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.button, { backgroundColor: colors.primary }]}
+                        onPress={handleSaveProfile}
+                        disabled={loading}
+                      >
+                        {loading ? (
+                          <ActivityIndicator color="#fff" size="small" />
+                        ) : (
+                          <Text style={[styles.buttonText, { color: '#fff' }]}>Gem</Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.profileInfo}>
+                    {profile?.full_name && (
                       <View style={styles.infoRow}>
                         <IconSymbol
                           ios_icon_name="person.fill"
@@ -850,63 +861,127 @@ export default function ProfileScreen() {
                           color={colors.primary}
                         />
                         <Text style={[styles.infoText, { color: textColor }]}>
-                          {adminInfo.full_name}
+                          {profile.full_name}
                         </Text>
                       </View>
-                      {adminInfo.phone_number && (
+                    )}
+                    {profile?.phone_number && (
+                      <View style={styles.infoRow}>
+                        <IconSymbol
+                          ios_icon_name="phone.fill"
+                          android_material_icon_name="phone"
+                          size={20}
+                          color={colors.primary}
+                        />
+                        <Text style={[styles.infoText, { color: textColor }]}>
+                          {profile.phone_number}
+                        </Text>
+                      </View>
+                    )}
+                    {!profile?.full_name && !profile?.phone_number && (
+                      <Text style={[styles.emptyText, { color: textSecondaryColor }]}>
+                        Ingen profilinformation tilg?ngelig. Tryk p? rediger for at tilf?je.
+                      </Text>
+                    )}
+                  </View>
+                )}
+              </CollapsibleSection>
+            </View>
+
+            {/* Admin Info for Players */}
+            {userRole === 'player' && (
+              subscriptionFeaturesLoading ? (
+                <View style={[styles.card, { backgroundColor: cardBgColor, alignItems: 'center', paddingVertical: 24 }]}>
+                  <CollapsibleSection
+                    title="Din Træner"
+                    expanded={isAdminInfoExpanded}
+                    onToggle={() => setIsAdminInfoExpanded(prev => !prev)}
+                    titleColor={textColor}
+                    chevronColor={textSecondaryColor}
+                    icon={<IconSymbol ios_icon_name="person.2.fill" android_material_icon_name="groups" size={24} color={colors.primary} />}
+                  >
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  </CollapsibleSection>
+                </View>
+              ) : canLinkTrainer ? (
+                adminInfo ? (
+                  <View style={[styles.card, { backgroundColor: cardBgColor }]}>
+                    <CollapsibleSection
+                      title="Din Træner"
+                      expanded={isAdminInfoExpanded}
+                      onToggle={() => setIsAdminInfoExpanded(prev => !prev)}
+                      titleColor={textColor}
+                      chevronColor={textSecondaryColor}
+                      icon={<IconSymbol ios_icon_name="person.2.fill" android_material_icon_name="groups" size={24} color={colors.primary} />}
+                    >
+                      <View style={styles.profileInfo}>
                         <View style={styles.infoRow}>
                           <IconSymbol
-                            ios_icon_name="phone.fill"
-                            android_material_icon_name="phone"
+                            ios_icon_name="person.fill"
+                            android_material_icon_name="person"
                             size={20}
                             color={colors.primary}
                           />
                           <Text style={[styles.infoText, { color: textColor }]}>
-                            {adminInfo.phone_number}
+                            {adminInfo.full_name}
                           </Text>
                         </View>
-                      )}
-                    </View>
+                        {adminInfo.phone_number && (
+                          <View style={styles.infoRow}>
+                            <IconSymbol
+                              ios_icon_name="phone.fill"
+                              android_material_icon_name="phone"
+                              size={20}
+                              color={colors.primary}
+                            />
+                            <Text style={[styles.infoText, { color: textColor }]}>
+                              {adminInfo.phone_number}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </CollapsibleSection>
                   </View>
                 ) : null
               ) : (
                 <View style={[styles.card, { backgroundColor: cardBgColor }]}>
-                  <PremiumFeatureGate
-                    title="Premium kræves for træner-adgang"
-                    description="Opgrader for at forbinde dig med din træner og få skræddersyede aktiviteter."
-                    onPress={() => handleOpenSubscriptionSection('trainerLinking')}
-                    icon={{ ios: 'person.2.circle', android: 'groups' }}
-                    align="left"
-                  />
+                  <CollapsibleSection
+                    title="Din Træner"
+                    expanded={isAdminInfoExpanded}
+                    onToggle={() => setIsAdminInfoExpanded(prev => !prev)}
+                    titleColor={textColor}
+                    chevronColor={textSecondaryColor}
+                    icon={<IconSymbol ios_icon_name="person.2.fill" android_material_icon_name="groups" size={24} color={colors.primary} />}
+                  >
+                    <PremiumFeatureGate
+                      title="Premium kræves for træner-adgang"
+                      description="Opgrader for at forbinde dig med din træner og få skræddersyede aktiviteter."
+                      onPress={() => handleOpenSubscriptionSection('trainerLinking')}
+                      icon={{ ios: 'person.2.circle', android: 'groups' }}
+                      align="left"
+                    />
+                  </CollapsibleSection>
                 </View>
               )
             )}
 
             {/* Calendar Sync Section - Collapsible - Available for all users */}
             <View style={[styles.card, { backgroundColor: cardBgColor }]}>
-              <TouchableOpacity
-                style={styles.collapsibleHeader}
-                onPress={() => setIsCalendarSyncExpanded(!isCalendarSyncExpanded)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.sectionTitleContainer}>
+              <CollapsibleSection
+                title="Kalender Synkronisering"
+                expanded={isCalendarSyncExpanded}
+                onToggle={() => setIsCalendarSyncExpanded(prev => !prev)}
+                titleColor={textColor}
+                chevronColor={textSecondaryColor}
+                icon={(
                   <IconSymbol
                     ios_icon_name="calendar.badge.plus"
                     android_material_icon_name="event"
                     size={28}
                     color={colors.primary}
                   />
-                  <Text style={[styles.sectionTitle, { color: textColor }]}>Kalender Synkronisering</Text>
-                </View>
-                <IconSymbol
-                  ios_icon_name={isCalendarSyncExpanded ? 'chevron.up' : 'chevron.down'}
-                  android_material_icon_name={isCalendarSyncExpanded ? 'expand_less' : 'expand_more'}
-                  size={24}
-                  color={textSecondaryColor}
-                />
-              </TouchableOpacity>
-              
-              <View style={isCalendarSyncExpanded ? undefined : { display: 'none' }}>
+                )}
+              >
                 {subscriptionFeaturesLoading ? (
                   <View style={{ paddingVertical: 24, alignItems: 'center' }}>
                     <ActivityIndicator size="small" color={colors.primary} />
@@ -927,7 +1002,7 @@ export default function ProfileScreen() {
                     align="left"
                   />
                 )}
-              </View>
+              </CollapsibleSection>
             </View>
 
             {/* Subscription Section - Collapsible - Available for all users */}
@@ -935,29 +1010,21 @@ export default function ProfileScreen() {
               style={[styles.card, { backgroundColor: cardBgColor }]}
               onLayout={(event) => setSubscriptionSectionY(event.nativeEvent.layout.y)}
             >
-              <TouchableOpacity
-                style={styles.collapsibleHeader}
-                onPress={handleToggleSubscriptionSection}
-                activeOpacity={0.7}
-              >
-                <View style={styles.sectionTitleContainer}>
+              <CollapsibleSection
+                title="Abonnement"
+                expanded={isSubscriptionExpanded}
+                onToggle={handleToggleSubscriptionSection}
+                titleColor={textColor}
+                chevronColor={textSecondaryColor}
+                icon={(
                   <IconSymbol
                     ios_icon_name="creditcard.fill"
                     android_material_icon_name="payment"
                     size={28}
                     color={colors.primary}
                   />
-                  <Text style={[styles.sectionTitle, { color: textColor }]}>Abonnement</Text>
-                </View>
-                <IconSymbol
-                  ios_icon_name={isSubscriptionExpanded ? 'chevron.up' : 'chevron.down'}
-                  android_material_icon_name={isSubscriptionExpanded ? 'expand_less' : 'expand_more'}
-                  size={24}
-                  color={textSecondaryColor}
-                />
-              </TouchableOpacity>
-              
-              <View style={isSubscriptionExpanded ? undefined : { display: 'none' }}>
+                )}
+              >
                 <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
                   Administrer dit abonnement
                 </Text>
@@ -978,7 +1045,7 @@ export default function ProfileScreen() {
                 ) : (
                   <SubscriptionManager forceShowPlans={forceShowPlansOnce} />
                 )}
-              </View>
+              </CollapsibleSection>
             </View>
 
             <TouchableOpacity
@@ -1269,6 +1336,11 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
+  },
+  sectionHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   sectionDescription: {
     fontSize: 15,
