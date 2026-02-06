@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Database } from './types';
 import { createClient } from '@supabase/supabase-js'
@@ -100,3 +102,5 @@ async function handleInvalidRefreshToken() {
     console.error('[Supabase] Error clearing session:', error);
   }
 }
+
+

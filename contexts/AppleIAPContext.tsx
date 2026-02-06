@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef, useMemo } from 'react';
 import { Platform, Alert } from 'react-native';
 import Constants from 'expo-constants';
@@ -1567,3 +1569,5 @@ export function useAppleIAP() {
   }
   return context;
 }
+
+

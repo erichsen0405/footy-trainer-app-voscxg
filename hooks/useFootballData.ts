@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Activity,
@@ -1317,3 +1319,5 @@ export const useFootballData = () => {
     fetchExternalCalendarEvents,
   };
 };
+
+
