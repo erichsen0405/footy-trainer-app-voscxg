@@ -463,7 +463,7 @@ export default function ActivityCard({
       return `${reminderMinutes}m`;
     }
     const hours = Math.floor(reminderMinutes / 60);
-    const remainingMinutes = reminderMinutes % 66;
+    const remainingMinutes = reminderMinutes % 60;
     if (remainingMinutes === 0) {
       return `${hours}t`;
     }
