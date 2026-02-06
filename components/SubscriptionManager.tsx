@@ -78,7 +78,17 @@ const datesEqual = (a?: string | null, b?: string | null) => {
   return aTime === bTime;
 };
 
-const buildRenewalSummary = (status?: SubscriptionStatusType | null) => {
+const buildRenewalSummary = (status?: SubscriptionStatusType | null, isLifetime: boolean = false) => {
+  if (isLifetime) {
+    return {
+      isTrial: false,
+      trialEnd: null,
+      renewalDate: null,
+      primaryDate: null,
+      daysRemaining: null,
+      isLifetime: true,
+    };
+  }
   const isTrial = status?.status === 'trial';
   const trialEnd = status?.trialEnd ?? null;
   const renewalDate = status?.currentPeriodEnd ?? trialEnd ?? null;
@@ -89,6 +99,7 @@ const buildRenewalSummary = (status?: SubscriptionStatusType | null) => {
     renewalDate,
     primaryDate,
     daysRemaining: getDaysRemaining(primaryDate),
+    isLifetime: false,
   };
 };
 
@@ -150,8 +161,26 @@ export default function SubscriptionManager({
   const isDark = colorScheme === 'dark';
 
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
+  const planCardBgColor = isDark ? '#1d1d1f' : '#ffffff';
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
+  const isLifetime = useMemo(
+    () =>
+      Boolean(
+        subscriptionStatus?.isLifetime ||
+          (subscriptionStatus?.subscriptionTier &&
+            subscriptionStatus?.hasSubscription &&
+            !subscriptionStatus?.trialEnd &&
+            !subscriptionStatus?.currentPeriodEnd),
+      ),
+    [
+      subscriptionStatus?.currentPeriodEnd,
+      subscriptionStatus?.hasSubscription,
+      subscriptionStatus?.isLifetime,
+      subscriptionStatus?.subscriptionTier,
+      subscriptionStatus?.trialEnd,
+    ],
+  );
 
   // LINT FIX: Include refreshSubscription in dependency array
   // Refresh subscription status when component mounts - ONLY ONCE
@@ -354,14 +383,19 @@ export default function SubscriptionManager({
     }
   };
 
-  const renewalSummary = useMemo(() => buildRenewalSummary(subscriptionStatus), [subscriptionStatus]);
+  const renewalSummary = useMemo(
+    () => buildRenewalSummary(subscriptionStatus, isLifetime),
+    [isLifetime, subscriptionStatus],
+  );
   const shouldShowRenewalAfterTrial =
+    !renewalSummary.isLifetime &&
     renewalSummary.isTrial &&
     !!renewalSummary.renewalDate &&
     !datesEqual(renewalSummary.renewalDate, renewalSummary.primaryDate);
 
-  const normalizedStatus = (subscriptionStatus?.status ?? '').toLowerCase();
+  const normalizedStatus = isLifetime ? 'lifetime' : (subscriptionStatus?.status ?? '').toLowerCase();
   const statusLabel = useMemo(() => {
+    if (isLifetime) return 'Uendeligt';
     switch (normalizedStatus) {
       case 'trial':
         return 'Prøveperiode';
@@ -377,15 +411,15 @@ export default function SubscriptionManager({
       default:
         return subscriptionStatus?.hasSubscription ? 'Aktivt abonnement' : 'Ingen abonnement';
     }
-  }, [normalizedStatus, subscriptionStatus?.hasSubscription]);
+  }, [isLifetime, normalizedStatus, subscriptionStatus?.hasSubscription]);
 
-  const statusTone = useMemo(() => {
+const statusTone = useMemo(() => {
+    if (isLifetime || normalizedStatus === 'active') return { bg: isDark ? '#1f303e' : '#e6f0fb', text: isDark ? '#9ecbff' : '#1f5ca8', border: isDark ? '#2e4861' : '#c5dcfa' };
     if (normalizedStatus === 'trial') return { bg: isDark ? '#20361c' : '#e4f4e0', text: isDark ? '#b6e3a3' : '#2d6a2d', border: isDark ? '#2e4a28' : '#b7ddb1' };
-    if (normalizedStatus === 'active') return { bg: isDark ? '#1f303e' : '#e6f0fb', text: isDark ? '#9ecbff' : '#1f5ca8', border: isDark ? '#2e4861' : '#c5dcfa' };
     if (normalizedStatus === 'past_due' || normalizedStatus === 'incomplete') return { bg: isDark ? '#3a241f' : '#fbe9e7', text: isDark ? '#f5b19f' : '#c62828', border: isDark ? '#5a3a32' : '#ef9a9a' };
     if (normalizedStatus === 'canceled' || normalizedStatus === 'cancelled') return { bg: isDark ? '#2f2f2f' : '#f0f0f0', text: isDark ? '#dcdcdc' : '#4f4f4f', border: isDark ? '#3d3d3d' : '#d6d6d6' };
     return { bg: isDark ? '#2b2b2b' : '#f4f6f8', text: isDark ? '#d5d7da' : '#3a3f45', border: isDark ? '#3a3a3a' : '#e0e4e8' };
-  }, [isDark, normalizedStatus]);
+  }, [isDark, isLifetime, normalizedStatus]);
 
   const playerUsageLabel = useMemo(() => {
     if (!subscriptionStatus?.hasSubscription) return '—';
@@ -406,7 +440,13 @@ export default function SubscriptionManager({
     [isSignupFlow, subscriptionStatus?.hasSubscription, subscriptionStatus?.planName]
   );
 
-  if (loading && !isSignupFlow) {
+  const hasDisplaySubscription = Boolean(
+    subscriptionStatus?.hasSubscription || subscriptionStatus?.subscriptionTier || subscriptionStatus?.isLifetime,
+  );
+  const showFullLoader = loading && !isSignupFlow && !hasDisplaySubscription;
+  const showOverlayLoader = false; // avoid background shifts while scrolling
+
+  if (showFullLoader) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -416,11 +456,9 @@ export default function SubscriptionManager({
   }
 
   return (
-    <ScrollView 
-      style={styles.container} 
-      showsVerticalScrollIndicator={false}
-      nestedScrollEnabled={true}
-    >
+    <View style={{ flex: 1, backgroundColor: planCardBgColor }}>
+      <View style={[styles.container, { backgroundColor: 'transparent', paddingBottom: 20 }]}>
+      {showOverlayLoader && null}
       {/* Header - Only show when user doesn't have a subscription */}
       {!isSignupFlow && !subscriptionStatus?.hasSubscription && (
         <View style={styles.header}>
@@ -489,19 +527,23 @@ export default function SubscriptionManager({
               />
               <View style={styles.metaTextGroup}>
                 <Text style={[styles.metaLabel, { color: textSecondaryColor }]}>
-                  {renewalSummary.isTrial ? 'Prøveperiode til' : 'Fornyes'}
+                  {renewalSummary.isLifetime ? 'Varighed' : renewalSummary.isTrial ? 'Prøveperiode til' : 'Fornyes'}
                 </Text>
                 <Text style={[styles.metaValue, { color: textColor }]}>
-                  {renewalSummary.primaryDate ? formatDate(renewalSummary.primaryDate) : 'Dato ikke tilgængelig'}
+                  {renewalSummary.isLifetime
+                    ? 'Uendeligt'
+                    : renewalSummary.primaryDate
+                      ? formatDate(renewalSummary.primaryDate)
+                      : 'Dato ikke tilgængelig'}
                 </Text>
-                {renewalSummary.daysRemaining !== null && (
+                {!renewalSummary.isLifetime && renewalSummary.daysRemaining !== null && (
                   <Text style={[styles.metaHint, { color: textSecondaryColor }]}>
                     {renewalSummary.isTrial
                       ? `${renewalSummary.daysRemaining} dage tilbage af prøveperioden`
                       : `${renewalSummary.daysRemaining} dage til næste fornyelse`}
                   </Text>
                 )}
-                {shouldShowRenewalAfterTrial && renewalSummary.renewalDate ? (
+                {!renewalSummary.isLifetime && shouldShowRenewalAfterTrial && renewalSummary.renewalDate ? (
                   <Text style={[styles.metaHint, { color: textSecondaryColor }]}>
                     Herefter fornyes {formatDate(renewalSummary.renewalDate)}
                   </Text>
@@ -560,7 +602,7 @@ export default function SubscriptionManager({
 
       {/* Plans List (Collapsible) */}
       {showPlans && (
-        <View style={styles.plansContainer}>
+        <View style={[styles.plansContainer, { backgroundColor: planCardBgColor }]}>
           {filteredPlans.map((plan, index) => {
             const isPopular = index === Math.floor(filteredPlans.length / 2); // Middle plan is popular
             const isCreating = creatingPlanId === plan.id;
@@ -571,7 +613,7 @@ export default function SubscriptionManager({
                 key={plan.id}
                 style={[
                   styles.planCard,
-                  { backgroundColor: cardBgColor },
+                  { backgroundColor: planCardBgColor },
                   isPopular && !isPlanCurrent && styles.popularPlan,
                   isPlanCurrent && styles.currentPlanCard,
                 ]}
@@ -730,7 +772,8 @@ export default function SubscriptionManager({
           </Text>
         </View>
       )}
-    </ScrollView>
+      </View>
+    </View>
   );
 }
 
@@ -744,6 +787,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 16,
     minHeight: 200,
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.04)',
+    zIndex: 2,
   },
   loadingText: {
     fontSize: 16,

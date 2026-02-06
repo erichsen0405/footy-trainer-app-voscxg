@@ -132,6 +132,17 @@ const styles = StyleSheet.create({
   planBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   planBadgeText: { fontSize: 12, fontWeight: '700', color: '#fff' },
   section: { borderRadius: 20, padding: 20, marginHorizontal: 16, marginTop: 16 },
+  subscriptionCardFrame: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 20,
+    marginHorizontal: 16,
+    marginTop: 16,
+    shadowColor: 'rgba(0,0,0,0.08)',
+    shadowOpacity: 1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+  },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
   sectionTitle: { fontSize: 18, fontWeight: '800' },
   editForm: { gap: 12 },
@@ -1010,6 +1021,9 @@ export default function ProfileScreen() {
   // Platform-specific wrapper component
   const CardWrapper = Platform.OS === 'ios' ? GlassView : View;
   const cardWrapperProps = Platform.OS === 'ios' ? { glassEffectStyle: 'regular' as const } : {};
+  // Use a non-blurred wrapper for subscription card to avoid flicker while keeping a frame
+  const SubscriptionCardWrapper = Platform.OS === 'ios' ? View : CardWrapper;
+  const subscriptionCardProps = Platform.OS === 'ios' ? {} : cardWrapperProps;
 
   // Platform-specific container
   const ContainerWrapper = Platform.OS === 'ios' ? SafeAreaView : View;
@@ -1404,7 +1418,15 @@ export default function ProfileScreen() {
 
           {/* Subscription Section - Collapsible - Available for all users */}
           <View onLayout={event => setSubscriptionSectionY(event.nativeEvent.layout.y)}>
-            <CardWrapper style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
+            <SubscriptionCardWrapper
+              style={[
+                styles.section,
+                Platform.OS === 'ios'
+                  ? styles.subscriptionCardFrame
+                  : { backgroundColor: cardBgColor },
+              ]}
+              {...subscriptionCardProps}
+            >
               <TouchableOpacity
                 style={styles.collapsibleHeader}
                 onPress={() => setIsSubscriptionExpanded(!isSubscriptionExpanded)}
@@ -1422,11 +1444,11 @@ export default function ProfileScreen() {
                 />
               </TouchableOpacity>
 
-              {isSubscriptionExpanded && (
-                <>
-                  <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>Administrer dit abonnement</Text>
-                  {userRole === 'player' ? (
-                    <AppleSubscriptionManager
+                {isSubscriptionExpanded && (
+                  <>
+                    <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>Administrer dit abonnement</Text>
+                    {userRole === 'player' ? (
+                      <AppleSubscriptionManager
                       highlightProductId={highlightProductId}
                       forceShowPlans={userRole === 'player' && !subscriptionStatus?.hasSubscription}
                     />
@@ -1435,7 +1457,7 @@ export default function ProfileScreen() {
                   )}
                 </>
               )}
-            </CardWrapper>
+            </SubscriptionCardWrapper>
           </View>
 
           <CardWrapper style={[styles.section, styles.settingsCard, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>

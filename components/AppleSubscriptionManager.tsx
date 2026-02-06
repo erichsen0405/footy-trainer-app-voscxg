@@ -239,6 +239,12 @@ export default function AppleSubscriptionManager({
     subscriptionStatus?.isActive && !!subscriptionStatus.productId && trainerProductSet.has(subscriptionStatus.productId);
   const showComplimentaryPlayerBanner = hasComplimentaryPlayerPremium && !hasApplePlayerPremium;
   const showComplimentaryTrainerBanner = hasComplimentaryTrainerPremium && !hasAppleTrainerPlan;
+  const complimentaryPlanProductId = hasComplimentaryTrainerPremium
+    ? PRODUCT_IDS.TRAINER_PREMIUM
+    : hasComplimentaryPlayerPremium
+      ? PRODUCT_IDS.PLAYER_PREMIUM
+      : null;
+  const hasComplimentaryActive = Boolean(complimentaryPlanProductId);
 
   const isComplimentaryForProduct = useCallback(
     (productId: string) => {
@@ -264,6 +270,8 @@ export default function AppleSubscriptionManager({
   const hasRequestedProductsRef = useRef(false);
   const skeletonItems = useMemo(() => ['skeleton-0', 'skeleton-1', 'skeleton-2'], []);
   const blockInteractions = purchasing || refreshing || loading || !iapReady || isRestoring;
+  const hasAnyActivePlan = Boolean(subscriptionStatus?.isActive || hasComplimentaryActive);
+  const activePlanProductId = subscriptionStatus?.isActive ? subscriptionStatus.productId : complimentaryPlanProductId;
 
   const resetCheckoutUi = useCallback(() => {
     setIsOrangeBoxExpanded(false);
@@ -276,6 +284,7 @@ export default function AppleSubscriptionManager({
   const isDark = colorScheme === 'dark';
 
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
+  const planCardBgColor = isDark ? '#1d1d1f' : '#ffffff';
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
 
@@ -441,6 +450,12 @@ export default function AppleSubscriptionManager({
   }, [isSignupFlow, subscriptionStatus?.isActive]);
 
   useEffect(() => {
+    if (hasComplimentaryActive && !forceShowPlans) {
+      setShowPlans(false);
+    }
+  }, [forceShowPlans, hasComplimentaryActive]);
+
+  useEffect(() => {
     if (forceShowPlans) {
       setShowPlans(true);
     }
@@ -545,7 +560,7 @@ export default function AppleSubscriptionManager({
           key={item.productId}
           style={[
             styles.planCard,
-            { backgroundColor: cardBgColor },
+            { backgroundColor: planCardBgColor },
             isPopular && !isCurrentActive && styles.popularPlan,
             isCurrentActive && styles.currentPlanCard,
             isHighlightTarget && styles.highlightedPlan,
@@ -672,7 +687,7 @@ export default function AppleSubscriptionManager({
     },
     [
       blockInteractions,
-      cardBgColor,
+      planCardBgColor,
       getProductPriceLabel,
       handleSelectPlan,
       highlightProductId,
@@ -711,12 +726,39 @@ export default function AppleSubscriptionManager({
           <Text style={styles.partnerBannerText}>Partner-adgang: Træner Premium</Text>
         </View>
       )}
-      {!isSignupFlow && !subscriptionStatus?.isActive && (
+      {!isSignupFlow && !hasAnyActivePlan && (
         <View style={styles.header}>
           <Text style={[styles.headerTitle, { color: textColor }]}>Vælg dit abonnement</Text>
           <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
             Alle abonnementer inkluderer 14 dages gratis prøveperiode
           </Text>
+        </View>
+      )}
+      {!isSignupFlow && hasComplimentaryActive && activePlanProductId && !subscriptionStatus?.isActive && (
+        <View
+          style={[
+            styles.currentPlanBanner,
+            { backgroundColor: getPlanColor(activePlanProductId) },
+          ]}
+        >
+          <View style={styles.currentPlanContent}>
+            <IconSymbol
+              ios_icon_name={getPlanIcon(activePlanProductId)}
+              android_material_icon_name="verified"
+              size={32}
+              color="#fff"
+            />
+            <View style={styles.currentPlanInfo}>
+              <Text style={styles.currentPlanLabel}>Dit aktive abonnement:</Text>
+              <Text style={styles.currentPlanName}>
+                {getPlanName({ productId: activePlanProductId })}
+              </Text>
+              <Text style={styles.currentPlanDateSecondary}>Uendeligt (partner-adgang)</Text>
+            </View>
+            <View style={styles.currentPlanBadge}>
+              <Text style={styles.currentPlanBadgeText}>Uendeligt</Text>
+            </View>
+          </View>
         </View>
       )}
       {!isSignupFlow && subscriptionStatus?.isActive && subscriptionStatus.productId && (
@@ -871,6 +913,9 @@ export default function AppleSubscriptionManager({
     blockInteractions,
     cardBgColor,
     handleRestorePurchases,
+    activePlanProductId,
+    hasAnyActivePlan,
+    hasComplimentaryActive,
     isOrangeBoxExpanded,
     isSignupFlow,
     openLegalLink,
@@ -937,7 +982,7 @@ export default function AppleSubscriptionManager({
             {skeletonItems.map(key => (
               <View
                 key={key}
-                style={[styles.planCard, { backgroundColor: cardBgColor }, styles.skeletonCard]}
+                style={[styles.planCard, { backgroundColor: planCardBgColor }, styles.skeletonCard]}
               >
                 <View style={[styles.skeletonLine, { width: '60%', height: 28 }]} />
                 <View style={[styles.skeletonLine, { width: '40%', height: 20 }]} />
@@ -1023,18 +1068,13 @@ export default function AppleSubscriptionManager({
 
   if (isSignupFlow) {
     return (
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        bounces
-      >
+      <View style={[styles.container, styles.scrollContent, { backgroundColor: planCardBgColor }]}>
         {content}
-      </ScrollView>
+      </View>
     );
   }
 
-  return <View style={styles.container}>{content}</View>;
+  return <View style={[styles.container, styles.scrollContent, { backgroundColor: planCardBgColor }]}>{content}</View>;
 }
 
 const safeInvoke = async <T extends any[]>(
