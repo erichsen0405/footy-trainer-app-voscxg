@@ -158,6 +158,17 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
   },
+  subscriptionCardFrameDark: {
+    backgroundColor: '#1f1f1f',
+    borderRadius: 20,
+    padding: 20,
+    marginHorizontal: 16,
+    marginTop: 16,
+    shadowColor: 'rgba(0,0,0,0.4)',
+    shadowOpacity: 1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+  },
   sectionGlassFrame: {
     backgroundColor: 'rgba(255,255,255,0.75)',
     borderRadius: 20,
@@ -1140,7 +1151,7 @@ export default function ProfileScreen() {
   const SubscriptionCardWrapper = Platform.OS === 'ios' ? View : CardWrapper;
   const subscriptionCardProps = Platform.OS === 'ios' ? {} : cardWrapperProps;
   const sectionCardStyle = Platform.OS === 'ios'
-    ? styles.subscriptionCardFrame
+    ? (isDark ? styles.subscriptionCardFrameDark : styles.subscriptionCardFrame)
     : { backgroundColor: cardBgColor };
 
   // Platform-specific container
@@ -1586,7 +1597,9 @@ export default function ProfileScreen() {
             <SubscriptionCardWrapper
               style={[
                 styles.section,
-                Platform.OS === 'ios' ? styles.subscriptionCardFrame : { backgroundColor: cardBgColor },
+                Platform.OS === 'ios'
+                  ? (isDark ? styles.subscriptionCardFrameDark : styles.subscriptionCardFrame)
+                  : { backgroundColor: cardBgColor },
               ]}
               {...subscriptionCardProps}
             >
