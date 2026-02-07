@@ -16,6 +16,7 @@ import {
   Modal,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -294,6 +295,7 @@ export default function ProfileScreen() {
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [showPaywallModal, setShowPaywallModal] = useState(false);
   const [paywallProcessing, setPaywallProcessing] = useState(false);
+  const [focusNonce, setFocusNonce] = useState(0);
   const lastUserIdRef = useRef<string | null>(null);
 
   // New onboarding flow states
@@ -329,6 +331,15 @@ export default function ProfileScreen() {
   const [deleteConfirmationInput, setDeleteConfirmationInput] = useState('');
   const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      const frame = requestAnimationFrame(() => {
+        setFocusNonce(prev => prev + 1);
+      });
+      return () => cancelAnimationFrame(frame);
+    }, [])
+  );
 
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -1128,6 +1139,9 @@ export default function ProfileScreen() {
   // Use a non-blurred wrapper for subscription card to avoid flicker while keeping a frame
   const SubscriptionCardWrapper = Platform.OS === 'ios' ? View : CardWrapper;
   const subscriptionCardProps = Platform.OS === 'ios' ? {} : cardWrapperProps;
+  const sectionCardStyle = Platform.OS === 'ios'
+    ? styles.subscriptionCardFrame
+    : { backgroundColor: cardBgColor };
 
   // Platform-specific container
   const ContainerWrapper = Platform.OS === 'ios' ? SafeAreaView : View;
@@ -1296,7 +1310,7 @@ export default function ProfileScreen() {
 
           {/* Profile Info Section */}
           <CardWrapper
-            style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]}
+            style={[styles.section, sectionCardStyle]}
             {...cardWrapperProps}
           >
             <CollapsibleSection
@@ -1402,7 +1416,7 @@ export default function ProfileScreen() {
           {userRole === 'player' &&
             (subscriptionFeaturesLoading ? (
               <CardWrapper
-                style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]}
+                style={[styles.section, sectionCardStyle]}
                 {...cardWrapperProps}
               >
                 <CollapsibleSection
@@ -1421,7 +1435,7 @@ export default function ProfileScreen() {
             ) : canLinkTrainer ? (
               adminInfo ? (
                 <CardWrapper
-                  style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]}
+                  style={[styles.section, sectionCardStyle]}
                   {...cardWrapperProps}
                 >
                   <CollapsibleSection
@@ -1449,7 +1463,7 @@ export default function ProfileScreen() {
               ) : null
             ) : (
               <CardWrapper
-                style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]}
+                style={[styles.section, sectionCardStyle]}
                 {...cardWrapperProps}
               >
                 <CollapsibleSection
@@ -1473,7 +1487,7 @@ export default function ProfileScreen() {
 
           {canManagePlayers && (
             <CardWrapper
-              style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]}
+              style={[styles.section, sectionCardStyle]}
               {...cardWrapperProps}
             >
               <CollapsibleSection
@@ -1501,10 +1515,10 @@ export default function ProfileScreen() {
           )}
 
           {/* Calendar Sync Section - Collapsible - Available for all users */}
-            <CardWrapper
-              style={[styles.section, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]}
-              {...cardWrapperProps}
-            >
+          <CardWrapper
+            style={[styles.section, sectionCardStyle]}
+            {...cardWrapperProps}
+          >
             <CollapsibleSection
               title="Kalender Synkronisering"
               expanded={isCalendarSyncExpanded}
@@ -1599,7 +1613,7 @@ export default function ProfileScreen() {
           </View>
 
           <CardWrapper
-            style={[styles.section, styles.settingsCard, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]}
+            style={[styles.section, styles.settingsCard, sectionCardStyle]}
             {...cardWrapperProps}
           >
             <CollapsibleSection
@@ -1815,6 +1829,7 @@ export default function ProfileScreen() {
         data={[]}
         keyExtractor={(_, index) => `profile-flatlist-${index}`}
         renderItem={() => null}
+        extraData={focusNonce}
         ListHeaderComponent={
           <React.Fragment>
             {renderProfileContent()}
