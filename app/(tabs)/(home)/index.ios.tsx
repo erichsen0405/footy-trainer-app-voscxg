@@ -60,6 +60,7 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform, useColorScheme, DeviceEventEmitter } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
@@ -306,6 +307,7 @@ function getActivityTasks(activity: any): any[] {
 }
 
 export default function HomeScreen() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { activities, loading, refresh: refreshActivities } = useHomeActivities();
   const { categories, createActivity, refreshData, currentWeekStats } = useFootball();
@@ -1136,11 +1138,13 @@ export default function HomeScreen() {
   // List header component
   const ListHeaderComponent = useCallback(() => {
     const gradient = performanceMetrics.gradientColors ?? performanceGradientColors;
+    const headerPaddingTop = 12;
+    const headerPaddingBottom = 12;
 
     return (
       <>
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: headerPaddingTop, paddingBottom: headerPaddingBottom }]}>
           <View style={styles.logoContainer}>
             <View style={styles.logo}>
               <Text style={styles.logoIcon}>⚽</Text>
@@ -1226,7 +1230,7 @@ export default function HomeScreen() {
         </Pressable>
       </>
     );
-  }, [isDark, currentWeekNumber, currentWeekLabel, performanceMetrics, adminMode, handleOpenPerformance, handleOpenCreateModal]);
+  }, [adminMode, currentWeekLabel, currentWeekNumber, handleOpenCreateModal, handleOpenPerformance, isDark, performanceMetrics]);
 
   // List footer component
   const ListFooterComponent = useCallback(() => (
@@ -1250,6 +1254,7 @@ export default function HomeScreen() {
           keyExtractor={keyExtractor}
           ListHeaderComponent={ListHeaderComponent}
           ListFooterComponent={ListFooterComponent}
+          contentInsetAdjustmentBehavior="automatic"
           keyboardShouldPersistTaps="handled"
           removeClippedSubviews={Platform.OS !== 'web'}
           initialNumToRender={8}
@@ -1289,7 +1294,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#2C3E50',
     paddingHorizontal: 20,
     paddingTop: Platform.OS === 'android' ? 48 : 16,
-    paddingBottom: 32,
     flexDirection: 'row',
     alignItems: 'center',
   },
