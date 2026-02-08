@@ -126,6 +126,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   loadingText: { marginTop: 12, fontSize: 14, fontWeight: '600' },
+  purchaseOverlay: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    backgroundColor: colors.background,
+  },
+  purchaseOverlayText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: colors.text,
+  },
   subscriptionCard: { borderRadius: 20, padding: 20, marginTop: 24 },
   profileHeader: { borderRadius: 24, padding: 24, marginHorizontal: 16, marginTop: 16, alignItems: 'center' },
   avatarContainer: { position: 'relative', marginBottom: 16 },
@@ -306,7 +318,8 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [showPaywallModal, setShowPaywallModal] = useState(false);
-  const [paywallProcessing, setPaywallProcessing] = useState(false);
+  const [, setPaywallProcessing] = useState(false);
+  const [purchaseProcessing, setPurchaseProcessing] = useState(false);
   const [focusNonce, setFocusNonce] = useState(0);
   const lastUserIdRef = useRef<string | null>(null);
 
@@ -354,9 +367,23 @@ export default function ProfileScreen() {
   const isDark = colorScheme === 'dark';
 
   // Get subscription status
-  const { subscriptionStatus, refreshSubscription, createSubscription } = useSubscription();
+  const {
+    subscriptionStatus,
+    refreshSubscription,
+    createSubscription,
+    subscriptionPlans,
+    loading: subscriptionLoading,
+  } = useSubscription();
   const { refreshAll } = useFootball();
-  const { entitlementSnapshot, refreshSubscriptionStatus } = useAppleIAP();
+  const {
+    entitlementSnapshot,
+    refreshSubscriptionStatus,
+    loading: iapLoading,
+    iapReady,
+    iapUnavailableReason,
+    isRestoring,
+    products: iapProducts,
+  } = useAppleIAP();
   const { featureAccess, isLoading: subscriptionFeaturesLoading } = useSubscriptionFeatures();
   const subscriptionGate = getSubscriptionGateState({
     user,
@@ -364,6 +391,42 @@ export default function ProfileScreen() {
     entitlementSnapshot,
   });
   const shouldShowChooseSubscription = subscriptionGate.shouldShowChooseSubscription;
+
+  const subscriptionPlansLoading =
+    Platform.OS === 'ios'
+      ? (iapLoading || isRestoring || (!iapReady && !iapUnavailableReason) || (!iapUnavailableReason && iapProducts.length === 0))
+      : subscriptionLoading;
+
+  const entitlementSnapshotRef = useRef(entitlementSnapshot);
+  const subscriptionLoadingRef = useRef(subscriptionLoading);
+  const subscriptionFeaturesLoadingRef = useRef(subscriptionFeaturesLoading);
+
+  useEffect(() => {
+    entitlementSnapshotRef.current = entitlementSnapshot;
+  }, [entitlementSnapshot]);
+
+  useEffect(() => {
+    subscriptionLoadingRef.current = subscriptionLoading;
+  }, [subscriptionLoading]);
+
+  useEffect(() => {
+    subscriptionFeaturesLoadingRef.current = subscriptionFeaturesLoading;
+  }, [subscriptionFeaturesLoading]);
+
+  const waitForPurchaseSettled = useCallback(async () => {
+    const start = Date.now();
+    const timeoutMs = 15000;
+    while (Date.now() - start < timeoutMs) {
+      const resolving = Boolean(entitlementSnapshotRef.current?.resolving);
+      const subscriptionBusy = Boolean(subscriptionLoadingRef.current);
+      const featuresBusy = Boolean(subscriptionFeaturesLoadingRef.current);
+      if (!resolving && !subscriptionBusy && !featuresBusy) {
+        return true;
+      }
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    return false;
+  }, []);
 
   const canUseCalendarSync = featureAccess.calendarSync;
   const canLinkTrainer = featureAccess.trainerLinking;
@@ -535,17 +598,30 @@ export default function ProfileScreen() {
     [refreshSubscription]
   );
 
+  const handleIOSSubscriptionStarted = useCallback(() => {
+    setPurchaseProcessing(true);
+  }, []);
+
   const handleIOSSubscriptionFinished = useCallback(
     async (success: boolean) => {
-      if (!success) return;
-      await refreshSubscriptionStatus({ force: true, reason: 'profile_purchase' });
-      await refreshSubscription();
-      if (user?.id) {
-        await checkUserOnboarding(user.id);
+      if (!success) {
+        setPurchaseProcessing(false);
+        return;
       }
-      forceUserRoleRefresh('ios-purchase');
+      setPurchaseProcessing(true);
+      try {
+        await refreshSubscriptionStatus({ force: true, reason: 'profile_purchase' });
+        await refreshSubscription();
+        if (user?.id) {
+          await checkUserOnboarding(user.id);
+        }
+        forceUserRoleRefresh('ios-purchase');
+        await waitForPurchaseSettled();
+      } finally {
+        setPurchaseProcessing(false);
+      }
     },
-    [checkUserOnboarding, refreshSubscription, refreshSubscriptionStatus, user?.id]
+    [checkUserOnboarding, refreshSubscription, refreshSubscriptionStatus, user?.id, waitForPurchaseSettled]
   );
 
   useEffect(() => {
@@ -823,6 +899,7 @@ export default function ProfileScreen() {
   const handleCompleteSubscription = async (planId: string) => {
     if (!user) return;
 
+    setPurchaseProcessing(true);
     setLoading(true);
     if (__DEV__) {
       console.log(`[PROFILE] Creating subscription with plan: ${planId}`);
@@ -857,6 +934,7 @@ export default function ProfileScreen() {
       Alert.alert('Fejl', error.message || 'Der opstod en fejl. Prøv venligst igen.');
     } finally {
       setLoading(false);
+      setPurchaseProcessing(false);
     }
   };
 
@@ -1069,6 +1147,15 @@ export default function ProfileScreen() {
   const paywallEdges = Platform.OS === 'ios' ? (['top', 'bottom'] as const) : undefined;
   const paywallWrapperProps = Platform.OS === 'ios' ? { edges: paywallEdges } : {};
 
+  const purchaseProcessingModal = (
+    <Modal animationType="fade" transparent visible={purchaseProcessing}>
+      <View style={styles.purchaseOverlay}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.purchaseOverlayText}>Opdaterer abonnement...</Text>
+      </View>
+    </Modal>
+  );
+
   // Show subscription selection if user is trainer but has no subscription
   if (user && shouldShowChooseSubscription) {
     return (
@@ -1090,27 +1177,29 @@ export default function ProfileScreen() {
                   style={[styles.subscriptionCard, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]}
                   {...cardWrapperProps}
                 >
-                {Platform.OS === 'ios' ? (
-                  <AppleSubscriptionManager
-                    isSignupFlow
-                    forceShowPlans
-                    selectedRole={subscriptionSelectionRole ?? undefined}
-                    onPurchaseFinished={handleIOSSubscriptionFinished}
-                  />
-                ) : (
-                  <SubscriptionManager
-                    onPlanSelected={handleCompleteSubscription}
-                    isSignupFlow={true}
-                    selectedRole={subscriptionSelectionRole ?? undefined}
-                  />
-                )}
-              </CardWrapper>
+                  {Platform.OS === 'ios' ? (
+                    <AppleSubscriptionManager
+                      isSignupFlow
+                      forceShowPlans
+                      selectedRole={subscriptionSelectionRole ?? undefined}
+                      onPurchaseStarted={handleIOSSubscriptionStarted}
+                      onPurchaseFinished={handleIOSSubscriptionFinished}
+                    />
+                  ) : (
+                    <SubscriptionManager
+                      onPlanSelected={handleCompleteSubscription}
+                      isSignupFlow={true}
+                      selectedRole={subscriptionSelectionRole ?? undefined}
+                    />
+                  )}
+                </CardWrapper>
               </View>
             </React.Fragment>
           }
           contentContainerStyle={[styles.contentContainer]}
           showsVerticalScrollIndicator={false}
         />
+        {purchaseProcessingModal}
       </ContainerWrapper>
     );
   }
@@ -1444,15 +1533,23 @@ export default function ProfileScreen() {
                 icon={<IconSymbol ios_icon_name="creditcard.fill" android_material_icon_name="payment" size={28} color={colors.primary} />}
               >
                 <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>Administrer dit abonnement</Text>
-                {Platform.OS === 'ios' ? (
+                {subscriptionPlansLoading ? (
+                  <View style={[styles.loadingContainer, { paddingVertical: 24 }]}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                    <Text style={[styles.loadingText, { color: textSecondaryColor }]}>
+                      Henter abonnementer...
+                    </Text>
+                  </View>
+                ) : Platform.OS === 'ios' ? (
                   <AppleSubscriptionManager
                     highlightProductId={highlightProductId}
                     forceShowPlans={!subscriptionGate.hasActiveSubscription}
                     selectedRole={subscriptionSelectionRole ?? undefined}
                     transparentBackground
-                    onPurchaseFinished={handleIOSSubscriptionFinished}
+                    onPurchaseStarted={handleIOSSubscriptionStarted}
+                  onPurchaseFinished={handleIOSSubscriptionFinished}
                   />
-              ) : (
+                ) : (
                   <SubscriptionManager transparentBackground={Platform.OS === 'ios'} />
                 )}
               </CollapsibleSection>
@@ -1808,6 +1905,7 @@ export default function ProfileScreen() {
                   highlightProductId={highlightProductId}
                   forceShowPlans={!subscriptionGate.hasActiveSubscription}
                   selectedRole={subscriptionSelectionRole ?? undefined}
+                  onPurchaseStarted={handleIOSSubscriptionStarted}
                   onPurchaseFinished={handleIOSSubscriptionFinished}
                 />
               ) : (
@@ -1818,6 +1916,7 @@ export default function ProfileScreen() {
         </PaywallWrapper>
       </Modal>
 
+      {purchaseProcessingModal}
     </ContainerWrapper>
   );
 }

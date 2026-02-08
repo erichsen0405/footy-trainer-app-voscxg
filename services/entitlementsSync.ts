@@ -75,7 +75,8 @@ export async function syncEntitlementsSnapshot(
     } else {
       const currentRole = (existingRoleRow?.role as 'player' | 'trainer' | 'admin' | null) ?? null;
 
-      if (currentRole !== 'admin' && currentRole !== resolvedRole) {
+      const canDowngradeRole = currentRole !== 'admin' && !(currentRole === 'trainer' && resolvedRole === 'player');
+      if (canDowngradeRole && currentRole !== resolvedRole) {
         const { error } = await supabase
           .from('user_roles')
           .upsert({ user_id: userId, role: resolvedRole }, { onConflict: 'user_id' });

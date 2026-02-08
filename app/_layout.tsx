@@ -14,50 +14,6 @@ import { supabase } from '@/integrations/supabase/client';
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
-// DEV: Catch + normalize any accidental router.replace("profile")
-if (__DEV__) {
-  const r: any = globalRouter as any;
-  if (!r.__fc_router_patched) {
-    r.__fc_router_patched = true;
-
-    const normalizeHref = (href: any) => {
-      if (!href) return href;
-
-      if (typeof href === 'string') {
-        if (href === 'profile') return '/(tabs)/profile';
-        if (!href.startsWith('/') && ['profile', 'home', 'library', 'tasks'].includes(href)) {
-          return `/(tabs)/${href}`;
-        }
-        return href;
-      }
-
-      if (typeof href === 'object') {
-        const { name, pathname, params } = href as any;
-        if (name === 'profile' || pathname === 'profile') {
-          return { pathname: '/(tabs)/profile', params };
-        }
-      }
-
-      return href;
-    };
-
-    const origReplace = r.replace?.bind(r);
-    if (typeof origReplace === 'function') {
-      r.replace = (href: any, ...rest: any[]) => {
-        const normalized = normalizeHref(href);
-        if (href !== normalized) {
-          console.warn('[RouterPatch] Normalized router.replace target', {
-            from: href,
-            to: normalized,
-            stack: new Error().stack,
-          });
-        }
-        return origReplace(normalized, ...rest);
-      };
-    }
-  }
-}
-
 const NO_PLAN_TIER_VALUES = new Set([
   'none',
   '(none)',

@@ -29,6 +29,7 @@ export function useUserRole() {
   const [loading, setLoading] = useState(true);
 
   const userIdRef = useRef<string | null>(null);
+  const lastKnownRoleRef = useRef<UserRole | null>(null);
   const mountedRef = useRef(true);
   const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -49,6 +50,7 @@ export function useUserRole() {
 
         if (userError || !user) {
           if (mountedRef.current) {
+            lastKnownRoleRef.current = null;
             setUserRole(null);
             setCurrentUserId(null);
           }
@@ -56,6 +58,10 @@ export function useUserRole() {
         }
 
         targetUserId = user.id;
+      }
+
+      if (userIdRef.current && userIdRef.current !== targetUserId) {
+        lastKnownRoleRef.current = null;
       }
 
       userIdRef.current = targetUserId;
@@ -70,26 +76,34 @@ export function useUserRole() {
       if (error && error.code !== 'PGRST116') {
         console.error('[useUserRole] Error fetching user role:', error, { reason });
         if (mountedRef.current) {
-          setUserRole(null);
+          if (!lastKnownRoleRef.current) {
+            setUserRole(null);
+          }
         }
         return;
       }
 
       if (data?.role) {
         if (mountedRef.current) {
-          setUserRole(data.role as UserRole);
+          const nextRole = data.role as UserRole;
+          lastKnownRoleRef.current = nextRole;
+          setUserRole(nextRole);
         }
         return;
       }
 
-      console.log('[useUserRole] No role found – awaiting onboarding flow');
+      console.log('[useUserRole] No role found - awaiting onboarding flow');
       if (mountedRef.current) {
-        setUserRole(null);
+        if (!lastKnownRoleRef.current) {
+          setUserRole(null);
+        }
       }
     } catch (error) {
       console.error('[useUserRole] Error in fetchUserRole:', error, { reason });
       if (mountedRef.current) {
-        setUserRole(null);
+        if (!lastKnownRoleRef.current) {
+          setUserRole(null);
+        }
       }
     } finally {
       if (!silent && mountedRef.current) {
@@ -116,6 +130,7 @@ export function useUserRole() {
         fetchUserRole({ reason: 'auth-change', userId: session.user.id });
       } else {
         userIdRef.current = null;
+        lastKnownRoleRef.current = null;
         setCurrentUserId(null);
         setUserRole(null);
         setLoading(false);

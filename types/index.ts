@@ -155,6 +155,7 @@ export interface TaskTemplateSelfFeedback {
   id: string;
   userId: string;
   taskTemplateId: string;
+  taskInstanceId?: string | null;
   activityId: string;
   rating?: number | null;
   note?: string | null;
