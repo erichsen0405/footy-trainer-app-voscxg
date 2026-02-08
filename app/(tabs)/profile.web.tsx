@@ -14,7 +14,8 @@ import SubscriptionManager from '@/components/SubscriptionManager';
 import AppleSubscriptionManager from '@/components/AppleSubscriptionManager';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useSubscriptionFeatures } from '@/hooks/useSubscriptionFeatures';
-import { PRODUCT_IDS } from '@/contexts/AppleIAPContext';
+import { useAppleIAP, PRODUCT_IDS } from '@/contexts/AppleIAPContext';
+import { getSubscriptionGateState } from '@/utils/subscriptionGate';
 
 interface UserProfile {
   full_name: string;
@@ -117,10 +118,6 @@ export default function ProfileScreen() {
   const [showCreatePlayerModal, setShowCreatePlayerModal] = useState(false);
   const [playersRefreshTrigger, setPlayersRefreshTrigger] = useState(0);
   
-  // New onboarding flow states
-  const [, setNeedsRoleSelection] = useState(false);
-  const [, setNeedsSubscription] = useState(false);
-  
   // Profile editing
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editName, setEditName] = useState('');
@@ -194,10 +191,17 @@ export default function ProfileScreen() {
 
   // Get subscription status
   const { subscriptionStatus, refreshSubscription } = useSubscription();
+  const { entitlementSnapshot } = useAppleIAP();
   const subscriptionStatusRef = useRef(subscriptionStatus);
   useEffect(() => {
     subscriptionStatusRef.current = subscriptionStatus;
   }, [subscriptionStatus]);
+  const subscriptionGate = getSubscriptionGateState({
+    user,
+    subscriptionStatus,
+    entitlementSnapshot,
+  });
+  const shouldShowChooseSubscription = subscriptionGate.shouldShowChooseSubscription;
 
   const { featureAccess, isLoading: subscriptionFeaturesLoading } = useSubscriptionFeatures();
   const resolvedFeatureAccess = featureAccess ?? {
@@ -215,6 +219,8 @@ export default function ProfileScreen() {
   const forcePlayerPlanListOpen =
     forceShowPlansOnce ||
     (userRole === 'player' && !subscriptionStatus?.hasSubscription);
+  const subscriptionSelectionRole =
+    userRole === 'player' ? 'player' : userRole ? 'trainer' : null;
 
   const addDebugInfo = (message: string) => {
     console.log('[PROFILE DEBUG]', message);
@@ -259,8 +265,7 @@ export default function ProfileScreen() {
       if (roleError || !roleData) {
         addDebugInfo('No role found - defer to subscription for role');
         setUserRole(null);
-        setNeedsRoleSelection(false);
-        setNeedsSubscription(true);
+        await refreshSubscription();
         return;
       }
 
@@ -268,29 +273,10 @@ export default function ProfileScreen() {
       setUserRole(role);
       addDebugInfo(`Role found: ${role}`);
 
-    // If role is trainer or admin, check if they have a subscription
-    if (role === 'trainer' || role === 'admin') {
-      const { data: subData, error: subError } = await supabase
-        .from('subscriptions')
-        .select('id, status')
-        .eq('admin_id', userId)
-        .single();
-
-      if (subError || !subData) {
-        addDebugInfo('No subscription found - needs subscription');
-        setNeedsRoleSelection(false);
-        setNeedsSubscription(true);
-        return;
-      }
-
-      addDebugInfo(`Subscription found: ${subData.status}`);
-      // Refresh subscription status
-      await refreshSubscription();
-    }
+    // Refresh subscription status after role resolution
+    await refreshSubscription();
 
     // User is fully onboarded
-    setNeedsRoleSelection(false);
-    setNeedsSubscription(false);
     await fetchUserProfile(userId);
     
     if (role === 'player') {
@@ -315,8 +301,6 @@ export default function ProfileScreen() {
         setAuthTransitioning(false);
         setUser(null);
         lastKnownUserRef.current = null;
-        setNeedsRoleSelection(false);
-        setNeedsSubscription(false);
         hasConsumedOpenSubscriptionRef.current = false;
         clearForceShowPlansTimeout();
         setForceShowPlansOnce(false);
@@ -647,8 +631,6 @@ export default function ProfileScreen() {
       setUserRole(null);
       setProfile(null);
       setAdminInfo(null);
-      setNeedsRoleSelection(false);
-      setNeedsSubscription(false);
       setManualUpgradeTarget(null);
       setIsEditingProfile(false);
       setShowCreatePlayerModal(false);
@@ -694,6 +676,33 @@ export default function ProfileScreen() {
   // Auth-transition gate FIRST
   if (authTransitioning) {
     return <FullScreenLoading message={authTransitionMessage} />;
+  }
+
+  if (user && shouldShowChooseSubscription) {
+    return (
+      <View style={[styles.container, { backgroundColor: bgColor }]}>
+        <ScrollView
+          ref={scrollViewRef}
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.header}>
+            <Text style={[styles.headerTitle, { color: textColor }]}>Vælg dit abonnement</Text>
+            <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
+              Vælg et abonnement for at fortsætte — du kan altid ændre det senere.
+            </Text>
+          </View>
+          <View style={[styles.card, { backgroundColor: cardBgColor }]}>
+            <SubscriptionManager
+              isSignupFlow
+              forceShowPlans
+              selectedRole={subscriptionSelectionRole ?? undefined}
+            />
+          </View>
+        </ScrollView>
+      </View>
+    );
   }
 
   return (
