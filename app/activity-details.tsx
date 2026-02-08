@@ -859,6 +859,7 @@ interface TemplateFeedbackSummary {
 interface FeedbackModalTaskState {
   task: FeedbackTask;
   templateId: string;
+  taskInstanceId: string;
 }
 
 interface AfterTrainingFeedbackConfig {
@@ -1056,6 +1057,27 @@ function buildSelfFeedbackLookup(args: {
   return lookup;
 }
 
+function buildSelfFeedbackByTaskId(
+  currentActivityRows: TaskTemplateSelfFeedback[],
+): Record<string, TaskTemplateSelfFeedback> {
+  const lookup: Record<string, TaskTemplateSelfFeedback> = {};
+  for (const row of Array.isArray(currentActivityRows) ? currentActivityRows : []) {
+    const taskInstanceId = normalizeId(
+      (row as any)?.taskInstanceId ?? (row as any)?.task_instance_id,
+    );
+    if (!taskInstanceId) continue;
+
+    const rowMs = safeDateMs((row as any)?.createdAt ?? (row as any)?.created_at);
+    const existingMs = lookup[taskInstanceId]
+      ? safeDateMs((lookup[taskInstanceId] as any).createdAt)
+      : -1;
+    if (!lookup[taskInstanceId] || rowMs > existingMs) {
+      lookup[taskInstanceId] = row;
+    }
+  }
+  return lookup;
+}
+
 function normalizeScoreExplanation(value?: string | null): string | null {
   if (typeof value !== 'string') {
     return value ?? null;
@@ -1198,6 +1220,9 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
   const [selfFeedbackByTemplate, setSelfFeedbackByTemplate] = useState<
     Record<string, TemplateFeedbackSummary>
+  >({});
+  const [selfFeedbackByTaskId, setSelfFeedbackByTaskId] = useState<
+    Record<string, TaskTemplateSelfFeedback>
   >({});
 
   const [feedbackModalTask, setFeedbackModalTask] = useState<FeedbackModalTaskState | null>(null);
@@ -1393,6 +1418,16 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     return Array.from(ids);
   }, [resolveFeedbackTemplateId, tasksState]);
 
+  const feedbackTemplateCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const t of tasksState) {
+      const templateId = resolveFeedbackTemplateId(t);
+      if (!templateId) continue;
+      counts[String(templateId)] = (counts[String(templateId)] ?? 0) + 1;
+    }
+    return counts;
+  }, [resolveFeedbackTemplateId, tasksState]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -1400,6 +1435,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       if (!feedbackTemplateIds.length) {
         if (!cancelled) {
           setSelfFeedbackByTemplate({});
+          setSelfFeedbackByTaskId({});
         }
         return;
       }
@@ -1439,6 +1475,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             currentActivityIds: uniqueCandidateIds,
           }),
         );
+        setSelfFeedbackByTaskId(buildSelfFeedbackByTaskId(currentActivityRows));
       } catch (e) {
         if (__DEV__) console.log('[ActivityDetails] self feedback fetch skipped/failed', e);
       }
@@ -1458,7 +1495,10 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     const templateId = resolveFeedbackTemplateId(task);
     if (!templateId) return;
 
-    setFeedbackModalTask({ task, templateId });
+    const taskInstanceId =
+      normalizeId(task.id ?? (task as any)?.task_id) ??
+      String(task.id ?? templateId);
+    setFeedbackModalTask({ task, templateId, taskInstanceId });
     setFeedbackModalError(null);
   }, [pendingFeedbackTaskId, resolveFeedbackTemplateId, tasksState]);
 
@@ -1995,7 +2035,10 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         !!templateId && (hasFeedbackTemplateId || task.isFeedbackTask === true || isFeedbackTitle(task.title) || isFeedbackTask(task));
 
       if (isFeedbackTaskLocal && templateId) {
-        setFeedbackModalTask({ task, templateId });
+        const taskInstanceId =
+          normalizeId(task.id ?? (task as any)?.task_id) ??
+          String(task.id ?? templateId);
+        setFeedbackModalTask({ task, templateId, taskInstanceId });
         setPendingFeedbackTaskId(String(task.id));
         return;
       }
@@ -2076,7 +2119,30 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     return items;
   }, [activity.id, showIntensityTaskRow, tasksState]);
 
-  const taskKeyExtractor = useCallback((item: TaskListItem) => ('__type' in item ? item.key : String(item.id)), []);
+  const taskKeyExtractor = useCallback((item: TaskListItem, index: number) => {
+    if ('__type' in item) return item.key;
+    const task = item as any;
+    const rawId = task?.id ?? task?.task_id;
+    const trimmedId =
+      typeof rawId === 'number' || typeof rawId === 'string'
+        ? String(rawId).trim()
+        : '';
+    if (trimmedId) return `task-${trimmedId}:${index}`;
+    const templateRaw =
+      task?.taskTemplateId ??
+      task?.task_template_id ??
+      task?.feedbackTemplateId ??
+      task?.feedback_template_id ??
+      getMarkerTemplateId(task) ??
+      '';
+    const templateId =
+      typeof templateRaw === 'number' || typeof templateRaw === 'string'
+        ? String(templateRaw).trim()
+        : '';
+    const titleKey = normalizeTitle(task?.title ?? '') || 'untitled';
+    const taskType = isFeedbackTask(task) ? 'feedback' : 'task';
+    return `task-${String(activity.id)}:${templateId || 'no-template'}:${taskType}:${titleKey}:${index}`;
+  }, [activity.id]);
 
   // --- Missing render helpers (fix for refactor) ---
   const renderCategorySelector = useCallback(() => {
@@ -2288,7 +2354,12 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
       const templateId = resolveFeedbackTemplateId(task);
       const config = getFeedbackConfigForTemplate(templateId);
-      const feedback = templateId ? selfFeedbackByTemplate[templateId]?.current : undefined;
+      const taskInstanceId = normalizeId(task.id ?? (task as any)?.task_id);
+      const instanceFeedback = taskInstanceId ? selfFeedbackByTaskId[taskInstanceId] : undefined;
+      const hasDuplicateTemplate = templateId ? (feedbackTemplateCounts[templateId] ?? 0) > 1 : false;
+      const feedback =
+        instanceFeedback ??
+        (!hasDuplicateTemplate && templateId ? selfFeedbackByTemplate[templateId]?.current : undefined);
 
       const hasFeedbackTemplateId = !!normalizeId(task.feedbackTemplateId ?? (task as any)?.feedback_template_id);
       const isFeedbackTaskLocal =
@@ -2403,6 +2474,8 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       isIntensityModalSaving,
       intensityTaskCompleted,
       resolveFeedbackTemplateId,
+      feedbackTemplateCounts,
+      selfFeedbackByTaskId,
       selfFeedbackByTemplate,
       textColor,
       textSecondaryColor,
@@ -3083,16 +3156,19 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
       const templateId = feedbackModalTask.templateId;
       const feedbackTaskId = feedbackModalTask.task.id;
+      const taskInstanceId = feedbackModalTask.taskInstanceId;
       const optimisticActivityId = candidateActivityIds[0];
       const nowIso = new Date().toISOString();
-      const optimisticId = `optimistic:${optimisticActivityId}:${templateId}:${nowIso}`;
+      const optimisticId = `optimistic:${optimisticActivityId}:${templateId}:${taskInstanceId}:${nowIso}`;
       const previousEntry = selfFeedbackByTemplate[templateId];
+      const previousTaskEntry = selfFeedbackByTaskId[taskInstanceId];
       const previousTaskCompleted = tasksState.find((t) => t.id === feedbackTaskId)?.completed ?? false;
 
       const optimisticFeedback: TaskTemplateSelfFeedback = {
         id: optimisticId,
         userId: currentUserId,
         taskTemplateId: templateId,
+        taskInstanceId,
         activityId: optimisticActivityId,
         rating: typeof score === 'number' ? score : null,
         note: typeof note === 'string' ? note : null,
@@ -3107,11 +3183,16 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           current: optimisticFeedback,
         },
       }));
+      setSelfFeedbackByTaskId((prev) => ({
+        ...prev,
+        [taskInstanceId]: optimisticFeedback,
+      }));
       setTasksState((prev) => prev.map((t) => (t.id === feedbackTaskId ? { ...t, completed: true } : t)));
       handleFeedbackClose();
       DeviceEventEmitter.emit('feedback:saved', {
         activityId: optimisticActivityId,
         templateId,
+        taskInstanceId,
         rating: optimisticFeedback.rating,
         note: optimisticFeedback.note,
         createdAt: nowIso,
@@ -3123,6 +3204,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         const tryUpsert = async (candidateActivityId: string) =>
           upsertSelfFeedback({
             templateId,
+            taskInstanceId,
             userId: currentUserId,
             rating: score,
             note,
@@ -3170,16 +3252,18 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           DeviceEventEmitter.emit('feedback:save_failed', {
             activityId: optimisticActivityId,
             templateId,
+            taskInstanceId,
             optimisticId,
             source: 'activity-details',
           });
 
           const correctedCreatedAt = savedFeedback.createdAt ?? nowIso;
-          const correctedOptimisticId = `optimistic:${finalActivityId}:${templateId}:${correctedCreatedAt}`;
+          const correctedOptimisticId = `optimistic:${finalActivityId}:${templateId}:${taskInstanceId}:${correctedCreatedAt}`;
 
           DeviceEventEmitter.emit('feedback:saved', {
             activityId: finalActivityId,
             templateId,
+            taskInstanceId,
             rating:
               typeof savedFeedback.rating === 'number'
                 ? savedFeedback.rating
@@ -3208,6 +3292,10 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             },
           };
         });
+        setSelfFeedbackByTaskId((prev) => ({
+          ...prev,
+          [taskInstanceId]: savedFeedback,
+        }));
 
         try {
           if (activity.isExternal) {
@@ -3237,12 +3325,20 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           const { [templateId]: _removed, ...rest } = prev;
           return rest;
         });
+        setSelfFeedbackByTaskId((prev) => {
+          if (previousTaskEntry) {
+            return { ...prev, [taskInstanceId]: previousTaskEntry };
+          }
+          const { [taskInstanceId]: _removed, ...rest } = prev;
+          return rest;
+        });
         setTasksState((prev) =>
           prev.map((t) => (t.id === feedbackTaskId ? { ...t, completed: previousTaskCompleted } : t)),
         );
         DeviceEventEmitter.emit('feedback:save_failed', {
           activityId: optimisticActivityId,
           templateId,
+          taskInstanceId,
           optimisticId,
           source: 'activity-details',
         });
@@ -3267,6 +3363,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       feedbackModalTask,
       handleFeedbackClose,
       refreshData,
+      selfFeedbackByTaskId,
       selfFeedbackByTemplate,
       tasksState,
     ],
@@ -3279,12 +3376,18 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
   const feedbackModalDefaults = useMemo(() => {
     if (!feedbackModalTask) return { rating: null as number | null, note: '' };
-    const cur = selfFeedbackByTemplate[feedbackModalTask.templateId]?.current;
+    const templateId = feedbackModalTask.templateId;
+    const taskInstanceId = feedbackModalTask.taskInstanceId;
+    const instanceFeedback = taskInstanceId ? selfFeedbackByTaskId[taskInstanceId] : undefined;
+    const hasDuplicateTemplate = templateId ? (feedbackTemplateCounts[templateId] ?? 0) > 1 : false;
+    const cur =
+      instanceFeedback ??
+      (!hasDuplicateTemplate ? selfFeedbackByTemplate[templateId]?.current : undefined);
     return {
       rating: typeof cur?.rating === 'number' ? cur.rating : null,
       note: cur?.note ?? '',
     };
-  }, [feedbackModalTask, selfFeedbackByTemplate]);
+  }, [feedbackModalTask, feedbackTemplateCounts, selfFeedbackByTaskId, selfFeedbackByTemplate]);
 
   const handleBackPress = useCallback(() => {
     if (isEditing) {

@@ -17,6 +17,7 @@ interface ActivityCardProps {
   onPressIntensity?: () => void;
   showTasks?: boolean;
   feedbackActivityId?: string | null;
+  feedbackCompletionByTaskId?: Record<string, boolean>;
   feedbackCompletionByTemplateId?: Record<string, boolean>;
   feedbackDone?: boolean;
 }
@@ -51,6 +52,12 @@ function darkenColor(hex: string, percent: number): string {
   return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB
     .toString(16)
     .padStart(2, '0')}`;
+}
+
+function normalizeId(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const trimmed = String(value).trim();
+  return trimmed.length ? trimmed : null;
 }
 
 type CategoryMeta = {
@@ -201,6 +208,7 @@ export default function ActivityCard({
   onPressIntensity: _deprecatedOnPressIntensity,
   showTasks = false,
   feedbackActivityId,
+  feedbackCompletionByTaskId,
   feedbackCompletionByTemplateId,
   feedbackDone,
 }: ActivityCardProps) {
@@ -290,22 +298,52 @@ export default function ActivityCard({
     [isFeedbackTask]
   );
 
+  const feedbackTemplateCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const task of Array.isArray(optimisticTasks) ? optimisticTasks : []) {
+      if (!isFeedbackTask(task)) continue;
+      const templateId = resolveFeedbackTemplateId(task);
+      if (!templateId) continue;
+      counts[String(templateId)] = (counts[String(templateId)] ?? 0) + 1;
+    }
+    return counts;
+  }, [isFeedbackTask, optimisticTasks, resolveFeedbackTemplateId]);
+
   const isTaskDone = useCallback(
     (task: any): boolean => {
       if (!task) return false;
       const templateId = resolveFeedbackTemplateId(task);
       if (isFeedbackTask(task)) {
+        const rawTaskInstanceId = task?.id ?? task?.task_id;
+        const taskInstanceId = normalizeId(rawTaskInstanceId);
+        const instanceDone =
+          !!taskInstanceId && feedbackCompletionByTaskId?.[taskInstanceId] === true;
+        if (instanceDone) return true;
+
         if (templateId) {
-          return (
-            feedbackCompletionByTemplateId?.[String(templateId)] === true ||
-            task.completed === true
-          );
+          const templateKey = String(templateId);
+          const hasDuplicateTemplate = (feedbackTemplateCounts[templateKey] ?? 0) > 1;
+          if (!hasDuplicateTemplate) {
+            return (
+              feedbackCompletionByTemplateId?.[templateKey] === true ||
+              task.completed === true
+            );
+          }
+          return task.completed === true;
         }
+
         return feedbackDone === true || task.completed === true;
       }
       return task.completed === true;
     },
-    [feedbackCompletionByTemplateId, feedbackDone, isFeedbackTask, resolveFeedbackTemplateId]
+    [
+      feedbackCompletionByTaskId,
+      feedbackCompletionByTemplateId,
+      feedbackDone,
+      feedbackTemplateCounts,
+      isFeedbackTask,
+      resolveFeedbackTemplateId,
+    ]
   );
 
   const hasTemplateOrFeedback = useCallback((task: any): boolean => {
@@ -364,6 +402,8 @@ export default function ActivityCard({
     (task: any, event?: any) => {
       event?.stopPropagation?.();
       const templateId = resolveFeedbackTemplateId(task);
+      const rawTaskInstanceId = task?.id ?? task?.task_id;
+      const taskInstanceId = normalizeId(rawTaskInstanceId);
       const routeActivityId =
         feedbackActivityId ??
         (activity?.activity_id ?? activity?.activityId) ??
@@ -377,6 +417,7 @@ export default function ActivityCard({
               activityId: String(routeActivityId),
               templateId: String(templateId),
               title: String(task.title ?? 'opgave'),
+              taskInstanceId: taskInstanceId ?? undefined,
             },
           });
           return;
@@ -583,6 +624,17 @@ export default function ActivityCard({
 
     const items: TaskListItem[] = [];
 
+    const idCounts = new Map<string, number>();
+    orderedTasks.forEach((task) => {
+      const rawId = task?.id ?? task?.task_id;
+      const trimmedId =
+        typeof rawId === 'number' || typeof rawId === 'string'
+          ? String(rawId).trim()
+          : '';
+      if (!trimmedId) return;
+      idCounts.set(trimmedId, (idCounts.get(trimmedId) ?? 0) + 1);
+    });
+
     if (showIntensityRow) {
       const fallbackId = activityId ?? String(activity?.id ?? 'activity');
       items.push({ type: 'intensity', key: `intensity-${fallbackId}` });
@@ -594,7 +646,24 @@ export default function ActivityCard({
         typeof rawId === 'number' || typeof rawId === 'string'
           ? String(rawId).trim()
           : '';
-      const fallbackKey = trimmedId || `${activityId ?? 'activity'}-${index}`;
+      const hasDuplicateId = trimmedId ? (idCounts.get(trimmedId) ?? 0) > 1 : false;
+      const templateKeyRaw =
+        task?.task_template_id ??
+        task?.taskTemplateId ??
+        task?.feedback_template_id ??
+        task?.feedbackTemplateId ??
+        getMarkerTemplateId(task) ??
+        '';
+      const templateKey = typeof templateKeyRaw === 'number' || typeof templateKeyRaw === 'string'
+        ? String(templateKeyRaw).trim()
+        : '';
+      const taskType = isFeedbackRenderTask(task) ? 'feedback' : 'task';
+      const baseKey = trimmedId || `${activityId ?? 'activity'}:${templateKey || 'no-template'}:${taskType}`;
+      const fallbackKey = trimmedId
+        ? hasDuplicateId
+          ? `${baseKey}:${index}`
+          : baseKey
+        : `${baseKey}:${index}`;
       items.push({ type: 'task', key: `task-${fallbackKey}`, task });
     });
 
