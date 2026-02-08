@@ -162,7 +162,9 @@ const IAP_UNAVAILABLE_IOS_MESSAGE =
 const IAP_UNAVAILABLE_NOT_IOS_MESSAGE = 'Apple In-App Purchases er kun tilgængelige på iOS.';
 const getIapUnavailableMessage = () =>
   Platform.OS === 'ios' ? IAP_UNAVAILABLE_IOS_MESSAGE : IAP_UNAVAILABLE_NOT_IOS_MESSAGE;
-const PURCHASE_MATCH_WINDOW_MS = 5 * 60 * 1000;
+const PURCHASE_MATCH_WINDOW_MS = 2 * 60 * 1000;
+const FLOW_MATCH_WINDOW_MS = 2 * 60 * 1000;
+const OPTIMISTIC_GRACE_MS = 5 * 60 * 1000;
 
 // Subscription product details
 interface SubscriptionProduct {
@@ -750,7 +752,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
               !desiredPurchase &&
               subscriptionStatusRef.current?.productId === desiredSku &&
               lastRequestedAtRef.current &&
-              Date.now() - lastRequestedAtRef.current < PURCHASE_MATCH_WINDOW_MS
+              Date.now() - lastRequestedAtRef.current < OPTIMISTIC_GRACE_MS
             ) {
               console.log('[AppleIAP] Grace window active – keeping optimistic plan visible');
               setPendingPlan(null);
@@ -1103,7 +1105,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       const requestedSku = activeFlow?.sku ?? lastRequestedSkuRef.current ?? null;
       const flowMatch = Boolean(
         activeFlow &&
-          eventTimestamp - activeFlow.startedAt < PURCHASE_MATCH_WINDOW_MS
+          eventTimestamp - activeFlow.startedAt < FLOW_MATCH_WINDOW_MS
       );
       const recentRequestMatch = Boolean(
         requestedSku &&
@@ -1431,22 +1433,28 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
   const pickPreferredPurchase = (items: NormalizedPurchase[]) => {
     if (!items.length) return null;
     const now = Date.now();
+    const isNonExpiringPurchase = (item: NormalizedPurchase) => {
+      if (item.expiryDate) return false;
+      const original = item.original ?? {};
+      const hasNoExpiry =
+        original.expirationDateIOS == null &&
+        original.expiresDate == null &&
+        original.expiryTimeMs == null &&
+        original.purchaseTokenExpirationDate == null;
+      const isNonExpiring = Boolean(
+        original.isNonConsumable ||
+          original.isLifetime ||
+          original.productType === 'non-consumable' ||
+          original.type === 'non-consumable'
+      );
+      return hasNoExpiry && isNonExpiring;
+    };
+    const effectiveExpiry = (item: NormalizedPurchase) =>
+      isNonExpiringPurchase(item) ? Number.POSITIVE_INFINITY : (item.expiryDate ?? -1);
     const activeItems = items.filter(item => {
       if (item.expiryDate && item.expiryDate > now) return true;
       if (!item.expiryDate) {
-        const original = item.original ?? {};
-        const hasNoExpiry =
-          original.expirationDateIOS == null &&
-          original.expiresDate == null &&
-          original.expiryTimeMs == null &&
-          original.purchaseTokenExpirationDate == null;
-        const isNonExpiring = Boolean(
-          original.isNonConsumable ||
-            original.isLifetime ||
-            original.productType === 'non-consumable' ||
-            original.type === 'non-consumable'
-        );
-        return hasNoExpiry && isNonExpiring;
+        return isNonExpiringPurchase(item);
       }
       return false;
     });
@@ -1468,8 +1476,10 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       if (winnerTierRank !== candidateTierRank) {
         return candidateTierRank > winnerTierRank ? candidate : winner;
       }
-      if (candidate.expiryDate !== winner.expiryDate) {
-        return candidate.expiryDate > winner.expiryDate ? candidate : winner;
+      const winnerExpiry = effectiveExpiry(winner);
+      const candidateExpiry = effectiveExpiry(candidate);
+      if (candidateExpiry !== winnerExpiry) {
+        return candidateExpiry > winnerExpiry ? candidate : winner;
       }
       return candidate.transactionDate > winner.transactionDate ? candidate : winner;
     }, null);
