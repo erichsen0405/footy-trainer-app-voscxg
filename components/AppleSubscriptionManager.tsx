@@ -278,7 +278,7 @@ export default function AppleSubscriptionManager({
   const [refreshing, setRefreshing] = useState(false);
   const hasRequestedProductsRef = useRef(false);
   const skeletonItems = useMemo(() => ['skeleton-0', 'skeleton-1', 'skeleton-2'], []);
-  const blockInteractions = purchasing || refreshing || loading || !iapReady || isRestoring;
+  const blockInteractions = purchasing || refreshing || loading || isRestoring;
   const hasAnyActivePlan = Boolean(subscriptionStatus?.isActive || hasComplimentaryActive);
   const activePlanProductId = subscriptionStatus?.isActive ? subscriptionStatus.productId : complimentaryPlanProductId;
 
@@ -336,8 +336,12 @@ export default function AppleSubscriptionManager({
         return;
       }
       if (!iapReady) {
-        Alert.alert('Vent lidt', 'Forbinder til App Store – prøv igen om et øjeblik.');
-        return;
+        const ready = await ensureIapReady();
+        if (!ready) {
+          const reason = iapUnavailableReason ?? 'Forbinder til App Store – prøv igen om et øjeblik.';
+          Alert.alert('App Store ikke klar', reason);
+          return;
+        }
       }
       let success = false;
       await safeInvoke(onPurchaseStarted);
@@ -390,6 +394,8 @@ export default function AppleSubscriptionManager({
       onPlanSelected,
       onPurchaseFinished,
       onPurchaseStarted,
+      ensureIapReady,
+      iapUnavailableReason,
       purchaseSubscription,
       purchasing,
       refreshSubscriptionStatus,

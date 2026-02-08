@@ -15,6 +15,7 @@ import AppleSubscriptionManager from '@/components/AppleSubscriptionManager';
 import SubscriptionManager from '@/components/SubscriptionManager';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useAppleIAP, PRODUCT_IDS, TRAINER_PRODUCT_IDS } from '@/contexts/AppleIAPContext';
+import { getSubscriptionGateState } from '@/utils/subscriptionGate';
 
 type Role = 'admin' | 'trainer' | 'player';
 
@@ -48,8 +49,7 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
   const [activationMessage, setActivationMessage] = useState('Aktiverer abonnement...');
   const { subscriptionStatus, refreshSubscription, createSubscription } = useSubscription();
   const { entitlementSnapshot, refreshSubscriptionStatus } = useAppleIAP();
-  const { isEntitled, resolving } = entitlementSnapshot;
-  const backendHasSubscription = Boolean(subscriptionStatus?.hasSubscription);
+  const { resolving } = entitlementSnapshot;
   const router = useRouter();
   const pathname = usePathname();
   const trainerProductSet = useMemo(
@@ -70,19 +70,24 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
   useEffect(() => {
     setState(prev => {
       if (prev.hydrating) return prev;
-      const shouldNeed = Boolean(prev.user && !resolving && !isEntitled && !backendHasSubscription);
+      const gateState = getSubscriptionGateState({
+        user: prev.user,
+        subscriptionStatus,
+        entitlementSnapshot,
+      });
+      const shouldNeed = gateState.shouldShowChooseSubscription;
       if (shouldNeed === prev.needsSubscription) return prev;
       console.log('[OnboardingGate] needsSubscription updated', {
         shouldNeed,
         user: prev.user?.id ?? null,
         role: prev.role,
-        resolving,
-        isEntitled,
-        backendHasSubscription,
+        resolving: gateState.isResolving,
+        isEntitled: gateState.hasActiveEntitlement,
+        backendHasSubscription: gateState.hasBackendSubscription,
       });
       return { ...prev, needsSubscription: shouldNeed };
     });
-  }, [backendHasSubscription, isEntitled, resolving]);
+  }, [entitlementSnapshot, subscriptionStatus]);
   useEffect(() => {
     subscriptionStatusRef.current = subscriptionStatus;
   }, [subscriptionStatus]);
@@ -116,7 +121,7 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
     const maxPlayers = status.maxPlayers ?? status.max_players ?? status.playerLimit ?? null;
     if (typeof maxPlayers === 'number') {
       if (maxPlayers > 1) return 'trainer';
-      if (maxPlayers >= 0) return 'player';
+      if (maxPlayers === 1) return 'player';
     }
 
     const productId = (status.productId ?? status.product_id ?? status.planId ?? '').toString().toLowerCase();
@@ -168,7 +173,14 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
       const roleFromDb = (roleData?.role as Role | null) ?? null;
 
       const visibleStatus = await ensureSubscriptionStatus();
-      const derivedRole = deriveRoleFromSubscription(visibleStatus) ?? roleFromDb;
+      const gateState = getSubscriptionGateState({
+        user,
+        subscriptionStatus: visibleStatus,
+        entitlementSnapshot,
+      });
+      const derivedRole = gateState.hasActiveSubscription
+        ? deriveRoleFromSubscription(visibleStatus) ?? roleFromDb
+        : roleFromDb;
 
       if (derivedRole) {
         await upsertRole(user.id, derivedRole);
@@ -178,10 +190,10 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
         hydrating: false,
         user,
         role: derivedRole ?? roleFromDb,
-        needsSubscription: !(isEntitled || visibleStatus?.hasSubscription),
+        needsSubscription: gateState.shouldShowChooseSubscription,
       });
     },
-    [deriveRoleFromSubscription, ensureSubscriptionStatus, isEntitled, upsertRole]
+    [deriveRoleFromSubscription, ensureSubscriptionStatus, entitlementSnapshot, upsertRole]
   );
 
   useEffect(() => {

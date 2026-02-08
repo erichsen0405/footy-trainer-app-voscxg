@@ -19,8 +19,9 @@ const executionEnvironment =
 
 // Check if we're running in Expo Go (covers classic appOwnership + new executionEnvironment flag)
 const isExpoGo =
-  executionEnvironment === 'storeClient' ||
-  Constants.appOwnership === 'expo';
+  executionEnvironment != null
+    ? executionEnvironment === 'storeClient'
+    : Constants.appOwnership === 'expo';
 
 // Prevents refresh loops by throttling auto-refresh calls
 const REFRESH_THROTTLE_MS = 10_000;
@@ -1143,8 +1144,18 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
 
       const currentStatus = subscriptionStatusRef.current;
       const currentSku = currentStatus?.productId ?? null;
+      const pendingUpgradeSkuRaw =
+        (purchase as any)?.renewalInfoIOS?.pendingUpgradeProductId ??
+        (purchase as any)?.pendingUpgradeProductId ??
+        (purchase as any)?.renewalInfo?.pendingUpgradeProductId ??
+        null;
+      const pendingUpgradeSku =
+        typeof pendingUpgradeSkuRaw === 'string' && pendingUpgradeSkuRaw.trim().length
+          ? pendingUpgradeSkuRaw.trim()
+          : null;
       const purchasedMeta = getPlanMeta(purchasedSku);
       const currentMeta = getPlanMeta(currentSku);
+      const pendingUpgradeMeta = getPlanMeta(pendingUpgradeSku);
       const isDowngradeWithinGroup =
         Boolean(
           currentSku &&
@@ -1155,8 +1166,29 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
           currentMeta.tierRank != null &&
           purchasedMeta.tierRank < currentMeta.tierRank
         );
+      const isPendingUpgradeWithinGroup =
+        Boolean(
+          pendingUpgradeSku &&
+          currentSku &&
+          pendingUpgradeMeta.group &&
+          currentMeta.group &&
+          pendingUpgradeMeta.group === currentMeta.group &&
+          pendingUpgradeMeta.tierRank != null &&
+          currentMeta.tierRank != null &&
+          pendingUpgradeMeta.tierRank > currentMeta.tierRank
+        );
 
-      if (isDowngradeWithinGroup) {
+      if (isPendingUpgradeWithinGroup) {
+        const nextStatus: SubscriptionStatus = {
+          isActive: true,
+          productId: pendingUpgradeSku,
+          expiryDate: optimisticExpiry,
+          isInTrialPeriod: false,
+        };
+        setSubscriptionStatus(nextStatus);
+        subscriptionStatusRef.current = nextStatus;
+        setPendingPlan(null);
+      } else if (isDowngradeWithinGroup) {
         setPendingPlan({
           productId: purchasedSku,
           effectiveDate: currentStatus?.expiryDate ?? null,
@@ -1194,16 +1226,18 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
           purchaseEventKey,
         });
       }
-      void queueRefreshAfterPurchase(purchasedSku);
+      const refreshTargetSku = isPendingUpgradeWithinGroup ? pendingUpgradeSku : purchasedSku;
+      void queueRefreshAfterPurchase(refreshTargetSku);
 
       if (receiptOrToken && !isDowngradeWithinGroup) {
+        const entitlementSku = isPendingUpgradeWithinGroup ? pendingUpgradeSku : purchasedSku;
         console.log('[AppleIAP] FLOW PURCHASE_VERIFY_START', {
-          productId: purchasedSku,
+          productId: entitlementSku,
           hasReceipt: Boolean(receiptOrToken),
           source: 'purchase',
         });
         void persistAppleEntitlements({
-          productId: purchasedSku,
+          productId: entitlementSku,
           receipt: receiptOrToken,
           reason: 'purchase',
         }).catch(error => console.error('[AppleIAP] Error updating subscription after purchase:', error));

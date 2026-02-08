@@ -26,6 +26,9 @@
     "**/*.dev.tsx",
     "dist/**",
     "web-build/**",
-    "_expo/**"
+    "_expo/**",
+    "temp_qa_*/**",
+    "**/*.rej",
+    "profile.diff"
   ]
 }

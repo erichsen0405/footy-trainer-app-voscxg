@@ -94,7 +94,6 @@ function ensureFilesGlobs(configArray) {
   });
 }
 
-const ignoreFromFile = readIgnoreFile(path.join(__dirname, ".eslintignore"));
 const { eslintIgnore } = readPackageJsonIgnores();
 
 const legacyConfig = loadLegacyConfig();
@@ -121,7 +120,9 @@ module.exports = [
       "*.bundle.js.map",
       "head_profile.tsx",
       "**/.*",
-      ...ignoreFromFile,
+      "temp_qa_*/**",
+      "**/*.rej",
+      "profile.diff",
       ...eslintIgnore,
     ],
   },

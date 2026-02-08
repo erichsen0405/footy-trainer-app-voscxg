@@ -8,7 +8,7 @@ export default function TrainerRedirect() {
   useEffect(() => {
     // F11: Trainer-route er udfaset -> send brugeren tilbage til tabs-root (Home).
     // (Vi holder dette simpelt og sikkert for at undgaa "unknown route" hvis profil-path varierer.)
-    router.replace('/(tabs)/profile');
+    router.replace('/profile');
   }, [router]);
 
   return (
