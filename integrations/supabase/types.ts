@@ -1161,6 +1161,7 @@ export type Database = {
           id: string
           note: string | null
           rating: number | null
+          task_instance_id: string
           task_template_id: string
           updated_at: string
           user_id: string
@@ -1171,6 +1172,7 @@ export type Database = {
           id?: string
           note?: string | null
           rating?: number | null
+          task_instance_id: string
           task_template_id: string
           updated_at?: string
           user_id: string
@@ -1181,6 +1183,7 @@ export type Database = {
           id?: string
           note?: string | null
           rating?: number | null
+          task_instance_id?: string
           task_template_id?: string
           updated_at?: string
           user_id?: string

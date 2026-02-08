@@ -162,6 +162,7 @@ const IAP_UNAVAILABLE_IOS_MESSAGE =
 const IAP_UNAVAILABLE_NOT_IOS_MESSAGE = 'Apple In-App Purchases er kun tilgængelige på iOS.';
 const getIapUnavailableMessage = () =>
   Platform.OS === 'ios' ? IAP_UNAVAILABLE_IOS_MESSAGE : IAP_UNAVAILABLE_NOT_IOS_MESSAGE;
+const PURCHASE_MATCH_WINDOW_MS = 5 * 60 * 1000;
 
 // Subscription product details
 interface SubscriptionProduct {
@@ -518,7 +519,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
     if (flow?.sku === sku) return true;
     const lastAt = lastRequestedAtRef.current ?? 0;
     const lastSku = lastRequestedSkuRef.current;
-    return lastSku === sku && Date.now() - lastAt < 120_000;
+    return lastSku === sku && Date.now() - lastAt < PURCHASE_MATCH_WINDOW_MS;
   };
 
   const fetchEntitlements = useCallback(async () => {
@@ -689,7 +690,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
               })
               .filter(Boolean) as NormalizedPurchase[];
 
-            const bestPurchase = pickLatestPurchase(normalizedPurchases);
+            const bestPurchase = pickPreferredPurchase(normalizedPurchases);
             const desiredSku = lastRequestedSkuRef.current;
             const desiredPurchase = desiredSku
               ? pickLatestPurchase(normalizedPurchases.filter(purchase => purchase.productId === desiredSku))
@@ -749,7 +750,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
               !desiredPurchase &&
               subscriptionStatusRef.current?.productId === desiredSku &&
               lastRequestedAtRef.current &&
-              Date.now() - lastRequestedAtRef.current < 60_000
+              Date.now() - lastRequestedAtRef.current < PURCHASE_MATCH_WINDOW_MS
             ) {
               console.log('[AppleIAP] Grace window active – keeping optimistic plan visible');
               setPendingPlan(null);
@@ -889,7 +890,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
   }, [hasComplimentaryPlayerPremium, hasComplimentaryTrainerPremium]);
 
   const appleActiveSku = subscriptionStatus?.isActive ? subscriptionStatus.productId ?? null : null;
-  const appleTierSourceSku = appleActiveSku ?? verifiedActiveProductId ?? null;
+  const appleTierSourceSku = verifiedActiveProductId ?? appleActiveSku ?? null;
 
   const appleTier = useMemo(() => {
     return subscriptionTierFromSku(appleTierSourceSku);
@@ -1099,18 +1100,15 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
 
       const eventTimestamp = Date.now();
       const activeFlow = activePurchaseFlowRef.current;
-      const candidateSku = normalizedSku ?? activeFlow?.sku ?? lastRequestedSkuRef.current;
+      const requestedSku = activeFlow?.sku ?? lastRequestedSkuRef.current ?? null;
       const flowMatch = Boolean(
-        candidateSku &&
-          activeFlow &&
-          activeFlow.sku === candidateSku &&
-          eventTimestamp - activeFlow.startedAt < 120_000
+        activeFlow &&
+          eventTimestamp - activeFlow.startedAt < PURCHASE_MATCH_WINDOW_MS
       );
       const recentRequestMatch = Boolean(
-        candidateSku &&
-          lastRequestedSkuRef.current === candidateSku &&
+        requestedSku &&
           lastRequestedAtRef.current != null &&
-          eventTimestamp - (lastRequestedAtRef.current ?? 0) < 120_000
+          eventTimestamp - (lastRequestedAtRef.current ?? 0) < PURCHASE_MATCH_WINDOW_MS
       );
       const isUserInitiatedEvent = flowMatch || recentRequestMatch;
       if (!normalizedSku && !isUserInitiatedEvent) {
@@ -1118,7 +1116,30 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
         await finishPurchaseWithLogging(purchase, null, 'no_product_id');
         return;
       }
-      const purchasedSku = normalizedSku ?? activeFlow?.sku ?? lastRequestedSkuRef.current;
+      const shouldPreferRequestedSku =
+        Boolean(
+          requestedSku &&
+          normalizedSku &&
+          isUserInitiatedEvent &&
+          (Boolean(
+            TRAINER_PRODUCT_SET.has(requestedSku) && !TRAINER_PRODUCT_SET.has(normalizedSku)
+          ) ||
+            (() => {
+              const requestedMeta = getPlanMeta(requestedSku);
+              const normalizedMeta = getPlanMeta(normalizedSku);
+              return Boolean(
+                requestedMeta.group &&
+                  normalizedMeta.group &&
+                  requestedMeta.group === normalizedMeta.group &&
+                  requestedMeta.tierRank != null &&
+                  normalizedMeta.tierRank != null &&
+                  requestedMeta.tierRank > normalizedMeta.tierRank
+              );
+            })())
+        );
+      const purchasedSku = shouldPreferRequestedSku
+        ? requestedSku
+        : (normalizedSku ?? requestedSku);
       if (!purchasedSku) {
         console.warn('[AppleIAP] Purchase missing productId – skipping update');
         return;
@@ -1407,6 +1428,53 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
     }, null);
   };
 
+  const pickPreferredPurchase = (items: NormalizedPurchase[]) => {
+    if (!items.length) return null;
+    const now = Date.now();
+    const activeItems = items.filter(item => {
+      if (item.expiryDate && item.expiryDate > now) return true;
+      if (!item.expiryDate) {
+        const original = item.original ?? {};
+        const hasNoExpiry =
+          original.expirationDateIOS == null &&
+          original.expiresDate == null &&
+          original.expiryTimeMs == null &&
+          original.purchaseTokenExpirationDate == null;
+        const isNonExpiring = Boolean(
+          original.isNonConsumable ||
+            original.isLifetime ||
+            original.productType === 'non-consumable' ||
+            original.type === 'non-consumable'
+        );
+        return hasNoExpiry && isNonExpiring;
+      }
+      return false;
+    });
+    if (!activeItems.length) {
+      return pickLatestPurchase(items);
+    }
+    return activeItems.reduce<NormalizedPurchase | null>((winner, candidate) => {
+      if (!candidate) return winner;
+      if (!winner) return candidate;
+      const winnerMeta = getPlanMeta(winner.productId);
+      const candidateMeta = getPlanMeta(candidate.productId);
+      const winnerGroupPriority = winnerMeta.group === 'trainer' ? 2 : winnerMeta.group === 'player' ? 1 : 0;
+      const candidateGroupPriority = candidateMeta.group === 'trainer' ? 2 : candidateMeta.group === 'player' ? 1 : 0;
+      if (winnerGroupPriority !== candidateGroupPriority) {
+        return candidateGroupPriority > winnerGroupPriority ? candidate : winner;
+      }
+      const winnerTierRank = winnerMeta.tierRank ?? -1;
+      const candidateTierRank = candidateMeta.tierRank ?? -1;
+      if (winnerTierRank !== candidateTierRank) {
+        return candidateTierRank > winnerTierRank ? candidate : winner;
+      }
+      if (candidate.expiryDate !== winner.expiryDate) {
+        return candidate.expiryDate > winner.expiryDate ? candidate : winner;
+      }
+      return candidate.transactionDate > winner.transactionDate ? candidate : winner;
+    }, null);
+  };
+
   const pruneHandledPurchaseEvents = () => {
     const ttlMs = 10 * 60 * 1000;
     const now = Date.now();
@@ -1540,7 +1608,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
     return {
       resolving,
       hasActiveSubscription,
-      activeProductId: appleActiveSku ?? verifiedActiveProductId ?? null,
+      activeProductId: verifiedActiveProductId ?? appleActiveSku ?? null,
       subscriptionTier: effectiveSubscriptionTier,
       isEntitled: hasActiveSubscription,
     };

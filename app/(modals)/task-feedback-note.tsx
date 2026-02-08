@@ -164,6 +164,10 @@ export default function TaskFeedbackNoteScreen() {
     () => decodeParam((params as any).templateId ?? (params as any).feedbackTemplateId),
     [params]
   );
+  const taskInstanceId = useMemo(
+    () => decodeParam((params as any).taskInstanceId ?? (params as any).task_instance_id),
+    [params]
+  );
   const taskTitle = useMemo(
     () => decodeParam((params as any).title ?? (params as any).taskTitle) ?? 'opgave',
     [params]
@@ -232,6 +236,17 @@ export default function TaskFeedbackNoteScreen() {
           if (cancelled) return;
 
           const candidateIds = candidates.filter((id) => normalizeUuid(id)) as string[];
+          const normalizedTaskInstanceId = normalizeUuid(taskInstanceId);
+
+          const latestForInstance = normalizedTaskInstanceId
+            ? rows.reduce<TaskTemplateSelfFeedback | undefined>((best, row) => {
+                const rowInstanceId = normalizeUuid(
+                  (row as any)?.taskInstanceId ?? (row as any)?.task_instance_id,
+                );
+                if (!rowInstanceId || rowInstanceId !== normalizedTaskInstanceId) return best;
+                return !best || safeDateMs(row.createdAt) > safeDateMs(best.createdAt) ? row : best;
+              }, undefined)
+            : undefined;
 
           const latestForActivity = rows.reduce<TaskTemplateSelfFeedback | undefined>((best, row) => {
             if (!candidateIds.length) return best;
@@ -244,7 +259,7 @@ export default function TaskFeedbackNoteScreen() {
             return !best || safeDateMs(row.createdAt) > safeDateMs(best.createdAt) ? row : best;
           }, undefined);
 
-          const selected = latestForActivity ?? latestOverall ?? null;
+          const selected = latestForInstance ?? latestForActivity ?? latestOverall ?? null;
 
           setInitialScore(typeof selected?.rating === 'number' ? selected.rating : null);
           setInitialNote(typeof selected?.note === 'string' ? selected.note : '');
@@ -259,7 +274,7 @@ export default function TaskFeedbackNoteScreen() {
     return () => {
       cancelled = true;
     };
-  }, [activityId, templateId]);
+  }, [activityId, templateId, taskInstanceId]);
 
   const handleSave = useCallback(
     async ({ score, note }: TaskScoreNoteModalPayload) => {
@@ -280,11 +295,14 @@ export default function TaskFeedbackNoteScreen() {
 
       const optimisticActivityId = candidateIds[0];
       const nowIso = new Date().toISOString();
-      const optimisticId = `optimistic:${optimisticActivityId}:${templateId}:${nowIso}`;
+      const normalizedTaskInstanceId = normalizeUuid(taskInstanceId);
+      const effectiveTaskInstanceId = normalizedTaskInstanceId ?? templateId;
+      const optimisticId = `optimistic:${optimisticActivityId}:${templateId}:${effectiveTaskInstanceId}:${nowIso}`;
 
       DeviceEventEmitter.emit('feedback:saved', {
         activityId: optimisticActivityId,
         templateId,
+        taskInstanceId: effectiveTaskInstanceId,
         rating: typeof score === 'number' ? score : null,
         note: typeof note === 'string' ? note : null,
         createdAt: nowIso,
@@ -302,6 +320,7 @@ export default function TaskFeedbackNoteScreen() {
         const tryUpsert = async (candidateActivityId: string) =>
           upsertSelfFeedback({
             templateId,
+            taskInstanceId: effectiveTaskInstanceId,
             userId,
             rating: score,
             note,
@@ -329,16 +348,18 @@ export default function TaskFeedbackNoteScreen() {
           DeviceEventEmitter.emit('feedback:save_failed', {
             activityId: optimisticActivityId,
             templateId,
+            taskInstanceId: effectiveTaskInstanceId,
             optimisticId,
             source: 'task-feedback-note',
           });
 
           const correctedCreatedAt = savedFeedback?.createdAt ?? nowIso;
-          const correctedOptimisticId = `optimistic:${savedActivityId}:${templateId}:${correctedCreatedAt}`;
+          const correctedOptimisticId = `optimistic:${savedActivityId}:${templateId}:${effectiveTaskInstanceId}:${correctedCreatedAt}`;
 
           DeviceEventEmitter.emit('feedback:saved', {
             activityId: savedActivityId,
             templateId,
+            taskInstanceId: effectiveTaskInstanceId,
             rating:
               typeof savedFeedback?.rating === 'number'
                 ? savedFeedback.rating
@@ -375,6 +396,7 @@ export default function TaskFeedbackNoteScreen() {
         DeviceEventEmitter.emit('feedback:save_failed', {
           activityId: optimisticActivityId,
           templateId,
+          taskInstanceId: effectiveTaskInstanceId,
           optimisticId,
           source: 'task-feedback-note',
         });
@@ -384,7 +406,7 @@ export default function TaskFeedbackNoteScreen() {
         setIsSaving(false);
       }
     },
-    [activityId, activityIdCandidates, refreshData, safeDismiss, templateId, userId]
+    [activityId, activityIdCandidates, refreshData, safeDismiss, taskInstanceId, templateId, userId]
   );
 
   if (!activityId || !templateId) return null;

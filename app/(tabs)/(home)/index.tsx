@@ -346,21 +346,24 @@ export default function HomeScreen() {
     const handleSaved = (payload: any) => {
       const activityId = String(payload?.activityId ?? '').trim();
       const templateId = String(payload?.templateId ?? '').trim();
+      const taskInstanceId = String(payload?.taskInstanceId ?? '').trim();
       if (!activityId || !templateId) return;
 
       const createdAt =
         typeof payload?.createdAt === 'string' && payload.createdAt.length
           ? payload.createdAt
           : new Date().toISOString();
+      const effectiveInstanceId = taskInstanceId || templateId;
       const optimisticId =
         typeof payload?.optimisticId === 'string' && payload.optimisticId.length
           ? payload.optimisticId
-          : `optimistic:${activityId}:${templateId}:${createdAt}`;
+          : `optimistic:${activityId}:${templateId}:${effectiveInstanceId}:${createdAt}`;
 
       const optimisticRow: TaskTemplateSelfFeedback = {
         id: optimisticId,
         userId: currentUserId ?? 'optimistic',
         taskTemplateId: templateId,
+        taskInstanceId: effectiveInstanceId,
         activityId,
         rating: typeof payload?.rating === 'number' ? payload.rating : null,
         note: typeof payload?.note === 'string' ? payload.note : null,
@@ -372,7 +375,10 @@ export default function HomeScreen() {
         const next = prev.filter((row) => {
           if (!row?.id?.startsWith('optimistic:')) return true;
           if (row.id === optimisticId) return false;
-          if (row.activityId === activityId && row.taskTemplateId === templateId) return false;
+          const rowInstanceId =
+            normalizeId((row as any)?.taskInstanceId ?? (row as any)?.task_instance_id) ??
+            normalizeId((row as any)?.taskTemplateId ?? (row as any)?.task_template_id);
+          if (row.activityId === activityId && rowInstanceId === effectiveInstanceId) return false;
           return true;
         });
         return [optimisticRow, ...next];
@@ -382,6 +388,7 @@ export default function HomeScreen() {
     const handleFailed = (payload: any) => {
       const activityId = String(payload?.activityId ?? '').trim();
       const templateId = String(payload?.templateId ?? '').trim();
+      const taskInstanceId = String(payload?.taskInstanceId ?? '').trim();
       const optimisticId =
         typeof payload?.optimisticId === 'string' && payload.optimisticId.length
           ? payload.optimisticId
@@ -393,7 +400,11 @@ export default function HomeScreen() {
         prev.filter((row) => {
           if (!row?.id?.startsWith('optimistic:')) return true;
           if (optimisticId && row.id === optimisticId) return false;
-          if (row.activityId === activityId && row.taskTemplateId === templateId) return false;
+          const rowInstanceId =
+            normalizeId((row as any)?.taskInstanceId ?? (row as any)?.task_instance_id) ??
+            normalizeId((row as any)?.taskTemplateId ?? (row as any)?.task_template_id);
+          const effectiveInstanceId = taskInstanceId || templateId;
+          if (row.activityId === activityId && rowInstanceId === effectiveInstanceId) return false;
           return true;
         })
       );
@@ -655,6 +666,37 @@ export default function HomeScreen() {
     };
   }, [currentUserId, feedbackActivityIds, feedbackActivityIdsKey, feedbackTemplateIds, feedbackTemplateIdsKey, feedbackRefreshKey]);
 
+  const feedbackCompletionByActivityTaskId = useMemo(() => {
+    const latestByKey: Record<string, TaskTemplateSelfFeedback> = {};
+    for (const row of selfFeedbackRows) {
+      const activityId = normalizeId((row as any)?.activityId ?? (row as any)?.activity_id);
+      const taskInstanceId = normalizeId(
+        (row as any)?.taskInstanceId ?? (row as any)?.task_instance_id,
+      );
+      if (!activityId || !taskInstanceId) continue;
+
+      const key = `${activityId}::${taskInstanceId}`;
+      if (!latestByKey[key] || safeDateMs(row.createdAt) > safeDateMs(latestByKey[key].createdAt)) {
+        latestByKey[key] = row;
+      }
+    }
+
+    const completionByActivity: Record<string, Record<string, boolean>> = {};
+    Object.entries(latestByKey).forEach(([key, row]) => {
+      const [activityId, taskInstanceId] = key.split('::');
+      if (!activityId || !taskInstanceId) return;
+
+      const templateId = normalizeId((row as any)?.taskTemplateId ?? (row as any)?.task_template_id);
+      const config = templateId ? (feedbackConfigByTemplate[templateId] ?? buildFeedbackConfig(undefined)) : buildFeedbackConfig(undefined);
+      if (!completionByActivity[activityId]) {
+        completionByActivity[activityId] = {};
+      }
+      completionByActivity[activityId][taskInstanceId] = isFeedbackAnswered(row, config);
+    });
+
+    return completionByActivity;
+  }, [feedbackConfigByTemplate, selfFeedbackRows]);
+
   const feedbackCompletionByActivityId = useMemo(() => {
     const latestByKey: Record<string, TaskTemplateSelfFeedback> = {};
     for (const row of selfFeedbackRows) {
@@ -690,8 +732,13 @@ export default function HomeScreen() {
         doneMap[activityId] = true;
       }
     });
+    Object.entries(feedbackCompletionByActivityTaskId).forEach(([activityId, taskMap]) => {
+      if (Object.values(taskMap).some(Boolean)) {
+        doneMap[activityId] = true;
+      }
+    });
     return doneMap;
-  }, [feedbackCompletionByActivityId]);
+  }, [feedbackCompletionByActivityId, feedbackCompletionByActivityTaskId]);
 
   // Calculate how many previous weeks to display
   const visiblePreviousWeeks = useMemo(() => {
@@ -1142,6 +1189,21 @@ export default function HomeScreen() {
           }
         }
 
+        const mergedFeedbackCompletionByTaskId: Record<string, boolean> = {};
+        for (const candidateId of feedbackActivityCandidates) {
+          const perTask = feedbackCompletionByActivityTaskId[candidateId];
+          if (!perTask) continue;
+          for (const [taskId, done] of Object.entries(perTask)) {
+            const tid = normalizeId(taskId);
+            if (!tid) continue;
+            if (done) {
+              mergedFeedbackCompletionByTaskId[tid] = true;
+            } else if (mergedFeedbackCompletionByTaskId[tid] === undefined) {
+              mergedFeedbackCompletionByTaskId[tid] = false;
+            }
+          }
+        }
+
         const feedbackDone = feedbackActivityCandidates.some(
           (candidateId) => feedbackDoneByActivityId[candidateId] === true,
         );
@@ -1160,6 +1222,7 @@ export default function HomeScreen() {
               resolvedDate={activity.__resolvedDateTime}
               showTasks={item.section === 'today' || item.section === 'previous'}
               feedbackActivityId={feedbackActivityId}
+              feedbackCompletionByTaskId={mergedFeedbackCompletionByTaskId}
               feedbackCompletionByTemplateId={mergedFeedbackCompletionByTemplateId}
               feedbackDone={feedbackDone}
               onPress={handleActivityPress}
@@ -1205,6 +1268,7 @@ export default function HomeScreen() {
     showPreviousWeeks,
     handleOpenIntensityModal,
     feedbackCompletionByActivityId,
+    feedbackCompletionByActivityTaskId,
     feedbackDoneByActivityId,
     getFeedbackActivityCandidates,
   ]);

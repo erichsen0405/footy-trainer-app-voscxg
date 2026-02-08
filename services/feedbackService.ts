@@ -6,6 +6,7 @@ function mapRow(row: any): TaskTemplateSelfFeedback {
     id: row.id,
     userId: row.user_id,
     taskTemplateId: row.task_template_id,
+    taskInstanceId: row.task_instance_id ?? null,
     activityId: row.activity_id,
     rating: row.rating,
     note: row.note,
@@ -115,6 +116,8 @@ export async function fetchSelfFeedbackForActivities(
 type UpsertSelfFeedbackArgs = {
   templateId: string;
   userId: string;
+  taskInstanceId?: string | null;
+  task_instance_id?: string | null;
   rating: number | null;
   note?: string | null;
   activity_id?: string | null;
@@ -150,6 +153,8 @@ export async function upsertSelfFeedback(args: UpsertSelfFeedbackArgs) {
   const activityId = requireActivityId(args);
   const userId = requireNonEmpty('userId', args.userId);
   const templateId = requireNonEmpty('templateId', args.templateId);
+  const taskInstanceIdRaw = String(args.taskInstanceId ?? args.task_instance_id ?? '').trim();
+  const taskInstanceId = taskInstanceIdRaw.length ? taskInstanceIdRaw : templateId;
 
   const trimmedNote = String(args.note ?? '').trim();
 
@@ -157,6 +162,7 @@ export async function upsertSelfFeedback(args: UpsertSelfFeedbackArgs) {
   const payload = {
     user_id: userId,
     task_template_id: templateId,
+    task_instance_id: taskInstanceId,
     activity_id: activityId,
     rating: args.rating,
     note: trimmedNote.length ? trimmedNote : null,
@@ -165,7 +171,7 @@ export async function upsertSelfFeedback(args: UpsertSelfFeedbackArgs) {
   const { data, error } = await supabase
     .from('task_template_self_feedback')
     .upsert(payload, {
-      onConflict: 'user_id,task_template_id,activity_id',
+      onConflict: 'user_id,activity_id,task_instance_id',
     })
     .select()
     .single();
@@ -175,6 +181,7 @@ export async function upsertSelfFeedback(args: UpsertSelfFeedbackArgs) {
       activityId,
       userId,
       templateId,
+      taskInstanceId,
     });
     throw error;
   }

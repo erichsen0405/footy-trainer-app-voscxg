@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo, useEffect, useRef } from 'react';
 import { Stack, useRouter, useSegments, router as globalRouter } from 'expo-router';
 import { Platform } from 'react-native';
 import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
@@ -29,14 +29,31 @@ export default function TabLayout() {
       ? hasActiveSubscription
       : Boolean(serverSubscriptionStatus?.hasSubscription);
 
+  const lastStableRoleRef = useRef<string | null>(null);
+  const lastStableHasSubscriptionRef = useRef<boolean | null>(null);
+  if (!loading && !userRole) {
+    lastStableRoleRef.current = null;
+  } else if (userRole) {
+    lastStableRoleRef.current = userRole;
+  }
+  if (!subscriptionFeaturesLoading) {
+    lastStableHasSubscriptionRef.current = hasSubscription;
+  }
+
+  const effectiveRole = userRole ?? lastStableRoleRef.current;
+  const effectiveHasSubscription =
+    subscriptionFeaturesLoading && lastStableHasSubscriptionRef.current != null
+      ? lastStableHasSubscriptionRef.current
+      : hasSubscription;
+
   const locked =
-    !userRole || (!hasSubscription && !(Platform.OS === 'ios' && subscriptionFeaturesLoading));
+    !effectiveRole ||
+    (!effectiveHasSubscription && !(Platform.OS === 'ios' && subscriptionFeaturesLoading));
 
   const navigationKey = useMemo(() => {
-    const rolePart = userRole ?? 'anon';
-    const activePart = hasSubscription ? 'active' : 'inactive';
-    return `${rolePart}-${activePart}`;
-  }, [userRole, hasSubscription]);
+    const rolePart = effectiveRole ?? 'anon';
+    return `${rolePart}`;
+  }, [effectiveRole]);
 
   const entitlementKey = `${navigationKey}-${entitlementVersion}`;
 
@@ -49,7 +66,7 @@ export default function TabLayout() {
       return;
     }
     if (locked && current !== 'profile') {
-      globalRouter.replace('/profile');
+      globalRouter.replace('/(tabs)/profile');
     }
   }, [locked, router, segments, subscriptionFeaturesLoading]);
 
@@ -57,8 +74,8 @@ export default function TabLayout() {
     return (
       <OnboardingGate>
         <IOSTabLayout
-          isLoggedIn={!!userRole}
-          userRole={userRole}
+          isLoggedIn={!!effectiveRole}
+          userRole={effectiveRole}
           loading={loading || subscriptionFeaturesLoading}
           entitlementKey={entitlementKey}
           locked={locked}
@@ -71,8 +88,8 @@ export default function TabLayout() {
   return (
     <OnboardingGate>
       <AndroidWebTabLayout
-        isLoggedIn={!!userRole}
-        userRole={userRole}
+        isLoggedIn={!!effectiveRole}
+        userRole={effectiveRole}
         entitlementKey={entitlementKey}
         locked={locked}
         navigationKey={navigationKey}

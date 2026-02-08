@@ -225,6 +225,33 @@ export default function AppleSubscriptionManager({
   useEffect(() => {
     entitlementSnapshotRef.current = entitlementSnapshot;
   }, [entitlementSnapshot]);
+  const pendingProductIdRef = useRef<string | null>(pendingProductId ?? null);
+  useEffect(() => {
+    pendingProductIdRef.current = pendingProductId ?? null;
+  }, [pendingProductId]);
+  const trainerUpgradeAlertTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const trainerUpgradeTargetRef = useRef<string | null>(null);
+  useEffect(() => {
+    return () => {
+      if (trainerUpgradeAlertTimeoutRef.current) {
+        clearTimeout(trainerUpgradeAlertTimeoutRef.current);
+        trainerUpgradeAlertTimeoutRef.current = null;
+      }
+    };
+  }, []);
+  useEffect(() => {
+    if (!trainerUpgradeAlertTimeoutRef.current) return;
+    const targetSku = trainerUpgradeTargetRef.current;
+    if (!targetSku) return;
+    if (
+      entitlementSnapshot?.activeProductId === targetSku ||
+      pendingProductIdRef.current === targetSku
+    ) {
+      clearTimeout(trainerUpgradeAlertTimeoutRef.current);
+      trainerUpgradeAlertTimeoutRef.current = null;
+      trainerUpgradeTargetRef.current = null;
+    }
+  }, [entitlementSnapshot?.activeProductId, pendingProductId]);
 
   type AppleProduct = (typeof products)[number];
 
@@ -348,6 +375,47 @@ export default function AppleSubscriptionManager({
       try {
         await purchaseSubscription(productId);
         success = true;
+        if (Platform.OS === 'ios' && trainerProductSet.has(productId)) {
+          const targetSku = productId;
+          if (trainerUpgradeAlertTimeoutRef.current) {
+            clearTimeout(trainerUpgradeAlertTimeoutRef.current);
+            trainerUpgradeAlertTimeoutRef.current = null;
+          }
+          trainerUpgradeTargetRef.current = targetSku;
+          trainerUpgradeAlertTimeoutRef.current = setTimeout(() => {
+            const activeSku = entitlementSnapshotRef.current?.activeProductId ?? null;
+            const pendingSku = pendingProductIdRef.current ?? null;
+            if (activeSku === targetSku || pendingSku === targetSku) {
+              if (trainerUpgradeAlertTimeoutRef.current) {
+                clearTimeout(trainerUpgradeAlertTimeoutRef.current);
+                trainerUpgradeAlertTimeoutRef.current = null;
+              }
+              trainerUpgradeTargetRef.current = null;
+              return;
+            }
+            trainerUpgradeTargetRef.current = null;
+            Alert.alert(
+              'Skift abonnement',
+              'Hvis App Store ikke viste en bekræftelse, kan du åbne Abonnementer og skifte derfra.',
+              [
+                {
+                  text: 'Åbn App Store',
+                  onPress: async () => {
+                    try {
+                      const url = 'itms-apps://apps.apple.com/account/subscriptions';
+                      const supported = await Linking.canOpenURL(url);
+                      if (!supported) throw new Error('unsupported');
+                      await Linking.openURL(url);
+                    } catch {
+                      Alert.alert('Kunne ikke åbne App Store', 'Prøv igen senere.');
+                    }
+                  },
+                },
+                { text: 'OK', style: 'cancel' },
+              ],
+            );
+          }, 8000);
+        }
         resetCheckoutUi();
         await safeInvoke(onPlanSelected, productId);
       } catch (error) {
@@ -398,9 +466,11 @@ export default function AppleSubscriptionManager({
       iapUnavailableReason,
       purchaseSubscription,
       purchasing,
+      pendingProductId,
       refreshSubscriptionStatus,
       resetCheckoutUi,
       restorePurchases,
+      trainerProductSet,
     ]
   );
 

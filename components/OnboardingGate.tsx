@@ -58,6 +58,7 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
   );
   const lastNavRef = useRef<number>(0);
   const lastGateUserIdRef = useRef<string | null>(null);
+  const lastNonPaywallPathRef = useRef<string | null>(null);
   const safeReplace = useCallback(
     (target: string) => {
       const now = Date.now();
@@ -259,34 +260,34 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
 
   const needsPaywall = Boolean(state.user && state.needsSubscription && !resolving);
 
+  const normalizeFallbackTarget = useCallback((target: string) => {
+    if (target.startsWith('/(tabs)/') || target === '/(tabs)') return target;
+    if (target === '/profile') return '/(tabs)/profile';
+    if (target === '/library') return '/(tabs)/library';
+    if (target === '/home' || target === '/') return '/(tabs)';
+    return target;
+  }, []);
+
   useEffect(() => {
     if (renderInlinePaywall) return;
 
     if (needsPaywall) {
       if (pathname !== '/choose-plan') {
+        lastNonPaywallPathRef.current = pathname ?? null;
         safeReplace('/choose-plan');
       }
       return;
     }
 
     if (pathname === '/choose-plan') {
-      safeReplace('/(tabs)');
+      const rawTarget = lastNonPaywallPathRef.current ?? '/(tabs)';
+      const fallbackTarget = normalizeFallbackTarget(rawTarget);
+      lastNonPaywallPathRef.current = null;
+      safeReplace(fallbackTarget);
     }
-  }, [needsPaywall, pathname, renderInlinePaywall, safeReplace]);
+  }, [needsPaywall, normalizeFallbackTarget, pathname, renderInlinePaywall, safeReplace]);
 
-  if (state.hydrating) {
-    return <FullScreenLoader message="Klargør konto..." />;
-  }
-
-  if (needsPaywall) {
-    if (!renderInlinePaywall) {
-      // Important: allow the dedicated paywall route to render.
-      if (pathname === '/choose-plan') {
-        return <>{children}</>;
-      }
-      return <FullScreenLoader message="Åbner Vælg abonnement..." />;
-    }
-
+  if (needsPaywall && renderInlinePaywall) {
     const PaywallManager = Platform.OS === 'ios' ? AppleSubscriptionManager : SubscriptionManager;
     const paywallProps = Platform.OS === 'ios'
       ? {
@@ -324,10 +325,27 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
     );
   }
 
-  return <>{children}</>;
+  const showBlockingOverlay =
+    state.hydrating || (!renderInlinePaywall && needsPaywall && pathname !== '/choose-plan');
+  const overlayMessage = state.hydrating ? 'Klargører konto' : 'Åbner Vælg abonnement...';
+
+  return (
+    <View style={styles.container}>
+      {children}
+      {showBlockingOverlay && (
+        <View style={styles.blockingOverlay} pointerEvents="auto">
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.blockingOverlayText}>{overlayMessage}</Text>
+        </View>
+      )}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
   scrollContainer: {
     flexGrow: 1,
     padding: 24,
@@ -379,5 +397,17 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     textAlign: 'center',
+  },
+  blockingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    backgroundColor: colors.background,
+  },
+  blockingOverlayText: {
+    marginTop: 16,
+    color: colors.text,
+    fontSize: 16,
   },
 });
