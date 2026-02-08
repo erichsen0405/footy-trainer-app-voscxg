@@ -32,8 +32,9 @@ import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import { useFootball } from '@/contexts/FootballContext';
 import { deleteAllExternalActivities } from '@/utils/deleteExternalActivities';
 import { useSubscriptionFeatures } from '@/hooks/useSubscriptionFeatures';
-import { PRODUCT_IDS } from '@/contexts/AppleIAPContext';
 import { forceUserRoleRefresh } from '@/hooks/useUserRole';
+import { useAppleIAP, PRODUCT_IDS } from '@/contexts/AppleIAPContext';
+import { getSubscriptionGateState } from '@/utils/subscriptionGate';
 import Constants from 'expo-constants';
 
 // Conditionally import GlassView only on native platforms
@@ -310,9 +311,6 @@ export default function ProfileScreen() {
   const lastUserIdRef = useRef<string | null>(null);
 
   // New onboarding flow states
-  const [needsRoleSelection, setNeedsRoleSelection] = useState(false);
-  const [needsSubscription, setNeedsSubscription] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<'player' | 'trainer' | null>(null);
 
   // Profile editing
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -358,12 +356,14 @@ export default function ProfileScreen() {
   // Get subscription status
   const { subscriptionStatus, refreshSubscription, createSubscription } = useSubscription();
   const { refreshAll } = useFootball();
+  const { entitlementSnapshot, refreshSubscriptionStatus } = useAppleIAP();
   const { featureAccess, isLoading: subscriptionFeaturesLoading } = useSubscriptionFeatures();
-  const hasActiveSubscription = Boolean(
-    subscriptionStatus?.hasSubscription ||
-      subscriptionStatus?.subscriptionTier ||
-      subscriptionStatus?.isLifetime
-  );
+  const subscriptionGate = getSubscriptionGateState({
+    user,
+    subscriptionStatus,
+    entitlementSnapshot,
+  });
+  const shouldShowChooseSubscription = subscriptionGate.shouldShowChooseSubscription;
 
   const canUseCalendarSync = featureAccess.calendarSync;
   const canLinkTrainer = featureAccess.trainerLinking;
@@ -373,6 +373,8 @@ export default function ProfileScreen() {
   const shouldHighlightPremiumPlan = Boolean(highlightProductId);
 
   const canManagePlayers = userRole === 'admin' || userRole === 'trainer';
+  const subscriptionSelectionRole =
+    userRole === 'player' ? 'player' : userRole ? 'trainer' : null;
 
   const scrollToSubscription = useCallback(() => {
     if (!scrollViewRef.current || subscriptionSectionY === null) {
@@ -410,6 +412,19 @@ export default function ProfileScreen() {
     setShowPaywallModal(true);
     setPaywallProcessing(false);
   }, []);
+
+  const handleIOSSubscriptionFinished = useCallback(
+    async (success: boolean) => {
+      if (!success) return;
+      await refreshSubscriptionStatus({ force: true, reason: 'profile_purchase' });
+      await refreshSubscription();
+      if (user?.id) {
+        await checkUserOnboarding(user.id);
+      }
+      forceUserRoleRefresh('ios-purchase');
+    },
+    [checkUserOnboarding, refreshSubscription, refreshSubscriptionStatus, user?.id]
+  );
 
   const fetchUserProfile = async (userId: string) => {
     try {
@@ -495,9 +510,6 @@ export default function ProfileScreen() {
         setProfile(null);
         setAdminInfo(null);
         setUserRole(null);
-        setNeedsRoleSelection(false);
-        setNeedsSubscription(false);
-        setSelectedRole(null);
         setShowPaywallModal(false);
         setPaywallProcessing(false);
         setIsEditingProfile(false);
@@ -513,49 +525,20 @@ export default function ProfileScreen() {
         .eq('user_id', userId)
         .single();
 
-      if (roleError || !roleData) {
-        if (__DEV__) {
-          console.log('[PROFILE] No role found - needs role selection');
-        }
-        setNeedsRoleSelection(true);
-        setNeedsSubscription(false);
-        return;
-      }
-
-      const role = roleData.role as 'admin' | 'trainer' | 'player';
+      const role = roleError || !roleData ? null : (roleData.role as 'admin' | 'trainer' | 'player');
       setUserRole(role);
       if (__DEV__) {
-        console.log(`[PROFILE] Role found: ${role}`);
+        if (role) {
+          console.log(`[PROFILE] Role found: ${role}`);
+        } else {
+          console.log('[PROFILE] No role found - skipping role selection');
+        }
       }
 
-      // If role is trainer or admin, check if they have a subscription
-      if (role === 'trainer' || role === 'admin') {
-        const { data: subData, error: subError } = await supabase
-          .from('subscriptions')
-          .select('id, status')
-          .eq('admin_id', userId)
-          .single();
-
-        if (subError || !subData) {
-          if (__DEV__) {
-            console.log('[PROFILE] No subscription found - needs subscription');
-          }
-          setNeedsRoleSelection(false);
-          setNeedsSubscription(true);
-          return;
-        }
-
-        if (__DEV__) {
-          console.log(`[PROFILE] Subscription found: ${subData.status}`);
-        }
-
-        // Refresh subscription status
-        await refreshSubscription();
-      }
+      // Refresh subscription status after role resolution
+      await refreshSubscription();
 
       // User is fully onboarded
-      setNeedsRoleSelection(false);
-      setNeedsSubscription(false);
       await fetchUserProfile(userId);
 
       if (role === 'player') {
@@ -594,9 +577,6 @@ export default function ProfileScreen() {
           setProfile(null);
           setAdminInfo(null);
           setUserRole(null);
-          setNeedsRoleSelection(false);
-          setNeedsSubscription(false);
-          setSelectedRole(null);
           setShowPaywallModal(false);
           setPaywallProcessing(false);
           setIsEditingProfile(false);
@@ -609,8 +589,6 @@ export default function ProfileScreen() {
         setUserRole(null);
         setProfile(null);
         setAdminInfo(null);
-        setNeedsRoleSelection(false);
-        setNeedsSubscription(false);
       }
     });
 
@@ -624,13 +602,6 @@ export default function ProfileScreen() {
   }, [shouldHighlightPremiumPlan]);
 
   useEffect(() => {
-    if (!user) return;
-    if (userRole !== 'trainer' && userRole !== 'admin') return;
-    if (!hasActiveSubscription) return;
-    setNeedsSubscription(false);
-  }, [user, userRole, hasActiveSubscription]);
-
-  useEffect(() => {
     if (!shouldHighlightPremiumPlan || subscriptionSectionY === null) {
       return;
     }
@@ -642,12 +613,12 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     if (!user) return;
-    if (needsRoleSelection || needsSubscription) return;
+    if (shouldShowChooseSubscription) return;
     if (!effectiveUpgradeTarget) return;
     if (hasAutoOpenedUpgradeTargetRef.current === effectiveUpgradeTarget) return;
     hasAutoOpenedUpgradeTargetRef.current = effectiveUpgradeTarget;
     openPaywallModal(effectiveUpgradeTarget);
-  }, [user, needsRoleSelection, needsSubscription, effectiveUpgradeTarget, openPaywallModal]);
+  }, [user, shouldShowChooseSubscription, effectiveUpgradeTarget, openPaywallModal]);
 
   const handleSaveProfile = async () => {
     if (!user) {
@@ -767,7 +738,7 @@ export default function ProfileScreen() {
         // User is logged in immediately - show success and they'll be prompted for role
         Alert.alert(
           'Velkommen!',
-          `Din konto er oprettet og du er nu logget ind!\n\nVi har sendt en bekræftelsesmail til ${email}. Bekræft venligst din email når du får tid.\n\nNu skal du vælge din rolle for at fortsætte.`,
+          `Din konto er oprettet og du er nu logget ind!\n\nVi har sendt en bekræftelsesmail til ${email}. Bekræft venligst din email når du får tid.\n\nNu skal du vælge et abonnement for at fortsætte.`,
           [{ text: 'OK' }]
         );
       } else {
@@ -849,65 +820,6 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleRoleSelection = async (role: 'player' | 'trainer') => {
-    if (!user) return;
-
-    setLoading(true);
-    if (__DEV__) {
-      console.log(`[PROFILE] Setting role to: ${role}`);
-    }
-
-    try {
-      // Insert role into user_roles table
-      const { error: roleError } = await supabase.from('user_roles').insert({
-        user_id: user.id,
-        role: role,
-      });
-
-      if (roleError) {
-        if (__DEV__) {
-          console.log(`[PROFILE] Error setting role: ${roleError.message}`);
-        }
-        Alert.alert('Fejl', 'Kunne ikke gemme rolle. Prøv venligst igen.');
-        return;
-      }
-
-      if (__DEV__) {
-        console.log('[PROFILE] Role set successfully');
-      }
-      setSelectedRole(role);
-      setUserRole(role);
-      setNeedsRoleSelection(false);
-      forceUserRoleRefresh('role-selection');
-
-      // If trainer, show subscription selection
-      if (role === 'trainer') {
-        setNeedsSubscription(true);
-        Alert.alert(
-          'Vælg abonnement',
-          'Som træner skal du vælge et abonnement for at kunne administrere spillere.',
-          [{ text: 'OK' }]
-        );
-      } else {
-        // Player doesn't need subscription
-        Alert.alert('Velkommen!',
-          'Din konto er nu klar til brug!',
-          [{ text: 'OK' }]);
-      }
-
-      if (!subscriptionStatus?.hasSubscription) {
-        router.replace('/choose-plan');
-      }
-    } catch (error: any) {
-      if (__DEV__) {
-        console.log(`[PROFILE] Unexpected error: ${error.message}`);
-      }
-      Alert.alert('Fejl', error.message || 'Der opstod en fejl. Prøv venligst igen.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleCompleteSubscription = async (planId: string) => {
     if (!user) return;
 
@@ -920,7 +832,6 @@ export default function ProfileScreen() {
       const result = await createSubscription(planId);
 
       if (result.success) {
-        setNeedsSubscription(false);
         Alert.alert(
           'Velkommen!',
           'Dit abonnement er aktiveret med 14 dages gratis prøveperiode. Du kan nu oprette spillere og hold!',
@@ -930,7 +841,6 @@ export default function ProfileScreen() {
       }
 
       if (result.alreadyHasSubscription) {
-        setNeedsSubscription(false);
         Alert.alert(
           'Du har allerede et abonnement',
           result.error || 'Dit nuværende abonnement er aktivt.',
@@ -1069,8 +979,6 @@ export default function ProfileScreen() {
       setUserRole(null);
       setProfile(null);
       setAdminInfo(null);
-      setNeedsRoleSelection(false);
-      setNeedsSubscription(false);
       setManualUpgradeTarget(null);
       setIsEditingProfile(false);
       closeDeleteAccountDialog();
@@ -1161,97 +1069,8 @@ export default function ProfileScreen() {
   const paywallEdges = Platform.OS === 'ios' ? (['top', 'bottom'] as const) : undefined;
   const paywallWrapperProps = Platform.OS === 'ios' ? { edges: paywallEdges } : {};
 
-  // Show role selection if user is logged in but has no role
-  if (user && needsRoleSelection) {
-    return (
-      <ContainerWrapper style={[styles.safeArea, { backgroundColor: bgColor }]} edges={containerEdges}>
-        <FlatList
-          style={styles.container}
-          data={[]}
-          keyExtractor={(_, index) => `profile-role-${index}`}
-          renderItem={() => null}
-          ListHeaderComponent={
-            <React.Fragment>
-              <View style={Platform.OS !== 'ios' ? { paddingTop: 60 } : undefined}>
-                <Text style={[styles.title, { color: textColor }]}>Vælg din rolle</Text>
-                <Text style={[styles.subtitle, { color: textSecondaryColor }]}>
-                  Vælg om du er spiller eller træner for at fortsætte
-                </Text>
-
-                <CardWrapper
-                  style={[styles.onboardingCard, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]}
-                  {...cardWrapperProps}
-                >
-                  <Text style={[styles.onboardingTitle, { color: textColor }]}>Velkommen til din nye konto! </Text>
-                  <Text style={[styles.onboardingDescription, { color: textSecondaryColor }]}>
-                    For at komme i gang skal du vælge din rolle. Dette hjælper os med at tilpasse oplevelsen til dig.
-                  </Text>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.roleCard,
-                      {
-                        backgroundColor:
-                          Platform.OS === 'ios'
-                            ? isDark
-                              ? 'rgba(255,255,255,0.1)'
-                              : 'rgba(0,0,0,0.05)'
-                            : bgColor,
-                      },
-                    ]}
-                    onPress={() => handleRoleSelection('player')}
-                    disabled={loading}
-                    activeOpacity={0.7}
-                  >
-                    <IconSymbol ios_icon_name="figure.run" android_material_icon_name="directions_run" size={48} color={colors.primary} />
-                    <Text style={[styles.roleTitle, { color: textColor }]}>Spiller</Text>
-                    <Text style={[styles.roleDescription, { color: textSecondaryColor }]}>
-                      Jeg er en spiller og vil holde styr på min træning
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.roleCard,
-                      {
-                        backgroundColor:
-                          Platform.OS === 'ios'
-                            ? isDark
-                              ? 'rgba(255,255,255,0.1)'
-                              : 'rgba(0,0,0,0.05)'
-                            : bgColor,
-                      },
-                    ]}
-                    onPress={() => handleRoleSelection('trainer')}
-                    disabled={loading}
-                    activeOpacity={0.7}
-                  >
-                    <IconSymbol ios_icon_name="person.3.fill" android_material_icon_name="group" size={48} color={colors.primary} />
-                    <Text style={[styles.roleTitle, { color: textColor }]}>Træner</Text>
-                    <Text style={[styles.roleDescription, { color: textSecondaryColor }]}>
-                      Jeg er træner og vil administrere spillere og hold
-                    </Text>
-                  </TouchableOpacity>
-
-                  {loading && (
-                    <View style={styles.loadingOverlay}>
-                      <ActivityIndicator size="large" color={colors.primary} />
-                      <Text style={[styles.loadingText, { color: textColor }]}>Gemmer din rolle...</Text>
-                    </View>
-                  )}
-                </CardWrapper>
-              </View>
-            </React.Fragment>
-          }
-          contentContainerStyle={[styles.contentContainer]}
-          showsVerticalScrollIndicator={false}
-        />
-      </ContainerWrapper>
-    );
-  }
-
   // Show subscription selection if user is trainer but has no subscription
-  if (user && needsSubscription) {
+  if (user && shouldShowChooseSubscription) {
     return (
       <ContainerWrapper style={[styles.safeArea, { backgroundColor: bgColor }]} edges={containerEdges}>
         <FlatList
@@ -1271,8 +1090,21 @@ export default function ProfileScreen() {
                   style={[styles.subscriptionCard, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]}
                   {...cardWrapperProps}
                 >
-                  <SubscriptionManager onPlanSelected={handleCompleteSubscription} isSignupFlow={true} selectedRole="trainer" />
-                </CardWrapper>
+                {Platform.OS === 'ios' ? (
+                  <AppleSubscriptionManager
+                    isSignupFlow
+                    forceShowPlans
+                    selectedRole={subscriptionSelectionRole ?? undefined}
+                    onPurchaseFinished={handleIOSSubscriptionFinished}
+                  />
+                ) : (
+                  <SubscriptionManager
+                    onPlanSelected={handleCompleteSubscription}
+                    isSignupFlow={true}
+                    selectedRole={subscriptionSelectionRole ?? undefined}
+                  />
+                )}
+              </CardWrapper>
               </View>
             </React.Fragment>
           }
@@ -1612,13 +1444,15 @@ export default function ProfileScreen() {
                 icon={<IconSymbol ios_icon_name="creditcard.fill" android_material_icon_name="payment" size={28} color={colors.primary} />}
               >
                 <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>Administrer dit abonnement</Text>
-                {userRole === 'player' ? (
+                {Platform.OS === 'ios' ? (
                   <AppleSubscriptionManager
                     highlightProductId={highlightProductId}
-                    forceShowPlans={userRole === 'player' && !subscriptionStatus?.hasSubscription}
-                    transparentBackground={Platform.OS === 'ios'}
+                    forceShowPlans={!subscriptionGate.hasActiveSubscription}
+                    selectedRole={subscriptionSelectionRole ?? undefined}
+                    transparentBackground
+                    onPurchaseFinished={handleIOSSubscriptionFinished}
                   />
-                ) : (
+              ) : (
                   <SubscriptionManager transparentBackground={Platform.OS === 'ios'} />
                 )}
               </CollapsibleSection>
@@ -1689,7 +1523,7 @@ export default function ProfileScreen() {
               <Text style={styles.successTitle}>Konto oprettet!</Text>
               <Text style={styles.successText}>
                 Din konto er blevet oprettet succesfuldt.{'\n'}
-                Tjek din email for at bekræftet din konto, og log derefter ind.
+                Tjek din email for at bekræfte din konto, og log derefter ind.
               </Text>
             </View>
           )}
@@ -1823,7 +1657,7 @@ export default function ProfileScreen() {
                   )}
                   <Text style={[styles.infoBoxText, { color: textSecondaryColor }]}>
                     {isSignUp
-                      ? 'Bekræft mailen og log ind.\nAlle skal vælge et abonnement før start.\nVælg planen der passer til din rolle (spiller eller træner).'
+                      ? 'Bekræft mailen og log ind.\nAlle skal vælge et abonnement før start.\nVælg den plan der passer til dig (spiller eller træner).'
                       : 'Log ind for at bruge appen.'}
                   </Text>
                 </View>
@@ -1969,10 +1803,12 @@ export default function ProfileScreen() {
               Få adgang til denne funktion ved at opgradere dit abonnement.
             </Text>
             <View style={styles.paywallBody}>
-              {userRole === 'player' ? (
+              {Platform.OS === 'ios' ? (
                 <AppleSubscriptionManager
                   highlightProductId={highlightProductId}
-                  forceShowPlans={userRole === 'player' && !subscriptionStatus?.hasSubscription}
+                  forceShowPlans={!subscriptionGate.hasActiveSubscription}
+                  selectedRole={subscriptionSelectionRole ?? undefined}
+                  onPurchaseFinished={handleIOSSubscriptionFinished}
                 />
               ) : (
                 <SubscriptionManager forceShowPlans={!subscriptionStatus?.hasSubscription} />

@@ -1,5 +1,5 @@
 import React, { useMemo, useEffect } from 'react';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack, useRouter, useSegments, router as globalRouter } from 'expo-router';
 import { Platform } from 'react-native';
 import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
 import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
@@ -34,13 +34,9 @@ export default function TabLayout() {
 
   const navigationKey = useMemo(() => {
     const rolePart = userRole ?? 'anon';
-    const planPart =
-      Platform.OS === 'ios'
-        ? subscriptionTier ?? 'none'
-        : serverSubscriptionStatus?.planName ?? 'none';
     const activePart = hasSubscription ? 'active' : 'inactive';
-    return `${rolePart}-${planPart}-${activePart}`;
-  }, [userRole, subscriptionTier, serverSubscriptionStatus?.planName, hasSubscription]);
+    return `${rolePart}-${activePart}`;
+  }, [userRole, hasSubscription]);
 
   const entitlementKey = `${navigationKey}-${entitlementVersion}`;
 
@@ -49,8 +45,11 @@ export default function TabLayout() {
       return;
     }
     const current = Array.isArray(segments) ? segments[1] : undefined;
+    if (!current) {
+      return;
+    }
     if (locked && current !== 'profile') {
-      router.replace('/(tabs)/profile');
+      globalRouter.replace('/profile');
     }
   }, [locked, router, segments, subscriptionFeaturesLoading]);
 
