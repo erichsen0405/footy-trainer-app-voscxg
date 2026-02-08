@@ -413,19 +413,6 @@ export default function ProfileScreen() {
     setPaywallProcessing(false);
   }, []);
 
-  const handleIOSSubscriptionFinished = useCallback(
-    async (success: boolean) => {
-      if (!success) return;
-      await refreshSubscriptionStatus({ force: true, reason: 'profile_purchase' });
-      await refreshSubscription();
-      if (user?.id) {
-        await checkUserOnboarding(user.id);
-      }
-      forceUserRoleRefresh('ios-purchase');
-    },
-    [checkUserOnboarding, refreshSubscription, refreshSubscriptionStatus, user?.id]
-  );
-
   const fetchUserProfile = async (userId: string) => {
     try {
       if (__DEV__) {
@@ -546,6 +533,19 @@ export default function ProfileScreen() {
       }
     },
     [refreshSubscription]
+  );
+
+  const handleIOSSubscriptionFinished = useCallback(
+    async (success: boolean) => {
+      if (!success) return;
+      await refreshSubscriptionStatus({ force: true, reason: 'profile_purchase' });
+      await refreshSubscription();
+      if (user?.id) {
+        await checkUserOnboarding(user.id);
+      }
+      forceUserRoleRefresh('ios-purchase');
+    },
+    [checkUserOnboarding, refreshSubscription, refreshSubscriptionStatus, user?.id]
   );
 
   useEffect(() => {
