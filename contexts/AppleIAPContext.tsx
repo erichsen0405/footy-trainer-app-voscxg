@@ -899,7 +899,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
   }, [appleTierSourceSku]);
 
   const effectiveSubscriptionTier = useMemo<SubscriptionTier | null>(() => {
-    return appleTier ?? complimentaryTier;
+    return complimentaryTier ?? appleTier;
   }, [appleTier, complimentaryTier]);
 
   useEffect(() => {

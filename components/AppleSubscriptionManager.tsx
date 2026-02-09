@@ -306,8 +306,13 @@ export default function AppleSubscriptionManager({
   const hasRequestedProductsRef = useRef(false);
   const skeletonItems = useMemo(() => ['skeleton-0', 'skeleton-1', 'skeleton-2'], []);
   const blockInteractions = purchasing || refreshing || loading || isRestoring;
+  const effectivePlanProductId = hasComplimentaryActive
+    ? complimentaryPlanProductId
+    : subscriptionStatus?.isActive
+      ? subscriptionStatus.productId
+      : null;
   const hasAnyActivePlan = Boolean(subscriptionStatus?.isActive || hasComplimentaryActive);
-  const activePlanProductId = subscriptionStatus?.isActive ? subscriptionStatus.productId : complimentaryPlanProductId;
+  const activePlanProductId = effectivePlanProductId;
 
   const resetCheckoutUi = useCallback(() => {
     setIsOrangeBoxExpanded(false);
@@ -562,16 +567,15 @@ export default function AppleSubscriptionManager({
   };
 
   const isCurrentPlan = useCallback(
-    (productId: string): boolean =>
-      !!(subscriptionStatus?.isActive && subscriptionStatus.productId === productId),
-    [subscriptionStatus?.isActive, subscriptionStatus?.productId],
+    (productId: string): boolean => Boolean(effectivePlanProductId && effectivePlanProductId === productId),
+    [effectivePlanProductId],
   );
 
   useEffect(() => {
-    if (!isSignupFlow && !subscriptionStatus?.isActive) {
+    if (!isSignupFlow && !hasComplimentaryActive && !subscriptionStatus?.isActive) {
       setShowPlans(true);
     }
-  }, [isSignupFlow, subscriptionStatus?.isActive]);
+  }, [hasComplimentaryActive, isSignupFlow, subscriptionStatus?.isActive]);
 
   useEffect(() => {
     if (hasComplimentaryActive && !forceShowPlans) {
@@ -668,12 +672,15 @@ export default function AppleSubscriptionManager({
     appleRenewalSummary.isTrial &&
     !!appleRenewalSummary.renewalDate &&
     !dateStringsEqual(appleRenewalSummary.renewalDate, appleRenewalSummary.primaryDate);
+  const showComplimentaryCurrentPlan =
+    !isSignupFlow && hasComplimentaryActive && Boolean(activePlanProductId);
+  const showAppleCurrentPlan =
+    !isSignupFlow && !hasComplimentaryActive && Boolean(subscriptionStatus?.isActive && subscriptionStatus.productId);
 
   const renderPlanItem = useCallback(
     (item: (typeof products)[number], index: number) => {
       const isPopular = index === Math.floor(sortedProducts.length / 2);
-      const isCurrentActive =
-        isCurrentPlan(item.productId) || isComplimentaryForProduct(item.productId);
+      const isCurrentActive = isCurrentPlan(item.productId);
       const isHighlightTarget = highlightProductId === item.productId;
       const features = getPlanFeatures(item.productId, item.maxPlayers || 1);
       const disabledByComplimentary = isPlanLockedByComplimentary(item.productId);
@@ -858,7 +865,7 @@ export default function AppleSubscriptionManager({
           </Text>
         </View>
       )}
-      {!isSignupFlow && hasComplimentaryActive && activePlanProductId && !subscriptionStatus?.isActive && (
+      {showComplimentaryCurrentPlan && (
         <View
           style={[
             styles.currentPlanBanner,
@@ -885,7 +892,7 @@ export default function AppleSubscriptionManager({
           </View>
         </View>
       )}
-      {!isSignupFlow && subscriptionStatus?.isActive && subscriptionStatus.productId && (
+      {showAppleCurrentPlan && (
         <TouchableOpacity
           style={[
             styles.currentPlanBanner,
@@ -1047,6 +1054,8 @@ export default function AppleSubscriptionManager({
     setShowPlans,
     showComplimentaryPlayerBanner,
     showComplimentaryTrainerBanner,
+    showComplimentaryCurrentPlan,
+    showAppleCurrentPlan,
     showPlans,
     showTrialFollowUp,
     subscriptionStatus,
