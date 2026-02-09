@@ -188,13 +188,11 @@ export default function CreateExerciseScreen() {
 
     const normalizedDescription = description.trim();
     const normalizedVideo = videoUrl.trim();
-    const normalizedCategory = categoryPath.trim();
-
     const payload = {
       title: trimmedTitle,
       description: normalizedDescription ? normalizedDescription : null,
       video_url: normalizedVideo ? normalizedVideo : null,
-      category_path: normalizedCategory ? normalizedCategory : null,
+      category_path: isEditMode ? (categoryPath.trim() ? categoryPath.trim() : null) : null,
       difficulty,
     };
 
@@ -284,20 +282,6 @@ export default function CreateExerciseScreen() {
           numberOfLines={5}
           textAlignVertical="top"
         />
-      </View>
-
-      <View style={styles.fieldGroup}>
-        <Text style={[styles.label, { color: theme.text }]}>Kategori (valgfri)</Text>
-        <TextInput
-          value={categoryPath}
-          onChangeText={setCategoryPath}
-          placeholder="f.eks. holdtraening_back"
-          placeholderTextColor={theme.textSecondary}
-          style={[styles.input, { backgroundColor: theme.card, color: theme.text, borderColor: theme.highlight }]}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-        <Text style={[styles.helperText, { color: theme.textSecondary }]}>Brug holdtraening_* for at placere øvelsen under FootballCoach.</Text>
       </View>
 
       <View style={styles.fieldGroup}>
