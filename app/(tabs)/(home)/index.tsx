@@ -987,6 +987,28 @@ export default function HomeScreen() {
     [persistIntensity]
   );
 
+  const buildActivityKey = useCallback((activity: any, section: string) => {
+    if (!activity) return `fallback:activity:${section}`;
+    const rawId = activity?.id ?? activity?.activity_id ?? activity?.activityId;
+    const normalizedId = rawId !== null && rawId !== undefined ? String(rawId).trim() : '';
+    if (normalizedId) return `activity:${normalizedId}`;
+    const dateKey =
+      activity.__resolvedDateTime instanceof Date && !isNaN(activity.__resolvedDateTime.getTime())
+        ? activity.__resolvedDateTime.toISOString()
+        : '';
+    const titleKey = typeof activity?.title === 'string' ? activity.title.trim() : '';
+    return `fallback:activity:${section}:${dateKey}:${titleKey}`;
+  }, []);
+
+  const buildWeekHeaderKey = useCallback((weekGroup: any, section: string) => {
+    const weekStart = weekGroup?.weekStart;
+    const weekKey =
+      weekStart instanceof Date && !isNaN(weekStart.getTime())
+        ? weekStart.toISOString()
+        : '';
+    return `header:week:${section}:${weekKey || 'unknown'}`;
+  }, []);
+
   // Flatten all data into a single list for FlatList
   // Each item has a type to determine how to render it
   const flattenedData = useMemo(() => {
@@ -1000,63 +1022,97 @@ export default function HomeScreen() {
 
     // Add TIDLIGERE section
     if (safePreviousByWeek.length > 0) {
-      data.push({ type: 'previousHeader' });
+      data.push({ type: 'previousHeader', key: 'header:previous' });
       
       if (isPreviousExpanded) {
         safeVisiblePreviousWeeks.forEach((weekGroup, weekIndex) => {
           // STEP H: Guard against null weekGroup
           if (!weekGroup) return;
           
-          data.push({ type: 'weekHeader', weekGroup, section: 'previous' });
+          data.push({
+            type: 'weekHeader',
+            weekGroup,
+            section: 'previous',
+            key: buildWeekHeaderKey(weekGroup, 'previous'),
+          });
           
           // STEP H: Guard against non-array activities
           const weekActivities = Array.isArray(weekGroup.activities) ? weekGroup.activities : [];
           weekActivities.forEach((activity: any) => {
             // STEP H: Guard against null activity
             if (!activity) return;
-            data.push({ type: 'activity', activity, section: 'previous' });
+            data.push({
+              type: 'activity',
+              activity,
+              section: 'previous',
+              key: buildActivityKey(activity, 'previous'),
+            });
           });
         });
 
         if (showPreviousWeeks < safePreviousByWeek.length) {
-          data.push({ type: 'loadMore' });
+          data.push({ type: 'loadMore', key: 'loadMore' });
         }
       }
     }
 
     // Add I DAG section
-    data.push({ type: 'todayHeader' });
+    data.push({ type: 'todayHeader', key: 'header:today' });
     if (safeTodayActivities.length === 0) {
-      data.push({ type: 'emptyToday' });
+      data.push({ type: 'emptyToday', key: 'empty' });
     } else {
       safeTodayActivities.forEach((activity) => {
         // STEP H: Guard against null activity
         if (!activity) return;
-        data.push({ type: 'activity', activity, section: 'today' });
+        data.push({
+          type: 'activity',
+          activity,
+          section: 'today',
+          key: buildActivityKey(activity, 'today'),
+        });
       });
     }
 
     // Add KOMMENDE section
     if (safeUpcomingByWeek.length > 0) {
-      data.push({ type: 'upcomingHeader' });
+      data.push({ type: 'upcomingHeader', key: 'header:upcoming' });
       safeUpcomingByWeek.forEach((weekGroup, weekIndex) => {
         // STEP H: Guard against null weekGroup
         if (!weekGroup) return;
         
-        data.push({ type: 'weekHeader', weekGroup, section: 'upcoming' });
+        data.push({
+          type: 'weekHeader',
+          weekGroup,
+          section: 'upcoming',
+          key: buildWeekHeaderKey(weekGroup, 'upcoming'),
+        });
         
         // STEP H: Guard against non-array activities
         const weekActivities = Array.isArray(weekGroup.activities) ? weekGroup.activities : [];
         weekActivities.forEach((activity: any) => {
           // STEP H: Guard against null activity
           if (!activity) return;
-          data.push({ type: 'activity', activity, section: 'upcoming' });
+          data.push({
+            type: 'activity',
+            activity,
+            section: 'upcoming',
+            key: buildActivityKey(activity, 'upcoming'),
+          });
         });
       });
     }
 
     return data;
-  }, [previousByWeek, isPreviousExpanded, visiblePreviousWeeks, showPreviousWeeks, todayActivities, upcomingByWeek]);
+  }, [
+    buildActivityKey,
+    buildWeekHeaderKey,
+    previousByWeek,
+    isPreviousExpanded,
+    visiblePreviousWeeks,
+    showPreviousWeeks,
+    todayActivities,
+    upcomingByWeek,
+  ]);
 
   // Render item based on type
   const renderItem = useCallback(({ item }: { item: any }) => {
@@ -1274,20 +1330,30 @@ export default function HomeScreen() {
   ]);
 
   // Key extractor for FlatList
-  const keyExtractor = useCallback((item: any, index: number) => {
+  const keyExtractor = useCallback((item: any) => {
     // STEP H: Guard against null item
-    if (!item) return `null-${index}`;
-
+    if (!item) return 'fallback:null';
+    if (typeof item.key === 'string' && item.key.length) return item.key;
     if (item.type === 'activity') {
-      // STEP H: Guard against null activity or activity.id
-      return item.activity?.id ? `activity-${item.activity.id}` : `activity-${index}`;
+      const rawId = item.activity?.id ?? item.activity?.activity_id ?? item.activity?.activityId;
+      const normalizedId = rawId !== null && rawId !== undefined ? String(rawId).trim() : '';
+      if (normalizedId) return `activity:${normalizedId}`;
+      return 'fallback:activity';
     }
     if (item.type === 'weekHeader') {
-      // STEP H: Guard against null weekGroup or weekStart
-      const weekKey = item.weekGroup?.weekStart ? item.weekGroup.weekStart.toISOString() : index;
-      return `week-${item.section}-${weekKey}`;
+      const weekStart = item.weekGroup?.weekStart;
+      const weekKey =
+        weekStart instanceof Date && !isNaN(weekStart.getTime())
+          ? weekStart.toISOString()
+          : 'unknown';
+      return `header:week:${item.section ?? 'unknown'}:${weekKey}`;
     }
-    return `${item.type}-${index}`;
+    if (item.type === 'previousHeader') return 'header:previous';
+    if (item.type === 'todayHeader') return 'header:today';
+    if (item.type === 'upcomingHeader') return 'header:upcoming';
+    if (item.type === 'emptyToday') return 'empty';
+    if (item.type === 'loadMore') return 'loadMore';
+    return `fallback:${String(item.type ?? 'unknown')}`;
   }, []);
 
   // List header component
