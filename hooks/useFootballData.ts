@@ -490,9 +490,9 @@ export const useFootballData = () => {
           .lt('activities.activity_date', endIsoExclusive),
         supabase
           .from('external_event_tasks')
-          .select('id, completed, events_external!inner(start_date)')
-          .gte('events_external.start_date', startIso)
-          .lt('events_external.start_date', endIsoExclusive),
+          .select('id, completed, events_local_meta!inner(events_external!inner(start_date))')
+          .gte('events_local_meta.events_external.start_date', startIso)
+          .lt('events_local_meta.events_external.start_date', endIsoExclusive),
       ]);
 
       if (internalRes.error) throw internalRes.error;
@@ -500,7 +500,7 @@ export const useFootballData = () => {
 
       const internalWeeklyTasks = internalRes.data || [];
       const externalWeeklyTasks = (externalRes.data || []).filter(task => {
-        const startDate = (task as any)?.events_external?.start_date as string | undefined | null;
+        const startDate = (task as any)?.events_local_meta?.events_external?.start_date as string | undefined | null;
         return Boolean(startDate);
       });
 
@@ -517,7 +517,7 @@ export const useFootballData = () => {
       });
 
       const externalTasksUpToToday = externalWeeklyTasks.filter(task => {
-        const startDate = (task as any)?.events_external?.start_date as string | undefined | null;
+        const startDate = (task as any)?.events_local_meta?.events_external?.start_date as string | undefined | null;
         const normalized = startDate ? startDate.slice(0, 10) : null;
         return normalized ? normalized <= todayIso : false;
       });

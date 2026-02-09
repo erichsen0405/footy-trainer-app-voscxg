@@ -226,8 +226,34 @@ export default function ActivityCard({
     return trimmed;
   }, [activity?.activityId, activity?.activity_id, activity?.id]);
 
+  const extractTasksFromActivity = useCallback((source: any): any[] => {
+    if (!source) return [];
+    const primaryTasks = Array.isArray(source?.tasks) ? source.tasks : [];
+    if (primaryTasks.length) return primaryTasks;
+    const fallbackTasks =
+      Array.isArray(source?.external_tasks) ? source.external_tasks :
+      Array.isArray(source?.calendar_tasks) ? source.calendar_tasks :
+      [];
+    return Array.isArray(fallbackTasks) ? fallbackTasks : [];
+  }, []);
+
+  const areTaskListsEqual = useCallback((a: any[], b: any[]) => {
+    if (a === b) return true;
+    if (!Array.isArray(a) || !Array.isArray(b)) return false;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i += 1) {
+      const aId = a[i]?.id !== undefined && a[i]?.id !== null ? String(a[i].id) : null;
+      const bId = b[i]?.id !== undefined && b[i]?.id !== null ? String(b[i].id) : null;
+      if (aId !== bId) return false;
+      if (!!a[i]?.completed !== !!b[i]?.completed) return false;
+    }
+    return true;
+  }, []);
+
   // Local optimistic state for tasks
-  const [optimisticTasks, setOptimisticTasks] = useState<any[]>([]);
+  const [optimisticTasks, setOptimisticTasks] = useState<any[]>(
+    () => extractTasksFromActivity(activity)
+  );
 
   // Task modal state (data-driven; no fetch on open)
   const [selectedTask, setSelectedTask] = useState<any | null>(null);
@@ -236,19 +262,19 @@ export default function ActivityCard({
 
   // Initialize and update optimistic tasks from activity (incl. external sources)
   useEffect(() => {
-    const primaryTasks = Array.isArray(activity?.tasks) ? activity.tasks : [];
-    if (primaryTasks.length) {
-      setOptimisticTasks(primaryTasks);
-      return;
-    }
-
-    const fallbackTasks =
-      Array.isArray(activity?.external_tasks) ? activity.external_tasks :
-      Array.isArray(activity?.calendar_tasks) ? activity.calendar_tasks :
-      [];
-
-    setOptimisticTasks(Array.isArray(fallbackTasks) ? fallbackTasks : []);
-  }, [activity?.calendar_tasks, activity?.external_tasks, activity?.tasks]);
+    const nextTasks = extractTasksFromActivity(activity);
+    setOptimisticTasks(prev => (areTaskListsEqual(prev, nextTasks) ? prev : nextTasks));
+  }, [
+    activity,
+    activity?.id,
+    activity?.activity_id,
+    activity?.activityId,
+    activity?.tasks,
+    activity?.external_tasks,
+    activity?.calendar_tasks,
+    areTaskListsEqual,
+    extractTasksFromActivity,
+  ]);
 
   const resolveFeedbackTemplateId = useCallback((task: any): string | null => {
     if (!task) return null;
