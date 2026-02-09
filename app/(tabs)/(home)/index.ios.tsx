@@ -1126,7 +1126,7 @@ export default function HomeScreen() {
             <ActivityCard
               activity={activity}
               resolvedDate={activity.__resolvedDateTime}
-              showTasks={item.section === 'today' || item.section === 'previous'}
+              showTasks={item.section === 'today'}
               feedbackActivityId={feedbackActivityId}
               feedbackCompletionByTaskId={mergedFeedbackCompletionByTaskId}
               feedbackCompletionByTemplateId={mergedFeedbackCompletionByTemplateId}

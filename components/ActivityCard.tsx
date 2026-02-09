@@ -629,6 +629,7 @@ export default function ActivityCard({
   }, [activity?.id, activity?.is_external, activity?.title, optimisticTasks, showTasks]);
 
   const taskListItems = useMemo<TaskListItem[]>(() => {
+    if (showTasks === false) return [];
     const allTasks = Array.isArray(optimisticTasks) ? optimisticTasks : [];
     const visibleTasks = allTasks.filter(task => {
       if (activity?.is_external) {
