@@ -15,7 +15,7 @@ import {
   refreshNotificationQueue,
   forceRefreshNotificationQueue,
 } from '@/utils/notificationScheduler';
-import { startOfWeek, endOfWeek } from 'date-fns';
+import { addDays, startOfWeek, endOfWeek } from 'date-fns';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import { taskService } from '@/services/taskService';
 import { activityService } from '@/services/activityService';
@@ -479,28 +479,57 @@ export const useFootballData = () => {
   const fetchCurrentWeekStats = useCallback(async () => {
     try {
       const startIso = weekRange.start.toISOString().slice(0, 10);
-      const endIso = weekRange.end.toISOString().slice(0, 10);
+      const endIsoExclusive = addDays(weekRange.end, 1).toISOString().slice(0, 10);
       const todayIso = new Date().toISOString().slice(0, 10);
 
-      const { data, error } = await supabase
-        .from('activity_tasks')
-        .select('id, completed, activities!inner(activity_date)')
-        .gte('activities.activity_date', startIso)
-        .lte('activities.activity_date', endIso);
+      const [internalRes, externalRes] = await Promise.all([
+        supabase
+          .from('activity_tasks')
+          .select('id, completed, activities!inner(activity_date)')
+          .gte('activities.activity_date', startIso)
+          .lt('activities.activity_date', endIsoExclusive),
+        supabase
+          .from('external_event_tasks')
+          .select('id, completed, events_external!inner(start_date)')
+          .gte('events_external.start_date', startIso)
+          .lt('events_external.start_date', endIsoExclusive),
+      ]);
 
-      if (error) throw error;
+      if (internalRes.error) throw internalRes.error;
+      if (externalRes.error) throw externalRes.error;
 
-      const weeklyTasks = data || [];
-      const totalWeek = weeklyTasks.length;
-      const completedWeek = weeklyTasks.filter(task => task.completed).length;
-
-      const tasksUpToToday = weeklyTasks.filter(task => {
-        const activityDate = (task as any)?.activities?.activity_date as string | undefined;
-        return activityDate ? activityDate <= todayIso : false;
+      const internalWeeklyTasks = internalRes.data || [];
+      const externalWeeklyTasks = (externalRes.data || []).filter(task => {
+        const startDate = (task as any)?.events_external?.start_date as string | undefined | null;
+        return Boolean(startDate);
       });
 
-      const totalToday = tasksUpToToday.length;
-      const completedToday = tasksUpToToday.filter(task => task.completed).length;
+      const internalTotalWeek = internalWeeklyTasks.length;
+      const internalCompletedWeek = internalWeeklyTasks.filter(task => task.completed).length;
+
+      const externalTotalWeek = externalWeeklyTasks.length;
+      const externalCompletedWeek = externalWeeklyTasks.filter(task => task.completed).length;
+
+      const internalTasksUpToToday = internalWeeklyTasks.filter(task => {
+        const activityDate = (task as any)?.activities?.activity_date as string | undefined;
+        const normalized = activityDate ? activityDate.slice(0, 10) : null;
+        return normalized ? normalized <= todayIso : false;
+      });
+
+      const externalTasksUpToToday = externalWeeklyTasks.filter(task => {
+        const startDate = (task as any)?.events_external?.start_date as string | undefined | null;
+        const normalized = startDate ? startDate.slice(0, 10) : null;
+        return normalized ? normalized <= todayIso : false;
+      });
+
+      const totalToday = internalTasksUpToToday.length + externalTasksUpToToday.length;
+      const completedToday =
+        internalTasksUpToToday.filter(task => task.completed).length +
+        externalTasksUpToToday.filter(task => task.completed).length;
+
+      const totalWeek = internalTotalWeek + externalTotalWeek;
+      const completedWeek = internalCompletedWeek + externalCompletedWeek;
+
       const percentage = totalToday > 0 ? Math.round((completedToday / totalToday) * 100) : 0;
 
       setCurrentWeekStats(prev => ({
