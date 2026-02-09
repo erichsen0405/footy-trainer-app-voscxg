@@ -68,6 +68,8 @@ $statusFile = Join-Path $outDir "status.txt"
 $metaFile   = Join-Path $outDir "meta.txt"
 $checkFile  = Join-Path $outDir "diff-check.txt"
 $cmdFile    = Join-Path $outDir "qa-commands.txt"
+$fullDir    = Join-Path $outDir "full_worktree"
+$manifestFile = Join-Path $fullDir "manifest.txt"
 
 $zipPath = Join-Path $baseDir "$ts.zip"
 
@@ -95,6 +97,50 @@ git --no-pager diff --name-status HEAD | Out-File -Encoding utf8 $namesFile
 git --no-pager diff --stat HEAD        | Out-File -Encoding utf8 $statFile
 git --no-pager diff --check HEAD       | Out-File -Encoding utf8 $checkFile
 git --no-pager diff --binary HEAD      | Out-File -Encoding utf8 $patchFile
+
+# 5.5) Full worktree files (unstaged + untracked only)
+New-Item -ItemType Directory -Force -Path $fullDir | Out-Null
+
+$unstagedFiles = @(git diff --name-only --diff-filter=d)
+$unstagedDeletions = @(git diff --name-only --diff-filter=D)
+$untrackedFiles = @(git ls-files --others --exclude-standard)
+
+$allCandidates = @()
+if ($unstagedFiles) { $allCandidates += $unstagedFiles }
+if ($untrackedFiles) { $allCandidates += $untrackedFiles }
+
+$uniqueFiles = $allCandidates |
+  ForEach-Object { $_.Trim() } |
+  Where-Object { $_ -ne "" } |
+  Sort-Object -Unique
+
+$copied = @()
+$skipped = @()
+
+foreach ($rel in $uniqueFiles) {
+  $src = Join-Path $repoRoot $rel
+  $dst = Join-Path $fullDir $rel
+  if (Test-Path -LiteralPath $src) {
+    $parent = Split-Path -Parent $dst
+    if ($parent) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
+    Copy-Item -LiteralPath $src -Destination $dst -Force
+    $copied += $rel
+  } else {
+    $skipped += $rel
+  }
+}
+
+@(
+  "copied: $($copied.Count)"
+  "copied files:"
+  $copied
+  ""
+  "deletions:"
+  $unstagedDeletions
+  ""
+  "skipped (missing):"
+  $skipped
+) | Out-File -Encoding utf8 $manifestFile
 
 # 6) QA commands output
 "=== QA commands output ===" | Out-File -Encoding utf8 $cmdFile
@@ -172,6 +218,8 @@ Remove-Item -Recurse -Force $outDir
 Write-Host ""
 Write-Host "[OK] QA bundle (zip only) lavet:" -ForegroundColor Green
 Write-Host "  Zip: $zipPath"
+Write-Host ""
+Write-Host "Full files included (unstaged+untracked): $($copied.Count)"
 Write-Host ""
 git --no-pager diff --stat HEAD
 Write-Host ""
