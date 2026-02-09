@@ -77,6 +77,19 @@ const buildIntensityUpdate = (
   return payload;
 };
 
+const getCurrentUserId = async (): Promise<string> => {
+  const {
+    data: { session },
+    error,
+  } = await supabase.auth.getSession();
+
+  if (error || !session?.user?.id) {
+    throw new Error('User not authenticated');
+  }
+
+  return session.user.id;
+};
+
 // Helper function to generate dates for recurring activities
 function generateRecurringDates(
   startDate: Date,
@@ -248,13 +261,39 @@ export const activityService = {
       updateData.last_local_modified = new Date().toISOString();
       updateData.updated_at = new Date().toISOString();
 
-      const { error } = await supabase
+      const { data: updatedById, error: updateError } = await supabase
         .from('events_local_meta')
         .update(updateData)
         .eq('id', activityId)
+        .select('id')
         .abortSignal(signal);
 
-      if (error) throw error;
+      if (updateError) throw updateError;
+
+      if (!updatedById || updatedById.length === 0) {
+        const { data: updatedByExternal, error: updateByExternalError } = await supabase
+          .from('events_local_meta')
+          .update(updateData)
+          .eq('external_event_id', activityId)
+          .select('id')
+          .abortSignal(signal);
+
+        if (updateByExternalError) throw updateByExternalError;
+
+        if (!updatedByExternal || updatedByExternal.length === 0) {
+          const userId = await getCurrentUserId();
+          const { error: insertError } = await supabase
+            .from('events_local_meta')
+            .insert({
+              ...updateData,
+              user_id: userId,
+              external_event_id: activityId,
+            })
+            .abortSignal(signal);
+
+          if (insertError) throw insertError;
+        }
+      }
     } else {
       const updateData: any = {};
       

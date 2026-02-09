@@ -1102,18 +1102,33 @@ export const useFootballData = () => {
     const { data: externalMeta, error: externalError } = await supabase
       .from('events_local_meta')
       .select('id')
-      .eq('id', activityId)
+      .or(`id.eq.${activityId},external_event_id.eq.${activityId}`)
       .maybeSingle();
 
     if (externalError) {
       throw externalError;
     }
 
-    if (!externalMeta) {
-      throw new Error('Activity not found');
+    if (externalMeta) {
+      return true;
     }
 
-    return true;
+    const { data: externalEvent, error: externalEventError } = await supabase
+      .from('events_external')
+      .select('id')
+      .eq('id', activityId)
+      .maybeSingle();
+
+    if (externalEventError) {
+      throw externalEventError;
+    }
+
+    if (externalEvent) {
+      return true;
+    }
+
+    throw new Error('Activity not found');
+
   }, []);
 
   const updateActivitySingle = useCallback(async (
