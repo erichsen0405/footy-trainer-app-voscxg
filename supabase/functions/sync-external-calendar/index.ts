@@ -419,6 +419,85 @@ async function ensureUnknownCategory(
   return newCategory.id;
 }
 
+function parseDateParts(dateString: string): { year: number; month: number; day: number } | null {
+  const trimmed = String(dateString ?? '').trim();
+  if (!trimmed) return null;
+  const parts = trimmed.split('-');
+  if (parts.length < 3) return null;
+  const year = Number(parts[0]);
+  const month = Number(parts[1]);
+  const day = Number(parts[2]);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+  return { year, month, day };
+}
+
+function parseTimeParts(timeString?: string | null): { hour: number; minute: number; second: number } {
+  const trimmed = String(timeString ?? '').trim();
+  if (!trimmed) return { hour: 0, minute: 0, second: 0 };
+  const parts = trimmed.split(':').map((part) => Number(part));
+  const hour = Number.isFinite(parts[0]) ? parts[0] : 0;
+  const minute = Number.isFinite(parts[1]) ? parts[1] : 0;
+  const second = Number.isFinite(parts[2]) ? parts[2] : 0;
+  return { hour, minute, second };
+}
+
+function copenhagenToUtcMs(args: { date?: string | null; time?: string | null; isAllDay?: boolean }): number {
+  const dateParts = args.date ? parseDateParts(args.date) : null;
+  if (!dateParts) return NaN;
+  const baseTime = parseTimeParts(args.time);
+  const time =
+    args.isAllDay && (!args.time || String(args.time).startsWith('00:00'))
+      ? { hour: 23, minute: 59, second: 59 }
+      : baseTime;
+  return Date.UTC(dateParts.year, dateParts.month - 1, dateParts.day, time.hour, time.minute, time.second);
+}
+
+function getCopenhagenNowUtcMs(): number {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Copenhagen',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(new Date());
+  const map: Record<string, string> = {};
+  parts.forEach((part) => {
+    if (part.type !== 'literal') {
+      map[part.type] = part.value;
+    }
+  });
+  const year = Number(map.year);
+  const month = Number(map.month);
+  const day = Number(map.day);
+  const hour = Number(map.hour);
+  const minute = Number(map.minute);
+  const second = Number(map.second);
+  if (
+    !Number.isFinite(year) ||
+    !Number.isFinite(month) ||
+    !Number.isFinite(day) ||
+    !Number.isFinite(hour) ||
+    !Number.isFinite(minute) ||
+    !Number.isFinite(second)
+  ) {
+    return Date.now();
+  }
+  return Date.UTC(year, month - 1, day, hour, minute, second);
+}
+
+function isPastDbRow(row: any, nowMs: number): boolean {
+  const date = row?.end_date ?? row?.start_date ?? null;
+  if (!date) return false;
+  const time = row?.end_time ?? row?.start_time ?? '00:00:00';
+  const eventMs = copenhagenToUtcMs({ date, time, isAllDay: row?.is_all_day });
+  if (!Number.isFinite(eventMs)) return false;
+  return eventMs < nowMs;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -481,7 +560,7 @@ serve(async (req) => {
     // Fetch existing external events for this calendar
     const { data: existingExternalEvents } = await supabaseClient
       .from('events_external')
-      .select('id, provider_event_uid, external_last_modified')
+      .select('id, provider_event_uid, external_last_modified, title, start_date, start_time, end_date, end_time, is_all_day')
       .eq('provider_calendar_id', calendarId);
 
     const existingEventsMap = new Map();
@@ -526,22 +605,37 @@ serve(async (req) => {
     const fetchedEventUids = new Set(events.map(event => event.uid));
 
     // Find events to delete (exist in DB but not in fetched events)
-    const eventsToDelete = Array.from(existingEventsMap.keys()).filter(
-      uid => !fetchedEventUids.has(uid)
-    );
+    const nowCopenhagenMs = getCopenhagenNowUtcMs();
+    const eventsToDelete = Array.from(existingEventsMap.keys()).filter((uid) => {
+      if (fetchedEventUids.has(uid)) {
+        return false;
+      }
+      const row = existingEventsMap.get(uid);
+      if (!row) {
+        return false;
+      }
+      if (isPastDbRow(row, nowCopenhagenMs)) {
+        console.log(`Skipping delete for past event missing from feed: "${row.title ?? uid}"`);
+        return false;
+      }
+      return true;
+    });
 
     if (eventsToDelete.length > 0) {
-      console.log(`🗑️ Deleting ${eventsToDelete.length} events that no longer exist in calendar`);
+      console.log(`🗑️ Soft deleting ${eventsToDelete.length} events that no longer exist in calendar`);
       const idsToDelete = eventsToDelete.map(uid => existingEventsMap.get(uid).id);
       const { error: deleteError } = await supabaseClient
         .from('events_external')
-        .delete()
+        .update({
+          deleted: true,
+          updated_at: new Date().toISOString(),
+        })
         .in('id', idsToDelete);
 
       if (deleteError) {
-        console.error('Error deleting removed events:', deleteError);
+        console.error('Error soft deleting removed events:', deleteError);
       } else {
-        console.log(`✅ Deleted ${eventsToDelete.length} events`);
+        console.log(`✅ Soft deleted ${eventsToDelete.length} events`);
       }
     }
 
@@ -727,7 +821,7 @@ serve(async (req) => {
     console.log(`   📥 Total events in iCal feed: ${events.length}`);
     console.log(`   ➕ NEW external events created: ${eventsCreated}`);
     console.log(`   🔄 Existing external events updated: ${eventsUpdated}`);
-    console.log(`   🗑️ Events deleted (no longer in feed): ${eventsToDelete.length}`);
+    console.log(`   🗑️ Events soft-deleted (no longer in feed): ${eventsToDelete.length}`);
     console.log(`   ➕ NEW local metadata created: ${metadataCreated}`);
     console.log(`   🔒 Local metadata preserved (manually set): ${metadataPreserved}`);
     console.log(`   ❌ Events FAILED to process: ${eventsFailed}`);
@@ -769,7 +863,7 @@ serve(async (req) => {
         eventsDeleted: eventsToDelete.length,
         eventsFailed,
         failedEvents: failedEvents.length > 0 ? failedEvents : undefined,
-        message: `Successfully synced ${events.length} events. ${eventsCreated} new events created, ${eventsUpdated} updated, ${eventsToDelete.length} deleted. ${metadataPreserved} manually set categories preserved.${eventsFailed > 0 ? ` WARNING: ${eventsFailed} events failed to process.` : ''}`,
+        message: `Successfully synced ${events.length} events. ${eventsCreated} new events created, ${eventsUpdated} updated, ${eventsToDelete.length} soft-deleted. ${metadataPreserved} manually set categories preserved.${eventsFailed > 0 ? ` WARNING: ${eventsFailed} events failed to process.` : ''}`,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -324,6 +324,93 @@ function isCancelled(event: ParsedEvent): boolean {
   return status === 'CANCELLED' || method === 'CANCEL';
 }
 
+function parseDateParts(dateString: string): { year: number; month: number; day: number } | null {
+  const trimmed = String(dateString ?? '').trim();
+  if (!trimmed) return null;
+  const parts = trimmed.split('-');
+  if (parts.length < 3) return null;
+  const year = Number(parts[0]);
+  const month = Number(parts[1]);
+  const day = Number(parts[2]);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+  return { year, month, day };
+}
+
+function parseTimeParts(timeString?: string | null): { hour: number; minute: number; second: number } {
+  const trimmed = String(timeString ?? '').trim();
+  if (!trimmed) return { hour: 0, minute: 0, second: 0 };
+  const parts = trimmed.split(':').map((part) => Number(part));
+  const hour = Number.isFinite(parts[0]) ? parts[0] : 0;
+  const minute = Number.isFinite(parts[1]) ? parts[1] : 0;
+  const second = Number.isFinite(parts[2]) ? parts[2] : 0;
+  return { hour, minute, second };
+}
+
+function copenhagenToUtcMs(args: { date?: string | null; time?: string | null; isAllDay?: boolean }): number {
+  const dateParts = args.date ? parseDateParts(args.date) : null;
+  if (!dateParts) return NaN;
+  const baseTime = parseTimeParts(args.time);
+  const time =
+    args.isAllDay && (!args.time || String(args.time).startsWith('00:00'))
+      ? { hour: 23, minute: 59, second: 59 }
+      : baseTime;
+  return Date.UTC(dateParts.year, dateParts.month - 1, dateParts.day, time.hour, time.minute, time.second);
+}
+
+function getCopenhagenNowUtcMs(): number {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Copenhagen',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(new Date());
+  const map: Record<string, string> = {};
+  parts.forEach((part) => {
+    if (part.type !== 'literal') {
+      map[part.type] = part.value;
+    }
+  });
+  const year = Number(map.year);
+  const month = Number(map.month);
+  const day = Number(map.day);
+  const hour = Number(map.hour);
+  const minute = Number(map.minute);
+  const second = Number(map.second);
+  if (
+    !Number.isFinite(year) ||
+    !Number.isFinite(month) ||
+    !Number.isFinite(day) ||
+    !Number.isFinite(hour) ||
+    !Number.isFinite(minute) ||
+    !Number.isFinite(second)
+  ) {
+    return Date.now();
+  }
+  return Date.UTC(year, month - 1, day, hour, minute, second);
+}
+
+function isPastDbRow(row: any, nowMs: number): boolean {
+  const date = row?.end_date ?? row?.start_date ?? null;
+  if (!date) return false;
+  const time = row?.end_time ?? row?.start_time ?? '00:00:00';
+  const eventMs = copenhagenToUtcMs({ date, time, isAllDay: row?.is_all_day });
+  if (!Number.isFinite(eventMs)) return false;
+  return eventMs < nowMs;
+}
+
+function isPastParsedEvent(event: ParsedEvent, nowMs: number): boolean {
+  const date = event.endDateString || event.startDateString;
+  const time = event.endTimeString || event.startTimeString || '00:00:00';
+  const eventMs = copenhagenToUtcMs({ date, time, isAllDay: event.isAllDay });
+  if (!Number.isFinite(eventMs)) return false;
+  return eventMs < nowMs;
+}
+
 function matchEvent(
   fetchedEvent: ParsedEvent,
   dbRows: any[],
@@ -400,6 +487,7 @@ function computeSyncOps(
   
   const matchedDbRowIds = new Set<string>();
   const now = new Date();
+  const nowCopenhagenMs = getCopenhagenNowUtcMs();
   
   for (const event of fetched) {
     const matchedRow = matchEvent(event, dbRows, options);
@@ -408,6 +496,10 @@ function computeSyncOps(
       matchedDbRowIds.add(matchedRow.id);
       
       if (methodCancel && isCancelled(event)) {
+        if (isPastParsedEvent(event, nowCopenhagenMs)) {
+          console.log(`Skipping delete for past cancelled event: "${event.summary}"`);
+          continue;
+        }
         operations.immediateDeletes.push({
           dbRowId: matchedRow.id,
           reason: `Event cancelled (STATUS:${event.status || 'N/A'}, METHOD:${event.method || 'N/A'})`,
@@ -416,6 +508,10 @@ function computeSyncOps(
       }
       
       if (matchedRow.deleted) {
+        if (matchedRow.deleted_at_reason === 'user-delete') {
+          console.log(`Skipping restore for user-deleted event: "${event.summary}"`);
+          continue;
+        }
         operations.restores.push({
           dbRowId: matchedRow.id,
           event: event,
@@ -448,6 +544,11 @@ function computeSyncOps(
     }
     
     if (row.deleted) {
+      continue;
+    }
+
+    if (isPastDbRow(row, nowCopenhagenMs)) {
+      console.log(`Skipping delete for past event missing from feed: "${row.title}"`);
       continue;
     }
     
@@ -847,6 +948,8 @@ serve(async (req) => {
             },
             miss_count: 0,
             deleted: false, // Restore
+            deleted_at: null,
+            deleted_at_reason: null,
             updated_at: new Date().toISOString(),
           })
           .eq('id', op.dbRowId);
@@ -918,15 +1021,18 @@ serve(async (req) => {
       }
     }
 
-    // Execute immediate deletes
-    console.log('\n🔄 Executing IMMEDIATE DELETE operations...');
+    // Execute immediate deletes (soft delete only to preserve completion history)
+    console.log('\n🔄 Executing IMMEDIATE DELETE operations (soft delete only)...');
     for (const op of syncOps.immediateDeletes) {
       try {
-        console.log(`   ❌ Immediately deleting: ${op.reason}`);
+        console.log(`   ❌ Marking cancelled event as deleted: ${op.reason}`);
         
         const { error: deleteError } = await supabaseClient
           .from('events_external')
-          .delete()
+          .update({
+            deleted: true,
+            updated_at: new Date().toISOString(),
+          })
           .eq('id', op.dbRowId);
 
         if (deleteError) {
@@ -945,7 +1051,8 @@ serve(async (req) => {
             action: 'deleted',
             details: {
               reason: op.reason,
-              immediate_delete: true,
+              soft_delete: true,
+              cancelled: true,
             },
           });
       } catch (error: any) {
@@ -1075,7 +1182,7 @@ serve(async (req) => {
     console.log(`   🔄 Existing external events updated: ${eventsUpdated}`);
     console.log(`   ♻️ Events restored: ${eventsRestored}`);
     console.log(`   🗑️ Events soft-deleted: ${eventsSoftDeleted}`);
-    console.log(`   ❌ Events immediately deleted (cancelled): ${eventsImmediatelyDeleted}`);
+    console.log(`   ❌ Events cancelled (soft-deleted): ${eventsImmediatelyDeleted}`);
     console.log(`   ➕ NEW local metadata created: ${metadataCreated}`);
     console.log(`   🔒 Local metadata preserved (manually set): ${metadataPreserved}`);
     console.log(`   ✅ Metadata already resolved (skipped): ${metadataAlreadyResolved}`);
@@ -1125,7 +1232,7 @@ serve(async (req) => {
         metadataCreatedDuringBackfill,
         eventsFailed,
         failedEvents: failedEvents.length > 0 ? failedEvents : undefined,
-        message: `Successfully synced ${events.length} events using computeSyncOps. ${eventsCreated} created, ${eventsUpdated} updated, ${eventsRestored} restored, ${eventsSoftDeleted} soft-deleted, ${eventsImmediatelyDeleted} immediately deleted (cancelled). ${metadataPreserved} manually set categories preserved, ${metadataAutoUpdated} categories auto-backfilled during sync, ${metadataBackfilled} categories backfilled post-sync.${eventsFailed > 0 ? ` WARNING: ${eventsFailed} events failed to process.` : ''}`,
+        message: `Successfully synced ${events.length} events using computeSyncOps. ${eventsCreated} created, ${eventsUpdated} updated, ${eventsRestored} restored, ${eventsSoftDeleted} soft-deleted, ${eventsImmediatelyDeleted} cancelled (soft-deleted). ${metadataPreserved} manually set categories preserved, ${metadataAutoUpdated} categories auto-backfilled during sync, ${metadataBackfilled} categories backfilled post-sync.${eventsFailed > 0 ? ` WARNING: ${eventsFailed} events failed to process.` : ''}`,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -10,6 +10,7 @@ export interface Activity {
   tasks: Task[];
   intensity?: number | null;
   intensityEnabled?: boolean;
+  intensityNote?: string | null;
   isExternal?: boolean;
   externalCalendarId?: string;
   externalEventId?: string;

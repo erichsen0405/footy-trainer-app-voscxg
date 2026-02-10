@@ -134,8 +134,6 @@ export default function PerformanceScreen() {
         </Text>
       </View>
 
-      <ProgressionSection categories={categories} />
-
       <View style={[styles.currentWeekCard, { backgroundColor: palette.accent }]}> 
         <View style={styles.currentWeekHeader}>
           <Text style={styles.currentWeekTitle}>Denne uge</Text>
@@ -194,48 +192,12 @@ export default function PerformanceScreen() {
           <Text style={styles.trophiesTitle}>Bronze pokaler</Text>
           <Text style={styles.trophiesCount}>{bronzeTrophies}</Text>
         </View>
+
+
         <Text style={styles.trophiesEmoji}>🥉</Text>
       </View>
 
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: textColor }]}>📊 Performance historik</Text>
-        
-        {trophies.length === 0 ? (
-          <View style={[styles.emptyCard, { backgroundColor: cardBgColor }]}>
-            <Text style={[styles.emptyText, { color: textSecondaryColor }]}>Ingen historik endnu</Text>
-          </View>
-        ) : (
-          trophies.map(trophy => (
-            <View key={`${trophy.year}-${trophy.week}-${trophy.type}`} style={[styles.historyCard, { backgroundColor: cardBgColor }]}> 
-              <View style={styles.historyHeader}>
-                <View style={styles.historyLeft}>
-                  <Text style={styles.historyEmoji}>{getTrophyEmoji(trophy.type)}</Text>
-                  <View>
-                    <Text style={[styles.historyWeek, { color: textColor }]}>Uge {trophy.week}</Text>
-                    <Text style={[styles.historyYear, { color: textSecondaryColor }]}>{trophy.year}</Text>
-                  </View>
-                </View>
-                <View style={styles.historyRight}>
-                  <Text style={[styles.historyPercentage, { color: getTrophyColor(trophy.type) }]}>
-                    {trophy.percentage}%
-                  </Text>
-                  <Text style={[styles.historyTasks, { color: textSecondaryColor }]}>
-                    {trophy.completedTasks}/{trophy.totalTasks} opgaver
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.progressBarContainer}>
-                <View
-                  style={[
-                    styles.progressBar,
-                    { width: `${trophy.percentage}%`, backgroundColor: getTrophyColor(trophy.type) }
-                  ]}
-                />
-              </View>
-            </View>
-          ))
-        )}
-      </View>
+      <ProgressionSection categories={categories} />
 
       <View style={{ height: 100 }} />
     </ScrollView>
@@ -367,58 +329,5 @@ const styles = StyleSheet.create({
   },
   trophiesEmoji: {
     fontSize: 48,
-  },
-  section: {
-    marginTop: 24,
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginBottom: 16,
-  },
-  emptyCard: {
-    borderRadius: 12,
-    padding: 32,
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: 16,
-  },
-  historyCard: {
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-  },
-  historyHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  historyLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  historyEmoji: {
-    fontSize: 32,
-  },
-  historyWeek: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  historyYear: {
-    fontSize: 14,
-  },
-  historyRight: {
-    alignItems: 'flex-end',
-  },
-  historyPercentage: {
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  historyTasks: {
-    fontSize: 14,
   },
 });

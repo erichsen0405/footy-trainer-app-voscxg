@@ -492,18 +492,15 @@ export default function ActivityCard({
     if (idx === -1) return;
 
     const previous = !!optimisticTasks[idx].completed;
-    if (previous) {
-      handleModalClose();
-      return;
-    }
+    const nextCompleted = !previous;
 
     const nextTasks = [...optimisticTasks];
-    nextTasks[idx] = { ...optimisticTasks[idx], completed: true };
+    nextTasks[idx] = { ...optimisticTasks[idx], completed: nextCompleted };
     setOptimisticTasks(nextTasks);
 
     setIsTaskModalSaving(true);
     try {
-      await toggleTaskCompletion(activityId, taskId, true);
+      await toggleTaskCompletion(activityId, taskId, nextCompleted);
       Promise.resolve(refreshData()).catch(() => {});
       handleModalClose();
     } catch (error) {

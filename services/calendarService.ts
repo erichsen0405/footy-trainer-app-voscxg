@@ -47,9 +47,16 @@ export const calendarService = {
   },
 
   async deleteExternalCalendar(calendarId: string, userId: string, signal?: AbortSignal): Promise<void> {
+    const nowIso = new Date().toISOString();
     const { error: eventsError } = await supabase
       .from('events_external')
-      .delete()
+      .update({
+        deleted: true,
+        deleted_at: nowIso,
+        deleted_at_reason: 'user-delete',
+        updated_at: nowIso,
+        provider_calendar_id: null,
+      })
       .eq('provider_calendar_id', calendarId)
       .abortSignal(signal);
 

@@ -104,12 +104,18 @@ New-Item -ItemType Directory -Force -Path $fullDir | Out-Null
 $unstagedFiles = @(git diff --name-only --diff-filter=d)
 $unstagedDeletions = @(git diff --name-only --diff-filter=D)
 $untrackedFiles = @(git ls-files --others --exclude-standard)
+$stagedFiles = @(git diff --name-only --cached)
 
 $allCandidates = @()
 if ($unstagedFiles) { $allCandidates += $unstagedFiles }
 if ($untrackedFiles) { $allCandidates += $untrackedFiles }
 
 $uniqueFiles = $allCandidates |
+  ForEach-Object { $_.Trim() } |
+  Where-Object { $_ -ne "" } |
+  Sort-Object -Unique
+
+$stagedOnly = $stagedFiles |
   ForEach-Object { $_.Trim() } |
   Where-Object { $_ -ne "" } |
   Sort-Object -Unique
@@ -137,6 +143,9 @@ foreach ($rel in $uniqueFiles) {
   ""
   "deletions:"
   $unstagedDeletions
+  ""
+  "staged (ignored):"
+  $stagedOnly
   ""
   "skipped (missing):"
   $skipped
@@ -220,6 +229,7 @@ Write-Host "[OK] QA bundle (zip only) lavet:" -ForegroundColor Green
 Write-Host "  Zip: $zipPath"
 Write-Host ""
 Write-Host "Full files included (unstaged+untracked): $($copied.Count)"
+Write-Host "Staged files ignored: $($stagedOnly.Count)"
 Write-Host ""
 git --no-pager diff --stat HEAD
 Write-Host ""

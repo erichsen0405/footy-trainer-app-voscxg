@@ -29,6 +29,7 @@ export interface UpdateActivityData {
   endTime?: string;
   intensity?: number | null;
   intensityEnabled?: boolean;
+  intensityNote?: string | null;
 }
 
 const normalizeEndTime = (value?: string | null): string | null => {
@@ -46,6 +47,14 @@ const normalizeIntensity = (value?: number | null): number | null => {
   }
   const rounded = Math.round(value);
   return rounded >= 1 && rounded <= 10 ? rounded : null;
+};
+
+const normalizeIntensityNote = (value?: string | null): string | null => {
+  if (typeof value !== 'string') {
+    return value === null ? null : null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
 };
 
 const buildIntensityUpdate = (
@@ -257,6 +266,10 @@ export const activityService = {
       if (intensityChanges?.intensity_enabled !== undefined) {
         updateData.intensity_enabled = intensityChanges.intensity_enabled;
       }
+
+      if (updates.intensityNote !== undefined) {
+        updateData.intensity_note = normalizeIntensityNote(updates.intensityNote);
+      }
       
       updateData.last_local_modified = new Date().toISOString();
       updateData.updated_at = new Date().toISOString();
@@ -307,6 +320,10 @@ export const activityService = {
       }
       if (intensityChanges?.intensity_enabled !== undefined) {
         updateData.intensity_enabled = intensityChanges.intensity_enabled;
+      }
+
+      if (updates.intensityNote !== undefined) {
+        updateData.intensity_note = normalizeIntensityNote(updates.intensityNote);
       }
       
       if (updates.categoryId !== undefined) {
