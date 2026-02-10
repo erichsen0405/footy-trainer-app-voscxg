@@ -830,7 +830,14 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       refreshPromiseRef.current = runner;
       return runner;
     },
-    [fetchEntitlements, getAvailablePurchasesSafe, performRestore, syncIapReadyState],
+    [
+      fetchEntitlements,
+      getAvailablePurchasesSafe,
+      performRestore,
+      pickLatestPurchase,
+      pickPreferredPurchase,
+      syncIapReadyState,
+    ],
   );
 
   useEffect(() => {
@@ -1418,7 +1425,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
     return `${sku ?? 'unknown'}_${fallbackDate || 'unknownDate'}`;
   };
 
-  const pickLatestPurchase = (items: NormalizedPurchase[]) => {
+  const pickLatestPurchase = useCallback((items: NormalizedPurchase[]) => {
     if (!items.length) return null;
     return items.reduce<NormalizedPurchase | null>((winner, candidate) => {
       if (!candidate) return winner;
@@ -1428,9 +1435,9 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       }
       return candidate.transactionDate > winner.transactionDate ? candidate : winner;
     }, null);
-  };
+  }, []);
 
-  const pickPreferredPurchase = (items: NormalizedPurchase[]) => {
+  const pickPreferredPurchase = useCallback((items: NormalizedPurchase[]) => {
     if (!items.length) return null;
     const now = Date.now();
     const isNonExpiringPurchase = (item: NormalizedPurchase) => {
@@ -1483,7 +1490,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       }
       return candidate.transactionDate > winner.transactionDate ? candidate : winner;
     }, null);
-  };
+  }, [pickLatestPurchase]);
 
   const pruneHandledPurchaseEvents = () => {
     const ttlMs = 10 * 60 * 1000;

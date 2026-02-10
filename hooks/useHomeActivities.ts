@@ -38,6 +38,8 @@ interface ActivityWithCategory {
   category_id?: string;
   category?: DatabaseActivityCategory | null;
   intensity?: number | null;
+  intensityNote?: string | null;
+  intensity_note?: string | null;
   intensityEnabled?: boolean;
   intensity_enabled?: boolean;
   is_external: boolean;
@@ -450,6 +452,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
             location,
             category_id,
             intensity,
+            intensity_note,
             intensity_enabled,
             created_at,
             updated_at,
@@ -543,6 +546,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       const internalActivities: ActivityWithCategory[] = (internalData || []).map(activity => {
         const resolvedCategory = resolveCategory(activity.title, activity.category_id);
         const intensityValue = parseIntensityValue(activity.intensity);
+        const intensityNote =
+          typeof activity.intensity_note === 'string' ? activity.intensity_note : null;
         const intensityEnabled = typeof activity.intensity_enabled === 'boolean'
           ? activity.intensity_enabled
           : intensityValue !== null;
@@ -566,6 +571,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           category_id: activity.category_id,
           category: resolvedCategory,
           intensity: intensityValue,
+          intensityNote,
+          intensity_note: intensityNote,
           intensityEnabled,
           intensity_enabled: intensityEnabled,
           is_external: false,
@@ -617,6 +624,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
               category_id,
               user_id,
               intensity,
+              intensity_note,
               intensity_enabled,
               local_title_override,
               external_event_tasks ( * )
@@ -674,6 +682,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
             );
 
             const intensityValue = parseIntensityValue(meta?.intensity);
+            const intensityNote =
+              typeof meta?.intensity_note === 'string' ? meta.intensity_note : null;
             const metaIntensityEnabled = typeof meta?.intensity_enabled === 'boolean'
               ? meta.intensity_enabled
               : intensityValue !== null;
@@ -711,6 +721,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
               category_id: categoryId,
               category: resolvedCategory,
               intensity: intensityValue,
+              intensityNote,
+              intensity_note: intensityNote,
               intensityEnabled: metaIntensityEnabled,
               intensity_enabled: metaIntensityEnabled,
               is_external: true,

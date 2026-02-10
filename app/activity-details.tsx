@@ -298,6 +298,7 @@ const INTERNAL_SELECT_WITH_VIDEO = `
   category_id,
   intensity,
   intensity_enabled,
+  intensity_note,
   is_external,
   external_calendar_id,
   external_event_id,
@@ -331,6 +332,7 @@ const INTERNAL_SELECT_NO_VIDEO = `
   category_id,
   intensity,
   intensity_enabled,
+  intensity_note,
   is_external,
   external_calendar_id,
   external_event_id,
@@ -359,6 +361,7 @@ const EXTERNAL_META_SELECT_WITH_VIDEO = `
   category_id,
   intensity,
   intensity_enabled,
+  intensity_note,
   local_title_override,
   activity_categories (
     id,
@@ -394,6 +397,7 @@ const EXTERNAL_META_SELECT_NO_VIDEO = `
   category_id,
   intensity,
   intensity_enabled,
+  intensity_note,
   local_title_override,
   activity_categories (
     id,
@@ -551,6 +555,10 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
         typeof internalActivityAny.intensity_enabled === 'boolean'
           ? internalActivityAny.intensity_enabled
           : intensityValue !== null;
+      const intensityNote =
+        typeof internalActivityAny.intensity_note === 'string'
+          ? internalActivityAny.intensity_note
+          : null;
 
       return {
         id: internalActivityAny.id,
@@ -570,6 +578,7 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
           : undefined,
         intensity: intensityValue,
         intensityEnabled,
+        intensityNote,
       };
     }
 
@@ -611,6 +620,10 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
         typeof localMetaAny.intensity_enabled === 'boolean'
           ? localMetaAny.intensity_enabled
           : metaIntensity !== null;
+      const metaIntensityNote =
+        typeof localMetaAny.intensity_note === 'string'
+          ? localMetaAny.intensity_note
+          : null;
 
       return {
         id: localMetaAny.id,
@@ -658,6 +671,7 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
           normalizeId(localMetaAny.external_event_row_id ?? externalEvent.id) ?? undefined,
         intensity: metaIntensity,
         intensityEnabled: metaIntensityEnabled,
+        intensityNote: metaIntensityNote,
       };
     }
 
@@ -699,6 +713,7 @@ async function fetchActivityFromDatabase(activityId: string): Promise<Activity |
         externalEventRowId: String(externalOnlyAny.id),
         intensity: null,
         intensityEnabled: false,
+        intensityNote: null,
       };
     }
 
@@ -1057,6 +1072,41 @@ function buildSelfFeedbackLookup(args: {
   return lookup;
 }
 
+function buildFeedbackHistoryByTemplate(
+  templateIds: string[],
+  rows: TaskTemplateSelfFeedback[],
+): Record<string, TaskTemplateSelfFeedback[]> {
+  const normalizedTemplateIds = templateIds
+    .map((id) => normalizeId(id))
+    .filter(Boolean) as string[];
+
+  if (!normalizedTemplateIds.length) {
+    return {};
+  }
+
+  const templateIdSet = new Set(normalizedTemplateIds);
+  const lookup: Record<string, TaskTemplateSelfFeedback[]> = {};
+  normalizedTemplateIds.forEach((id) => {
+    lookup[id] = [];
+  });
+
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const templateId = normalizeId((row as any)?.taskTemplateId ?? (row as any)?.task_template_id);
+    if (!templateId || !templateIdSet.has(templateId)) continue;
+    lookup[templateId].push(row);
+  }
+
+  Object.keys(lookup).forEach((templateId) => {
+    lookup[templateId].sort((a, b) => {
+      const aMs = safeDateMs((a as any)?.createdAt ?? (a as any)?.created_at);
+      const bMs = safeDateMs((b as any)?.createdAt ?? (b as any)?.created_at);
+      return bMs - aMs;
+    });
+  });
+
+  return lookup;
+}
+
 function buildSelfFeedbackByTaskId(
   currentActivityRows: TaskTemplateSelfFeedback[],
 ): Record<string, TaskTemplateSelfFeedback> {
@@ -1224,6 +1274,9 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const [selfFeedbackByTaskId, setSelfFeedbackByTaskId] = useState<
     Record<string, TaskTemplateSelfFeedback>
   >({});
+  const [selfFeedbackHistoryByTemplate, setSelfFeedbackHistoryByTemplate] = useState<
+    Record<string, TaskTemplateSelfFeedback[]>
+  >({});
 
   const [feedbackModalTask, setFeedbackModalTask] = useState<FeedbackModalTaskState | null>(null);
 
@@ -1237,17 +1290,27 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   );
 
   const handleNormalTaskComplete = useCallback(async () => {
-    if (!selectedNormalTask || selectedNormalTask.completed) return;
+    if (!selectedNormalTask) return;
+    const previousCompleted = !!selectedNormalTask.completed;
+    const nextCompleted = !previousCompleted;
     setIsNormalTaskCompleting(true);
-    setTasksState((prev) => prev.map((t) => (t.id === selectedNormalTask.id ? { ...t, completed: true } : t)));
+    setTasksState((prev) =>
+      prev.map((t) =>
+        t.id === selectedNormalTask.id ? { ...t, completed: nextCompleted } : t
+      ),
+    );
     try {
-      await toggleTaskCompletion(activity.id, selectedNormalTask.id, true);
+      await toggleTaskCompletion(activity.id, selectedNormalTask.id, nextCompleted);
       Promise.resolve(refreshData()).catch(() => {});
       setIsNormalTaskModalVisible(false);
       setSelectedNormalTask(null);
     } catch (err) {
-      setTasksState((prev) => prev.map((t) => (t.id === selectedNormalTask.id ? { ...t, completed: false } : t)));
-      Alert.alert('Fejl', 'Kunne ikke markere opgaven som udført. Prøv igen.');
+      setTasksState((prev) =>
+        prev.map((t) =>
+          t.id === selectedNormalTask.id ? { ...t, completed: previousCompleted } : t
+        ),
+      );
+      Alert.alert('Fejl', 'Kunne ikke ændre opgaven. Prøv igen.');
     } finally {
       setIsNormalTaskCompleting(false);
     }
@@ -1277,6 +1340,14 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
   const [isIntensityModalVisible, setIsIntensityModalVisible] = useState(false);
   const [intensityModalDraft, setIntensityModalDraft] = useState<number | null>(parseIntensityValue(activity.intensity));
+  const [intensityModalNoteDraft, setIntensityModalNoteDraft] = useState<string>(() => {
+    const raw =
+      (activity as any)?.intensityNote ??
+      (activity as any)?.intensity_note ??
+      (activity as any)?.activity_intensity_note ??
+      null;
+    return typeof raw === 'string' ? raw : '';
+  });
   const [isIntensityModalSaving, setIsIntensityModalSaving] = useState(false);
   const [intensityModalError, setIntensityModalError] = useState<string | null>(null);
 
@@ -1367,9 +1438,12 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       return;
     }
 
-    const { orphanIds } = computeOrphanFeedbackTaskIds(incomingTasks);
-    const orphanIdSet = new Set(orphanIds.map((id) => String(id)));
-    const filteredTasks = orphanIds.length
+    const { orphanIds, orphanTasks } = computeOrphanFeedbackTaskIds(incomingTasks);
+    const orphanIdsToHide = orphanTasks
+      .filter((task) => !task.completed)
+      .map((task) => String(task.id));
+    const orphanIdSet = new Set(orphanIdsToHide);
+    const filteredTasks = orphanIdsToHide.length
       ? incomingTasks.filter((task) => !orphanIdSet.has(String(task.id)))
       : incomingTasks;
 
@@ -1384,30 +1458,9 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       });
     }
 
-    if (orphanIds.length && isAdmin) {
-      let cancelled = false;
-      (async () => {
-        try {
-          const { error } = await supabase
-            .from('external_event_tasks')
-            .delete()
-            .in('id', orphanIds);
-          if (error) throw error;
-        } catch (error) {
-          if (__DEV__ && !cancelled) {
-            console.log('[OrphanFeedbackCleanup] failed to delete orphan feedback tasks', {
-              activityId,
-              orphanCount: orphanIds.length,
-              error,
-            });
-          }
-        }
-      })();
-      return () => {
-        cancelled = true;
-      };
-    }
-  }, [activityExternalEventRowId, activityId, activityIsExternal, activityTasks, isAdmin]);
+    // NOTE: We no longer delete orphan feedback tasks here. External calendars can be noisy,
+    // and completed feedback should never be removed automatically.
+  }, [activityExternalEventRowId, activityId, activityIsExternal, activityTasks]);
 
   const feedbackTemplateIds = useMemo(() => {
     const ids = new Set<string>();
@@ -1428,6 +1481,52 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     return counts;
   }, [resolveFeedbackTemplateId, tasksState]);
 
+  const focusChangeRecommendations = useMemo(() => {
+    if (!feedbackTemplateIds.length) return [];
+
+    const items: { templateId: string; name: string }[] = [];
+    const resolveTemplateName = (templateId: string) => {
+      const task = tasksState.find((t) => resolveFeedbackTemplateId(t) === templateId);
+      const rawTitle = task?.title ?? 'Feedback opgave';
+      const stripped = stripLeadingFeedbackPrefix(rawTitle);
+      return stripped.length ? stripped : rawTitle;
+    };
+
+    for (const templateId of feedbackTemplateIds) {
+      const rows = selfFeedbackHistoryByTemplate[String(templateId)] ?? [];
+      const ratings = rows
+        .map((row) => row.rating)
+        .filter((rating): rating is number => typeof rating === 'number');
+      const lastFive = ratings.slice(0, 5);
+      if (lastFive.length < 5) continue;
+      if (!lastFive.every((rating) => rating === 10)) continue;
+
+      items.push({
+        templateId,
+        name: resolveTemplateName(String(templateId)),
+      });
+    }
+
+    return items;
+  }, [feedbackTemplateIds, resolveFeedbackTemplateId, selfFeedbackHistoryByTemplate, tasksState]);
+
+  const focusRecommendationShownRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!activityId || !focusChangeRecommendations.length) return;
+    if (focusRecommendationShownRef.current === activityId) return;
+
+    focusRecommendationShownRef.current = activityId;
+
+    const names = focusChangeRecommendations.map((item) => item.name).join(', ');
+    const message =
+      focusChangeRecommendations.length === 1
+        ? `Du har scoret 10 fem gange i træk på "${names}". Vi anbefaler, at du skifter fokuspunkt for at udvikle andre skills.`
+        : `Du har scoret 10 fem gange i træk på: ${names}. Vi anbefaler, at du skifter fokuspunkt for at udvikle andre skills.`;
+
+    Alert.alert('Overvej at skifte fokus', message);
+  }, [activityId, focusChangeRecommendations]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -1436,6 +1535,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         if (!cancelled) {
           setSelfFeedbackByTemplate({});
           setSelfFeedbackByTaskId({});
+          setSelfFeedbackHistoryByTemplate({});
         }
         return;
       }
@@ -1475,6 +1575,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             currentActivityIds: uniqueCandidateIds,
           }),
         );
+        setSelfFeedbackHistoryByTemplate(buildFeedbackHistoryByTemplate(feedbackTemplateIds, allTemplateRows));
         setSelfFeedbackByTaskId(buildSelfFeedbackByTaskId(currentActivityRows));
       } catch (e) {
         if (__DEV__) console.log('[ActivityDetails] self feedback fetch skipped/failed', e);
@@ -1517,6 +1618,14 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     () => parseIntensityValue((activity as any)?.intensity ?? (activity as any)?.activity_intensity),
     [activity],
   );
+  const activityIntensityNote = useMemo(() => {
+    const raw =
+      (activity as any)?.intensityNote ??
+      (activity as any)?.intensity_note ??
+      (activity as any)?.activity_intensity_note ??
+      null;
+    return typeof raw === 'string' ? raw : '';
+  }, [activity]);
 
   const activityIntensityEnabled = useMemo(() => {
     const flag = resolveActivityIntensityEnabled(activity);
@@ -1548,7 +1657,8 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   useEffect(() => {
     if (isIntensityModalVisible) return;
     setIntensityModalDraft(currentActivityIntensity);
-  }, [currentActivityIntensity, isIntensityModalVisible]);
+    setIntensityModalNoteDraft(activityIntensityNote);
+  }, [activityIntensityNote, currentActivityIntensity, isIntensityModalVisible]);
 
   useEffect(() => {
     setPendingOpenIntensity(initialOpenIntensity ?? false);
@@ -1567,9 +1677,10 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     }
 
     setIntensityModalDraft(currentActivityIntensity);
+    setIntensityModalNoteDraft(activityIntensityNote);
     setIntensityModalError(null);
     setIsIntensityModalVisible(true);
-  }, [currentActivityIntensity, pendingOpenIntensity, showIntensityTaskRow]);
+  }, [activityIntensityNote, currentActivityIntensity, pendingOpenIntensity, showIntensityTaskRow]);
 
   const [convertToRecurring, setConvertToRecurring] = useState(false);
   const [recurrenceType, setRecurrenceType] = useState<'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly'>('weekly');
@@ -1623,6 +1734,8 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         intensity: updates.intensity !== undefined ? updates.intensity : activity.intensity,
         intensityEnabled:
           updates.intensityEnabled !== undefined ? updates.intensityEnabled : activity.intensityEnabled,
+        intensityNote:
+          updates.intensityNote !== undefined ? updates.intensityNote : activity.intensityNote,
       };
       onActivityUpdated(nextActivity);
     },
@@ -1696,44 +1809,102 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   }, [isIntensityModalSaving]);
 
   const persistActivityIntensity = useCallback(
-    async (value: number | null) => {
+    async (value: number | null, note: string) => {
       if (!showIntensityTaskRow) return;
       setIsIntensityModalSaving(true);
       const previousIntensity = typeof activity.intensity === 'number' ? activity.intensity : null;
+      const previousIntensityNote = activityIntensityNote.length ? activityIntensityNote : null;
+      const normalizedNote = typeof note === 'string' ? note.trim() : '';
+      const notePayload = normalizedNote.length ? normalizedNote : null;
 
       setIntensityModalError(null);
-      applyActivityUpdates({ intensity: value });
+      applyActivityUpdates({ intensity: value, intensityNote: notePayload });
 
       try {
-        await updateActivitySingle(activity.id, { intensity: value });
+        await updateActivitySingle(activity.id, { intensity: value, intensityNote: notePayload });
+        DeviceEventEmitter.emit('progression:refresh', {
+          activityId: activity.id,
+          intensity: value,
+          note: notePayload,
+          source: 'activity-details',
+        });
         setIsIntensityModalSaving(false);
         setIsIntensityModalVisible(false);
         setIntensityModalError(null);
         refreshData();
       } catch (error) {
         console.error('[Details] Error saving intensity:', error);
-        applyActivityUpdates({ intensity: previousIntensity });
+        applyActivityUpdates({ intensity: previousIntensity, intensityNote: previousIntensityNote });
         setIsIntensityModalSaving(false);
         setIntensityModalError('Kunne ikke gemme intensitet. Prøv igen.');
       }
     },
-    [activity.id, activity.intensity, applyActivityUpdates, refreshData, showIntensityTaskRow, updateActivitySingle],
+    [
+      activity.id,
+      activity.intensity,
+      activityIntensityNote,
+      applyActivityUpdates,
+      refreshData,
+      showIntensityTaskRow,
+      updateActivitySingle,
+    ],
   );
-
   const handleIntensityModalSave = useCallback(
-    ({ score }: TaskScoreNoteModalPayload) => {
-      persistActivityIntensity(typeof score === 'number' ? score : null);
+    ({ score, note }: TaskScoreNoteModalPayload) => {
+      persistActivityIntensity(typeof score === 'number' ? score : null, note);
     },
     [persistActivityIntensity],
   );
+
+  const handleIntensityClear = useCallback(async () => {
+    if (!showIntensityTaskRow) return;
+    if (isIntensityModalSaving) return;
+    setIsIntensityModalSaving(true);
+    const previousIntensity = typeof activity.intensity === 'number' ? activity.intensity : null;
+    const previousIntensityNote = activityIntensityNote.length ? activityIntensityNote : null;
+
+    setIntensityModalError(null);
+    applyActivityUpdates({ intensity: null, intensityEnabled: true, intensityNote: null });
+
+    try {
+      await updateActivitySingle(activity.id, { intensity: null, intensityEnabled: true, intensityNote: null });
+      DeviceEventEmitter.emit('progression:refresh', {
+        activityId: activity.id,
+        intensity: null,
+        note: null,
+        source: 'activity-details',
+      });
+      setIntensityModalDraft(null);
+      setIntensityModalNoteDraft('');
+      setIsIntensityModalSaving(false);
+      setIsIntensityModalVisible(false);
+      setIntensityModalError(null);
+      refreshData();
+    } catch (error) {
+      console.error('[Details] Error clearing intensity:', error);
+      applyActivityUpdates({ intensity: previousIntensity, intensityNote: previousIntensityNote });
+      setIsIntensityModalSaving(false);
+      setIntensityModalError('Kunne ikke fjerne intensitet. Prøv igen.');
+    }
+  }, [
+    activity.id,
+    activity.intensity,
+    activityIntensityNote,
+    applyActivityUpdates,
+    isIntensityModalSaving,
+    refreshData,
+    showIntensityTaskRow,
+    updateActivitySingle,
+  ]);
 
   const handleIntensityRowPress = useCallback(() => {
     if (!showIntensityTaskRow) return;
     if (isIntensityModalSaving) return;
     setIntensityModalDraft(typeof activity.intensity === 'number' ? activity.intensity : null);
+    setIntensityModalNoteDraft(activityIntensityNote);
     setIntensityModalError(null);
     setIsIntensityModalVisible(true);
-  }, [activity.intensity, isIntensityModalSaving, showIntensityTaskRow]);
+  }, [activity.intensity, activityIntensityNote, isIntensityModalSaving, showIntensityTaskRow]);
 
   const renderPicker = useCallback(
     ({
@@ -3315,6 +3486,13 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           if (__DEV__) console.log('[ActivityDetails] feedback completion update failed', e);
         }
 
+        DeviceEventEmitter.emit('progression:refresh', {
+          activityId: finalActivityId,
+          templateId,
+          taskInstanceId,
+          source: 'activity-details',
+        });
+
         Promise.resolve(refreshData()).catch(() => {});
       } catch (e) {
         console.error('[ActivityDetails] feedback save failed:', e);
@@ -3368,6 +3546,249 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       tasksState,
     ],
   );
+
+  const handleFeedbackClear = useCallback(async () => {
+    if (!feedbackModalTask) return;
+
+    setFeedbackModalError(null);
+    setIsFeedbackSaving(true);
+
+    const candidateActivityIds = feedbackActivityCandidates.length ? feedbackActivityCandidates : [];
+
+    if (!candidateActivityIds.length) {
+      console.error('[ActivityDetails] Feedback clear failed: missing activity_id', {
+        feedbackActivityCandidates,
+        feedbackModalTask,
+        activity,
+      });
+      Alert.alert('Kunne ikke fjerne', 'Aktiviteten mangler et ID. Prøv at lukke og åbne aktiviteten igen.');
+      setIsFeedbackSaving(false);
+      return;
+    }
+
+    if (!currentUserId) {
+      console.error('[ActivityDetails] Feedback clear failed: missing currentUserId', {
+        currentUserId,
+        feedbackModalTask,
+        activity,
+      });
+      Alert.alert('Kunne ikke fjerne', 'Bruger-ID mangler. Prøv at logge ind igen.');
+      setIsFeedbackSaving(false);
+      return;
+    }
+
+    const templateId = feedbackModalTask.templateId;
+    const feedbackTaskId = feedbackModalTask.task.id;
+    const taskInstanceId = feedbackModalTask.taskInstanceId;
+    const optimisticActivityId = candidateActivityIds[0];
+    const nowIso = new Date().toISOString();
+    const optimisticId = `optimistic:${optimisticActivityId}:${templateId}:${taskInstanceId}:${nowIso}`;
+    const previousEntry = selfFeedbackByTemplate[templateId];
+    const previousTaskEntry = selfFeedbackByTaskId[taskInstanceId];
+    const previousTaskCompleted = tasksState.find((t) => t.id === feedbackTaskId)?.completed ?? false;
+
+    const clearedFeedback: TaskTemplateSelfFeedback = {
+      id: optimisticId,
+      userId: currentUserId,
+      taskTemplateId: templateId,
+      taskInstanceId,
+      activityId: optimisticActivityId,
+      rating: null,
+      note: null,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+
+    setSelfFeedbackByTemplate((prev) => ({
+      ...prev,
+      [templateId]: {
+        previous: previousEntry?.previous,
+        current: clearedFeedback,
+      },
+    }));
+    setSelfFeedbackByTaskId((prev) => ({
+      ...prev,
+      [taskInstanceId]: clearedFeedback,
+    }));
+    setTasksState((prev) =>
+      prev.map((t) => (t.id === feedbackTaskId ? { ...t, completed: false } : t)),
+    );
+    handleFeedbackClose();
+    DeviceEventEmitter.emit('feedback:saved', {
+      activityId: optimisticActivityId,
+      templateId,
+      taskInstanceId,
+      rating: null,
+      note: null,
+      createdAt: nowIso,
+      optimisticId,
+      source: 'activity-details',
+    });
+
+    try {
+      const tryUpsert = async (candidateActivityId: string) =>
+        upsertSelfFeedback({
+          templateId,
+          taskInstanceId,
+          userId: currentUserId,
+          rating: null,
+          note: null,
+          activity_id: String(candidateActivityId).trim(),
+          activityId: String(candidateActivityId).trim(),
+        });
+
+      let savedFeedback: TaskTemplateSelfFeedback | null = null;
+      let savedActivityId: string | null = null;
+      let lastError: any = null;
+      let lastTriedId: string | null = null;
+
+      for (const candidateId of candidateActivityIds) {
+        lastTriedId = candidateId;
+        try {
+          savedFeedback = await tryUpsert(candidateId);
+          savedActivityId = candidateId;
+          lastError = null;
+          break;
+        } catch (e) {
+          lastError = e;
+        }
+      }
+
+      if (!savedFeedback && lastError) {
+        if (__DEV__) {
+          console.log('[ActivityDetails] feedback clear failed', {
+            activityId: lastTriedId,
+            message: (lastError as any)?.message,
+            details: (lastError as any)?.details,
+            hint: (lastError as any)?.hint,
+            code: (lastError as any)?.code,
+            status: (lastError as any)?.status,
+          });
+        }
+        throw lastError;
+      }
+
+      if (!savedFeedback) {
+        throw new Error('Feedback clear failed');
+      }
+
+      const finalActivityId = savedFeedback.activityId ?? savedActivityId ?? optimisticActivityId;
+
+      if (finalActivityId !== optimisticActivityId) {
+        DeviceEventEmitter.emit('feedback:save_failed', {
+          activityId: optimisticActivityId,
+          templateId,
+          taskInstanceId,
+          optimisticId,
+          source: 'activity-details',
+        });
+
+        const correctedCreatedAt = savedFeedback.createdAt ?? nowIso;
+        const correctedOptimisticId = `optimistic:${finalActivityId}:${templateId}:${taskInstanceId}:${correctedCreatedAt}`;
+
+        DeviceEventEmitter.emit('feedback:saved', {
+          activityId: finalActivityId,
+          templateId,
+          taskInstanceId,
+          rating: null,
+          note: null,
+          createdAt: correctedCreatedAt,
+          optimisticId: correctedOptimisticId,
+          source: 'activity-details',
+        });
+      }
+
+      setSelfFeedbackByTemplate((prev) => {
+        const prevEntry = prev[templateId] ?? {};
+        return {
+          ...prev,
+          [templateId]: {
+            previous: prevEntry.previous,
+            current: savedFeedback ?? clearedFeedback,
+          },
+        };
+      });
+      setSelfFeedbackByTaskId((prev) => ({
+        ...prev,
+        [taskInstanceId]: savedFeedback ?? clearedFeedback,
+      }));
+
+      try {
+        if (activity.isExternal) {
+          const { error } = await supabase
+            .from('external_event_tasks')
+            .update({ completed: false })
+            .eq('id', feedbackTaskId);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase
+            .from('activity_tasks')
+            .update({ completed: false })
+            .eq('id', feedbackTaskId);
+          if (error) throw error;
+        }
+      } catch (e) {
+        if (__DEV__) console.log('[ActivityDetails] feedback clear completion update failed', e);
+      }
+
+      DeviceEventEmitter.emit('progression:refresh', {
+        activityId: finalActivityId,
+        templateId,
+        taskInstanceId,
+        source: 'activity-details',
+      });
+
+      Promise.resolve(refreshData()).catch(() => {});
+    } catch (e) {
+      console.error('[ActivityDetails] feedback clear failed:', e);
+      setSelfFeedbackByTemplate((prev) => {
+        if (previousEntry) {
+          return { ...prev, [templateId]: previousEntry };
+        }
+        const { [templateId]: _removed, ...rest } = prev;
+        return rest;
+      });
+      setSelfFeedbackByTaskId((prev) => {
+        if (previousTaskEntry) {
+          return { ...prev, [taskInstanceId]: previousTaskEntry };
+        }
+        const { [taskInstanceId]: _removed, ...rest } = prev;
+        return rest;
+      });
+      setTasksState((prev) =>
+        prev.map((t) => (t.id === feedbackTaskId ? { ...t, completed: previousTaskCompleted } : t)),
+      );
+      DeviceEventEmitter.emit('feedback:save_failed', {
+        activityId: optimisticActivityId,
+        templateId,
+        taskInstanceId,
+        optimisticId,
+        source: 'activity-details',
+      });
+      Alert.alert('Kunne ikke fjerne', 'Feedback kunne ikke fjernes. Prøv igen.');
+      if (__DEV__) {
+        console.log('[ActivityDetails] feedback clear error details', {
+          message: (e as any)?.message,
+          details: (e as any)?.details,
+          hint: (e as any)?.hint,
+          code: (e as any)?.code,
+          status: (e as any)?.status,
+        });
+      }
+    } finally {
+      setIsFeedbackSaving(false);
+    }
+  }, [
+    activity,
+    currentUserId,
+    feedbackActivityCandidates,
+    feedbackModalTask,
+    handleFeedbackClose,
+    refreshData,
+    selfFeedbackByTaskId,
+    selfFeedbackByTemplate,
+    tasksState,
+  ]);
 
   const feedbackModalConfig = useMemo(() => {
     if (!feedbackModalTask) return undefined;
@@ -3534,6 +3955,8 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         isSaving={isFeedbackSaving}
         error={feedbackModalError}
         onSave={handleFeedbackSave}
+        onClear={handleFeedbackClear}
+        clearLabel="Markér som ikke udført"
         onClose={handleFeedbackClose}
       />
 
@@ -3543,14 +3966,18 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         introText="Hvordan gik træningen?"
         helperText="1 = let – 10 = maks"
         initialScore={intensityModalDraft}
-        initialNote=""
+        initialNote={intensityModalNoteDraft}
         enableScore
-        enableNote={false}
+        enableNote
         showLabels={!isEditing}
         isSaving={isIntensityModalSaving}
         error={intensityModalError}
         onSave={handleIntensityModalSave}
+        onClear={handleIntensityClear}
+        clearLabel="Markér som ikke udført"
         onClose={closeIntensityModal}
+        missingScoreTitle="Manglende intensitet"
+        missingScoreMessage="Vælg en intensitet før du kan markere som udført."
       />
 
       {showCreateTaskModal && (

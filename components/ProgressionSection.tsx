@@ -1,14 +1,32 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useColorScheme, Modal } from 'react-native';
-import Svg, { Polyline, Circle, Defs, LinearGradient, Stop, Text as SvgText } from 'react-native-svg';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useColorScheme, Modal, Alert, ScrollView } from 'react-native';
+import Svg, { Rect, Text as SvgText } from 'react-native-svg';
 import * as CommonStyles from '@/styles/commonStyles';
 import { ActivityCategory } from '@/types';
 import { ProgressionMetric, TrendPoint, useProgressionData, TrendSeries } from '@/hooks/useProgressionData';
 import { DropdownSelect } from './ui/DropdownSelect';
-import { format, subDays, startOfDay } from 'date-fns';
+import { format } from 'date-fns';
+import { IconSymbol } from '@/components/IconSymbol';
+import { useFocusEffect } from '@react-navigation/native';
 
 type Props = {
   categories: ActivityCategory[];
+};
+
+type TierHistoryEntry = {
+  rating: number;
+  createdAt: string;
+  activityTitle?: string | null;
+  note?: string | null;
+};
+
+type TierTaskItem = {
+  templateId: string;
+  name: string;
+  lastScores: number[];
+  history: TierHistoryEntry[];
+  description?: string | null;
+  scoreExplanation?: string | null;
 };
 
 export function ProgressionSection({ categories }: Props) {
@@ -21,8 +39,14 @@ export function ProgressionSection({ categories }: Props) {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [chartWidth, setChartWidth] = useState(0);
   const [selectedPoint, setSelectedPoint] = useState<TrendPoint | null>(null);
+  const [selectedTask, setSelectedTask] = useState<TierTaskItem | null>(null);
+  const [expandedTiers, setExpandedTiers] = useState({
+    elite: false,
+    oevet: false,
+    begynder: false,
+  });
 
-  const { trendPoints, summary, isLoading, error, rawEntries, focusTemplates, intensityCategoriesWithData, possibleCount, requiresLogin } =
+  const { trendPoints, isLoading, error, rawEntries, allFocusEntries, focusTemplates, intensityCategoriesWithData, requiresLogin, refetch } =
     useProgressionData({
       days: periodDays,
       metric,
@@ -30,9 +54,20 @@ export function ProgressionSection({ categories }: Props) {
       intensityCategoryId: metric === 'intensity' ? selectedCategoryId : null,
       categories,
     });
+  const hasFocusedOnceRef = useRef(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!hasFocusedOnceRef.current) {
+        hasFocusedOnceRef.current = true;
+        return;
+      }
+      refetch();
+    }, [refetch]),
+  );
 
   const focusOptions = useMemo(
-    () => [{ value: null, label: 'Alle fokusopgaver' }, ...focusTemplates.map(t => ({ value: t.id, label: t.name }))],
+    () => [{ value: null, label: 'Alle feedback opgaver' }, ...focusTemplates.map(t => ({ value: t.id, label: t.name }))],
     [focusTemplates]
   );
 
@@ -55,7 +90,7 @@ export function ProgressionSection({ categories }: Props) {
 
   const metricOptions: { label: string; value: ProgressionMetric }[] = useMemo(
     () => [
-      { label: 'Fokus-score', value: 'rating' },
+      { label: 'Feedback-score', value: 'rating' },
       { label: 'Intensitet', value: 'intensity' },
     ],
     []
@@ -100,7 +135,7 @@ export function ProgressionSection({ categories }: Props) {
     const isMultiSeries = (metric === 'rating' && selectedFocusId === null) || (metric === 'intensity' && selectedCategoryId === null);
     if (!isMultiSeries) {
       return trendPoints.length > 0
-        ? [{ id: 'single', name: 'Trend', points: trendPoints, color: 'url(#lineGradient)' }]
+        ? [{ id: 'single', name: 'Trend', points: trendPoints, color: palette.primary }]
         : [];
     }
 
@@ -134,7 +169,7 @@ export function ProgressionSection({ categories }: Props) {
     });
 
     return Array.from(seriesMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [rawEntries, trendPoints, metric, selectedFocusId, selectedCategoryId, seriesColors, colorPalette]);
+  }, [rawEntries, trendPoints, metric, selectedFocusId, selectedCategoryId, seriesColors, colorPalette, palette.primary]);
 
   const allPointsSorted = useMemo(() => {
     const all = trendSeries.flatMap(s => s.points);
@@ -151,42 +186,193 @@ export function ProgressionSection({ categories }: Props) {
     return Array.from(uniquePoints.values());
   }, [allPointsSorted]);
 
+  const pointsByDate = useMemo(() => {
+    const map = new Map<string, TrendPoint[]>();
+    allPointsSorted.forEach(point => {
+      const list = map.get(point.dateKey);
+      if (list) {
+        list.push(point);
+      } else {
+        map.set(point.dateKey, [point]);
+      }
+    });
+    map.forEach(list => {
+      list.sort((a, b) => (a.seriesName ?? '').localeCompare(b.seriesName ?? '') || a.id.localeCompare(b.id));
+    });
+    return map;
+  }, [allPointsSorted]);
+
+  const seriesColorLookup = useMemo(() => {
+    const map = new Map<string, string>();
+    trendSeries.forEach(series => {
+      map.set(series.id, series.color);
+    });
+    return map;
+  }, [trendSeries]);
+
+  const chartInnerWidth = Math.max(0, chartWidth - chartPadding.left - chartPadding.right);
+  const chartInnerHeight = Math.max(0, chartHeight - chartPadding.top - chartPadding.bottom);
+  const barGroupWidth = xAxisPoints.length ? chartInnerWidth / xAxisPoints.length : chartInnerWidth;
+
+  const xAxisLabelMeta = useMemo(() => {
+    if (!xAxisPoints.length) return [];
+    const safeBarWidth = Math.max(barGroupWidth, 1);
+    const minLabelSpacing = 48;
+    const spacingInterval = Math.max(1, Math.ceil(minLabelSpacing / safeBarWidth));
+    const count = xAxisPoints.length;
+    const countInterval = count <= 12 ? 1 : count <= 24 ? 2 : count <= 45 ? 3 : 7;
+    const step = Math.max(spacingInterval, countInterval);
+
+    return xAxisPoints.map((point, idx) => {
+      const date = new Date(point.dateKey);
+      const isFirst = idx === 0;
+      const isLast = idx === count - 1;
+      const isMonthStart = date.getDate() === 1;
+      const show = isFirst || isLast || isMonthStart || idx % step === 0;
+      const label = isFirst || isLast
+        ? format(date, 'dd MMM')
+        : isMonthStart
+          ? format(date, 'MMM')
+          : format(date, 'dd');
+      return {
+        ...point,
+        label,
+        show,
+        isFirst,
+        isLast,
+      };
+    });
+  }, [xAxisPoints, barGroupWidth]);
+
   const selectedDetails = useMemo(() => {
     if (!selectedPoint) return null;
-    const matched = rawEntries.find(entry => entry.id === selectedPoint.representative.id) || selectedPoint.representative;
+    const matched =
+      rawEntries.find(entry => entry.id === selectedPoint.representative.id) || selectedPoint.representative;
     return matched;
   }, [rawEntries, selectedPoint]);
 
-  const summaryPrimaryLabel = metric === 'rating' ? 'Progressionsscore' : 'Intensitet';
-  const summaryValueColor = resolveValueColor(summary.avgCurrent);
-
-  const previousPeriodText = useMemo(() => {
-    const today = startOfDay(new Date());
-    const periodStart = startOfDay(subDays(today, periodDays - 1));
-    const previousStart = subDays(periodStart, periodDays);
-    const previousEnd = subDays(periodStart, 1);
-    return `Sammenlignet med forrige ${periodDays} dage (${format(previousStart, 'dd/MM')}–${format(previousEnd, 'dd/MM')})`;
-  }, [periodDays]);
-
-  const avgChangeRounded = Math.round(summary.avgChangePercent);
-  const previousWasZero = summary.avgPrevious === 0;
-  let summaryDeltaText = '0% vs. forrige periode';
-  let summaryDeltaColor = palette.textSecondary;
-
-  if (previousWasZero) {
-    if (summary.avgCurrent > 0) {
-      summaryDeltaText = '↑ 100%+ vs. forrige periode';
-      summaryDeltaColor = palette.success;
-    }
-  } else {
-    const arrow = avgChangeRounded > 0 ? '↑' : avgChangeRounded < 0 ? '↓' : '';
-    summaryDeltaText = `${arrow ? `${arrow} ` : ''}${Math.abs(avgChangeRounded)}% vs. forrige periode`;
-    summaryDeltaColor =
-      avgChangeRounded > 0 ? palette.success : avgChangeRounded < 0 ? palette.error : palette.textSecondary;
-  }
-
   const yAxisLabels = [0, 2, 4, 6, 8, 10];
   const isMultiSeries = trendSeries.length > 1;
+
+  const focusTierBuckets = useMemo(() => {
+    if (metric !== 'rating') return null;
+
+    const buckets = {
+      elite: [] as TierTaskItem[],
+      oevet: [] as TierTaskItem[],
+      begynder: [] as TierTaskItem[],
+    };
+
+    const isEliteStreak = (scores: number[]) => scores.length >= 5 && scores.every(score => score >= 9);
+
+    const byTemplate = new Map<
+      string,
+      {
+        name: string;
+        description?: string | null;
+        scoreExplanation?: string | null;
+        entries: TierHistoryEntry[];
+      }
+    >();
+
+    allFocusEntries.forEach(entry => {
+      if (entry.kind !== 'rating') return;
+      if (typeof entry.rating !== 'number') return;
+      const templateId = entry.focusCategoryId ?? entry.taskTemplateId;
+      if (!templateId) return;
+      const name = entry.focusName || entry.taskTemplateName || 'Feedback opgaver';
+      const createdAt = entry.createdAt || entry.dateKey;
+      const record = byTemplate.get(templateId) ?? {
+        name,
+        description: entry.taskTemplateDescription ?? null,
+        scoreExplanation: entry.taskTemplateScoreExplanation ?? null,
+        entries: [],
+      };
+      if (!record.description && entry.taskTemplateDescription) {
+        record.description = entry.taskTemplateDescription;
+      }
+      if (!record.scoreExplanation && entry.taskTemplateScoreExplanation) {
+        record.scoreExplanation = entry.taskTemplateScoreExplanation;
+      }
+      record.entries.push({
+        rating: entry.rating,
+        createdAt,
+        activityTitle: entry.activityTitle ?? null,
+        note: entry.note ?? null,
+      });
+      if (!byTemplate.has(templateId)) {
+        byTemplate.set(templateId, record);
+      }
+    });
+
+    const assigned = new Set<string>();
+
+    byTemplate.forEach((value, templateId) => {
+      const sorted = [...value.entries].sort((a, b) => {
+        const aMs = new Date(a.createdAt).getTime();
+        const bMs = new Date(b.createdAt).getTime();
+        return (Number.isFinite(bMs) ? bMs : 0) - (Number.isFinite(aMs) ? aMs : 0);
+      });
+      if (!sorted.length) return;
+      const lastFive = sorted.slice(0, 5);
+      const lastFiveScores = lastFive.map(entry => entry.rating);
+      const latestScore = lastFiveScores[0];
+      const taskItem: TierTaskItem = {
+        templateId,
+        name: value.name || 'Feedback opgaver',
+        lastScores: lastFiveScores,
+        history: sorted,
+        description: value.description ?? null,
+        scoreExplanation: value.scoreExplanation ?? null,
+      };
+
+      if (isEliteStreak(lastFiveScores)) {
+        buckets.elite.push(taskItem);
+        assigned.add(templateId);
+        return;
+      }
+
+      if (typeof latestScore === 'number' && latestScore >= 6) {
+        buckets.oevet.push(taskItem);
+        assigned.add(templateId);
+        return;
+      }
+
+      if (!assigned.has(templateId) && typeof latestScore === 'number') {
+        buckets.begynder.push(taskItem);
+      }
+    });
+
+    const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
+    buckets.elite.sort(byName);
+    buckets.oevet.sort(byName);
+    buckets.begynder.sort(byName);
+
+    return buckets;
+  }, [metric, allFocusEntries]);
+
+  const handleTierInfo = useCallback(
+    (tier: 'elite' | 'oevet' | 'begynder') => {
+      const messages: Record<typeof tier, string> = {
+        elite: 'Elite kræver, at dine sidste 5 scores er 9–10/10 (min. fem gange i træk).',
+        oevet:
+          'Øvet viser opgaver hvor din seneste score er 6–8/10, eller 9–10/10 endnu ikke fem gange i træk.',
+        begynder:
+          'Begynder viser opgaver hvor din seneste score er mellem 1-5/10.',
+      };
+      Alert.alert('Krav for niveau', messages[tier]);
+    },
+    [],
+  );
+
+  const formatHistoryDate = useCallback((value: string) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value.slice(0, 10);
+    }
+    return format(date, 'dd MMM yyyy');
+  }, []);
 
   if (requiresLogin) {
     return (
@@ -207,7 +393,7 @@ export function ProgressionSection({ categories }: Props) {
       </View>
 
       {metric === 'rating' ? (
-        <DropdownSelect options={focusOptions} selectedValue={selectedFocusId} onSelect={setSelectedFocusId} label="Fokusopgave" />
+        <DropdownSelect options={focusOptions} selectedValue={selectedFocusId} onSelect={setSelectedFocusId} label="Feedback opgaver" />
       ) : (
         <DropdownSelect
           options={intensityOptions}
@@ -216,38 +402,6 @@ export function ProgressionSection({ categories }: Props) {
           label="Kategori"
         />
       )}
-
-      <View style={[styles.summaryCard, { backgroundColor: palette.backgroundAlt, shadowColor: palette.shadow }]}>
-        <View style={styles.summaryLeft}>
-          <View style={styles.summaryTitleRow}>
-            <Text style={[styles.summaryLabel, { color: palette.textSecondary }]}>{summaryPrimaryLabel}</Text>
-          </View>
-          <Text style={[styles.summaryValue, { color: summaryValueColor }]}>{summary.avgCurrent.toFixed(1)}</Text>
-          <Text style={[styles.summaryDelta, { color: summaryDeltaColor }]}>{summaryDeltaText}</Text>
-          <Text style={[styles.summaryComparison, { color: palette.textSecondary }]}>{previousPeriodText}</Text>
-        </View>
-        <View style={styles.summaryRight}>
-          <View style={styles.summaryMetaItem}>
-            <Text style={[styles.summaryMetaValue, { color: palette.text }]}>{summary.completedCount}</Text>
-            <Text style={[styles.summaryMetaLabel, { color: palette.textSecondary }]}>Registreringer</Text>
-          </View>
-          <View style={styles.summaryMetaItem}>
-            <Text style={[styles.summaryMetaValue, { color: palette.text }]}>{possibleCount}</Text>
-            <Text style={[styles.summaryMetaLabel, { color: palette.textSecondary }]}>Mulige</Text>
-          </View>
-          <View style={styles.summaryMetaItem}>
-            <Text style={[styles.summaryMetaValue, { color: palette.text }]}>{summary.streakDays}</Text>
-            <Text style={[styles.summaryMetaLabel, { color: palette.textSecondary }]}>Streak</Text>
-          </View>
-        </View>
-      </View>
-
-      <View style={[styles.explanationCard, { backgroundColor: palette.backgroundAlt }]}>
-        <Text style={[styles.explanationText, { color: palette.textSecondary }]}>
-          Progressionsscore viser udviklingen i din valgte score over perioden. Den beregnes ud fra dine registrerede
-          træninger og vises som gennemsnit for perioden.
-        </Text>
-      </View>
 
       {isLoading ? (
         <View style={styles.loadingRow}>
@@ -274,7 +428,7 @@ export function ProgressionSection({ categories }: Props) {
         >
           <View style={styles.chartHeader}>
             <Text style={[styles.chartTitle, { color: palette.text }]}>
-              Score ({metric === 'rating' ? 'Fokus' : 'Intensitet'})
+              Score ({metric === 'rating' ? 'Feedback' : 'Intensitet'})
             </Text>
             <Text style={[styles.chartSubtitle, { color: palette.textSecondary }]}>{allPointsSorted.length} træninger</Text>
           </View>
@@ -282,12 +436,6 @@ export function ProgressionSection({ categories }: Props) {
           {chartWidth > 0 && (
             <View>
               <Svg height={chartHeight} width={chartWidth}>
-                <Defs>
-                  <LinearGradient id="lineGradient" x1="0" y1="0" x2="1" y2="0">
-                    <Stop offset="0%" stopColor={palette.primary} stopOpacity={0.9} />
-                    <Stop offset="100%" stopColor={palette.secondary} stopOpacity={0.9} />
-                  </LinearGradient>
-                </Defs>
 
                 {/* Y-axis */}
                 {yAxisLabels.map(label => {
@@ -307,75 +455,68 @@ export function ProgressionSection({ categories }: Props) {
                 })}
 
                 {/* X-axis */}
-                {xAxisPoints.map((point, idx) => {
-                  const x =
-                    xAxisPoints.length === 1
-                      ? chartWidth / 2
-                      : (idx / (xAxisPoints.length - 1)) * (chartWidth - chartPadding.left - chartPadding.right) +
-                        chartPadding.left;
-                  const anchor = idx === 0 ? 'start' : idx === xAxisPoints.length - 1 ? 'end' : 'middle';
+                {xAxisLabelMeta.map((point, idx) => {
+                  if (!point.show) return null;
+                  const x = chartPadding.left + barGroupWidth * idx + barGroupWidth / 2;
+                  const anchor = point.isFirst ? 'start' : point.isLast ? 'end' : 'middle';
                   return (
                     <SvgText
-                      key={`x-label-${point.id}`}
+                      key={`x-label-${point.dateKey}`}
                       x={x}
                       y={chartHeight - xAxisHeight / 2 + 8}
                       fill={palette.textSecondary}
                       fontSize="12"
                       textAnchor={anchor}
                     >
-                      {point.dateLabel}
+                      {point.label}
                     </SvgText>
                   );
                 })}
 
-                {/* Chart Lines and Points */}
-                {trendSeries.map(series => {
-                  const pointCoords = series.points
-                    .map(point => {
-                      const pointIdx = xAxisPoints.findIndex(p => p.dateKey === point.dateKey);
-                      if (pointIdx === -1) return null;
-                      const x =
-                        xAxisPoints.length === 1
-                          ? chartWidth / 2
-                          : (pointIdx / (xAxisPoints.length - 1)) *
-                              (chartWidth - chartPadding.left - chartPadding.right) +
-                            chartPadding.left;
-                      const clamped = Math.max(0, Math.min(10, point.value));
-                      const y =
-                        (1 - clamped / 10) * (chartHeight - chartPadding.top - chartPadding.bottom) + chartPadding.top;
-                      return { x, y, point };
-                    })
-                    .filter(Boolean) as { x: number; y: number; point: TrendPoint }[];
+                {/* Bars */}
+                {xAxisPoints.map((point, idx) => {
+                  const pointsForDate = pointsByDate.get(point.dateKey) ?? [];
+                  if (!pointsForDate.length) return null;
 
-                  return (
-                    <React.Fragment key={series.id}>
-                      {pointCoords.length > 1 && (
-                        <Polyline
-                          points={pointCoords.map(p => `${p.x},${p.y}`).join(' ')}
-                          fill="none"
-                          stroke={series.color}
-                          strokeWidth={2.5}
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      )}
-                      {pointCoords.map(({ x, y, point }) => (
-                        <Circle
-                          key={point.id}
-                          cx={x}
-                          cy={y}
-                          r={6}
-                          fill={palette.card}
-                          stroke={isMultiSeries ? series.color : resolveValueColor(point.value)}
-                          strokeWidth={3}
-                          onPress={() => handlePointPress(point)}
-                        />
-                      ))}
-                    </React.Fragment>
-                  );
+                  const groupCenter = chartPadding.left + barGroupWidth * idx + barGroupWidth / 2;
+                  const groupPadding = Math.min(10, barGroupWidth * 0.2);
+                  const availableWidth = Math.max(2, barGroupWidth - groupPadding * 2);
+                  const count = pointsForDate.length;
+                  let barGap = Math.min(4, barGroupWidth * 0.12);
+                  let barWidth = (availableWidth - barGap * (count - 1)) / count;
+                  if (barWidth < 2) {
+                    barGap = 1;
+                    barWidth = Math.max(1.5, (availableWidth - barGap * (count - 1)) / count);
+                  }
+                  barWidth = Math.min(20, barWidth);
+                  const totalBarsWidth = barWidth * count + barGap * Math.max(0, count - 1);
+                  const startX = groupCenter - totalBarsWidth / 2;
+
+                  return pointsForDate.map((barPoint, barIndex) => {
+                    const clamped = Math.max(0, Math.min(10, barPoint.value));
+                    const barHeight = (clamped / 10) * chartInnerHeight;
+                    const x = startX + barIndex * (barWidth + barGap);
+                    const y = chartPadding.top + (chartInnerHeight - barHeight);
+                    const fillColor = isMultiSeries
+                      ? seriesColorLookup.get(barPoint.seriesId ?? '') ?? palette.primary
+                      : resolveValueColor(barPoint.value);
+
+                    return (
+                      <Rect
+                        key={`bar-${barPoint.id}`}
+                        x={x}
+                        y={y}
+                        width={barWidth}
+                        height={barHeight}
+                        rx={4}
+                        fill={fillColor}
+                        onPress={() => handlePointPress(barPoint)}
+                      />
+                    );
+                  });
                 })}
               </Svg>
-              <Text style={[styles.chartHint, { color: palette.textSecondary }]}>Tryk på et punkt for detaljer</Text>
+              <Text style={[styles.chartHint, { color: palette.textSecondary }]}>Tryk på en søjle for detaljer</Text>
             </View>
           )}
           {isMultiSeries && (
@@ -391,6 +532,175 @@ export function ProgressionSection({ categories }: Props) {
         </View>
       )}
 
+      {metric === 'rating' && focusTierBuckets && allPointsSorted.length > 0 && (
+        <View style={styles.tierSection}>
+          {[
+            { key: 'elite', label: 'Elite', color: palette.gold },
+            { key: 'oevet', label: 'Øvet', color: palette.silver },
+            { key: 'begynder', label: 'Begynder', color: palette.bronze },
+          ].map(tier => {
+            const items = focusTierBuckets[tier.key as keyof typeof focusTierBuckets];
+            return (
+              <View key={tier.key} style={[styles.tierCard, { backgroundColor: tier.color }]}>
+                <View style={styles.tierHeader}>
+                  <TouchableOpacity
+                    style={styles.tierHeaderLeft}
+                    onPress={() =>
+                      setExpandedTiers(prev => ({
+                        ...prev,
+                        [tier.key]: !prev[tier.key as keyof typeof prev],
+                      }))
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel={`${expandedTiers[tier.key as keyof typeof expandedTiers] ? 'Skjul' : 'Vis'} ${tier.label}`}
+                  >
+                    <Text style={styles.tierTitle}>{tier.label}</Text>
+                  </TouchableOpacity>
+                  <View style={styles.tierHeaderRight}>
+                    <Text style={styles.tierCount}>{items.length}</Text>
+                    <TouchableOpacity
+                      onPress={() =>
+                        setExpandedTiers(prev => ({
+                          ...prev,
+                          [tier.key]: !prev[tier.key as keyof typeof prev],
+                        }))
+                      }
+                      style={styles.tierToggleButton}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${expandedTiers[tier.key as keyof typeof expandedTiers] ? 'Skjul' : 'Vis'} ${tier.label}`}
+                    >
+                      <IconSymbol
+                        ios_icon_name={
+                          expandedTiers[tier.key as keyof typeof expandedTiers] ? 'chevron.up' : 'chevron.down'
+                        }
+                        android_material_icon_name={
+                          expandedTiers[tier.key as keyof typeof expandedTiers] ? 'expand_less' : 'expand_more'
+                        }
+                        size={18}
+                        color="#fff"
+                      />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleTierInfo(tier.key as 'elite' | 'oevet' | 'begynder')}
+                      style={styles.tierInfoButton}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Info om ${tier.label}`}
+                    >
+                      <IconSymbol
+                        ios_icon_name="info.circle"
+                        android_material_icon_name="info"
+                        size={18}
+                        color="#fff"
+                      />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                {expandedTiers[tier.key as keyof typeof expandedTiers] ? (
+                  items.length ? (
+                    items.map(item => (
+                      <TouchableOpacity
+                        key={item.templateId}
+                        style={styles.tierRow}
+                        onPress={() => setSelectedTask(item)}
+                        activeOpacity={0.8}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Se detaljer for ${item.name}`}
+                      >
+                        <Text style={styles.tierRowName}>{item.name}</Text>
+                        <Text style={styles.tierRowScores}>
+                          {item.lastScores.map(score => Math.round(score)).join(' · ')}
+                        </Text>
+                      </TouchableOpacity>
+                    ))
+                  ) : (
+                    <Text style={styles.tierEmptyText}>Ingen opgaver endnu</Text>
+                  )
+                ) : null}
+              </View>
+            );
+          })}
+        </View>
+      )}
+
+      <Modal
+        visible={!!selectedTask}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedTask(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: palette.card }]}>
+            <Text style={[styles.modalTitle, { color: palette.text }]}>{selectedTask?.name}</Text>
+            {selectedTask?.description ? (
+              <Text style={[styles.taskDescription, { color: palette.textSecondary }]}>
+                {selectedTask.description}
+              </Text>
+            ) : selectedTask?.scoreExplanation ? null : (
+              <Text style={[styles.taskDescription, { color: palette.textSecondary }]}>
+                Ingen beskrivelse tilgængelig for denne opgave.
+              </Text>
+            )}
+
+            {selectedTask?.scoreExplanation ? (
+              <View
+                style={[
+                  styles.taskExplanationBox,
+                  { backgroundColor: palette.backgroundAlt, borderColor: palette.border },
+                ]}
+              >
+                <Text style={[styles.taskExplanationTitle, { color: palette.text }]}>Scoreforklaring</Text>
+                <Text style={[styles.taskExplanationText, { color: palette.textSecondary }]}>
+                  {selectedTask.scoreExplanation}
+                </Text>
+              </View>
+            ) : null}
+
+            <Text style={[styles.sectionTitle, { color: palette.text }]}>Scorehistorik</Text>
+            {selectedTask?.history?.length ? (
+              <ScrollView style={styles.historyList} contentContainerStyle={styles.historyContent}>
+                {selectedTask.history.map((entry, index) => (
+                  <View
+                    key={`${selectedTask.templateId}-${index}`}
+                    style={[styles.historyRow, { borderColor: palette.border }]}
+                  >
+                    <View style={styles.historyMeta}>
+                      <Text style={[styles.historyDate, { color: palette.text }]}>
+                        {formatHistoryDate(entry.createdAt)}
+                      </Text>
+                      {entry.activityTitle ? (
+                        <Text style={[styles.historyActivity, { color: palette.textSecondary }]}>
+                          {entry.activityTitle}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <View
+                      style={[
+                        styles.historyScoreBadge,
+                        { backgroundColor: resolveValueColor(entry.rating) },
+                      ]}
+                    >
+                      <Text style={styles.historyScoreText}>{Math.round(entry.rating)}/10</Text>
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+            ) : (
+              <Text style={[styles.historyEmptyText, { color: palette.textSecondary }]}>
+                Ingen scores endnu
+              </Text>
+            )}
+
+            <TouchableOpacity
+              onPress={() => setSelectedTask(null)}
+              style={[styles.closeButton, { backgroundColor: palette.primary }]}
+              accessibilityRole="button"
+            >
+              <Text style={[styles.closeButtonText, { color: '#fff' }]}>Luk</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={!!selectedPoint} transparent animationType="fade" onRequestClose={() => setSelectedPoint(null)}>
         <View style={styles.modalBackdrop}>
           <View style={[styles.modalCard, { backgroundColor: palette.card }]}>
@@ -401,7 +711,10 @@ export function ProgressionSection({ categories }: Props) {
                 {metric === 'rating' ? (
                   <>
                     <Text style={[styles.modalText, { color: palette.textSecondary }]}>
-                      Fokusopgave: {selectedDetails.focusName}
+                      Feedback opgaver: {selectedDetails.focusName}
+                    </Text>
+                    <Text style={[styles.modalText, { color: palette.textSecondary }]}>
+                      Aktivitet: {selectedDetails.activityTitle || 'Aktivitet'}
                     </Text>
                     <Text style={[styles.modalText, { color: palette.textSecondary }]}>
                       Score: {selectedDetails.rating ?? '—'}
@@ -444,65 +757,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginBottom: 12,
-  },
-  summaryCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderRadius: 16,
-    padding: 20,
-    marginTop: 12,
-    elevation: 1,
-  },
-  summaryLeft: {
-    gap: 4,
-    flex: 1,
-  },
-  summaryTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  summaryLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  summaryValue: {
-    fontSize: 48,
-    fontWeight: '800',
-  },
-  summaryDelta: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  summaryComparison: {
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: 2,
-  },
-  summaryRight: {
-    alignItems: 'flex-end',
-    gap: 12,
-  },
-  summaryMetaItem: {
-    alignItems: 'flex-end',
-  },
-  summaryMetaValue: {
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  summaryMetaLabel: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  explanationCard: {
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 12,
-  },
-  explanationText: {
-    fontSize: 13,
-    lineHeight: 18,
   },
   loadingRow: {
     flexDirection: 'row',
@@ -580,6 +834,136 @@ const styles = StyleSheet.create({
   legendLabel: {
     fontSize: 12,
     fontWeight: '500',
+  },
+  tierSection: {
+    gap: 12,
+    marginBottom: 24,
+  },
+  tierCard: {
+    borderRadius: 16,
+    padding: 16,
+  },
+  tierHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  tierHeaderLeft: {
+    flex: 1,
+  },
+  tierHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  tierTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  tierCount: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  tierInfoButton: {
+    padding: 4,
+  },
+  tierToggleButton: {
+    padding: 4,
+  },
+  tierRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 6,
+    marginBottom: 8,
+  },
+  tierRowName: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  tierRowScores: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  tierEmptyText: {
+    fontSize: 13,
+    color: '#fff',
+    opacity: 0.9,
+  },
+  taskDescription: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 8,
+  },
+  taskExplanationBox: {
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginBottom: 8,
+  },
+  taskExplanationTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  taskExplanationText: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  historyList: {
+    maxHeight: 260,
+  },
+  historyContent: {
+    paddingBottom: 4,
+  },
+  historyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  historyMeta: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  historyDate: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  historyActivity: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  historyScoreBadge: {
+    minWidth: 56,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    alignItems: 'center',
+  },
+  historyScoreText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  historyEmptyText: {
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: 8,
   },
   modalBackdrop: {
     flex: 1,

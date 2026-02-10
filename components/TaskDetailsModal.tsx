@@ -86,7 +86,7 @@ function TaskDetailsModalComponent({
 }: TaskDetailsModalProps) {
   const base = useMemo(() => clampColorHex(categoryColor), [categoryColor]);
 
-  const disable = completed || isSaving;
+  const disable = isSaving;
 
   return (
     <Modal visible={visible} animationType="fade" transparent statusBarTranslucent onRequestClose={onClose}>
@@ -162,7 +162,9 @@ function TaskDetailsModalComponent({
                     {isSaving ? (
                       <ActivityIndicator color="#fff" />
                     ) : (
-                      <Text style={styles.primaryButtonText}>{completed ? 'Udført' : 'Markér som udført'}</Text>
+                      <Text style={styles.primaryButtonText}>
+                        {completed ? 'Markér som ikke udført' : 'Markér som udført'}
+                      </Text>
                     )}
                   </LinearGradient>
                 </Pressable>

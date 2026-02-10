@@ -125,6 +125,7 @@ export const useFootballData = () => {
       endTime?: string;
       intensity?: number | null;
       intensityEnabled?: boolean;
+      intensityNote?: string | null;
     }) => {
       const payload: Record<string, any> = {};
 
@@ -190,6 +191,15 @@ export const useFootballData = () => {
         if (!updates.intensityEnabled) {
           payload.intensity = null;
         }
+      }
+
+      if (updates.intensityNote !== undefined) {
+        const normalized =
+          typeof updates.intensityNote === 'string'
+            ? updates.intensityNote.trim()
+            : updates.intensityNote;
+        payload.intensityNote = normalized && normalized.length ? normalized : null;
+        payload.intensity_note = payload.intensityNote;
       }
 
       return payload;
@@ -1142,6 +1152,7 @@ export const useFootballData = () => {
       endTime?: string;
       intensity?: number | null;
       intensityEnabled?: boolean;
+      intensityNote?: string | null;
     }
   ) => {
     const optimisticUpdates = buildOptimisticActivityUpdates(updates);
@@ -1179,6 +1190,7 @@ export const useFootballData = () => {
       endTime?: string;
       intensity?: number | null;
       intensityEnabled?: boolean;
+      intensityNote?: string | null;
     }
   ) => {
     const optimisticUpdates = buildOptimisticActivityUpdates(updates);

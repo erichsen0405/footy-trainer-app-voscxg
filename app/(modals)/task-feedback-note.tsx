@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, DeviceEventEmitter } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { TaskScoreNoteModal, type TaskScoreNoteModalPayload } from '@/components/TaskScoreNoteModal';
@@ -190,6 +190,21 @@ export default function TaskFeedbackNoteScreen() {
   const [initialNote, setInitialNote] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const setErrorSafe = useCallback((value: string | null) => {
+    if (isMountedRef.current) setError(value);
+  }, []);
+
+  const setIsSavingSafe = useCallback((value: boolean) => {
+    if (isMountedRef.current) setIsSaving(value);
+  }, []);
 
   useEffect(() => {
     if (!activityId || !templateId) {
@@ -214,7 +229,7 @@ export default function TaskFeedbackNoteScreen() {
 
         if (!uid) {
           setUserId(null);
-          setError('Du er ikke logget ind.');
+          setErrorSafe('Du er ikke logget ind.');
           return;
         }
         setUserId(uid);
@@ -267,29 +282,29 @@ export default function TaskFeedbackNoteScreen() {
           // ignore
         }
       } catch {
-        if (!cancelled) setError('Kunne ikke hente bruger-session.');
+        if (!cancelled) setErrorSafe('Kunne ikke hente bruger-session.');
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [activityId, templateId, taskInstanceId]);
+  }, [activityId, setErrorSafe, taskInstanceId, templateId]);
 
   const handleSave = useCallback(
     async ({ score, note }: TaskScoreNoteModalPayload) => {
       if (!activityId || !templateId) return;
 
-      setError(null);
+      setErrorSafe(null);
 
       if (!userId) {
-        setError('Bruger-ID mangler. Prøv igen.');
+        setErrorSafe('Bruger-ID mangler. Prøv igen.');
         return;
       }
 
       const candidateIds = activityIdCandidates.filter((id) => normalizeUuid(id));
       if (!candidateIds.length) {
-        setError('Aktiviteten mangler et gyldigt ID. Prøv igen.');
+        setErrorSafe('Aktiviteten mangler et gyldigt ID. Prøv igen.');
         return;
       }
 
@@ -310,8 +325,8 @@ export default function TaskFeedbackNoteScreen() {
         source: 'task-feedback-note',
       });
 
+      setIsSavingSafe(true);
       safeDismiss();
-      setIsSaving(true);
       let lastError: any = null;
       let lastTriedId: string | null = null;
       let savedActivityId: string | null = null;
@@ -378,6 +393,13 @@ export default function TaskFeedbackNoteScreen() {
           });
         }
 
+        DeviceEventEmitter.emit('progression:refresh', {
+          activityId: savedActivityId ?? optimisticActivityId,
+          templateId,
+          taskInstanceId: effectiveTaskInstanceId,
+          source: 'task-feedback-note',
+        });
+
         Promise.resolve(refreshData()).catch(() => {});
         return;
       } catch (e) {
@@ -400,14 +422,176 @@ export default function TaskFeedbackNoteScreen() {
           optimisticId,
           source: 'task-feedback-note',
         });
-        setError(`Kunne ikke gemme feedback${suffix}. Prøv igen.`);
+        setErrorSafe(`Kunne ikke gemme feedback${suffix}. Prøv igen.`);
         Alert.alert('Kunne ikke gemme', 'Feedback kunne ikke gemmes. Prøv igen.');
       } finally {
-        setIsSaving(false);
+        setIsSavingSafe(false);
       }
     },
-    [activityId, activityIdCandidates, refreshData, safeDismiss, taskInstanceId, templateId, userId]
+    [
+      activityId,
+      activityIdCandidates,
+      refreshData,
+      safeDismiss,
+      setErrorSafe,
+      setIsSavingSafe,
+      taskInstanceId,
+      templateId,
+      userId,
+    ]
   );
+
+  const handleClear = useCallback(async () => {
+    if (!activityId || !templateId) return;
+
+    setErrorSafe(null);
+
+    if (!userId) {
+      setErrorSafe('Bruger-ID mangler. Prøv igen.');
+      return;
+    }
+
+    const candidateIds = activityIdCandidates.filter((id) => normalizeUuid(id));
+    if (!candidateIds.length) {
+      setErrorSafe('Aktiviteten mangler et gyldigt ID. Prøv igen.');
+      return;
+    }
+
+    const optimisticActivityId = candidateIds[0];
+    const nowIso = new Date().toISOString();
+    const normalizedTaskInstanceId = normalizeUuid(taskInstanceId);
+    const effectiveTaskInstanceId = normalizedTaskInstanceId ?? templateId;
+    const optimisticId = `optimistic:${optimisticActivityId}:${templateId}:${effectiveTaskInstanceId}:${nowIso}`;
+
+    DeviceEventEmitter.emit('feedback:saved', {
+      activityId: optimisticActivityId,
+      templateId,
+      taskInstanceId: effectiveTaskInstanceId,
+      rating: null,
+      note: null,
+      createdAt: nowIso,
+      optimisticId,
+      source: 'task-feedback-note',
+    });
+
+    setIsSavingSafe(true);
+    safeDismiss();
+    let lastError: any = null;
+    let lastTriedId: string | null = null;
+    let savedActivityId: string | null = null;
+    let savedFeedback: TaskTemplateSelfFeedback | null = null;
+    try {
+      const tryUpsert = async (candidateActivityId: string) =>
+        upsertSelfFeedback({
+          templateId,
+          taskInstanceId: effectiveTaskInstanceId,
+          userId,
+          rating: null,
+          note: null,
+          activity_id: String(candidateActivityId).trim(),
+          activityId: String(candidateActivityId).trim(),
+        });
+
+      for (const candidateId of candidateIds) {
+        lastTriedId = candidateId;
+        try {
+          savedFeedback = await tryUpsert(candidateId);
+          savedActivityId = candidateId;
+          break;
+        } catch (e) {
+          lastError = e;
+        }
+      }
+
+      if (!savedActivityId) {
+        if (lastError) throw lastError;
+        throw new Error('Feedback clear failed');
+      }
+
+      if (savedActivityId !== optimisticActivityId) {
+        DeviceEventEmitter.emit('feedback:save_failed', {
+          activityId: optimisticActivityId,
+          templateId,
+          taskInstanceId: effectiveTaskInstanceId,
+          optimisticId,
+          source: 'task-feedback-note',
+        });
+
+        const correctedCreatedAt = savedFeedback?.createdAt ?? nowIso;
+        const correctedOptimisticId = `optimistic:${savedActivityId}:${templateId}:${effectiveTaskInstanceId}:${correctedCreatedAt}`;
+
+        DeviceEventEmitter.emit('feedback:saved', {
+          activityId: savedActivityId,
+          templateId,
+          taskInstanceId: effectiveTaskInstanceId,
+          rating: null,
+          note: null,
+          createdAt: correctedCreatedAt,
+          optimisticId: correctedOptimisticId,
+          source: 'task-feedback-note',
+        });
+      }
+
+      if (normalizedTaskInstanceId) {
+        try {
+          await supabase
+            .from('activity_tasks')
+            .update({ completed: false })
+            .eq('id', normalizedTaskInstanceId);
+        } catch {}
+        try {
+          await supabase
+            .from('external_event_tasks')
+            .update({ completed: false })
+            .eq('id', normalizedTaskInstanceId);
+        } catch {}
+      }
+
+      DeviceEventEmitter.emit('progression:refresh', {
+        activityId: savedActivityId ?? optimisticActivityId,
+        templateId,
+        taskInstanceId: effectiveTaskInstanceId,
+        source: 'task-feedback-note',
+      });
+
+      Promise.resolve(refreshData()).catch(() => {});
+      return;
+    } catch (e) {
+      if (__DEV__) {
+        console.log('[task-feedback-note] clear feedback error', {
+          activityId: lastTriedId,
+          activityIdCandidates: candidateIds,
+          message: (e as any)?.message,
+          details: (e as any)?.details,
+          hint: (e as any)?.hint,
+          code: (e as any)?.code,
+          status: (e as any)?.status,
+        });
+      }
+      const suffix = lastTriedId ? ` (activityId: ${lastTriedId})` : '';
+      DeviceEventEmitter.emit('feedback:save_failed', {
+        activityId: optimisticActivityId,
+        templateId,
+        taskInstanceId: effectiveTaskInstanceId,
+        optimisticId,
+        source: 'task-feedback-note',
+      });
+      setErrorSafe(`Kunne ikke fjerne feedback${suffix}. Prøv igen.`);
+      Alert.alert('Kunne ikke fjerne', 'Feedback kunne ikke fjernes. Prøv igen.');
+    } finally {
+      setIsSavingSafe(false);
+    }
+  }, [
+    activityId,
+    activityIdCandidates,
+    refreshData,
+    safeDismiss,
+    setErrorSafe,
+    setIsSavingSafe,
+    taskInstanceId,
+    templateId,
+    userId,
+  ]);
 
   if (!activityId || !templateId) return null;
 
@@ -427,6 +611,8 @@ export default function TaskFeedbackNoteScreen() {
       isSaving={isSaving}
       error={error}
       onSave={handleSave}
+      onClear={handleClear}
+      clearLabel="Markér som ikke udført"
       onClose={safeDismiss}
     />
   );

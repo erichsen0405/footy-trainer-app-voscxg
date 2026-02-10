@@ -27,6 +27,7 @@ export type Database = {
           external_event_id: string | null
           id: string
           intensity: number | null
+          intensity_note: string | null
           intensity_enabled: boolean
           is_external: boolean
           location: string | null
@@ -51,6 +52,7 @@ export type Database = {
           external_event_id?: string | null
           id?: string
           intensity?: number | null
+          intensity_note?: string | null
           intensity_enabled?: boolean
           is_external?: boolean
           location?: string | null
@@ -75,6 +77,7 @@ export type Database = {
           external_event_id?: string | null
           id?: string
           intensity?: number | null
+          intensity_note?: string | null
           intensity_enabled?: boolean
           is_external?: boolean
           location?: string | null
@@ -503,6 +506,7 @@ export type Database = {
           external_event_id: string | null
           id: string
           intensity: number | null
+          intensity_note: string | null
           intensity_enabled: boolean
           last_local_modified: string | null
           local_description: string | null
@@ -525,6 +529,7 @@ export type Database = {
           external_event_id?: string | null
           id?: string
           intensity?: number | null
+          intensity_note?: string | null
           intensity_enabled?: boolean
           last_local_modified?: string | null
           local_description?: string | null
@@ -547,6 +552,7 @@ export type Database = {
           external_event_id?: string | null
           id?: string
           intensity?: number | null
+          intensity_note?: string | null
           intensity_enabled?: boolean
           last_local_modified?: string | null
           local_description?: string | null

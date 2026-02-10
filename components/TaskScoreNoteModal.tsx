@@ -36,12 +36,16 @@ interface TaskScoreNoteModalProps {
   noteLabel?: string;
   notePlaceholder?: string;
   resetLabel?: string;
+  clearLabel?: string;
   primaryButtonLabel?: string;
   secondaryButtonLabel?: string;
+  missingScoreTitle?: string;
+  missingScoreMessage?: string;
   isSaving?: boolean;
   readonly?: boolean;
   error?: string | null;
   onSave?: (payload: TaskScoreNoteModalPayload) => void | Promise<void>; // was required
+  onClear?: () => void | Promise<void>;
   onClose: () => void;
   showLabels?: boolean; // default true
 }
@@ -58,12 +62,15 @@ function TaskScoreNoteModalComponent({
   noteLabel = 'Noter (valgfrit)',
   notePlaceholder = 'Skriv hvad der gik godt eller skidt...',
   resetLabel = 'Nulstil score',
-  primaryButtonLabel = 'Gem',
-  secondaryButtonLabel = 'Luk',
+  clearLabel = 'Markér som ikke udført',
+  primaryButtonLabel = 'Markér som udført',
+  missingScoreTitle = 'Mangler score',
+  missingScoreMessage = 'Vælg en score først.',
   isSaving = false,
   readonly = false,
   error,
   onSave = () => {},
+  onClear,
   onClose,
   showLabels = true,
 }: TaskScoreNoteModalProps) {
@@ -80,14 +87,28 @@ function TaskScoreNoteModalComponent({
   }, [initialNote, initialScore, visible]);
 
   const disableInteractions = isSaving || readonly;
+  const hasClearAction = typeof onClear === 'function';
+  const normalizedInitialNote = useMemo(() => (initialNote ?? '').trim(), [initialNote]);
+  const normalizedNote = note.trim();
+  const normalizedInitialScore = enableScore ? (initialScore ?? null) : null;
+  const scoreWasSetInitially = enableScore && normalizedInitialScore !== null;
+  const isInitiallyCompleted =
+    (enableScore && normalizedInitialScore !== null) ||
+    (enableNote && normalizedInitialNote.length > 0);
+  const canMarkNotDone = isInitiallyCompleted && hasClearAction;
 
-  const hasChanges = useMemo(() => {
-    const normalizedInitialNote = (initialNote ?? '').trim();
-    const normalizedNote = note.trim();
-    const noteChanged = enableNote ? normalizedInitialNote !== normalizedNote : false;
-    const scoreChanged = enableScore ? (initialScore ?? null) !== (score ?? null) : false;
-    return noteChanged || scoreChanged;
-  }, [enableNote, enableScore, initialNote, initialScore, note, score]);
+  const noteChanged = useMemo(
+    () => (enableNote ? normalizedInitialNote !== normalizedNote : false),
+    [enableNote, normalizedInitialNote, normalizedNote],
+  );
+  const scoreChanged = useMemo(
+    () => (enableScore ? normalizedInitialScore !== (score ?? null) : false),
+    [enableScore, normalizedInitialScore, score],
+  );
+  const hasChanges = noteChanged || scoreChanged;
+  const shouldShowUpdate = scoreWasSetInitially && hasChanges;
+  const shouldShowClear = !shouldShowUpdate && canMarkNotDone && !hasChanges;
+  const scoreRequired = enableScore && score === null && !shouldShowClear;
 
   const handleSelectScore = useCallback(
     (value: number) => {
@@ -102,6 +123,13 @@ function TaskScoreNoteModalComponent({
     setScore(null);
   }, [disableInteractions, enableScore]);
 
+  const handleClear = useCallback(() => {
+    if (disableInteractions || !hasClearAction) return;
+    setScore(null);
+    setNote('');
+    void Promise.resolve(onClear?.());
+  }, [disableInteractions, hasClearAction, onClear]);
+
   const handleSave = useCallback(() => {
     if (disableInteractions) return;
     onSave({
@@ -109,6 +137,40 @@ function TaskScoreNoteModalComponent({
       note: enableNote ? note.trim() : '',
     });
   }, [disableInteractions, enableNote, enableScore, note, onSave, score]);
+
+  const primaryButtonLabelResolved = hasChanges
+    ? shouldShowUpdate
+      ? 'Opdater score'
+      : primaryButtonLabel
+    : shouldShowClear
+      ? clearLabel
+      : primaryButtonLabel;
+
+  const handlePrimaryAction = useCallback(() => {
+    if (disableInteractions) return;
+    if (scoreRequired) {
+      Alert.alert(missingScoreTitle, missingScoreMessage);
+      return;
+    }
+    if (shouldShowUpdate) {
+      handleSave();
+      return;
+    }
+    if (shouldShowClear) {
+      handleClear();
+      return;
+    }
+    handleSave();
+  }, [
+    disableInteractions,
+    handleClear,
+    handleSave,
+    missingScoreMessage,
+    missingScoreTitle,
+    scoreRequired,
+    shouldShowClear,
+    shouldShowUpdate,
+  ]);
 
   const confirmClose = useCallback(() => {
     if (!visible) return;
@@ -238,27 +300,23 @@ function TaskScoreNoteModalComponent({
 
               <View style={styles.footer}>
                 <Pressable
-                  style={[styles.secondaryButton, disableInteractions && styles.secondaryButtonDisabled]}
-                  onPress={confirmClose}
+                  onPress={handlePrimaryAction}
                   disabled={disableInteractions}
-                >
-                  <Text style={styles.secondaryButtonText}>{secondaryButtonLabel}</Text>
-                </Pressable>
-                <Pressable
-                  style={styles.primaryButtonShadow}
-                  onPress={handleSave}
-                  disabled={disableInteractions}
+                  style={[
+                    styles.primaryButtonShadow,
+                    (disableInteractions || scoreRequired) && styles.primaryButtonDisabled,
+                  ]}
                 >
                   <LinearGradient
                     colors={[colors.primary, '#6DDC5F']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
-                    style={[styles.primaryButton, disableInteractions && styles.primaryButtonDisabled]}
+                    style={[styles.primaryButton, (disableInteractions || scoreRequired) && styles.primaryButtonDisabled]}
                   >
                     {isSaving ? (
                       <ActivityIndicator color="#fff" />
                     ) : (
-                      <Text style={styles.primaryButtonText}>{primaryButtonLabel}</Text>
+                      <Text style={styles.primaryButtonText}>{primaryButtonLabelResolved}</Text>
                     )}
                   </LinearGradient>
                 </Pressable>
@@ -407,47 +465,28 @@ const styles = StyleSheet.create({
   noteInputDisabled: {
     opacity: 0.5,
   },
-  footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 24,
-    justifyContent: 'space-between',
-  },
-  secondaryButton: {
-    flex: 1,
-    height: 52,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: '#DEE1E7',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-    marginRight: 12, // replaces footer.gap
-  },
-  secondaryButtonDisabled: {
-    opacity: 0.5,
-  },
-  secondaryButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#3B4256',
-  },
+  footer: { marginTop: 18 },
   primaryButtonShadow: {
-    flex: 1,
+    borderRadius: 999,
+    shadowColor: colors.primary,
+    shadowRadius: 18,
+    shadowOpacity: 0.35,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 6,
   },
   primaryButton: {
-    height: 52,
-    borderRadius: 28,
+    borderRadius: 999,
+    paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primary,
   },
   primaryButtonDisabled: {
-    opacity: 0.5,
+    opacity: 0.55,
   },
   primaryButtonText: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#FFFFFF',
   },
   errorText: {
