@@ -48,6 +48,7 @@ interface FootballContextType {
     endTime?: string;
     intensity?: number | null;
     intensityEnabled?: boolean;
+    intensityNote?: string | null;
   }) => Promise<void>;
   updateActivitySeries: (seriesId: string, updates: {
     title?: string;
@@ -57,6 +58,7 @@ interface FootballContextType {
     endTime?: string;
     intensity?: number | null;
     intensityEnabled?: boolean;
+    intensityNote?: string | null;
   }) => Promise<void>;
   deleteActivity: (id: string) => void;
   deleteActivitySingle: (activityId: string) => Promise<void>;

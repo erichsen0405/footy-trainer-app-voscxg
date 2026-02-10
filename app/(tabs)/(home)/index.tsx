@@ -167,6 +167,18 @@ function getActivityIntensityEnabled(activity: any): boolean {
   return false;
 }
 
+function getActivityIntensityNote(activity: any): string {
+  if (!activity) {
+    return '';
+  }
+  const raw =
+    activity?.intensity_note ??
+    activity?.intensityNote ??
+    activity?.activity_intensity_note ??
+    null;
+  return typeof raw === 'string' ? raw : '';
+}
+
 function isExternalActivity(activity: any): boolean {
   return Boolean(activity?.is_external ?? activity?.isExternal);
 }
@@ -332,8 +344,10 @@ export default function HomeScreen() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [currentIntensityDraft, setCurrentIntensityDraft] = useState<number | null>(null);
+  const [currentIntensityNoteDraft, setCurrentIntensityNoteDraft] = useState<string>('');
   const [isSavingIntensity, setIsSavingIntensity] = useState(false);
   const [intensityOverrides, setIntensityOverrides] = useState<Record<string, number | null>>({});
+  const [intensityNoteOverrides, setIntensityNoteOverrides] = useState<Record<string, string | null>>({});
   const [intensityModalError, setIntensityModalError] = useState<string | null>(null);
   const [feedbackConfigByTemplate, setFeedbackConfigByTemplate] = useState<Record<string, AfterTrainingFeedbackConfig>>({});
   const [selfFeedbackRows, setSelfFeedbackRows] = useState<TaskTemplateSelfFeedback[]>([]);
@@ -473,12 +487,17 @@ export default function HomeScreen() {
 
         const overrideKey = activity.id ? String(activity.id) : null;
         const override = overrideKey ? intensityOverrides[overrideKey] : undefined;
+        const noteOverride = overrideKey ? intensityNoteOverrides[overrideKey] : undefined;
         const patchedActivity =
-          typeof override !== 'undefined'
+          typeof override !== 'undefined' || typeof noteOverride !== 'undefined'
             ? {
                 ...activity,
-                intensity: override,
-                activity_intensity: override,
+                ...(typeof override !== 'undefined'
+                  ? { intensity: override, activity_intensity: override }
+                  : null),
+                ...(typeof noteOverride !== 'undefined'
+                  ? { intensity_note: noteOverride, intensityNote: noteOverride }
+                  : null),
               }
             : activity;
 
@@ -565,7 +584,7 @@ export default function HomeScreen() {
       .sort((a, b) => b.weekStart.getTime() - a.weekStart.getTime());
 
     return { todayActivities, upcomingByWeek, previousByWeek };
-  }, [activities, intensityOverrides]);
+  }, [activities, intensityNoteOverrides, intensityOverrides]);
 
   const feedbackActivityIds = useMemo(() => {
     const ids = new Set<string>();
@@ -890,15 +909,25 @@ export default function HomeScreen() {
     return getActivityIntensityValue(target);
   }, [activities]);
 
+  const getActivityIntensityNoteById = useCallback((activityId: string) => {
+    if (!activityId) {
+      return '';
+    }
+    const safeActivities = Array.isArray(activities) ? activities : [];
+    const target = safeActivities.find(activity => String(activity?.id) === String(activityId));
+    return getActivityIntensityNote(target);
+  }, [activities]);
+
   const getActivitySnapshot = useCallback((activityId: string) => {
     if (!activityId) {
-      return { intensity: null, intensityEnabled: false };
+      return { intensity: null, intensityEnabled: false, intensityNote: '' };
     }
     const safeActivities = Array.isArray(activities) ? activities : [];
     const target = safeActivities.find(activity => String(activity?.id) === String(activityId));
     return {
       intensity: getActivityIntensityValue(target),
       intensityEnabled: getActivityIntensityEnabled(target),
+      intensityNote: getActivityIntensityNote(target),
     };
   }, [activities]);
 
@@ -909,6 +938,7 @@ export default function HomeScreen() {
     const activityId = String(activity.id);
     setSelectedActivityId(activityId);
     setCurrentIntensityDraft(getActivityIntensityValue(activity));
+    setCurrentIntensityNoteDraft(getActivityIntensityNote(activity));
     setIntensityModalError(null);
   }, []);
 
@@ -918,23 +948,34 @@ export default function HomeScreen() {
     }
     setSelectedActivityId(null);
     setCurrentIntensityDraft(null);
+    setCurrentIntensityNoteDraft('');
     setIntensityModalError(null);
   }, [isSavingIntensity]);
 
   const persistIntensity = useCallback(
-    async (value: number | null) => {
+    async (value: number | null, note: string) => {
       if (!selectedActivityId || isSavingIntensity) {
         return;
       }
       const activityId = selectedActivityId;
+      const normalizedNote = typeof note === 'string' ? note.trim() : '';
+      const notePayload = normalizedNote.length ? normalizedNote : null;
       const hadLocalOverride = Object.prototype.hasOwnProperty.call(intensityOverrides, activityId);
       const rollbackValue = hadLocalOverride
         ? intensityOverrides[activityId]
         : getActivityIntensityValueById(activityId);
+      const hadNoteOverride = Object.prototype.hasOwnProperty.call(intensityNoteOverrides, activityId);
+      const rollbackNote = hadNoteOverride
+        ? intensityNoteOverrides[activityId]
+        : getActivityIntensityNoteById(activityId);
 
       setIntensityOverrides(prev => ({
         ...prev,
         [activityId]: value,
+      }));
+      setIntensityNoteOverrides(prev => ({
+        ...prev,
+        [activityId]: notePayload,
       }));
       setIsSavingIntensity(true);
       setIntensityModalError(null);
@@ -943,11 +984,23 @@ export default function HomeScreen() {
         await updateActivitySingle(activityId, {
           intensity: value,
           intensityEnabled: value !== null,
+          intensityNote: notePayload,
+        });
+        DeviceEventEmitter.emit('progression:refresh', {
+          activityId,
+          intensity: value,
+          note: notePayload,
+          source: 'home',
         });
         if (typeof refreshActivities === 'function') {
           await refreshActivities();
         }
         setIntensityOverrides(prev => {
+          const next = { ...prev };
+          delete next[activityId];
+          return next;
+        });
+        setIntensityNoteOverrides(prev => {
           const next = { ...prev };
           delete next[activityId];
           return next;
@@ -965,13 +1018,24 @@ export default function HomeScreen() {
           }
           return next;
         });
+        setIntensityNoteOverrides(prev => {
+          const next = { ...prev };
+          if (hadNoteOverride) {
+            next[activityId] = rollbackNote ?? null;
+          } else {
+            delete next[activityId];
+          }
+          return next;
+        });
         setIsSavingIntensity(false);
         setIntensityModalError('Kunne ikke gemme intensitet. Prøv igen.');
       }
     },
     [
       getActivityIntensityValueById,
+      getActivityIntensityNoteById,
       handleCloseIntensityModal,
+      intensityNoteOverrides,
       intensityOverrides,
       refreshActivities,
       selectedActivityId,
@@ -981,11 +1045,98 @@ export default function HomeScreen() {
   );
 
   const handleIntensityModalSave = useCallback(
-    ({ score }: TaskScoreNoteModalPayload) => {
-      persistIntensity(typeof score === 'number' ? score : null);
+    ({ score, note }: TaskScoreNoteModalPayload) => {
+      persistIntensity(typeof score === 'number' ? score : null, note);
     },
     [persistIntensity]
   );
+
+  const handleIntensityModalClear = useCallback(async () => {
+    if (!selectedActivityId || isSavingIntensity) {
+      return;
+    }
+    const activityId = selectedActivityId;
+    const hadLocalOverride = Object.prototype.hasOwnProperty.call(intensityOverrides, activityId);
+    const rollbackValue = hadLocalOverride
+      ? intensityOverrides[activityId]
+      : getActivityIntensityValueById(activityId);
+    const hadNoteOverride = Object.prototype.hasOwnProperty.call(intensityNoteOverrides, activityId);
+    const rollbackNote = hadNoteOverride
+      ? intensityNoteOverrides[activityId]
+      : getActivityIntensityNoteById(activityId);
+
+    setIntensityOverrides(prev => ({
+      ...prev,
+      [activityId]: null,
+    }));
+    setIntensityNoteOverrides(prev => ({
+      ...prev,
+      [activityId]: null,
+    }));
+    setIsSavingIntensity(true);
+    setIntensityModalError(null);
+
+    try {
+      await updateActivitySingle(activityId, {
+        intensity: null,
+        intensityEnabled: true,
+        intensityNote: null,
+      });
+      DeviceEventEmitter.emit('progression:refresh', {
+        activityId,
+        intensity: null,
+        note: null,
+        source: 'home',
+      });
+      if (typeof refreshActivities === 'function') {
+        await refreshActivities();
+      }
+      setIntensityOverrides(prev => {
+        const next = { ...prev };
+        delete next[activityId];
+        return next;
+      });
+      setIntensityNoteOverrides(prev => {
+        const next = { ...prev };
+        delete next[activityId];
+        return next;
+      });
+      setIsSavingIntensity(false);
+      handleCloseIntensityModal();
+    } catch (error) {
+      console.error('[Home] Error clearing intensity:', error);
+      setIntensityOverrides(prev => {
+        const next = { ...prev };
+        if (hadLocalOverride) {
+          next[activityId] = rollbackValue ?? null;
+        } else {
+          delete next[activityId];
+        }
+        return next;
+      });
+      setIntensityNoteOverrides(prev => {
+        const next = { ...prev };
+        if (hadNoteOverride) {
+          next[activityId] = rollbackNote ?? null;
+        } else {
+          delete next[activityId];
+        }
+        return next;
+      });
+      setIsSavingIntensity(false);
+      setIntensityModalError('Kunne ikke fjerne intensitet. Prøv igen.');
+    }
+  }, [
+    getActivityIntensityValueById,
+    getActivityIntensityNoteById,
+    handleCloseIntensityModal,
+    intensityNoteOverrides,
+    intensityOverrides,
+    isSavingIntensity,
+    refreshActivities,
+    selectedActivityId,
+    updateActivitySingle,
+  ]);
 
   const buildActivityKey = useCallback((activity: any, section: string) => {
     if (!activity) return `fallback:activity:${section}`;
@@ -1506,21 +1657,24 @@ export default function HomeScreen() {
         />
       ) : null}
 
-      <TaskScoreNoteModal
-        visible={Boolean(selectedActivityId)}
-        title="Feedback på Intensitet"
-        introText="Hvordan gik det?"
-        helperText="1 = let · 10 = maks"
-        initialScore={currentIntensityDraft}
-        initialNote=""
-        enableScore
-        enableNote={false}
-        isSaving={isSavingIntensity}
-        error={intensityModalError}
-        onSave={handleIntensityModalSave}
-        onClose={handleCloseIntensityModal}
-        showLabels={false}
-      />
+        <TaskScoreNoteModal
+          visible={Boolean(selectedActivityId)}
+          title="Feedback på Intensitet"
+          introText="Hvordan gik det?"
+          helperText="1 = let · 10 = maks"
+          initialScore={currentIntensityDraft}
+          initialNote={currentIntensityNoteDraft}
+          enableScore
+          enableNote
+          isSaving={isSavingIntensity}
+          error={intensityModalError}
+          onSave={handleIntensityModalSave}
+          onClear={handleIntensityModalClear}
+          onClose={handleCloseIntensityModal}
+          showLabels={false}
+          missingScoreTitle="Manglende intensitet"
+          missingScoreMessage="VÃ¦lg en intensitet fÃ¸r du kan markere som udfÃ¸rt."
+        />
     </AdminContextWrapper>
   );
 }

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DeviceEventEmitter } from 'react-native';
 import { subDays, startOfDay, parseISO, format, differenceInCalendarDays, addDays } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { ActivityCategory } from '@/types';
@@ -14,6 +15,8 @@ export interface ProgressionEntry {
   activityId: string | null;
   taskTemplateId: string | null;
   taskTemplateName?: string | null;
+  taskTemplateDescription?: string | null;
+  taskTemplateScoreExplanation?: string | null;
   activityTitle?: string | null;
   rating: number | null;
   intensity: number | null;
@@ -22,6 +25,7 @@ export interface ProgressionEntry {
   focusCategoryId: string | null;
   focusName: string;
   focusColor?: string;
+  sessionKey?: string | null;
 }
 
 export interface TrendPoint {
@@ -82,6 +86,7 @@ interface FocusPossibleEntry {
   templateName: string;
   dateKey: string;
   activityId: string | null;
+  sessionKey?: string | null;
 }
 
 interface FocusTemplateOption {
@@ -104,6 +109,7 @@ interface UseProgressionDataResult {
   heatmapRows: HeatmapRow[];
   summary: ProgressionSummary;
   rawEntries: ProgressionEntry[];
+  allFocusEntries: ProgressionEntry[];
   lastUpdated: Date | null;
   refetch: () => Promise<void>;
   focusTemplates: FocusTemplateOption[];
@@ -113,8 +119,56 @@ interface UseProgressionDataResult {
 }
 
 const SUCCESS_THRESHOLD = 7;
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+type DedupeSource = {
+  activityId?: string | null;
+  sessionKey?: string | null;
+  dateKey?: string | null;
+  id?: string | null;
+};
+
+const resolveBaseKey = (entry: DedupeSource) => {
+  const activityId = entry?.activityId ?? null;
+  if (activityId && UUID_REGEX.test(activityId)) {
+    return activityId;
+  }
+  const sessionKey = entry?.sessionKey ?? null;
+  const dateKey = entry?.dateKey ?? null;
+  const id = entry?.id ?? null;
+  return sessionKey ?? activityId ?? dateKey ?? id ?? 'na';
+};
 
 const toDateKey = (value?: string | null) => (value ? value.slice(0, 10) : '');
+const normalizeTime = (value?: string | null) => {
+  if (!value) return null;
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+  return trimmed.slice(0, 5);
+};
+const isUuid = (value?: string | null) => {
+  if (!value) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+};
+const normalizeEventId = (value?: string | null) => {
+  const trimmed = String(value ?? '').trim();
+  if (!trimmed) return null;
+  return isUuid(trimmed) ? trimmed : null;
+};
+const buildSessionKey = (args: {
+  eventId?: string | null;
+  userId?: string | null;
+  date?: string | null;
+  time?: string | null;
+}) => {
+  const normalizedEventId = normalizeEventId(args.eventId);
+  if (normalizedEventId) return `event:${normalizedEventId}`;
+  const dateKey = toDateKey(args.date ?? null);
+  const timeKey = normalizeTime(args.time ?? null) ?? '00:00';
+  const owner = String(args.userId ?? '').trim();
+  if (!owner || !dateKey) return null;
+  return `${owner}:${dateKey}:${timeKey}`;
+};
 
 export function useProgressionData({
   days,
@@ -135,6 +189,7 @@ export function useProgressionData({
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [requiresLogin, setRequiresLogin] = useState(false);
   const mountedRef = useRef(true);
+  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const runIfMounted = useCallback((fn: () => void) => {
     if (mountedRef.current) fn();
@@ -171,7 +226,9 @@ export function useProgressionData({
     const activityDate = row.activities?.activity_date as string | null;
     const dateKey = toDateKey(activityDate || createdIso);
     const templateId = row.task_template_id ? String(row.task_template_id) : null;
-    const templateName = row.task_templates?.title ?? 'Fokusopgave';
+    const templateName = row.task_templates?.title ?? 'Feedback opgaver';
+    const templateDescription = row.task_templates?.description ?? null;
+    const templateScoreExplanation = row.task_templates?.after_training_feedback_score_explanation ?? null;
 
     return {
       id: String(row.id),
@@ -180,6 +237,8 @@ export function useProgressionData({
       activityId: row.activity_id ? String(row.activity_id) : null,
       taskTemplateId: templateId,
       taskTemplateName: templateName,
+      taskTemplateDescription: templateDescription,
+      taskTemplateScoreExplanation: templateScoreExplanation,
       rating: typeof row.rating === 'number' ? row.rating : null,
       intensity: null,
       note: row.note ?? null,
@@ -193,21 +252,33 @@ export function useProgressionData({
 
   const mapFocusPossibleRow = useCallback((row: any): FocusPossibleEntry => {
     const activityDate = row.activities?.activity_date as string | null;
+    const activityTime = row.activities?.activity_time as string | null;
+    const eventId = row.activities?.external_event_id as string | null;
+    const ownerId = row.activities?.user_id as string | null;
     const dateKey = toDateKey(activityDate || row.created_at);
     const templateId = row.task_template_id ? String(row.task_template_id) : null;
-    const templateName = row.task_templates?.title ?? 'Fokusopgave';
+    const templateName = row.task_templates?.title ?? 'Feedback opgaver';
 
     return {
       templateId,
       templateName,
       dateKey,
       activityId: row.activity_id ? String(row.activity_id) : null,
+      sessionKey: buildSessionKey({
+        eventId,
+        userId: ownerId,
+        date: activityDate || row.created_at,
+        time: activityTime,
+      }),
     };
   }, []);
 
   const mapIntensityRow = useCallback(
     (row: any): ProgressionEntry => {
       const activityDate: string | null = row.activity_date ?? null;
+      const activityTime: string | null = row.activity_time ?? null;
+      const eventId: string | null = row.external_event_id ?? null;
+      const ownerId: string | null = row.user_id ?? null;
       const createdAt: string = activityDate || row.created_at || new Date().toISOString();
       const dateKey = toDateKey(activityDate || row.createdAt);
       const categoryId = row.category_id ? String(row.category_id) : null;
@@ -223,11 +294,17 @@ export function useProgressionData({
         activityTitle: row.title ?? null,
         rating: null,
         intensity: typeof row.intensity === 'number' ? row.intensity : null,
-        note: null,
+        note: typeof row.intensity_note === 'string' ? row.intensity_note : null,
         dateKey,
         focusCategoryId: categoryId,
         focusName: categoryMeta?.name ?? 'Ukendt kategori',
         focusColor: categoryMeta?.color,
+        sessionKey: buildSessionKey({
+          eventId,
+          userId: ownerId,
+          date: activityDate || row.created_at,
+          time: activityTime,
+        }),
       };
     },
     [categoryMap]
@@ -259,6 +336,9 @@ export function useProgressionData({
       const periodStart = startOfDay(subDays(today, Math.max(days - 1, 0)));
       const periodEndExclusive = startOfDay(addDays(today, 1));
       const previousStart = startOfDay(subDays(periodStart, days));
+      const periodStartDate = format(periodStart, 'yyyy-MM-dd');
+      const periodEndDate = format(periodEndExclusive, 'yyyy-MM-dd');
+      const previousStartDate = format(previousStart, 'yyyy-MM-dd');
 
       const focusSelect = `
         id,
@@ -275,10 +355,45 @@ export function useProgressionData({
         activity_id,
         task_template_id,
         task_templates ( title ),
-        activities!inner ( activity_date, user_id )
+        activities!inner ( activity_date, activity_time, user_id, external_event_id )
       `;
 
-      const activitySelect = 'id, activity_date, category_id, intensity, title, user_id, created_at';
+      const activitySelect = 'id, activity_date, activity_time, category_id, intensity, intensity_note, title, user_id, created_at, external_event_id';
+      const externalTaskSelect = `
+        id,
+        created_at,
+        local_meta_id,
+        task_template_id,
+        feedback_template_id,
+        task_templates ( title ),
+        events_local_meta!inner (
+          id,
+          user_id,
+          external_event_id,
+          events_external!inner (
+            id,
+            start_date,
+            start_time
+          )
+        )
+      `;
+      const externalIntensitySelect = `
+        id,
+        user_id,
+        category_id,
+        intensity,
+        intensity_note,
+        intensity_enabled,
+        local_title_override,
+        external_event_id,
+        created_at,
+        events_external!inner (
+          id,
+          start_date,
+          start_time,
+          title
+        )
+      `;
 
       const [
         { data: focusCurrent, error: focusCurrentError },
@@ -287,6 +402,10 @@ export function useProgressionData({
         { data: possiblePrevious, error: possiblePreviousError },
         { data: intensityCurrent, error: intensityCurrentError },
         { data: intensityPrevious, error: intensityPreviousError },
+        { data: externalPossibleCurrent, error: externalPossibleCurrentError },
+        { data: externalPossiblePrevious, error: externalPossiblePreviousError },
+        { data: externalIntensityCurrent, error: externalIntensityCurrentError },
+        { data: externalIntensityPrevious, error: externalIntensityPreviousError },
       ] = await Promise.all([
         (supabase as any)
           .from('task_template_self_feedback')
@@ -305,32 +424,60 @@ export function useProgressionData({
           .from('activity_tasks')
           .select(activityTaskSelect)
           .not('task_template_id', 'is', null)
-          .gte('activities.activity_date', periodStart.toISOString())
-          .lt('activities.activity_date', periodEndExclusive.toISOString())
+          .gte('activities.activity_date', periodStartDate)
+          .lt('activities.activity_date', periodEndDate)
           .eq('activities.user_id', userId)
           .order('created_at', { ascending: true }),
         supabase
           .from('activity_tasks')
           .select(activityTaskSelect)
           .not('task_template_id', 'is', null)
-          .gte('activities.activity_date', previousStart.toISOString())
-          .lt('activities.activity_date', periodStart.toISOString())
+          .gte('activities.activity_date', previousStartDate)
+          .lt('activities.activity_date', periodStartDate)
           .eq('activities.user_id', userId)
           .order('created_at', { ascending: true }),
         supabase
           .from('activities')
           .select(activitySelect)
           .eq('user_id', userId)
-          .gte('activity_date', periodStart.toISOString())
-          .lt('activity_date', periodEndExclusive.toISOString())
+          .gte('activity_date', periodStartDate)
+          .lt('activity_date', periodEndDate)
           .order('activity_date', { ascending: true }),
         supabase
           .from('activities')
           .select(activitySelect)
           .eq('user_id', userId)
-          .gte('activity_date', previousStart.toISOString())
-          .lt('activity_date', periodStart.toISOString())
+          .gte('activity_date', previousStartDate)
+          .lt('activity_date', periodStartDate)
           .order('activity_date', { ascending: true }),
+        supabase
+          .from('external_event_tasks')
+          .select(externalTaskSelect)
+          .or('task_template_id.not.is.null,feedback_template_id.not.is.null')
+          .eq('events_local_meta.user_id', userId)
+          .gte('events_local_meta.events_external.start_date', periodStartDate)
+          .lt('events_local_meta.events_external.start_date', periodEndDate)
+          .order('created_at', { ascending: true }),
+        supabase
+          .from('external_event_tasks')
+          .select(externalTaskSelect)
+          .or('task_template_id.not.is.null,feedback_template_id.not.is.null')
+          .eq('events_local_meta.user_id', userId)
+          .gte('events_local_meta.events_external.start_date', previousStartDate)
+          .lt('events_local_meta.events_external.start_date', periodStartDate)
+          .order('created_at', { ascending: true }),
+        supabase
+          .from('events_local_meta')
+          .select(externalIntensitySelect)
+          .eq('user_id', userId)
+          .gte('events_external.start_date', periodStartDate)
+          .lt('events_external.start_date', periodEndDate),
+        supabase
+          .from('events_local_meta')
+          .select(externalIntensitySelect)
+          .eq('user_id', userId)
+          .gte('events_external.start_date', previousStartDate)
+          .lt('events_external.start_date', periodStartDate),
       ]);
 
       if (focusCurrentError) throw focusCurrentError;
@@ -339,12 +486,21 @@ export function useProgressionData({
       if (possiblePreviousError) throw possiblePreviousError;
       if (intensityCurrentError) throw intensityCurrentError;
       if (intensityPreviousError) throw intensityPreviousError;
+      if (externalPossibleCurrentError) throw externalPossibleCurrentError;
+      if (externalPossiblePreviousError) throw externalPossiblePreviousError;
+      if (externalIntensityCurrentError) throw externalIntensityCurrentError;
+      if (externalIntensityPreviousError) throw externalIntensityPreviousError;
 
       const focusRows = [...(focusCurrent || []), ...(focusPrevious || [])];
+      const possibleTemplateIds = [
+        ...(possibleCurrent || []).map(row => row?.task_template_id),
+        ...(possiblePrevious || []).map(row => row?.task_template_id),
+        ...(externalPossibleCurrent || []).map(row => row?.task_template_id ?? row?.feedback_template_id),
+        ...(externalPossiblePrevious || []).map(row => row?.task_template_id ?? row?.feedback_template_id),
+      ];
       const uniqueTemplateIds = Array.from(
         new Set(
-          focusRows
-            .map(row => row?.task_template_id)
+          [...focusRows.map(row => row?.task_template_id), ...possibleTemplateIds]
             .filter(Boolean)
             .map((id: any) => String(id))
         )
@@ -368,32 +524,53 @@ export function useProgressionData({
       };
 
       const templateTitleById = new Map<string, string>();
+      const templateMetaById = new Map<string, { title: string; description: string | null; scoreExplanation: string | null }>();
       if (uniqueTemplateIds.length) {
         for (const chunk of chunkArray(uniqueTemplateIds, 50)) {
           const { data, error } = await supabase
             .from('task_templates')
-            .select('id, title')
+            .select('id, title, description, after_training_feedback_score_explanation')
             .in('id', chunk);
           if (error) throw error;
           (data || []).forEach((row: any) => {
-            if (row?.id) templateTitleById.set(String(row.id), row.title ?? 'Fokusopgave');
+            if (!row?.id) return;
+            const title = row.title ?? 'Feedback opgaver';
+            templateTitleById.set(String(row.id), title);
+            templateMetaById.set(String(row.id), {
+              title,
+              description: row.description ?? null,
+              scoreExplanation: row.after_training_feedback_score_explanation ?? null,
+            });
           });
         }
       }
 
-      const activityMetaById = new Map<string, { activity_date: string | null; title: string | null }>();
+      const activityMetaById = new Map<
+        string,
+        {
+          activity_date: string | null;
+          activity_time?: string | null;
+          title: string | null;
+          event_id?: string | null;
+          external_event_id?: string | null;
+          user_id?: string | null;
+        }
+      >();
       if (uniqueActivityIds.length) {
         for (const chunk of chunkArray(uniqueActivityIds, 50)) {
           const { data, error } = await supabase
             .from('activities')
-            .select('id, activity_date, title')
+            .select('id, activity_date, activity_time, title, external_event_id, user_id')
             .in('id', chunk);
           if (error) throw error;
           (data || []).forEach((row: any) => {
             if (!row?.id) return;
             activityMetaById.set(String(row.id), {
               activity_date: row.activity_date ?? null,
+              activity_time: row.activity_time ?? null,
               title: row.title ?? null,
+              external_event_id: row.external_event_id ?? null,
+              user_id: row.user_id ?? null,
             });
           });
         }
@@ -404,14 +581,16 @@ export function useProgressionData({
         for (const chunk of chunkArray(missingActivityIds, 50)) {
           const { data, error } = await supabase
             .from('events_external')
-            .select('id, start_date, title')
+            .select('id, start_date, start_time, title')
             .in('id', chunk);
           if (error) throw error;
           (data || []).forEach((row: any) => {
             if (!row?.id) return;
             activityMetaById.set(String(row.id), {
               activity_date: row.start_date ?? null,
+              activity_time: row.start_time ?? null,
               title: row.title ?? null,
+              event_id: row.id ?? null,
             });
           });
         }
@@ -423,30 +602,127 @@ export function useProgressionData({
         return {
           ...row,
           activities: activityId && activityMetaById.has(activityId) ? activityMetaById.get(activityId) : null,
-          task_templates: templateId && templateTitleById.has(templateId)
-            ? { title: templateTitleById.get(templateId) }
+          task_templates: templateId && templateMetaById.has(templateId)
+            ? {
+                title: templateMetaById.get(templateId)?.title ?? 'Feedback opgaver',
+                description: templateMetaById.get(templateId)?.description ?? null,
+                after_training_feedback_score_explanation:
+                  templateMetaById.get(templateId)?.scoreExplanation ?? null,
+              }
             : null,
         };
       };
 
-      const mappedFocusCurrent = (focusCurrent || []).map(row => mapFocusFeedbackRow(enrichFocusRow(row)));
-      const mappedFocusPrevious = (focusPrevious || []).map(row => mapFocusFeedbackRow(enrichFocusRow(row)));
-      const mappedPossibleCurrent = (possibleCurrent || []).map(mapFocusPossibleRow);
-      const mappedPossiblePrevious = (possiblePrevious || []).map(mapFocusPossibleRow);
-      const mappedIntensityCurrent = (intensityCurrent || []).map(mapIntensityRow);
-      const mappedIntensityPrevious = (intensityPrevious || []).map(mapIntensityRow);
+      const mapFocusEntryWithSession = (row: any): ProgressionEntry => {
+        const enriched = enrichFocusRow(row);
+        const entry = mapFocusFeedbackRow(enriched);
+        const meta = (enriched as any)?.activities ?? {};
+        return {
+          ...entry,
+          sessionKey: buildSessionKey({
+            eventId: meta?.event_id ?? meta?.external_event_id ?? null,
+            userId: meta?.user_id ?? userId,
+            date: meta?.activity_date ?? null,
+            time: meta?.activity_time ?? null,
+          }),
+        };
+      };
+
+      const mapExternalPossibleRow = (row: any): FocusPossibleEntry => {
+        const meta = row.events_local_meta ?? {};
+        const event = meta.events_external ?? {};
+        const activityDate = event.start_date ?? null;
+        const activityTime = event.start_time ?? null;
+        const ownerId = meta.user_id ?? userId;
+        const eventId = event.id ?? meta.external_event_id ?? null;
+        const templateId =
+          row.task_template_id ? String(row.task_template_id) : row.feedback_template_id ? String(row.feedback_template_id) : null;
+        const templateName =
+          row.task_templates?.title ??
+          (templateId ? templateMetaById.get(templateId)?.title : null) ??
+          'Feedback opgaver';
+        const activityId = row.local_meta_id ?? meta.id ?? null;
+
+        return {
+          templateId,
+          templateName,
+          dateKey: toDateKey(activityDate || row.created_at),
+          activityId: activityId ? String(activityId) : null,
+          sessionKey: buildSessionKey({
+            eventId,
+            userId: ownerId,
+            date: activityDate || row.created_at,
+            time: activityTime,
+          }),
+        };
+      };
+
+      const mapExternalIntensityRow = (row: any): ProgressionEntry => {
+        const event = row.events_external ?? {};
+        const activityDate: string | null = event.start_date ?? null;
+        const activityTime: string | null = event.start_time ?? null;
+        const createdAt: string = activityDate || row.created_at || new Date().toISOString();
+        const dateKey = toDateKey(activityDate || row.created_at);
+        const categoryId = row.category_id ? String(row.category_id) : null;
+        const categoryMeta = categoryId ? categoryMap[categoryId] : undefined;
+        const eventId = event.id ?? row.external_event_id ?? null;
+
+        return {
+          id: String(row.id),
+          kind: 'intensity',
+          createdAt,
+          activityId: row.id ? String(row.id) : null,
+          taskTemplateId: null,
+          taskTemplateName: null,
+          activityTitle: row.local_title_override ?? event.title ?? null,
+          rating: null,
+          intensity: typeof row.intensity === 'number' ? row.intensity : null,
+          note: typeof row.intensity_note === 'string' ? row.intensity_note : null,
+          dateKey,
+          focusCategoryId: categoryId,
+          focusName: categoryMeta?.name ?? 'Ukendt kategori',
+          focusColor: categoryMeta?.color,
+          sessionKey: buildSessionKey({
+            eventId,
+            userId: row.user_id ?? userId,
+            date: activityDate || row.created_at,
+            time: activityTime,
+          }),
+        };
+      };
+
+      const mappedFocusCurrent = (focusCurrent || []).map(mapFocusEntryWithSession);
+      const mappedFocusPrevious = (focusPrevious || []).map(mapFocusEntryWithSession);
+      const mappedPossibleCurrent = [
+        ...(possibleCurrent || []).map(mapFocusPossibleRow),
+        ...(externalPossibleCurrent || []).map(mapExternalPossibleRow),
+      ];
+      const mappedPossiblePrevious = [
+        ...(possiblePrevious || []).map(mapFocusPossibleRow),
+        ...(externalPossiblePrevious || []).map(mapExternalPossibleRow),
+      ];
+      const mappedIntensityCurrent = [
+        ...(intensityCurrent || []).map(mapIntensityRow),
+        ...(externalIntensityCurrent || []).map(mapExternalIntensityRow),
+      ];
+      const mappedIntensityPrevious = [
+        ...(intensityPrevious || []).map(mapIntensityRow),
+        ...(externalIntensityPrevious || []).map(mapExternalIntensityRow),
+      ];
 
       const templateNameLookup = new Map<string, string>();
-      [...mappedFocusCurrent, ...mappedFocusPrevious].forEach(entry => {
-        if (entry.taskTemplateId) {
-          templateNameLookup.set(entry.taskTemplateId, entry.focusName);
-        }
-      });
-      [...mappedPossibleCurrent, ...mappedPossiblePrevious].forEach(entry => {
-        if (entry.templateId) {
-          templateNameLookup.set(entry.templateId, entry.templateName);
-        }
-      });
+      mappedFocusCurrent
+        .filter(entry => typeof entry.rating === 'number')
+        .forEach(entry => {
+          if (!entry.taskTemplateId) return;
+          const resolvedName =
+            entry.taskTemplateName ??
+            entry.focusName ??
+            templateMetaById.get(entry.taskTemplateId)?.title ??
+            null;
+          if (!resolvedName || resolvedName === 'Feedback opgaver') return;
+          templateNameLookup.set(entry.taskTemplateId, resolvedName);
+        });
 
       const templateOptions: FocusTemplateOption[] = Array.from(templateNameLookup.entries())
         .map(([id, name]) => ({ id, name }))
@@ -472,7 +748,33 @@ export function useProgressionData({
     } finally {
       runIfMounted(() => setIsLoading(false));
     }
-  }, [days, mapFocusFeedbackRow, mapFocusPossibleRow, mapIntensityRow, clearDataState, runIfMounted]);
+  }, [days, mapFocusFeedbackRow, mapFocusPossibleRow, mapIntensityRow, categoryMap, clearDataState, runIfMounted]);
+
+  const scheduleRefetch = useCallback(
+    (delayMs: number = 250) => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+      refreshTimeoutRef.current = setTimeout(() => {
+        refreshTimeoutRef.current = null;
+        fetchEntries();
+      }, delayMs);
+    },
+    [fetchEntries],
+  );
+
+  useEffect(() => {
+    const handleRefresh = () => scheduleRefetch(250);
+    const refreshSub = DeviceEventEmitter.addListener('progression:refresh', handleRefresh);
+
+    return () => {
+      refreshSub.remove();
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = null;
+      }
+    };
+  }, [scheduleRefetch]);
 
   useEffect(() => {
     fetchEntries();
@@ -510,17 +812,30 @@ export function useProgressionData({
   const focusPossibleDeduped = useMemo(() => {
     const seen = new Set<string>();
     return filteredFocusPossible.filter(entry => {
-      const key = `${entry.activityId ?? entry.dateKey ?? 'na'}::${entry.templateId ?? 'none'}`;
+      const baseKey = resolveBaseKey(entry);
+      const key = `${baseKey}::${entry.templateId ?? 'none'}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
   }, [filteredFocusPossible]);
 
+  const focusPossibleAllDeduped = useMemo(() => {
+    const seen = new Set<string>();
+    return focusPossible.filter(entry => {
+      const baseKey = resolveBaseKey(entry);
+      const key = `${baseKey}::${entry.templateId ?? 'none'}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [focusPossible]);
+
   const focusPossiblePreviousDeduped = useMemo(() => {
     const seen = new Set<string>();
     return filteredFocusPossiblePrevious.filter(entry => {
-      const key = `${entry.activityId ?? entry.dateKey ?? 'na'}::${entry.templateId ?? 'none'}`;
+      const baseKey = resolveBaseKey(entry);
+      const key = `${baseKey}::${entry.templateId ?? 'none'}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -529,13 +844,17 @@ export function useProgressionData({
 
   const focusCompletedDeduped = useMemo(() => {
     const possibleKeys = new Set<string>(
-      focusPossibleDeduped.map(entry => `${entry.activityId ?? entry.dateKey ?? 'na'}::${entry.templateId ?? 'none'}`)
+      focusPossibleDeduped.map(entry => {
+        const baseKey = resolveBaseKey(entry);
+        return `${baseKey}::${entry.templateId ?? 'none'}`;
+      })
     );
     const seen = new Set<string>();
     return filteredFocusEntries
       .filter(entry => typeof entry.rating === 'number')
       .filter(entry => {
-        const key = `${entry.activityId ?? entry.dateKey ?? entry.id}::${entry.taskTemplateId ?? 'none'}`;
+        const baseKey = resolveBaseKey(entry);
+        const key = `${baseKey}::${entry.taskTemplateId ?? 'none'}`;
         if (seen.has(key)) return false;
         if (possibleKeys.size && !possibleKeys.has(key)) return false;
         seen.add(key);
@@ -543,15 +862,39 @@ export function useProgressionData({
       });
   }, [filteredFocusEntries, focusPossibleDeduped]);
 
+  const focusCompletedAllDeduped = useMemo(() => {
+    const possibleKeys = new Set<string>(
+      focusPossibleAllDeduped.map(entry => {
+        const baseKey = resolveBaseKey(entry);
+        return `${baseKey}::${entry.templateId ?? 'none'}`;
+      })
+    );
+    const seen = new Set<string>();
+    return focusEntries
+      .filter(entry => typeof entry.rating === 'number')
+      .filter(entry => {
+        const baseKey = resolveBaseKey(entry);
+        const key = `${baseKey}::${entry.taskTemplateId ?? 'none'}`;
+        if (seen.has(key)) return false;
+        if (possibleKeys.size && !possibleKeys.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }, [focusEntries, focusPossibleAllDeduped]);
+
   const focusCompletedPreviousDeduped = useMemo(() => {
     const possibleKeys = new Set<string>(
-      focusPossiblePreviousDeduped.map(entry => `${entry.activityId ?? entry.dateKey ?? 'na'}::${entry.templateId ?? 'none'}`)
+      focusPossiblePreviousDeduped.map(entry => {
+        const baseKey = resolveBaseKey(entry);
+        return `${baseKey}::${entry.templateId ?? 'none'}`;
+      })
     );
     const seen = new Set<string>();
     return filteredFocusPrevious
       .filter(entry => typeof entry.rating === 'number')
       .filter(entry => {
-        const key = `${entry.activityId ?? entry.dateKey ?? entry.id}::${entry.taskTemplateId ?? 'none'}`;
+        const baseKey = resolveBaseKey(entry);
+        const key = `${baseKey}::${entry.taskTemplateId ?? 'none'}`;
         if (seen.has(key)) return false;
         if (possibleKeys.size && !possibleKeys.has(key)) return false;
         seen.add(key);
@@ -562,7 +905,7 @@ export function useProgressionData({
   const intensityPossibleDeduped = useMemo(() => {
     const seen = new Set<string>();
     return filteredIntensityEntries.filter(entry => {
-      const key = entry.activityId ?? entry.id;
+      const key = resolveBaseKey(entry);
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -572,7 +915,7 @@ export function useProgressionData({
   const intensityPossiblePreviousDeduped = useMemo(() => {
     const seen = new Set<string>();
     return filteredIntensityPrevious.filter(entry => {
-      const key = entry.activityId ?? entry.id;
+      const key = resolveBaseKey(entry);
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -580,12 +923,14 @@ export function useProgressionData({
   }, [filteredIntensityPrevious]);
 
   const intensityCompletedDeduped = useMemo(() => {
-    const possibleKeys = new Set<string>(intensityPossibleDeduped.map(entry => entry.activityId ?? entry.id));
+    const possibleKeys = new Set<string>(
+      intensityPossibleDeduped.map(entry => resolveBaseKey(entry))
+    );
     const seen = new Set<string>();
     return filteredIntensityEntries
       .filter(entry => typeof entry.intensity === 'number')
       .filter(entry => {
-        const key = entry.activityId ?? entry.id;
+        const key = resolveBaseKey(entry);
         if (seen.has(key)) return false;
         if (possibleKeys.size && !possibleKeys.has(key)) return false;
         seen.add(key);
@@ -594,12 +939,14 @@ export function useProgressionData({
   }, [filteredIntensityEntries, intensityPossibleDeduped]);
 
   const intensityCompletedPreviousDeduped = useMemo(() => {
-    const possibleKeys = new Set<string>(intensityPossiblePreviousDeduped.map(entry => entry.activityId ?? entry.id));
+    const possibleKeys = new Set<string>(
+      intensityPossiblePreviousDeduped.map(entry => resolveBaseKey(entry))
+    );
     const seen = new Set<string>();
     return filteredIntensityPrevious
       .filter(entry => typeof entry.intensity === 'number')
       .filter(entry => {
-        const key = entry.activityId ?? entry.id;
+        const key = resolveBaseKey(entry);
         if (seen.has(key)) return false;
         if (possibleKeys.size && !possibleKeys.has(key)) return false;
         seen.add(key);
@@ -796,6 +1143,7 @@ export function useProgressionData({
     heatmapRows,
     summary,
     rawEntries: activeEntries,
+    allFocusEntries: focusCompletedAllDeduped,
     lastUpdated,
     refetch: fetchEntries,
     focusTemplates,

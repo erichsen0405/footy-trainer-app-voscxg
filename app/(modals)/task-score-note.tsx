@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, DeviceEventEmitter } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { TaskScoreNoteModal, type TaskScoreNoteModalPayload } from '@/components/TaskScoreNoteModal';
 import { supabase } from '@/integrations/supabase/client';
@@ -41,8 +41,24 @@ export default function TaskScoreNoteScreen() {
   }, [router]);
 
   const [initialScore, setInitialScore] = useState<number | null>(null);
+  const [initialNote, setInitialNote] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const setErrorSafe = useCallback((value: string | null) => {
+    if (isMountedRef.current) setError(value);
+  }, []);
+
+  const setIsSavingSafe = useCallback((value: boolean) => {
+    if (isMountedRef.current) setIsSaving(value);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,7 +78,7 @@ export default function TaskScoreNoteScreen() {
       try {
         const { data: internalActivity, error: internalError } = await supabase
           .from('activities')
-          .select('id,intensity,intensity_enabled')
+          .select('id,intensity,intensity_enabled,intensity_note')
           .eq('id', activityId)
           .maybeSingle();
 
@@ -77,7 +93,7 @@ export default function TaskScoreNoteScreen() {
         if (!intensityCarrier) {
           const { data: externalMeta, error: externalError } = await supabase
             .from('events_local_meta')
-            .select('id,intensity,intensity_enabled')
+            .select('id,intensity,intensity_enabled,intensity_note')
             .eq('id', activityId)
             .maybeSingle();
 
@@ -102,6 +118,7 @@ export default function TaskScoreNoteScreen() {
 
         const intensity = typeof intensityCarrier.intensity === 'number' ? intensityCarrier.intensity : null;
         setInitialScore(intensity);
+        setInitialNote(typeof intensityCarrier.intensity_note === 'string' ? intensityCarrier.intensity_note : '');
       } catch {
         // ignore
       }
@@ -113,27 +130,64 @@ export default function TaskScoreNoteScreen() {
   }, [activityId, params, safeDismiss]);
 
   const handleSave = useCallback(
-    async ({ score }: TaskScoreNoteModalPayload) => {
+    async ({ score, note }: TaskScoreNoteModalPayload) => {
       if (!activityId) {
-        setError('Aktivitet mangler ID.');
+        setErrorSafe('Aktivitet mangler ID.');
         return;
       }
 
-      setError(null);
-      setIsSaving(true);
+      setErrorSafe(null);
+      setIsSavingSafe(true);
 
       try {
-        await updateActivitySingle(activityId, { intensity: typeof score === 'number' ? score : null });
+        const trimmedNote = typeof note === 'string' ? note.trim() : '';
+        await updateActivitySingle(activityId, {
+          intensity: typeof score === 'number' ? score : null,
+          intensityNote: trimmedNote.length ? trimmedNote : null,
+        });
+        DeviceEventEmitter.emit('progression:refresh', {
+          activityId,
+          intensity: typeof score === 'number' ? score : null,
+          note: typeof note === 'string' ? note.trim() : null,
+          source: 'task-score-note',
+        });
         Promise.resolve(refreshData()).catch(() => {});
         safeDismiss();
       } catch (e) {
-        setError('Kunne ikke gemme intensitet. Prøv igen.');
+        setErrorSafe('Kunne ikke gemme intensitet. Prøv igen.');
       } finally {
-        setIsSaving(false);
+        setIsSavingSafe(false);
       }
     },
-    [activityId, refreshData, safeDismiss, updateActivitySingle]
+    [activityId, refreshData, safeDismiss, setErrorSafe, setIsSavingSafe, updateActivitySingle]
   );
+
+  const handleClear = useCallback(async () => {
+    if (!activityId) {
+      setErrorSafe('Aktivitet mangler ID.');
+      return;
+    }
+
+    setErrorSafe(null);
+    setIsSavingSafe(true);
+
+    try {
+      await updateActivitySingle(activityId, { intensity: null, intensityEnabled: true, intensityNote: null });
+      DeviceEventEmitter.emit('progression:refresh', {
+        activityId,
+        intensity: null,
+        note: null,
+        source: 'task-score-note',
+      });
+      Promise.resolve(refreshData()).catch(() => {});
+      safeDismiss();
+    } catch (e) {
+      setErrorSafe('Kunne ikke fjerne intensitet. Prøv igen.');
+      Alert.alert('Kunne ikke fjerne', 'Intensitet kunne ikke fjernes. Prøv igen.');
+    } finally {
+      setIsSavingSafe(false);
+    }
+  }, [activityId, refreshData, safeDismiss, setErrorSafe, setIsSavingSafe, updateActivitySingle]);
 
   if (!activityId) return null;
 
@@ -144,12 +198,16 @@ export default function TaskScoreNoteScreen() {
       introText="Hvordan gik det?"
       helperText="1 = let · 10 = maks"
       initialScore={initialScore}
-      initialNote=""
+      initialNote={initialNote}
       enableScore
-      enableNote={false}
+      enableNote
       isSaving={isSaving}
       error={error}
       onSave={handleSave}
+      onClear={handleClear}
+      clearLabel="Markér som ikke udført"
+      missingScoreTitle="Manglende intensitet"
+      missingScoreMessage="Vælg en intensitet før du kan markere som udført."
       onClose={safeDismiss}
     />
   );
