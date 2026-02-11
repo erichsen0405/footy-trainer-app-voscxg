@@ -118,6 +118,13 @@ interface UseProgressionDataResult {
   requiresLogin: boolean;
 }
 
+interface HomeAlignedTaskCounter {
+  periodStart: string;
+  periodEnd: string;
+  possibleIds: string[];
+  completedIds: string[];
+}
+
 const SUCCESS_THRESHOLD = 7;
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -184,6 +191,18 @@ export function useProgressionData({
   const [focusTemplates, setFocusTemplates] = useState<FocusTemplateOption[]>([]);
   const [intensityEntries, setIntensityEntries] = useState<ProgressionEntry[]>([]);
   const [intensityEntriesPrevious, setIntensityEntriesPrevious] = useState<ProgressionEntry[]>([]);
+  const [homeAlignedTaskCounter, setHomeAlignedTaskCounter] = useState<HomeAlignedTaskCounter>({
+    periodStart: '',
+    periodEnd: '',
+    possibleIds: [],
+    completedIds: [],
+  });
+  const [homeAlignedTaskCounterPrevious, setHomeAlignedTaskCounterPrevious] = useState<HomeAlignedTaskCounter>({
+    periodStart: '',
+    periodEnd: '',
+    possibleIds: [],
+    completedIds: [],
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -204,6 +223,18 @@ export function useProgressionData({
     setFocusTemplates([]);
     setIntensityEntries([]);
     setIntensityEntriesPrevious([]);
+    setHomeAlignedTaskCounter({
+      periodStart: '',
+      periodEnd: '',
+      possibleIds: [],
+      completedIds: [],
+    });
+    setHomeAlignedTaskCounterPrevious({
+      periodStart: '',
+      periodEnd: '',
+      possibleIds: [],
+      completedIds: [],
+    });
     setLastUpdated(null);
   }, []);
 
@@ -339,6 +370,7 @@ export function useProgressionData({
       const periodStartDate = format(periodStart, 'yyyy-MM-dd');
       const periodEndDate = format(periodEndExclusive, 'yyyy-MM-dd');
       const previousStartDate = format(previousStart, 'yyyy-MM-dd');
+      const previousEndDate = format(periodStart, 'yyyy-MM-dd');
 
       const focusSelect = `
         id,
@@ -394,6 +426,18 @@ export function useProgressionData({
           title
         )
       `;
+      const taskCounterInternalSelect =
+        'id, activity_id, completed, title, task_template_id, feedback_template_id, activities!inner ( activity_date, user_id )';
+      const taskCounterExternalSelect = `
+        id,
+        completed,
+        events_local_meta!inner (
+          user_id,
+          events_external!inner (
+            start_date
+          )
+        )
+      `;
 
       const [
         { data: focusCurrent, error: focusCurrentError },
@@ -406,6 +450,10 @@ export function useProgressionData({
         { data: externalPossiblePrevious, error: externalPossiblePreviousError },
         { data: externalIntensityCurrent, error: externalIntensityCurrentError },
         { data: externalIntensityPrevious, error: externalIntensityPreviousError },
+        { data: taskCounterInternalCurrent, error: taskCounterInternalCurrentError },
+        { data: taskCounterInternalPrevious, error: taskCounterInternalPreviousError },
+        { data: taskCounterExternalCurrent, error: taskCounterExternalCurrentError },
+        { data: taskCounterExternalPrevious, error: taskCounterExternalPreviousError },
       ] = await Promise.all([
         (supabase as any)
           .from('task_template_self_feedback')
@@ -478,6 +526,30 @@ export function useProgressionData({
           .eq('user_id', userId)
           .gte('events_external.start_date', previousStartDate)
           .lt('events_external.start_date', periodStartDate),
+        supabase
+          .from('activity_tasks')
+          .select(taskCounterInternalSelect)
+          .eq('activities.user_id', userId)
+          .gte('activities.activity_date', periodStartDate)
+          .lt('activities.activity_date', periodEndDate),
+        supabase
+          .from('activity_tasks')
+          .select(taskCounterInternalSelect)
+          .eq('activities.user_id', userId)
+          .gte('activities.activity_date', previousStartDate)
+          .lt('activities.activity_date', previousEndDate),
+        supabase
+          .from('external_event_tasks')
+          .select(taskCounterExternalSelect)
+          .eq('events_local_meta.user_id', userId)
+          .gte('events_local_meta.events_external.start_date', periodStartDate)
+          .lt('events_local_meta.events_external.start_date', periodEndDate),
+        supabase
+          .from('external_event_tasks')
+          .select(taskCounterExternalSelect)
+          .eq('events_local_meta.user_id', userId)
+          .gte('events_local_meta.events_external.start_date', previousStartDate)
+          .lt('events_local_meta.events_external.start_date', previousEndDate),
       ]);
 
       if (focusCurrentError) throw focusCurrentError;
@@ -490,6 +562,84 @@ export function useProgressionData({
       if (externalPossiblePreviousError) throw externalPossiblePreviousError;
       if (externalIntensityCurrentError) throw externalIntensityCurrentError;
       if (externalIntensityPreviousError) throw externalIntensityPreviousError;
+      if (taskCounterInternalCurrentError) throw taskCounterInternalCurrentError;
+      if (taskCounterInternalPreviousError) throw taskCounterInternalPreviousError;
+      if (taskCounterExternalCurrentError) throw taskCounterExternalCurrentError;
+      if (taskCounterExternalPreviousError) throw taskCounterExternalPreviousError;
+
+      const normalizeId = (value: unknown): string | null => {
+        if (value === null || value === undefined) return null;
+        const normalized = String(value).trim();
+        return normalized.length ? normalized : null;
+      };
+      const normalizeFeedbackTitle = (value?: string | null): string => {
+        if (typeof value !== 'string') return '';
+        return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+      };
+      const isFeedbackTitle = (value?: string | null): boolean => {
+        return normalizeFeedbackTitle(value).startsWith('feedback pa');
+      };
+      const feedbackAnswered = (row: any): boolean => {
+        const hasScore = typeof row?.rating === 'number';
+        const hasNote = typeof row?.note === 'string' && row.note.trim().length > 0;
+        return hasScore || hasNote;
+      };
+      const feedbackByActivityTask: Record<string, any> = {};
+      const feedbackByActivityTemplate: Record<string, any> = {};
+      const taskCounterActivityIds = Array.from(
+        new Set(
+          [
+            ...(taskCounterInternalCurrent || []),
+            ...(taskCounterInternalPrevious || []),
+          ]
+            .map(row => normalizeId(row?.activity_id))
+            .filter(Boolean)
+        )
+      ) as string[];
+      if (taskCounterActivityIds.length) {
+        const { data: taskCounterFeedbackRows, error: taskCounterFeedbackError } = await supabase
+          .from('task_template_self_feedback')
+          .select('activity_id, task_template_id, task_instance_id, rating, note, created_at')
+          .eq('user_id', userId)
+          .in('activity_id', taskCounterActivityIds)
+          .order('created_at', { ascending: false });
+
+        if (taskCounterFeedbackError) throw taskCounterFeedbackError;
+
+        (taskCounterFeedbackRows || []).forEach((row: any) => {
+          const activityId = normalizeId(row?.activity_id);
+          const taskInstanceId = normalizeId(row?.task_instance_id);
+          const templateId = normalizeId(row?.task_template_id);
+          if (activityId && taskInstanceId) {
+            const key = `${activityId}::${taskInstanceId}`;
+            if (!feedbackByActivityTask[key]) feedbackByActivityTask[key] = row;
+          }
+          if (activityId && templateId) {
+            const key = `${activityId}::${templateId}`;
+            if (!feedbackByActivityTemplate[key]) feedbackByActivityTemplate[key] = row;
+          }
+        });
+      }
+      const isInternalTaskCompletedForCounter = (taskRow: any): boolean => {
+        if (taskRow?.completed === true) return true;
+        const activityId = normalizeId(taskRow?.activity_id);
+        const taskId = normalizeId(taskRow?.id);
+        const feedbackTemplateId = normalizeId(taskRow?.feedback_template_id);
+        const templateId = normalizeId(taskRow?.task_template_id);
+        const looksLikeFeedbackTask = !!feedbackTemplateId || isFeedbackTitle(taskRow?.title);
+        if (!looksLikeFeedbackTask || !activityId) return false;
+
+        if (taskId) {
+          const byTask = feedbackByActivityTask[`${activityId}::${taskId}`];
+          if (feedbackAnswered(byTask)) return true;
+        }
+        const templateKey = feedbackTemplateId ?? templateId;
+        if (templateKey) {
+          const byTemplate = feedbackByActivityTemplate[`${activityId}::${templateKey}`];
+          if (feedbackAnswered(byTemplate)) return true;
+        }
+        return false;
+      };
 
       const focusRows = [...(focusCurrent || []), ...(focusPrevious || [])];
       const possibleTemplateIds = [
@@ -701,6 +851,37 @@ export function useProgressionData({
         ...(possiblePrevious || []).map(mapFocusPossibleRow),
         ...(externalPossiblePrevious || []).map(mapExternalPossibleRow),
       ];
+      const mapTaskCounterId = (prefix: 'internal' | 'external', row: any) => {
+        const raw = row?.id;
+        if (raw === null || raw === undefined) return null;
+        const normalized = String(raw).trim();
+        if (!normalized.length) return null;
+        return `${prefix}:${normalized}`;
+      };
+      const toCurrentPossibleIds = [
+        ...(taskCounterInternalCurrent || []).map(row => mapTaskCounterId('internal', row)),
+        ...(taskCounterExternalCurrent || []).map(row => mapTaskCounterId('external', row)),
+      ].filter(Boolean) as string[];
+      const toCurrentCompletedIds = [
+        ...(taskCounterInternalCurrent || [])
+          .filter(row => isInternalTaskCompletedForCounter(row))
+          .map(row => mapTaskCounterId('internal', row)),
+        ...(taskCounterExternalCurrent || [])
+          .filter(row => row?.completed === true)
+          .map(row => mapTaskCounterId('external', row)),
+      ].filter(Boolean) as string[];
+      const toPreviousPossibleIds = [
+        ...(taskCounterInternalPrevious || []).map(row => mapTaskCounterId('internal', row)),
+        ...(taskCounterExternalPrevious || []).map(row => mapTaskCounterId('external', row)),
+      ].filter(Boolean) as string[];
+      const toPreviousCompletedIds = [
+        ...(taskCounterInternalPrevious || [])
+          .filter(row => isInternalTaskCompletedForCounter(row))
+          .map(row => mapTaskCounterId('internal', row)),
+        ...(taskCounterExternalPrevious || [])
+          .filter(row => row?.completed === true)
+          .map(row => mapTaskCounterId('external', row)),
+      ].filter(Boolean) as string[];
       const mappedIntensityCurrent = [
         ...(intensityCurrent || []).map(mapIntensityRow),
         ...(externalIntensityCurrent || []).map(mapExternalIntensityRow),
@@ -733,11 +914,35 @@ export function useProgressionData({
         setFocusEntriesPrevious(mappedFocusPrevious);
         setFocusPossible(mappedPossibleCurrent);
         setFocusPossiblePrevious(mappedPossiblePrevious);
+        setHomeAlignedTaskCounter({
+          periodStart: periodStartDate,
+          periodEnd: periodEndDate,
+          possibleIds: toCurrentPossibleIds,
+          completedIds: toCurrentCompletedIds,
+        });
+        setHomeAlignedTaskCounterPrevious({
+          periodStart: previousStartDate,
+          periodEnd: previousEndDate,
+          possibleIds: toPreviousPossibleIds,
+          completedIds: toPreviousCompletedIds,
+        });
         setFocusTemplates(templateOptions);
         setIntensityEntries(mappedIntensityCurrent);
         setIntensityEntriesPrevious(mappedIntensityPrevious);
         setLastUpdated(new Date());
       });
+
+      const userEmail = String(sessionData?.session?.user?.email ?? '').toLowerCase();
+      if (__DEV__ && userEmail === 'mhe0405@gmail.com') {
+        console.log('[RECON][PerformanceCounter]', {
+          periodStart: periodStartDate,
+          periodEnd: format(addDays(periodEndExclusive, -1), 'yyyy-MM-dd'),
+          perfPossibleTaskIdsCount: toCurrentPossibleIds.length,
+          perfPossibleTaskIdsSample: toCurrentPossibleIds.slice(0, 5),
+          perfCompletedTaskIdsCount: toCurrentCompletedIds.length,
+          perfCompletedTaskIdsSample: toCurrentCompletedIds.slice(0, 5),
+        });
+      }
     } catch (err: any) {
       console.error('[useProgressionData] fetch failed:', err);
       clearDataState();
@@ -983,14 +1188,15 @@ export function useProgressionData({
   const summary = useMemo<ProgressionSummary>(() => {
     if (metric === 'rating') {
       const completed = focusCompletedDeduped;
-      const completedCount = completed.length;
-      const possibleCount = focusPossibleDeduped.length;
+      const completedCount = homeAlignedTaskCounter.completedIds.length;
+      const possibleCount = homeAlignedTaskCounter.possibleIds.length;
 
       const previousCompleted = focusCompletedPreviousDeduped;
-      const previousPossibleCount = focusPossiblePreviousDeduped.length;
+      const previousCompletedCount = homeAlignedTaskCounterPrevious.completedIds.length;
+      const previousPossibleCount = homeAlignedTaskCounterPrevious.possibleIds.length;
 
       const completionRate = possibleCount ? Math.round((completedCount / possibleCount) * 100) : 0;
-      const previousRate = previousPossibleCount ? Math.round((previousCompleted.length / previousPossibleCount) * 100) : 0;
+      const previousRate = previousPossibleCount ? Math.round((previousCompletedCount / previousPossibleCount) * 100) : 0;
       const delta = completionRate - previousRate;
 
       const ratings = completed.map(entry => entry.rating ?? 0);
@@ -1035,7 +1241,7 @@ export function useProgressionData({
         completionRate,
         previousRate,
         delta,
-        totalEntries: completedCount,
+        totalEntries: completed.length,
         successCount,
         streakDays: streak,
         badges,
@@ -1119,8 +1325,10 @@ export function useProgressionData({
     days,
     focusCompletedDeduped,
     focusCompletedPreviousDeduped,
-    focusPossibleDeduped,
-    focusPossiblePreviousDeduped,
+    homeAlignedTaskCounter.completedIds.length,
+    homeAlignedTaskCounter.possibleIds.length,
+    homeAlignedTaskCounterPrevious.completedIds.length,
+    homeAlignedTaskCounterPrevious.possibleIds.length,
     intensityCompletedDeduped,
     intensityCompletedPreviousDeduped,
     intensityPossibleDeduped,
@@ -1134,7 +1342,7 @@ export function useProgressionData({
     [intensityEntries]
   );
 
-  const possibleCount = metric === 'rating' ? focusPossibleDeduped.length : intensityPossibleDeduped.length;
+  const possibleCount = metric === 'rating' ? homeAlignedTaskCounter.possibleIds.length : intensityPossibleDeduped.length;
 
   return {
     isLoading,
