@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="da">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bekr&aelig;ft din email</title>
+  </head>
+  <body style="margin:0;padding:0;background:#f5f7fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;">
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#f5f7fb;padding:24px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:560px;background:#ffffff;border-radius:14px;padding:28px 24px;">
+            <tr>
+              <td style="font-size:22px;font-weight:700;color:#0f172a;padding-bottom:8px;">Bekr&aelig;ft din email til Football Coach</td>
+            </tr>
+            <tr>
+              <td style="font-size:15px;line-height:1.6;color:#334155;padding-bottom:4px;">
+                Hej {{ .Email }},
+              </td>
+            </tr>
+            <tr>
+              <td style="font-size:15px;line-height:1.6;color:#334155;padding-bottom:14px;">
+                Du modtager denne e-mail, fordi du oprettede en konto p&aring; {{ .SiteURL }}. Bekr&aelig;ft din e-mail for at aktivere din Football Coach-konto.
+              </td>
+            </tr>
+            <tr>
+              <td style="padding-bottom:20px;" align="left">
+                <a href="{{ .ConfirmationURL }}" style="display:inline-block;background:#22c55e;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:12px 18px;border-radius:10px;">
+                  Bekr&aelig;ft konto
+                </a>
+              </td>
+            </tr>
+            <tr>
+              <td style="font-size:13px;line-height:1.6;color:#64748b;padding-bottom:12px;">
+                Hvis knappen ikke virker, kopier og inds&aelig;t dette link i din browser:
+                <div style="margin-top:6px;word-break:break-all;color:#0f172a;">{{ .ConfirmationURL }}</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="font-size:13px;line-height:1.6;color:#64748b;padding-bottom:12px;">
+                Hvis du ikke har fors&oslash;gt at oprette en konto, kan du ignorere denne e-mail.
+              </td>
+            </tr>
+            <tr>
+              <td style="font-size:13px;line-height:1.6;color:#94a3b8;">
+                Brug for hj&aelig;lp? Svar p&aring; denne mail, s&aring; vender vi tilbage hurtigst muligt.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

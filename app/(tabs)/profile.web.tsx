@@ -1224,8 +1224,8 @@ export default function ProfileScreen() {
                       {isSignUp ? 'Hvad sker der efter oprettelse?' : 'Hvorfor skal jeg logge ind?'}
                     </Text>
                     <Text style={[styles.infoBoxText, { color: textSecondaryColor }]}>
-                      {isSignUp 
-                        ? 'Bekræft mailen og log ind.\nAlle skal vælge et abonnement før start.\nVælg planen der passer til din rolle (spiller eller træner).'
+                      {isSignUp
+                        ? 'Bekræft din e-mail og log ind.\nVælg derefter abonnement som spiller eller træner.'
                         : 'Log ind for at bruge appen.'
                       }
                     </Text>
@@ -1506,6 +1506,7 @@ const styles = StyleSheet.create({
   },
   infoTextContainer: {
     flex: 1,
+    minWidth: 0,
   },
   infoTitle: {
     fontSize: 18,

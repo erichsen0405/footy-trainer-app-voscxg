@@ -6,3 +6,7 @@ auth.email.max_frequency = "1m0s"
 auth.email.otp_length = 8
 auth.mfa.totp.enroll_enabled = true
 auth.mfa.totp.verify_enabled = true
+
+[auth.email.template.confirmation]
+subject = "Velkommen til FootballCoach - bekræft din konto"
+content_path = "./supabase/templates/confirmation.html"
