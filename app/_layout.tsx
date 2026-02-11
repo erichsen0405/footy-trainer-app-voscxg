@@ -34,6 +34,9 @@ const normalizeSubscriptionTier = (tier?: string | null) => {
   return { tier: tier.trim(), tierKey };
 };
 
+const isUserEmailConfirmed = (user: any) =>
+  Boolean(user?.email_confirmed_at || user?.confirmed_at);
+
 export default function RootLayout() {
   const router = useRouter();
   const rootNavigationState = useRootNavigationState();
@@ -218,6 +221,8 @@ export default function RootLayout() {
                     }}
                   />
                 ) : null}
+                <Stack.Screen name="auth/check-email" options={{ headerShown: false }} />
+                <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
                 <Stack.Screen name="email-confirmed" options={{ headerShown: false }} />
                 <Stack.Screen name="update-password" options={{ headerShown: false }} />
               </Stack>
@@ -248,6 +253,8 @@ function SubscriptionRedirectObserver() {
 
   const [authChecked, setAuthChecked] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
+  const forcingUnverifiedSignOutRef = useRef(false);
   const lastRedirectRef = useRef(0);
   const paywallRedirectedRef = useRef(false);
   const lastSuppressedLogAtRef = useRef(0);
@@ -273,7 +280,18 @@ function SubscriptionRedirectObserver() {
     const syncSession = async () => {
       const { data } = await supabase.auth.getSession();
       if (!isActive) return;
-      const newUserId = data.session?.user?.id ?? null;
+      const sessionUser = data.session?.user ?? null;
+      if (sessionUser && !isUserEmailConfirmed(sessionUser)) {
+        setUnverifiedEmail(sessionUser.email ?? null);
+        setUserId(null);
+        forcingUnverifiedSignOutRef.current = true;
+        await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+        setAuthChecked(true);
+        return;
+      }
+      forcingUnverifiedSignOutRef.current = false;
+      setUnverifiedEmail(null);
+      const newUserId = sessionUser?.id ?? null;
       setUserId(newUserId);
       if (newUserId) {
         // const entitlements = await getProfileEntitlements(newUserId).catch(error => {
@@ -289,6 +307,26 @@ function SubscriptionRedirectObserver() {
     syncSession();
     const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (!isActive) return;
+      const sessionUser = session?.user ?? null;
+      if (!sessionUser) {
+        if (!forcingUnverifiedSignOutRef.current) {
+          setUnverifiedEmail(null);
+        }
+        forcingUnverifiedSignOutRef.current = false;
+        setUserId(null);
+        setAuthChecked(true);
+        return;
+      }
+      if (sessionUser && !isUserEmailConfirmed(sessionUser)) {
+        setUnverifiedEmail(sessionUser.email ?? null);
+        setUserId(null);
+        forcingUnverifiedSignOutRef.current = true;
+        await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+        setAuthChecked(true);
+        return;
+      }
+      forcingUnverifiedSignOutRef.current = false;
+      setUnverifiedEmail(null);
       const newUserId = session?.user?.id ?? null;
       setUserId(newUserId);
       if (newUserId) {
@@ -310,13 +348,26 @@ function SubscriptionRedirectObserver() {
 
   const isCreatorCandidate = Boolean(tierKey?.startsWith('trainer'));
 
-  const PAYWALL_EXEMPT_PREFIXES = ['/choose-plan', '/update-password', '/email-confirmed'];
+  const PAYWALL_EXEMPT_PREFIXES = [
+    '/choose-plan',
+    '/update-password',
+    '/email-confirmed',
+    '/auth/check-email',
+    '/auth/callback',
+  ];
   const isPaywallExemptRoute = PAYWALL_EXEMPT_PREFIXES.some(prefix =>
     pathname?.startsWith(prefix)
   );
   const onPaywall = pathname?.startsWith('/choose-plan');
 
   const entitlementReady = authChecked && Boolean(userId) && !resolving;
+
+  useEffect(() => {
+    if (!authChecked || !unverifiedEmail) return;
+    if (pathname?.startsWith('/auth/check-email')) return;
+    const target = `/auth/check-email?email=${encodeURIComponent(unverifiedEmail)}`;
+    triggerRedirect(target);
+  }, [authChecked, pathname, triggerRedirect, unverifiedEmail]);
 
   useEffect(() => {
     if (!authChecked || resolving || !userId) {

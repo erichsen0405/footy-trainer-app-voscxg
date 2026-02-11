@@ -35,7 +35,6 @@ import { useSubscriptionFeatures } from '@/hooks/useSubscriptionFeatures';
 import { forceUserRoleRefresh } from '@/hooks/useUserRole';
 import { useAppleIAP, PRODUCT_IDS } from '@/contexts/AppleIAPContext';
 import { getSubscriptionGateState } from '@/utils/subscriptionGate';
-import Constants from 'expo-constants';
 
 // Conditionally import GlassView only on native platforms
 let GlassView: any = View;
@@ -86,22 +85,12 @@ const normalizeUpgradeTarget = (value: string | string[] | undefined): UpgradeTa
   return null;
 };
 
+const extractFirstParamValue = (value?: string | string[]) => (Array.isArray(value) ? value[0] : value);
+
 const DELETE_ACCOUNT_CONFIRMATION_PHRASE = 'SLET';
 const ACCOUNT_DELETION_REVIEW_PATH = 'Profil -> Indstillinger -> Konto -> Slet konto';
 
-const extra =
-  (Constants.expoConfig?.extra as any) ??
-  ((Constants as any).manifest?.extra as any) ??
-  ((Constants as any).manifest2?.extra as any) ??
-  {};
-
-const authRedirectScheme: string =
-  extra?.authRedirectScheme ??
-  (Array.isArray(Constants.expoConfig?.scheme)
-    ? (Constants.expoConfig?.scheme?.[0] as string | undefined)
-    : (Constants.expoConfig?.scheme as string | undefined)) ??
-  'footballcoach';
-const authRedirectUrl = `${authRedirectScheme}://auth-callback`;
+const authRedirectUrl = 'footballcoach://auth/callback';
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
@@ -341,9 +330,15 @@ export default function ProfileScreen() {
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
   const [subscriptionSectionY, setSubscriptionSectionY] = useState<number | null>(null);
   const scrollViewRef = useRef<any>(null);
-  const params = useLocalSearchParams<{ upgradeTarget?: string }>();
+  const params = useLocalSearchParams<{
+    upgradeTarget?: string;
+    email?: string | string[];
+    authMode?: string | string[];
+  }>();
   const router = useRouter();
   const routeUpgradeTarget = normalizeUpgradeTarget(params.upgradeTarget);
+  const routeEmail = extractFirstParamValue(params.email);
+  const routeAuthMode = extractFirstParamValue(params.authMode);
   const [manualUpgradeTarget, setManualUpgradeTarget] = useState<UpgradeTarget | null>(null);
   const hasAutoOpenedUpgradeTargetRef = useRef<UpgradeTarget | null>(null);
 
@@ -362,6 +357,19 @@ export default function ProfileScreen() {
       return () => cancelAnimationFrame(frame);
     }, [])
   );
+
+  useEffect(() => {
+    if (!routeEmail) return;
+    setEmail(routeEmail);
+  }, [routeEmail]);
+
+  useEffect(() => {
+    if (routeAuthMode === 'signup') {
+      setIsSignUp(true);
+    } else if (routeAuthMode === 'login') {
+      setIsSignUp(false);
+    }
+  }, [routeAuthMode]);
 
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -753,7 +761,7 @@ export default function ProfileScreen() {
 
   const handleSignup = async () => {
     if (!email || !password) {
-      Alert.alert('Fejl', 'Udfyld venligst både email og adgangskode');
+      Alert.alert('Fejl', 'Udfyld venligst baade email og adgangskode');
       return;
     }
 
@@ -764,15 +772,16 @@ export default function ProfileScreen() {
     }
 
     if (password.length < 6) {
-      Alert.alert('Fejl', 'Adgangskoden skal være mindst 6 tegn lang');
+      Alert.alert('Fejl', 'Adgangskoden skal vaere mindst 6 tegn lang');
       return;
     }
 
     setLoading(true);
 
     try {
+      const normalizedEmail = email.trim().toLowerCase();
       const { data, error } = await supabase.auth.signUp({
-        email,
+        email: normalizedEmail,
         password,
         options: {
           emailRedirectTo: authRedirectUrl,
@@ -784,10 +793,15 @@ export default function ProfileScreen() {
           console.log(`[PROFILE] Signup error: ${error.message}`);
         }
         console.error('Sign up error:', error);
-        Alert.alert(
-          'Kunne ikke oprette konto',
-          error.message || 'Der opstod en fejl. Prøv venligst igen.'
-        );
+        const errorMessage = error.message?.toLowerCase?.() ?? '';
+        if (errorMessage.includes('already registered') || errorMessage.includes('already been registered')) {
+          router.replace({
+            pathname: '/auth/check-email',
+            params: { email: normalizedEmail },
+          });
+          return;
+        }
+        Alert.alert('Kunne ikke oprette konto', error.message || 'Der opstod en fejl. Proev venligst igen.');
         return;
       }
 
@@ -795,49 +809,24 @@ export default function ProfileScreen() {
         if (__DEV__) {
           console.log('[PROFILE] No user returned from signup');
         }
-        Alert.alert('Fejl', 'Kunne ikke oprette bruger. Prøv venligst igen.');
+        Alert.alert('Fejl', 'Kunne ikke oprette bruger. Proev venligst igen.');
         return;
-      }
-
-      if (__DEV__) {
-        console.log(`[PROFILE] User created: ${data.user.id}`);
-        console.log(
-          `[PROFILE] Session exists: ${data.session ? 'Yes - Auto logged in!' : 'No - Email confirmation required'}`
-        );
       }
 
       setEmail('');
       setPassword('');
-
-      // Check if user is automatically logged in
-      if (data.session) {
-        // User is logged in immediately - show success and they'll be prompted for role
-        Alert.alert(
-          'Velkommen!',
-          `Din konto er oprettet og du er nu logget ind!\n\nVi har sendt en bekræftelsesmail til ${email}. Bekræft venligst din email når du får tid.\n\nNu skal du vælge et abonnement for at fortsætte.`,
-          [{ text: 'OK' }]
-        );
-      } else {
-        // Email confirmation required before login
-        setShowSuccessMessage(true);
-
-        setTimeout(() => {
-          setShowSuccessMessage(false);
-          setIsSignUp(false);
-        }, 5000);
-
-        Alert.alert(
-          'Bekræft din email',
-          `Din konto er oprettet!\n\nVi har sendt en bekræftelsesmail til ${email}.\n\nTjek venligst din indbakke og klik på linket for at bekræfte din email. Derefter kan du logge ind.\n\nBemærk: Tjek også din spam-mappe hvis du ikke kan finde emailen.`,
-          [{ text: 'OK' }]
-        );
-      }
+      setShowSuccessMessage(false);
+      setIsSignUp(false);
+      router.replace({
+        pathname: '/auth/check-email',
+        params: { email: normalizedEmail },
+      });
     } catch (error: any) {
       if (__DEV__) {
         console.log(`[PROFILE] Unexpected error: ${error.message}`);
       }
       console.error('Signup error:', error);
-      Alert.alert('Fejl', error.message || 'Der opstod en uventet fejl. Prøv venligst igen.');
+      Alert.alert('Fejl', error.message || 'Der opstod en uventet fejl. Proev venligst igen.');
     } finally {
       setLoading(false);
     }
@@ -845,7 +834,7 @@ export default function ProfileScreen() {
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert('Fejl', 'Udfyld venligst både email og adgangskode');
+      Alert.alert('Fejl', 'Udfyld venligst baade email og adgangskode');
       return;
     }
 
@@ -853,8 +842,9 @@ export default function ProfileScreen() {
     console.log('Attempting to sign in with:', email);
 
     try {
+      const normalizedEmail = email.trim().toLowerCase();
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: normalizedEmail,
         password,
       });
 
@@ -866,19 +856,20 @@ export default function ProfileScreen() {
 
       if (error) {
         console.error('Sign in error:', error);
+        const errorMessage = error.message?.toLowerCase?.() ?? '';
 
-        if (error.message.includes('Invalid login credentials')) {
+        if (errorMessage.includes('email not confirmed')) {
+          router.replace({
+            pathname: '/auth/check-email',
+            params: { email: normalizedEmail },
+          });
+        } else if (error.message.includes('Invalid login credentials')) {
           Alert.alert(
             'Login fejlede',
-            'Email eller adgangskode er forkert.\n\nHusk:\n• Har du bekræftet din email?\n• Er du sikker på at du har oprettet en konto?\n• Prøv at nulstille din adgangskode hvis du har glemt den.'
-          );
-        } else if (error.message.includes('Email not confirmed')) {
-          Alert.alert(
-            'Email ikke bekræftet',
-            'Du skal bekræfte din email før du kan logge ind. Tjek din indbakke for bekræftelsesmailen.\n\nTjek også din spam-mappe.'
+            'Email eller adgangskode er forkert.\n\nHusk:\n- Har du bekraeftet din email?\n- Er du sikker paa at du har oprettet en konto?\n- Proev at nulstille din adgangskode hvis du har glemt den.'
           );
         } else {
-          Alert.alert('Login fejlede', error.message || 'Der opstod en fejl. Prøv venligst igen.');
+          Alert.alert('Login fejlede', error.message || 'Der opstod en fejl. Proev venligst igen.');
         }
         return;
       }
@@ -890,7 +881,7 @@ export default function ProfileScreen() {
       }
     } catch (error: any) {
       console.error('Login error:', error);
-      Alert.alert('Fejl', error.message || 'Der opstod en uventet fejl. Prøv venligst igen.');
+      Alert.alert('Fejl', error.message || 'Der opstod en uventet fejl. Proev venligst igen.');
     } finally {
       setLoading(false);
     }

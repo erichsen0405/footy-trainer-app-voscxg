@@ -1,1 +1,8 @@
 project_id = "lhpczofddvwcyrgotzha"
+auth.email.enable_confirmations = true
+auth.site_url = "https://footballcoach.online"
+auth.additional_redirect_urls = ["footballcoach://auth/callback", "exp+footballcoach://auth/callback"]
+auth.email.max_frequency = "1m0s"
+auth.email.otp_length = 8
+auth.mfa.totp.enroll_enabled = true
+auth.mfa.totp.verify_enabled = true

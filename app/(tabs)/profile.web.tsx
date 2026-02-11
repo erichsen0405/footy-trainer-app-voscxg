@@ -53,6 +53,7 @@ const normalizeUpgradeTarget = (value: string | string[] | undefined): UpgradeTa
 };
 
 const extractFirstParamValue = (value?: string | string[]) => (Array.isArray(value) ? value[0] : value);
+const AUTH_REDIRECT_URL = 'footballcoach://auth/callback';
 
 const isTruthySearchParam = (value?: string | null) => {
   if (!value) {
@@ -130,9 +131,16 @@ export default function ProfileScreen() {
   const [isSubscriptionExpanded, setIsSubscriptionExpanded] = useState(true);
   const [subscriptionSectionY, setSubscriptionSectionY] = useState<number | null>(null);
   const scrollViewRef = useRef<ScrollView | null>(null);
-  const params = useLocalSearchParams<{ upgradeTarget?: string | string[]; openSubscription?: string | string[] }>();
+  const params = useLocalSearchParams<{
+    upgradeTarget?: string | string[];
+    openSubscription?: string | string[];
+    email?: string | string[];
+    authMode?: string | string[];
+  }>();
   const routeUpgradeTarget = normalizeUpgradeTarget(params.upgradeTarget);
   const openSubscriptionParam = extractFirstParamValue(params.openSubscription);
+  const routeEmail = extractFirstParamValue(params.email);
+  const routeAuthMode = extractFirstParamValue(params.authMode);
   const shouldAutoOpenSubscription = isTruthySearchParam(openSubscriptionParam);
   const [manualUpgradeTarget, setManualUpgradeTarget] = useState<UpgradeTarget | null>(null);
   const hasConsumedOpenSubscriptionRef = useRef(false);
@@ -177,6 +185,19 @@ export default function ProfileScreen() {
 
   useEffect(() => () => clearForceShowPlansTimeout(), [clearForceShowPlansTimeout]);
   useEffect(() => () => clearAutoOpenTimeout(), [clearAutoOpenTimeout]);
+
+  useEffect(() => {
+    if (!routeEmail) return;
+    setEmail(routeEmail);
+  }, [routeEmail]);
+
+  useEffect(() => {
+    if (routeAuthMode === 'signup') {
+      setIsSignUp(true);
+    } else if (routeAuthMode === 'login') {
+      setIsSignUp(false);
+    }
+  }, [routeAuthMode]);
   
   // Debug state
   const [debugInfo, setDebugInfo] = useState<string[]>([]);
@@ -522,16 +543,24 @@ export default function ProfileScreen() {
     
     try {
       const { data, error } = await supabase.auth.signUp({
-        email,
+        email: email.trim().toLowerCase(),
         password,
         options: {
-          emailRedirectTo: 'natively://auth-callback'
+          emailRedirectTo: AUTH_REDIRECT_URL,
         }
       });
 
       if (error) {
         addDebugInfo(`❌ Signup error: ${error.message}`);
         console.error('Sign up error:', error);
+        const errorMessage = error.message?.toLowerCase?.() ?? '';
+        if (errorMessage.includes('already registered') || errorMessage.includes('already been registered')) {
+          router.replace({
+            pathname: '/auth/check-email',
+            params: { email: email.trim().toLowerCase() },
+          });
+          return;
+        }
         window.alert(`Kunne ikke oprette konto\n\n${error.message || 'Der opstod en fejl. Prøv venligst igen.'}`);
         return;
       }
@@ -547,24 +576,12 @@ export default function ProfileScreen() {
 
       setEmail('');
       setPassword('');
-
-      // Check if user is automatically logged in
-      if (data.session) {
-        // User is logged in immediately - show success and they'll be prompted for role
-        addDebugInfo('✅ User logged in automatically - will show role selection');
-        window.alert(`Velkommen! 🎉\n\nDin konto er oprettet og du er nu logget ind!\n\nVi har sendt en bekræftelsesmail til ${email}. Bekræft venligst din email når du får tid.\n\nVælg et abonnement (spiller eller træner) for at komme videre.`);
-      } else {
-        // Email confirmation required before login
-        addDebugInfo('📧 Email confirmation required before login');
-        setShowSuccessMessage(true);
-        
-        setTimeout(() => {
-          setShowSuccessMessage(false);
-          setIsSignUp(false);
-        }, 5000);
-
-        window.alert(`Bekræft din email ✉️\n\nDin konto er oprettet!\n\nVi har sendt en bekræftelsesmail til ${email}.\n\nTjek venligst din indbakke og klik på linket for at bekræfte din email. Derefter kan du logge ind.\n\n⚠️ Bemærk: Tjek også din spam-mappe hvis du ikke kan finde emailen.`);
-      }
+      setShowSuccessMessage(false);
+      setIsSignUp(false);
+      router.replace({
+        pathname: '/auth/check-email',
+        params: { email: email.trim().toLowerCase() },
+      });
     } catch (error: any) {
       addDebugInfo(`❌ Unexpected error: ${error.message}`);
       console.error('Signup error:', error);
@@ -584,8 +601,9 @@ export default function ProfileScreen() {
     console.log('Attempting to sign in with:', email);
     
     try {
+      const normalizedEmail = email.trim().toLowerCase();
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: normalizedEmail,
         password,
       });
 
@@ -597,11 +615,15 @@ export default function ProfileScreen() {
 
       if (error) {
         console.error('Sign in error:', error);
+        const errorMessage = error.message?.toLowerCase?.() ?? '';
         
-        if (error.message.includes('Invalid login credentials')) {
+        if (errorMessage.includes('email not confirmed')) {
+          router.replace({
+            pathname: '/auth/check-email',
+            params: { email: normalizedEmail },
+          });
+        } else if (error.message.includes('Invalid login credentials')) {
           window.alert('Login fejlede\n\nEmail eller adgangskode er forkert.\n\nHusk:\n• Har du bekræftet din email?\n• Er du sikker på at du har oprettet en konto?\n• Prøv at nulstille din adgangskode hvis du har glemt den.');
-        } else if (error.message.includes('Email not confirmed')) {
-          window.alert('Email ikke bekræftet\n\nDu skal bekræfte din email før du kan logge ind. Tjek din indbakke for bekræftelsesmailen.\n\nTjek også din spam-mappe.');
         } else {
           window.alert(`Login fejlede\n\n${error.message || 'Der opstod en fejl. Prøv venligst igen.'}`);
         }
