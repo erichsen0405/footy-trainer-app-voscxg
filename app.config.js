@@ -5,9 +5,9 @@ module.exports = ({ config }) => {
   const appVariant = process.env.APP_VARIANT === 'dev' ? 'dev' : 'prod';
   const pickFirst = value => (Array.isArray(value) ? value[0] : value);
   const scheme = pickFirst(config.scheme) || 'footballcoach';
-  const expoVersion = '1.0.2';
-  const iosBuildNumber = '3';
-  const androidVersionCode = 3;
+  const expoVersion = '1.0.3';
+  const iosBuildNumber = '4';
+  const androidVersionCode = 4;
 
   // Ensure plugins array exists and contains datetimepicker only once
   const plugins = Array.isArray(config.plugins) ? [...config.plugins] : [];
