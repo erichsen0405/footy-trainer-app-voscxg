@@ -6,6 +6,18 @@ import { supabase } from '@/integrations/supabase/client';
 import { colors } from '@/styles/commonStyles';
 
 type CallbackStatus = 'loading' | 'error';
+type EmailOtpType = 'signup' | 'invite' | 'magiclink' | 'recovery' | 'email_change' | 'email';
+
+const EMAIL_OTP_TYPES: ReadonlySet<EmailOtpType> = new Set([
+  'signup',
+  'invite',
+  'magiclink',
+  'recovery',
+  'email_change',
+  'email',
+]);
+
+const AUTH_PARAM_KEYS = ['code', 'access_token', 'refresh_token', 'token_hash', 'token', 'type'];
 
 const parseParams = (
   incomingUrl: string | null | undefined,
@@ -38,12 +50,45 @@ const parseParams = (
   return params;
 };
 
+const mergeParams = (...paramSets: URLSearchParams[]) => {
+  const merged = new URLSearchParams();
+  paramSets.forEach((set) => {
+    set.forEach((value, key) => {
+      if (!merged.has(key) && value) {
+        merged.set(key, value);
+      }
+    });
+  });
+  return merged;
+};
+
+const hasAnyAuthParam = (params: URLSearchParams) =>
+  AUTH_PARAM_KEYS.some((key) => {
+    const value = params.get(key);
+    return Boolean(value && value.length > 0);
+  });
+
+const getEmailOtpType = (typeValue: string | null): EmailOtpType | null => {
+  if (!typeValue) return null;
+  return EMAIL_OTP_TYPES.has(typeValue as EmailOtpType) ? (typeValue as EmailOtpType) : null;
+};
+
+const waitForSession = async (attempts: number, delayMs: number) => {
+  for (let i = 0; i < attempts; i += 1) {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) throw error;
+    if (data.session) return true;
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  return false;
+};
+
 export default function AuthCallbackScreen() {
   const router = useRouter();
   const incomingUrl = Linking.useURL();
   const routeParams = useLocalSearchParams<Record<string, string | string[]>>();
   const [status, setStatus] = useState<CallbackStatus>('loading');
-  const [message, setMessage] = useState('Bekraefter login...');
+  const [message, setMessage] = useState('Bekræfter login...');
 
   const parsedParams = useMemo(
     () => parseParams(incomingUrl, routeParams),
@@ -55,15 +100,35 @@ export default function AuthCallbackScreen() {
 
     const completeAuth = async () => {
       try {
+        const parsedFromHook = parsedParams;
+        const initialUrl = await Linking.getInitialURL();
+        const parsedFromInitial = parseParams(initialUrl, routeParams);
+        let effectiveParams = mergeParams(parsedFromHook, parsedFromInitial);
+
+        if (!hasAnyAuthParam(effectiveParams)) {
+          // iOS/Safari can open the callback route before params are visible to the hook.
+          for (let i = 0; i < 6; i += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 200));
+            const retryInitialUrl = await Linking.getInitialURL();
+            const retryParams = parseParams(retryInitialUrl, routeParams);
+            effectiveParams = mergeParams(effectiveParams, retryParams);
+            if (hasAnyAuthParam(effectiveParams)) break;
+          }
+        }
+
         const authError =
-          parsedParams.get('error_description') ?? parsedParams.get('error');
+          effectiveParams.get('error_description') ?? effectiveParams.get('error');
         if (authError) {
           throw new Error(authError);
         }
 
-        const code = parsedParams.get('code');
-        const accessToken = parsedParams.get('access_token');
-        const refreshToken = parsedParams.get('refresh_token');
+        const code = effectiveParams.get('code');
+        const accessToken = effectiveParams.get('access_token');
+        const refreshToken = effectiveParams.get('refresh_token');
+        const tokenHash = effectiveParams.get('token_hash') ?? effectiveParams.get('token');
+        const token = effectiveParams.get('token');
+        const email = effectiveParams.get('email');
+        const otpType = getEmailOtpType(effectiveParams.get('type'));
 
         if (code) {
           const { error } = await supabase.auth.exchangeCodeForSession(code);
@@ -74,17 +139,39 @@ export default function AuthCallbackScreen() {
             refresh_token: refreshToken,
           });
           if (error) throw error;
+        } else if (tokenHash && otpType) {
+          const { error } = await supabase.auth.verifyOtp({
+            type: otpType,
+            token_hash: tokenHash,
+          });
+          if (error) throw error;
+        } else if (token && otpType && email) {
+          const { error } = await supabase.auth.verifyOtp({
+            type: otpType,
+            token,
+            email,
+          });
+          if (error) throw error;
         } else {
-          throw new Error('Manglende auth-parametre i callback URL.');
+          // Some clients can strip/consume callback params. Fall back to login flow.
+          const hasSession = await waitForSession(12, 300);
+          if (!cancelled) {
+            if (hasSession) {
+              router.replace('/(tabs)/profile');
+            } else {
+              router.replace({ pathname: '/(tabs)/profile', params: { authMode: 'login' } });
+            }
+          }
+          return;
         }
 
         if (!cancelled) {
-          router.replace('/(tabs)/(home)');
+          router.replace('/(tabs)/profile');
         }
       } catch (error: any) {
         if (!cancelled) {
           setStatus('error');
-          setMessage(error?.message ?? 'Kunne ikke gennemfoere login fra bekraeftelseslinket.');
+          setMessage(error?.message ?? 'Kunne ikke gennemføre login fra bekræftelseslinket.');
         }
       }
     };
@@ -94,7 +181,7 @@ export default function AuthCallbackScreen() {
     return () => {
       cancelled = true;
     };
-  }, [parsedParams, router]);
+  }, [parsedParams, routeParams, router]);
 
   if (status === 'loading') {
     return (

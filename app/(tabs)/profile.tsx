@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
   authButton: { borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 12 },
   authButtonText: { fontSize: 16, fontWeight: '700', color: '#fff' },
   infoBox: { flexDirection: 'row', gap: 12, padding: 16, borderRadius: 16 },
-  infoTextContainer: { flex: 1 },
+  infoTextContainer: { flex: 1, minWidth: 0 },
   infoTitle: { fontSize: 16, fontWeight: '700', marginBottom: 6 },
   infoBoxText: { fontSize: 14, lineHeight: 20 },
   deleteModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
@@ -1737,7 +1737,7 @@ export default function ProfileScreen() {
                   size={Platform.OS === 'ios' ? 24 : 28}
                   color={Platform.OS === 'ios' ? colors.primary : colors.secondary}
                 />
-                <View style={Platform.OS !== 'ios' && styles.infoTextContainer}>
+                <View style={styles.infoTextContainer}>
                   {Platform.OS !== 'ios' && (
                     <Text style={[styles.infoTitle, { color: textColor }]}>
                       {isSignUp ? 'Hvad sker der efter oprettelse?' : 'Hvorfor skal jeg logge ind?'}
@@ -1745,7 +1745,7 @@ export default function ProfileScreen() {
                   )}
                   <Text style={[styles.infoBoxText, { color: textSecondaryColor }]}>
                     {isSignUp
-                      ? 'Bekræft mailen og log ind.\nAlle skal vælge et abonnement før start.\nVælg den plan der passer til dig (spiller eller træner).'
+                      ? 'Bekræft din e-mail og log ind.\nVælg derefter abonnement som spiller eller træner.'
                       : 'Log ind for at bruge appen.'}
                   </Text>
                 </View>
