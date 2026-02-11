@@ -863,6 +863,7 @@ interface ActivityDetailsContentProps {
   onBack: () => void;
   onActivityUpdated: (activity: Activity) => void;
   initialFeedbackTaskId?: string | null;
+  initialOpenTaskId?: string | null;
   initialOpenIntensity?: boolean;
 }
 
@@ -1225,6 +1226,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     onBack,
     onActivityUpdated,
     initialFeedbackTaskId,
+    initialOpenTaskId,
     initialOpenIntensity,
   } = props;
 
@@ -1337,6 +1339,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const [pendingFeedbackTaskId, setPendingFeedbackTaskId] = useState<string | null>(initialFeedbackTaskId ?? null);
+  const [pendingNormalTaskId, setPendingNormalTaskId] = useState<string | null>(initialOpenTaskId ?? null);
 
   const [isIntensityModalVisible, setIsIntensityModalVisible] = useState(false);
   const [intensityModalDraft, setIntensityModalDraft] = useState<number | null>(parseIntensityValue(activity.intensity));
@@ -1603,6 +1606,16 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     setFeedbackModalError(null);
   }, [pendingFeedbackTaskId, resolveFeedbackTemplateId, tasksState]);
 
+  useEffect(() => {
+    if (!pendingNormalTaskId) return;
+    const task = tasksState.find((t) => String(t.id) === String(pendingNormalTaskId));
+    if (!task) return;
+    if (resolveFeedbackTemplateId(task)) return;
+    setSelectedNormalTask(task);
+    setIsNormalTaskModalVisible(true);
+    setPendingNormalTaskId(null);
+  }, [pendingNormalTaskId, resolveFeedbackTemplateId, tasksState]);
+
   const [editTitle, setEditTitle] = useState(activity.title);
   const [editLocation, setEditLocation] = useState(activity.location);
   const [editDate, setEditDate] = useState(activity.date);
@@ -1714,7 +1727,8 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
   useEffect(() => {
     setPendingFeedbackTaskId(initialFeedbackTaskId ?? null);
-  }, [activity.id, initialFeedbackTaskId]);
+    setPendingNormalTaskId(initialOpenTaskId ?? null);
+  }, [activity.id, initialFeedbackTaskId, initialOpenTaskId]);
 
   useEffect(() => {
     if (isEditing) return;
@@ -2224,6 +2238,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     if (isNormalTaskCompleting) return;
     setIsNormalTaskModalVisible(false);
     setSelectedNormalTask(null);
+    setPendingNormalTaskId(null);
   }, [isNormalTaskCompleting]);
 
   const handleDeleteTask = useCallback(
@@ -4004,6 +4019,7 @@ export default function ActivityDetailsScreen() {
     activityId?: string | string[];
     activity_id?: string | string[];
     openFeedbackTaskId?: string | string[];
+    openTaskId?: string | string[];
     openIntensity?: string | string[];
   }>();
 
@@ -4028,6 +4044,7 @@ export default function ActivityDetailsScreen() {
 
   const activityId = normalizeParam(params.id ?? params.activityId ?? params.activity_id);
   const initialFeedbackTaskId = normalizeParam(params.openFeedbackTaskId);
+  const initialOpenTaskId = normalizeParam(params.openTaskId);
   const openIntensityParam = normalizeParam(params.openIntensity);
   const initialOpenIntensity = openIntensityParam === '1' || openIntensityParam === 'true';
 
@@ -4126,6 +4143,7 @@ export default function ActivityDetailsScreen() {
       onBack={handleBack}
       onActivityUpdated={handleActivityUpdated}
       initialFeedbackTaskId={initialFeedbackTaskId}
+      initialOpenTaskId={initialOpenTaskId}
       initialOpenIntensity={initialOpenIntensity}
     />
   );

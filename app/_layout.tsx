@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useFonts } from 'expo-font';
-import { Stack, usePathname, useRouter, router as globalRouter } from 'expo-router';
+import { Stack, usePathname, useRouter, useRootNavigationState, router as globalRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
@@ -11,6 +11,7 @@ import { AppleIAPProvider, useAppleIAP } from '@/contexts/AppleIAPContext';
 import { AdminProvider } from '@/contexts/AdminContext';
 import NotificationPermissionPrompt from '@/components/NotificationPermissionPrompt';
 import { supabase } from '@/integrations/supabase/client';
+import * as Notifications from 'expo-notifications';
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -34,10 +35,15 @@ const normalizeSubscriptionTier = (tier?: string | null) => {
 };
 
 export default function RootLayout() {
+  const router = useRouter();
+  const rootNavigationState = useRootNavigationState();
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
   const didHideSplashRef = useRef(false);
+  const pendingRouteRef = useRef<{ pathname: string; params?: Record<string, string> } | null>(null);
+  const handledNotificationIdsRef = useRef<Set<string>>(new Set());
+  const isNavigationReady = Boolean(rootNavigationState?.key);
 
   useEffect(() => {
     if (!loaded || didHideSplashRef.current) return;
@@ -61,6 +67,93 @@ export default function RootLayout() {
       console.log(`[Hermes] Runtime ${hermesEnabled ? 'ENABLED' : 'DISABLED'}`);
     }
   }, []);
+
+  const buildNotificationRoute = useCallback((response: Notifications.NotificationResponse) => {
+    const data = response?.notification?.request?.content?.data ?? {};
+    const activityIdRaw =
+      (data as any)?.activityId ??
+      (data as any)?.activity_id ??
+      (data as any)?.activityID;
+    const taskIdRaw = (data as any)?.taskId ?? (data as any)?.task_id ?? (data as any)?.taskID;
+    const typeRaw = (data as any)?.type;
+    const templateIdRaw = (data as any)?.templateId ?? (data as any)?.template_id;
+
+    if (activityIdRaw === undefined || activityIdRaw === null) return null;
+    const activityId = String(activityIdRaw);
+
+    const params: Record<string, string> = {
+      id: activityId,
+      activityId,
+    };
+
+    if (taskIdRaw !== undefined && taskIdRaw !== null) {
+      const taskId = String(taskIdRaw);
+      const type = typeof typeRaw === 'string' ? typeRaw.toLowerCase() : '';
+      const hasTemplate = typeof templateIdRaw === 'string' && templateIdRaw.length > 0;
+      const isFeedback = type === 'after-training-feedback' || type === 'feedback' || hasTemplate;
+      if (isFeedback) {
+        params.openFeedbackTaskId = taskId;
+      } else {
+        params.openTaskId = taskId;
+      }
+    }
+
+    return { pathname: '/activity-details', params };
+  }, []);
+
+  const handleNotificationResponse = useCallback(
+    (response: Notifications.NotificationResponse) => {
+      if (response?.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
+      const responseId = response?.notification?.request?.identifier;
+      if (responseId && handledNotificationIdsRef.current.has(responseId)) return;
+
+      const route = buildNotificationRoute(response);
+      if (!route) return;
+
+      if (responseId) handledNotificationIdsRef.current.add(responseId);
+
+      if (!isNavigationReady) {
+        pendingRouteRef.current = route;
+        Notifications.clearLastNotificationResponseAsync().catch(() => {});
+        return;
+      }
+
+      router.push(route as any);
+      Notifications.clearLastNotificationResponseAsync().catch(() => {});
+    },
+    [buildNotificationRoute, isNavigationReady, router],
+  );
+
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      handleNotificationResponse(response);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [handleNotificationResponse]);
+
+  useEffect(() => {
+    let isMounted = true;
+    Notifications.getLastNotificationResponseAsync()
+      .then((response) => {
+        if (!isMounted || !response) return;
+        handleNotificationResponse(response);
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [handleNotificationResponse]);
+
+  useEffect(() => {
+    if (!isNavigationReady) return;
+    const pendingRoute = pendingRouteRef.current;
+    if (!pendingRoute) return;
+    pendingRouteRef.current = null;
+    router.push(pendingRoute as any);
+  }, [isNavigationReady, router]);
 
   return (
     <SubscriptionProvider>
