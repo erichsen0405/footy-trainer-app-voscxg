@@ -26,7 +26,7 @@ export default function CheckEmailScreen() {
       const trimmedEmail = email.trim();
       if (!trimmedEmail) {
         if (active) {
-          setError('Indtast en email for at sende bekraeftelsesmail igen.');
+          setError('Indtast en e-mail for at sende bekræftelsesmail igen.');
           setMessage(null);
           setResendRequestedAt(null);
         }
@@ -51,11 +51,11 @@ export default function CheckEmailScreen() {
         }
 
         if (active) {
-          setMessage(`Vi har sendt en ny bekraeftelsesmail til ${trimmedEmail}.`);
+          setMessage(`Vi har sendt en ny bekræftelsesmail til ${trimmedEmail}.`);
         }
       } catch (resendError: any) {
         if (active) {
-          setError(resendError?.message ?? 'Kunne ikke sende bekraeftelsesmail igen.');
+          setError(resendError?.message ?? 'Kunne ikke sende bekræftelsesmail igen.');
         }
       } finally {
         if (active) {
@@ -88,8 +88,8 @@ export default function CheckEmailScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Tjek din email</Text>
-      <Text style={styles.text}>Vi har sendt en mail til {email || 'din email'}.</Text>
+      <Text style={styles.title}>Tjek din e-mail</Text>
+      <Text style={styles.text}>Vi har sendt en mail til {email || 'din e-mail'}.</Text>
 
       <TextInput
         value={email}
@@ -112,17 +112,24 @@ export default function CheckEmailScreen() {
         {resendLoading ? (
           <ActivityIndicator size="small" color="#fff" />
         ) : (
-          <Text style={styles.buttonText}>Resend bekraeftelsesmail</Text>
+          <Text style={styles.buttonText}>Send bekræftelsesmail igen</Text>
         )}
       </Pressable>
 
       <Pressable style={styles.buttonSecondary} onPress={goToSignup}>
-        <Text style={styles.buttonSecondaryText}>Skift email</Text>
+        <Text style={styles.buttonSecondaryText}>Skift e-mail</Text>
       </Pressable>
 
       <Pressable style={styles.buttonSecondary} onPress={goToLogin}>
-        <Text style={styles.buttonSecondaryText}>Jeg har bekraeftet (log ind)</Text>
+        <Text style={styles.buttonSecondaryText}>Jeg har bekræftet (log ind)</Text>
       </Pressable>
+
+      <View style={styles.noticeBox}>
+        <Text style={styles.noticeTitle}>OBS</Text>
+        <Text style={styles.noticeText}>
+          Hvis du ikke modtager e-mailen, så tjek din spam- eller uønsket mail-mappe.
+        </Text>
+      </View>
     </View>
   );
 }
@@ -185,5 +192,25 @@ const styles = StyleSheet.create({
   buttonSecondaryText: {
     color: colors.text,
     fontWeight: '600',
+  },
+  noticeBox: {
+    marginTop: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#f2c46d',
+    backgroundColor: '#fff7e6',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 4,
+  },
+  noticeTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#8a5a00',
+  },
+  noticeText: {
+    fontSize: 13,
+    color: '#8a5a00',
+    lineHeight: 18,
   },
 });
