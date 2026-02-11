@@ -488,6 +488,18 @@ export const useFootballData = () => {
 
   const fetchCurrentWeekStats = useCallback(async () => {
     try {
+      let userId = '';
+      let userEmail = '';
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        userId = String(sessionData?.session?.user?.id ?? '').trim();
+        if (__DEV__) {
+          userEmail = String(sessionData?.session?.user?.email ?? '').toLowerCase();
+        }
+      } catch {
+        userId = '';
+        userEmail = '';
+      }
       const startIso = weekRange.start.toISOString().slice(0, 10);
       const endIsoExclusive = addDays(weekRange.end, 1).toISOString().slice(0, 10);
       const todayIso = new Date().toISOString().slice(0, 10);
@@ -495,7 +507,7 @@ export const useFootballData = () => {
       const [internalRes, externalRes] = await Promise.all([
         supabase
           .from('activity_tasks')
-          .select('id, completed, activities!inner(activity_date)')
+          .select('id, activity_id, completed, title, task_template_id, feedback_template_id, activities!inner(activity_date)')
           .gte('activities.activity_date', startIso)
           .lt('activities.activity_date', endIsoExclusive),
         supabase
@@ -514,8 +526,84 @@ export const useFootballData = () => {
         return Boolean(startDate);
       });
 
+      const normalizeId = (value: unknown): string | null => {
+        if (value === null || value === undefined) return null;
+        const normalized = String(value).trim();
+        return normalized.length ? normalized : null;
+      };
+      const normalizeFeedbackTitle = (value?: string | null): string => {
+        if (typeof value !== 'string') return '';
+        return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+      };
+      const isFeedbackTitle = (value?: string | null): boolean => {
+        return normalizeFeedbackTitle(value).startsWith('feedback pa');
+      };
+      const feedbackAnswered = (row: any): boolean => {
+        const hasScore = typeof row?.rating === 'number';
+        const hasNote = typeof row?.note === 'string' && row.note.trim().length > 0;
+        return hasScore || hasNote;
+      };
+      const feedbackByActivityTask: Record<string, any> = {};
+      const feedbackByActivityTemplate: Record<string, any> = {};
+
+      if (userId && internalWeeklyTasks.length) {
+        const activityIds = Array.from(
+          new Set(
+            internalWeeklyTasks
+              .map(task => normalizeId((task as any)?.activity_id))
+              .filter(Boolean)
+          )
+        ) as string[];
+
+        if (activityIds.length) {
+          const { data: feedbackRows, error: feedbackError } = await supabase
+            .from('task_template_self_feedback')
+            .select('activity_id, task_template_id, task_instance_id, rating, note, created_at')
+            .eq('user_id', userId)
+            .in('activity_id', activityIds)
+            .order('created_at', { ascending: false });
+
+          if (feedbackError) throw feedbackError;
+
+          (feedbackRows || []).forEach((row: any) => {
+            const activityId = normalizeId(row?.activity_id);
+            const taskInstanceId = normalizeId(row?.task_instance_id);
+            const templateId = normalizeId(row?.task_template_id);
+            if (activityId && taskInstanceId) {
+              const key = `${activityId}::${taskInstanceId}`;
+              if (!feedbackByActivityTask[key]) feedbackByActivityTask[key] = row;
+            }
+            if (activityId && templateId) {
+              const key = `${activityId}::${templateId}`;
+              if (!feedbackByActivityTemplate[key]) feedbackByActivityTemplate[key] = row;
+            }
+          });
+        }
+      }
+
+      const isInternalTaskCompleted = (task: any): boolean => {
+        if (task?.completed === true) return true;
+        const activityId = normalizeId(task?.activity_id);
+        const taskId = normalizeId(task?.id);
+        const feedbackTemplateId = normalizeId(task?.feedback_template_id);
+        const templateId = normalizeId(task?.task_template_id);
+        const looksLikeFeedbackTask = !!feedbackTemplateId || isFeedbackTitle(task?.title);
+        if (!looksLikeFeedbackTask || !activityId) return false;
+
+        if (taskId) {
+          const byTask = feedbackByActivityTask[`${activityId}::${taskId}`];
+          if (feedbackAnswered(byTask)) return true;
+        }
+        const templateKey = feedbackTemplateId ?? templateId;
+        if (templateKey) {
+          const byTemplate = feedbackByActivityTemplate[`${activityId}::${templateKey}`];
+          if (feedbackAnswered(byTemplate)) return true;
+        }
+        return false;
+      };
+
       const internalTotalWeek = internalWeeklyTasks.length;
-      const internalCompletedWeek = internalWeeklyTasks.filter(task => task.completed).length;
+      const internalCompletedWeek = internalWeeklyTasks.filter(isInternalTaskCompleted).length;
 
       const externalTotalWeek = externalWeeklyTasks.length;
       const externalCompletedWeek = externalWeeklyTasks.filter(task => task.completed).length;
@@ -534,8 +622,18 @@ export const useFootballData = () => {
 
       const totalToday = internalTasksUpToToday.length + externalTasksUpToToday.length;
       const completedToday =
-        internalTasksUpToToday.filter(task => task.completed).length +
+        internalTasksUpToToday.filter(isInternalTaskCompleted).length +
         externalTasksUpToToday.filter(task => task.completed).length;
+      const homeOpenTaskIds = [
+        ...internalTasksUpToToday
+          .filter(task => !isInternalTaskCompleted(task))
+          .map(task => `internal:${String((task as any)?.id ?? '').trim()}`)
+          .filter(id => id !== 'internal:'),
+        ...externalTasksUpToToday
+          .filter(task => task?.completed !== true)
+          .map(task => `external:${String((task as any)?.id ?? '').trim()}`)
+          .filter(id => id !== 'external:'),
+      ];
 
       const totalWeek = internalTotalWeek + externalTotalWeek;
       const completedWeek = internalCompletedWeek + externalCompletedWeek;
@@ -550,6 +648,15 @@ export const useFootballData = () => {
         completedTasksForWeek: completedWeek,
         totalTasksForWeek: totalWeek,
       }));
+
+      if (__DEV__ && userEmail === 'mhe0405@gmail.com') {
+        console.log('[RECON][HomeOpenCounter]', {
+          periodStart: startIso,
+          periodEnd: todayIso,
+          homeOpenTaskIdsCount: homeOpenTaskIds.length,
+          homeOpenTaskIdsSample: homeOpenTaskIds.slice(0, 5),
+        });
+      }
     } catch (error) {
       console.error('[fetchCurrentWeekStats] failed:', error);
       setCurrentWeekStats(prev => ({
