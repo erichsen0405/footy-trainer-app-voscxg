@@ -200,6 +200,8 @@ function TaskScoreNoteModalComponent({
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scoringRow}
+        testID="feedback.scoreInput"
+        accessibilityLabel="Vælg score"
       >
         {SCORE_VALUES.map(value => {
           const isSelected = score === value;
@@ -208,6 +210,7 @@ function TaskScoreNoteModalComponent({
               key={`score-${value}`}
               style={[styles.chip, isSelected && styles.chipSelected, disableInteractions && styles.chipDisabled]}
               accessibilityRole="button"
+              testID={`feedback.scoreOption.${value}`}
               accessibilityLabel={`Score ${value}`}
               hitSlop={CHIP_HIT_SLOP}
               onPress={() => handleSelectScore(value)}
@@ -294,6 +297,8 @@ function TaskScoreNoteModalComponent({
                     placeholderTextColor="rgba(53, 65, 98, 0.5)"
                     style={[styles.noteInput, disableInteractions && styles.noteInputDisabled]}
                     textAlignVertical="top"
+                    testID="feedback.noteInput"
+                    accessibilityLabel={noteLabel}
                   />
                 </View>
               ) : null}
@@ -306,6 +311,8 @@ function TaskScoreNoteModalComponent({
                     styles.primaryButtonShadow,
                     (disableInteractions || scoreRequired) && styles.primaryButtonDisabled,
                   ]}
+                  testID="feedback.saveButton"
+                  accessibilityLabel={primaryButtonLabelResolved}
                 >
                   <LinearGradient
                     colors={[colors.primary, '#6DDC5F']}

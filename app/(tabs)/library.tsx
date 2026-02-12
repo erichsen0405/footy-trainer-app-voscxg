@@ -297,6 +297,8 @@ const ExerciseCard = memo(function ExerciseCard({
           activeOpacity={0.9}
           style={[styles.ctaBadge, { backgroundColor: ctaBgColor }]}
           disabled={ctaDisabled}
+          testID={`library.addToTasksButton.${exercise.id}`}
+          accessibilityLabel={isAdded ? 'Allerede tilføjet til opgaver' : 'Tilføj til opgaver'}
         >
           {isAdding ? (
             <>

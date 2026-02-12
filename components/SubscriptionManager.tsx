@@ -611,6 +611,8 @@ const statusTone = useMemo(() => {
                 onPress={() => handleSelectPlan(plan.id, plan.name, plan.max_players)}
                 disabled={isCreating || isPlanCurrent}
                 activeOpacity={0.7}
+                testID={`paywall.planCard.${plan.id}`}
+                accessibilityLabel={`Abonnement ${plan.name}`}
               >
                 {isPopular && !isPlanCurrent && (
                   <View style={[styles.popularBadge, { backgroundColor: colors.primary }]}>
@@ -713,6 +715,8 @@ const statusTone = useMemo(() => {
                     ]}
                     onPress={() => handleSelectPlan(plan.id, plan.name, plan.max_players)}
                     disabled={isCreating}
+                    testID="paywall.primaryCtaButton"
+                    accessibilityLabel={isSignupFlow ? 'Vælg denne plan' : 'Skift til denne plan'}
                   >
                     {isCreating ? (
                       <ActivityIndicator color={isPopular ? '#fff' : colors.primary} size="small" />

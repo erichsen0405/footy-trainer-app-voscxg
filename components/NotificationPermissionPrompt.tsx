@@ -150,16 +150,31 @@ export default function NotificationPermissionPrompt() {
 
           <View style={styles.buttons}>
             {status === 'denied' ? (
-              <TouchableOpacity style={[styles.button, styles.primary]} onPress={handleOpenSettings}>
+              <TouchableOpacity
+                style={[styles.button, styles.primary]}
+                onPress={handleOpenSettings}
+                testID="notifications.openSettingsButton"
+                accessibilityLabel="Åbn indstillinger"
+              >
                 <Text style={styles.primaryText}>Åbn indstillinger</Text>
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity style={[styles.button, styles.primary]} onPress={handleAllow}>
+              <TouchableOpacity
+                style={[styles.button, styles.primary]}
+                onPress={handleAllow}
+                testID="notifications.enableButton"
+                accessibilityLabel="Tillad notifikationer"
+              >
                 <Text style={styles.primaryText}>Tillad notifikationer</Text>
               </TouchableOpacity>
             )}
 
-            <TouchableOpacity style={[styles.button, styles.secondary]} onPress={handleLater}>
+            <TouchableOpacity
+              style={[styles.button, styles.secondary]}
+              onPress={handleLater}
+              testID="notifications.notNowButton"
+              accessibilityLabel="Ikke nu"
+            >
               <Text style={styles.secondaryText}>Ikke nu</Text>
             </TouchableOpacity>
           </View>
@@ -171,7 +186,12 @@ export default function NotificationPermissionPrompt() {
   if (canShowCta) {
     return (
       <View style={styles.ctaContainer}>
-        <TouchableOpacity style={styles.ctaButton} onPress={reopen}>
+        <TouchableOpacity
+          style={styles.ctaButton}
+          onPress={reopen}
+          testID="notifications.enableButton"
+          accessibilityLabel="Aktiver notifikationer"
+        >
           <Text style={styles.ctaText}>Aktiver notifikationer</Text>
         </TouchableOpacity>
       </View>

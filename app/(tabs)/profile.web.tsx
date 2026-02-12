@@ -1173,6 +1173,8 @@ export default function ProfileScreen() {
                     placeholderTextColor={textSecondaryColor}
                     autoCapitalize="none"
                     autoCorrect={false}
+                    testID="auth.login.emailInput"
+                    accessibilityLabel="Email"
                   />
 
                   <Text style={[styles.label, { color: textColor }]}>Adgangskode</Text>
@@ -1185,6 +1187,8 @@ export default function ProfileScreen() {
                     secureTextEntry
                     autoCorrect={false}
                     autoCapitalize="none"
+                    testID="auth.login.passwordInput"
+                    accessibilityLabel="Adgangskode"
                   />
 
                   <TouchableOpacity
@@ -1196,6 +1200,8 @@ export default function ProfileScreen() {
                     onPress={isSignUp ? handleSignup : handleLogin}
                     disabled={loading}
                     activeOpacity={0.7}
+                    testID="auth.login.submitButton"
+                    accessibilityLabel={isSignUp ? 'Opret konto' : 'Log ind'}
                   >
                     {loading ? (
                       <View style={styles.loadingContainer}>

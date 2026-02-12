@@ -1,0 +1,14 @@
+appId: ${APP_ID}
+---
+- launchApp
+
+# Depending on permission state, different buttons may be visible.
+- assertVisible:
+    id: "notifications.enableButton"
+    optional: true
+- assertVisible:
+    id: "notifications.openSettingsButton"
+    optional: true
+- assertVisible:
+    id: "notifications.notNowButton"
+    optional: true

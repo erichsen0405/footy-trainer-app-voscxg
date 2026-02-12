@@ -699,6 +699,8 @@ export default function AppleSubscriptionManager({
           onPress={() => handleSelectPlan(item.productId)}
           disabled={blockInteractions || isCurrentActive || disabledByComplimentary}
           activeOpacity={0.7}
+          testID={`paywall.planCard.${item.productId}`}
+          accessibilityLabel={`Abonnement ${getPlanName(item)}`}
         >
           {isComplimentaryForProduct(item.productId) && (
             <View style={[styles.partnerBadge, { backgroundColor: colors.secondary }]}>
@@ -786,6 +788,8 @@ export default function AppleSubscriptionManager({
               ]}
               onPress={() => handleSelectPlan(item.productId)}
               disabled={blockInteractions || disabledByComplimentary}
+              testID="paywall.primaryCtaButton"
+              accessibilityLabel={isSignupFlow ? 'Vælg denne plan' : 'Skift til denne plan'}
             >
               {purchasing ? (
                 <ActivityIndicator color={isPopular ? '#fff' : colors.primary} size="small" />
@@ -986,6 +990,8 @@ export default function AppleSubscriptionManager({
         onPress={handleRestorePurchases}
         activeOpacity={0.7}
         disabled={blockInteractions}
+        testID="paywall.restoreButton"
+        accessibilityLabel="Gendan køb"
       >
         <IconSymbol
           ios_icon_name="arrow.clockwise"
