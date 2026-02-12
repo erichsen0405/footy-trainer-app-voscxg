@@ -23,6 +23,7 @@ import { calendarService } from '@/services/calendarService';
 import { useAdmin } from '@/contexts/AdminContext';
 import { subscribeToTaskCompletion, emitTaskCompletionEvent } from '@/utils/taskEvents';
 import { emitActivityPatch, emitActivitiesRefreshRequested } from '@/utils/activityEvents';
+import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 
 export const useFootballData = () => {
   const { adminMode, adminTargetId, adminTargetType } = useAdmin();
@@ -507,7 +508,7 @@ export const useFootballData = () => {
       const [internalRes, externalRes] = await Promise.all([
         supabase
           .from('activity_tasks')
-          .select('id, activity_id, completed, title, task_template_id, feedback_template_id, activities!inner(activity_date)')
+          .select('id, activity_id, completed, title, description, task_template_id, feedback_template_id, activities!inner(activity_date)')
           .gte('activities.activity_date', startIso)
           .lt('activities.activity_date', endIsoExclusive),
         supabase
@@ -587,14 +588,19 @@ export const useFootballData = () => {
         const taskId = normalizeId(task?.id);
         const feedbackTemplateId = normalizeId(task?.feedback_template_id);
         const templateId = normalizeId(task?.task_template_id);
-        const looksLikeFeedbackTask = !!feedbackTemplateId || isFeedbackTitle(task?.title);
+        const markerTemplateId =
+          normalizeId(
+            parseTemplateIdFromMarker(typeof task?.description === 'string' ? task.description : '') ||
+            parseTemplateIdFromMarker(typeof task?.title === 'string' ? task.title : '')
+          );
+        const looksLikeFeedbackTask = !!feedbackTemplateId || !!markerTemplateId || isFeedbackTitle(task?.title);
         if (!looksLikeFeedbackTask || !activityId) return false;
 
         if (taskId) {
           const byTask = feedbackByActivityTask[`${activityId}::${taskId}`];
           if (feedbackAnswered(byTask)) return true;
         }
-        const templateKey = feedbackTemplateId ?? templateId;
+        const templateKey = feedbackTemplateId ?? markerTemplateId ?? templateId;
         if (templateKey) {
           const byTemplate = feedbackByActivityTemplate[`${activityId}::${templateKey}`];
           if (feedbackAnswered(byTemplate)) return true;
@@ -995,13 +1001,14 @@ export const useFootballData = () => {
 
       await taskService.deleteTask(id, session.user.id);
 
-      console.log('[deleteTask] Task deleted successfully, refreshing tasks...');
-      await fetchTasks();
+      console.log('[deleteTask] Task deleted successfully, refreshing tasks/activities/stats...');
+      await Promise.all([fetchTasks(), fetchActivities(), fetchCurrentWeekStats()]);
+      emitActivitiesRefreshRequested({ reason: 'task_template_deleted' });
     } catch (error) {
       console.error('[deleteTask] Error deleting task:', error);
       throw error;
     }
-  }, [fetchTasks]);
+  }, [fetchActivities, fetchCurrentWeekStats, fetchTasks]);
 
   const duplicateTask = useCallback(
     async (id: string) => {

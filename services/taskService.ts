@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { emitTaskCompletionEvent } from '@/utils/taskEvents';
 import type { TaskCompletionEvent } from '@/utils/taskEvents';
 import { Task } from '@/types';
+import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 
 export interface CreateTaskData {
   title: string;
@@ -394,6 +395,33 @@ export const taskService = {
 
   async deleteTask(taskId: string, userId: string, signal?: AbortSignal): Promise<void> {
     let templateTitle: string | null = null;
+    const normalizeId = (value: unknown): string | null => {
+      if (value === null || value === undefined) return null;
+      const normalized = String(value).trim();
+      return normalized.length ? normalized : null;
+    };
+    const normalizeTitle = (value?: string | null): string => {
+      if (typeof value !== 'string') return '';
+      return value
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+    };
+    const stripLeadingFeedbackPrefix = (value?: string | null): string => {
+      return normalizeTitle(value).replace(/^feedback\s+pa\s*/i, '');
+    };
+    const isFeedbackTitle = (value?: string | null): boolean => {
+      return normalizeTitle(value).startsWith('feedback pa');
+    };
+    const isMissingColumnError = (error: any, columnName: string): boolean => {
+      const hay = [error?.message, error?.details, error?.hint, error?.code]
+        .filter(Boolean)
+        .map(v => String(v).toLowerCase())
+        .join(' | ');
+      return hay.includes(String(columnName).toLowerCase());
+    };
 
     try {
       const { data: templateRow, error: templateLookupError } = await supabase
@@ -437,7 +465,118 @@ export const taskService = {
       }
     };
 
+    const runFallbackCleanup = async () => {
+      try {
+        // Hard-delete tasks that still reference the template directly.
+        await supabase.from('activity_tasks').delete().eq('task_template_id', taskId).abortSignal(signal);
+        await supabase.from('external_event_tasks').delete().eq('task_template_id', taskId).abortSignal(signal);
+
+        // Also delete feedback tasks linked via feedback_template_id (older rows may survive RPC cleanup).
+        try {
+          await supabase.from('activity_tasks').delete().eq('feedback_template_id', taskId).abortSignal(signal);
+        } catch (error) {
+          if (!isMissingColumnError(error, 'feedback_template_id')) {
+            console.error('[taskService.deleteTask] fallback internal feedback_template cleanup failed', error);
+          }
+        }
+
+        try {
+          await supabase.from('external_event_tasks').delete().eq('feedback_template_id', taskId).abortSignal(signal);
+        } catch (error) {
+          if (!isMissingColumnError(error, 'feedback_template_id')) {
+            console.error('[taskService.deleteTask] fallback external feedback_template cleanup failed', error);
+          }
+        }
+
+        const normalizedTemplateTitle = normalizeTitle(templateTitle);
+        const normalizedTemplateFeedbackTitle = normalizedTemplateTitle
+          ? normalizeTitle(`Feedback pa ${templateTitle}`)
+          : '';
+
+        const candidateQuery = await supabase
+          .from('activity_tasks')
+          .select('id, activity_id, title, description, task_template_id, feedback_template_id')
+          .abortSignal(signal);
+
+        if (!candidateQuery.error && Array.isArray(candidateQuery.data) && candidateQuery.data.length) {
+          const byActivity = new Map<string, any[]>();
+          candidateQuery.data.forEach(row => {
+            const activityId = normalizeId((row as any)?.activity_id);
+            if (!activityId) return;
+            const list = byActivity.get(activityId) || [];
+            list.push(row);
+            byActivity.set(activityId, list);
+          });
+
+          const orphanIds = new Set<string>();
+
+          byActivity.forEach(rows => {
+            const parentTemplateIds = new Set<string>();
+            const parentTitles = new Set<string>();
+
+            rows.forEach(row => {
+              const directTemplate = normalizeId((row as any)?.task_template_id);
+              const feedbackTemplate = normalizeId((row as any)?.feedback_template_id);
+              if (directTemplate && !feedbackTemplate) {
+                parentTemplateIds.add(directTemplate);
+                const title = normalizeTitle((row as any)?.title);
+                if (title) parentTitles.add(title);
+              }
+            });
+
+            rows.forEach(row => {
+              const id = normalizeId((row as any)?.id);
+              if (!id) return;
+
+              const directTemplate = normalizeId((row as any)?.task_template_id);
+              const feedbackTemplate = normalizeId((row as any)?.feedback_template_id);
+              const markerTemplate =
+                parseTemplateIdFromMarker(typeof (row as any)?.description === 'string' ? (row as any).description : '') ||
+                parseTemplateIdFromMarker(typeof (row as any)?.title === 'string' ? (row as any).title : '');
+              const markerTemplateId = normalizeId(markerTemplate);
+              const normalizedTitle = normalizeTitle((row as any)?.title);
+              const feedbackBaseTitle = stripLeadingFeedbackPrefix((row as any)?.title);
+              const looksLikeFeedback = !!feedbackTemplate || !!markerTemplateId || isFeedbackTitle((row as any)?.title);
+
+              if (directTemplate === taskId || feedbackTemplate === taskId || markerTemplateId === taskId) {
+                orphanIds.add(id);
+                return;
+              }
+
+              if (!looksLikeFeedback) return;
+
+              const linkedTemplateId = feedbackTemplate ?? markerTemplateId;
+              if (linkedTemplateId) {
+                if (!parentTemplateIds.has(linkedTemplateId)) {
+                  orphanIds.add(id);
+                }
+                return;
+              }
+
+              if (normalizedTemplateTitle && normalizedTemplateFeedbackTitle) {
+                if (normalizedTitle === normalizedTemplateFeedbackTitle && !parentTitles.has(normalizedTemplateTitle)) {
+                  orphanIds.add(id);
+                  return;
+                }
+              }
+
+              if (feedbackBaseTitle && !parentTitles.has(feedbackBaseTitle)) {
+                orphanIds.add(id);
+              }
+            });
+          });
+
+          if (orphanIds.size) {
+            await supabase.from('activity_tasks').delete().in('id', Array.from(orphanIds)).abortSignal(signal);
+          }
+        }
+      } catch (error) {
+        console.error('[taskService.deleteTask] fallback cleanup failed unexpectedly', error);
+      }
+    };
+
     await runCleanup();
+    await runFallbackCleanup();
 
     // Try hard delete for owned tasks
     const { data: deleted, error: deleteError } = await supabase
