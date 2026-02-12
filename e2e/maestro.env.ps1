@@ -1,0 +1,5 @@
+$env:MAESTRO_EMAIL='mhe@optimise.nu'
+$env:MAESTRO_PASSWORD='$~cz/<74nQI%[}|[bZf'
+$env:MAESTRO_LOCKED_EMAIL='mhe0405@outlook.com'
+$env:MAESTRO_LOCKED_PASSWORD='bonnie12'
+$env:MAESTRO_FEEDBACK_NOTE='Maestro e2e note'

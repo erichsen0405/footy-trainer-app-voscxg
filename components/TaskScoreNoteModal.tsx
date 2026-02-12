@@ -268,6 +268,9 @@ function TaskScoreNoteModalComponent({
               </View>
 
               {renderScoreChips()}
+              {enableScore ? (
+                <View testID={score === null ? 'feedback.selectedScore.none' : `feedback.selectedScore.${score}`} style={styles.testProbe} />
+              ) : null}
 
               {enableScore ? (
                 <Pressable
@@ -301,6 +304,9 @@ function TaskScoreNoteModalComponent({
                     accessibilityLabel={noteLabel}
                   />
                 </View>
+              ) : null}
+              {isInitiallyCompleted && !hasChanges ? (
+                <View testID="feedback.persistedState.loaded" style={styles.testProbe} />
               ) : null}
 
               <View style={styles.footer}>
@@ -501,5 +507,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#FF3B30',
     textAlign: 'center',
+  },
+  testProbe: {
+    width: 2,
+    height: 2,
   },
 });

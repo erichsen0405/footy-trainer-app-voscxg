@@ -1,0 +1,84 @@
+appId: com.erichsen.footballcoach
+---
+- launchApp:
+    clearState: true
+    stopApp: true
+- runFlow:
+    when:
+      visible:
+        id: '^notifications\.notNowButton$'
+    commands:
+      - tapOn:
+          id: '^notifications\.notNowButton$'
+- openLink: "footballcoach:///(tabs)/profile"
+- runFlow:
+    when:
+      visible:
+        id: '^auth\.login\.emailInput$'
+    commands:
+      - tapOn:
+          id: '^auth\.login\.emailInput$'
+      - inputText: "${MAESTRO_EMAIL}"
+      - tapOn:
+          id: '^auth\.login\.passwordInput$'
+      - inputText: "${MAESTRO_PASSWORD}"
+      - tapOn:
+          id: '^auth\.login\.submitButton$'
+- openLink: "footballcoach:///(tabs)/(home)"
+- extendedWaitUntil:
+    visible:
+      id: '^home\.screen$'
+    timeout: 30000
+- runFlow:
+    when:
+      visible:
+        id: '^home\.activityTaskButton\.incomplete$'
+    commands:
+      - tapOn:
+          id: '^home\.activityTaskButton\.incomplete$'
+          index: 0
+- runFlow:
+    when:
+      visible:
+        id: '^home\.activityTaskButton\.completed$'
+    commands:
+      - tapOn:
+          id: '^home\.activityTaskButton\.completed$'
+          index: 0
+- runFlow:
+    when:
+      visible:
+        id: '^activity\.completeButton\.markUndone$'
+    commands:
+      - tapOn:
+          id: '^activity\.completeButton\.markUndone$'
+- runFlow:
+    when:
+      visible:
+        id: '^home\.activityTaskButton\.incomplete$'
+    commands:
+      - tapOn:
+          id: '^home\.activityTaskButton\.incomplete$'
+          index: 0
+- extendedWaitUntil:
+    visible:
+      id: '^activity\.completeButton\.markDone$'
+    timeout: 15000
+- tapOn:
+    id: '^activity\.completeButton\.markDone$'
+- runFlow:
+    when:
+      visible:
+        id: '^activity\.details\.closeButton$'
+    commands:
+      - tapOn:
+          id: '^activity\.details\.closeButton$'
+- extendedWaitUntil:
+    visible:
+      id: '^home\.activityTaskCompletedIndicator$'
+      index: 0
+    timeout: 15000
+- assertVisible:
+    id: '^home\.activityTaskCompletedIndicator$'
+    index: 0
+

@@ -707,7 +707,11 @@ export default function ActivityCard({
 
   return (
     <>
-      <Pressable onPress={handleCardPress} style={({ pressed }) => [pressed && styles.cardPressed]}>
+      <Pressable
+        onPress={handleCardPress}
+        style={({ pressed }) => [pressed && styles.cardPressed]}
+        testID="home.activityCardButton"
+      >
         <LinearGradient
           colors={gradientColors}
           start={{ x: 0, y: 0 }}
@@ -844,10 +848,11 @@ export default function ActivityCard({
 
                 const task = (item as any).task;
                 const taskCompleted = isTaskDone(task);
+                const feedbackTask = isFeedbackTask(task);
                 const taskReminder = resolveReminderMinutes(task);
                 const templateIdForTask = resolveFeedbackTemplateId(task);
                 const siblingReminder =
-                  templateIdForTask && isFeedbackTask(task)
+                  templateIdForTask && feedbackTask
                     ? (() => {
                         const sibling = optimisticTasks.find((candidate) => {
                           if (!candidate || candidate === task) return false;
@@ -867,7 +872,7 @@ export default function ActivityCard({
                     ? taskReminder
                     : siblingReminder !== null
                       ? siblingReminder
-                      : isFeedbackTask(task)
+                      : feedbackTask
                         ? reminderMinutesValue
                         : null;
 
@@ -879,15 +884,23 @@ export default function ActivityCard({
                         style={styles.taskCheckboxArea}
                         onPress={(e) => handleTaskPress(task, e)}
                         activeOpacity={0.7}
+                        testID={
+                          feedbackTask
+                            ? (taskCompleted ? 'home.feedbackTaskButton.completed' : 'home.feedbackTaskButton.incomplete')
+                            : (taskCompleted ? 'home.activityTaskButton.completed' : 'home.activityTaskButton.incomplete')
+                        }
                       >
                         <View style={[styles.taskCheckbox, taskCompleted && styles.taskCheckboxCompleted]}>
                           {taskCompleted && (
-                            <IconSymbol
-                              ios_icon_name="checkmark"
-                              android_material_icon_name="check"
-                              size={14}
-                              color={taskCompleted ? '#4CAF50' : '#fff'}
-                            />
+                            <>
+                              <View testID={feedbackTask ? 'home.feedbackTaskCompletedIndicator' : 'home.activityTaskCompletedIndicator'} style={styles.testProbe} />
+                              <IconSymbol
+                                ios_icon_name="checkmark"
+                                android_material_icon_name="check"
+                                size={14}
+                                color={taskCompleted ? '#4CAF50' : '#fff'}
+                              />
+                            </>
                           )}
                         </View>
                       </TouchableOpacity>
@@ -896,6 +909,11 @@ export default function ActivityCard({
                         style={styles.taskContent}
                         onPress={(e) => handleTaskPress(task, e)}
                         activeOpacity={0.7}
+                        testID={
+                          feedbackTask
+                            ? (taskCompleted ? 'home.feedbackTaskButton.completed' : 'home.feedbackTaskButton.incomplete')
+                            : (taskCompleted ? 'home.activityTaskButton.completed' : 'home.activityTaskButton.incomplete')
+                        }
                       >
                         <View style={styles.taskTitleRow}>
                           <Text
@@ -1170,6 +1188,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  testProbe: {
+    width: 2,
+    height: 2,
   },
 
   // Task Details Modal
