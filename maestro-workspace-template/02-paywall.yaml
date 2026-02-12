@@ -1,0 +1,35 @@
+appId: ${APP_ID}
+---
+- launchApp
+
+# Open paywall from profile if needed.
+- tapOn:
+    text: "Profil"
+    optional: true
+- tapOn:
+    text: "Opgrader"
+    optional: true
+- tapOn:
+    text: "Premium"
+    optional: true
+
+- assertVisible:
+    id: "paywall.primaryCtaButton"
+- assertVisible:
+    id: "paywall.restoreButton"
+
+# Plan card IDs (Apple examples from this codebase).
+- assertVisible:
+    id: "paywall.planCard.fc_player_premium_monthly"
+    optional: true
+- assertVisible:
+    id: "paywall.planCard.fc_spiller_monthly"
+    optional: true
+- assertVisible:
+    id: "paywall.planCard.fc_trainer_basic_monthly"
+    optional: true
+
+# Modal close button may only exist in modal paywall contexts.
+- assertVisible:
+    id: "paywall.closeButton"
+    optional: true

@@ -152,6 +152,8 @@ function TaskDetailsModalComponent({
                   onPress={onComplete}
                   disabled={disable}
                   style={[styles.primaryButtonShadow, { shadowColor: base }, disable && styles.primaryButtonDisabled]}
+                  testID="activity.completeButton"
+                  accessibilityLabel={completed ? 'Markér som ikke udført' : 'Markér som udført'}
                 >
                   <LinearGradient
                     colors={[base, lighten(base, 0.25)]}

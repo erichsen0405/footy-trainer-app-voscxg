@@ -421,6 +421,8 @@ export default function SubscriptionManager({
                 onPress={() => handleSelectPlan(plan.id, plan.name, plan.max_players)}
                 disabled={isCreating || isCurrentPlan}
                 activeOpacity={0.7}
+                testID={`paywall.planCard.${plan.id}`}
+                accessibilityLabel={`Abonnement ${plan.name}`}
               >
                 {isPopular && !isCurrentPlan && (
                   <View style={[styles.popularBadge, { backgroundColor: colors.primary }]}>
@@ -523,6 +525,8 @@ export default function SubscriptionManager({
                     ]}
                     onPress={() => handleSelectPlan(plan.id, plan.name, plan.max_players)}
                     disabled={isCreating}
+                    testID="paywall.primaryCtaButton"
+                    accessibilityLabel={isSignupFlow ? 'Vælg denne plan' : 'Skift til denne plan'}
                   >
                     {isCreating ? (
                       <ActivityIndicator color={isPopular ? '#fff' : colors.primary} size="small" />

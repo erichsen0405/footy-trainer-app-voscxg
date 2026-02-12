@@ -1,0 +1,23 @@
+appId: ${APP_ID}
+---
+- launchApp
+
+# Precondition: open Feedback modal first.
+
+- assertVisible:
+    id: "feedback.scoreInput"
+- assertVisible:
+    id: "feedback.noteInput"
+- assertVisible:
+    id: "feedback.saveButton"
+
+# Score options are dynamic by value. Check a few common values.
+- assertVisible:
+    id: "feedback.scoreOption.1"
+    optional: true
+- assertVisible:
+    id: "feedback.scoreOption.3"
+    optional: true
+- assertVisible:
+    id: "feedback.scoreOption.5"
+    optional: true

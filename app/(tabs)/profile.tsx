@@ -1687,6 +1687,8 @@ export default function ProfileScreen() {
                   keyboardType="email-address"
                   editable={!loading}
                   autoCorrect={false}
+                  testID="auth.login.emailInput"
+                  accessibilityLabel="Email"
                 />
 
                 <Text style={[styles.label, { color: textColor }]}>Adgangskode</Text>
@@ -1706,6 +1708,8 @@ export default function ProfileScreen() {
                   editable={!loading}
                   autoCorrect={false}
                   autoCapitalize="none"
+                  testID="auth.login.passwordInput"
+                  accessibilityLabel="Adgangskode"
                 />
 
                 <TouchableOpacity
@@ -1713,6 +1717,8 @@ export default function ProfileScreen() {
                   onPress={isSignUp ? handleSignup : handleLogin}
                   disabled={loading}
                   activeOpacity={0.7}
+                  testID="auth.login.submitButton"
+                  accessibilityLabel={isSignUp ? 'Opret konto' : 'Log ind'}
                 >
                   {loading ? (
                     <View style={styles.loadingContainer}>
@@ -1877,6 +1883,8 @@ export default function ProfileScreen() {
                 onPress={closePaywallModal}
                 style={styles.paywallCloseButton}
                 activeOpacity={0.7}
+                testID="paywall.closeButton"
+                accessibilityLabel="Luk paywall"
               >
                 <IconSymbol
                   ios_icon_name="xmark"

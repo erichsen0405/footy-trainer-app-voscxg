@@ -1,0 +1,15 @@
+appId: ${APP_ID}
+---
+- launchApp
+
+# If needed, open the profile tab where login lives.
+- tapOn:
+    text: "Profil"
+    optional: true
+
+- assertVisible:
+    id: "auth.login.emailInput"
+- assertVisible:
+    id: "auth.login.passwordInput"
+- assertVisible:
+    id: "auth.login.submitButton"
