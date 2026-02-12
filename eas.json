@@ -8,6 +8,11 @@
       },
       "autoIncrement": true
     },
+    "development-sim": {
+      "ios": {
+        "simulator": true
+      }
+    },
     "preview": {
       "distribution": "internal",
       "autoIncrement": true
