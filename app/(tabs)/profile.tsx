@@ -1597,6 +1597,7 @@ export default function ProfileScreen() {
             style={[styles.signOutButton, { backgroundColor: Platform.OS === 'ios' ? '#ff3b30' : colors.error }]}
             onPress={handleSignOut}
             activeOpacity={0.7}
+            testID="auth.signOutButton"
           >
             {Platform.OS !== 'ios' && <IconSymbol ios_icon_name="arrow.right.square" android_material_icon_name="logout" size={24} color="#fff" />}
             <Text style={styles.signOutButtonText}>Log ud</Text>

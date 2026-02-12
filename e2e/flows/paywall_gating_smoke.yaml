@@ -1,0 +1,33 @@
+appId: com.erichsen.footballcoach
+---
+- launchApp:
+    clearState: true
+    stopApp: true
+- runFlow:
+    when:
+      visible:
+        id: '^notifications\.notNowButton$'
+    commands:
+      - tapOn:
+          id: '^notifications\.notNowButton$'
+- openLink: "footballcoach:///(tabs)/profile"
+- runFlow:
+    when:
+      visible:
+        id: '^auth\.login\.emailInput$'
+    commands:
+      - tapOn:
+          id: '^auth\.login\.emailInput$'
+      - inputText: "${MAESTRO_LOCKED_EMAIL}"
+      - tapOn:
+          id: '^auth\.login\.passwordInput$'
+      - inputText: "${MAESTRO_LOCKED_PASSWORD}"
+      - tapOn:
+          id: '^auth\.login\.submitButton$'
+- extendedWaitUntil:
+    visible:
+      id: '^paywall\.primaryCtaButton$'
+    timeout: 30000
+- assertVisible:
+    id: '^paywall\.primaryCtaButton$'
+

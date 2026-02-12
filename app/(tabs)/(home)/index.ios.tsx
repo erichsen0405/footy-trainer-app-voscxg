@@ -1289,6 +1289,7 @@ export default function HomeScreen() {
         <Pressable
           style={styles.createButton}
           onPress={handleOpenCreateModal}
+          testID="home.createActivityButton"
         >
           <Text style={styles.createButtonText}>+  Opret Aktivitet</Text>
         </Pressable>
@@ -1313,6 +1314,7 @@ export default function HomeScreen() {
         <HomeSkeleton />
       ) : (
         <FlatList
+          testID="home.screen"
           data={flattenedData}
           renderItem={renderItem}
           keyExtractor={keyExtractor}

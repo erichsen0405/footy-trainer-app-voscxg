@@ -107,7 +107,13 @@ function TaskDetailsModalComponent({
                   {title}
                 </Text>
 
-                <Pressable onPress={onClose} hitSlop={12} disabled={isSaving} style={styles.closeButton}>
+                <Pressable
+                  onPress={onClose}
+                  hitSlop={12}
+                  disabled={isSaving}
+                  style={styles.closeButton}
+                  testID="activity.details.closeButton"
+                >
                   <Text style={styles.closeText}>X</Text>
                 </Pressable>
               </View>
@@ -152,7 +158,7 @@ function TaskDetailsModalComponent({
                   onPress={onComplete}
                   disabled={disable}
                   style={[styles.primaryButtonShadow, { shadowColor: base }, disable && styles.primaryButtonDisabled]}
-                  testID="activity.completeButton"
+                  testID={completed ? 'activity.completeButton.markUndone' : 'activity.completeButton.markDone'}
                   accessibilityLabel={completed ? 'Markér som ikke udført' : 'Markér som udført'}
                 >
                   <LinearGradient
