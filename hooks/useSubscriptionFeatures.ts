@@ -20,7 +20,8 @@ type FeatureAccess = {
   trainerLinking: boolean;
 };
 
-const MAX_PLAYERS_BY_TIER: Record<SubscriptionTier, number> = {
+// Exported for unit tests; keep usage internal to this module in app code.
+export const MAX_PLAYERS_BY_TIER: Record<SubscriptionTier, number> = {
   player_basic: 1,
   player_premium: 1,
   trainer_basic: 5,
@@ -28,7 +29,7 @@ const MAX_PLAYERS_BY_TIER: Record<SubscriptionTier, number> = {
   trainer_premium: 50,
 };
 
-const featureAccessForTier = (tier: SubscriptionTier | null): FeatureAccess => {
+export const featureAccessForTier = (tier: SubscriptionTier | null): FeatureAccess => {
   if (!tier) return { library: false, calendarSync: false, trainerLinking: false };
   const isTrainerTier = tier.startsWith('trainer');
   const isPremiumPlayer = tier === 'player_premium';
