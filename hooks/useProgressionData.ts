@@ -135,7 +135,8 @@ type DedupeSource = {
   id?: string | null;
 };
 
-const resolveBaseKey = (entry: DedupeSource) => {
+// Exported for unit tests; keep usage internal to this module in app code.
+export const resolveBaseKey = (entry: DedupeSource) => {
   const activityId = entry?.activityId ?? null;
   if (activityId && UUID_REGEX.test(activityId)) {
     return activityId;
@@ -146,23 +147,23 @@ const resolveBaseKey = (entry: DedupeSource) => {
   return sessionKey ?? activityId ?? dateKey ?? id ?? 'na';
 };
 
-const toDateKey = (value?: string | null) => (value ? value.slice(0, 10) : '');
-const normalizeTime = (value?: string | null) => {
+export const toDateKey = (value?: string | null) => (value ? value.slice(0, 10) : '');
+export const normalizeTime = (value?: string | null) => {
   if (!value) return null;
   const trimmed = String(value).trim();
   if (!trimmed) return null;
   return trimmed.slice(0, 5);
 };
-const isUuid = (value?: string | null) => {
+export const isUuid = (value?: string | null) => {
   if (!value) return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+  return UUID_REGEX.test(value);
 };
-const normalizeEventId = (value?: string | null) => {
+export const normalizeEventId = (value?: string | null) => {
   const trimmed = String(value ?? '').trim();
   if (!trimmed) return null;
   return isUuid(trimmed) ? trimmed : null;
 };
-const buildSessionKey = (args: {
+export const buildSessionKey = (args: {
   eventId?: string | null;
   userId?: string | null;
   date?: string | null;
@@ -175,6 +176,178 @@ const buildSessionKey = (args: {
   const owner = String(args.userId ?? '').trim();
   if (!owner || !dateKey) return null;
   return `${owner}:${dateKey}:${timeKey}`;
+};
+
+type ProgressionSummaryArgs = {
+  metric: ProgressionMetric;
+  days: number;
+  focusCompleted: ProgressionEntry[];
+  focusCompletedPrevious: ProgressionEntry[];
+  intensityCompleted: ProgressionEntry[];
+  intensityCompletedPrevious: ProgressionEntry[];
+  intensityPossible: ProgressionEntry[];
+  intensityPossiblePrevious: ProgressionEntry[];
+  ratingPossibleCount: number;
+  ratingCompletedCount: number;
+  ratingPreviousPossibleCount: number;
+  ratingPreviousCompletedCount: number;
+};
+
+export const buildPeriodBounds = (days: number, now = new Date()) => {
+  const today = startOfDay(now);
+  const periodStart = startOfDay(subDays(today, Math.max(days - 1, 0)));
+  const periodEndExclusive = startOfDay(addDays(today, 1));
+  const previousStart = startOfDay(subDays(periodStart, days));
+  return {
+    periodStart,
+    periodEndExclusive,
+    previousStart,
+    periodStartDate: format(periodStart, 'yyyy-MM-dd'),
+    periodEndDate: format(periodEndExclusive, 'yyyy-MM-dd'),
+    previousStartDate: format(previousStart, 'yyyy-MM-dd'),
+    previousEndDate: format(periodStart, 'yyyy-MM-dd'),
+    periodEndInclusiveDate: format(addDays(periodEndExclusive, -1), 'yyyy-MM-dd'),
+  };
+};
+
+export const computeProgressionSummary = ({
+  metric,
+  days,
+  focusCompleted,
+  focusCompletedPrevious,
+  intensityCompleted,
+  intensityCompletedPrevious,
+  intensityPossible,
+  intensityPossiblePrevious,
+  ratingPossibleCount,
+  ratingCompletedCount,
+  ratingPreviousPossibleCount,
+  ratingPreviousCompletedCount,
+}: ProgressionSummaryArgs): ProgressionSummary => {
+  if (metric === 'rating') {
+    const completed = focusCompleted;
+    const completedCount = ratingCompletedCount;
+    const possibleCount = ratingPossibleCount;
+    const previousCompleted = focusCompletedPrevious;
+    const previousCompletedCount = ratingPreviousCompletedCount;
+    const previousPossibleCount = ratingPreviousPossibleCount;
+    const completionRate = possibleCount ? Math.round((completedCount / possibleCount) * 100) : 0;
+    const previousRate = previousPossibleCount ? Math.round((previousCompletedCount / previousPossibleCount) * 100) : 0;
+    const delta = completionRate - previousRate;
+    const ratings = completed.map(entry => entry.rating ?? 0);
+    const ratingsPrev = previousCompleted.map(entry => entry.rating ?? 0);
+    const avgCurrent = ratings.length ? ratings.reduce((sum, v) => sum + v, 0) / ratings.length : 0;
+    const avgPrevious = ratingsPrev.length ? ratingsPrev.reduce((sum, v) => sum + v, 0) / ratingsPrev.length : 0;
+    const scorePercent = Math.round((avgCurrent / 10) * 100);
+    const previousScorePercent = Math.round((avgPrevious / 10) * 100);
+    const deltaPercentPoints = scorePercent - previousScorePercent;
+    const avgChangePercent =
+      avgPrevious > 0 ? ((avgCurrent - avgPrevious) / avgPrevious) * 100 : avgCurrent > 0 ? 100 : 0;
+    const successCount = completed.filter(entry => (entry.rating ?? 0) >= SUCCESS_THRESHOLD).length;
+    const uniqueDates = Array.from(
+      new Set(completed.map(entry => entry.dateKey || entry.createdAt.slice(0, 10)))
+    )
+      .map(d => parseISO(`${d}T00:00:00`))
+      .sort((a, b) => b.getTime() - a.getTime());
+
+    let streak = 0;
+    for (let i = 0; i < uniqueDates.length; i++) {
+      if (i === 0) {
+        streak = 1;
+        continue;
+      }
+      const diff = differenceInCalendarDays(uniqueDates[i - 1], uniqueDates[i]);
+      if (diff === 1) {
+        streak += 1;
+      } else if (diff > 1) {
+        break;
+      }
+    }
+
+    const badges: string[] = [];
+    if (streak >= 3) badges.push('Streak 3+');
+    if (delta > 0) badges.push('Momentum');
+    if (completedCount >= Math.max(3, Math.round(days / 4))) badges.push('Consistency');
+    if (successCount >= 3) badges.push('8+ mastery');
+
+    return {
+      completionRate,
+      previousRate,
+      delta,
+      totalEntries: completed.length,
+      successCount,
+      streakDays: streak,
+      badges,
+      possibleCount,
+      completedCount,
+      avgCurrent,
+      avgPrevious,
+      avgChangePercent,
+      scorePercent,
+      previousScorePercent,
+      deltaPercentPoints,
+    };
+  }
+
+  const registered = intensityCompleted;
+  const registeredCount = registered.length;
+  const possibleCount = intensityPossible.length;
+  const previousRegistered = intensityCompletedPrevious;
+  const previousPossibleCount = intensityPossiblePrevious.length;
+  const completionRate = possibleCount ? Math.round((registeredCount / possibleCount) * 100) : 0;
+  const previousRate = previousPossibleCount ? Math.round((previousRegistered.length / previousPossibleCount) * 100) : 0;
+  const delta = completionRate - previousRate;
+  const intensities = registered.map(entry => entry.intensity ?? 0);
+  const intensitiesPrev = previousRegistered.map(entry => entry.intensity ?? 0);
+  const avgCurrent = intensities.length ? intensities.reduce((sum, v) => sum + v, 0) / intensities.length : 0;
+  const avgPrevious = intensitiesPrev.length ? intensitiesPrev.reduce((sum, v) => sum + v, 0) / intensitiesPrev.length : 0;
+  const scorePercent = Math.round((avgCurrent / 10) * 100);
+  const previousScorePercent = Math.round((avgPrevious / 10) * 100);
+  const deltaPercentPoints = scorePercent - previousScorePercent;
+  const avgChangePercent =
+    avgPrevious > 0 ? ((avgCurrent - avgPrevious) / avgPrevious) * 100 : avgCurrent > 0 ? 100 : 0;
+  const successCount = registered.filter(entry => (entry.intensity ?? 0) >= SUCCESS_THRESHOLD).length;
+  const uniqueDates = Array.from(new Set(registered.map(entry => entry.dateKey || entry.createdAt.slice(0, 10))))
+    .map(d => parseISO(`${d}T00:00:00`))
+    .sort((a, b) => b.getTime() - a.getTime());
+
+  let streak = 0;
+  for (let i = 0; i < uniqueDates.length; i++) {
+    if (i === 0) {
+      streak = 1;
+      continue;
+    }
+    const diff = differenceInCalendarDays(uniqueDates[i - 1], uniqueDates[i]);
+    if (diff === 1) {
+      streak += 1;
+    } else if (diff > 1) {
+      break;
+    }
+  }
+
+  const badges: string[] = [];
+  if (streak >= 3) badges.push('Streak 3+');
+  if (delta > 0) badges.push('Momentum');
+  if (registeredCount >= Math.max(3, Math.round(days / 4))) badges.push('Consistency');
+  if (successCount >= 3) badges.push('8+ mastery');
+
+  return {
+    completionRate,
+    previousRate,
+    delta,
+    totalEntries: registeredCount,
+    successCount,
+    streakDays: streak,
+    badges,
+    possibleCount,
+    completedCount: registeredCount,
+    avgCurrent,
+    avgPrevious,
+    avgChangePercent,
+    scorePercent,
+    previousScorePercent,
+    deltaPercentPoints,
+  };
 };
 
 export function useProgressionData({
@@ -363,14 +536,16 @@ export function useProgressionData({
 
       runIfMounted(() => setRequiresLogin(false));
 
-      const today = startOfDay(new Date());
-      const periodStart = startOfDay(subDays(today, Math.max(days - 1, 0)));
-      const periodEndExclusive = startOfDay(addDays(today, 1));
-      const previousStart = startOfDay(subDays(periodStart, days));
-      const periodStartDate = format(periodStart, 'yyyy-MM-dd');
-      const periodEndDate = format(periodEndExclusive, 'yyyy-MM-dd');
-      const previousStartDate = format(previousStart, 'yyyy-MM-dd');
-      const previousEndDate = format(periodStart, 'yyyy-MM-dd');
+      const {
+        periodStart,
+        periodEndExclusive,
+        previousStart,
+        periodStartDate,
+        periodEndDate,
+        previousStartDate,
+        previousEndDate,
+        periodEndInclusiveDate,
+      } = buildPeriodBounds(days);
 
       const focusSelect = `
         id,
@@ -936,7 +1111,7 @@ export function useProgressionData({
       if (__DEV__ && userEmail === 'mhe0405@gmail.com') {
         console.log('[RECON][PerformanceCounter]', {
           periodStart: periodStartDate,
-          periodEnd: format(addDays(periodEndExclusive, -1), 'yyyy-MM-dd'),
+          periodEnd: periodEndInclusiveDate,
           perfPossibleTaskIdsCount: toCurrentPossibleIds.length,
           perfPossibleTaskIdsSample: toCurrentPossibleIds.slice(0, 5),
           perfCompletedTaskIdsCount: toCurrentCompletedIds.length,
@@ -1186,141 +1361,20 @@ export function useProgressionData({
   const heatmapRows = useMemo<HeatmapRow[]>(() => [], []);
 
   const summary = useMemo<ProgressionSummary>(() => {
-    if (metric === 'rating') {
-      const completed = focusCompletedDeduped;
-      const completedCount = homeAlignedTaskCounter.completedIds.length;
-      const possibleCount = homeAlignedTaskCounter.possibleIds.length;
-
-      const previousCompleted = focusCompletedPreviousDeduped;
-      const previousCompletedCount = homeAlignedTaskCounterPrevious.completedIds.length;
-      const previousPossibleCount = homeAlignedTaskCounterPrevious.possibleIds.length;
-
-      const completionRate = possibleCount ? Math.round((completedCount / possibleCount) * 100) : 0;
-      const previousRate = previousPossibleCount ? Math.round((previousCompletedCount / previousPossibleCount) * 100) : 0;
-      const delta = completionRate - previousRate;
-
-      const ratings = completed.map(entry => entry.rating ?? 0);
-      const ratingsPrev = previousCompleted.map(entry => entry.rating ?? 0);
-      const avgCurrent = ratings.length ? ratings.reduce((sum, v) => sum + v, 0) / ratings.length : 0;
-      const avgPrevious = ratingsPrev.length ? ratingsPrev.reduce((sum, v) => sum + v, 0) / ratingsPrev.length : 0;
-      const scorePercent = Math.round((avgCurrent / 10) * 100);
-      const previousScorePercent = Math.round((avgPrevious / 10) * 100);
-      const deltaPercentPoints = scorePercent - previousScorePercent;
-      const avgChangePercent =
-        avgPrevious > 0 ? ((avgCurrent - avgPrevious) / avgPrevious) * 100 : avgCurrent > 0 ? 100 : 0;
-
-      const successCount = completed.filter(entry => (entry.rating ?? 0) >= SUCCESS_THRESHOLD).length;
-
-      const uniqueDates = Array.from(
-        new Set(completed.map(entry => entry.dateKey || entry.createdAt.slice(0, 10)))
-      )
-        .map(d => parseISO(`${d}T00:00:00`))
-        .sort((a, b) => b.getTime() - a.getTime());
-
-      let streak = 0;
-      for (let i = 0; i < uniqueDates.length; i++) {
-        if (i === 0) {
-          streak = 1;
-          continue;
-        }
-        const diff = differenceInCalendarDays(uniqueDates[i - 1], uniqueDates[i]);
-        if (diff === 1) {
-          streak += 1;
-        } else if (diff > 1) {
-          break;
-        }
-      }
-
-      const badges: string[] = [];
-      if (streak >= 3) badges.push('Streak 3+');
-      if (delta > 0) badges.push('Momentum');
-      if (completedCount >= Math.max(3, Math.round(days / 4))) badges.push('Consistency');
-      if (successCount >= 3) badges.push('8+ mastery');
-
-      return {
-        completionRate,
-        previousRate,
-        delta,
-        totalEntries: completed.length,
-        successCount,
-        streakDays: streak,
-        badges,
-        possibleCount,
-        completedCount,
-        avgCurrent,
-        avgPrevious,
-        avgChangePercent,
-        scorePercent,
-        previousScorePercent,
-        deltaPercentPoints,
-      };
-    }
-
-    // Intensity summary
-    const registered = intensityCompletedDeduped;
-    const registeredCount = registered.length;
-    const possibleCount = intensityPossibleDeduped.length;
-
-    const previousRegistered = intensityCompletedPreviousDeduped;
-    const previousPossibleCount = intensityPossiblePreviousDeduped.length;
-
-    const completionRate = possibleCount ? Math.round((registeredCount / possibleCount) * 100) : 0;
-    const previousRate = previousPossibleCount ? Math.round((previousRegistered.length / previousPossibleCount) * 100) : 0;
-    const delta = completionRate - previousRate;
-
-    const intensities = registered.map(entry => entry.intensity ?? 0);
-    const intensitiesPrev = previousRegistered.map(entry => entry.intensity ?? 0);
-    const avgCurrent = intensities.length ? intensities.reduce((sum, v) => sum + v, 0) / intensities.length : 0;
-    const avgPrevious = intensitiesPrev.length ? intensitiesPrev.reduce((sum, v) => sum + v, 0) / intensitiesPrev.length : 0;
-    const scorePercent = Math.round((avgCurrent / 10) * 100);
-    const previousScorePercent = Math.round((avgPrevious / 10) * 100);
-    const deltaPercentPoints = scorePercent - previousScorePercent;
-    const avgChangePercent =
-      avgPrevious > 0 ? ((avgCurrent - avgPrevious) / avgPrevious) * 100 : avgCurrent > 0 ? 100 : 0;
-
-    const successCount = registered.filter(entry => (entry.intensity ?? 0) >= SUCCESS_THRESHOLD).length;
-
-    const uniqueDates = Array.from(new Set(registered.map(entry => entry.dateKey || entry.createdAt.slice(0, 10))))
-      .map(d => parseISO(`${d}T00:00:00`))
-      .sort((a, b) => b.getTime() - a.getTime());
-
-    let streak = 0;
-    for (let i = 0; i < uniqueDates.length; i++) {
-      if (i === 0) {
-        streak = 1;
-        continue;
-      }
-      const diff = differenceInCalendarDays(uniqueDates[i - 1], uniqueDates[i]);
-      if (diff === 1) {
-        streak += 1;
-      } else if (diff > 1) {
-        break;
-      }
-    }
-
-    const badges: string[] = [];
-    if (streak >= 3) badges.push('Streak 3+');
-    if (delta > 0) badges.push('Momentum');
-    if (registeredCount >= Math.max(3, Math.round(days / 4))) badges.push('Consistency');
-    if (successCount >= 3) badges.push('8+ mastery');
-
-    return {
-      completionRate,
-      previousRate,
-      delta,
-      totalEntries: registeredCount,
-      successCount,
-      streakDays: streak,
-      badges,
-      possibleCount,
-      completedCount: registeredCount,
-      avgCurrent,
-      avgPrevious,
-      avgChangePercent,
-      scorePercent,
-      previousScorePercent,
-      deltaPercentPoints,
-    };
+    return computeProgressionSummary({
+      metric,
+      days,
+      focusCompleted: focusCompletedDeduped,
+      focusCompletedPrevious: focusCompletedPreviousDeduped,
+      intensityCompleted: intensityCompletedDeduped,
+      intensityCompletedPrevious: intensityCompletedPreviousDeduped,
+      intensityPossible: intensityPossibleDeduped,
+      intensityPossiblePrevious: intensityPossiblePreviousDeduped,
+      ratingPossibleCount: homeAlignedTaskCounter.possibleIds.length,
+      ratingCompletedCount: homeAlignedTaskCounter.completedIds.length,
+      ratingPreviousPossibleCount: homeAlignedTaskCounterPrevious.possibleIds.length,
+      ratingPreviousCompletedCount: homeAlignedTaskCounterPrevious.completedIds.length,
+    });
   }, [
     days,
     focusCompletedDeduped,

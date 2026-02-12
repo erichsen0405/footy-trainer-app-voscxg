@@ -1,7 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { TaskTemplateSelfFeedback } from '@/types';
 
-function mapRow(row: any): TaskTemplateSelfFeedback {
+export function mapFeedbackRow(row: any): TaskTemplateSelfFeedback {
   return {
     id: row.id,
     userId: row.user_id,
@@ -43,7 +43,7 @@ export async function fetchSelfFeedbackForTemplates(
     throw error;
   }
 
-  return (data || []).map(mapRow);
+  return (data || []).map(mapFeedbackRow);
 }
 
 export async function fetchSelfFeedbackForActivities(
@@ -103,7 +103,7 @@ export async function fetchSelfFeedbackForActivities(
     }
   }
 
-  const mapped = allRows.map(mapRow);
+  const mapped = allRows.map(mapFeedbackRow);
   mapped.sort((a, b) => {
     const aMs = new Date(String((a as any)?.createdAt ?? '')).getTime();
     const bMs = new Date(String((b as any)?.createdAt ?? '')).getTime();
@@ -186,5 +186,5 @@ export async function upsertSelfFeedback(args: UpsertSelfFeedbackArgs) {
     throw error;
   }
 
-  return mapRow(data);
+  return mapFeedbackRow(data);
 }
