@@ -3,7 +3,19 @@
 This app was built using [Natively.dev](https://natively.dev) - a platform for creating mobile apps.
 
 Made with 💙 for creativity.
+## Running tests
 
+Run the Jest test suite headless (no emulator/device required):
+
+```bash
+npm test
+```
+
+Optional watch mode:
+
+```bash
+npm test -- --watch
+```
 ## Holdtræning importer
 
 We now have a dedicated script for seeding the FootballCoach holdtræning focus areas into Supabase.
@@ -27,3 +39,4 @@ Useful flags:
 - `--batch-size <n>` controls how many rows are upserted per request (default 50).
 
 The script enforces `trainer_id` because `public.exercise_library.trainer_id` is `NOT NULL`. Pass the UUID for the system/trainer account that should own the seeded rows.
+
