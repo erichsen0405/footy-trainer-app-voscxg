@@ -450,7 +450,8 @@ export const taskService = {
         const { error } = await supabase.rpc('cleanup_tasks_for_template', {
           p_user_id: userId,
           p_template_id: taskId,
-          p_template_title: templateTitle,
+          // Force explicit 3-arg resolution in PostgREST (avoid overload ambiguity).
+          p_template_title: templateTitle ?? '',
         });
 
         if (error) {

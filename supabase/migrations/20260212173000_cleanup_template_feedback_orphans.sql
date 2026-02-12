@@ -130,17 +130,3 @@ begin
   return;
 end;
 $$;
-
-create or replace function public.cleanup_tasks_for_template(
-    p_user_id uuid,
-    p_template_id uuid
-) returns void
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  perform public.cleanup_tasks_for_template(p_user_id, p_template_id, null);
-  return;
-end;
-$$;
