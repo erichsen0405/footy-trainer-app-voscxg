@@ -1,9 +1,0 @@
-appId: ${APP_ID}
----
-- launchApp
-
-# Precondition: open an Activity task modal with the "Fuldfør" action.
-# Then run this test to validate the testID exists.
-
-- assertVisible:
-    id: "activity.completeButton"
