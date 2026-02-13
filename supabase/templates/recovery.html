@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="da">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nulstil din adgangskode</title>
+  </head>
+  <body style="margin:0;padding:0;background:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;">
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#f4f6f8;padding:24px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:560px;background:#ffffff;border-radius:14px;padding:28px 24px;">
+            <tr>
+              <td style="font-size:24px;font-weight:700;color:#111827;padding-bottom:8px;">Nulstil din adgangskode</td>
+            </tr>
+            <tr>
+              <td style="font-size:16px;line-height:1.5;color:#374151;padding-bottom:20px;">
+                Vi har modtaget en anmodning om at nulstille din adgangskode. Klik p&aring; knappen herunder for at forts&aelig;tte.
+              </td>
+            </tr>
+            <tr>
+              <td style="padding-bottom:24px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td bgcolor="#4caf50" style="border-radius:10px;">
+                      <a
+                        href="footballcoach://auth/recovery-callback?token_hash={{ .TokenHash }}&amp;type=recovery"
+                        style="display:block;padding:12px 18px;font-size:16px;line-height:1.2;font-weight:700;color:#ffffff;text-decoration:none;border-radius:10px;"
+                      >
+                        Nulstil adgangskode
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="font-size:14px;line-height:1.5;color:#6b7280;padding-bottom:10px;">
+                Hvis knappen ikke virker, kan du kopiere og inds&aelig;tte dette link i din browser:
+              </td>
+            </tr>
+            <tr>
+              <td style="font-size:13px;line-height:1.5;color:#6b7280;word-break:break-all;">
+                footballcoach://auth/recovery-callback?token_hash={{ .TokenHash }}&amp;type=recovery
+              </td>
+            </tr>
+            <tr>
+              <td style="font-size:12px;line-height:1.5;color:#9ca3af;padding-top:24px;">
+                Hvis du ikke har bedt om at nulstille adgangskoden, kan du se bort fra denne e-mail.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

@@ -2,7 +2,14 @@
 
 This app was built using [Natively.dev](https://natively.dev) - a platform for creating mobile apps.
 
-Made with 💙 for creativity.
+Made with ðŸ’™ for creativity.
+
+## Password reset flow
+
+- Reset-flow er app-first og bruger deep link: `footballcoach://auth/recovery-callback`.
+- Det betyder at "Glemt adgangskode" er designet til at aabne appen direkte fra mail-linket.
+- Web/desktop reset-flow er ikke primary path i den nuvaerende implementation.
+
 ## Running tests
 
 Run the Jest test suite headless (no emulator/device required):
@@ -16,9 +23,9 @@ Optional watch mode:
 ```bash
 npm test -- --watch
 ```
-## Holdtræning importer
+## HoldtrÃ¦ning importer
 
-We now have a dedicated script for seeding the FootballCoach holdtræning focus areas into Supabase.
+We now have a dedicated script for seeding the FootballCoach holdtrÃ¦ning focus areas into Supabase.
 
 1. Export or copy the latest CSV to `data/holdtraening.csv` (already tracked in the repo).
 2. Provide Supabase credentials via env vars:

@@ -6,48 +6,132 @@ import { supabase } from '@/integrations/supabase/client';
 import { colors } from '@/styles/commonStyles';
 
 type CallbackStatus = 'loading' | 'error';
-type EmailOtpType = 'signup' | 'invite' | 'magiclink' | 'recovery' | 'email_change' | 'email';
+type EmailOtpType = 'recovery' | 'email';
 
-const EMAIL_OTP_TYPES: ReadonlySet<EmailOtpType> = new Set([
-  'signup',
-  'invite',
-  'magiclink',
-  'recovery',
-  'email_change',
-  'email',
-]);
-
+const EMAIL_OTP_TYPES: ReadonlySet<EmailOtpType> = new Set(['recovery', 'email']);
 const AUTH_PARAM_KEYS = ['code', 'access_token', 'refresh_token', 'token_hash', 'token', 'type'];
+const MAX_NESTED_PARSE_PASSES = 64;
+
+const tryDecodeURIComponent = (value: string) => {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
+const getFirstParamValue = (value: string | string[] | undefined) =>
+  Array.isArray(value) ? value[0] : value;
+
+const extractParamsFromInput = (input: string) => {
+  const extracted = new URLSearchParams();
+  if (!input) return extracted;
+
+  const addSegment = (segment: string) => {
+    if (!segment) return;
+    new URLSearchParams(segment).forEach((value, key) => {
+      if (value && !extracted.has(key)) {
+        extracted.set(key, value);
+      }
+    });
+  };
+
+  const queryIndex = input.indexOf('?');
+  const hashIndex = input.indexOf('#');
+
+  if (queryIndex >= 0) {
+    const query = input.slice(queryIndex + 1, hashIndex >= 0 ? hashIndex : undefined);
+    addSegment(query);
+  }
+
+  if (hashIndex >= 0) {
+    const hash = input.slice(hashIndex + 1);
+    addSegment(hash);
+  }
+
+  if (queryIndex < 0 && hashIndex < 0 && input.includes('=')) {
+    addSegment(input);
+  }
+
+  return extracted;
+};
+
+const looksLikeNestedPayload = (value: string) => {
+  if (!value) return false;
+
+  return (
+    value.includes('://') ||
+    value.includes('%3A%2F%2F') ||
+    value.includes('token_hash=') ||
+    value.includes('access_token=') ||
+    value.includes('refresh_token=') ||
+    value.includes('code=') ||
+    (value.includes('=') && (value.includes('&') || value.includes('?') || value.includes('#')))
+  );
+};
 
 const parseParams = (
   incomingUrl: string | null | undefined,
   routeParams: Record<string, string | string[] | undefined>
 ) => {
-  const params = new URLSearchParams();
+  const merged = new URLSearchParams();
+  const queue: string[] = [];
+  const seen = new Set<string>();
 
-  if (incomingUrl) {
-    const queryIndex = incomingUrl.indexOf('?');
-    const hashIndex = incomingUrl.indexOf('#');
+  const enqueue = (candidate?: string | null) => {
+    if (!candidate) return;
+    const trimmed = candidate.trim();
+    if (!trimmed || seen.has(trimmed)) return;
+    queue.push(trimmed);
+  };
 
-    if (queryIndex >= 0) {
-      const query = incomingUrl.slice(queryIndex + 1, hashIndex >= 0 ? hashIndex : undefined);
-      new URLSearchParams(query).forEach((value, key) => params.set(key, value));
-    }
+  enqueue(incomingUrl);
 
-    if (hashIndex >= 0) {
-      const hash = incomingUrl.slice(hashIndex + 1);
-      new URLSearchParams(hash).forEach((value, key) => params.set(key, value));
-    }
+  Object.values(routeParams).forEach((value) => {
+    const first = getFirstParamValue(value);
+    if (first) enqueue(first);
+  });
+
+  let passes = 0;
+  while (queue.length > 0 && passes < MAX_NESTED_PARSE_PASSES) {
+    passes += 1;
+    const current = queue.shift();
+    if (!current) continue;
+
+    const variants = [
+      current,
+      tryDecodeURIComponent(current),
+      tryDecodeURIComponent(tryDecodeURIComponent(current)),
+    ];
+
+    variants.forEach((variant) => {
+      const normalized = variant.trim();
+      if (!normalized || seen.has(normalized)) return;
+      seen.add(normalized);
+
+      const extracted = extractParamsFromInput(normalized);
+      extracted.forEach((value, key) => {
+        if (value && !merged.has(key)) {
+          merged.set(key, value);
+        }
+
+        if (looksLikeNestedPayload(value)) {
+          enqueue(value);
+          const decoded = tryDecodeURIComponent(value);
+          if (decoded !== value) enqueue(decoded);
+        }
+      });
+    });
   }
 
   Object.entries(routeParams).forEach(([key, value]) => {
-    if (!value || params.has(key)) {
-      return;
+    const first = getFirstParamValue(value);
+    if (first && !merged.has(key)) {
+      merged.set(key, first);
     }
-    params.set(key, Array.isArray(value) ? value[0] : value);
   });
 
-  return params;
+  return merged;
 };
 
 const mergeParams = (...paramSets: URLSearchParams[]) => {
@@ -83,12 +167,12 @@ const waitForSession = async (attempts: number, delayMs: number) => {
   return false;
 };
 
-export default function AuthCallbackScreen() {
+export default function RecoveryCallbackScreen() {
   const router = useRouter();
   const incomingUrl = Linking.useURL();
   const routeParams = useLocalSearchParams<Record<string, string | string[]>>();
   const [status, setStatus] = useState<CallbackStatus>('loading');
-  const [message, setMessage] = useState('Bekræfter login...');
+  const [message, setMessage] = useState('Klargør nulstilling af adgangskode...');
 
   const parsedParams = useMemo(
     () => parseParams(incomingUrl, routeParams),
@@ -98,7 +182,7 @@ export default function AuthCallbackScreen() {
   useEffect(() => {
     let cancelled = false;
 
-    const completeAuth = async () => {
+    const completeRecovery = async () => {
       try {
         const parsedFromHook = parsedParams;
         const initialUrl = await Linking.getInitialURL();
@@ -106,8 +190,7 @@ export default function AuthCallbackScreen() {
         let effectiveParams = mergeParams(parsedFromHook, parsedFromInitial);
 
         if (!hasAnyAuthParam(effectiveParams)) {
-          // iOS/Safari can open the callback route before params are visible to the hook.
-          for (let i = 0; i < 6; i += 1) {
+          for (let i = 0; i < 8; i += 1) {
             await new Promise((resolve) => setTimeout(resolve, 200));
             const retryInitialUrl = await Linking.getInitialURL();
             const retryParams = parseParams(retryInitialUrl, routeParams);
@@ -129,10 +212,7 @@ export default function AuthCallbackScreen() {
         const token = effectiveParams.get('token');
         const email = effectiveParams.get('email');
         const otpType = getEmailOtpType(effectiveParams.get('type'));
-        const flow = effectiveParams.get('flow');
-        const fallbackOtpType: EmailOtpType | null =
-          flow === 'reset-password' ? 'recovery' : null;
-        const resolvedOtpType = otpType ?? fallbackOtpType;
+        const fallbackOtpType: EmailOtpType = 'recovery';
 
         if (accessToken && refreshToken) {
           const { error } = await supabase.auth.setSession({
@@ -140,15 +220,15 @@ export default function AuthCallbackScreen() {
             refresh_token: refreshToken,
           });
           if (error) throw error;
-        } else if (tokenHash && resolvedOtpType) {
+        } else if (tokenHash) {
           const { error } = await supabase.auth.verifyOtp({
-            type: resolvedOtpType,
+            type: otpType ?? fallbackOtpType,
             token_hash: tokenHash,
           });
           if (error) throw error;
-        } else if (token && resolvedOtpType && email) {
+        } else if (token && email) {
           const { error } = await supabase.auth.verifyOtp({
-            type: resolvedOtpType,
+            type: otpType ?? fallbackOtpType,
             token,
             email,
           });
@@ -157,36 +237,31 @@ export default function AuthCallbackScreen() {
           const { error } = await supabase.auth.exchangeCodeForSession(code);
           if (error) throw error;
         } else {
-          // Some clients can strip/consume callback params. Fall back to login flow.
-          const hasSession = await waitForSession(12, 300);
+          const hasSession = await waitForSession(45, 300);
           if (!cancelled) {
             if (hasSession) {
-              router.replace('/(tabs)/profile');
+              router.replace('/update-password');
             } else {
-              router.replace({ pathname: '/(tabs)/profile', params: { authMode: 'login' } });
+              throw new Error(
+                'Linket kunne ikke valideres i appen. Prøv at åbne nulstillingslinket igen fra den nyeste e-mail.'
+              );
             }
           }
           return;
         }
 
         if (!cancelled) {
-          const shouldGoToPasswordReset =
-            otpType === 'recovery' || flow === 'reset-password';
-          if (shouldGoToPasswordReset) {
-            router.replace('/update-password');
-          } else {
-            router.replace('/(tabs)/profile');
-          }
+          router.replace('/update-password');
         }
       } catch (error: any) {
         if (!cancelled) {
           setStatus('error');
-          setMessage(error?.message ?? 'Kunne ikke gennemføre login fra bekræftelseslinket.');
+          setMessage(error?.message ?? 'Kunne ikke gennemføre nulstilling af adgangskode.');
         }
       }
     };
 
-    void completeAuth();
+    void completeRecovery();
 
     return () => {
       cancelled = true;
@@ -204,7 +279,7 @@ export default function AuthCallbackScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.errorTitle}>Kunne ikke logge ind</Text>
+      <Text style={styles.errorTitle}>Kunne ikke nulstille adgangskode</Text>
       <Text style={styles.text}>{message}</Text>
       <Pressable
         style={styles.button}

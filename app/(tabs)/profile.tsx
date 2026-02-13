@@ -239,6 +239,8 @@ const styles = StyleSheet.create({
   form: { gap: 12 },
   authButton: { borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 12 },
   authButtonText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  forgotPasswordButton: { marginTop: 10, alignItems: 'center', paddingVertical: 6 },
+  forgotPasswordText: { fontSize: 14, fontWeight: '600' },
   infoBox: { flexDirection: 'row', gap: 12, padding: 16, borderRadius: 16 },
   infoTextContainer: { flex: 1, minWidth: 0 },
   infoTitle: { fontSize: 16, fontWeight: '700', marginBottom: 6 },
@@ -805,6 +807,20 @@ export default function ProfileScreen() {
         return;
       }
 
+      const identities = Array.isArray((data.user as any)?.identities) ? (data.user as any).identities : null;
+      const isExistingUserResponse = Boolean(data.user && identities && identities.length === 0);
+      if (isExistingUserResponse) {
+        Alert.alert(
+          'Konto findes allerede',
+          'Denne e-mail har sandsynligvis allerede en konto. Derfor sendes der ikke altid en ny bekræftelsesmail. Proev at logge ind i stedet.'
+        );
+        router.replace({
+          pathname: '/(tabs)/profile',
+          params: { email: normalizedEmail, authMode: 'login' },
+        });
+        return;
+      }
+
       if (!data.user) {
         if (__DEV__) {
           console.log('[PROFILE] No user returned from signup');
@@ -886,6 +902,20 @@ export default function ProfileScreen() {
       setLoading(false);
     }
   };
+
+  const handleForgotPassword = useCallback(() => {
+    try {
+      const normalizedEmail = email.trim().toLowerCase();
+      console.log('[PROFILE] Navigating to forgot-password screen', { normalizedEmail });
+      router.replace({
+        pathname: '/auth/forgot-password',
+        params: { email: normalizedEmail },
+      });
+    } catch (error: any) {
+      console.error('[PROFILE] Failed to open forgot-password screen', error);
+      Alert.alert('Fejl', 'Kunne ikke aabne nulstilling af adgangskode.');
+    }
+  }, [email, router]);
 
   const handleCompleteSubscription = async (planId: string) => {
     if (!user) return;
@@ -1730,6 +1760,18 @@ export default function ProfileScreen() {
                     <Text style={styles.authButtonText}>{isSignUp ? 'Opret konto' : 'Log ind'}</Text>
                   )}
                 </TouchableOpacity>
+
+                {!isSignUp ? (
+                  <TouchableOpacity
+                    style={styles.forgotPasswordButton}
+                    onPress={handleForgotPassword}
+                    activeOpacity={0.7}
+                    disabled={loading}
+                    accessibilityLabel="Glemt adgangskode"
+                  >
+                    <Text style={[styles.forgotPasswordText, { color: colors.primary }]}>Glemt adgangskode?</Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
 
               <View
@@ -1771,6 +1813,7 @@ export default function ProfileScreen() {
         data={[]}
         keyExtractor={(_, index) => `profile-flatlist-${index}`}
         renderItem={() => null}
+        keyboardShouldPersistTaps="handled"
         extraData={focusNonce}
         ListHeaderComponent={
           <React.Fragment>

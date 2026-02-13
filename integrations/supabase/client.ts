@@ -15,6 +15,7 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     storage: AsyncStorage,
     autoRefreshToken: true,
     persistSession: true,
+    // Deep links are handled explicitly in auth callback screens.
     detectSessionInUrl: false,
   },
 })

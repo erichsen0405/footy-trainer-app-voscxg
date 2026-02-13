@@ -1,7 +1,7 @@
 project_id = "lhpczofddvwcyrgotzha"
 auth.email.enable_confirmations = true
 auth.site_url = "https://footballcoach.online"
-auth.additional_redirect_urls = ["footballcoach://auth/callback", "exp+footballcoach://auth/callback"]
+auth.additional_redirect_urls = ["footballcoach://auth/callback", "exp+footballcoach://auth/callback", "footballcoach://auth/callback?flow=reset-password", "exp+footballcoach://auth/callback?flow=reset-password", "footballcoach://auth/recovery-callback", "exp+footballcoach://auth/recovery-callback"]
 auth.email.max_frequency = "1m0s"
 auth.email.otp_length = 8
 auth.mfa.totp.enroll_enabled = true
@@ -10,3 +10,7 @@ auth.mfa.totp.verify_enabled = true
 [auth.email.template.confirmation]
 subject = "Velkommen til FootballCoach - bekræft din konto"
 content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.recovery]
+subject = "Nulstil din adgangskode"
+content_path = "./supabase/templates/recovery.html"

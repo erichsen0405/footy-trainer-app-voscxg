@@ -1,8 +1,10 @@
 Param()
 
 $projectRefPath = "supabase/.temp/project-ref"
-$templatePath = "supabase/email-templates/confirm-signup.html"
-$subject = "Bekraeft din email til Football Coach"
+$confirmationTemplatePath = "supabase/email-templates/confirm-signup.html"
+$recoveryTemplatePath = "supabase/email-templates/reset-password.html"
+$confirmationSubject = "Bekraeft din email til Football Coach"
+$recoverySubject = "Nulstil adgangskode til Football Coach"
 
 if (-not (Test-Path $projectRefPath)) {
   Write-Error "PROJECT_REF mangler. Opret '$projectRefPath' med dit Supabase project ref."
@@ -22,19 +24,27 @@ if (-not $token) {
   exit 1
 }
 
-if (-not (Test-Path $templatePath)) {
-  Write-Error "Template mangler: $templatePath"
+if (-not (Test-Path $confirmationTemplatePath)) {
+  Write-Error "Template mangler: $confirmationTemplatePath"
   exit 1
 }
 
-$htmlContent = Get-Content -Raw $templatePath
+if (-not (Test-Path $recoveryTemplatePath)) {
+  Write-Error "Template mangler: $recoveryTemplatePath"
+  exit 1
+}
+
+$confirmationHtmlContent = Get-Content -Raw $confirmationTemplatePath
+$recoveryHtmlContent = Get-Content -Raw $recoveryTemplatePath
 
 Add-Type -AssemblyName System.Web.Extensions
 $serializer = New-Object System.Web.Script.Serialization.JavaScriptSerializer
-$subjectJson = $serializer.Serialize($subject)
-$templateJson = $serializer.Serialize($htmlContent)
+$confirmationSubjectJson = $serializer.Serialize($confirmationSubject)
+$confirmationTemplateJson = $serializer.Serialize($confirmationHtmlContent)
+$recoverySubjectJson = $serializer.Serialize($recoverySubject)
+$recoveryTemplateJson = $serializer.Serialize($recoveryHtmlContent)
 
-$json = "{`"mailer_subjects_confirmation`":$subjectJson,`"mailer_templates_confirmation_content`":$templateJson}"
+$json = "{`"mailer_subjects_confirmation`":$confirmationSubjectJson,`"mailer_templates_confirmation_content`":$confirmationTemplateJson,`"mailer_subjects_recovery`":$recoverySubjectJson,`"mailer_templates_recovery_content`":$recoveryTemplateJson}"
 $utf8Body = [System.Text.Encoding]::UTF8.GetBytes($json)
 
 $url = "https://api.supabase.com/v1/projects/$projectRef/config/auth"
