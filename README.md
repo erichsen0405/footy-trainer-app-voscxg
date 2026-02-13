@@ -23,6 +23,23 @@ Optional watch mode:
 ```bash
 npm test -- --watch
 ```
+
+## Maestro Mac runbook (iOS smoke)
+
+Simulator-only setup (not physical iPhone).
+
+Terminal 1:
+
+```bash
+npm run ios:metro
+```
+
+Terminal 2:
+
+```bash
+npm run e2e:ios:smoke
+```
+
 ## HoldtrÃ¦ning importer
 
 We now have a dedicated script for seeding the FootballCoach holdtrÃ¦ning focus areas into Supabase.

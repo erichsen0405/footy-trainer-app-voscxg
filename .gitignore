@@ -24,6 +24,7 @@ yarn-error.*
 *.pem
 
 .env*.local
+e2e/maestro.env.sh
 
 *.tsbuildinfo
 

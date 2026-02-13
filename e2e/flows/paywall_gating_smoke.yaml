@@ -1,4 +1,6 @@
 appId: com.erichsen.footballcoach
+tags:
+  - smoke
 ---
 - launchApp:
     clearState: true
