@@ -9,6 +9,7 @@
       "autoIncrement": true
     },
     "development-sim": {
+      "extends": "development",
       "ios": {
         "simulator": true
       }

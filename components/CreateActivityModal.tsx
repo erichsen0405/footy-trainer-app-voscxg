@@ -76,6 +76,22 @@ const timeToMinutes = (timeStr: string | null | undefined): number | null => {
   return hours * 60 + minutes;
 };
 
+const formatTimeHHMM = (date: Date): string => {
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+};
+
+const getDefaultStartEndTimes = (): { startTime: string; endTime: string } => {
+  const now = new Date();
+  const start = new Date(now.getTime() + 60 * 60 * 1000);
+  const end = new Date(start.getTime() + 60 * 60 * 1000);
+  return {
+    startTime: formatTimeHHMM(start),
+    endTime: formatTimeHHMM(end),
+  };
+};
+
 export default function CreateActivityModal({
   visible,
   onClose,
@@ -85,13 +101,14 @@ export default function CreateActivityModal({
 }: CreateActivityModalProps) {
   const colorScheme = useColorScheme();
   const scrollViewRef = useRef<ScrollView>(null);
+  const defaultTimesRef = useRef(getDefaultStartEndTimes());
 
   const [title, setTitle] = useState('');
   const [location, setLocation] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [date, setDate] = useState(new Date());
-  const [time, setTime] = useState('18:00');
-  const [endTime, setEndTime] = useState('19:00');
+  const [time, setTime] = useState(defaultTimesRef.current.startTime);
+  const [endTime, setEndTime] = useState(defaultTimesRef.current.endTime);
   const [endTimeError, setEndTimeError] = useState<string | null>(null);
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrenceType, setRecurrenceType] = useState<'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly'>('weekly');
@@ -177,8 +194,9 @@ export default function CreateActivityModal({
     setLocation('');
     setSelectedCategory(safeCategories[0]?.id || '');
     setDate(new Date());
-    setTime('18:00');
-    setEndTime('19:00');
+    const nextDefaults = getDefaultStartEndTimes();
+    setTime(nextDefaults.startTime);
+    setEndTime(nextDefaults.endTime);
     setEndTimeError(null);
     setIsRecurring(false);
     setRecurrenceType('weekly');
@@ -442,6 +460,7 @@ export default function CreateActivityModal({
                 onChangeText={setTitle}
                 placeholder="Titel *"
                 placeholderTextColor={textSecondaryColor}
+                testID="activity.create.titleInput"
               />
 
               <TextInput
@@ -450,6 +469,7 @@ export default function CreateActivityModal({
                 onChangeText={setLocation}
                 placeholder="Lokation"
                 placeholderTextColor={textSecondaryColor}
+                testID="activity.create.locationInput"
               />
 
               {/* Category */}
@@ -463,6 +483,7 @@ export default function CreateActivityModal({
                     activeOpacity={0.7}
                     style={styles.createCategoryTopRight}
                     hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    testID="activity.create.openCategoryButton"
                   >
                     <Text style={styles.createCategoryTopRightText}>+ Opret kategori</Text>
                   </TouchableOpacity>
@@ -484,7 +505,7 @@ export default function CreateActivityModal({
                   </TouchableOpacity>
                 ) : (
                   <View style={styles.categoryWrapContainer}>
-                    {safeCategories.map((cat) => {
+                    {safeCategories.map((cat, index) => {
                       const isSelected = selectedCategory === cat.id;
                       return (
                         <TouchableOpacity
@@ -498,6 +519,7 @@ export default function CreateActivityModal({
                           ]}
                           onPress={categoryPressHandlers[cat.id]}
                           activeOpacity={0.7}
+                          testID={`activity.create.categoryChip.${index}`}
                         >
                           <Text style={styles.categoryChipEmoji}>{cat.emoji}</Text>
                           <Text
@@ -565,6 +587,7 @@ export default function CreateActivityModal({
                 style={[styles.pickerButton, { backgroundColor: bgColor }]}
                 onPress={() => setShowTimePicker(true)}
                 activeOpacity={0.7}
+                testID="activity.create.startTimeButton"
               >
                 <IconSymbol
                   ios_icon_name="clock"
@@ -600,6 +623,7 @@ export default function CreateActivityModal({
                   style={[styles.doneButton, { backgroundColor: colors.primary }]}
                   onPress={() => setShowTimePicker(false)}
                   activeOpacity={0.7}
+                  testID="activity.create.startTimeDone"
                 >
                   <Text style={styles.doneButtonText}>Færdig</Text>
                 </TouchableOpacity>
@@ -610,6 +634,7 @@ export default function CreateActivityModal({
                 style={[styles.pickerButton, { backgroundColor: bgColor }]}
                 onPress={() => setShowEndTimePicker(true)}
                 activeOpacity={0.7}
+                testID="activity.create.endTimeButton"
               >
                 <IconSymbol
                   ios_icon_name="clock.fill"
@@ -647,6 +672,7 @@ export default function CreateActivityModal({
                   style={[styles.doneButton, { backgroundColor: colors.primary }]}
                   onPress={() => setShowEndTimePicker(false)}
                   activeOpacity={0.7}
+                  testID="activity.create.endTimeDone"
                 >
                   <Text style={styles.doneButtonText}>Færdig</Text>
                 </TouchableOpacity>
@@ -675,6 +701,7 @@ export default function CreateActivityModal({
                   onValueChange={handleIntensityToggle}
                   trackColor={{ false: '#767577', true: colors.primary }}
                   thumbColor={intensityEnabled ? '#fff' : '#f4f3f4'}
+                  testID="activity.create.intensityToggle"
                 />
               </View>
 
@@ -690,6 +717,7 @@ export default function CreateActivityModal({
                           style={[styles.intensityChip, isSelected && styles.intensityChipSelected]}
                           onPress={() => handleIntensitySelect(option)}
                           activeOpacity={0.7}
+                          testID={`activity.create.intensityOption.${option}`}
                         >
                           <Text style={[styles.intensityChipText, isSelected && styles.intensityChipTextSelected]}>
                             {option}
@@ -840,6 +868,7 @@ export default function CreateActivityModal({
                 onPress={handleCreate}
                 disabled={isCreating || safeCategories.length === 0 || !!endTimeError}
                 activeOpacity={0.7}
+                testID="activity.create.submitButton"
               >
                 {isCreating ? (
                   <ActivityIndicator color="#fff" />

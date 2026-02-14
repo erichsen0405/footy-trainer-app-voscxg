@@ -262,7 +262,7 @@ export const TaskCard = React.memo(
             <TouchableOpacity onPress={onPress} style={styles.actionButton}>
               <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={20} color={colors.accent} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={onDelete} style={styles.actionButton}>
+            <TouchableOpacity onPress={onDelete} style={styles.actionButton} testID="tasks.template.deleteButton">
               <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={20} color={colors.error} />
             </TouchableOpacity>
           </View>
@@ -797,6 +797,7 @@ export default function TasksScreen() {
             placeholderTextColor={textSecondaryColor}
             value={searchQuery}
             onChangeText={setSearchQuery}
+            testID="tasks.searchInput"
           />
         </View>
 
@@ -825,6 +826,7 @@ export default function TasksScreen() {
                   true,
                 )
               }
+              testID="tasks.newTemplateButton"
             >
               <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add_circle" size={28} color={colors.primary} />
               <Text style={[styles.addButtonText, { color: colors.primary }]}>Ny skabelon</Text>
@@ -909,7 +911,7 @@ export default function TasksScreen() {
               data={[{ key: 'form' }]}
               keyExtractor={(item) => item.key}
               renderItem={() => (
-                <View style={styles.modalBody}>
+                <View style={styles.modalBody} testID="tasks.template.formBody">
                   <Text style={[styles.label, { color: textColor }]}>Titel</Text>
                   <TextInput
                     style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
@@ -918,6 +920,7 @@ export default function TasksScreen() {
                     placeholder="Opgavens titel"
                     placeholderTextColor={textSecondaryColor}
                     editable={!isSaving}
+                    testID="tasks.template.titleInput"
                   />
 
                   <Text style={[styles.label, { color: textColor }]}>Beskrivelse</Text>
@@ -930,6 +933,7 @@ export default function TasksScreen() {
                     multiline
                     numberOfLines={4}
                     editable={!isSaving}
+                    testID="tasks.template.descriptionInput"
                   />
 
                   <View style={styles.videoSection}>
@@ -1019,6 +1023,7 @@ export default function TasksScreen() {
                         thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
                         ios_backgroundColor={isDark ? '#555' : '#d0d7e3'}
                         disabled={isSaving}
+                        testID="tasks.template.reminderToggle"
                       />
                     </View>
 
@@ -1048,6 +1053,7 @@ export default function TasksScreen() {
                                   )
                                 }
                                 disabled={isSaving}
+                                testID={`tasks.template.reminderOption.${option.value}`}
                               >
                                 <Text style={{ color: selected ? '#fff' : textColor, fontWeight: selected ? '700' : '600' }}>
                                   {option.label}
@@ -1089,6 +1095,7 @@ export default function TasksScreen() {
                         thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
                         ios_backgroundColor={isDark ? '#555' : '#d0d7e3'}
                         disabled={isSaving}
+                        testID="tasks.template.feedbackToggle"
                       />
                     </View>
 
@@ -1116,6 +1123,7 @@ export default function TasksScreen() {
                                   setSelectedTask(prev => (prev ? ({ ...prev, afterTrainingDelayMinutes: option.value } as Task) : prev))
                                 }
                                 disabled={isSaving}
+                                testID={`tasks.template.feedbackDelayOption.${option.value}`}
                               >
                                 <Text style={{ color: selected ? '#fff' : textColor, fontWeight: selected ? '700' : '600' }}>
                                   {option.label}
@@ -1133,7 +1141,7 @@ export default function TasksScreen() {
 
                   <Text style={[styles.label, { color: textColor }]}>Aktivitetskategorier</Text>
                   <View style={styles.categoriesGrid}>
-                    {uniqueCategories.map((category: any) => {
+                    {uniqueCategories.map((category: any, index: number) => {
                       const catId = String(category.id);
                       const catColor = category.color || colors.primary;
                       const selected = !!selectedTask?.categoryIds?.includes?.(catId);
@@ -1147,6 +1155,7 @@ export default function TasksScreen() {
                           ]}
                           onPress={() => toggleCategory(catId)}
                           disabled={isSaving}
+                          testID={`tasks.template.categoryChip.${index}`}
                         >
                           <Text style={styles.categoryEmoji}>{String(category.emoji ?? '')}</Text>
                           <Text style={[styles.categoryName, { color: selected ? '#fff' : textColor }]}>{String(category.name ?? '')}</Text>
@@ -1167,6 +1176,7 @@ export default function TasksScreen() {
                 style={[styles.modalButton, styles.saveButton, { backgroundColor: colors.primary, opacity: isSaving ? 0.6 : 1 }]}
                 onPress={handleSaveTask}
                 disabled={isSaving}
+                testID="tasks.template.saveButton"
               >
                 <Text style={[styles.modalButtonText, { color: '#fff' }]}>{isSaving ? 'Gemmer...' : 'Gem'}</Text>
               </TouchableOpacity>
@@ -1335,5 +1345,3 @@ const styles = StyleSheet.create({
     height: 12,
   },
 });
-
-
