@@ -41,6 +41,39 @@ const normalizeEndTime = (value?: string | null): string | null => {
   return trimmed.length ? trimmed : null;
 };
 
+const parseTimeToMinutes = (value?: string | null): number | null => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parts = trimmed.split(':');
+  if (parts.length < 2) return null;
+  const hours = Number(parts[0]);
+  const minutes = Number(parts[1]);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+  return hours * 60 + minutes;
+};
+
+const minutesToTime = (totalMinutes: number): string => {
+  const clamped = Math.max(0, Math.min(23 * 60 + 59, totalMinutes));
+  const hours = String(Math.floor(clamped / 60)).padStart(2, '0');
+  const minutes = String(clamped % 60).padStart(2, '0');
+  return `${hours}:${minutes}`;
+};
+
+const ensureEndTimeAfterStart = (startTime?: string | null, endTime?: string | null): string | null => {
+  const normalizedEnd = normalizeEndTime(endTime);
+  if (!normalizedEnd) return null;
+
+  const startMinutes = parseTimeToMinutes(startTime);
+  const endMinutes = parseTimeToMinutes(normalizedEnd);
+  if (startMinutes === null || endMinutes === null) return normalizedEnd;
+  if (endMinutes > startMinutes) return normalizedEnd;
+
+  // Keep duplicated activity valid if source data has invalid order.
+  return minutesToTime(startMinutes + 60);
+};
+
 const normalizeIntensity = (value?: number | null): number | null => {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return null;
@@ -163,7 +196,6 @@ export const activityService = {
 
     if (!normalizedIntensity) {
       normalizedIntensity = null;
-      normalizedIntensityEnabled = false;
     }
 
     if (data.isRecurring) {
@@ -464,7 +496,7 @@ export const activityService = {
         title: duplicateTitle,
         activity_date: activity.activity_date,
         activity_time: activity.activity_time,
-        activity_end_time: normalizeEndTime(activity.activity_end_time),
+        activity_end_time: ensureEndTimeAfterStart(activity.activity_time, activity.activity_end_time),
         location: activity.location,
         category_id: activity.category_id,
         intensity: normalizeIntensity(activity.intensity),
@@ -479,24 +511,7 @@ export const activityService = {
 
     if (activityError) throw activityError;
 
-    if (activity.activity_tasks && activity.activity_tasks.length > 0) {
-      const tasksToInsert = activity.activity_tasks.map((task: any) => ({
-        activity_id: newActivity.id,
-        task_template_id: null,
-        title: task.title,
-        description: task.description,
-        completed: false,
-        reminder_minutes: task.reminder_minutes,
-      }));
-
-      const { error: tasksError } = await supabase
-        .from('activity_tasks')
-        .insert(tasksToInsert)
-        .abortSignal(signal);
-
-      if (tasksError) console.error('Error duplicating tasks:', tasksError);
-    }
+    // Intentionally do not duplicate activity_tasks when duplicating an activity.
+    // Tasks should only be duplicated when a task template is duplicated.
   },
 };
-
-

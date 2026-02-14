@@ -1,0 +1,44 @@
+appId: com.erichsen.footballcoach
+---
+# 0) Dev client launcher: vælg localhost server
+- runFlow:
+    when:
+      visible: 'DEVELOPMENT SERVERS'
+    commands:
+      - tapOn: 'http://localhost:8081'
+      - extendedWaitUntil:
+          notVisible: 'DEVELOPMENT SERVERS'
+          timeout: 60000
+
+# 1) Dev menu intro: Continue
+- runFlow:
+    when:
+      visible: '^(Continue|Fortsæt)$'
+    commands:
+      - tapOn: '^(Continue|Fortsæt)$'
+
+# 2) Expo developer menu: Reload
+- runFlow:
+    when:
+      visible: 'Connected to:'
+    commands:
+      - tapOn: 'Reload'
+      - extendedWaitUntil:
+          notVisible: 'Connected to:'
+          timeout: 60000
+
+# 3) App notifications modal: Tillad
+- runFlow:
+    when:
+      visible:
+        id: '^notifications\.enableButton$'
+    commands:
+      - tapOn:
+          id: '^notifications\.enableButton$'
+
+# 4) iOS system-notification prompt: Tillad
+- runFlow:
+    when:
+      visible: '.*vil gerne sende dig notifikationer.*'
+    commands:
+      - tapOn: '^Tillad$'

@@ -2045,7 +2045,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         Alert.alert('Succes', 'Aktiviteten er blevet konverteret til en gentagende serie');
         setIsEditing(false);
         setEditScope('single');
-        router.replace('/(tabs)');
+        router.replace('/(tabs)/(home)');
         return;
       }
 
@@ -2378,7 +2378,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             showsHorizontalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.categoryScroll}
-            renderItem={({ item }) => {
+            renderItem={({ item, index }) => {
               const isSelected = selectedId === item.id;
               return (
                 <TouchableOpacity
@@ -2392,6 +2392,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                   ]}
                   onPress={() => setEditCategory(item)}
                   activeOpacity={0.8}
+                  testID={`activity.details.edit.categoryChip.${index}`}
                 >
                   {item.emoji ? <Text style={styles.categoryEmoji}>{item.emoji}</Text> : null}
                   <Text style={[styles.categoryName, { color: textColor }]}>{item.name}</Text>
@@ -2438,6 +2439,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             onValueChange={handleIntensityToggle}
             trackColor={{ true: colors.primary, false: isDark ? '#3a3a3c' : '#d1d5db' }}
             thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
+            testID="activity.details.edit.intensityToggle"
           />
         </View>
 
@@ -2460,6 +2462,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                     ]}
                     onPress={() => handleIntensitySelect(val)}
                     activeOpacity={0.8}
+                    testID={`activity.details.edit.intensityOption.${val}`}
                   >
                     <Text style={[styles.intensityPickerText, selected ? styles.intensityPickerTextSelected : { color: textColor }]}>
                       {val}
@@ -2503,6 +2506,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             }}
             activeOpacity={0.7}
             disabled={isIntensityModalSaving}
+            testID="activity.details.intensityTaskButton"
           >
             <View style={styles.taskLeftSlot}>
               <View
@@ -2578,6 +2582,11 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           style={[styles.taskRow, styles.taskCard, { backgroundColor: isDark ? '#111318' : '#ffffff' }]}
           onPress={() => handleTaskRowPress(task)}
           activeOpacity={0.7}
+          testID={
+            isFeedbackTaskLocal
+              ? (isFeedbackCompleted ? 'activity.details.feedbackTaskButton.completed' : 'activity.details.feedbackTaskButton.incomplete')
+              : (task.completed ? 'activity.details.taskButton.completed' : 'activity.details.taskButton.incomplete')
+          }
         >
           <View style={styles.taskLeftSlot}>
             <View
@@ -2712,6 +2721,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                       borderColor: fieldBorderColor,
                     },
                   ]}
+                  testID="activity.details.edit.titleInput"
                 />
               </View>
 
@@ -2731,6 +2741,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                       borderColor: fieldBorderColor,
                     },
                   ]}
+                  testID="activity.details.edit.locationInput"
                 />
               </View>
             </>
@@ -3875,7 +3886,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
         <View style={styles.headerButtons}>
           {isEditing ? (
-            <TouchableOpacity style={styles.headerButton} hitSlop={HEADER_ACTION_HITSLOP} onPress={handleSave} activeOpacity={0.7} disabled={isSaving}>
+            <TouchableOpacity style={styles.headerButton} hitSlop={HEADER_ACTION_HITSLOP} onPress={handleSave} activeOpacity={0.7} disabled={isSaving} testID="activity.details.saveEditButton">
               {isSaving ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
@@ -3891,6 +3902,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                   onPress={handleDuplicate}
                   activeOpacity={0.7}
                   disabled={isDuplicating}
+                  testID="activity.details.duplicateButton"
                 >
                   {isDuplicating ? (
                     <ActivityIndicator size="small" color="#fff" />
@@ -3905,11 +3917,12 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                 hitSlop={HEADER_ACTION_HITSLOP}
                 onPress={handleEditClick}
                 activeOpacity={0.7}
+                testID="activity.details.editButton"
               >
                 <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={24} color="#fff" />
               </TouchableOpacity>
 
-              <TouchableOpacity style={[styles.headerButton, styles.headerButtonGap]} hitSlop={HEADER_ACTION_HITSLOP} onPress={handleDeleteClick} activeOpacity={0.7}>
+              <TouchableOpacity style={[styles.headerButton, styles.headerButtonGap]} hitSlop={HEADER_ACTION_HITSLOP} onPress={handleDeleteClick} activeOpacity={0.7} testID="activity.details.deleteButton">
                 <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={24} color="#fff" />
               </TouchableOpacity>
             </>
@@ -4619,5 +4632,3 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
-
-

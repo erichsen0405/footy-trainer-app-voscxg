@@ -3,20 +3,21 @@ tags:
   - smoke
 ---
 - launchApp:
-    clearState: true
-    stopApp: true
+    appId: com.erichsen.footballcoach
+- runFlow: _dev_client_bootstrap.yaml
 - runFlow:
     when:
       visible:
-        id: '^notifications\.notNowButton$'
+        id: '^notifications\.enableButton$'
     commands:
       - tapOn:
-          id: '^notifications\.notNowButton$'
+          id: '^notifications\.enableButton$'
 - openLink: "footballcoach:///(tabs)/profile"
+- extendedWaitUntil:
+    visible:
+      id: '^auth\.login\.emailInput$'
+    timeout: 120000
 - runFlow:
-    when:
-      visible:
-        id: '^auth\.login\.emailInput$'
     commands:
       - tapOn:
           id: '^auth\.login\.emailInput$'
@@ -26,11 +27,27 @@ tags:
       - inputText: "${MAESTRO_PASSWORD}"
       - tapOn:
           id: '^auth\.login\.submitButton$'
+- runFlow:
+    when:
+      visible: 'Succes!'
+    commands:
+      - extendedWaitUntil:
+          visible: 'Succes!'
+          timeout: 20000
+      - runFlow:
+          when:
+            visible: '^OK$'
+          commands:
+            - tapOn: '^OK$'
+      - runFlow:
+          when:
+            visible: '^Ok$'
+          commands:
+            - tapOn: '^Ok$'
 - openLink: "footballcoach:///(tabs)/(home)"
 - extendedWaitUntil:
     visible:
       id: '^home\.screen$'
-    timeout: 30000
+    timeout: 120000
 - assertVisible:
     id: '^home\.screen$'
-

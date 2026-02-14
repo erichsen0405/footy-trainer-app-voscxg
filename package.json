@@ -12,6 +12,8 @@
     "test": "jest",
     "e2e": "maestro test maestro-workspace-template --test-output-dir=artifacts",
     "e2e:ios:smoke": "bash scripts/maestro-smoke-mac.sh",
+    "e2e:ios:activity-task-flow": "bash scripts/maestro-smoke-no-auth-mac.sh",
+    "e2e:ios:fresh": "bash scripts/maestro-fresh-mac.sh",
     "e2e:ios:all": "maestro test e2e/flows --debug-output e2e/maestro/artifacts/debug",
     "build:web": "expo export -p web && npx workbox generateSW workbox-config.js",
     "build:android": "expo prebuild -p android",

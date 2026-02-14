@@ -1603,6 +1603,7 @@ export default function HomeScreen() {
       <Pressable 
         style={styles.createButton}
         onPress={() => setShowCreateModal(true)}
+        testID="home.createActivityButton"
       >
         <Text style={styles.createButtonText}>+  Opret Aktivitet</Text>
       </Pressable>
