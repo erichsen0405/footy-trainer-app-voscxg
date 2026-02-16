@@ -1,0 +1,78 @@
+appId: com.erichsen.footballcoach
+tags:
+  - smoke
+---
+- launchApp:
+    appId: com.erichsen.footballcoach
+    clearState: true
+- runFlow: _dev_client_bootstrap.yaml
+- openLink: "footballcoach:///(tabs)/profile"
+- runFlow:
+    when:
+      visible:
+        id: '^auth\.login\.emailInput$'
+    commands:
+      - tapOn:
+          id: '^auth\.login\.emailInput$'
+      - inputText: "${MAESTRO_EMAIL}"
+      - tapOn:
+          id: '^auth\.login\.passwordInput$'
+      - inputText: "${MAESTRO_PASSWORD}"
+      - tapOn:
+          id: '^auth\.login\.submitButton$'
+- runFlow:
+    when:
+      visible: 'Succes!'
+    commands:
+      - runFlow:
+          when:
+            visible: '^OK$'
+          commands:
+            - tapOn: '^OK$'
+      - runFlow:
+          when:
+            visible: '^Ok$'
+          commands:
+            - tapOn: '^Ok$'
+- openLink: "footballcoach:///(tabs)/library"
+- extendedWaitUntil:
+    visible:
+      id: '^library\.screen$'
+    timeout: 15000
+
+# Android-only: deterministisk offline -> retry -> success
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - setAirplaneMode: enabled
+      - stopApp
+      - launchApp:
+          appId: com.erichsen.footballcoach
+      - runFlow: _dev_client_bootstrap.yaml
+      - openLink: "footballcoach:///(tabs)/library"
+      - extendedWaitUntil:
+          visible:
+            id: '^library\.errorState$'
+          timeout: 15000
+      - assertVisible:
+          id: '^library\.error\.retryButton$'
+      - setAirplaneMode: disabled
+      - tapOn:
+          id: '^library\.error\.retryButton$'
+      - extendedWaitUntil:
+          notVisible:
+            id: '^library\.errorState$'
+          timeout: 15000
+      - extendedWaitUntil:
+          visible:
+            id: '^library\.folder\.footballcoach$'
+          timeout: 15000
+
+# iOS: smoke-pass + manuel workaround dokumenteret i README
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - assertVisible:
+          id: '^library\.screen$'

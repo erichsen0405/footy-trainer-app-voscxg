@@ -1,0 +1,43 @@
+appId: com.erichsen.footballcoach
+tags:
+  - smoke
+---
+- launchApp:
+    appId: com.erichsen.footballcoach
+    clearState: true
+- runFlow: _dev_client_bootstrap.yaml
+- openLink: "footballcoach:///(tabs)/profile"
+- extendedWaitUntil:
+    visible:
+      id: '^auth\.login\.emailInput$'
+    timeout: 15000
+- tapOn:
+    id: '^auth\.login\.emailInput$'
+- inputText: "${MAESTRO_LOCKED_EMAIL}"
+- tapOn:
+    id: '^auth\.login\.passwordInput$'
+- inputText: "${MAESTRO_LOCKED_PASSWORD}"
+- tapOn:
+    id: '^auth\.login\.submitButton$'
+- runFlow:
+    when:
+      visible: 'Succes!'
+    commands:
+      - runFlow:
+          when:
+            visible: '^OK$'
+          commands:
+            - tapOn: '^OK$'
+      - runFlow:
+          when:
+            visible: '^Ok$'
+          commands:
+            - tapOn: '^Ok$'
+- extendedWaitUntil:
+    visible:
+      id: '^paywall\.primaryCtaButton$'
+    timeout: 15000
+- assertVisible:
+    id: '^paywall\.primaryCtaButton$'
+- assertNotVisible:
+    id: '^paywall\.closeButton$'

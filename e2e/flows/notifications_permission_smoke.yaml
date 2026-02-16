@@ -1,0 +1,227 @@
+appId: com.erichsen.footballcoach
+tags:
+  - smoke
+---
+# Deny path + fallback UI
+- stopApp
+- launchApp:
+    appId: com.erichsen.footballcoach
+    clearState: true
+    permissions:
+      notifications: unset
+- runFlow:
+    when:
+      visible: 'DEVELOPMENT SERVERS'
+    commands:
+      - tapOn: 'http://localhost:8081'
+      - extendedWaitUntil:
+          notVisible: 'DEVELOPMENT SERVERS'
+          timeout: 15000
+- runFlow:
+    when:
+      visible: '^(Continue|Fortsæt)$'
+    commands:
+      - tapOn: '^(Continue|Fortsæt)$'
+- runFlow:
+    when:
+      visible: 'Connected to:'
+    commands:
+      - tapOn: 'Reload'
+      - extendedWaitUntil:
+          notVisible: 'Connected to:'
+          timeout: 15000
+- openLink: "footballcoach:///(tabs)/(home)"
+- runFlow:
+    when:
+      visible:
+        id: '^auth\.login\.emailInput$'
+    commands:
+      - tapOn:
+          id: '^auth\.login\.emailInput$'
+      - inputText: "${MAESTRO_EMAIL}"
+      - tapOn:
+          id: '^auth\.login\.passwordInput$'
+      - inputText: "${MAESTRO_PASSWORD}"
+      - tapOn:
+          id: '^auth\.login\.submitButton$'
+- runFlow:
+    when:
+      visible: 'Succes!'
+    commands:
+      - runFlow:
+          when:
+            visible: '^OK$'
+          commands:
+            - tapOn: '^OK$'
+      - runFlow:
+          when:
+            visible: '^Ok$'
+          commands:
+            - tapOn: '^Ok$'
+- openLink: "footballcoach:///(tabs)/(home)"
+- extendedWaitUntil:
+    visible:
+      id: '^home\.screen$'
+    timeout: 15000
+- runFlow:
+    when:
+      visible:
+        id: '^notifications\.denyButton$'
+    commands:
+      - tapOn:
+          id: '^notifications\.denyButton$'
+- runFlow:
+    when:
+      visible: '.*vil gerne sende dig notifikationer.*'
+    commands:
+      - runFlow:
+          when:
+            visible: '^Tillad ikke$'
+          commands:
+            - tapOn: '^Tillad ikke$'
+      - runFlow:
+          when:
+            visible: '^Don''t Allow$'
+          commands:
+            - tapOn: '^Don''t Allow$'
+      - runFlow:
+          when:
+            visible: '^Ikke tillad$'
+          commands:
+            - tapOn: '^Ikke tillad$'
+- openLink: "footballcoach:///(tabs)/profile"
+- runFlow:
+    when:
+      visible:
+        id: '^profile\.settingsSection\.toggle$'
+    commands:
+      - tapOn:
+          id: '^profile\.settingsSection\.toggle$'
+- scrollUntilVisible:
+    element:
+      id: '^profile\.notificationsToggle$'
+    direction: DOWN
+    timeout: 15000
+- runFlow:
+    when:
+      visible: '^Aktiveret$'
+    commands:
+      - tapOn:
+          id: '^profile\.notificationsToggle$'
+- runFlow:
+    when:
+      visible: '^Annuller$'
+    commands:
+      - tapOn: '^Annuller$'
+- runFlow:
+    when:
+      visible: '^Senere$'
+    commands:
+      - tapOn: '^Senere$'
+
+# Allow path
+- stopApp
+- launchApp:
+    appId: com.erichsen.footballcoach
+    clearState: true
+    permissions:
+      notifications: allow
+- runFlow:
+    when:
+      visible: 'DEVELOPMENT SERVERS'
+    commands:
+      - tapOn: 'http://localhost:8081'
+      - extendedWaitUntil:
+          notVisible: 'DEVELOPMENT SERVERS'
+          timeout: 15000
+- runFlow:
+    when:
+      visible: '^(Continue|Fortsæt)$'
+    commands:
+      - tapOn: '^(Continue|Fortsæt)$'
+- runFlow:
+    when:
+      visible: 'Connected to:'
+    commands:
+      - tapOn: 'Reload'
+      - extendedWaitUntil:
+          notVisible: 'Connected to:'
+          timeout: 15000
+- openLink: "footballcoach:///(tabs)/(home)"
+- runFlow:
+    when:
+      visible:
+        id: '^auth\.login\.emailInput$'
+    commands:
+      - tapOn:
+          id: '^auth\.login\.emailInput$'
+      - inputText: "${MAESTRO_EMAIL}"
+      - tapOn:
+          id: '^auth\.login\.passwordInput$'
+      - inputText: "${MAESTRO_PASSWORD}"
+      - tapOn:
+          id: '^auth\.login\.submitButton$'
+- runFlow:
+    when:
+      visible: 'Succes!'
+    commands:
+      - runFlow:
+          when:
+            visible: '^OK$'
+          commands:
+            - tapOn: '^OK$'
+      - runFlow:
+          when:
+            visible: '^Ok$'
+          commands:
+            - tapOn: '^Ok$'
+- openLink: "footballcoach:///(tabs)/(home)"
+- extendedWaitUntil:
+    visible:
+      id: '^home\.screen$'
+    timeout: 15000
+- runFlow:
+    when:
+      visible:
+        id: '^notifications\.allowButton$'
+    commands:
+      - tapOn:
+          id: '^notifications\.allowButton$'
+- runFlow:
+    when:
+      visible: '.*vil gerne sende dig notifikationer.*'
+    commands:
+      - runFlow:
+          when:
+            visible: '^Tillad$'
+          commands:
+            - tapOn: '^Tillad$'
+      - runFlow:
+          when:
+            visible: '^Allow$'
+          commands:
+            - tapOn: '^Allow$'
+- openLink: "footballcoach:///(tabs)/profile"
+- runFlow:
+    when:
+      visible:
+        id: '^profile\.settingsSection\.toggle$'
+    commands:
+      - tapOn:
+          id: '^profile\.settingsSection\.toggle$'
+- extendedWaitUntil:
+    visible:
+      id: '^profile\.notificationsToggle$'
+    timeout: 15000
+- assertVisible:
+    id: '^profile\.notificationsToggle$'
+- assertVisible: '^Aktiveret$'
+- openLink: "footballcoach:///(tabs)/(home)"
+- extendedWaitUntil:
+    visible:
+      id: '^home\.screen$'
+    timeout: 15000
+- assertNotVisible:
+    id: '^notifications\.openSettingsButton$'
+- assertNotVisible:
+    id: '^notifications\.allowButton$'

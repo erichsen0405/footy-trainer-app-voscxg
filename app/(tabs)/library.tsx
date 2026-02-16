@@ -164,6 +164,7 @@ const FolderRow = memo(function FolderRow({
     <TouchableOpacity
       onPress={handlePress}
       activeOpacity={0.85}
+      testID={`library.folder.${item.id}`}
       style={[
         styles.folderRow,
         { backgroundColor: theme.card },
@@ -1250,6 +1251,7 @@ export default function LibraryScreen() {
             activeOpacity={0.9}
             style={[styles.createButton, { backgroundColor: theme.primary }]}
             onPress={handleCreateExercise}
+            testID="library.createExerciseButton"
           >
             <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color="#fff" />
             <Text style={styles.createButtonText}>Opret øvelse</Text>
@@ -1340,10 +1342,15 @@ export default function LibraryScreen() {
             </TouchableOpacity>
           </View>
         ) : null}
-        <View style={[styles.stateCard, { backgroundColor: theme.card }]}>
+        <View style={[styles.stateCard, { backgroundColor: theme.card }]} testID="library.errorState">
           <Text style={[styles.stateTitle, { color: theme.error }]}>Kunne ikke hente bibliotek</Text>
           <Text style={[styles.stateMessage, { color: theme.textSecondary }]}>{errorMessage}</Text>
-          <TouchableOpacity onPress={handleRetry} activeOpacity={0.9} style={[styles.retryButton, { backgroundColor: theme.primary }]}>
+          <TouchableOpacity
+            onPress={handleRetry}
+            activeOpacity={0.9}
+            style={[styles.retryButton, { backgroundColor: theme.primary }]}
+            testID="library.error.retryButton"
+          >
             <Text style={styles.retryButtonText}>Prøv igen</Text>
           </TouchableOpacity>
         </View>
@@ -1352,7 +1359,7 @@ export default function LibraryScreen() {
   }
 
   return (
-    <View style={[styles.screen, { backgroundColor: theme.background }]}>
+    <View style={[styles.screen, { backgroundColor: theme.background }]} testID="library.screen">
       {renderTopBar()}
       {searchOpen ? (
         <View style={[styles.searchBarWrap, { backgroundColor: theme.card, borderColor: theme.highlight }]}>
@@ -1448,6 +1455,7 @@ export default function LibraryScreen() {
                     style={[styles.modalActionPrimary, { backgroundColor: colors.success }]}
                     onPress={handleConfirmAddToTasks}
                     disabled={isAddModalSaving}
+                    testID="library.addToTasksModal.confirmButton"
                   >
                     {isAddModalSaving ? (
                       <ActivityIndicator size="small" color="#fff" />

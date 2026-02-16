@@ -23,7 +23,7 @@ export PATH="${JAVA_HOME}/bin:${PATH}"
 
 export MAESTRO_DRIVER_STARTUP_TIMEOUT=900000
 REPEAT_COUNT="${REPEAT_COUNT:-3}"
-FLOW_PATH="${FLOW_PATH:-e2e/flows/activity_completion_smoke.yaml}"
+FLOW_PATH="${FLOW_PATH:-e2e/flows/activity_task_flow_smoke.yaml}"
 mkdir -p "e2e/maestro/artifacts/debug"
 
 UDID="$(xcrun simctl list devices booted | awk -F '[()]' '/Booted/{print $2; exit}')"

@@ -19,6 +19,8 @@ interface Player {
   email: string;
   full_name: string;
   phone_number: string;
+  link_status: 'pending' | 'accepted';
+  request_id: string | null;
 }
 
 interface PlayersListProps {
@@ -47,7 +49,7 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
 
       console.log('Current trainer user ID:', user.id);
 
-      // Get all player relationships for this trainer
+      // Accepted relationships grant actual trainer access
       const { data: relationships, error: relError } = await supabase
         .from('admin_player_relationships')
         .select('player_id')
@@ -58,15 +60,46 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
         return;
       }
 
-      console.log('Found relationships:', relationships);
+      // Pending requests are visible in the trainer UI but do not grant access yet
+      const { data: pendingRequests, error: pendingError } = await supabase
+        .from('admin_player_link_requests')
+        .select('id, player_id')
+        .eq('admin_id', user.id)
+        .eq('status', 'pending');
 
-      if (!relationships || relationships.length === 0) {
+      if (pendingError) {
+        console.error('Error fetching pending requests:', pendingError);
+        return;
+      }
+
+      const relationByPlayerId = new Map<string, { link_status: 'pending' | 'accepted'; request_id: string | null }>();
+
+      for (const relationship of relationships ?? []) {
+        if (relationship?.player_id) {
+          relationByPlayerId.set(relationship.player_id, {
+            link_status: 'accepted',
+            request_id: null,
+          });
+        }
+      }
+
+      for (const request of pendingRequests ?? []) {
+        if (!request?.player_id) continue;
+        if (relationByPlayerId.has(request.player_id)) continue;
+        relationByPlayerId.set(request.player_id, {
+          link_status: 'pending',
+          request_id: request.id ?? null,
+        });
+      }
+
+      const playerIds = Array.from(relationByPlayerId.keys());
+
+      if (playerIds.length === 0) {
         console.log('No player relationships found');
         setPlayers([]);
         return;
       }
 
-      const playerIds = relationships.map(rel => rel.player_id);
       console.log('Player IDs:', playerIds);
 
       // Get profiles for all players
@@ -82,12 +115,22 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
 
       console.log('Found profiles:', profiles);
 
-      const playersData: Player[] = profiles?.map(profile => ({
-        id: profile.user_id,
-        email: '', // Email not available through RLS
-        full_name: profile.full_name || 'Unavngivet',
-        phone_number: profile.phone_number || '',
-      })) || [];
+      const profileById = new Map((profiles ?? []).map(profile => [profile.user_id, profile]));
+
+      const playersData: Player[] = playerIds
+        .map((playerId) => {
+          const profile = profileById.get(playerId);
+          const relationship = relationByPlayerId.get(playerId);
+          return {
+            id: playerId,
+            email: '', // Email not available through RLS
+            full_name: profile?.full_name || 'Unavngivet',
+            phone_number: profile?.phone_number || '',
+            link_status: relationship?.link_status ?? 'accepted',
+            request_id: relationship?.request_id ?? null,
+          };
+        })
+        .sort((a, b) => a.full_name.localeCompare(b.full_name, 'da'));
 
       console.log('Players data:', playersData);
       setPlayers(playersData);
@@ -105,60 +148,85 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
     fetchPlayers();
   }, [fetchPlayers, refreshTrigger]);
 
-  const performDelete = async (playerId: string, playerName: string) => {
+  const performDelete = async (playerId: string, playerName: string, linkStatus: 'pending' | 'accepted') => {
     console.log('=== STARTING PLAYER REMOVAL OPERATION ===');
     console.log('Player ID:', playerId);
     console.log('Player Name:', playerName);
+    console.log('Link status:', linkStatus);
     
     setDeletingPlayerId(playerId);
     
     try {
-      console.log('Calling delete-player Edge Function...');
+      if (linkStatus === 'pending') {
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
 
-      // Call the Edge Function to remove the player from trainer's profile
-      const { data, error } = await supabase.functions.invoke('delete-player', {
-        body: {
-          playerId,
-        },
-      });
-
-      console.log('Edge function response:', { data, error });
-
-      if (error) {
-        console.error('Edge function error:', error);
-        
-        // Try to extract error message
-        let errorMessage = 'Kunne ikke fjerne spilleren';
-        
-        if (error.context && error.context instanceof Response) {
-          try {
-            const clonedResponse = error.context.clone();
-            const errorBody = await clonedResponse.json();
-            console.log('Error response body:', errorBody);
-            if (errorBody.error) {
-              errorMessage = errorBody.error;
-            }
-          } catch (e) {
-            console.error('Could not parse error response:', e);
-          }
-        } else if (error.message) {
-          errorMessage = error.message;
+        if (userError || !user) {
+          throw new Error('Du skal være logget ind for at annullere anmodningen');
         }
+
+        const { error: deletePendingError } = await supabase
+          .from('admin_player_link_requests')
+          .delete()
+          .eq('admin_id', user.id)
+          .eq('player_id', playerId)
+          .eq('status', 'pending');
+
+        if (deletePendingError) {
+          throw new Error(deletePendingError.message || 'Kunne ikke annullere anmodningen');
+        }
+
+        Alert.alert('Succes', 'Spilleranmodningen er fjernet.');
+      } else {
+        console.log('Calling delete-player Edge Function...');
+
+        // Call the Edge Function to remove the player from trainer's profile
+        const { data, error } = await supabase.functions.invoke('delete-player', {
+          body: {
+            playerId,
+          },
+        });
+
+        console.log('Edge function response:', { data, error });
+
+        if (error) {
+          console.error('Edge function error:', error);
+          
+          // Try to extract error message
+          let errorMessage = 'Kunne ikke fjerne spilleren';
+          
+          if (error.context && error.context instanceof Response) {
+            try {
+              const clonedResponse = error.context.clone();
+              const errorBody = await clonedResponse.json();
+              console.log('Error response body:', errorBody);
+              if (errorBody.error) {
+                errorMessage = errorBody.error;
+              }
+            } catch (e) {
+              console.error('Could not parse error response:', e);
+            }
+          } else if (error.message) {
+            errorMessage = error.message;
+          }
+          
+          throw new Error(errorMessage);
+        }
+
+        if (!data || !data.success) {
+          console.error('Edge function returned error:', data);
+          const errorMessage = data?.error || 'Kunne ikke fjerne spilleren';
+          throw new Error(errorMessage);
+        }
+
+        console.log('Player removed successfully from trainer profile');
         
-        throw new Error(errorMessage);
+        const message = `${playerName} er blevet fjernet fra din profil.\n\nSpilleren beholder sin egen konto og selvoprettede opgaver og aktiviteter.\n\nDe opgaver og aktiviteter du har tildelt spilleren er blevet slettet.`;
+
+        Alert.alert('Succes', message);
       }
-
-      if (!data || !data.success) {
-        console.error('Edge function returned error:', data);
-        const errorMessage = data?.error || 'Kunne ikke fjerne spilleren';
-        throw new Error(errorMessage);
-      }
-
-      console.log('Player removed successfully from trainer profile');
-      
-      const message = `${playerName} er blevet fjernet fra din profil.\n\nSpilleren beholder sin egen konto og selvoprettede opgaver og aktiviteter.\n\nDe opgaver og aktiviteter du har tildelt spilleren er blevet slettet.`;
-
-      Alert.alert('Succes', message);
       
       // Refresh the list
       console.log('Refreshing player list...');
@@ -181,13 +249,15 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
     }
   };
 
-  const handleDeletePlayer = (playerId: string, playerName: string) => {
+  const handleDeletePlayer = (playerId: string, playerName: string, linkStatus: 'pending' | 'accepted') => {
     console.log('=== REMOVE BUTTON PRESSED ===');
     console.log('Remove button pressed for player:', playerId, playerName);
     
     Alert.alert(
       'Fjern spiller',
-      `Er du sikker på at du vil fjerne ${playerName} fra din profil?\n\nSpilleren vil blive fjernet fra din liste, og alle opgaver og aktiviteter du har tildelt spilleren vil blive slettet.\n\nSpilleren beholder sin egen konto og selvoprettede opgaver og aktiviteter.`,
+      linkStatus === 'pending'
+        ? `Vil du annullere anmodningen til ${playerName}?`
+        : `Er du sikker på at du vil fjerne ${playerName} fra din profil?\n\nSpilleren vil blive fjernet fra din liste, og alle opgaver og aktiviteter du har tildelt spilleren vil blive slettet.\n\nSpilleren beholder sin egen konto og selvoprettede opgaver og aktiviteter.`,
       [
         { 
           text: 'Annuller', 
@@ -202,7 +272,7 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
           onPress: () => {
             console.log('User confirmed removal, calling performDelete...');
             setTimeout(() => {
-              performDelete(playerId, playerName);
+              performDelete(playerId, playerName, linkStatus);
             }, 100);
           },
         },
@@ -239,7 +309,7 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
         <ScrollView style={styles.playersList} showsVerticalScrollIndicator={false}>
           {players.map((player) => (
             <React.Fragment key={player.id}>
-              <View style={styles.playerCard}>
+              <View style={styles.playerCard} testID={`players.card.${player.id}`}>
                 <View style={styles.playerIcon}>
                   <IconSymbol
                     ios_icon_name="person.fill"
@@ -250,6 +320,17 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
                 </View>
                 <View style={styles.playerInfo}>
                   <Text style={styles.playerName}>{player.full_name}</Text>
+                  <View
+                    style={[
+                      styles.statusBadge,
+                      player.link_status === 'pending' ? styles.statusBadgePending : styles.statusBadgeAccepted,
+                    ]}
+                    testID={`players.card.statusBadge.${player.id}`}
+                  >
+                    <Text style={styles.statusBadgeText}>
+                      {player.link_status === 'pending' ? 'Afventer accept' : 'Accepteret'}
+                    </Text>
+                  </View>
                   {player.phone_number && (
                     <View style={styles.playerDetail}>
                       <IconSymbol
@@ -266,11 +347,12 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
                   style={styles.deleteButton}
                   onPress={() => {
                     console.log('Remove button onPress triggered');
-                    handleDeletePlayer(player.id, player.full_name);
+                    handleDeletePlayer(player.id, player.full_name, player.link_status);
                   }}
                   disabled={deletingPlayerId === player.id}
                   activeOpacity={0.6}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  testID={`players.removeButton.${player.id}`}
                 >
                   {deletingPlayerId === player.id ? (
                     <ActivityIndicator size="small" color={colors.error} />
@@ -351,6 +433,23 @@ const styles = StyleSheet.create({
   playerInfo: {
     flex: 1,
     gap: 6,
+  },
+  statusBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  statusBadgePending: {
+    backgroundColor: '#f59e0b',
+  },
+  statusBadgeAccepted: {
+    backgroundColor: '#16a34a',
+  },
+  statusBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
   },
   playerName: {
     fontSize: 18,

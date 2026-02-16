@@ -23,9 +23,16 @@ interface Props {
   onSelect: (value: any) => void;
   label?: string;
   flex?: number;
+  testIDPrefix?: string;
 }
 
-export function DropdownSelect({ options, selectedValue, onSelect, label, flex = 1 }: Props) {
+const toTestIdToken = (value: string) =>
+  String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+export function DropdownSelect({ options, selectedValue, onSelect, label, flex = 1, testIDPrefix }: Props) {
   const [modalVisible, setModalVisible] = useState(false);
   const colorScheme = useColorScheme();
   const palette = useMemo(() => CommonStyles.getColors(colorScheme), [colorScheme]);
@@ -40,11 +47,15 @@ export function DropdownSelect({ options, selectedValue, onSelect, label, flex =
     setModalVisible(false);
   };
 
+  const fallbackPrefix = label ? `dropdown.${toTestIdToken(label)}` : 'dropdown.select';
+  const prefix = testIDPrefix || fallbackPrefix;
+
   return (
     <>
       <TouchableOpacity
         style={[styles.dropdownButton, { backgroundColor: palette.card, flex }]}
         onPress={() => setModalVisible(true)}
+        testID={`${prefix}.button`}
       >
         {label && <Text style={[styles.label, { color: palette.textSecondary }]}>{label}</Text>}
         <View style={styles.valueContainer}>
@@ -67,10 +78,12 @@ export function DropdownSelect({ options, selectedValue, onSelect, label, flex =
               keyExtractor={item => String(item.value)}
               renderItem={({ item }) => {
                 const isSelected = item.value === selectedValue;
+                const optionToken = toTestIdToken(item.label || String(item.value));
                 return (
                   <TouchableOpacity
                     style={[styles.optionRow, isSelected && { backgroundColor: palette.primary }]}
                     onPress={() => handleSelect(item.value)}
+                    testID={`${prefix}.option.${optionToken}`}
                   >
                     <Text style={[styles.optionText, { color: isSelected ? '#fff' : palette.text }]}>{item.label}</Text>
                   </TouchableOpacity>
@@ -81,6 +94,7 @@ export function DropdownSelect({ options, selectedValue, onSelect, label, flex =
             <TouchableOpacity
               style={[styles.closeButton, { backgroundColor: palette.card }]}
               onPress={() => setModalVisible(false)}
+              testID={`${prefix}.closeButton`}
             >
               <Text style={[styles.closeButtonText, { color: palette.text }]}>Annuller</Text>
             </TouchableOpacity>

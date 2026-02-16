@@ -116,6 +116,7 @@ export default function PerformanceScreen() {
 
   return (
     <ScrollView 
+      testID="performance.screen"
       style={[styles.container, { backgroundColor: bgColor }]} 
       contentContainerStyle={styles.contentContainer}
       refreshControl={
@@ -134,7 +135,7 @@ export default function PerformanceScreen() {
         </Text>
       </View>
 
-      <View style={[styles.currentWeekCard, { backgroundColor: palette.accent }]}> 
+      <View style={[styles.currentWeekCard, { backgroundColor: palette.accent }]} testID="performance.currentWeekCard"> 
         <View style={styles.currentWeekHeader}>
           <Text style={styles.currentWeekTitle}>Denne uge</Text>
           <Text style={styles.trophyBadge}>{getTrophyEmoji(currentPercentage >= 80 ? 'gold' : currentPercentage >= 60 ? 'silver' : 'bronze')}</Text>
@@ -142,10 +143,10 @@ export default function PerformanceScreen() {
         <Text style={styles.currentWeekSubtitle}>Uge {currentWeek}, {currentYear}</Text>
         
         <View style={styles.statsRow}>
-          <View style={styles.statBox}>
+          <View style={styles.statBox} testID="performance.statBox.today">
             <Text style={styles.statLabel}>Indtil i dag</Text>
-            <Text style={styles.statPercentage}>{currentPercentage}%</Text>
-            <Text style={styles.statTasks}>
+            <Text style={styles.statPercentage} testID="performance.statPercentage.today">{currentPercentage}%</Text>
+            <Text style={styles.statTasks} testID="performance.statTasks.today">
               {completedTasks} / {totalTasks}
             </Text>
             <View style={styles.progressBarContainer}>

@@ -353,7 +353,27 @@ Deno.serve(async (req) => {
       console.log('Weekly performance deleted successfully');
     }
 
-    // Step 9: Finally, delete the trainer-player relationship
+    // Step 9: Delete trainer-player link requests (pending/accepted history) for immediate player-side cleanup
+    console.log('Deleting trainer-player link requests...');
+    const { error: deleteLinkRequestsError } = await supabaseAdmin
+      .from('admin_player_link_requests')
+      .delete()
+      .eq('admin_id', user.id)
+      .eq('player_id', playerId);
+
+    if (deleteLinkRequestsError) {
+      const maybeMissingTableCode = (deleteLinkRequestsError as any)?.code;
+      if (maybeMissingTableCode === '42P01') {
+        console.warn('admin_player_link_requests table not found yet; skipping request cleanup');
+      } else {
+        console.error('Failed to delete trainer-player link requests:', deleteLinkRequestsError);
+      }
+      // Continue anyway
+    } else {
+      console.log('Trainer-player link requests deleted successfully');
+    }
+
+    // Step 10: Finally, delete the trainer-player relationship
     console.log('Deleting trainer-player relationship...');
     const { error: deleteRelError } = await supabaseAdmin
       .from('admin_player_relationships')

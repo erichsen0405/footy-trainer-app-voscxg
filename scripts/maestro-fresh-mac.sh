@@ -2,7 +2,7 @@
 set -euo pipefail
 
 APP_ID="com.erichsen.footballcoach"
-FLOW_PATH="${FLOW_PATH:-e2e/flows/auth_smoke.yaml}"
+FLOW_PATH="${FLOW_PATH:-e2e/flows/auth_flow_smoke.yaml}"
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 if [[ -z "${REPO_ROOT}" ]]; then

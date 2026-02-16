@@ -16,7 +16,7 @@ tags:
 - extendedWaitUntil:
     visible:
       id: '^auth\.login\.emailInput$'
-    timeout: 120000
+    timeout: 15000
 - runFlow:
     commands:
       - tapOn:
@@ -33,7 +33,7 @@ tags:
     commands:
       - extendedWaitUntil:
           visible: 'Succes!'
-          timeout: 20000
+          timeout: 15000
       - runFlow:
           when:
             visible: '^OK$'
@@ -48,6 +48,6 @@ tags:
 - extendedWaitUntil:
     visible:
       id: '^home\.screen$'
-    timeout: 120000
+    timeout: 15000
 - assertVisible:
     id: '^home\.screen$'

@@ -8,7 +8,7 @@ appId: com.erichsen.footballcoach
       - tapOn: 'http://localhost:8081'
       - extendedWaitUntil:
           notVisible: 'DEVELOPMENT SERVERS'
-          timeout: 60000
+          timeout: 15000
 
 # 1) Dev menu intro: Continue
 - runFlow:
@@ -25,16 +25,16 @@ appId: com.erichsen.footballcoach
       - tapOn: 'Reload'
       - extendedWaitUntil:
           notVisible: 'Connected to:'
-          timeout: 60000
+          timeout: 15000
 
 # 3) App notifications modal: Tillad
 - runFlow:
     when:
       visible:
-        id: '^notifications\.enableButton$'
+        id: '^notifications\.allowButton$'
     commands:
       - tapOn:
-          id: '^notifications\.enableButton$'
+          id: '^notifications\.allowButton$'
 
 # 4) iOS system-notification prompt: Tillad
 - runFlow:

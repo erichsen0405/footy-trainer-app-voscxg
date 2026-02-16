@@ -245,9 +245,14 @@ export const TaskCard = React.memo(
   }) => {
     const videoUrl = (task as any)?.videoUrl ?? null;
     const ytThumb = typeof videoUrl === 'string' && videoUrl.includes('youtu') ? getYouTubeThumbnail(videoUrl) : null;
+    const taskId = String((task as any)?.id ?? '');
 
     return (
-      <TouchableOpacity style={[styles.taskCard, { backgroundColor: isDark ? '#2a2a2a' : colors.card }]} onPress={onPress}>
+      <TouchableOpacity
+        style={[styles.taskCard, { backgroundColor: isDark ? '#2a2a2a' : colors.card }]}
+        onPress={onPress}
+        testID={`tasks.template.card.${taskId}`}
+      >
         <View style={styles.taskHeader}>
           <View style={styles.taskHeaderLeft}>
             <IconSymbol ios_icon_name="doc.text" android_material_icon_name="description" size={20} color={colors.secondary} />
@@ -320,7 +325,11 @@ const FolderItemComponent = React.memo(
   }) => {
     return (
       <View>
-        <TouchableOpacity style={[styles.folderHeader, { backgroundColor: cardBgColor }]} onPress={onToggle}>
+        <TouchableOpacity
+          style={[styles.folderHeader, { backgroundColor: cardBgColor }]}
+          onPress={onToggle}
+          testID={`tasks.folder.toggle.${folder.id}`}
+        >
           <View style={styles.folderHeaderLeft}>
             <IconSymbol ios_icon_name={folder.icon} android_material_icon_name={folder.androidIcon} size={24} color={colors.primary} />
             <Text style={[styles.folderName, { color: textColor }]}>{folder.name}</Text>
@@ -990,6 +999,7 @@ export default function TasksScreen() {
                           placeholder={`Delopgave ${index + 1}`}
                           placeholderTextColor={textSecondaryColor}
                           editable={!isSaving}
+                          testID={`tasks.template.subtaskInput.${index}`}
                         />
                         {subtasks.length > 1 && (
                           <TouchableOpacity style={styles.removeSubtaskButton} onPress={() => removeSubtask(index)} disabled={isSaving}>

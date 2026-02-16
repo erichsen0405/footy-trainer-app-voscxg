@@ -340,6 +340,39 @@ export type Database = {
         }
         Relationships: []
       }
+      admin_player_link_requests: {
+        Row: {
+          accepted_at: string | null
+          accepted_by: string | null
+          admin_id: string
+          created_at: string
+          id: string
+          player_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          admin_id: string
+          created_at?: string
+          id?: string
+          player_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          admin_id?: string
+          created_at?: string
+          id?: string
+          player_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       category_mappings: {
         Row: {
           created_at: string | null
@@ -1503,6 +1536,33 @@ export type Database = {
           id?: string
           role?: string
           updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_push_tokens: {
+        Row: {
+          created_at: string
+          expo_push_token: string
+          id: string
+          platform: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expo_push_token: string
+          id?: string
+          platform?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expo_push_token?: string
+          id?: string
+          platform?: string | null
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
