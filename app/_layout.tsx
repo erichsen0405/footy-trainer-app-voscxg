@@ -12,6 +12,7 @@ import { AdminProvider } from '@/contexts/AdminContext';
 import NotificationPermissionPrompt from '@/components/NotificationPermissionPrompt';
 import { supabase } from '@/integrations/supabase/client';
 import * as Notifications from 'expo-notifications';
+import { clearPushTokenCache, syncPushTokenForCurrentUser } from '@/utils/pushTokenService';
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -73,6 +74,26 @@ export default function RootLayout() {
 
   const buildNotificationRoute = useCallback((response: Notifications.NotificationResponse) => {
     const data = response?.notification?.request?.content?.data ?? {};
+    const targetRaw = (data as any)?.target;
+    const target = typeof targetRaw === 'string' ? targetRaw.toLowerCase() : '';
+    const requestIdRaw = (data as any)?.requestId ?? (data as any)?.request_id;
+
+    if (target === 'profile_trainer_requests') {
+      const params: Record<string, string> = { openTrainerRequests: '1' };
+      if (requestIdRaw !== undefined && requestIdRaw !== null) {
+        params.requestId = String(requestIdRaw);
+      }
+      return { pathname: '/(tabs)/profile', params };
+    }
+
+    if (target === 'profile_team_players') {
+      const params: Record<string, string> = { openTeamPlayers: '1' };
+      if (requestIdRaw !== undefined && requestIdRaw !== null) {
+        params.requestId = String(requestIdRaw);
+      }
+      return { pathname: '/(tabs)/profile', params };
+    }
+
     const activityIdRaw =
       (data as any)?.activityId ??
       (data as any)?.activity_id ??
@@ -157,6 +178,34 @@ export default function RootLayout() {
     pendingRouteRef.current = null;
     router.push(pendingRoute as any);
   }, [isNavigationReady, router]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const syncPushToken = async (force = false) => {
+      if (cancelled) return;
+      await syncPushTokenForCurrentUser(force);
+    };
+
+    void syncPushToken();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        void clearPushTokenCache();
+        return;
+      }
+      if (session?.user) {
+        void syncPushToken(true);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   return (
     <SubscriptionProvider>

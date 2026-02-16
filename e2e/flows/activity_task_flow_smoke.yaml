@@ -1,0 +1,343 @@
+appId: com.erichsen.footballcoach
+tags:
+  - smoke
+---
+- launchApp:
+    appId: com.erichsen.footballcoach
+    clearState: true
+- runFlow: _dev_client_bootstrap.yaml
+
+# Login hvis nødvendigt
+- openLink: "footballcoach:///(tabs)/profile"
+- runFlow:
+    when:
+      visible:
+        id: '^auth\.login\.emailInput$'
+    commands:
+      - tapOn:
+          id: '^auth\.login\.emailInput$'
+      - inputText: "${MAESTRO_EMAIL}"
+      - tapOn:
+          id: '^auth\.login\.passwordInput$'
+      - inputText: "${MAESTRO_PASSWORD}"
+      - tapOn:
+          id: '^auth\.login\.submitButton$'
+- runFlow:
+    when:
+      visible: 'Succes!'
+    commands:
+      - runFlow:
+          when:
+            visible: '^OK$'
+          commands:
+            - tapOn: '^OK$'
+      - runFlow:
+          when:
+            visible: '^Ok$'
+          commands:
+            - tapOn: '^Ok$'
+
+# Opret aktivitet
+- openLink: "footballcoach:///(tabs)/(home)"
+- extendedWaitUntil:
+    visible:
+      id: '^home\.screen$'
+    timeout: 15000
+- tapOn:
+    id: '^home\.createActivityButton$'
+- extendedWaitUntil:
+    visible:
+      id: '^activity\.create\.titleInput$'
+    timeout: 15000
+- tapOn:
+    id: '^activity\.create\.titleInput$'
+- inputText: "Maestro Aktivitet"
+- tapOn:
+    id: '^activity\.create\.locationInput$'
+- inputText: "Bane 1"
+- tapOn:
+    id: '^activity\.create\.titleInput$'
+- hideKeyboard
+- runFlow:
+    when:
+      visible: '^(Done|Færdig)$'
+    commands:
+      - tapOn: '^(Done|Færdig)$'
+- runFlow:
+    when:
+      visible:
+        id: '^activity\.create\.categoryChip\.0$'
+    commands:
+      - tapOn:
+          id: '^activity\.create\.categoryChip\.0$'
+- scrollUntilVisible:
+    element:
+      id: '^activity\.create\.intensityToggle$'
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: '^activity\.create\.intensityToggle$'
+- tapOn:
+    id: '^activity\.create\.submitButton$'
+- runFlow:
+    when:
+      visible: 'Succes'
+    commands:
+      - runFlow:
+          when:
+            visible: '^OK$'
+          commands:
+            - tapOn: '^OK$'
+      - runFlow:
+          when:
+            visible: '^Ok$'
+          commands:
+            - tapOn: '^Ok$'
+
+# Opret opgaveskabelon
+- openLink: "footballcoach:///(tabs)/tasks"
+- extendedWaitUntil:
+    visible:
+      id: '^tasks\.newTemplateButton$'
+    timeout: 15000
+- tapOn:
+    id: '^tasks\.newTemplateButton$'
+- extendedWaitUntil:
+    visible:
+      id: '^tasks\.template\.titleInput$'
+    timeout: 15000
+- tapOn:
+    id: '^tasks\.template\.titleInput$'
+- inputText: "Maestro Opgave"
+- tapOn:
+    id: '^tasks\.template\.descriptionInput$'
+- inputText: "E2E opgave til activity-task-flow"
+- tapOn:
+    id: '^tasks\.template\.titleInput$'
+- hideKeyboard
+- runFlow:
+    when:
+      visible: '^(Done|Færdig)$'
+    commands:
+      - tapOn: '^(Done|Færdig)$'
+- swipe:
+    start: 50%, 80%
+    end: 50%, 30%
+- scrollUntilVisible:
+    element:
+      id: '^tasks\.template\.reminderToggle$'
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: '^tasks\.template\.reminderToggle$'
+- runFlow:
+    when:
+      visible:
+        id: '^tasks\.template\.reminderOption\.15$'
+    commands:
+      - tapOn:
+          id: '^tasks\.template\.reminderOption\.15$'
+- swipe:
+    start: 50%, 80%
+    end: 50%, 30%
+- scrollUntilVisible:
+    element:
+      id: '^tasks\.template\.feedbackToggle$'
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: '^tasks\.template\.feedbackToggle$'
+- runFlow:
+    when:
+      visible:
+        id: '^tasks\.template\.feedbackDelayOption\.15$'
+    commands:
+      - tapOn:
+          id: '^tasks\.template\.feedbackDelayOption\.15$'
+- runFlow:
+    when:
+      visible:
+        id: '^tasks\.template\.categoryChip\.0$'
+    commands:
+      - tapOn:
+          id: '^tasks\.template\.categoryChip\.0$'
+- tapOn:
+    id: '^tasks\.template\.saveButton$'
+- runFlow:
+    when:
+      visible: 'Succes'
+    commands:
+      - runFlow:
+          when:
+            visible: '^OK$'
+          commands:
+            - tapOn: '^OK$'
+      - runFlow:
+          when:
+            visible: '^Ok$'
+          commands:
+            - tapOn: '^Ok$'
+
+# Åbn første aktivitet
+- openLink: "footballcoach:///(tabs)/(home)"
+- extendedWaitUntil:
+    visible:
+      id: '^home\.screen$'
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: '^home\.activityCardButton$'
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: '^home\.activityCardButton$'
+    index: 0
+    point: 50%,12%
+- extendedWaitUntil:
+    visible:
+      id: '^activity\.details\.editButton$'
+    timeout: 15000
+
+# Fuldfør intensitet-opgave (hvis synlig)
+- runFlow:
+    when:
+      visible:
+        id: '^activity\.details\.intensityTaskButton$'
+    commands:
+      - tapOn:
+          id: '^activity\.details\.intensityTaskButton$'
+      - extendedWaitUntil:
+          visible:
+            id: '^feedback\.scoreInput$'
+          timeout: 15000
+      - tapOn:
+          id: '^feedback\.scoreOption\.5$'
+      - runFlow:
+          when:
+            visible:
+              id: '^feedback\.noteInput$'
+          commands:
+            - tapOn:
+                id: '^feedback\.noteInput$'
+            - inputText: "Maestro intensity note"
+      - hideKeyboard
+      - runFlow:
+          when:
+            visible: '^(Done|Færdig)$'
+          commands:
+            - tapOn: '^(Done|Færdig)$'
+      - runFlow:
+          when:
+            visible:
+              id: '^feedback\.saveButton$'
+          commands:
+            - tapOn:
+                id: '^feedback\.saveButton$'
+      - runFlow:
+          when:
+            visible: '^Markér som udført$'
+          commands:
+            - tapOn: '^Markér som udført$'
+
+# Fuldfør normal opgave
+- runFlow:
+    when:
+      visible:
+        id: '^activity\.details\.taskButton\.incomplete$'
+    commands:
+      - tapOn:
+          id: '^activity\.details\.taskButton\.incomplete$'
+          index: 0
+      - extendedWaitUntil:
+          visible:
+            id: '^activity\.completeButton\.markDone$'
+          timeout: 15000
+      - tapOn:
+          id: '^activity\.completeButton\.markDone$'
+
+# Fuldfør feedback-opgave
+- runFlow:
+    when:
+      visible:
+        id: '^activity\.details\.feedbackTaskButton\.incomplete$'
+    commands:
+      - tapOn:
+          id: '^activity\.details\.feedbackTaskButton\.incomplete$'
+          index: 0
+      - runFlow:
+          when:
+            visible:
+              id: '^activity\.completeButton\.markDone$'
+          commands:
+            - tapOn:
+                id: '^activity\.completeButton\.markDone$'
+      - extendedWaitUntil:
+          visible:
+            id: '^feedback\.scoreInput$'
+          timeout: 15000
+      - tapOn:
+          id: '^feedback\.scoreOption\.5$'
+      - runFlow:
+          when:
+            visible:
+              id: '^feedback\.noteInput$'
+          commands:
+            - tapOn:
+                id: '^feedback\.noteInput$'
+            - inputText: "${MAESTRO_FEEDBACK_NOTE}"
+      - hideKeyboard
+      - runFlow:
+          when:
+            visible: '^(Done|Færdig)$'
+          commands:
+            - tapOn: '^(Done|Færdig)$'
+      - runFlow:
+          when:
+            visible:
+              id: '^feedback\.saveButton$'
+          commands:
+            - tapOn:
+                id: '^feedback\.saveButton$'
+      - runFlow:
+          when:
+            visible: '^Markér som udført$'
+          commands:
+            - tapOn: '^Markér som udført$'
+
+# Performance smoke-check
+- openLink: "footballcoach:///(tabs)/performance"
+- extendedWaitUntil:
+    visible:
+      id: '^performance\.screen$'
+    timeout: 15000
+- assertVisible:
+    id: '^performance\.screen$'
+
+# Cleanup: slet aktivitet hvis muligt
+- openLink: "footballcoach:///(tabs)/(home)"
+- runFlow:
+    when:
+      visible:
+        id: '^home\.activityCardButton$'
+    commands:
+      - tapOn:
+          id: '^home\.activityCardButton$'
+          index: 0
+          point: 50%,12%
+      - runFlow:
+          when:
+            visible:
+              id: '^activity\.details\.deleteButton$'
+          commands:
+            - tapOn:
+                id: '^activity\.details\.deleteButton$'
+            - runFlow:
+                when:
+                  visible: '^Slet$'
+                commands:
+                  - tapOn: '^Slet$'
+            - runFlow:
+                when:
+                  visible: '^(OK|Ok)$'
+                commands:
+                  - tapOn: '^(OK|Ok)$'

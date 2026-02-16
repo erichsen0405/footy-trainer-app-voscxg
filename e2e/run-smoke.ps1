@@ -27,27 +27,19 @@ if (-not (Test-Path $flowsDir)) {
   throw "Mangler flows mappe: $flowsDir"
 }
 
-$flows = Get-ChildItem -Path $flowsDir -File |
-  Where-Object { $_.Extension -in @(".yaml", ".yml") } |
-  Sort-Object Name |
-  Select-Object -ExpandProperty FullName
-
-if (-not $flows -or $flows.Count -eq 0) {
-  throw "Ingen flow-filer fundet i: $flowsDir"
-}
+$debugRoot = Join-Path $scriptDir "results/maestro-debug"
 
 for ($run = 1; $run -le $Repeat; $run++) {
+  $debugDir = Join-Path $debugRoot "run-$run"
+
   Write-Host ""
   Write-Host "=== Smoke run $run/$Repeat ==="
-  $flowNames = $flows | ForEach-Object { Split-Path -Leaf $_ }
-  Write-Host ("Flows: " + ($flowNames -join ", "))
+  Write-Host "Flows dir: $flowsDir"
+  Write-Host "Debug output: $debugDir"
 
-  foreach ($flow in $flows) {
-    Write-Host "Running: $flow"
-    & maestro test $flow
-    if ($LASTEXITCODE -ne 0) {
-      throw "Flow fejlede (exit $LASTEXITCODE): $flow"
-    }
+  & maestro test --include-tags smoke --debug-output $debugDir $flowsDir
+  if ($LASTEXITCODE -ne 0) {
+    throw "Smoke run fejlede (exit $LASTEXITCODE). Se debug output: $debugDir"
   }
 }
 

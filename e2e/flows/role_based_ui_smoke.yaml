@@ -1,0 +1,286 @@
+appId: com.erichsen.footballcoach
+tags:
+  - smoke
+---
+- launchApp:
+    appId: com.erichsen.footballcoach
+    clearState: true
+- runFlow: _dev_client_bootstrap.yaml
+
+# Player: trainer-only UI skal ikke vises
+- openLink: "footballcoach:///(tabs)/profile"
+- extendedWaitUntil:
+    visible:
+      id: '^auth\.login\.emailInput$'
+    timeout: 15000
+- tapOn:
+    id: '^auth\.login\.emailInput$'
+- inputText: "${MAESTRO_PLAYER_EMAIL}"
+- tapOn:
+    id: '^auth\.login\.passwordInput$'
+- inputText: "${MAESTRO_PLAYER_PASSWORD}"
+- tapOn:
+    id: '^auth\.login\.submitButton$'
+- runFlow:
+    when:
+      visible: 'Succes!'
+    commands:
+      - runFlow:
+          when:
+            visible: '^OK$'
+          commands:
+            - tapOn: '^OK$'
+      - runFlow:
+          when:
+            visible: '^Ok$'
+          commands:
+            - tapOn: '^Ok$'
+- openLink: "footballcoach:///(tabs)/profile"
+- extendedWaitUntil:
+    visible:
+      id: '^auth\.signOutButton$'
+    timeout: 15000
+- extendedWaitUntil:
+    visible:
+      id: '^profile\.subscriptionPlanBadgeText$'
+    timeout: 15000
+- assertVisible:
+    id: '^profile\.subscriptionPlanBadgeText$'
+    text: '(?i).*spiller.*'
+- assertNotVisible: '^Hold\\s*&\\s*spillere$'
+- openLink: "footballcoach:///(tabs)/library"
+- extendedWaitUntil:
+    visible:
+      id: '^library\.screen$'
+    timeout: 15000
+- assertNotVisible:
+    id: '^library\.createExerciseButton$'
+
+# Trainer: trainer-only UI skal vises
+- openLink: "footballcoach:///(tabs)/profile"
+- extendedWaitUntil:
+    visible:
+      id: '^auth\.signOutButton$'
+    timeout: 15000
+- swipe:
+    start: 50%, 85%
+    end: 50%, 10%
+- tapOn:
+    id: '^auth\.signOutButton$'
+- runFlow:
+    when:
+      visible: '^OK$'
+    commands:
+      - tapOn: '^OK$'
+- runFlow:
+    when:
+      visible: '^Ok$'
+    commands:
+      - tapOn: '^Ok$'
+- openLink: "footballcoach:///(tabs)/profile"
+- extendedWaitUntil:
+    visible:
+      id: '^auth\.login\.emailInput$'
+    timeout: 15000
+- tapOn:
+    id: '^auth\.login\.emailInput$'
+- inputText: "${MAESTRO_TRAINER_EMAIL}"
+- tapOn:
+    id: '^auth\.login\.passwordInput$'
+- inputText: "${MAESTRO_TRAINER_PASSWORD}"
+- tapOn:
+    id: '^auth\.login\.submitButton$'
+- runFlow:
+    when:
+      visible: 'Succes!'
+    commands:
+      - runFlow:
+          when:
+            visible: '^OK$'
+          commands:
+            - tapOn: '^OK$'
+      - runFlow:
+          when:
+            visible: '^Ok$'
+          commands:
+            - tapOn: '^Ok$'
+- openLink: "footballcoach:///(tabs)/profile"
+- extendedWaitUntil:
+    visible:
+      id: '^auth\.signOutButton$'
+    timeout: 15000
+- extendedWaitUntil:
+    visible:
+      id: '^profile\.subscriptionPlanBadgeText$'
+    timeout: 15000
+- assertVisible:
+    id: '^profile\.subscriptionPlanBadgeText$'
+    text: '(?i).*træner.*'
+- assertVisible:
+    id: '^profile\.teamPlayersSection\.toggle$'
+- tapOn:
+    id: '^profile\.teamPlayersSection\.toggle$'
+- scrollUntilVisible:
+    element:
+      id: '^team\.createButton$'
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: '^team\.createButton$'
+- extendedWaitUntil:
+    visible:
+      id: '^team\.create\.nameInput$'
+    timeout: 15000
+- tapOn:
+    id: '^team\.create\.nameInput$'
+- eraseText
+- inputText: "test team"
+- tapOn:
+    id: '^team\.create\.descriptionInput$'
+- eraseText
+- inputText: "Maestro test"
+- hideKeyboard
+- tapOn:
+    id: '^team\.create\.submitButton$'
+- runFlow:
+    when:
+      visible: '^Succes$'
+    commands:
+      - runFlow:
+          when:
+            visible: '^OK$'
+          commands:
+            - tapOn: '^OK$'
+
+# Tilføj spiller
+- openLink: "footballcoach:///(tabs)/profile"
+- extendedWaitUntil:
+    visible:
+      id: '^profile\.teamPlayersSection\.toggle$'
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: '^profile\.addPlayerButton$'
+    direction: DOWN
+    timeout: 15000
+- swipe:
+    start: 50%, 80%
+    end: 50%, 55%
+- extendedWaitUntil:
+    visible:
+      id: '^profile\.addPlayerButton$'
+    timeout: 10000
+- tapOn:
+    id: '^profile\.addPlayerButton$'
+- extendedWaitUntil:
+    visible:
+      id: '^player\.create\.emailInput$'
+    timeout: 15000
+- tapOn:
+    id: '^player\.create\.emailInput$'
+- eraseText
+- inputText: "testplayer@footballcoach.com"
+- hideKeyboard
+- tapOn:
+    id: '^player\.create\.searchButton$'
+- extendedWaitUntil:
+    visible:
+      id: '^player\.create\.addPlayerButton$'
+    timeout: 15000
+- tapOn:
+    id: '^player\.create\.addPlayerButton$'
+- extendedWaitUntil:
+    visible:
+      id: '^profile\.addPlayerButton$'
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: '^players\.card\..+$'
+    direction: DOWN
+    timeout: 15000
+- assertVisible:
+    id: '^players\.card\..+$'
+
+# Cleanup: team + spiller
+- openLink: "footballcoach:///(tabs)/profile"
+- extendedWaitUntil:
+    visible:
+      id: '^auth\.signOutButton$'
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: '^profile\.teamPlayersSection\.toggle$'
+    direction: DOWN
+    timeout: 15000
+- assertVisible:
+    id: '^profile\.teamPlayersSection\.toggle$'
+- runFlow:
+    when:
+      notVisible:
+        id: '^team\.createButton$'
+    commands:
+      - tapOn:
+          id: '^profile\.teamPlayersSection\.toggle$'
+      - extendedWaitUntil:
+          visible:
+            id: '^team\.createButton$'
+          timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: '^team\.card\.deleteButton\..+$'
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: '^team\.card\.deleteButton\..+$'
+    index: 0
+- runFlow:
+    when:
+      visible: '^Slet$'
+    commands:
+      - tapOn: '^Slet$'
+- runFlow:
+    when:
+      visible: '^OK$'
+    commands:
+      - tapOn: '^OK$'
+- runFlow:
+    when:
+      visible: '^Ok$'
+    commands:
+      - tapOn: '^Ok$'
+- scrollUntilVisible:
+    element:
+      id: '^players\.removeButton\..+$'
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: '^players\.removeButton\..+$'
+    index: 0
+- runFlow:
+    when:
+      visible: '^Fjern$'
+    commands:
+      - tapOn: '^Fjern$'
+- runFlow:
+    when:
+      visible: '^OK$'
+    commands:
+      - tapOn: '^OK$'
+- runFlow:
+    when:
+      visible: '^Ok$'
+    commands:
+      - tapOn: '^Ok$'
+
+# Final verify trainer-only UI i library
+- openLink: "footballcoach:///(tabs)/library"
+- extendedWaitUntil:
+    visible:
+      id: '^library\.screen$'
+    timeout: 15000
+- extendedWaitUntil:
+    visible:
+      id: '^library\.createExerciseButton$'
+    timeout: 15000
+- assertVisible:
+    id: '^library\.createExerciseButton$'

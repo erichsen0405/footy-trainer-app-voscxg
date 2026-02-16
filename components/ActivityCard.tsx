@@ -789,6 +789,7 @@ export default function ActivityCard({
                       style={styles.taskRow}
                       onPress={handleIntensityRowPress}
                       activeOpacity={0.7}
+                      testID={intensityMissing ? 'home.intensityTaskButton.incomplete' : 'home.intensityTaskButton.completed'}
                     >
                       <View style={styles.intensityRowInner}>
                         <View style={styles.taskCheckboxArea}>
@@ -886,8 +887,8 @@ export default function ActivityCard({
                         activeOpacity={0.7}
                         testID={
                           feedbackTask
-                            ? (taskCompleted ? 'home.feedbackTaskButton.completed' : 'home.feedbackTaskButton.incomplete')
-                            : (taskCompleted ? 'home.activityTaskButton.completed' : 'home.activityTaskButton.incomplete')
+                            ? (taskCompleted ? 'home.feedbackTaskCheckbox.completed' : 'home.feedbackTaskCheckbox.incomplete')
+                            : (taskCompleted ? 'home.activityTaskCheckbox.completed' : 'home.activityTaskCheckbox.incomplete')
                         }
                       >
                         <View style={[styles.taskCheckbox, taskCompleted && styles.taskCheckboxCompleted]}>
