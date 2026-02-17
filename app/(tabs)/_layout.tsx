@@ -61,7 +61,7 @@ export default function TabLayout() {
     if (Platform.OS === 'ios' && subscriptionFeaturesLoading) {
       return;
     }
-    const current = Array.isArray(segments) ? segments[1] : undefined;
+    const current = Array.isArray(segments) && segments.length > 0 ? segments[segments.length - 1] : undefined;
     if (!current) {
       return;
     }
