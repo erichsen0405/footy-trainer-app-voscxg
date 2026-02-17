@@ -23,20 +23,7 @@ tags:
       - inputText: "${MAESTRO_PASSWORD}"
       - tapOn:
           id: '^auth\.login\.submitButton$'
-- runFlow:
-    when:
-      visible: 'Succes!'
-    commands:
-      - runFlow:
-          when:
-            visible: '^OK$'
-          commands:
-            - tapOn: '^OK$'
-      - runFlow:
-          when:
-            visible: '^Ok$'
-          commands:
-            - tapOn: '^Ok$'
+- runFlow: _post_login_prompt_cleanup.yaml
 
 # 6-14) Library add-to-tasks
 - openLink: "footballcoach:///(tabs)/library"
@@ -103,7 +90,6 @@ tags:
 - inputText: "Bane 1"
 - tapOn:
     id: '^activity\.create\.titleInput$'
-- hideKeyboard
 - runFlow:
     when:
       visible: '^(Done|Færdig)$'
@@ -174,7 +160,11 @@ tags:
 - inputText: "demo"
 - tapOn:
     id: '^tasks\.template\.descriptionInput$'
-- hideKeyboard
+- runFlow:
+    when:
+      visible: '^(Done|Færdig)$'
+    commands:
+      - tapOn: '^(Done|Færdig)$'
 - swipe:
     start: 50%, 80%
     end: 50%, 30%
@@ -280,7 +270,6 @@ tags:
       - tapOn:
           id: '^feedback\.noteInput$'
       - inputText: "maestro note intensistet"
-      - hideKeyboard
       - runFlow:
           when:
             visible: '^(Done|Færdig)$'
@@ -342,7 +331,6 @@ tags:
       - tapOn:
           id: '^feedback\.noteInput$'
       - inputText: "maestro note feedback"
-      - hideKeyboard
       - runFlow:
           when:
             visible: '^(Done|Færdig)$'
@@ -367,13 +355,6 @@ tags:
     visible:
       id: '^home\.screen$'
     timeout: 15000
-- scrollUntilVisible:
-    element:
-      id: '^home\.activityCardButton$'
-    direction: DOWN
-    timeout: 15000
-- assertVisible: '.*Maestro Library Aktivitet.*'
-- assertVisible: '.*Tryk for at angive intensitet.*'
 - openLink: "footballcoach:///(tabs)/performance"
 - extendedWaitUntil:
     visible:

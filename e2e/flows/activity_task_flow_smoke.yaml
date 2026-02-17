@@ -22,20 +22,7 @@ tags:
       - inputText: "${MAESTRO_PASSWORD}"
       - tapOn:
           id: '^auth\.login\.submitButton$'
-- runFlow:
-    when:
-      visible: 'Succes!'
-    commands:
-      - runFlow:
-          when:
-            visible: '^OK$'
-          commands:
-            - tapOn: '^OK$'
-      - runFlow:
-          when:
-            visible: '^Ok$'
-          commands:
-            - tapOn: '^Ok$'
+- runFlow: _post_login_prompt_cleanup.yaml
 
 # Opret aktivitet
 - openLink: "footballcoach:///(tabs)/(home)"
@@ -54,22 +41,16 @@ tags:
 - inputText: "Maestro Aktivitet"
 - tapOn:
     id: '^activity\.create\.locationInput$'
-- inputText: "Bane 1"
+- inputText: "Bane 1\n"
+- scrollUntilVisible:
+    element:
+      id: '^activity\.create\.categoryChip\.3$'
+    direction: DOWN
+    timeout: 15000
 - tapOn:
-    id: '^activity\.create\.titleInput$'
-- hideKeyboard
-- runFlow:
-    when:
-      visible: '^(Done|Færdig)$'
-    commands:
-      - tapOn: '^(Done|Færdig)$'
-- runFlow:
-    when:
-      visible:
-        id: '^activity\.create\.categoryChip\.0$'
-    commands:
-      - tapOn:
-          id: '^activity\.create\.categoryChip\.0$'
+    id: '^activity\.create\.categoryChip\.3$'
+- assertVisible:
+    id: '^activity\.create\.categoryChip\.3$'
 - scrollUntilVisible:
     element:
       id: '^activity\.create\.intensityToggle$'
@@ -114,7 +95,6 @@ tags:
 - inputText: "E2E opgave til activity-task-flow"
 - tapOn:
     id: '^tasks\.template\.titleInput$'
-- hideKeyboard
 - runFlow:
     when:
       visible: '^(Done|Færdig)$'
@@ -154,13 +134,18 @@ tags:
     commands:
       - tapOn:
           id: '^tasks\.template\.feedbackDelayOption\.15$'
+- scrollUntilVisible:
+    element:
+      id: '^tasks.template.categoryChip.3$'
+    direction: DOWN
+    timeout: 15000
 - runFlow:
     when:
       visible:
-        id: '^tasks\.template\.categoryChip\.0$'
+        id: '^tasks.template.categoryChip.3$'
     commands:
       - tapOn:
-          id: '^tasks\.template\.categoryChip\.0$'
+          id: '^tasks.template.categoryChip.3$'
 - tapOn:
     id: '^tasks\.template\.saveButton$'
 - runFlow:
@@ -220,7 +205,6 @@ tags:
             - tapOn:
                 id: '^feedback\.noteInput$'
             - inputText: "Maestro intensity note"
-      - hideKeyboard
       - runFlow:
           when:
             visible: '^(Done|Færdig)$'
@@ -285,7 +269,6 @@ tags:
             - tapOn:
                 id: '^feedback\.noteInput$'
             - inputText: "${MAESTRO_FEEDBACK_NOTE}"
-      - hideKeyboard
       - runFlow:
           when:
             visible: '^(Done|Færdig)$'
@@ -341,3 +324,38 @@ tags:
                   visible: '^(OK|Ok)$'
                 commands:
                   - tapOn: '^(OK|Ok)$'
+# Ryd opgaveskabelon op
+- openLink: "footballcoach:///(tabs)/tasks"
+- extendedWaitUntil:
+    visible:
+      id: '^tasks.folder.toggle.personal$'
+    timeout: 15000
+- tapOn:
+    id: '^tasks.folder.toggle.personal$'
+- scrollUntilVisible:
+    element:
+      id: '^tasks\.template\.card\..*$'
+    direction: DOWN
+    timeout: 15000
+- extendedWaitUntil:
+    visible:
+      id: '^tasks\.template\.deleteButton$'
+    timeout: 15000
+- tapOn:
+    id: '^tasks\.template\.deleteButton$'
+    index: 0
+- runFlow:
+    when:
+      visible: '^Fortsæt$'
+    commands:
+      - tapOn: '^Fortsæt$'
+- runFlow:
+    when:
+      visible: '^Slet$'
+    commands:
+      - tapOn: '^Slet$'
+- runFlow:
+    when:
+      visible: '^(OK|Ok)$'
+    commands:
+      - tapOn: '^(OK|Ok)$'
