@@ -4,6 +4,21 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
   workflow_dispatch:
+    inputs:
+      target:
+        description: "E2E target to run"
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - activity-task
+          - auth
+          - error-retry
+          - library-add-to-tasks
+          - notifications-permission
+          - paywall-gating
+          - role-based-ui
 
 concurrency:
   group: e2e-ios-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -13,7 +28,17 @@ jobs:
   e2e-ios:
     name: E2E iOS
     runs-on: macos-latest
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'run-e2e-ios')
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'run-e2e-ios') ||
+      contains(github.event.pull_request.labels.*.name, 'run-e2e-ios-all') ||
+      contains(github.event.pull_request.labels.*.name, 'run-e2e-ios-activity-task') ||
+      contains(github.event.pull_request.labels.*.name, 'run-e2e-ios-auth') ||
+      contains(github.event.pull_request.labels.*.name, 'run-e2e-ios-error-retry') ||
+      contains(github.event.pull_request.labels.*.name, 'run-e2e-ios-library-add-to-tasks') ||
+      contains(github.event.pull_request.labels.*.name, 'run-e2e-ios-notifications-permission') ||
+      contains(github.event.pull_request.labels.*.name, 'run-e2e-ios-paywall-gating') ||
+      contains(github.event.pull_request.labels.*.name, 'run-e2e-ios-role-based-ui')
     env:
       MAESTRO_EMAIL: ${{ secrets.MAESTRO_EMAIL }}
       MAESTRO_PASSWORD: ${{ secrets.MAESTRO_PASSWORD }}
@@ -58,8 +83,13 @@ jobs:
             xcrun simctl list devices available
             exit 1
           fi
-          SIM_UDID="$(echo "$SIM_DEVICE_LINE" | sed -E 's/.*\\(([0-9A-F-]+)\\).*/\\1/')"
-          SIM_NAME="$(echo "$SIM_DEVICE_LINE" | sed -E 's/^[[:space:]]*([^()]+) \\([0-9A-F-]+\\).*/\\1/' | xargs)"
+          SIM_UDID="$(echo "$SIM_DEVICE_LINE" | grep -Eo '[0-9A-Fa-f-]{36}' | head -n1 || true)"
+          if [ -z "$SIM_UDID" ]; then
+            echo "Failed to parse simulator UDID from line:"
+            echo "$SIM_DEVICE_LINE"
+            exit 1
+          fi
+          SIM_NAME="$(echo "$SIM_DEVICE_LINE" | sed -E 's/^[[:space:]]*([^()]+).*/\1/' | xargs)"
           echo "Using simulator: $SIM_NAME ($SIM_UDID)"
           echo "SIM_UDID=$SIM_UDID" >> "$GITHUB_ENV"
           echo "SIM_NAME=$SIM_NAME" >> "$GITHUB_ENV"
@@ -83,7 +113,71 @@ jobs:
           xcrun simctl list devices | grep -q "Booted"
           xcrun simctl get_app_container booted com.erichsen.footballcoach data >/dev/null
 
+      - name: Resolve E2E scripts from label/dispatch
+        id: resolve
+        run: |
+          add_unique() {
+            local item="$1"
+            for existing in "${selected[@]}"; do
+              if [[ "$existing" == "$item" ]]; then
+                return
+              fi
+            done
+            selected+=("$item")
+          }
+
+          selected=()
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            case "${{ inputs.target }}" in
+              all) add_unique "e2e:ios:all" ;;
+              activity-task) add_unique "e2e:ios:activity-task-flow" ;;
+              auth) add_unique "e2e:ios:auth-flow" ;;
+              error-retry) add_unique "e2e:ios:error-retry-flow" ;;
+              library-add-to-tasks) add_unique "e2e:ios:library-add-to-tasks-flow" ;;
+              notifications-permission) add_unique "e2e:ios:notifications-permission-flow" ;;
+              paywall-gating) add_unique "e2e:ios:paywall-flow" ;;
+              role-based-ui) add_unique "e2e:ios:role-based-ui-flow" ;;
+              *) echo "Unsupported workflow_dispatch target: ${{ inputs.target }}"; exit 1 ;;
+            esac
+          else
+            labels_raw="${{ join(github.event.pull_request.labels.*.name, ' ') }}"
+            labels=" ${labels_raw} "
+
+            # "all" wins and runs the dedicated ordered suite (bootstrap first).
+            if [[ "$labels" == *" run-e2e-ios "* || "$labels" == *" run-e2e-ios-all "* ]]; then
+              add_unique "e2e:ios:all"
+            else
+              [[ "$labels" == *" run-e2e-ios-activity-task "* ]] && add_unique "e2e:ios:activity-task-flow"
+              [[ "$labels" == *" run-e2e-ios-auth "* ]] && add_unique "e2e:ios:auth-flow"
+              [[ "$labels" == *" run-e2e-ios-error-retry "* ]] && add_unique "e2e:ios:error-retry-flow"
+              [[ "$labels" == *" run-e2e-ios-library-add-to-tasks "* ]] && add_unique "e2e:ios:library-add-to-tasks-flow"
+              [[ "$labels" == *" run-e2e-ios-notifications-permission "* ]] && add_unique "e2e:ios:notifications-permission-flow"
+              [[ "$labels" == *" run-e2e-ios-paywall-gating "* ]] && add_unique "e2e:ios:paywall-flow"
+              [[ "$labels" == *" run-e2e-ios-role-based-ui "* ]] && add_unique "e2e:ios:role-based-ui-flow"
+            fi
+          fi
+
+          if [[ "${#selected[@]}" -eq 0 ]]; then
+            echo "No supported E2E labels/targets resolved."
+            exit 1
+          fi
+
+          echo "Resolved scripts:"
+          printf '%s\n' "${selected[@]}"
+          {
+            echo "scripts<<EOF"
+            printf '%s\n' "${selected[@]}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Run iOS E2E suite
         run: |
           export PATH="$HOME/.maestro/bin:$PATH"
-          npm run e2e:ios:all
+          while IFS= read -r script; do
+            if [[ -z "$script" ]]; then
+              continue
+            fi
+            echo "Running $script"
+            npm run "$script"
+          done <<< "${{ steps.resolve.outputs.scripts }}"
