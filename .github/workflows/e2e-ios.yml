@@ -33,7 +33,6 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: '**/package-lock.json'
 
       - name: Install dependencies
         run: npm ci
@@ -46,6 +45,28 @@ jobs:
 
       - name: Install Maestro CLI
         run: curl -Ls "https://get.maestro.mobile.dev" | bash
+
+      - name: Boot iOS Simulator
+        run: |
+          xcrun simctl boot "iPhone 15" || true
+          xcrun simctl bootstatus "iPhone 15" -b
+
+      - name: Build and install dev client
+        run: npx expo run:ios --simulator "iPhone 15"
+
+      - name: Start Metro on 8081
+        run: |
+          nohup npm run ios:metro > /tmp/metro.log 2>&1 &
+          for i in {1..60}; do
+            curl -sf http://127.0.0.1:8081/status && break
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:8081/status | grep -q "packager-status:running"
+
+      - name: Preflight checks
+        run: |
+          xcrun simctl list devices | grep -q "Booted"
+          xcrun simctl get_app_container booted com.erichsen.footballcoach data >/dev/null
 
       - name: Run iOS E2E suite
         run: |
