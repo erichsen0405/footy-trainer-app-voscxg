@@ -511,7 +511,30 @@ export const activityService = {
 
     if (activityError) throw activityError;
 
-    // Intentionally do not duplicate activity_tasks when duplicating an activity.
-    // Tasks should only be duplicated when a task template is duplicated.
+    const sourceTasks = Array.isArray((activity as any)?.activity_tasks)
+      ? ((activity as any).activity_tasks as any[])
+      : [];
+
+    if (!sourceTasks.length) {
+      return;
+    }
+
+    const taskRows = sourceTasks.map((task: any) => ({
+      activity_id: newActivity.id,
+      title: task?.title ?? '',
+      description: task?.description ?? '',
+      completed: !!task?.completed,
+      reminder_minutes:
+        typeof task?.reminder_minutes === 'number'
+          ? task.reminder_minutes
+          : null,
+    }));
+
+    const { error: taskInsertError } = await supabase
+      .from('activity_tasks')
+      .insert(taskRows)
+      .abortSignal(signal);
+
+    if (taskInsertError) throw taskInsertError;
   },
 };

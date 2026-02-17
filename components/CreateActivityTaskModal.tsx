@@ -247,6 +247,7 @@ export function CreateActivityTaskModal({
         const success = await scheduleTaskReminderImmediate(
           taskData.id,
           title.trim(),
+          description.trim(),
           activityId,
           activityTitle,
           activityDateStr,
@@ -615,5 +616,4 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
 });
-
 

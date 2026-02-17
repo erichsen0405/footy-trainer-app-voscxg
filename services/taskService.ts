@@ -733,5 +733,3 @@ export const taskService = {
     throw new Error('Task not found in activity or external task tables');
   },
 };
-
-
