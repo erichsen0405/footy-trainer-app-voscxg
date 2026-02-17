@@ -1,0 +1,53 @@
+name: E2E iOS
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-ios-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e-ios:
+    name: E2E iOS
+    runs-on: macos-latest
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'run-e2e-ios')
+    env:
+      MAESTRO_EMAIL: ${{ secrets.MAESTRO_EMAIL }}
+      MAESTRO_PASSWORD: ${{ secrets.MAESTRO_PASSWORD }}
+      MAESTRO_LOCKED_EMAIL: ${{ secrets.MAESTRO_LOCKED_EMAIL }}
+      MAESTRO_LOCKED_PASSWORD: ${{ secrets.MAESTRO_LOCKED_PASSWORD }}
+      MAESTRO_FEEDBACK_NOTE: ${{ secrets.MAESTRO_FEEDBACK_NOTE }}
+      MAESTRO_PLAYER_EMAIL: ${{ secrets.MAESTRO_PLAYER_EMAIL }}
+      MAESTRO_PLAYER_PASSWORD: ${{ secrets.MAESTRO_PLAYER_PASSWORD }}
+      MAESTRO_TRAINER_EMAIL: ${{ secrets.MAESTRO_TRAINER_EMAIL }}
+      MAESTRO_TRAINER_PASSWORD: ${{ secrets.MAESTRO_TRAINER_PASSWORD }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Maestro CLI
+        run: curl -Ls "https://get.maestro.mobile.dev" | bash
+
+      - name: Run iOS E2E suite
+        run: |
+          export PATH="$HOME/.maestro/bin:$PATH"
+          npm run e2e:ios:all

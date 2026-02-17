@@ -24,6 +24,26 @@ Optional watch mode:
 npm test -- --watch
 ```
 
+## CI
+
+- PR CI kører altid: `npm run typecheck`, `npm run lint`, `npm test`.
+- iOS E2E kører som default ikke på PR.
+- Tilføj PR label `run-e2e-ios` for at trigge iOS E2E-jobbet.
+- iOS E2E kan også startes manuelt via `workflow_dispatch`.
+- Sæt disse GitHub Secrets til E2E:
+  - `MAESTRO_EMAIL`
+  - `MAESTRO_PASSWORD`
+  - `MAESTRO_LOCKED_EMAIL`
+  - `MAESTRO_LOCKED_PASSWORD`
+  - `MAESTRO_FEEDBACK_NOTE`
+  - `MAESTRO_PLAYER_EMAIL`
+  - `MAESTRO_PLAYER_PASSWORD`
+  - `MAESTRO_TRAINER_EMAIL`
+  - `MAESTRO_TRAINER_PASSWORD`
+- Sæt disse checks som required i branch protection:
+  - `PR CI`
+  - `E2E iOS` (kun hvis I vil gøre label-kørt E2E obligatorisk ved merge)
+
 ## Maestro Mac runbook (iOS smoke)
 
 Simulator-only setup (not physical iPhone).
@@ -63,4 +83,3 @@ Useful flags:
 - `--batch-size <n>` controls how many rows are upserted per request (default 50).
 
 The script enforces `trainer_id` because `public.exercise_library.trainer_id` is `NOT NULL`. Pass the UUID for the system/trainer account that should own the seeded rows.
-
