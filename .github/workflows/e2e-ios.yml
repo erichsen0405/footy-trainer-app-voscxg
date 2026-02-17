@@ -52,7 +52,7 @@ jobs:
 
       - name: Select and boot iOS Simulator
         run: |
-          SIM_DEVICE_LINE="$(xcrun simctl list devices available | grep -E 'iPhone .*\\((Booted|Shutdown)\\)' | head -n1 || true)"
+          SIM_DEVICE_LINE="$(xcrun simctl list devices available | grep -E 'iPhone .*\((Booted|Shutdown)\)' | head -n1 || true)"
           if [ -z "$SIM_DEVICE_LINE" ]; then
             echo "No available iPhone simulator found."
             xcrun simctl list devices available
