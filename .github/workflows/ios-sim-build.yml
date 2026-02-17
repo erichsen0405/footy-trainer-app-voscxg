@@ -13,6 +13,7 @@ jobs:
   build-ios-sim-app:
     name: Build iOS Simulator .app
     runs-on: macos-latest
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -48,8 +49,12 @@ jobs:
           xcrun simctl bootstatus "$SIM_UDID" -b
           echo "SIM_UDID=$SIM_UDID" >> "$GITHUB_ENV"
 
-      - name: Build app for simulator
-        run: npx expo run:ios --device "$SIM_UDID"
+      - name: Build app for simulator (build-only)
+        env:
+          CI: "1"
+          EXPO_NO_INTERACTIVE: "1"
+          EXPO_NO_TELEMETRY: "1"
+        run: npx expo run:ios --device "$SIM_UDID" --no-install --no-bundler
 
       - name: Package simulator .app artifact
         run: |
