@@ -1,0 +1,16 @@
+appId: com.erichsen.footballcoach
+---
+- runFlow:
+    when:
+      visible: '(?i)^(ikke nu|not now)$'
+    commands:
+      - tapOn:
+          text: '(?i)^(ikke nu|not now)$'
+          retryTapIfNoChange: true
+- runFlow:
+    when:
+      visible: '(?i)^(gem ikke|don.t save|never save)$'
+    commands:
+      - tapOn:
+          text: '(?i)^(gem ikke|don.t save|never save)$'
+          retryTapIfNoChange: true

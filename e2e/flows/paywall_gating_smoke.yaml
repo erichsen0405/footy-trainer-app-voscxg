@@ -19,20 +19,7 @@ tags:
 - inputText: "${MAESTRO_LOCKED_PASSWORD}"
 - tapOn:
     id: '^auth\.login\.submitButton$'
-- runFlow:
-    when:
-      visible: 'Succes!'
-    commands:
-      - runFlow:
-          when:
-            visible: '^OK$'
-          commands:
-            - tapOn: '^OK$'
-      - runFlow:
-          when:
-            visible: '^Ok$'
-          commands:
-            - tapOn: '^Ok$'
+- runFlow: _post_login_prompt_cleanup.yaml
 - extendedWaitUntil:
     visible:
       id: '^paywall\.primaryCtaButton$'

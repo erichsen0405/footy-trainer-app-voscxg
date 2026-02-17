@@ -8,34 +8,21 @@ tags:
 - runFlow: _dev_client_bootstrap.yaml
 
 # Player: trainer-only UI skal ikke vises
-- openLink: "footballcoach:///(tabs)/profile"
+- openLink: 'footballcoach:///(tabs)/profile'
 - extendedWaitUntil:
     visible:
       id: '^auth\.login\.emailInput$'
     timeout: 15000
 - tapOn:
     id: '^auth\.login\.emailInput$'
-- inputText: "${MAESTRO_PLAYER_EMAIL}"
+- inputText: '${MAESTRO_PLAYER_EMAIL}'
 - tapOn:
     id: '^auth\.login\.passwordInput$'
-- inputText: "${MAESTRO_PLAYER_PASSWORD}"
+- inputText: '${MAESTRO_PLAYER_PASSWORD}'
 - tapOn:
     id: '^auth\.login\.submitButton$'
-- runFlow:
-    when:
-      visible: 'Succes!'
-    commands:
-      - runFlow:
-          when:
-            visible: '^OK$'
-          commands:
-            - tapOn: '^OK$'
-      - runFlow:
-          when:
-            visible: '^Ok$'
-          commands:
-            - tapOn: '^Ok$'
-- openLink: "footballcoach:///(tabs)/profile"
+- runFlow: _post_login_prompt_cleanup.yaml
+- openLink: 'footballcoach:///(tabs)/profile'
 - extendedWaitUntil:
     visible:
       id: '^auth\.signOutButton$'
@@ -48,7 +35,7 @@ tags:
     id: '^profile\.subscriptionPlanBadgeText$'
     text: '(?i).*spiller.*'
 - assertNotVisible: '^Hold\\s*&\\s*spillere$'
-- openLink: "footballcoach:///(tabs)/library"
+- openLink: 'footballcoach:///(tabs)/library'
 - extendedWaitUntil:
     visible:
       id: '^library\.screen$'
@@ -57,7 +44,7 @@ tags:
     id: '^library\.createExerciseButton$'
 
 # Trainer: trainer-only UI skal vises
-- openLink: "footballcoach:///(tabs)/profile"
+- openLink: 'footballcoach:///(tabs)/profile'
 - extendedWaitUntil:
     visible:
       id: '^auth\.signOutButton$'
@@ -77,34 +64,21 @@ tags:
       visible: '^Ok$'
     commands:
       - tapOn: '^Ok$'
-- openLink: "footballcoach:///(tabs)/profile"
+- openLink: 'footballcoach:///(tabs)/profile'
 - extendedWaitUntil:
     visible:
       id: '^auth\.login\.emailInput$'
     timeout: 15000
 - tapOn:
     id: '^auth\.login\.emailInput$'
-- inputText: "${MAESTRO_TRAINER_EMAIL}"
+- inputText: '${MAESTRO_TRAINER_EMAIL}'
 - tapOn:
     id: '^auth\.login\.passwordInput$'
-- inputText: "${MAESTRO_TRAINER_PASSWORD}"
+- inputText: '${MAESTRO_TRAINER_PASSWORD}'
 - tapOn:
     id: '^auth\.login\.submitButton$'
-- runFlow:
-    when:
-      visible: 'Succes!'
-    commands:
-      - runFlow:
-          when:
-            visible: '^OK$'
-          commands:
-            - tapOn: '^OK$'
-      - runFlow:
-          when:
-            visible: '^Ok$'
-          commands:
-            - tapOn: '^Ok$'
-- openLink: "footballcoach:///(tabs)/profile"
+- runFlow: _post_login_prompt_cleanup.yaml
+- openLink: 'footballcoach:///(tabs)/profile'
 - extendedWaitUntil:
     visible:
       id: '^auth\.signOutButton$'
@@ -134,12 +108,16 @@ tags:
 - tapOn:
     id: '^team\.create\.nameInput$'
 - eraseText
-- inputText: "test team"
+- inputText: 'test team'
 - tapOn:
     id: '^team\.create\.descriptionInput$'
 - eraseText
-- inputText: "Maestro test"
-- hideKeyboard
+- inputText: 'Maestro test'
+- runFlow:
+    when:
+      visible: '^(Done|Færdig)$'
+    commands:
+      - tapOn: '^(Done|Færdig)$'
 - tapOn:
     id: '^team\.create\.submitButton$'
 - runFlow:
@@ -153,7 +131,7 @@ tags:
             - tapOn: '^OK$'
 
 # Tilføj spiller
-- openLink: "footballcoach:///(tabs)/profile"
+- openLink: 'footballcoach:///(tabs)/profile'
 - extendedWaitUntil:
     visible:
       id: '^profile\.teamPlayersSection\.toggle$'
@@ -179,8 +157,12 @@ tags:
 - tapOn:
     id: '^player\.create\.emailInput$'
 - eraseText
-- inputText: "testplayer@footballcoach.com"
-- hideKeyboard
+- inputText: 'testplayer@footballcoach.com'
+- runFlow:
+    when:
+      visible: '^(Done|Færdig)$'
+    commands:
+      - tapOn: '^(Done|Færdig)$'
 - tapOn:
     id: '^player\.create\.searchButton$'
 - extendedWaitUntil:
@@ -202,11 +184,7 @@ tags:
     id: '^players\.card\..+$'
 
 # Cleanup: team + spiller
-- openLink: "footballcoach:///(tabs)/profile"
-- extendedWaitUntil:
-    visible:
-      id: '^auth\.signOutButton$'
-    timeout: 15000
+- openLink: 'footballcoach:///(tabs)/profile'
 - scrollUntilVisible:
     element:
       id: '^profile\.teamPlayersSection\.toggle$'
@@ -273,7 +251,7 @@ tags:
       - tapOn: '^Ok$'
 
 # Final verify trainer-only UI i library
-- openLink: "footballcoach:///(tabs)/library"
+- openLink: 'footballcoach:///(tabs)/library'
 - extendedWaitUntil:
     visible:
       id: '^library\.screen$'

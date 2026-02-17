@@ -28,6 +28,9 @@ jobs:
   e2e-ios:
     name: E2E iOS
     runs-on: macos-latest
+    permissions:
+      actions: read
+      contents: read
     if: >
       github.event_name == 'workflow_dispatch' ||
       contains(github.event.pull_request.labels.*.name, 'run-e2e-ios') ||
@@ -96,8 +99,32 @@ jobs:
           xcrun simctl boot "$SIM_UDID" || true
           xcrun simctl bootstatus "$SIM_UDID" -b
 
-      - name: Build and install dev client
-        run: npx expo run:ios --device "$SIM_UDID"
+      - name: Download prebuilt simulator app artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ARTIFACT_NAME="ios-sim-app-${GITHUB_SHA}"
+          RUN_ID="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ios-sim-build.yml/runs?head_sha=${GITHUB_SHA}&status=completed&per_page=20" --jq '.workflow_runs[] | select(.conclusion=="success") | .id' | head -n1 || true)"
+          if [ -z "$RUN_ID" ]; then
+            echo "No successful iOS Simulator Build workflow found for commit ${GITHUB_SHA}."
+            echo "Run or wait for '.github/workflows/ios-sim-build.yml' to complete, then retry E2E."
+            exit 1
+          fi
+          echo "Using build workflow run id: $RUN_ID"
+          mkdir -p e2e-prebuilt
+          gh run download "$RUN_ID" -n "$ARTIFACT_NAME" -D e2e-prebuilt
+          tar -xzf e2e-prebuilt/ios-sim-app.tgz -C e2e-prebuilt
+          APP_PATH="$(find e2e-prebuilt -type d -name '*.app' | head -n1 || true)"
+          if [ -z "$APP_PATH" ]; then
+            echo "Downloaded artifact did not contain a .app bundle."
+            exit 1
+          fi
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+
+      - name: Install prebuilt app in simulator
+        run: |
+          xcrun simctl install "$SIM_UDID" "$APP_PATH"
+          xcrun simctl get_app_container "$SIM_UDID" com.erichsen.footballcoach data >/dev/null
 
       - name: Start Metro on 8081
         run: |

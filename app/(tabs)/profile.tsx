@@ -275,6 +275,15 @@ const styles = StyleSheet.create({
   },
   signOutButtonText: { fontSize: 16, fontWeight: '700', color: '#fff' },
   authCard: { borderRadius: 24, padding: 24, marginHorizontal: 16, marginTop: 24 },
+  loginNoticeBanner: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  loginNoticeText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   successMessage: { borderRadius: 20, padding: 24, alignItems: 'center', gap: 12 },
   successTitle: { fontSize: 22, fontWeight: '800', textAlign: 'center' },
   successText: { fontSize: 15, lineHeight: 22, textAlign: 'center' },
@@ -357,6 +366,7 @@ export default function ProfileScreen() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [showLoginNotice, setShowLoginNotice] = useState(false);
   const [showPaywallModal, setShowPaywallModal] = useState(false);
   const [, setPaywallProcessing] = useState(false);
   const [purchaseProcessing, setPurchaseProcessing] = useState(false);
@@ -409,6 +419,7 @@ export default function ProfileScreen() {
   const [showCreatePlayerModal, setShowCreatePlayerModal] = useState(false);
   const [playersRefreshTrigger, setPlayersRefreshTrigger] = useState(0);
   const [isAcceptingTrainerRequest, setIsAcceptingTrainerRequest] = useState(false);
+  const loginNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -418,6 +429,14 @@ export default function ProfileScreen() {
       return () => cancelAnimationFrame(frame);
     }, [])
   );
+
+  useEffect(() => {
+    return () => {
+      if (loginNoticeTimerRef.current) {
+        clearTimeout(loginNoticeTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!routeEmail) return;
@@ -1133,7 +1152,13 @@ export default function ProfileScreen() {
       }
 
       if (data.session) {
-        Alert.alert('Succes!', 'Du er nu logget ind!');
+        setShowLoginNotice(true);
+        if (loginNoticeTimerRef.current) {
+          clearTimeout(loginNoticeTimerRef.current);
+        }
+        loginNoticeTimerRef.current = setTimeout(() => {
+          setShowLoginNotice(false);
+        }, 2500);
         setEmail('');
         setPassword('');
       }
@@ -1470,6 +1495,11 @@ export default function ProfileScreen() {
   // Logged-in main view now rendered via FlatList (see return)
   const renderProfileContent = () => (
     <View>
+      {showLoginNotice && (
+        <View style={[styles.loginNoticeBanner, { backgroundColor: colors.primary }]} testID="auth.login.successNotice">
+          <Text style={styles.loginNoticeText}>Du er nu logget ind!</Text>
+        </View>
+      )}
       {user ? (
         <>
           <CardWrapper style={[styles.profileHeader, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>

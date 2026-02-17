@@ -27,6 +27,7 @@ npm test -- --watch
 ## CI
 
 - PR CI kører altid: `npm run typecheck`, `npm run lint`, `npm test`.
+- `iOS Simulator Build` kører på PR-opdateringer og bygger en simulator `.app` artifact for commit SHA.
 - iOS E2E kører som default ikke på PR.
 - Tilføj PR label `run-e2e-ios` eller `run-e2e-ios-all` for at køre hele iOS E2E-suiten.
 - Tilføj en eller flere flow-labels for enkelttests:
@@ -39,6 +40,7 @@ npm test -- --watch
   - `run-e2e-ios-role-based-ui`
 - Hvis `run-e2e-ios`/`run-e2e-ios-all` er sat, vinder den og kører hele suiten.
 - iOS E2E kan også startes manuelt via `workflow_dispatch`.
+- E2E henter prebuilt `.app` artifact fra `iOS Simulator Build` (samme commit SHA), installerer den i simulatoren og kører derefter flows.
 - Bootstrap-håndtering:
   - `all` kører den dedikerede suite med `_dev_client_bootstrap.yaml` først.
   - Enkelttests bruger de enkelte smoke-flow scripts; disse flows håndterer bootstrap internt (`runFlow _dev_client_bootstrap.yaml` eller tilsvarende inline bootstrap).
