@@ -50,13 +50,24 @@ jobs:
       - name: Install Maestro CLI
         run: curl -Ls "https://get.maestro.mobile.dev" | bash
 
-      - name: Boot iOS Simulator
+      - name: Select and boot iOS Simulator
         run: |
-          xcrun simctl boot "iPhone 15" || true
-          xcrun simctl bootstatus "iPhone 15" -b
+          SIM_DEVICE_LINE="$(xcrun simctl list devices available | grep -E 'iPhone .*\\((Booted|Shutdown)\\)' | head -n1 || true)"
+          if [ -z "$SIM_DEVICE_LINE" ]; then
+            echo "No available iPhone simulator found."
+            xcrun simctl list devices available
+            exit 1
+          fi
+          SIM_UDID="$(echo "$SIM_DEVICE_LINE" | sed -E 's/.*\\(([0-9A-F-]+)\\).*/\\1/')"
+          SIM_NAME="$(echo "$SIM_DEVICE_LINE" | sed -E 's/^[[:space:]]*([^()]+) \\([0-9A-F-]+\\).*/\\1/' | xargs)"
+          echo "Using simulator: $SIM_NAME ($SIM_UDID)"
+          echo "SIM_UDID=$SIM_UDID" >> "$GITHUB_ENV"
+          echo "SIM_NAME=$SIM_NAME" >> "$GITHUB_ENV"
+          xcrun simctl boot "$SIM_UDID" || true
+          xcrun simctl bootstatus "$SIM_UDID" -b
 
       - name: Build and install dev client
-        run: npx expo run:ios --simulator "iPhone 15"
+        run: npx expo run:ios --device "$SIM_UDID"
 
       - name: Start Metro on 8081
         run: |
