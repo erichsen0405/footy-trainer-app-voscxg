@@ -503,7 +503,7 @@ async function selectSingleWithOptionalColumn<T>(opts: {
   return { data: (second.data as T) ?? null, error: second.error ?? null, usedFallback: true };
 }
 
-async function fetchActivityFromDatabase(activityId: string): Promise<Activity | null> {
+export async function fetchActivityFromDatabase(activityId: string): Promise<Activity | null> {
   try {
     const { data: internalActivity, error: internalError } = await selectSingleWithOptionalColumn<any>({
       table: 'activities',
@@ -1217,7 +1217,7 @@ type PendingAction =
   | { type: 'delete-single' }
   | { type: 'delete-series' };
 
-function ActivityDetailsContent(props: ActivityDetailsContentProps) {
+export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const {
     activity,
     categories,
@@ -2242,8 +2242,8 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   }, [isNormalTaskCompleting]);
 
   const handleDeleteTask = useCallback(
-    (taskId: string) => {
-      if (!activity || !isAdmin) return;
+    (taskId: string, allowForNonAdmin: boolean = false) => {
+      if (!activity || (!isAdmin && !allowForNonAdmin)) return;
 
       Alert.alert(
         'Slet opgave',
@@ -2257,12 +2257,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     [activity, isAdmin],
   );
 
-  const handleAddTask = useCallback(() => {
-    setShowCreateTaskModal(true);
-  }, []);
-
-  const handleTaskCreated = useCallback(async () => {
-    setShowCreateTaskModal(false);
+  const refreshActivityTasks = useCallback(async () => {
     try {
       const refreshedActivity = await fetchActivityFromDatabase(activity.id);
       if (refreshedActivity?.tasks) {
@@ -2271,8 +2266,17 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     } catch (error) {
       console.error('Error refreshing tasks after creation:', error);
     }
-    refreshData();
+    Promise.resolve(refreshData()).catch(() => {});
   }, [activity.id, refreshData]);
+
+  const handleAddTask = useCallback(() => {
+    setShowCreateTaskModal(true);
+  }, []);
+
+  const handleTaskCreated = useCallback(async () => {
+    setShowCreateTaskModal(false);
+    await refreshActivityTasks();
+  }, [refreshActivityTasks]);
 
   const previousFeedbackEntries = useMemo<PreviousFeedbackEntry[]>(() => {
     const seen = new Set<string>();
@@ -2313,7 +2317,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       typeof rawId === 'number' || typeof rawId === 'string'
         ? String(rawId).trim()
         : '';
-    if (trimmedId) return `task-${trimmedId}:${index}`;
+    if (trimmedId) return `task-${trimmedId}`;
     const templateRaw =
       task?.taskTemplateId ??
       task?.task_template_id ??
@@ -2551,9 +2555,13 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         instanceFeedback ??
         (!hasDuplicateTemplate && templateId ? selfFeedbackByTemplate[templateId]?.current : undefined);
 
-      const hasFeedbackTemplateId = !!normalizeId(task.feedbackTemplateId ?? (task as any)?.feedback_template_id);
+      const taskTemplateId = normalizeId(task.taskTemplateId ?? (task as any)?.task_template_id);
+      const feedbackTemplateId = normalizeId(task.feedbackTemplateId ?? (task as any)?.feedback_template_id);
+      const hasFeedbackTemplateId = !!feedbackTemplateId;
       const isFeedbackTaskLocal =
         !!templateId && (hasFeedbackTemplateId || task.isFeedbackTask === true || isFeedbackTitle(task.title) || isFeedbackTask(task));
+      const isManualOneOffTask = !isFeedbackTaskLocal && !taskTemplateId && !feedbackTemplateId;
+      const canDeleteTask = isAdmin || isManualOneOffTask;
 
       const isFeedbackCompleted = isFeedbackTaskLocal ? isFeedbackAnswered(feedback, config) : false;
 
@@ -2588,6 +2596,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               : (task.completed ? 'activity.details.taskButton.completed' : 'activity.details.taskButton.incomplete')
           }
         >
+          <View testID={`activity.taskRow.${String(taskInstanceId ?? task.id ?? 'unknown')}`} />
           <View style={styles.taskLeftSlot}>
             <View
               style={[
@@ -2636,12 +2645,12 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
           <View style={styles.taskRightActions}>
             <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron_right" size={20} color={textSecondaryColor} />
-            {isAdmin && !isFeedbackTaskLocal && (
+            {canDeleteTask && !isFeedbackTaskLocal && (
               <TouchableOpacity
                 style={[styles.taskDeleteButton, { backgroundColor: isDark ? '#3a1a1a' : '#ffe5e5' }]}
                 onPress={(e) => {
                   e?.stopPropagation?.();
-                  handleDeleteTask(String(task.id));
+                  handleDeleteTask(String(task.id), isManualOneOffTask);
                 }}
                 activeOpacity={0.7}
                 disabled={deletingTaskId === String(task.id)}
@@ -3032,11 +3041,12 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
         <View style={styles.v2TasksHeaderRow}>
           <Text style={[styles.v2SectionTitle, styles.v2SectionTitleInRow]}>Opgaver</Text>
-            {isAdmin && !activity.isExternal && !isEditing && (
+            {!activity.isExternal && !isEditing && (
               <TouchableOpacity
                 style={[styles.addTaskHeaderButton, { backgroundColor: primaryColor }]}
                 onPress={handleAddTask}
                 activeOpacity={0.7}
+                testID="activity.addTaskButton"
               >
               <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={20} color="#fff" />
               <Text style={styles.addTaskHeaderButtonText}>Tilføj opgave</Text>
@@ -3066,7 +3076,6 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     hasEndDate,
     infoBackgroundColor,
     infoTextColor,
-    isAdmin,
     isDark,
     isEditing,
     isInternalActivity,
@@ -3151,15 +3160,22 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             break;
           }
           case 'delete-task': {
-            if (!isAdmin) break;
             if (!cancelled) setDeletingTaskId(action.taskId);
             try {
               const existingTasks = tasksState;
               const deletedTask = existingTasks.find((task) => String(task.id) === String(action.taskId));
-              const deletedIsFeedback = deletedTask ? isFeedbackTask(deletedTask) : false;
-              const rawParentTemplateId = deletedTask
+              const deletedTaskTemplateId = deletedTask
                 ? normalizeId(deletedTask?.taskTemplateId ?? (deletedTask as any)?.task_template_id)
                 : null;
+              const deletedFeedbackTemplateId = deletedTask
+                ? normalizeId(deletedTask?.feedbackTemplateId ?? (deletedTask as any)?.feedback_template_id)
+                : null;
+              const deletedIsManualOneOff = !!deletedTask && !deletedTaskTemplateId && !deletedFeedbackTemplateId;
+              if (!isAdmin && !deletedIsManualOneOff) {
+                break;
+              }
+              const deletedIsFeedback = deletedTask ? isFeedbackTask(deletedTask) : false;
+              const rawParentTemplateId = deletedTaskTemplateId;
               const allowFeedbackCleanup = !deletedIsFeedback && !!rawParentTemplateId;
               const parentTemplateId = allowFeedbackCleanup ? rawParentTemplateId : null;
               const normalizedDeletedTitle = allowFeedbackCleanup ? normalizeTitle(deletedTask?.title ?? '') : '';
@@ -4007,7 +4023,6 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         missingScoreTitle="Manglende intensitet"
         missingScoreMessage="Vælg en intensitet før du kan markere som udført."
       />
-
       {showCreateTaskModal && (
         <CreateActivityTaskModal
           visible={showCreateTaskModal}
@@ -4019,6 +4034,7 @@ function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           activityTime={activity.time}
         />
       )}
+
     </KeyboardAvoidingView>
   );
 }

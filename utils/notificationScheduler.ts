@@ -49,6 +49,13 @@ function calculateNotificationTime(
   reminderMinutes: number
 ): Date | null {
   try {
+    if (typeof activityDate !== 'string' || typeof activityTime !== 'string') {
+      return null;
+    }
+    if (!activityDate.includes('-') || !activityTime.includes(':')) {
+      return null;
+    }
+
     // Parse date in local timezone
     const dateParts = activityDate.split('T')[0].split('-');
     const year = parseInt(dateParts[0], 10);
@@ -59,6 +66,16 @@ function calculateNotificationTime(
     const timeParts = activityTime.split(':');
     const hours = parseInt(timeParts[0], 10);
     const minutes = parseInt(timeParts[1], 10);
+
+    if (
+      !Number.isFinite(year) ||
+      !Number.isFinite(month) ||
+      !Number.isFinite(day) ||
+      !Number.isFinite(hours) ||
+      !Number.isFinite(minutes)
+    ) {
+      return null;
+    }
     
     // Create activity datetime
     const activityDateTime = new Date(year, month, day, hours, minutes, 0, 0);

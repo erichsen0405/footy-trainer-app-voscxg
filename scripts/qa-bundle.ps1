@@ -234,8 +234,14 @@ Write-Host ""
 git --no-pager diff --stat HEAD
 Write-Host ""
 
-# Open folder in Explorer (Windows). No-op on non-Windows.
-try { Invoke-Item $baseDir | Out-Null } catch {}
+# Open export folder after bundle creation.
+# macOS: explicitly use `open` for Finder.
+if ($IsMacOS) {
+  try { & open $baseDir | Out-Null } catch {}
+} else {
+  # Windows/Linux fallback
+  try { Invoke-Item $baseDir | Out-Null } catch {}
+}
 
 # Propagate non-zero QA exit code (zip er stadig lavet)
 if ($qaOverallExit -ne 0) { exit $qaOverallExit }
