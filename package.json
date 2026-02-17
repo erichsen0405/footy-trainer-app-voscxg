@@ -20,7 +20,7 @@
     "e2e:ios:role-based-ui-flow": "FLOW_PATH=e2e/flows/role_based_ui_smoke.yaml REPEAT_COUNT=1 bash scripts/maestro-smoke-no-auth-mac.sh",
     "e2e:ios:error-retry-flow": "FLOW_PATH=e2e/flows/error_retry_smoke.yaml REPEAT_COUNT=1 bash scripts/maestro-smoke-no-auth-mac.sh",
     "e2e:ios:fresh": "bash scripts/maestro-fresh-mac.sh",
-    "e2e:ios:all": "maestro test e2e/flows --debug-output e2e/maestro/artifacts/debug",
+    "e2e:ios:all": "maestro test e2e/flows/_dev_client_bootstrap.yaml e2e/flows/activity_task_flow_smoke.yaml e2e/flows/auth_flow_smoke.yaml e2e/flows/error_retry_smoke.yaml e2e/flows/library_add_to_tasks_smoke.yaml e2e/flows/notifications_permission_smoke.yaml e2e/flows/paywall_gating_smoke.yaml e2e/flows/role_based_ui_smoke.yaml --debug-output e2e/maestro/artifacts/debug",
     "build:web": "expo export -p web && npx workbox generateSW workbox-config.js",
     "build:android": "expo prebuild -p android",
     "lint": "eslint .",
