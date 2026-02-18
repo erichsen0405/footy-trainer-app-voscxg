@@ -163,23 +163,56 @@ jobs:
             echo "$result"
           }
 
+          latest_native_sha_in_pr() {
+            local base_ref="$1"
+            local merge_base=""
+            merge_base="$(git merge-base "origin/$base_ref" HEAD 2>/dev/null || true)"
+            if [ -z "$merge_base" ]; then
+              echo ""
+              return 0
+            fi
+            git rev-list --ancestry-path "${merge_base}..HEAD" | while read -r commit; do
+              if git diff-tree --no-commit-id --name-only -r "$commit" | grep -Eq '^(ios/|app\.json$|app\.config\.(js|ts|json)$|package\.json$|package-lock\.json$|yarn\.lock$|Podfile$|Podfile\.lock$)'; then
+                echo "$commit"
+                break
+              fi
+            done
+          }
+
           is_compatible_fallback_sha() {
             local candidate_sha="$1"
             local base_ref="$2"
+            local native_baseline_sha=""
+
             git fetch --no-tags --depth=1 origin "$candidate_sha" >/dev/null 2>&1 || true
 
-            if git merge-base --is-ancestor "$candidate_sha" HEAD; then
-              return 0
+            # Fallback build must be on current base branch history.
+            if [ -z "$base_ref" ]; then
+              return 1
+            fi
+            git fetch --no-tags --depth=500 origin "$base_ref" >/dev/null 2>&1 || true
+            if ! git merge-base --is-ancestor "$candidate_sha" "origin/$base_ref"; then
+              return 1
             fi
 
-            if [ -n "$base_ref" ]; then
-              git fetch --no-tags --depth=1 origin "$base_ref" >/dev/null 2>&1 || true
-              if git merge-base --is-ancestor "$candidate_sha" "origin/$base_ref"; then
-                return 0
+            # Find latest native-impacting commit on base branch and ensure
+            # candidate is not older than that native baseline.
+            native_baseline_sha="$(
+              git log --first-parent --format='%H' "origin/$base_ref" | while read -r commit; do
+                if git diff-tree --no-commit-id --name-only -r "$commit" | grep -Eq '^(ios/|app\.json$|app\.config\.(js|ts|json)$|package\.json$|package-lock\.json$|yarn\.lock$|Podfile$|Podfile\.lock$)'; then
+                  echo "$commit"
+                  break
+                fi
+              done
+            )"
+
+            if [ -n "$native_baseline_sha" ]; then
+              if ! git merge-base --is-ancestor "$native_baseline_sha" "$candidate_sha"; then
+                return 1
               fi
             fi
 
-            return 1
+            return 0
           }
 
           SELECTED_RUN=""
@@ -212,6 +245,37 @@ jobs:
               echo "No exact artifact yet (attempt ${attempt}/60). Sleeping 30s..."
               sleep 30
             done
+
+            # If exact artifact is still missing, allow fallback to the latest
+            # successful build on this PR head branch, but only if it includes
+            # the latest native-impacting commit in this PR.
+            if [ -z "$SELECTED_RUN" ]; then
+              PR_HEAD_BRANCH="${{ github.event.pull_request.head.ref }}"
+              BASE_REF="${{ github.base_ref }}"
+              git fetch --no-tags --depth=500 origin "$BASE_REF" >/dev/null 2>&1 || true
+              PR_NATIVE_FLOOR_SHA="$(latest_native_sha_in_pr "$BASE_REF")"
+              echo "No exact artifact after wait. Trying PR-branch native-compatible fallback."
+              echo "PR head branch: $PR_HEAD_BRANCH"
+              echo "PR native floor SHA: ${PR_NATIVE_FLOOR_SHA:-<none>}"
+              while IFS= read -r candidate; do
+                [ -z "$candidate" ] && continue
+                CANDIDATE_RUN="$(echo "$candidate" | awk '{print $1}')"
+                CANDIDATE_SHA="$(echo "$candidate" | awk '{print $2}')"
+
+                git fetch --no-tags --depth=1 origin "$CANDIDATE_SHA" >/dev/null 2>&1 || true
+                if ! git merge-base --is-ancestor "$CANDIDATE_SHA" "$TARGET_SHA"; then
+                  continue
+                fi
+                if [ -n "$PR_NATIVE_FLOOR_SHA" ] && ! git merge-base --is-ancestor "$PR_NATIVE_FLOOR_SHA" "$CANDIDATE_SHA"; then
+                  continue
+                fi
+
+                SELECTED_RUN="$CANDIDATE_RUN"
+                SELECTED_SHA="$CANDIDATE_SHA"
+                echo "Using PR-native-compatible fallback artifact (${SELECTED_SHA}) from branch ${PR_HEAD_BRANCH}."
+                break
+              done < <(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ios-sim-build.yml/runs?status=completed&per_page=100" | jq -r --arg branch "$PR_HEAD_BRANCH" '.workflow_runs[] | select(.conclusion=="success" and .head_branch==$branch) | "\(.id) \(.head_sha)"')
+            fi
           fi
 
           if [ -z "$SELECTED_RUN" ]; then

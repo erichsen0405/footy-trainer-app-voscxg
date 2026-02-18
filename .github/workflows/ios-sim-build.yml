@@ -101,4 +101,4 @@ jobs:
         with:
           name: ios-sim-app-${{ github.sha }}
           path: e2e-prebuilt/ios-sim-app.tgz
-          retention-days: 7
+          retention-days: 30
