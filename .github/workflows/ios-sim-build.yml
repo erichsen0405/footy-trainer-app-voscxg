@@ -1,23 +1,9 @@
 name: iOS Simulator Build
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    paths:
-      - 'ios/**'
-      - 'app.json'
-      - 'app.config.js'
-      - 'app.config.ts'
-      - 'app.config.json'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'yarn.lock'
-      - 'Podfile'
-      - 'Podfile.lock'
   push:
     branches:
-      - main
-      - fix/**
+      - '**'
     paths:
       - 'ios/**'
       - 'app.json'
