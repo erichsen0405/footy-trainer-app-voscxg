@@ -177,20 +177,25 @@ jobs:
 
           SELECTED_RUN=""
           SELECTED_SHA=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            TARGET_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            TARGET_SHA="${GITHUB_SHA}"
+          fi
 
-          EXACT_MATCH="$(find_run_by_sha "${GITHUB_SHA}")"
+          EXACT_MATCH="$(find_run_by_sha "${TARGET_SHA}")"
           if [ -n "$EXACT_MATCH" ]; then
             SELECTED_RUN="$(echo "$EXACT_MATCH" | awk '{print $1}')"
             SELECTED_SHA="$(echo "$EXACT_MATCH" | awk '{print $2}')"
-            echo "Using exact artifact match for commit ${GITHUB_SHA}."
+            echo "Using exact artifact match for commit ${TARGET_SHA}."
           fi
 
           # If exact build is required (native changes on PR), wait for the
           # build workflow to finish instead of failing immediately.
           if [ -z "$SELECTED_RUN" ] && [ "${{ steps.native_changes.outputs.native_changed }}" = "true" ] && [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "Native-impacting PR changes detected. Waiting for exact simulator build artifact for ${GITHUB_SHA}..."
+            echo "Native-impacting PR changes detected. Waiting for exact simulator build artifact for ${TARGET_SHA}..."
             for attempt in {1..60}; do
-              EXACT_MATCH="$(find_run_by_sha "${GITHUB_SHA}")"
+              EXACT_MATCH="$(find_run_by_sha "${TARGET_SHA}")"
               if [ -n "$EXACT_MATCH" ]; then
                 SELECTED_RUN="$(echo "$EXACT_MATCH" | awk '{print $1}')"
                 SELECTED_SHA="$(echo "$EXACT_MATCH" | awk '{print $2}')"
@@ -204,7 +209,7 @@ jobs:
 
           if [ -z "$SELECTED_RUN" ]; then
             if [ "${{ steps.native_changes.outputs.native_changed }}" = "true" ]; then
-              echo "Native-impacting changes detected, but no exact artifact exists for ${GITHUB_SHA}."
+              echo "Native-impacting changes detected, but no exact artifact exists for ${TARGET_SHA}."
               echo "Wait for '.github/workflows/ios-sim-build.yml' to finish for this commit."
               if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
                 echo "artifact_found=false" >> "$GITHUB_OUTPUT"
@@ -242,7 +247,7 @@ jobs:
               exit 0
             fi
             echo "No compatible iOS simulator build artifact found."
-            echo "Expected exact match for ${GITHUB_SHA}, or latest compatible global fallback build when no native changes."
+            echo "Expected exact match for ${TARGET_SHA}, or latest compatible global fallback build when no native changes."
             exit 1
           fi
 
