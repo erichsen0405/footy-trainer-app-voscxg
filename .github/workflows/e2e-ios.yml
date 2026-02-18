@@ -107,8 +107,14 @@ jobs:
             exit 0
           fi
 
-          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
-          CHANGED_FILES="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")"
+          git fetch --no-tags --depth=200 origin "${{ github.base_ref }}"
+
+          if git merge-base "origin/${{ github.base_ref }}" HEAD >/dev/null 2>&1; then
+            CHANGED_FILES="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")"
+          else
+            echo "No merge-base found for origin/${{ github.base_ref }}...HEAD, falling back to two-dot diff."
+            CHANGED_FILES="$(git diff --name-only "origin/${{ github.base_ref }}..HEAD")"
+          fi
           echo "Changed files:"
           echo "$CHANGED_FILES"
 
