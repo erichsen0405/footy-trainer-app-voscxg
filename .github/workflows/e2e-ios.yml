@@ -118,7 +118,8 @@ jobs:
             echo "native_changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Download prebuilt simulator app artifact
+      - name: Resolve and download prebuilt simulator app artifact
+        id: resolve_app
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -158,10 +159,31 @@ jobs:
             echo "Using exact artifact match for commit ${GITHUB_SHA}."
           fi
 
+          # If exact build is required (native changes on PR), wait for the
+          # build workflow to finish instead of failing immediately.
+          if [ -z "$SELECTED_RUN" ] && [ "${{ steps.native_changes.outputs.native_changed }}" = "true" ] && [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "Native-impacting PR changes detected. Waiting for exact simulator build artifact for ${GITHUB_SHA}..."
+            for attempt in {1..60}; do
+              EXACT_MATCH="$(find_run_by_sha "${GITHUB_SHA}")"
+              if [ -n "$EXACT_MATCH" ]; then
+                SELECTED_RUN="$(echo "$EXACT_MATCH" | awk '{print $1}')"
+                SELECTED_SHA="$(echo "$EXACT_MATCH" | awk '{print $2}')"
+                echo "Found exact artifact after waiting (attempt ${attempt}/60)."
+                break
+              fi
+              echo "No exact artifact yet (attempt ${attempt}/60). Sleeping 30s..."
+              sleep 30
+            done
+          fi
+
           if [ -z "$SELECTED_RUN" ]; then
             if [ "${{ steps.native_changes.outputs.native_changed }}" = "true" ]; then
               echo "Native-impacting changes detected, but no exact artifact exists for ${GITHUB_SHA}."
               echo "Wait for '.github/workflows/ios-sim-build.yml' to finish for this commit."
+              if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+                echo "artifact_found=false" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
               exit 1
             fi
 
@@ -188,6 +210,11 @@ jobs:
           fi
 
           if [ -z "$SELECTED_RUN" ] || [ -z "$SELECTED_SHA" ]; then
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "No compatible prebuilt artifact found for manual run. Falling back to local simulator build in this job."
+              echo "artifact_found=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             echo "No compatible iOS simulator build artifact found."
             echo "Expected exact match for ${GITHUB_SHA}, or latest compatible global fallback build when no native changes."
             exit 1
@@ -202,6 +229,37 @@ jobs:
           APP_PATH="$(find e2e-prebuilt -type d -name '*.app' | head -n1 || true)"
           if [ -z "$APP_PATH" ]; then
             echo "Downloaded artifact did not contain a .app bundle."
+            exit 1
+          fi
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          echo "artifact_found=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build app locally when prebuilt artifact is unavailable
+        if: steps.resolve_app.outputs.artifact_found != 'true' && github.event_name == 'workflow_dispatch'
+        env:
+          CI: "1"
+          EXPO_NO_INTERACTIVE: "1"
+          EXPO_NO_TELEMETRY: "1"
+        run: |
+          echo "Building simulator app locally for workflow_dispatch fallback..."
+          mkdir -p "$HOME/.expo"
+          npx expo prebuild --platform ios --non-interactive
+          npx pod-install ios
+          xcodebuild \
+            -workspace ios/Footballcoach.xcworkspace \
+            -scheme Footballcoach \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination "id=$SIM_UDID" \
+            -derivedDataPath ios/build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+          APP_PATH="$(find ios/build/Build/Products -type d -name '*.app' -path '*iphonesimulator*' -print 2>/dev/null | xargs -I{} ls -td "{}" 2>/dev/null | head -n1 || true)"
+          if [ -z "$APP_PATH" ]; then
+            APP_PATH="$(find "$HOME/Library/Developer/Xcode/DerivedData" -type d -path '*/Build/Products/*iphonesimulator/*.app' -print 2>/dev/null | xargs -I{} ls -td "{}" 2>/dev/null | head -n1 || true)"
+          fi
+          if [ -z "$APP_PATH" ]; then
+            echo "Could not locate locally built .app in DerivedData."
             exit 1
           fi
           echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
