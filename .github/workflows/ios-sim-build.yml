@@ -58,7 +58,7 @@ jobs:
           EXPO_NO_TELEMETRY: "1"
         run: |
           mkdir -p "$HOME/.expo"
-          npx expo run:ios --simulator "$SIM_NAME" --no-install --no-bundler
+          npx expo run:ios --device "$SIM_UDID" --no-install --no-bundler
 
       - name: Package simulator .app artifact
         run: |
