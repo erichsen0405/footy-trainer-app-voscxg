@@ -45,6 +45,7 @@ npm test -- --watch
   - Først prøves prebuilt `.app` fra samme commit SHA (exact match).
   - Hvis exact match mangler og der ikke er native-relevante ændringer i PR, bruges seneste successful build globalt (uanset branch), men kun hvis build-commiten er kompatibel med PR/base historik.
   - Hvis PR indeholder native-relevante ændringer, kræves exact SHA-build (ingen fallback).
+  - Ved `workflow_dispatch` uden tilgaengeligt prebuilt artifact bygger E2E-jobbet simulator-appen lokalt og fortsaetter.
 - Bootstrap-håndtering:
   - `all` kører den dedikerede suite med `_dev_client_bootstrap.yaml` først.
   - Enkelttests bruger de enkelte smoke-flow scripts; disse flows håndterer bootstrap internt (`runFlow _dev_client_bootstrap.yaml` eller tilsvarende inline bootstrap).
