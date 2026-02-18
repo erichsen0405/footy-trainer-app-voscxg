@@ -164,7 +164,12 @@ jobs:
           find_run_by_sha() {
             local sha="$1"
             local result
-            result="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ios-sim-build.yml/runs?head_sha=${sha}&status=completed&per_page=20" --jq '.workflow_runs[] | select(.conclusion=="success") | "\(.id) \(.head_sha)"' | head -n1 || true)"
+            local artifact_name="ios-sim-app-${sha}"
+            result="$(
+              gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=${artifact_name}&per_page=100" \
+                --jq '.artifacts[] | select(.expired==false) | "\(.workflow_run.id) \(.workflow_run.head_sha)"' \
+                | head -n1 || true
+            )"
             echo "$result"
           }
 
@@ -236,6 +241,7 @@ jobs:
           else
             TARGET_SHA="${GITHUB_SHA}"
           fi
+          echo "target_sha=${TARGET_SHA}" >> "$GITHUB_OUTPUT"
           if is_native_commit_sha "${TARGET_SHA}"; then
             TARGET_COMMIT_NATIVE="true"
           else
@@ -364,7 +370,7 @@ jobs:
           EXPO_NO_INTERACTIVE: "1"
           EXPO_NO_TELEMETRY: "1"
         run: |
-          echo "Building simulator app locally for workflow_dispatch fallback..."
+          echo "Building simulator app locally as fallback..."
           mkdir -p "$HOME/.expo"
           npx expo prebuild --platform ios --non-interactive
           npx pod-install ios
@@ -385,9 +391,19 @@ jobs:
             echo "Could not locate locally built .app in DerivedData."
             exit 1
           fi
+          mkdir -p e2e-prebuilt
+          tar -czf "e2e-prebuilt/ios-sim-app.tgz" -C "$(dirname "$APP_PATH")" "$(basename "$APP_PATH")"
           echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
 
-      - name: Install prebuilt app in simulator
+      - name: Upload fallback simulator app artifact
+        if: steps.resolve_app.outputs.artifact_found != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-sim-app-${{ steps.resolve_app.outputs.target_sha }}
+          path: e2e-prebuilt/ios-sim-app.tgz
+          retention-days: 30
+
+      - name: Install app in simulator
         run: |
           xcrun simctl install "$SIM_UDID" "$APP_PATH"
           xcrun simctl get_app_container "$SIM_UDID" com.erichsen.footballcoach data >/dev/null
