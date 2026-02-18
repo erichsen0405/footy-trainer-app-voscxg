@@ -27,7 +27,8 @@ npm test -- --watch
 ## CI
 
 - PR CI kører altid: `npm run typecheck`, `npm run lint`, `npm test`.
-- `iOS Simulator Build` kører på PR-opdateringer og bygger en simulator `.app` artifact for commit SHA.
+- `iOS Simulator Build` kører kun ved native-relevante ændringer (`ios/**`, `app.config.*`, `app.json`, `package.json`, lockfiles, `Podfile*`) og bygger en simulator `.app` artifact for commit SHA.
+- `iOS Simulator Build` kører også på `push` til `fix/**` og `main` (samme native-paths), så base-branches får opdateret seneste build.
 - iOS E2E kører som default ikke på PR.
 - Tilføj PR label `run-e2e-ios` eller `run-e2e-ios-all` for at køre hele iOS E2E-suiten.
 - Tilføj en eller flere flow-labels for enkelttests:
@@ -40,7 +41,10 @@ npm test -- --watch
   - `run-e2e-ios-role-based-ui`
 - Hvis `run-e2e-ios`/`run-e2e-ios-all` er sat, vinder den og kører hele suiten.
 - iOS E2E kan også startes manuelt via `workflow_dispatch`.
-- E2E henter prebuilt `.app` artifact fra `iOS Simulator Build` (samme commit SHA), installerer den i simulatoren og kører derefter flows.
+- E2E artifact-valg:
+  - Først prøves prebuilt `.app` fra samme commit SHA (exact match).
+  - Hvis exact match mangler og der ikke er native-relevante ændringer i PR, bruges seneste successful build globalt (uanset branch), men kun hvis build-commiten er kompatibel med PR/base historik.
+  - Hvis PR indeholder native-relevante ændringer, kræves exact SHA-build (ingen fallback).
 - Bootstrap-håndtering:
   - `all` kører den dedikerede suite med `_dev_client_bootstrap.yaml` først.
   - Enkelttests bruger de enkelte smoke-flow scripts; disse flows håndterer bootstrap internt (`runFlow _dev_client_bootstrap.yaml` eller tilsvarende inline bootstrap).
