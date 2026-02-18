@@ -45,16 +45,20 @@ jobs:
             echo "$SIM_DEVICE_LINE"
             exit 1
           fi
+          SIM_NAME="$(echo "$SIM_DEVICE_LINE" | sed -E 's/^[[:space:]]*([^()]+).*/\1/' | xargs)"
           xcrun simctl boot "$SIM_UDID" || true
           xcrun simctl bootstatus "$SIM_UDID" -b
           echo "SIM_UDID=$SIM_UDID" >> "$GITHUB_ENV"
+          echo "SIM_NAME=$SIM_NAME" >> "$GITHUB_ENV"
 
       - name: Build app for simulator (build-only)
         env:
           CI: "1"
           EXPO_NO_INTERACTIVE: "1"
           EXPO_NO_TELEMETRY: "1"
-        run: npx expo run:ios --device "$SIM_UDID" --no-install --no-bundler
+        run: |
+          mkdir -p "$HOME/.expo"
+          npx expo run:ios --simulator "$SIM_NAME" --no-install --no-bundler
 
       - name: Package simulator .app artifact
         run: |
