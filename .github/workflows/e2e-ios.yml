@@ -134,13 +134,15 @@ jobs:
             exit 0
           fi
 
+          PR_HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          git fetch --no-tags --depth=1 origin "${PR_HEAD_SHA}" >/dev/null 2>&1 || true
           git fetch --no-tags --depth=200 origin "${{ github.base_ref }}"
 
-          if git merge-base "origin/${{ github.base_ref }}" HEAD >/dev/null 2>&1; then
-            CHANGED_FILES="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")"
+          if git merge-base "origin/${{ github.base_ref }}" "${PR_HEAD_SHA}" >/dev/null 2>&1; then
+            CHANGED_FILES="$(git diff --name-only "origin/${{ github.base_ref }}...${PR_HEAD_SHA}")"
           else
-            echo "No merge-base found for origin/${{ github.base_ref }}...HEAD, falling back to two-dot diff."
-            CHANGED_FILES="$(git diff --name-only "origin/${{ github.base_ref }}..HEAD")"
+            echo "No merge-base found for origin/${{ github.base_ref }}...${PR_HEAD_SHA}, falling back to two-dot diff."
+            CHANGED_FILES="$(git diff --name-only "origin/${{ github.base_ref }}..${PR_HEAD_SHA}")"
           fi
           echo "Changed files:"
           echo "$CHANGED_FILES"
