@@ -111,8 +111,15 @@ jobs:
           }
 
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            CHANGED_FILES="$(git show --pretty='' --name-only HEAD)"
-            echo "Changed files in dispatch commit (HEAD):"
+            DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+            git fetch --no-tags --depth=200 origin "${DEFAULT_BRANCH}"
+            if git merge-base "origin/${DEFAULT_BRANCH}" HEAD >/dev/null 2>&1; then
+              CHANGED_FILES="$(git diff --name-only "origin/${DEFAULT_BRANCH}...HEAD")"
+            else
+              echo "No merge-base found for origin/${DEFAULT_BRANCH}...HEAD in workflow_dispatch, falling back to two-dot diff."
+              CHANGED_FILES="$(git diff --name-only "origin/${DEFAULT_BRANCH}..HEAD")"
+            fi
+            echo "Changed files in workflow_dispatch ref range:"
             echo "$CHANGED_FILES"
             if is_native_change "$CHANGED_FILES"; then
               echo "native_changed=true" >> "$GITHUB_OUTPUT"
@@ -208,13 +215,15 @@ jobs:
           fi
 
           if [ -z "$SELECTED_RUN" ]; then
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "No exact prebuilt artifact found for workflow_dispatch target ${TARGET_SHA}. Falling back to local simulator build in this job."
+              echo "artifact_found=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
             if [ "${{ steps.native_changes.outputs.native_changed }}" = "true" ]; then
               echo "Native-impacting changes detected, but no exact artifact exists for ${TARGET_SHA}."
               echo "Wait for '.github/workflows/ios-sim-build.yml' to finish for this commit."
-              if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-                echo "artifact_found=false" >> "$GITHUB_OUTPUT"
-                exit 0
-              fi
               exit 1
             fi
 
@@ -241,11 +250,6 @@ jobs:
           fi
 
           if [ -z "$SELECTED_RUN" ] || [ -z "$SELECTED_SHA" ]; then
-            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-              echo "No compatible prebuilt artifact found for manual run. Falling back to local simulator build in this job."
-              echo "artifact_found=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
             echo "No compatible iOS simulator build artifact found."
             echo "Expected exact match for ${TARGET_SHA}, or latest compatible global fallback build when no native changes."
             exit 1
