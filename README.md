@@ -27,8 +27,7 @@ npm test -- --watch
 ## CI
 
 - PR CI kører altid: `npm run typecheck`, `npm run lint`, `npm test`.
-- `iOS Simulator Build` kører kun ved native-relevante ændringer (`ios/**`, `app.config.*`, `app.json`, `package.json`, lockfiles, `Podfile*`) og bygger en simulator `.app` artifact for commit SHA.
-- `iOS Simulator Build` kører også på `push` til `fix/**` og `main` (samme native-paths), så base-branches får opdateret seneste build.
+- `iOS Simulator Build` kører på `push` (alle branches) kun ved native-relevante ændringer (`ios/**`, `app.config.*`, `app.json`, `package.json`, lockfiles, `Podfile*`) og bygger en simulator `.app` artifact for commit SHA.
 - iOS E2E kører som default ikke på PR.
 - Tilføj PR label `run-e2e-ios` eller `run-e2e-ios-all` for at køre hele iOS E2E-suiten.
 - Tilføj en eller flere flow-labels for enkelttests:
