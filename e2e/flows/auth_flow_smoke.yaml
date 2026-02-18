@@ -14,6 +14,13 @@ tags:
       - tapOn:
           id: '^notifications\.enableButton$'
 - openLink: "footballcoach:///(tabs)/profile"
+- runFlow:
+    when:
+      visible:
+        id: '^auth\.signOutButton$'
+    commands:
+      - tapOn:
+          id: '^auth\.signOutButton$'
 - extendedWaitUntil:
     visible:
       id: '^auth\.login\.emailInput$'
