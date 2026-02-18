@@ -115,7 +115,7 @@ jobs:
 
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
-            git fetch --no-tags --depth=200 origin "${DEFAULT_BRANCH}"
+            git fetch --no-tags origin "${DEFAULT_BRANCH}"
             if git merge-base "origin/${DEFAULT_BRANCH}" HEAD >/dev/null 2>&1; then
               CHANGED_FILES="$(git diff --name-only "origin/${DEFAULT_BRANCH}...HEAD")"
             else
@@ -139,7 +139,7 @@ jobs:
 
           PR_HEAD_SHA="${{ github.event.pull_request.head.sha }}"
           git fetch --no-tags --depth=1 origin "${PR_HEAD_SHA}" >/dev/null 2>&1 || true
-          git fetch --no-tags --depth=200 origin "${{ github.base_ref }}"
+          git fetch --no-tags origin "${{ github.base_ref }}"
 
           if git merge-base "origin/${{ github.base_ref }}" "${PR_HEAD_SHA}" >/dev/null 2>&1; then
             CHANGED_FILES="$(git diff --name-only "origin/${{ github.base_ref }}...${PR_HEAD_SHA}")"
@@ -168,6 +168,21 @@ jobs:
             result="$(
               gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=${artifact_name}&per_page=100" \
                 --jq '.artifacts[] | select(.expired==false) | .workflow_run.id' \
+                | head -n1 || true
+            )"
+            echo "$result"
+          }
+
+          find_latest_ios_sim_artifact() {
+            local result
+            result="$(
+              gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100" \
+                --jq '.artifacts
+                  | map(select(.expired==false and (.name | startswith("ios-sim-app-"))))
+                  | sort_by(.created_at)
+                  | reverse
+                  | .[]
+                  | "\(.workflow_run.id) \(.name)"' \
                 | head -n1 || true
             )"
             echo "$result"
@@ -236,6 +251,7 @@ jobs:
 
           SELECTED_RUN=""
           SELECTED_SHA=""
+          SELECTED_ARTIFACT_NAME=""
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             TARGET_SHA="${{ github.event.pull_request.head.sha }}"
           else
@@ -252,6 +268,7 @@ jobs:
           if [ -n "$EXACT_MATCH" ]; then
             SELECTED_RUN="$EXACT_MATCH"
             SELECTED_SHA="$TARGET_SHA"
+            SELECTED_ARTIFACT_NAME="ios-sim-app-${TARGET_SHA}"
             echo "Using exact artifact match for commit ${TARGET_SHA}."
           fi
 
@@ -264,6 +281,7 @@ jobs:
               if [ -n "$EXACT_MATCH" ]; then
                 SELECTED_RUN="$EXACT_MATCH"
                 SELECTED_SHA="$TARGET_SHA"
+                SELECTED_ARTIFACT_NAME="ios-sim-app-${TARGET_SHA}"
                 echo "Found exact artifact after waiting (attempt ${attempt}/60)."
                 break
               fi
@@ -297,9 +315,21 @@ jobs:
 
               SELECTED_RUN="$CANDIDATE_RUN"
               SELECTED_SHA="$CANDIDATE_SHA"
+              SELECTED_ARTIFACT_NAME="ios-sim-app-${CANDIDATE_SHA}"
               echo "Using PR-native-compatible fallback artifact (${SELECTED_SHA}) from branch ${PR_HEAD_BRANCH}."
               break
             done < <(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ios-sim-build.yml/runs?status=completed&per_page=100" | jq -r --arg branch "$PR_HEAD_BRANCH" '.workflow_runs[] | select(.conclusion=="success" and .head_branch==$branch) | "\(.id) \(.head_sha)"')
+          fi
+
+          # Relaxed fallback: take latest available iOS simulator artifact globally.
+          if [ -z "$SELECTED_RUN" ]; then
+            RELAXED_MATCH="$(find_latest_ios_sim_artifact)"
+            if [ -n "$RELAXED_MATCH" ]; then
+              SELECTED_RUN="$(echo "$RELAXED_MATCH" | awk '{print $1}')"
+              SELECTED_ARTIFACT_NAME="$(echo "$RELAXED_MATCH" | awk '{print $2}')"
+              SELECTED_SHA="${SELECTED_ARTIFACT_NAME#ios-sim-app-}"
+              echo "No exact/compatible artifact found. Using relaxed latest artifact fallback: ${SELECTED_ARTIFACT_NAME}."
+            fi
           fi
 
           if [ -z "$SELECTED_RUN" ]; then
@@ -336,6 +366,7 @@ jobs:
               if is_compatible_fallback_sha "$CANDIDATE_SHA" "$BASE_REF"; then
                 SELECTED_RUN="$CANDIDATE_RUN"
                 SELECTED_SHA="$CANDIDATE_SHA"
+                SELECTED_ARTIFACT_NAME="ios-sim-app-${CANDIDATE_SHA}"
                 SELECTED_BRANCH="$CANDIDATE_BRANCH"
                 echo "No exact artifact found. Falling back to latest compatible global build (${SELECTED_SHA} from branch ${SELECTED_BRANCH})."
                 break
@@ -349,7 +380,7 @@ jobs:
             exit 1
           fi
 
-          ARTIFACT_NAME="ios-sim-app-${SELECTED_SHA}"
+          ARTIFACT_NAME="${SELECTED_ARTIFACT_NAME:-ios-sim-app-${SELECTED_SHA}}"
           echo "Using build workflow run id: $SELECTED_RUN"
           echo "Using artifact name: $ARTIFACT_NAME"
           mkdir -p e2e-prebuilt
