@@ -102,6 +102,26 @@ jobs:
       - name: Detect native-impacting changes
         id: native_changes
         run: |
+          is_native_change() {
+            local files="$1"
+            if echo "$files" | grep -Eq '^(ios/|app\.json$|app\.config\.(js|ts|json)$|package\.json$|package-lock\.json$|yarn\.lock$|Podfile$|Podfile\.lock$)'; then
+              return 0
+            fi
+            return 1
+          }
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            CHANGED_FILES="$(git show --pretty='' --name-only HEAD)"
+            echo "Changed files in dispatch commit (HEAD):"
+            echo "$CHANGED_FILES"
+            if is_native_change "$CHANGED_FILES"; then
+              echo "native_changed=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "native_changed=false" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+
           if [[ "${{ github.event_name }}" != "pull_request" ]]; then
             echo "native_changed=false" >> "$GITHUB_OUTPUT"
             exit 0
@@ -118,7 +138,7 @@ jobs:
           echo "Changed files:"
           echo "$CHANGED_FILES"
 
-          if echo "$CHANGED_FILES" | grep -Eq '^(ios/|app\.json$|app\.config\.(js|ts|json)$|package\.json$|package-lock\.json$|yarn\.lock$|Podfile$|Podfile\.lock$)'; then
+          if is_native_change "$CHANGED_FILES"; then
             echo "native_changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "native_changed=false" >> "$GITHUB_OUTPUT"
