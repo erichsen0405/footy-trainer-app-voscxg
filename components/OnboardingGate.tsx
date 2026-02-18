@@ -17,7 +17,7 @@ import SubscriptionManager from '@/components/SubscriptionManager';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useAppleIAP, PRODUCT_IDS, TRAINER_PRODUCT_IDS } from '@/contexts/AppleIAPContext';
 import { getSubscriptionGateState } from '@/utils/subscriptionGate';
-import { withTimeout } from '@/utils/withTimeout';
+import { TimeoutError, withTimeout } from '@/utils/withTimeout';
 
 type Role = 'admin' | 'trainer' | 'player';
 
@@ -237,6 +237,9 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
           initError: null,
         });
       } catch (error) {
+        if (error instanceof TimeoutError) {
+          refreshCalledRef.current = false;
+        }
         console.warn('[OnboardingGate] Startup hydration failed', error);
         setStateIfCurrent(prev => ({
           ...prev,
@@ -297,6 +300,7 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
 
   const handleRetryStartup = useCallback(async () => {
     if (!isMountedRef.current) return;
+    refreshCalledRef.current = false;
     setState(prev => ({ ...prev, hydrating: true, initError: null }));
     try {
       const { data } = await withTimeout(
