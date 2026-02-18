@@ -89,7 +89,7 @@ tags:
     timeout: 15000
 - tapOn:
     id: '^tasks\.template\.titleInput$'
-- inputText: "Maestro Opgave"
+- inputText: "Maestro Opgave E2E"
 - tapOn:
     id: '^tasks\.template\.descriptionInput$'
 - inputText: "E2E opgave til activity-task-flow"
@@ -334,16 +334,17 @@ tags:
     id: '^tasks.folder.toggle.personal$'
 - scrollUntilVisible:
     element:
-      id: '^tasks\.template\.card\..*$'
+      text: '^Maestro Opgave E2E$'
     direction: DOWN
     timeout: 15000
+- tapOn:
+    text: '^Maestro Opgave E2E$'
 - extendedWaitUntil:
     visible:
       id: '^tasks\.template\.deleteButton$'
     timeout: 15000
 - tapOn:
     id: '^tasks\.template\.deleteButton$'
-    index: 0
 - runFlow:
     when:
       visible: '^Fortsæt$'

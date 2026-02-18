@@ -167,7 +167,7 @@ jobs:
             local artifact_name="ios-sim-app-${sha}"
             result="$(
               gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=${artifact_name}&per_page=100" \
-                --jq '.artifacts[] | select(.expired==false) | "\(.workflow_run.id) \(.workflow_run.head_sha)"' \
+                --jq '.artifacts[] | select(.expired==false) | .workflow_run.id' \
                 | head -n1 || true
             )"
             echo "$result"
@@ -250,8 +250,8 @@ jobs:
 
           EXACT_MATCH="$(find_run_by_sha "${TARGET_SHA}")"
           if [ -n "$EXACT_MATCH" ]; then
-            SELECTED_RUN="$(echo "$EXACT_MATCH" | awk '{print $1}')"
-            SELECTED_SHA="$(echo "$EXACT_MATCH" | awk '{print $2}')"
+            SELECTED_RUN="$EXACT_MATCH"
+            SELECTED_SHA="$TARGET_SHA"
             echo "Using exact artifact match for commit ${TARGET_SHA}."
           fi
 
@@ -262,8 +262,8 @@ jobs:
             for attempt in {1..60}; do
               EXACT_MATCH="$(find_run_by_sha "${TARGET_SHA}")"
               if [ -n "$EXACT_MATCH" ]; then
-                SELECTED_RUN="$(echo "$EXACT_MATCH" | awk '{print $1}')"
-                SELECTED_SHA="$(echo "$EXACT_MATCH" | awk '{print $2}')"
+                SELECTED_RUN="$EXACT_MATCH"
+                SELECTED_SHA="$TARGET_SHA"
                 echo "Found exact artifact after waiting (attempt ${attempt}/60)."
                 break
               fi
