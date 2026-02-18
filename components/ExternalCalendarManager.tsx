@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -28,10 +26,10 @@ interface ExternalCalendar {
   ics_url: string;
   enabled: boolean;
   last_fetched: string | null;
-  event_count: number;
+  event_count: number | null;
   created_at: string;
-  auto_sync_enabled: boolean;
-  sync_interval_minutes: number;
+  auto_sync_enabled: boolean | null;
+  sync_interval_minutes: number | null;
 }
 
 interface CategoryMapping {
@@ -82,20 +80,6 @@ export default function ExternalCalendarManager() {
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
   const bgColor = isDark ? '#1a1a1a' : colors.background;
-
-  useEffect(() => {
-    if (!canUseCalendarSync) {
-      setLoading(false);
-      setCalendars([]);
-      setCategoryMappings([]);
-      setShowAddForm(false);
-      return;
-    }
-
-    fetchCalendars();
-    fetchCategoryMappings();
-    checkAutoSyncStatus();
-  }, [canUseCalendarSync, checkAutoSyncStatus, fetchCalendars, fetchCategoryMappings]);
 
   const checkAutoSyncStatus = useCallback(async () => {
     const status = await checkSyncStatus();
@@ -180,6 +164,20 @@ export default function ExternalCalendarManager() {
       console.error('Error in fetchCategoryMappings:', error);
     }
   }, [canUseCalendarSync]);
+
+  useEffect(() => {
+    if (!canUseCalendarSync) {
+      setLoading(false);
+      setCalendars([]);
+      setCategoryMappings([]);
+      setShowAddForm(false);
+      return;
+    }
+
+    fetchCalendars();
+    fetchCategoryMappings();
+    checkAutoSyncStatus();
+  }, [canUseCalendarSync, checkAutoSyncStatus, fetchCalendars, fetchCategoryMappings]);
 
   const handleAddCalendar = async () => {
     if (!ensureCalendarAccess()) {
@@ -838,8 +836,8 @@ export default function ExternalCalendarManager() {
                         Auto-synkronisering
                       </Text>
                       <Switch
-                        value={calendar.auto_sync_enabled}
-                        onValueChange={() => handleToggleAutoSync(calendar.id, calendar.auto_sync_enabled)}
+                        value={Boolean(calendar.auto_sync_enabled)}
+                        onValueChange={() => handleToggleAutoSync(calendar.id, Boolean(calendar.auto_sync_enabled))}
                         trackColor={{ false: '#767577', true: colors.primary }}
                         thumbColor="#fff"
                       />
@@ -1153,5 +1151,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-
-

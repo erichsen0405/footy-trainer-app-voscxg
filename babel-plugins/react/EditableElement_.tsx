@@ -2,17 +2,17 @@
 /* eslint-disable */
 
 // @eslint-ignore-file
-// @ts-nocheck
 import { cloneElement, PropsWithChildren, useContext } from "react";
 import { EditableContext } from "./withEditableWrapper_";
 import { Platform } from "react-native";
 
-export type ElementTypes = "Text" | "View";
+export type ElementTypes = "Text" | "View" | "Icon" | "TouchableOpacity";
 
-const isPrimitive = (item: any) => {
+const isPrimitive = (item: any): boolean => {
   if (Array.isArray(item)) return item.every((el) => isPrimitive(el));
-  if (typeof item === "object")
-    Object.values(item).every((el) => isPrimitive(el));
+  if (item && typeof item === "object") {
+    return Object.values(item).every((el) => isPrimitive(el));
+  }
   if (typeof item === "string") return true;
   if (typeof item === "number") return true;
 
@@ -67,7 +67,7 @@ export default function EditableElement_(_props: PropsWithChildren<any>) {
     popHovered,
   } = useContext(EditableContext);
 
-  const type = getType(children);
+  const type = getType(children) ?? "View";
   const __sourceLocation = props?.__sourceLocation;
   const __trace = props?.__trace;
 
@@ -94,13 +94,14 @@ export default function EditableElement_(_props: PropsWithChildren<any>) {
         }
       : {};
 
-  const onClick = (ev: any) => {
+  const onClick = (ev: { stopPropagation: () => void; preventDefault: () => void }) => {
     ev.stopPropagation();
     ev.preventDefault();
     onElementClick({
       sourceLocation: __sourceLocation,
       id,
       type,
+      attributes,
       trace: __trace,
       props: {
         style: { ...props.style },
@@ -112,8 +113,8 @@ export default function EditableElement_(_props: PropsWithChildren<any>) {
   const editProps = {
     onMouseOver: () => pushHovered(id),
     onMouseLeave: () => popHovered(id),
-    onClick: (ev) => onClick(ev),
-    onPress: (ev) => onClick(ev),
+    onClick: (ev: { stopPropagation: () => void; preventDefault: () => void }) => onClick(ev),
+    onPress: (ev: { stopPropagation: () => void; preventDefault: () => void }) => onClick(ev),
   };
 
   if (type === "Text") {

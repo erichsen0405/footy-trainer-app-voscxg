@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
@@ -9,7 +7,7 @@ export interface Team {
   id: string;
   admin_id: string;
   name: string;
-  description?: string;
+  description?: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -48,6 +46,7 @@ interface TeamPlayerContextType {
 const TeamPlayerContext = createContext<TeamPlayerContextType | undefined>(undefined);
 
 const SELECTED_CONTEXT_KEY = '@selected_context';
+const toDateOrNow = (value: string | null | undefined): Date => (value ? new Date(value) : new Date());
 
 export function TeamPlayerProvider({ children }: { children: ReactNode }) {
   const [teams, setTeams] = useState<Team[]>([]);
@@ -144,8 +143,8 @@ export function TeamPlayerProvider({ children }: { children: ReactNode }) {
         admin_id: team.admin_id,
         name: team.name,
         description: team.description,
-        created_at: new Date(team.created_at),
-        updated_at: new Date(team.updated_at),
+        created_at: toDateOrNow(team.created_at),
+        updated_at: toDateOrNow(team.updated_at),
       }));
 
       console.log('Loaded teams:', loadedTeams.length);
@@ -261,8 +260,8 @@ export function TeamPlayerProvider({ children }: { children: ReactNode }) {
       admin_id: data.admin_id,
       name: data.name,
       description: data.description,
-      created_at: new Date(data.created_at),
-      updated_at: new Date(data.updated_at),
+      created_at: toDateOrNow(data.created_at),
+      updated_at: toDateOrNow(data.updated_at),
     };
 
     console.log('Team created:', newTeam.id);
@@ -436,4 +435,3 @@ export function useTeamPlayer() {
   }
   return context;
 }
-

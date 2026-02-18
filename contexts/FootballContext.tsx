@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 import React, { createContext, useContext, ReactNode, useMemo } from 'react';
 import { useFootballData } from '@/hooks/useFootballData';
 import { Activity, ActivityCategory, Task, Trophy, ExternalCalendar } from '@/types';
@@ -67,7 +65,7 @@ interface FootballContextType {
   addTask: (task: Omit<Task, 'id'>, options?: AddTaskOptions) => Promise<Task>;
   updateTask: (id: string, updates: Partial<Task>) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
-  duplicateTask: (id: string) => Promise<void>;
+  duplicateTask: (id: string) => Promise<Task>;
   toggleTaskCompletion: (activityId: string, taskId: string, nextState?: boolean) => Promise<void>;
   setTaskCompletion: (activityId: string, taskId: string, completed: boolean) => Promise<void>;
   deleteActivityTask: (activityId: string, taskId: string) => Promise<void>;
@@ -149,7 +147,7 @@ export function FootballProvider({ children }: { children: ReactNode }) {
       const payload: any = {
         title: activityData?.title ?? '',
         location: activityData?.location ?? 'Ingen lokation',
-        category_id: activityData?.categoryId ?? activityData?.category_id ?? '',
+        category_id: activityData?.categoryId ?? '',
         activity_date: isoDate,
         activity_time: timeStr,
         intensity: fallbackIntensityEnabled ? activityData?.intensity ?? null : null,
@@ -258,5 +256,4 @@ export function useFootball() {
   }
   return context;
 }
-
 

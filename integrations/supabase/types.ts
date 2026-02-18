@@ -274,6 +274,7 @@ export type Database = {
           completed: boolean
           created_at: string
           description: string | null
+          feedback_template_id: string | null
           id: string
           reminder_minutes: number | null
           task_template_id: string | null
@@ -285,6 +286,7 @@ export type Database = {
           completed?: boolean
           created_at?: string
           description?: string | null
+          feedback_template_id?: string | null
           id?: string
           reminder_minutes?: number | null
           task_template_id?: string | null
@@ -296,6 +298,7 @@ export type Database = {
           completed?: boolean
           created_at?: string
           description?: string | null
+          feedback_template_id?: string | null
           id?: string
           reminder_minutes?: number | null
           task_template_id?: string | null
@@ -537,6 +540,7 @@ export type Database = {
           created_at: string | null
           custom_fields: Json | null
           external_event_id: string | null
+          external_event_uid: string | null
           id: string
           intensity: number | null
           intensity_note: string | null
@@ -560,6 +564,7 @@ export type Database = {
           created_at?: string | null
           custom_fields?: Json | null
           external_event_id?: string | null
+          external_event_uid?: string | null
           id?: string
           intensity?: number | null
           intensity_note?: string | null
@@ -583,6 +588,7 @@ export type Database = {
           created_at?: string | null
           custom_fields?: Json | null
           external_event_id?: string | null
+          external_event_uid?: string | null
           id?: string
           intensity?: number | null
           intensity_note?: string | null
@@ -816,6 +822,7 @@ export type Database = {
           completed: boolean | null
           created_at: string | null
           description: string | null
+          feedback_template_id: string | null
           id: string
           local_meta_id: string
           reminder_minutes: number | null
@@ -827,6 +834,7 @@ export type Database = {
           completed?: boolean | null
           created_at?: string | null
           description?: string | null
+          feedback_template_id?: string | null
           id?: string
           local_meta_id: string
           reminder_minutes?: number | null
@@ -838,6 +846,7 @@ export type Database = {
           completed?: boolean | null
           created_at?: string | null
           description?: string | null
+          feedback_template_id?: string | null
           id?: string
           local_meta_id?: string
           reminder_minutes?: number | null
@@ -1701,6 +1710,14 @@ export type Database = {
           admin_email: string
           admin_id: string
           created_at: string
+        }[]
+      }
+      get_my_entitlements: {
+        Args: never
+        Returns: {
+          entitlement: string
+          source: string
+          expires_at: string | null
         }[]
       }
       get_subscription_status: {

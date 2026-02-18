@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Activity,
@@ -323,7 +321,7 @@ export const useFootballData = () => {
       .order('activity_time', { ascending: true });
 
     if (error) throw error;
-    setActivities(data || []);
+    setActivities((data || []) as unknown as Activity[]);
   }, []);
 
   /**
@@ -421,7 +419,7 @@ export const useFootballData = () => {
       .order('created_at', { ascending: true });
 
     if (error) throw error;
-    setTrophies(data || []);
+    setTrophies((data || []) as unknown as Trophy[]);
   }, []);
 
   const fetchExternalCalendars = useCallback(async () => {
@@ -456,7 +454,7 @@ export const useFootballData = () => {
         return;
       }
 
-      setExternalCalendars(data || []);
+      setExternalCalendars((data || []) as unknown as ExternalCalendar[]);
     } catch (error) {
       console.error('[fetchExternalCalendars] unexpected failure:', error);
       setExternalCalendars([]);
@@ -470,7 +468,7 @@ export const useFootballData = () => {
       .order('created_at', { ascending: true });
 
     if (error) throw error;
-    setActivitySeries(data || []);
+    setActivitySeries((data || []) as unknown as ActivitySeries[]);
   }, []);
 
   const weekRange = useMemo(() => {
@@ -1390,7 +1388,11 @@ export const useFootballData = () => {
   const addExternalCalendar = useCallback(async (calendar: Omit<ExternalCalendar, 'id'>) => {
     try {
       const userId = await getCurrentUserId();
-      await calendarService.addExternalCalendar(userId, calendar.name, calendar.icsUrl, calendar.enabled ?? true);
+      const icsUrl = calendar.icsUrl ?? calendar.ics_url;
+      if (!icsUrl) {
+        throw new Error('Mangler kalender-URL');
+      }
+      await calendarService.addExternalCalendar(userId, calendar.name, icsUrl, calendar.enabled ?? true);
       await fetchExternalCalendars();
     } catch (error) {
       console.error('[addExternalCalendar] failed:', error);
@@ -1489,5 +1491,3 @@ export const useFootballData = () => {
     fetchExternalCalendarEvents,
   };
 };
-
-

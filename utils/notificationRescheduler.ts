@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 import { Activity } from '@/types';
 import { scheduleTaskReminder, checkNotificationPermissions, getAllScheduledNotifications, cancelAllNotifications } from './notificationService';
 
@@ -58,6 +56,7 @@ export async function rescheduleAllNotifications(activities: Activity[]): Promis
           // The scheduleTaskReminder function will handle the parsing
           const identifier = await scheduleTaskReminder(
             task.title,
+            task.description || '',
             activity.title,
             activity.date,
             activity.time,
@@ -96,5 +95,4 @@ export async function rescheduleAllNotifications(activities: Activity[]): Promis
   // Log all scheduled notifications for debugging
   await getAllScheduledNotifications();
 }
-
 

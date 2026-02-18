@@ -1,12 +1,10 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 import { DEFAULT_CATEGORY_KEYWORDS as DEFAULT_CATEGORY_KEYWORDS_LOCAL } from '@/shared/activityCategoryResolver';
 
 export {
-  DEFAULT_CATEGORY_KEYWORDS_LOCAL as DEFAULT_CATEGORY_KEYWORDS,
   parseActivityNameForCategory,
   resolveActivityCategory,
 } from '@/shared/activityCategoryResolver';
+export { DEFAULT_CATEGORY_KEYWORDS_LOCAL as DEFAULT_CATEGORY_KEYWORDS };
 
 export type {
   ActivityCategoryCandidate,
@@ -71,5 +69,4 @@ function getCategoryColor(categoryName: string): string {
 
   return colorMap[categoryName.toLowerCase()] || '#4CAF50';
 }
-
 

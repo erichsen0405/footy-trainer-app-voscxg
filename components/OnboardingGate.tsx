@@ -288,20 +288,6 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
   }, [needsPaywall, normalizeFallbackTarget, pathname, renderInlinePaywall, safeReplace]);
 
   if (needsPaywall && renderInlinePaywall) {
-    const PaywallManager = Platform.OS === 'ios' ? AppleSubscriptionManager : SubscriptionManager;
-    const paywallProps = Platform.OS === 'ios'
-      ? {
-          isSignupFlow: true,
-          forceShowPlans: true,
-          onPurchaseStarted: handleIOSPurchaseStarted,
-          onPurchaseFinished: handleIOSPurchaseFinished,
-        }
-      : {
-          onPlanSelected: handleCreateSubscription,
-          isSignupFlow: true,
-          forceShowPlans: true,
-        };
-
     return (
       <View style={styles.paywallContainer}>
         <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
@@ -309,9 +295,20 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
           <Text style={styles.subtitle}>Vælg et abonnement for at fortsætte — du kan altid ændre det senere.</Text>
 
           <View style={styles.card}>
-            {/* eslint-disable-next-line @typescript-eslint/ban-ts-comment */}
-            {/* @ts-ignore */}
-            <PaywallManager {...paywallProps} />
+            {Platform.OS === 'ios' ? (
+              <AppleSubscriptionManager
+                isSignupFlow
+                forceShowPlans
+                onPurchaseStarted={handleIOSPurchaseStarted}
+                onPurchaseFinished={handleIOSPurchaseFinished}
+              />
+            ) : (
+              <SubscriptionManager
+                onPlanSelected={handleCreateSubscription}
+                isSignupFlow
+                forceShowPlans
+              />
+            )}
           </View>
         </ScrollView>
 

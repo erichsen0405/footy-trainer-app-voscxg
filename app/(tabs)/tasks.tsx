@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
@@ -318,7 +316,7 @@ const FolderItemComponent = React.memo(
     folder: FolderItem;
     isExpanded: boolean;
     onToggle: () => void;
-    renderTaskCard: (task: Task) => React.ReactNode;
+    renderTaskCard: (task: Task) => React.ReactElement | null;
     textColor: string;
     textSecondaryColor: string;
     cardBgColor: string;
@@ -1223,7 +1221,11 @@ export default function TasksScreen() {
 
       <ContextConfirmationDialog
         visible={showConfirmDialog}
-        contextType={String(selectedContext?.type ?? 'player')}
+        contextType={
+          selectedContext?.type === 'player' || selectedContext?.type === 'team'
+            ? selectedContext.type
+            : null
+        }
         contextName={String(selectedContext?.name ?? '')}
         actionType={(pendingAction?.type as any) || 'edit'}
         itemType="opgave"

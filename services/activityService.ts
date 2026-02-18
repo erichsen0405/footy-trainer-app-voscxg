@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 import { supabase } from '@/integrations/supabase/client';
 
 export interface CreateActivityData {
@@ -184,7 +182,7 @@ function generateRecurringDates(
 }
 
 export const activityService = {
-  async createActivity(data: CreateActivityData, signal?: AbortSignal): Promise<void> {
+  async createActivity(data: CreateActivityData, signal: AbortSignal = new AbortController().signal): Promise<void> {
     console.log('Creating activity:', data);
 
     const normalizedEndTime = normalizeEndTime(data.endTime);
@@ -275,7 +273,7 @@ export const activityService = {
     }
   },
 
-  async updateActivitySingle(activityId: string, updates: UpdateActivityData, isExternal: boolean, signal?: AbortSignal): Promise<void> {
+  async updateActivitySingle(activityId: string, updates: UpdateActivityData, isExternal: boolean, signal: AbortSignal = new AbortController().signal): Promise<void> {
     const intensityChanges = buildIntensityUpdate(updates.intensity, updates.intensityEnabled);
 
     if (isExternal) {
@@ -376,7 +374,7 @@ export const activityService = {
     }
   },
 
-  async updateActivitySeries(seriesId: string, userId: string, updates: UpdateActivityData, signal?: AbortSignal): Promise<void> {
+  async updateActivitySeries(seriesId: string, userId: string, updates: UpdateActivityData, signal: AbortSignal = new AbortController().signal): Promise<void> {
     const seriesUpdate: any = {
       updated_at: new Date().toISOString(),
     };
@@ -433,7 +431,7 @@ export const activityService = {
     }
   },
 
-  async deleteActivitySingle(activityId: string, userId: string, signal?: AbortSignal): Promise<void> {
+  async deleteActivitySingle(activityId: string, userId: string, signal: AbortSignal = new AbortController().signal): Promise<void> {
     const { error } = await supabase
       .from('activities')
       .delete()
@@ -444,7 +442,7 @@ export const activityService = {
     if (error) throw error;
   },
 
-  async deleteActivitySeries(seriesId: string, userId: string, signal?: AbortSignal): Promise<void> {
+  async deleteActivitySeries(seriesId: string, userId: string, signal: AbortSignal = new AbortController().signal): Promise<void> {
     const { error: activitiesError } = await supabase
       .from('activities')
       .delete()
@@ -464,7 +462,7 @@ export const activityService = {
     if (seriesError) throw seriesError;
   },
 
-  async duplicateActivity(activityId: string, userId: string, playerId?: string | null, teamId?: string | null, signal?: AbortSignal): Promise<void> {
+  async duplicateActivity(activityId: string, userId: string, playerId?: string | null, teamId?: string | null, signal: AbortSignal = new AbortController().signal): Promise<void> {
     const { data: activity, error: fetchError } = await supabase
       .from('activities')
       .select(`

@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DeviceEventEmitter } from 'react-native';
 import { subDays, startOfDay, parseISO, format, differenceInCalendarDays, addDays } from 'date-fns';
@@ -1068,8 +1066,8 @@ export function useProgressionData({
 
       const templateNameLookup = new Map<string, string>();
       mappedFocusCurrent
-        .filter(entry => typeof entry.rating === 'number')
-        .forEach(entry => {
+        .filter((entry: ProgressionEntry) => typeof entry.rating === 'number')
+        .forEach((entry: ProgressionEntry) => {
           if (!entry.taskTemplateId) return;
           const resolvedName =
             entry.taskTemplateName ??
@@ -1414,5 +1412,4 @@ export function useProgressionData({
     requiresLogin,
   };
 }
-
 

@@ -15,6 +15,8 @@ type ElementProps = {
   sourceLocation: string;
   attributes: any;
   id: string;
+  trace?: unknown;
+  props?: unknown;
 };
 
 type EditableContextType = {

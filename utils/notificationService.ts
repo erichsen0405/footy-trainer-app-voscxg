@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 
 import * as Notifications from 'expo-notifications';
 import { Platform, Alert, Linking } from 'react-native';
@@ -633,6 +631,7 @@ export async function testNotification(): Promise<void> {
     }
 
     const trigger: Notifications.NotificationTriggerInput = {
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
       seconds: 2,
     };
 
@@ -703,8 +702,9 @@ export async function getNotificationStats(): Promise<{
       .map(n => {
         const triggerDate = new Date((n.trigger as any).date);
         const minutesUntil = Math.floor((triggerDate.getTime() - now) / 60000);
+        const taskIdValue = n.content.data?.taskId;
         return {
-          taskId: n.content.data?.taskId || 'unknown',
+          taskId: typeof taskIdValue === 'string' ? taskIdValue : 'unknown',
           scheduledFor: triggerDate.toISOString(),
           minutesUntil,
         };
@@ -728,5 +728,4 @@ export async function getNotificationStats(): Promise<{
     };
   }
 }
-
 

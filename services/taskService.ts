@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 import { supabase } from '@/integrations/supabase/client';
 import { emitTaskCompletionEvent } from '@/utils/taskEvents';
 import type { TaskCompletionEvent } from '@/utils/taskEvents';
@@ -64,7 +62,7 @@ export const taskService = {
   /* ======================================================
      CREATE (P8 – autoriseret entry point)
      ====================================================== */
-  async createTask(rawData: CreateTaskData | P8CreateTaskArgs, signal?: AbortSignal): Promise<Task> {
+  async createTask(rawData: CreateTaskData | P8CreateTaskArgs, signal: AbortSignal = new AbortController().signal): Promise<Task> {
     console.log('[P8] createTask called', rawData);
 
     const { data: sessionData, error: authError } = await supabase.auth.getSession();
@@ -236,7 +234,7 @@ export const taskService = {
     taskId: string,
     userId: string,
     updates: UpdateTaskData,
-    signal?: AbortSignal,
+    signal: AbortSignal = new AbortController().signal,
   ): Promise<void> {
     const updateData: Record<string, any> = {};
 
@@ -330,7 +328,7 @@ export const taskService = {
 
     if (shouldSyncSeriesFeedback) {
       try {
-        const { data: syncSummary, error: syncError } = await supabase.rpc<SeriesFeedbackSummary>(
+        const { data: syncSummary, error: syncError } = await supabase.rpc(
           'update_all_tasks_from_template',
           {
             p_template_id: taskId,
@@ -393,7 +391,7 @@ export const taskService = {
     return (data || []).map(d => d.task_template_id);
   },
 
-  async deleteTask(taskId: string, userId: string, signal?: AbortSignal): Promise<void> {
+  async deleteTask(taskId: string, userId: string, signal: AbortSignal = new AbortController().signal): Promise<void> {
     let templateTitle: string | null = null;
     const normalizeId = (value: unknown): string | null => {
       if (value === null || value === undefined) return null;
@@ -613,7 +611,7 @@ export const taskService = {
     taskId: string,
     userId: string,
     isExternal: boolean,
-    signal?: AbortSignal,
+    signal: AbortSignal = new AbortController().signal,
   ): Promise<void> {
     if (!userId) {
       throw new Error('User not authenticated');
@@ -638,7 +636,7 @@ export const taskService = {
     }
   },
 
-  async toggleTaskCompletion(taskId: string, signal?: AbortSignal): Promise<TaskCompletionEvent> {
+  async toggleTaskCompletion(taskId: string, signal: AbortSignal = new AbortController().signal): Promise<TaskCompletionEvent> {
     const nowIso = new Date().toISOString();
     const lookups: { table: 'activity_tasks' | 'external_event_tasks'; activityColumn: 'activity_id' | 'local_meta_id' }[] = [
       { table: 'activity_tasks', activityColumn: 'activity_id' },
@@ -661,8 +659,9 @@ export const taskService = {
         continue;
       }
 
-      const nextCompleted = !data.completed;
-      const activityId = (data as any)?.[lookup.activityColumn];
+      const row = data as unknown as Record<string, unknown> & { completed?: boolean };
+      const nextCompleted = !row.completed;
+      const activityId = row[lookup.activityColumn] as string | null | undefined;
 
       if (!activityId) {
         throw new Error('Task missing activity reference');
@@ -694,7 +693,7 @@ export const taskService = {
     throw new Error('Task not found in activity or external task tables');
   },
 
-  async setTaskCompletion(taskId: string, completed: boolean, signal?: AbortSignal): Promise<TaskCompletionEvent> {
+  async setTaskCompletion(taskId: string, completed: boolean, signal: AbortSignal = new AbortController().signal): Promise<TaskCompletionEvent> {
     const nowIso = new Date().toISOString();
     const lookups: { table: 'activity_tasks' | 'external_event_tasks'; activityColumn: 'activity_id' | 'local_meta_id' }[] = [
       { table: 'activity_tasks', activityColumn: 'activity_id' },

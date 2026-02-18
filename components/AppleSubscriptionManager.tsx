@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useColorScheme, Platform, Alert, Linking, ScrollView } from 'react-native';
 import { colors } from '@/styles/commonStyles';
@@ -90,8 +88,9 @@ const getPlanFeatures = (productId: string, maxPlayers: number): PlanFeature[] =
   return [capacityFeature, { label: 'Fuld adgang til alle funktioner', status: 'included' }, trialFeature(), cancelFeature()];
 };
 
-const getPlanName = (product: { productId: string }) => {
-  switch (getPlanTypeFromProductId(product.productId)) {
+const getPlanName = (product: { productId?: string | null }) => {
+  const productId = product.productId ?? '';
+  switch (getPlanTypeFromProductId(productId)) {
     case 'player_basic':
       return 'Basis spiller';
     case 'player_premium':
@@ -103,7 +102,7 @@ const getPlanName = (product: { productId: string }) => {
     case 'trainer_premium':
       return 'Træner Premium';
     default:
-      return product.productId;
+      return productId;
   }
 };
 
@@ -131,7 +130,7 @@ const toCopenhagenStartOfDayMs = (date: Date) => {
     : NaN;
 };
 
-const formatDateDa = (value?: string | null) => {
+const formatDateDa = (value?: string | number | Date | null) => {
   if (!value) return '';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
@@ -255,11 +254,14 @@ export default function AppleSubscriptionManager({
 
   type AppleProduct = (typeof products)[number];
 
-  const getProductCurrency = useCallback(
-    (product: AppleProduct) =>
-      product?.currency ?? product?.priceCurrencyCode ?? product?.priceLocale?.currencyCode ?? 'DKK',
-    [],
-  );
+  const getProductCurrency = useCallback((product: AppleProduct) => {
+    const rawProduct = product as unknown as {
+      currency?: string;
+      priceCurrencyCode?: string;
+      priceLocale?: { currencyCode?: string };
+    };
+    return rawProduct.currency ?? rawProduct.priceCurrencyCode ?? rawProduct.priceLocale?.currencyCode ?? 'DKK';
+  }, []);
 
   const getProductPriceLabel = useCallback(
     (product: AppleProduct) => {
@@ -269,7 +271,7 @@ export default function AppleSubscriptionManager({
     [getProductCurrency],
   );
 
-  const trainerProductSet = useMemo(() => new Set(TRAINER_PRODUCT_IDS), []);
+  const trainerProductSet = useMemo(() => new Set<string>(TRAINER_PRODUCT_IDS), []);
   const hasApplePlayerPremium = subscriptionStatus?.isActive && subscriptionStatus.productId === PRODUCT_IDS.PLAYER_PREMIUM;
   const hasAppleTrainerPlan =
     subscriptionStatus?.isActive && !!subscriptionStatus.productId && trainerProductSet.has(subscriptionStatus.productId);
@@ -675,6 +677,8 @@ export default function AppleSubscriptionManager({
     !isSignupFlow && hasComplimentaryActive && Boolean(activePlanProductId);
   const showAppleCurrentPlan =
     !isSignupFlow && !hasComplimentaryActive && Boolean(subscriptionStatus?.isActive && subscriptionStatus.productId);
+  const activePlanProductIdSafe = activePlanProductId ?? '';
+  const subscriptionProductId = subscriptionStatus?.productId ?? '';
 
   const renderPlanItem = useCallback(
     (item: (typeof products)[number], index: number) => {
@@ -872,12 +876,12 @@ export default function AppleSubscriptionManager({
         <View
           style={[
             styles.currentPlanBanner,
-            { backgroundColor: getPlanColor(activePlanProductId) },
+            { backgroundColor: getPlanColor(activePlanProductIdSafe) },
           ]}
         >
           <View style={styles.currentPlanContent}>
             <IconSymbol
-              ios_icon_name={getPlanIcon(activePlanProductId)}
+              ios_icon_name={getPlanIcon(activePlanProductIdSafe)}
               android_material_icon_name="verified"
               size={32}
               color="#fff"
@@ -885,7 +889,7 @@ export default function AppleSubscriptionManager({
             <View style={styles.currentPlanInfo}>
               <Text style={styles.currentPlanLabel}>Dit aktive abonnement:</Text>
               <Text style={styles.currentPlanName}>
-                {getPlanName({ productId: activePlanProductId })}
+                {getPlanName({ productId: activePlanProductIdSafe })}
               </Text>
               <Text style={styles.currentPlanDateSecondary}>Uendeligt (partner-adgang)</Text>
             </View>
@@ -899,14 +903,14 @@ export default function AppleSubscriptionManager({
         <TouchableOpacity
           style={[
             styles.currentPlanBanner,
-            { backgroundColor: getPlanColor(subscriptionStatus.productId) },
+            { backgroundColor: getPlanColor(subscriptionProductId) },
           ]}
           onPress={() => setIsOrangeBoxExpanded(prev => !prev)}
           activeOpacity={0.8}
         >
           <View style={styles.currentPlanContent}>
             <IconSymbol
-              ios_icon_name={getPlanIcon(subscriptionStatus.productId)}
+              ios_icon_name={getPlanIcon(subscriptionProductId)}
               android_material_icon_name="verified"
               size={32}
               color="#fff"
@@ -914,7 +918,7 @@ export default function AppleSubscriptionManager({
             <View style={styles.currentPlanInfo}>
               <Text style={styles.currentPlanLabel}>Dit aktive abonnement:</Text>
               <Text style={styles.currentPlanName}>
-                {getPlanName({ productId: subscriptionStatus.productId })}
+                {getPlanName({ productId: subscriptionProductId })}
               </Text>
               {renderPendingDowngrade()}
             </View>
@@ -1046,10 +1050,10 @@ export default function AppleSubscriptionManager({
     </View>
   ), [
     appleRenewalSummary,
+    activePlanProductIdSafe,
     blockInteractions,
     cardBgColor,
     handleRestorePurchases,
-    activePlanProductId,
     hasAnyActivePlan,
     isOrangeBoxExpanded,
     isSignupFlow,
@@ -1062,7 +1066,7 @@ export default function AppleSubscriptionManager({
     showAppleCurrentPlan,
     showPlans,
     showTrialFollowUp,
-    subscriptionStatus,
+    subscriptionProductId,
     textColor,
     textSecondaryColor,
   ]);
@@ -1362,5 +1366,3 @@ const styles = StyleSheet.create({
   partnerBadgeText: { fontSize: 12, fontWeight: '700', color: '#fff' },
   disabledCard: { opacity: 0.6 },
 });
-
-
