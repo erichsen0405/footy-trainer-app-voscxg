@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';

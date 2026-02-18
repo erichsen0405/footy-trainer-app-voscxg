@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
@@ -53,8 +51,8 @@ if (Platform.OS !== 'web') {
 }
 
 interface UserProfile {
-  full_name: string;
-  phone_number: string;
+  full_name: string | null;
+  phone_number: string | null;
 }
 
 interface AdminInfo {
@@ -1912,7 +1910,7 @@ export default function ProfileScreen() {
                   onPurchaseFinished={handleIOSSubscriptionFinished}
                   />
                 ) : (
-                  <SubscriptionManager transparentBackground={Platform.OS === 'ios'} />
+                  <SubscriptionManager transparentBackground={false} />
                 )}
               </CollapsibleSection>
             </SubscriptionCardWrapper>

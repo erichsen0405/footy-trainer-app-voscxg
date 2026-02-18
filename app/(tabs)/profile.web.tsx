@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable, TextInput, useColorScheme, Platform, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -18,8 +16,8 @@ import { useAppleIAP, PRODUCT_IDS } from '@/contexts/AppleIAPContext';
 import { getSubscriptionGateState } from '@/utils/subscriptionGate';
 
 interface UserProfile {
-  full_name: string;
-  phone_number: string;
+  full_name: string | null;
+  phone_number: string | null;
 }
 
 interface AdminInfo {
@@ -1632,4 +1630,3 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 });
-

@@ -14,6 +14,7 @@ export interface Activity {
   isExternal?: boolean;
   externalCalendarId?: string;
   externalEventId?: string;
+  externalEventRowId?: string;
   externalCategory?: string;
   seriesId?: string;
   seriesInstanceDate?: Date;
@@ -62,6 +63,8 @@ export interface Task {
   taskTemplateId?: string | null;
   feedbackTemplateId?: string | null;
   isFeedbackTask?: boolean;
+  source_folder?: string | null;
+  sourceFolder?: string | null;
 }
 
 export interface Subtask {
@@ -82,12 +85,17 @@ export interface Trophy {
 export interface ExternalCalendar {
   id: string;
   name: string;
-  icsUrl: string;
+  icsUrl?: string;
+  ics_url?: string;
   enabled: boolean;
   lastFetched?: Date;
-  eventCount?: number;
-  autoSyncEnabled?: boolean;
-  syncIntervalMinutes?: number;
+  last_fetched?: string | null;
+  eventCount?: number | null;
+  event_count?: number | null;
+  autoSyncEnabled?: boolean | null;
+  auto_sync_enabled?: boolean | null;
+  syncIntervalMinutes?: number | null;
+  sync_interval_minutes?: number | null;
 }
 
 export interface ExternalEvent {
@@ -140,7 +148,7 @@ export interface Team {
   id: string;
   admin_id: string;
   name: string;
-  description?: string;
+  description?: string | null;
   created_at: Date;
   updated_at: Date;
 }
