@@ -215,12 +215,26 @@ jobs:
             return 0
           }
 
+          is_native_commit_sha() {
+            local sha="$1"
+            if git diff-tree --no-commit-id --name-only -r "$sha" | grep -Eq '^(ios/|app\.json$|app\.config\.(js|ts|json)$|package\.json$|package-lock\.json$|yarn\.lock$|Podfile$|Podfile\.lock$)'; then
+              return 0
+            fi
+            return 1
+          }
+
           SELECTED_RUN=""
           SELECTED_SHA=""
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             TARGET_SHA="${{ github.event.pull_request.head.sha }}"
           else
             TARGET_SHA="${GITHUB_SHA}"
+          fi
+          git fetch --no-tags --depth=1 origin "${TARGET_SHA}" >/dev/null 2>&1 || true
+          if is_native_commit_sha "${TARGET_SHA}"; then
+            TARGET_COMMIT_NATIVE="true"
+          else
+            TARGET_COMMIT_NATIVE="false"
           fi
 
           EXACT_MATCH="$(find_run_by_sha "${TARGET_SHA}")"
@@ -232,7 +246,7 @@ jobs:
 
           # If exact build is required (native changes on PR), wait for the
           # build workflow to finish instead of failing immediately.
-          if [ -z "$SELECTED_RUN" ] && [ "${{ steps.native_changes.outputs.native_changed }}" = "true" ] && [ "${{ github.event_name }}" = "pull_request" ]; then
+          if [ -z "$SELECTED_RUN" ] && [ "${{ steps.native_changes.outputs.native_changed }}" = "true" ] && [ "${TARGET_COMMIT_NATIVE}" = "true" ] && [ "${{ github.event_name }}" = "pull_request" ]; then
             echo "Native-impacting PR changes detected. Waiting for exact simulator build artifact for ${TARGET_SHA}..."
             for attempt in {1..60}; do
               EXACT_MATCH="$(find_run_by_sha "${TARGET_SHA}")"
