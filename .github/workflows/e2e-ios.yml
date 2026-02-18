@@ -55,6 +55,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -233,7 +236,6 @@ jobs:
           else
             TARGET_SHA="${GITHUB_SHA}"
           fi
-          git fetch --no-tags --depth=1 origin "${TARGET_SHA}" >/dev/null 2>&1 || true
           if is_native_commit_sha "${TARGET_SHA}"; then
             TARGET_COMMIT_NATIVE="true"
           else
@@ -302,6 +304,12 @@ jobs:
             fi
 
             if [ "${{ steps.native_changes.outputs.native_changed }}" = "true" ]; then
+              if [ "${{ github.event_name }}" = "pull_request" ]; then
+                echo "Native-impacting PR changes detected, but no compatible prebuilt artifact was found for ${TARGET_SHA}."
+                echo "Falling back to local simulator build in this job."
+                echo "artifact_found=false" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
               echo "Native-impacting changes detected, but no exact artifact exists for ${TARGET_SHA}."
               echo "Wait for '.github/workflows/ios-sim-build.yml' to finish for this commit."
               exit 1
@@ -350,7 +358,7 @@ jobs:
           echo "artifact_found=true" >> "$GITHUB_OUTPUT"
 
       - name: Build app locally when prebuilt artifact is unavailable
-        if: steps.resolve_app.outputs.artifact_found != 'true' && github.event_name == 'workflow_dispatch'
+        if: steps.resolve_app.outputs.artifact_found != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request')
         env:
           CI: "1"
           EXPO_NO_INTERACTIVE: "1"

@@ -2,6 +2,15 @@ appId: com.erichsen.footballcoach
 ---
 - runFlow:
     when:
+      visible:
+        id: '^auth\.login\.submitButton$'
+    commands:
+      - extendedWaitUntil:
+          notVisible:
+            id: '^auth\.login\.submitButton$'
+          timeout: 15000
+- runFlow:
+    when:
       visible: '(?i)^(ikke nu|not now)$'
     commands:
       - tapOn:
