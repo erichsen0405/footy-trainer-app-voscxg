@@ -28,6 +28,10 @@ tags:
       - inputText: "${MAESTRO_PASSWORD}"
       - tapOn:
           id: '^auth\.login\.submitButton$'
+- extendedWaitUntil:
+    notVisible:
+      id: '^auth\.login\.submitButton$'
+    timeout: 15000
 - runFlow: _post_login_prompt_cleanup.yaml
 - openLink: "footballcoach:///(tabs)/(home)"
 - extendedWaitUntil:
