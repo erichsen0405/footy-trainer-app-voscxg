@@ -1058,26 +1058,28 @@ export const useFootballData = () => {
 
     try {
       await activityService.deleteActivitySingle(activityId, userId);
-      await fetchActivities();
+      await Promise.all([fetchActivities(), fetchCurrentWeekStats()]);
       await forceRefreshNotificationQueue();
+      emitActivitiesRefreshRequested({ reason: 'activity_single_deleted' });
     } catch (error) {
       console.error('[deleteActivitySingle] failed:', error);
       throw error;
     }
-  }, [getCurrentUserId, fetchActivities]);
+  }, [getCurrentUserId, fetchActivities, fetchCurrentWeekStats]);
 
   const deleteActivitySeries = useCallback(async (seriesId: string) => {
     const userId = await getCurrentUserId();
 
     try {
       await activityService.deleteActivitySeries(seriesId, userId);
-      await Promise.all([fetchActivities(), fetchActivitySeries()]);
+      await Promise.all([fetchActivities(), fetchActivitySeries(), fetchCurrentWeekStats()]);
       await forceRefreshNotificationQueue();
+      emitActivitiesRefreshRequested({ reason: 'activity_series_deleted' });
     } catch (error) {
       console.error('[deleteActivitySeries] failed:', error);
       throw error;
     }
-  }, [getCurrentUserId, fetchActivities, fetchActivitySeries]);
+  }, [getCurrentUserId, fetchActivities, fetchActivitySeries, fetchCurrentWeekStats]);
 
   const updateTask = useCallback(async (id: string, updates: Partial<Task>) => {
     try {
