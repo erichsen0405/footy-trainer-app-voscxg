@@ -376,7 +376,7 @@ tags:
 - assertVisible:
     id: '^performance\.statPercentage\.today$'
 - assertVisible: '^100%$'
-- assertVisible: '^2\s*/\s*2$'
+- assertVisible: '^3\s*/\s*3$'
 
 # 57-60) Chart details modal
 - scrollUntilVisible:

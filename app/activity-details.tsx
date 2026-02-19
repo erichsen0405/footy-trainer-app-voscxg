@@ -3304,6 +3304,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                 throw new Error(result.error || 'Kunne ikke slette aktiviteten');
               }
               if (!cancelled) {
+                Promise.resolve(refreshData()).catch(() => {});
                 router.replace('/(tabs)/(home)');
                 setTimeout(() => {
                   Alert.alert('Slettet', 'Den eksterne aktivitet er blevet slettet fra din app');
