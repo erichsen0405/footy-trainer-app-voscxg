@@ -306,6 +306,7 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
 
   const handleRetryStartup = useCallback(async () => {
     if (!isMountedRef.current) return;
+    const retryRunId = hydrationRunRef.current;
     refreshCalledRef.current = false;
     setState(prev => ({ ...prev, hydrating: true, initError: null }));
     try {
@@ -317,13 +318,18 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
       await refreshRoleAndSubscription(data.user ?? null);
     } catch (error) {
       console.warn('[OnboardingGate] Startup retry failed', error);
-      if (!isMountedRef.current) return;
-      setState(prev => ({
-        ...prev,
-        hydrating: false,
-        needsSubscription: false,
-        initError: STARTUP_ERROR_MESSAGE,
-      }));
+      if (!isMountedRef.current || hydrationRunRef.current !== retryRunId) return;
+      setState(prev => {
+        if (!prev.hydrating) {
+          return prev;
+        }
+        return {
+          ...prev,
+          hydrating: false,
+          needsSubscription: false,
+          initError: STARTUP_ERROR_MESSAGE,
+        };
+      });
     }
   }, [STARTUP_ERROR_MESSAGE, STARTUP_TIMEOUT_MS, refreshRoleAndSubscription]);
 
