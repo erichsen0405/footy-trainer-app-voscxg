@@ -310,7 +310,13 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { activities, loading, refresh: refreshActivities } = useHomeActivities();
-  const { categories, createActivity, refreshData, currentWeekStats } = useFootball();
+  const {
+    categories,
+    createActivity,
+    refreshData,
+    currentWeekStats,
+    updateIntensityByCategory,
+  } = useFootball();
   const { adminMode, adminTargetType } = useAdmin();
   const { selectedContext } = useTeamPlayer();
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -839,13 +845,26 @@ export default function HomeScreen() {
         return;
       }
 
-      await createActivity(activityData);
+      const { intensityApplyScope, ...createPayload } = activityData || {};
+
+      await createActivity(createPayload);
+      if (
+        intensityApplyScope === 'category' &&
+        typeof updateIntensityByCategory === 'function' &&
+        typeof createPayload?.categoryId === 'string' &&
+        createPayload.categoryId.trim().length > 0
+      ) {
+        await updateIntensityByCategory(
+          createPayload.categoryId,
+          createPayload.intensityEnabled === true
+        );
+      }
       refreshData();
     } catch (error) {
       console.error('[Home] Error creating activity:', error);
       // STEP H: Safe fallback - no throw
     }
-  }, [createActivity, refreshData]);
+  }, [createActivity, refreshData, updateIntensityByCategory]);
 
   const handleLoadMorePrevious = useCallback(() => {
     setShowPreviousWeeks(prev => {

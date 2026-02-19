@@ -43,7 +43,15 @@ export interface ActivityCreationData {
   recurrenceType?: 'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly';
   recurrenceDays?: number[];
   endDate?: Date;
+  intensityApplyScope?: 'single' | 'category';
 }
+
+type IntensityScopeModalState = {
+  visible: boolean;
+  nextEnabled: boolean;
+  previousEnabled: boolean;
+  previousScope: 'single' | 'category';
+};
 
 const DAYS_OF_WEEK = [
   { label: 'Søn', value: 0 },
@@ -123,6 +131,13 @@ export default function CreateActivityModal({
   const [showCategoryManagement, setShowCategoryManagement] = useState(false);
   const [intensityEnabled, setIntensityEnabled] = useState(false);
   const [intensityValue, setIntensityValue] = useState<number | null>(null);
+  const [intensityApplyScope, setIntensityApplyScope] = useState<'single' | 'category'>('single');
+  const [intensityScopeModal, setIntensityScopeModal] = useState<IntensityScopeModalState>({
+    visible: false,
+    nextEnabled: false,
+    previousEnabled: false,
+    previousScope: 'single',
+  });
 
   // validate end time whenever time / endTime changes
   useEffect(() => {
@@ -168,8 +183,6 @@ export default function CreateActivityModal({
     return Array.isArray(categories) ? categories : [];
   }, [categories]);
 
-  const intensityOptions = useMemo(() => Array.from({ length: 10 }, (_, index) => index + 1), []);
-
   const bgColor = useMemo(() => {
     if (isDark) return '#1a1a1a';
     if (typeof colors.background === 'string') return colors.background;
@@ -206,6 +219,13 @@ export default function CreateActivityModal({
     setShowCategoryManagement(false);
     setIntensityEnabled(false);
     setIntensityValue(null);
+    setIntensityApplyScope('single');
+    setIntensityScopeModal({
+      visible: false,
+      nextEnabled: false,
+      previousEnabled: false,
+      previousScope: 'single',
+    });
     userTouchedCategoryRef.current = false;
 
     safeOnClose();
@@ -263,6 +283,7 @@ export default function CreateActivityModal({
             ? selectedDays
             : undefined,
         endDate: isRecurring && hasEndDate ? endDate : undefined,
+        intensityApplyScope,
       });
 
       handleClose();
@@ -286,6 +307,7 @@ export default function CreateActivityModal({
     endTimeError,
     intensityEnabled,
     intensityValue,
+    intensityApplyScope,
     hasEndDate,
     endDate,
     onCreateActivity,
@@ -401,16 +423,48 @@ export default function CreateActivityModal({
   }, []);
 
   const handleIntensityToggle = useCallback((enabled: boolean) => {
+    if (enabled === intensityEnabled) return;
+    if (intensityScopeModal.visible) return;
+
     setIntensityEnabled(enabled);
     if (!enabled) {
       setIntensityValue(null);
     }
+
+    setIntensityScopeModal({
+      visible: true,
+      nextEnabled: enabled,
+      previousEnabled: intensityEnabled,
+      previousScope: intensityApplyScope,
+    });
+  }, [intensityApplyScope, intensityEnabled, intensityScopeModal.visible]);
+
+  const closeIntensityScopeModal = useCallback(() => {
+    setIntensityScopeModal(prev => ({ ...prev, visible: false }));
   }, []);
 
-  const handleIntensitySelect = useCallback((value: number) => {
-    if (!intensityEnabled) return;
-    setIntensityValue(prev => (prev === value ? null : value));
-  }, [intensityEnabled]);
+  const handleIntensityApplyAll = useCallback(() => {
+    setIntensityApplyScope('category');
+    closeIntensityScopeModal();
+  }, [closeIntensityScopeModal]);
+
+  const handleIntensityApplySingle = useCallback(() => {
+    setIntensityApplyScope('single');
+    closeIntensityScopeModal();
+  }, [closeIntensityScopeModal]);
+
+  const handleIntensityCancel = useCallback(() => {
+    setIntensityEnabled(intensityScopeModal.previousEnabled);
+    if (!intensityScopeModal.previousEnabled) {
+      setIntensityValue(null);
+    }
+    setIntensityApplyScope(intensityScopeModal.previousScope);
+    closeIntensityScopeModal();
+  }, [
+    closeIntensityScopeModal,
+    intensityScopeModal.previousEnabled,
+    intensityScopeModal.previousScope,
+  ]);
 
   // Avoid inline lambdas in render
   const categoryPressHandlers = useMemo(() => {
@@ -705,30 +759,6 @@ export default function CreateActivityModal({
                 />
               </View>
 
-              {intensityEnabled ? (
-                <>
-                  <Text style={[styles.intensityLabel, { color: textSecondaryColor }]}>1 = let · 10 = maks</Text>
-                  <View style={styles.intensityChipsRow}>
-                    {intensityOptions.map(option => {
-                      const isSelected = intensityValue === option;
-                      return (
-                        <TouchableOpacity
-                          key={option}
-                          style={[styles.intensityChip, isSelected && styles.intensityChipSelected]}
-                          onPress={() => handleIntensitySelect(option)}
-                          activeOpacity={0.7}
-                          testID={`activity.create.intensityOption.${option}`}
-                        >
-                          <Text style={[styles.intensityChipText, isSelected && styles.intensityChipTextSelected]}>
-                            {option}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </>
-              ) : null}
-
               {/* Series Toggle */}
               <View style={[styles.switchContainer, { backgroundColor: bgColor }]}>
                 <View style={styles.switchLabelContainer}>
@@ -888,6 +918,55 @@ export default function CreateActivityModal({
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <Modal
+        visible={intensityScopeModal.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={handleIntensityCancel}
+      >
+        <View style={styles.intensityScopeModalBackdrop}>
+          <View
+            style={[styles.intensityScopeModalCard, { backgroundColor: cardBgColor }]}
+            testID="activity.create.intensityScopeModal"
+          >
+            <Text style={[styles.intensityScopeModalTitle, { color: textColor }]}>
+              {intensityScopeModal.nextEnabled
+                ? 'Vil du tilføje intensitet til alle aktiviteter med samme kategori?'
+                : 'Vil du fjerne intensitet fra alle aktiviteter med samme kategori?'}
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.intensityScopeModalButton, { backgroundColor: colors.primary }]}
+              onPress={handleIntensityApplyAll}
+              activeOpacity={0.85}
+              testID="activity.create.intensityScopeModal.all"
+            >
+              <Text style={styles.intensityScopeModalPrimaryText}>
+                {intensityScopeModal.nextEnabled ? 'Ja, tilføj til alle' : 'Ja, fjern fra alle'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.intensityScopeModalButton, styles.intensityScopeModalSecondaryButton]}
+              onPress={handleIntensityApplySingle}
+              activeOpacity={0.85}
+              testID="activity.create.intensityScopeModal.single"
+            >
+              <Text style={[styles.intensityScopeModalSecondaryText, { color: textColor }]}>Nej, kun denne</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.intensityScopeModalCancelButton}
+              onPress={handleIntensityCancel}
+              activeOpacity={0.85}
+              testID="activity.create.intensityScopeModal.cancel"
+            >
+              <Text style={[styles.intensityScopeModalCancelText, { color: textSecondaryColor }]}>Annuller</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
@@ -1035,38 +1114,55 @@ const styles = StyleSheet.create({
     fontSize: 17,
     marginLeft: 12,
   },
-  intensityLabel: {
-    fontSize: 15,
-    marginLeft: 4,
-    marginBottom: 8,
-  },
-  intensityChipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 16,
-  },
-  intensityChip: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#d9d9d9',
+  intensityScopeModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 8,
-    marginBottom: 8,
+    paddingHorizontal: 24,
   },
-  intensityChipSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+  intensityScopeModalCard: {
+    width: '100%',
+    borderRadius: 16,
+    padding: 16,
   },
-  intensityChipText: {
+  intensityScopeModalTitle: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#555',
+    fontWeight: '700',
+    lineHeight: 22,
+    marginBottom: 14,
   },
-  intensityChipTextSelected: {
+  intensityScopeModalButton: {
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  intensityScopeModalPrimaryText: {
     color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  intensityScopeModalSecondaryButton: {
+    borderWidth: 1,
+    borderColor: '#d9d9d9',
+    backgroundColor: 'transparent',
+  },
+  intensityScopeModalSecondaryText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  intensityScopeModalCancelButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    marginTop: 10,
+  },
+  intensityScopeModalCancelText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   recurrenceTypeContainer: {
     flexDirection: 'row',
