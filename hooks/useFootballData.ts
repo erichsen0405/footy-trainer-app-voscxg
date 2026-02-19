@@ -23,6 +23,28 @@ import { subscribeToTaskCompletion, emitTaskCompletionEvent } from '@/utils/task
 import { emitActivityPatch, emitActivitiesRefreshRequested } from '@/utils/activityEvents';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 
+type ExternalTaskForPerformance = {
+  completed?: boolean | null;
+  events_local_meta?: {
+    events_external?: {
+      start_date?: string | null;
+      deleted?: boolean | null;
+    } | null;
+  } | null;
+};
+
+export const shouldIncludeExternalTaskInPerformance = (
+  task: ExternalTaskForPerformance | null | undefined
+): boolean => {
+  const externalEvent = task?.events_local_meta?.events_external;
+  const startDate = typeof externalEvent?.start_date === 'string' ? externalEvent.start_date : null;
+  if (!startDate) return false;
+
+  const isSoftDeleted = externalEvent?.deleted === true;
+  const isCompleted = task?.completed === true;
+  return !isSoftDeleted || isCompleted;
+};
+
 export const useFootballData = () => {
   const { adminMode, adminTargetId, adminTargetType } = useAdmin();
 
@@ -511,7 +533,7 @@ export const useFootballData = () => {
           .lt('activities.activity_date', endIsoExclusive),
         supabase
           .from('external_event_tasks')
-          .select('id, completed, events_local_meta!inner(events_external!inner(start_date))')
+          .select('id, completed, events_local_meta!inner(events_external!inner(start_date, deleted))')
           .gte('events_local_meta.events_external.start_date', startIso)
           .lt('events_local_meta.events_external.start_date', endIsoExclusive),
       ]);
@@ -520,10 +542,7 @@ export const useFootballData = () => {
       if (externalRes.error) throw externalRes.error;
 
       const internalWeeklyTasks = internalRes.data || [];
-      const externalWeeklyTasks = (externalRes.data || []).filter(task => {
-        const startDate = (task as any)?.events_local_meta?.events_external?.start_date as string | undefined | null;
-        return Boolean(startDate);
-      });
+      const externalWeeklyTasks = (externalRes.data || []).filter(shouldIncludeExternalTaskInPerformance);
 
       const normalizeId = (value: unknown): string | null => {
         if (value === null || value === undefined) return null;
