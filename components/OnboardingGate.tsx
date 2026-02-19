@@ -70,6 +70,7 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
   const hydrationRunRef = useRef(0);
 
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
       hydrationRunRef.current += 1;
