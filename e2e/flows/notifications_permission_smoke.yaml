@@ -200,3 +200,18 @@ tags:
     id: '^notifications\.openSettingsButton$'
 - assertNotVisible:
     id: '^notifications\.allowButton$'
+
+# Verify activity task content renders (non-blank task area)
+- runFlow:
+    when:
+      visible:
+        id: '^home\.activityCardButton$'
+    commands:
+      - tapOn:
+          id: '^home\.activityCardButton$'
+      - extendedWaitUntil:
+          visible:
+            id: '^activity\.details\.task\.loaded\..+$'
+          timeout: 15000
+      - assertNotVisible:
+          id: '^activity\.details\.taskLookup\.error$'

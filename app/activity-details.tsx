@@ -1348,6 +1348,8 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
   const [pendingFeedbackTaskId, setPendingFeedbackTaskId] = useState<string | null>(initialFeedbackTaskId ?? null);
   const [pendingNormalTaskId, setPendingNormalTaskId] = useState<string | null>(initialOpenTaskId ?? null);
+  const [deepLinkTaskLookupState, setDeepLinkTaskLookupState] = useState<'idle' | 'loading' | 'error'>('idle');
+  const deepLinkTaskLookupAttemptedRef = useRef<string | null>(null);
 
   const [isIntensityModalVisible, setIsIntensityModalVisible] = useState(false);
   const [intensityModalDraft, setIntensityModalDraft] = useState<number | null>(parseIntensityValue(activity.intensity));
@@ -1612,6 +1614,8 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       String(task.id ?? templateId);
     setFeedbackModalTask({ task, templateId, taskInstanceId });
     setFeedbackModalError(null);
+    setPendingFeedbackTaskId(null);
+    setDeepLinkTaskLookupState('idle');
   }, [pendingFeedbackTaskId, resolveFeedbackTemplateId, tasksState]);
 
   useEffect(() => {
@@ -1622,6 +1626,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     setSelectedNormalTask(task);
     setIsNormalTaskModalVisible(true);
     setPendingNormalTaskId(null);
+    setDeepLinkTaskLookupState('idle');
   }, [pendingNormalTaskId, resolveFeedbackTemplateId, tasksState]);
 
   const [editTitle, setEditTitle] = useState(activity.title);
@@ -1751,6 +1756,8 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   useEffect(() => {
     setPendingFeedbackTaskId(initialFeedbackTaskId ?? null);
     setPendingNormalTaskId(initialOpenTaskId ?? null);
+    setDeepLinkTaskLookupState('idle');
+    deepLinkTaskLookupAttemptedRef.current = null;
   }, [activity.id, initialFeedbackTaskId, initialOpenTaskId]);
 
   useEffect(() => {
@@ -2362,6 +2369,55 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     Promise.resolve(refreshData()).catch(() => {});
   }, [activity.id, refreshData]);
 
+  useEffect(() => {
+    const pendingTaskId = pendingFeedbackTaskId ?? pendingNormalTaskId;
+    if (!pendingTaskId) {
+      setDeepLinkTaskLookupState('idle');
+      deepLinkTaskLookupAttemptedRef.current = null;
+      return;
+    }
+
+    const hasTask = tasksState.some((task) => String(task.id) === String(pendingTaskId));
+    if (hasTask) {
+      setDeepLinkTaskLookupState('idle');
+      deepLinkTaskLookupAttemptedRef.current = null;
+      return;
+    }
+
+    if (deepLinkTaskLookupAttemptedRef.current === pendingTaskId) {
+      setDeepLinkTaskLookupState('error');
+      return;
+    }
+
+    deepLinkTaskLookupAttemptedRef.current = pendingTaskId;
+    setDeepLinkTaskLookupState('loading');
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const refreshedActivity = await fetchActivityFromDatabase(activity.id);
+        if (cancelled) return;
+
+        const refreshedTasks = ((refreshedActivity?.tasks as FeedbackTask[]) ?? []).filter(Boolean);
+        setTasksState(refreshedTasks);
+
+        const foundAfterRefresh = refreshedTasks.some((task) => String(task.id) === String(pendingTaskId));
+        setDeepLinkTaskLookupState(foundAfterRefresh ? 'idle' : 'error');
+      } catch (error) {
+        if (!cancelled) {
+          console.error('[ActivityDetails] Deep-link task refresh failed:', error);
+          setDeepLinkTaskLookupState('error');
+        }
+      } finally {
+        Promise.resolve(refreshData()).catch(() => {});
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activity.id, pendingFeedbackTaskId, pendingNormalTaskId, refreshData, tasksState]);
+
   const handleAddTask = useCallback(() => {
     setShowCreateTaskModal(true);
   }, []);
@@ -2651,6 +2707,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           }
         >
           <View testID={`activity.taskRow.${String(taskInstanceId ?? task.id ?? 'unknown')}`} />
+          <View testID={`activity.details.task.loaded.${String(taskInstanceId ?? task.id ?? 'unknown')}`} />
           <View style={styles.taskLeftSlot}>
             <View
               style={[
@@ -2844,8 +2901,8 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                 })}
               </View>
 
-              <View style={{ flexDirection: 'row', marginTop: 12 }}>
-                <View style={{ flex: 1, marginRight: 8 }}>
+              <View style={{ marginTop: 12 }}>
+                <View>
                   <Text style={[styles.fieldLabel, { color: textSecondaryColor }]}>Starttid</Text>
                   <TouchableOpacity
                     style={[
@@ -2871,7 +2928,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                   })}
                 </View>
 
-                <View style={{ flex: 1, marginLeft: 8 }}>
+                <View style={{ marginTop: 12 }}>
                   <Text style={[styles.fieldLabel, { color: textSecondaryColor }]}>Sluttid</Text>
                   <TouchableOpacity
                     style={[
@@ -3925,6 +3982,45 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
     safeDismiss();
   }, [isEditing, safeDismiss]);
+
+  const pendingDeepLinkTaskId = pendingFeedbackTaskId ?? pendingNormalTaskId;
+  const isDeepLinkTaskLookupLoading =
+    Boolean(pendingDeepLinkTaskId) && deepLinkTaskLookupState === 'loading';
+  const isDeepLinkTaskLookupError =
+    Boolean(pendingDeepLinkTaskId) && deepLinkTaskLookupState === 'error';
+
+  if (isDeepLinkTaskLookupLoading) {
+    return (
+      <View style={[styles.container, { backgroundColor: bgColor, justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={{ color: textColor, marginTop: 12, fontSize: 16, fontWeight: '600' }}>Henter opgave...</Text>
+        <Text style={{ color: textSecondaryColor, marginTop: 6, textAlign: 'center' }}>
+          Vi opdaterer aktiviteten for at åbne den valgte opgave.
+        </Text>
+        <View testID="activity.details.taskLookup.loading" />
+      </View>
+    );
+  }
+
+  if (isDeepLinkTaskLookupError) {
+    return (
+      <View style={[styles.container, { backgroundColor: bgColor, justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
+        <Text style={{ color: textColor, fontSize: 18, fontWeight: '700', marginBottom: 8 }}>Kunne ikke åbne opgaven</Text>
+        <Text style={{ color: textSecondaryColor, textAlign: 'center', marginBottom: 14 }}>
+          Opgaven blev ikke fundet. Prøv igen fra Hjem eller notifikationen.
+        </Text>
+        <TouchableOpacity
+          style={{ paddingHorizontal: 16, paddingVertical: 12, backgroundColor: colors.primary, borderRadius: 10 }}
+          onPress={handleBackPress}
+          activeOpacity={0.7}
+          testID="activity.details.taskLookup.backButton"
+        >
+          <Text style={{ color: '#fff', fontWeight: '700' }}>Tilbage</Text>
+        </TouchableOpacity>
+        <View testID="activity.details.taskLookup.error" />
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.container, { backgroundColor: bgColor }]}>

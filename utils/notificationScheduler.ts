@@ -40,6 +40,33 @@ interface PendingReminder {
   templateId?: string | null;
 }
 
+function cleanNotificationLabel(value: unknown, fallback: string): string {
+  if (typeof value !== 'string') return fallback;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : fallback;
+}
+
+function buildReminderNotificationText(args: {
+  kind: PendingReminder['kind'];
+  taskTitle: string;
+  activityTitle: string;
+}): { title: string; body: string } {
+  const taskTitle = cleanNotificationLabel(args.taskTitle, 'Opgave');
+  const activityTitle = cleanNotificationLabel(args.activityTitle, 'Aktivitet');
+
+  if (args.kind === 'after-training-feedback') {
+    return {
+      title: 'Feedback mangler',
+      body: activityTitle,
+    };
+  }
+
+  return {
+    title: 'Opgave snart',
+    body: `${taskTitle} · ${activityTitle}`,
+  };
+}
+
 /**
  * Calculate the notification time for a task reminder
  */
@@ -389,29 +416,20 @@ async function scheduleNotifications(reminders: PendingReminder[]): Promise<numb
     
     for (const reminder of toSchedule) {
       try {
-        const isAfterTraining = reminder.kind === 'after-training-feedback';
-
-        // Build notification body with task description
-        let notificationBody = '';
-        if (isAfterTraining) {
-          notificationBody = `Husk at udfylde feedback efter ${reminder.activityTitle}`;
-        } else {
-          const mins = reminder.reminderMinutes ?? 0;
-          notificationBody = `${reminder.activityTitle} starter om ${mins} minutter`;
-        }
-
-        if (reminder.taskDescription) {
-          notificationBody += `\n\n${reminder.taskDescription}`;
-        }
+        const notificationText = buildReminderNotificationText({
+          kind: reminder.kind,
+          taskTitle: reminder.taskTitle,
+          activityTitle: reminder.activityTitle,
+        });
 
         const notificationContent: Notifications.NotificationContentInput = {
-          title: isAfterTraining ? `⚽ Feedback: ${reminder.activityTitle}` : `⚽ Påmindelse: ${reminder.taskTitle}`,
-          body: notificationBody,
+          title: notificationText.title,
+          body: notificationText.body,
           sound: 'default',
           data: {
             taskId: reminder.taskId,
             activityId: reminder.activityId,
-            type: isAfterTraining ? 'after-training-feedback' : 'task-reminder',
+            type: reminder.kind === 'after-training-feedback' ? 'after-training-feedback' : 'task-reminder',
             templateId: reminder.templateId ?? null,
             scheduledFor: reminder.notificationTime.toISOString(),
             // Deep linking data
@@ -583,16 +601,16 @@ export async function scheduleTaskReminderImmediate(
       return false;
     }
     
-    // Build notification body with task description
-    let notificationBody = `${activityTitle} starter om ${reminderMinutes} minutter`;
-    if (taskDescription) {
-      notificationBody += `\n\n${taskDescription}`;
-    }
+    const notificationText = buildReminderNotificationText({
+      kind: 'task-reminder',
+      taskTitle: cleanNotificationLabel(taskTitle, cleanNotificationLabel(taskDescription, 'Opgave')),
+      activityTitle,
+    });
 
     // Schedule the notification
     const notificationContent: Notifications.NotificationContentInput = {
-      title: `⚽ Påmindelse: ${taskTitle}`,
-      body: notificationBody,
+      title: notificationText.title,
+      body: notificationText.body,
       sound: 'default',
       data: {
         taskId,
