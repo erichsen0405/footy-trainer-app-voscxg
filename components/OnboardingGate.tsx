@@ -262,6 +262,7 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
 
   useEffect(() => {
     let active = true;
+    const bootstrapRunId = hydrationRunRef.current;
 
     const bootstrap = async () => {
       try {
@@ -275,13 +276,18 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
         }
       } catch (error) {
         console.warn('[OnboardingGate] Startup bootstrap failed', error);
-        if (!active || !isMountedRef.current) return;
-        setState(prev => ({
-          ...prev,
-          hydrating: false,
-          needsSubscription: false,
-          initError: STARTUP_ERROR_MESSAGE,
-        }));
+        if (!active || !isMountedRef.current || hydrationRunRef.current !== bootstrapRunId) return;
+        setState(prev => {
+          if (!prev.hydrating) {
+            return prev;
+          }
+          return {
+            ...prev,
+            hydrating: false,
+            needsSubscription: false,
+            initError: STARTUP_ERROR_MESSAGE,
+          };
+        });
       }
     };
 

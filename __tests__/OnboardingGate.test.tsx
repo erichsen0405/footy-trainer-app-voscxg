@@ -17,6 +17,7 @@ const mockSelect = jest.fn();
 const mockUpsert = jest.fn();
 const mockFrom = jest.fn();
 let consoleWarnSpy: jest.SpyInstance;
+let authStateHandler: ((event: string, session: { user: any } | null) => void) | null = null;
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ replace: mockReplace }),
@@ -94,8 +95,12 @@ describe('OnboardingGate startup hydration', () => {
       upsert: mockUpsert,
     });
 
-    mockOnAuthStateChange.mockReturnValue({
-      data: { subscription: { unsubscribe: mockUnsubscribe } },
+    authStateHandler = null;
+    mockOnAuthStateChange.mockImplementation((handler: (event: string, session: { user: any } | null) => void) => {
+      authStateHandler = handler;
+      return {
+        data: { subscription: { unsubscribe: mockUnsubscribe } },
+      };
     });
   });
 
@@ -126,5 +131,38 @@ describe('OnboardingGate startup hydration', () => {
     expect(screen.queryByText('Klargører konto')).toBeNull();
     fireEvent.press(screen.getByTestId('onboarding.error.retryButton'));
     expect(mockGetUser.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('does not overwrite newer hydrated state when bootstrap times out later', async () => {
+    mockGetUser.mockImplementation(() => new Promise(() => {}));
+
+    render(
+      <OnboardingGate>
+        <Text>App indhold</Text>
+      </OnboardingGate>
+    );
+
+    expect(screen.getByText('Klargører konto')).toBeTruthy();
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(authStateHandler).toBeTruthy();
+
+    await act(async () => {
+      authStateHandler?.('INITIAL_SESSION', { user: null });
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText('Klargører konto')).toBeNull();
+    expect(screen.queryByText('Kunne ikke klargøre konto. Prøv igen.')).toBeNull();
+
+    await act(async () => {
+      jest.advanceTimersByTime(12000);
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText('Kunne ikke klargøre konto. Prøv igen.')).toBeNull();
+    expect(screen.queryByTestId('onboarding.error.retryButton')).toBeNull();
   });
 });
