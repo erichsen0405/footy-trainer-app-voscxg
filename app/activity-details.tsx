@@ -13,6 +13,7 @@ import {
   KeyboardAvoidingView,
   Switch,
   DeviceEventEmitter,
+  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path } from 'react-native-svg';
@@ -1215,6 +1216,14 @@ type PendingAction =
   | { type: 'delete-single' }
   | { type: 'delete-series' };
 
+type ExternalIntensityModalState = {
+  visible: boolean;
+  nextEnabled: boolean;
+  previousEnabled: boolean;
+  previousIntensity: number | null;
+  previousScope: 'single' | 'category';
+};
+
 export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const {
     activity,
@@ -1243,6 +1252,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
   const {
     updateActivitySingle,
+    updateIntensityByCategory,
     updateActivitySeries,
     toggleTaskCompletion,
     deleteActivityTask,
@@ -1651,7 +1661,14 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
   const [editIntensityEnabled, setEditIntensityEnabled] = useState(activityIntensityEnabled);
   const [editIntensity, setEditIntensity] = useState<number | null>(activityIntensityValue);
-  const intensityOptions = useMemo(() => Array.from({ length: 10 }, (_, idx) => idx + 1), []);
+  const [externalIntensityApplyScope, setExternalIntensityApplyScope] = useState<'single' | 'category'>('single');
+  const [externalIntensityModal, setExternalIntensityModal] = useState<ExternalIntensityModalState>({
+    visible: false,
+    nextEnabled: activityIntensityEnabled,
+    previousEnabled: activityIntensityEnabled,
+    previousIntensity: activityIntensityValue,
+    previousScope: 'single',
+  });
   const isInternalActivity = !activity.isExternal;
 
   const currentActivityIntensity = activityIntensityValue;
@@ -1721,7 +1738,15 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
   useEffect(() => {
     setEditScope('single');
-  }, [activity.id]);
+    setExternalIntensityApplyScope('single');
+    setExternalIntensityModal({
+      visible: false,
+      nextEnabled: activityIntensityEnabled,
+      previousEnabled: activityIntensityEnabled,
+      previousIntensity: activityIntensityValue,
+      previousScope: 'single',
+    });
+  }, [activity.id, activityIntensityEnabled, activityIntensityValue]);
 
   useEffect(() => {
     setPendingFeedbackTaskId(initialFeedbackTaskId ?? null);
@@ -1734,6 +1759,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     setShowTimePicker(false);
     setShowEndTimePicker(false);
     setShowEndDatePicker(false);
+    setExternalIntensityModal(prev => ({ ...prev, visible: false }));
   }, [isEditing]);
 
   const applyActivityUpdates = useCallback(
@@ -1800,19 +1826,54 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   }, [activity]);
 
   const handleIntensityToggle = useCallback((value: boolean) => {
+    if (value === editIntensityEnabled) return;
+    if (externalIntensityModal.visible) return;
+
+    const previousIntensity = editIntensity;
     setEditIntensityEnabled(value);
     if (!value) {
       setEditIntensity(null);
     }
+
+    setExternalIntensityModal({
+      visible: true,
+      nextEnabled: value,
+      previousEnabled: editIntensityEnabled,
+      previousIntensity,
+      previousScope: externalIntensityApplyScope,
+    });
+  }, [
+    editIntensity,
+    editIntensityEnabled,
+    externalIntensityApplyScope,
+    externalIntensityModal.visible,
+  ]);
+
+  const closeExternalIntensityModal = useCallback(() => {
+    setExternalIntensityModal(prev => ({ ...prev, visible: false }));
   }, []);
 
-  const handleIntensitySelect = useCallback(
-    (value: number) => {
-      if (!editIntensityEnabled) return;
-      setEditIntensity(value);
-    },
-    [editIntensityEnabled],
-  );
+  const handleExternalIntensityApplyAll = useCallback(() => {
+    setExternalIntensityApplyScope('category');
+    closeExternalIntensityModal();
+  }, [closeExternalIntensityModal]);
+
+  const handleExternalIntensityApplySingle = useCallback(() => {
+    setExternalIntensityApplyScope('single');
+    closeExternalIntensityModal();
+  }, [closeExternalIntensityModal]);
+
+  const handleExternalIntensityCancel = useCallback(() => {
+    setEditIntensityEnabled(externalIntensityModal.previousEnabled);
+    setEditIntensity(externalIntensityModal.previousEnabled ? externalIntensityModal.previousIntensity : null);
+    setExternalIntensityApplyScope(externalIntensityModal.previousScope);
+    closeExternalIntensityModal();
+  }, [
+    closeExternalIntensityModal,
+    externalIntensityModal.previousEnabled,
+    externalIntensityModal.previousIntensity,
+    externalIntensityModal.previousScope,
+  ]);
 
   const closeIntensityModal = useCallback(() => {
     if (isIntensityModalSaving) return;
@@ -1975,6 +2036,12 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const handleSave = useCallback(async () => {
     const endTimePayload = isInternalActivity ? normalizeOptionalTime(editEndTime) : undefined;
     const intensityPayload = editIntensityEnabled ? editIntensity ?? null : null;
+    const resolvedCategoryId = editCategory?.id || activity.category?.id;
+    const shouldApplyIntensityByCategory =
+      externalIntensityApplyScope === 'category' && !!resolvedCategoryId;
+    const intensityChanged =
+      editIntensityEnabled !== activityIntensityEnabled ||
+      intensityPayload !== activityIntensityValue;
     const trimmedTime = (editTime ?? '').trim();
     let safeTime: string | null = null;
 
@@ -2050,9 +2117,16 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       if (activity.isExternal) {
         await updateActivitySingle(activity.id, {
           categoryId: editCategory?.id,
-          intensityEnabled: editIntensityEnabled,
-          intensity: intensityPayload,
+          ...(shouldApplyIntensityByCategory
+            ? {}
+            : {
+                intensityEnabled: editIntensityEnabled,
+                intensity: intensityPayload,
+              }),
         });
+        if (shouldApplyIntensityByCategory && resolvedCategoryId) {
+          await updateIntensityByCategory(resolvedCategoryId, editIntensityEnabled);
+        }
 
         applyActivityUpdates({
           category: editCategory || activity.category,
@@ -2062,9 +2136,10 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
         await refreshData();
 
-        Alert.alert('Gemt', 'Kategorien er blevet opdateret');
+        Alert.alert('Gemt', 'Aktiviteten er blevet opdateret');
         setIsEditing(false);
         setEditScope('single');
+        setExternalIntensityApplyScope('single');
         return;
       }
 
@@ -2075,9 +2150,16 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           categoryId: editCategory?.id,
           time: effectiveTime,
           endTime: endTimePayload,
-          intensityEnabled: editIntensityEnabled,
-          intensity: intensityPayload,
         });
+
+        if (shouldApplyIntensityByCategory && resolvedCategoryId) {
+          await updateIntensityByCategory(resolvedCategoryId, editIntensityEnabled);
+        } else if (intensityChanged) {
+          await updateActivitySingle(activity.id, {
+            intensityEnabled: editIntensityEnabled,
+            intensity: intensityPayload,
+          });
+        }
 
         applyActivityUpdates({
           title: editTitle,
@@ -2092,6 +2174,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         Alert.alert('Gemt', 'Hele serien er blevet opdateret');
         setIsEditing(false);
         setEditScope('single');
+        setExternalIntensityApplyScope('single');
         await refreshData();
         return;
       }
@@ -2103,9 +2186,16 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         date: editDate,
         time: effectiveTime,
         endTime: endTimePayload,
-        intensityEnabled: editIntensityEnabled,
-        intensity: intensityPayload,
+        ...(shouldApplyIntensityByCategory
+          ? {}
+          : {
+              intensityEnabled: editIntensityEnabled,
+              intensity: intensityPayload,
+            }),
       });
+      if (shouldApplyIntensityByCategory && resolvedCategoryId) {
+        await updateIntensityByCategory(resolvedCategoryId, editIntensityEnabled);
+      }
 
       applyActivityUpdates({
         title: editTitle,
@@ -2121,6 +2211,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       Alert.alert('Gemt', 'Aktiviteten er blevet opdateret');
       setIsEditing(false);
       setEditScope('single');
+      setExternalIntensityApplyScope('single');
       await refreshData();
     } catch (error) {
       console.error('Error saving activity:', error);
@@ -2139,6 +2230,9 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     editEndTime,
     editIntensity,
     editIntensityEnabled,
+    externalIntensityApplyScope,
+    activityIntensityEnabled,
+    activityIntensityValue,
     editLocation,
     editScope,
     editTime,
@@ -2151,6 +2245,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     router,
     selectedDays,
     updateActivitySeries,
+    updateIntensityByCategory,
     updateActivitySingle,
   ]);
 
@@ -2444,56 +2539,17 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             testID="activity.details.edit.intensityToggle"
           />
         </View>
-
-        {editIntensityEnabled ? (
-          <>
-            <Text style={[styles.intensityHint, { color: textSecondaryColor }]}>Vælg niveau (1-10)</Text>
-            <View style={styles.intensityPickerRow}>
-              {intensityOptions.map((val) => {
-                const selected = val === editIntensity;
-                return (
-                  <TouchableOpacity
-                    key={String(val)}
-                    style={[
-                      styles.intensityPickerChip,
-                      {
-                        backgroundColor: selected ? colors.primary : fieldBackgroundColor,
-                        borderWidth: 1,
-                        borderColor: selected ? colors.primary : fieldBorderColor,
-                      },
-                    ]}
-                    onPress={() => handleIntensitySelect(val)}
-                    activeOpacity={0.8}
-                    testID={`activity.details.edit.intensityOption.${val}`}
-                  >
-                    <Text style={[styles.intensityPickerText, selected ? styles.intensityPickerTextSelected : { color: textColor }]}>
-                      {val}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            <Text style={[styles.intensitySelectionText, { color: textColor }]}>
-              Valgt: {editIntensity ?? '–'}/10
-            </Text>
-          </>
-        ) : null}
       </View>
     );
   }, [
     cardBgColor,
-    editIntensity,
     editIntensityEnabled,
     fieldBackgroundColor,
-    fieldBorderColor,
-    handleIntensitySelect,
     handleIntensityToggle,
-    intensityOptions,
     isDark,
     isEditing,
     sectionTitleColor,
     textColor,
-    textSecondaryColor,
   ]);
 
   const renderTaskItem = useCallback(
@@ -3985,6 +4041,55 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         />
       )}
 
+      <Modal
+        visible={externalIntensityModal.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={handleExternalIntensityCancel}
+      >
+        <View style={styles.intensityScopeModalBackdrop}>
+          <View
+            style={[styles.intensityScopeModalCard, { backgroundColor: cardBgColor }]}
+            testID="activity.details.intensityScopeModal"
+          >
+            <Text style={[styles.intensityScopeModalTitle, { color: textColor }]}>
+              {externalIntensityModal.nextEnabled
+                ? 'Vil du tilføje intensitet til alle aktiviteter med samme kategori?'
+                : 'Vil du fjerne intensitet fra alle aktiviteter med samme kategori?'}
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.intensityScopeModalButton, { backgroundColor: colors.primary }]}
+              onPress={handleExternalIntensityApplyAll}
+              activeOpacity={0.85}
+              testID="activity.details.intensityScopeModal.all"
+            >
+              <Text style={styles.intensityScopeModalPrimaryText}>
+                {externalIntensityModal.nextEnabled ? 'Ja, tilføj til alle' : 'Ja, fjern fra alle'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.intensityScopeModalButton, styles.intensityScopeModalSecondaryButton, { borderColor: fieldBorderColor }]}
+              onPress={handleExternalIntensityApplySingle}
+              activeOpacity={0.85}
+              testID="activity.details.intensityScopeModal.single"
+            >
+              <Text style={[styles.intensityScopeModalSecondaryText, { color: textColor }]}>Nej, kun denne</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.intensityScopeModalCancelButton}
+              onPress={handleExternalIntensityCancel}
+              activeOpacity={0.85}
+              testID="activity.details.intensityScopeModal.cancel"
+            >
+              <Text style={[styles.intensityScopeModalCancelText, { color: textSecondaryColor }]}>Annuller</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <TaskScoreNoteModal
         visible={Boolean(feedbackModalTask)}
         title={feedbackModalTask ? stripLeadingFeedbackPrefix(feedbackModalTask.task.title ?? 'Feedback') : 'Feedback'}
@@ -4628,6 +4733,55 @@ const styles = StyleSheet.create({
   taskTitle: {
     fontSize: 16,
     fontWeight: '700',
+  },
+  intensityScopeModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  intensityScopeModalCard: {
+    width: '100%',
+    borderRadius: 16,
+    padding: 16,
+  },
+  intensityScopeModalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    lineHeight: 22,
+    marginBottom: 14,
+  },
+  intensityScopeModalButton: {
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  intensityScopeModalPrimaryText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  intensityScopeModalSecondaryButton: {
+    borderWidth: 1,
+    backgroundColor: 'transparent',
+  },
+  intensityScopeModalSecondaryText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  intensityScopeModalCancelButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    marginTop: 10,
+  },
+  intensityScopeModalCancelText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   headerChevronWrap: {
     position: 'absolute',

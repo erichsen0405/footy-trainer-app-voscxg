@@ -1,10 +1,14 @@
 import React from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { Alert } from 'react-native';
 
 import * as ActivityDetailsModule from '../app/activity-details';
 
 const mockRefreshData = jest.fn().mockResolvedValue(undefined);
 const mockSupabaseFrom = jest.fn();
+const mockUpdateActivitySingle = jest.fn().mockResolvedValue(undefined);
+const mockUpdateIntensityByCategory = jest.fn().mockResolvedValue(undefined);
+const mockUpdateActivitySeries = jest.fn().mockResolvedValue(undefined);
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({
@@ -21,8 +25,9 @@ jest.mock('@/hooks/useUserRole', () => ({
 
 jest.mock('@/contexts/FootballContext', () => ({
   useFootball: () => ({
-    updateActivitySingle: jest.fn(),
-    updateActivitySeries: jest.fn(),
+    updateActivitySingle: mockUpdateActivitySingle,
+    updateIntensityByCategory: mockUpdateIntensityByCategory,
+    updateActivitySeries: mockUpdateActivitySeries,
     toggleTaskCompletion: jest.fn(),
     deleteActivityTask: jest.fn(),
     deleteActivitySingle: jest.fn(),
@@ -202,5 +207,205 @@ describe('ActivityDetails add-task flow', () => {
     fireEvent.press(getByTestId('mock.createActivityTaskModal.complete'));
     await waitFor(() => expect(mockSupabaseFrom).toHaveBeenCalledWith('activities'));
     expect(await findByTestId('activity.taskRow.task-1')).toBeTruthy();
+  });
+
+  it('reverts intensity toggle on cancel from category modal', async () => {
+    const sampleActivity = {
+      id: 'activity-plain-1',
+      title: 'Session',
+      date: new Date('2026-02-10T10:00:00.000Z'),
+      time: '10:00',
+      location: 'Pitch',
+      category: {
+        id: 'cat-1',
+        name: 'Training',
+        color: '#123456',
+        emoji: '⚽️',
+      },
+      tasks: [],
+      isExternal: false,
+      intensityEnabled: false,
+      intensity: null,
+    };
+
+    const { getByTestId, queryByTestId } = render(
+      <ActivityDetailsModule.ActivityDetailsContent
+        activity={sampleActivity as any}
+        categories={[sampleActivity.category as any]}
+        isAdmin
+        isDark={false}
+        onBack={jest.fn()}
+        onActivityUpdated={jest.fn()}
+      />
+    );
+
+    fireEvent.press(getByTestId('activity.details.editButton'));
+    fireEvent(getByTestId('activity.details.edit.intensityToggle'), 'valueChange', true);
+    expect(getByTestId('activity.details.intensityScopeModal')).toBeTruthy();
+
+    fireEvent.press(getByTestId('activity.details.intensityScopeModal.cancel'));
+    expect(queryByTestId('activity.details.intensityScopeModal')).toBeNull();
+    expect(getByTestId('activity.details.edit.intensityToggle').props.value).toBe(false);
+  });
+
+  it('applies external intensity to category when user confirms "til alle"', async () => {
+    const externalActivity = {
+      id: 'external-meta-2',
+      title: 'External Session',
+      date: new Date('2026-02-10T10:00:00.000Z'),
+      time: '10:00',
+      location: 'Pitch',
+      category: {
+        id: 'cat-1',
+        name: 'Training',
+        color: '#123456',
+        emoji: '⚽️',
+      },
+      tasks: [],
+      isExternal: true,
+      intensityEnabled: false,
+      intensity: null,
+    };
+
+    const { getByTestId } = render(
+      <ActivityDetailsModule.ActivityDetailsContent
+        activity={externalActivity as any}
+        categories={[externalActivity.category as any]}
+        isAdmin
+        isDark={false}
+        onBack={jest.fn()}
+        onActivityUpdated={jest.fn()}
+      />
+    );
+
+    fireEvent.press(getByTestId('activity.details.editButton'));
+    fireEvent(getByTestId('activity.details.edit.intensityToggle'), 'valueChange', true);
+    fireEvent.press(getByTestId('activity.details.intensityScopeModal.all'));
+    fireEvent.press(getByTestId('activity.details.saveEditButton'));
+
+    await waitFor(() =>
+      expect(mockUpdateIntensityByCategory).toHaveBeenCalledWith('cat-1', true)
+    );
+    await waitFor(() => expect(mockUpdateActivitySingle).toHaveBeenCalled());
+    const externalUpdatePayload = mockUpdateActivitySingle.mock.calls.find(
+      (call) => call?.[0] === 'external-meta-2'
+    )?.[1];
+    expect(externalUpdatePayload).toEqual(
+      expect.objectContaining({
+        categoryId: 'cat-1',
+      })
+    );
+    expect(externalUpdatePayload).not.toHaveProperty('intensityEnabled');
+    expect(externalUpdatePayload).not.toHaveProperty('intensity');
+  });
+
+  it('applies intensity by category for internal non-series activities', async () => {
+    const internalActivity = {
+      id: 'activity-internal-2',
+      title: 'Internal Session',
+      date: new Date('2026-02-10T10:00:00.000Z'),
+      time: '10:00',
+      location: 'Pitch',
+      category: {
+        id: 'cat-1',
+        name: 'Training',
+        color: '#123456',
+        emoji: '⚽️',
+      },
+      tasks: [],
+      isExternal: false,
+      intensityEnabled: false,
+      intensity: null,
+    };
+
+    const { getByTestId } = render(
+      <ActivityDetailsModule.ActivityDetailsContent
+        activity={internalActivity as any}
+        categories={[internalActivity.category as any]}
+        isAdmin
+        isDark={false}
+        onBack={jest.fn()}
+        onActivityUpdated={jest.fn()}
+      />
+    );
+
+    fireEvent.press(getByTestId('activity.details.editButton'));
+    fireEvent(getByTestId('activity.details.edit.intensityToggle'), 'valueChange', true);
+    fireEvent.press(getByTestId('activity.details.intensityScopeModal.all'));
+    fireEvent.press(getByTestId('activity.details.saveEditButton'));
+
+    await waitFor(() =>
+      expect(mockUpdateIntensityByCategory).toHaveBeenCalledWith('cat-1', true)
+    );
+    await waitFor(() => expect(mockUpdateActivitySingle).toHaveBeenCalled());
+    const internalUpdatePayload = mockUpdateActivitySingle.mock.calls.find(
+      (call) => call?.[0] === 'activity-internal-2'
+    )?.[1];
+    expect(internalUpdatePayload).toEqual(
+      expect.objectContaining({
+        categoryId: 'cat-1',
+      })
+    );
+    expect(internalUpdatePayload).not.toHaveProperty('intensityEnabled');
+    expect(internalUpdatePayload).not.toHaveProperty('intensity');
+  });
+
+  it('does not propagate intensity via series edit scope and uses category apply instead', async () => {
+    const seriesActivity = {
+      id: 'activity-series-1',
+      title: 'Serie aktivitet',
+      date: new Date('2026-02-10T10:00:00.000Z'),
+      time: '10:00',
+      location: 'Pitch',
+      category: {
+        id: 'cat-1',
+        name: 'Training',
+        color: '#123456',
+        emoji: '⚽️',
+      },
+      tasks: [],
+      isExternal: false,
+      seriesId: 'series-1',
+      intensityEnabled: false,
+      intensity: null,
+    };
+
+    const alertSpy = jest
+      .spyOn(Alert, 'alert')
+      .mockImplementation((...args: any[]) => {
+        const [title, _msg, buttons] = args;
+        if (title === 'Rediger serie') {
+          const seriesButton = (buttons || []).find((button: any) => button?.text === 'Hele serien');
+          seriesButton?.onPress?.();
+        }
+      });
+
+    const { getByTestId } = render(
+      <ActivityDetailsModule.ActivityDetailsContent
+        activity={seriesActivity as any}
+        categories={[seriesActivity.category as any]}
+        isAdmin
+        isDark={false}
+        onBack={jest.fn()}
+        onActivityUpdated={jest.fn()}
+      />
+    );
+
+    fireEvent.press(getByTestId('activity.details.editButton'));
+    fireEvent(getByTestId('activity.details.edit.intensityToggle'), 'valueChange', true);
+    fireEvent.press(getByTestId('activity.details.intensityScopeModal.all'));
+    fireEvent.press(getByTestId('activity.details.saveEditButton'));
+
+    await waitFor(() => expect(mockUpdateIntensityByCategory).toHaveBeenCalledWith('cat-1', true));
+    await waitFor(() => expect(mockUpdateActivitySeries).toHaveBeenCalled());
+    expect(mockUpdateActivitySeries).toHaveBeenCalledWith(
+      'series-1',
+      expect.not.objectContaining({
+        intensityEnabled: expect.anything(),
+        intensity: expect.anything(),
+      })
+    );
+
+    alertSpy.mockRestore();
   });
 });

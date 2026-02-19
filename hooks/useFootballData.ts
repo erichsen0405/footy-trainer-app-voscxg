@@ -33,6 +33,29 @@ type ExternalTaskForPerformance = {
   } | null;
 };
 
+type InternalIntensityForPerformance = {
+  id?: string | number | null;
+  activity_date?: string | null;
+  intensity_enabled?: boolean | null;
+  intensity?: number | null;
+};
+
+type ExternalIntensityForPerformance = {
+  id?: string | number | null;
+  intensity_enabled?: boolean | null;
+  intensity?: number | null;
+  events_external?:
+    | {
+        start_date?: string | null;
+        deleted?: boolean | null;
+      }
+    | {
+        start_date?: string | null;
+        deleted?: boolean | null;
+      }[]
+    | null;
+};
+
 export const shouldIncludeExternalTaskInPerformance = (
   task: ExternalTaskForPerformance | null | undefined
 ): boolean => {
@@ -43,6 +66,73 @@ export const shouldIncludeExternalTaskInPerformance = (
   const isSoftDeleted = externalEvent?.deleted === true;
   const isCompleted = task?.completed === true;
   return !isSoftDeleted || isCompleted;
+};
+
+export const isIntensityTaskCompleted = (
+  row: { intensity?: number | null } | null | undefined
+): boolean => {
+  return typeof row?.intensity === 'number' && Number.isFinite(row.intensity);
+};
+
+const shouldIncludeInternalIntensityInPerformance = (
+  row: InternalIntensityForPerformance | null | undefined
+): boolean => {
+  const activityDate = typeof row?.activity_date === 'string' ? row.activity_date : null;
+  if (!activityDate) return false;
+  return row?.intensity_enabled === true || isIntensityTaskCompleted(row);
+};
+
+export const shouldIncludeExternalIntensityInPerformance = (
+  row: ExternalIntensityForPerformance | null | undefined
+): boolean => {
+  const externalEventRaw = row?.events_external;
+  const externalEvent = Array.isArray(externalEventRaw) ? externalEventRaw[0] : externalEventRaw;
+  const startDate = typeof externalEvent?.start_date === 'string' ? externalEvent.start_date : null;
+  if (!startDate) return false;
+
+  const completed = isIntensityTaskCompleted(row);
+  const enabled = row?.intensity_enabled === true;
+  if (!enabled && !completed) return false;
+
+  const isSoftDeleted = externalEvent?.deleted === true;
+  return !isSoftDeleted || completed;
+};
+
+export const calculateIntensityPerformanceTotals = ({
+  internalIntensityRows,
+  externalIntensityRows,
+  todayIso,
+}: {
+  internalIntensityRows: InternalIntensityForPerformance[];
+  externalIntensityRows: ExternalIntensityForPerformance[];
+  todayIso: string;
+}) => {
+  const internalWeekly = internalIntensityRows.filter(shouldIncludeInternalIntensityInPerformance);
+  const externalWeekly = externalIntensityRows.filter(shouldIncludeExternalIntensityInPerformance);
+
+  const internalCompletedWeek = internalWeekly.filter(isIntensityTaskCompleted).length;
+  const externalCompletedWeek = externalWeekly.filter(isIntensityTaskCompleted).length;
+
+  const internalUpToToday = internalWeekly.filter(row => {
+    const activityDate = typeof row?.activity_date === 'string' ? row.activity_date.slice(0, 10) : null;
+    return activityDate ? activityDate <= todayIso : false;
+  });
+
+  const externalUpToToday = externalWeekly.filter(row => {
+    const externalEventRaw = row?.events_external;
+    const externalEvent = Array.isArray(externalEventRaw) ? externalEventRaw[0] : externalEventRaw;
+    const startDate = typeof externalEvent?.start_date === 'string' ? externalEvent.start_date.slice(0, 10) : null;
+    return startDate ? startDate <= todayIso : false;
+  });
+
+  return {
+    totalWeek: internalWeekly.length + externalWeekly.length,
+    completedWeek: internalCompletedWeek + externalCompletedWeek,
+    totalToday: internalUpToToday.length + externalUpToToday.length,
+    completedToday:
+      internalUpToToday.filter(isIntensityTaskCompleted).length +
+      externalUpToToday.filter(isIntensityTaskCompleted).length,
+  };
 };
 
 export const useFootballData = () => {
@@ -525,7 +615,7 @@ export const useFootballData = () => {
       const endIsoExclusive = addDays(weekRange.end, 1).toISOString().slice(0, 10);
       const todayIso = new Date().toISOString().slice(0, 10);
 
-      const [internalRes, externalRes] = await Promise.all([
+      const [internalRes, externalRes, internalIntensityRes, externalIntensityRes] = await Promise.all([
         supabase
           .from('activity_tasks')
           .select('id, activity_id, completed, title, description, task_template_id, feedback_template_id, activities!inner(activity_date)')
@@ -536,13 +626,27 @@ export const useFootballData = () => {
           .select('id, completed, events_local_meta!inner(events_external!inner(start_date, deleted))')
           .gte('events_local_meta.events_external.start_date', startIso)
           .lt('events_local_meta.events_external.start_date', endIsoExclusive),
+        supabase
+          .from('activities')
+          .select('id, activity_date, intensity, intensity_enabled')
+          .gte('activity_date', startIso)
+          .lt('activity_date', endIsoExclusive),
+        supabase
+          .from('events_local_meta')
+          .select('id, intensity, intensity_enabled, events_external!inner(start_date, deleted)')
+          .gte('events_external.start_date', startIso)
+          .lt('events_external.start_date', endIsoExclusive),
       ]);
 
       if (internalRes.error) throw internalRes.error;
       if (externalRes.error) throw externalRes.error;
+      if (internalIntensityRes.error) throw internalIntensityRes.error;
+      if (externalIntensityRes.error) throw externalIntensityRes.error;
 
       const internalWeeklyTasks = internalRes.data || [];
       const externalWeeklyTasks = (externalRes.data || []).filter(shouldIncludeExternalTaskInPerformance);
+      const internalIntensityWeekly = (internalIntensityRes.data || []) as InternalIntensityForPerformance[];
+      const externalIntensityWeekly = (externalIntensityRes.data || []) as ExternalIntensityForPerformance[];
 
       const normalizeId = (value: unknown): string | null => {
         if (value === null || value === undefined) return null;
@@ -643,10 +747,17 @@ export const useFootballData = () => {
         return normalized ? normalized <= todayIso : false;
       });
 
-      const totalToday = internalTasksUpToToday.length + externalTasksUpToToday.length;
-      const completedToday =
+      const taskTotalToday = internalTasksUpToToday.length + externalTasksUpToToday.length;
+      const taskCompletedToday =
         internalTasksUpToToday.filter(isInternalTaskCompleted).length +
         externalTasksUpToToday.filter(task => task.completed).length;
+      const intensityTotals = calculateIntensityPerformanceTotals({
+        internalIntensityRows: internalIntensityWeekly,
+        externalIntensityRows: externalIntensityWeekly,
+        todayIso,
+      });
+      const totalToday = taskTotalToday + intensityTotals.totalToday;
+      const completedToday = taskCompletedToday + intensityTotals.completedToday;
       const homeOpenTaskIds = [
         ...internalTasksUpToToday
           .filter(task => !isInternalTaskCompleted(task))
@@ -658,8 +769,8 @@ export const useFootballData = () => {
           .filter(id => id !== 'external:'),
       ];
 
-      const totalWeek = internalTotalWeek + externalTotalWeek;
-      const completedWeek = internalCompletedWeek + externalCompletedWeek;
+      const totalWeek = internalTotalWeek + externalTotalWeek + intensityTotals.totalWeek;
+      const completedWeek = internalCompletedWeek + externalCompletedWeek + intensityTotals.completedWeek;
 
       const percentage = totalToday > 0 ? Math.round((completedToday / totalToday) * 100) : 0;
 
@@ -1311,6 +1422,21 @@ export const useFootballData = () => {
     }
   }, [applyActivityPatch, buildOptimisticActivityUpdates, fetchActivities, refreshData, resolveIsExternal]);
 
+  const updateIntensityByCategory = useCallback(async (
+    categoryId: string,
+    intensityEnabled: boolean
+  ) => {
+    try {
+      const userId = await getCurrentUserId();
+      await activityService.updateIntensityByCategory(userId, categoryId, intensityEnabled);
+      await Promise.all([fetchActivities(), fetchCurrentWeekStats()]);
+      emitActivitiesRefreshRequested({ reason: 'category_intensity_updated' });
+    } catch (error) {
+      console.error('[updateIntensityByCategory] failed:', error);
+      throw error;
+    }
+  }, [fetchActivities, fetchCurrentWeekStats, getCurrentUserId]);
+
   const updateActivitySeries = useCallback(async (
     seriesId: string,
     updates: {
@@ -1496,6 +1622,7 @@ export const useFootballData = () => {
     addActivity,
     updateActivity,
     updateActivitySingle,
+    updateIntensityByCategory,
     updateActivitySeries,
     deleteActivity,
     createActivity,

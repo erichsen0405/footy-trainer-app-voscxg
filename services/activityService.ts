@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { resolveExternalCategoryIntensityTargetIds } from '@/utils/activityIntensity';
 
 export interface CreateActivityData {
   title: string;
@@ -371,6 +372,132 @@ export const activityService = {
         .abortSignal(signal);
 
       if (error) throw error;
+    }
+  },
+
+  async updateIntensityByCategory(
+    userId: string,
+    categoryId: string,
+    intensityEnabled: boolean,
+    signal: AbortSignal = new AbortController().signal
+  ): Promise<void> {
+    const nowIso = new Date().toISOString();
+    const normalizedCategoryId = typeof categoryId === 'string' ? categoryId.trim() : '';
+    if (!normalizedCategoryId) {
+      throw new Error('Category ID is required');
+    }
+
+    const { error: ruleError } = await (supabase as any)
+      .from('external_category_intensity_rules')
+      .upsert(
+        {
+          user_id: userId,
+          category_id: normalizedCategoryId,
+          intensity_enabled: intensityEnabled,
+          updated_at: nowIso,
+        },
+        { onConflict: 'user_id,category_id' }
+      )
+      .abortSignal(signal);
+
+    if (ruleError) {
+      throw ruleError;
+    }
+
+    const { data: internalCandidates, error: internalCandidatesError } = await supabase
+      .from('activities')
+      .select('id, intensity, intensity_enabled')
+      .eq('user_id', userId)
+      .eq('category_id', normalizedCategoryId)
+      .abortSignal(signal);
+
+    if (internalCandidatesError) {
+      throw internalCandidatesError;
+    }
+
+    const { data: externalCandidates, error: externalCandidatesError } = await supabase
+      .from('events_local_meta')
+      .select('id, intensity, intensity_enabled')
+      .eq('user_id', userId)
+      .eq('category_id', normalizedCategoryId)
+      .abortSignal(signal);
+
+    if (externalCandidatesError) {
+      throw externalCandidatesError;
+    }
+
+    const internalTargetIds = resolveExternalCategoryIntensityTargetIds(
+      (internalCandidates || []).map((row: any) => ({
+        id: String(row?.id ?? ''),
+        intensityEnabled: row?.intensity_enabled ?? false,
+        intensity: row?.intensity ?? null,
+      })),
+      intensityEnabled
+    );
+
+    const externalTargetIds = resolveExternalCategoryIntensityTargetIds(
+      (externalCandidates || []).map((row: any) => ({
+        id: String(row?.id ?? ''),
+        intensityEnabled: row?.intensity_enabled ?? false,
+        intensity: row?.intensity ?? null,
+      })),
+      intensityEnabled
+    );
+
+    if (!internalTargetIds.length && !externalTargetIds.length) {
+      return;
+    }
+
+    const updateData = intensityEnabled
+      ? {
+          intensity_enabled: true,
+          updated_at: nowIso,
+          last_local_modified: nowIso,
+        }
+      : {
+          intensity_enabled: false,
+          intensity: null,
+          intensity_note: null,
+          updated_at: nowIso,
+          last_local_modified: nowIso,
+        };
+
+    if (internalTargetIds.length) {
+      const internalUpdateData = intensityEnabled
+        ? {
+            intensity_enabled: true,
+            updated_at: nowIso,
+          }
+        : {
+            intensity_enabled: false,
+            intensity: null,
+            intensity_note: null,
+            updated_at: nowIso,
+          };
+
+      const { error: internalUpdateError } = await supabase
+        .from('activities')
+        .update(internalUpdateData)
+        .in('id', internalTargetIds)
+        .eq('user_id', userId)
+        .abortSignal(signal);
+
+      if (internalUpdateError) {
+        throw internalUpdateError;
+      }
+    }
+
+    if (externalTargetIds.length) {
+      const { error: externalUpdateError } = await supabase
+        .from('events_local_meta')
+        .update(updateData)
+        .in('id', externalTargetIds)
+        .eq('user_id', userId)
+        .abortSignal(signal);
+
+      if (externalUpdateError) {
+        throw externalUpdateError;
+      }
     }
   },
 
