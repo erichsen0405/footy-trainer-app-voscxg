@@ -31,6 +31,11 @@ export interface UpdateActivityData {
   intensityNote?: string | null;
 }
 
+export interface ActivityContextScope {
+  playerId?: string | null;
+  teamId?: string | null;
+}
+
 const normalizeEndTime = (value?: string | null): string | null => {
   if (typeof value !== 'string') {
     return null;
@@ -84,6 +89,14 @@ const normalizeIntensity = (value?: number | null): number | null => {
 const normalizeIntensityNote = (value?: string | null): string | null => {
   if (typeof value !== 'string') {
     return value === null ? null : null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+};
+
+const normalizeScopeId = (value?: string | null): string | null => {
+  if (typeof value !== 'string') {
+    return null;
   }
   const trimmed = value.trim();
   return trimmed.length ? trimmed : null;
@@ -379,47 +392,82 @@ export const activityService = {
     userId: string,
     categoryId: string,
     intensityEnabled: boolean,
+    scope: ActivityContextScope = {},
     signal: AbortSignal = new AbortController().signal
   ): Promise<void> {
     const nowIso = new Date().toISOString();
     const normalizedCategoryId = typeof categoryId === 'string' ? categoryId.trim() : '';
+    const normalizedPlayerId = normalizeScopeId(scope.playerId);
+    const normalizedTeamId = normalizeScopeId(scope.teamId);
+    const shouldPersistGlobalRule = !normalizedPlayerId && !normalizedTeamId;
+
     if (!normalizedCategoryId) {
       throw new Error('Category ID is required');
     }
 
-    const { error: ruleError } = await (supabase as any)
-      .from('external_category_intensity_rules')
-      .upsert(
-        {
-          user_id: userId,
-          category_id: normalizedCategoryId,
-          intensity_enabled: intensityEnabled,
-          updated_at: nowIso,
-        },
-        { onConflict: 'user_id,category_id' }
-      )
-      .abortSignal(signal);
+    if (shouldPersistGlobalRule) {
+      const { error: ruleError } = await (supabase as any)
+        .from('external_category_intensity_rules')
+        .upsert(
+          {
+            user_id: userId,
+            category_id: normalizedCategoryId,
+            intensity_enabled: intensityEnabled,
+            updated_at: nowIso,
+          },
+          { onConflict: 'user_id,category_id' }
+        )
+        .abortSignal(signal);
 
-    if (ruleError) {
-      throw ruleError;
+      if (ruleError) {
+        throw ruleError;
+      }
     }
 
-    const { data: internalCandidates, error: internalCandidatesError } = await supabase
+    let internalCandidatesQuery = supabase
       .from('activities')
       .select('id, intensity, intensity_enabled')
       .eq('user_id', userId)
-      .eq('category_id', normalizedCategoryId)
+      .eq('category_id', normalizedCategoryId);
+
+    if (normalizedPlayerId) {
+      internalCandidatesQuery = internalCandidatesQuery.eq('player_id', normalizedPlayerId);
+    } else {
+      internalCandidatesQuery = internalCandidatesQuery.is('player_id', null);
+    }
+
+    if (normalizedTeamId) {
+      internalCandidatesQuery = internalCandidatesQuery.eq('team_id', normalizedTeamId);
+    } else {
+      internalCandidatesQuery = internalCandidatesQuery.is('team_id', null);
+    }
+
+    const { data: internalCandidates, error: internalCandidatesError } = await internalCandidatesQuery
       .abortSignal(signal);
 
     if (internalCandidatesError) {
       throw internalCandidatesError;
     }
 
-    const { data: externalCandidates, error: externalCandidatesError } = await supabase
+    let externalCandidatesQuery = supabase
       .from('events_local_meta')
       .select('id, intensity, intensity_enabled')
       .eq('user_id', userId)
-      .eq('category_id', normalizedCategoryId)
+      .eq('category_id', normalizedCategoryId);
+
+    if (normalizedPlayerId) {
+      externalCandidatesQuery = externalCandidatesQuery.eq('player_id', normalizedPlayerId);
+    } else {
+      externalCandidatesQuery = externalCandidatesQuery.is('player_id', null);
+    }
+
+    if (normalizedTeamId) {
+      externalCandidatesQuery = externalCandidatesQuery.eq('team_id', normalizedTeamId);
+    } else {
+      externalCandidatesQuery = externalCandidatesQuery.is('team_id', null);
+    }
+
+    const { data: externalCandidates, error: externalCandidatesError } = await externalCandidatesQuery
       .abortSignal(signal);
 
     if (externalCandidatesError) {
@@ -475,12 +523,26 @@ export const activityService = {
             updated_at: nowIso,
           };
 
-      const { error: internalUpdateError } = await supabase
+      let internalUpdateQuery = supabase
         .from('activities')
         .update(internalUpdateData)
         .in('id', internalTargetIds)
         .eq('user_id', userId)
-        .abortSignal(signal);
+        .eq('category_id', normalizedCategoryId);
+
+      if (normalizedPlayerId) {
+        internalUpdateQuery = internalUpdateQuery.eq('player_id', normalizedPlayerId);
+      } else {
+        internalUpdateQuery = internalUpdateQuery.is('player_id', null);
+      }
+
+      if (normalizedTeamId) {
+        internalUpdateQuery = internalUpdateQuery.eq('team_id', normalizedTeamId);
+      } else {
+        internalUpdateQuery = internalUpdateQuery.is('team_id', null);
+      }
+
+      const { error: internalUpdateError } = await internalUpdateQuery.abortSignal(signal);
 
       if (internalUpdateError) {
         throw internalUpdateError;
@@ -488,12 +550,26 @@ export const activityService = {
     }
 
     if (externalTargetIds.length) {
-      const { error: externalUpdateError } = await supabase
+      let externalUpdateQuery = supabase
         .from('events_local_meta')
         .update(updateData)
         .in('id', externalTargetIds)
         .eq('user_id', userId)
-        .abortSignal(signal);
+        .eq('category_id', normalizedCategoryId);
+
+      if (normalizedPlayerId) {
+        externalUpdateQuery = externalUpdateQuery.eq('player_id', normalizedPlayerId);
+      } else {
+        externalUpdateQuery = externalUpdateQuery.is('player_id', null);
+      }
+
+      if (normalizedTeamId) {
+        externalUpdateQuery = externalUpdateQuery.eq('team_id', normalizedTeamId);
+      } else {
+        externalUpdateQuery = externalUpdateQuery.is('team_id', null);
+      }
+
+      const { error: externalUpdateError } = await externalUpdateQuery.abortSignal(signal);
 
       if (externalUpdateError) {
         throw externalUpdateError;

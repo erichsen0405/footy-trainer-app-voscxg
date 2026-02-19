@@ -1430,14 +1430,28 @@ export const useFootballData = () => {
   ) => {
     try {
       const userId = await getCurrentUserId();
-      await activityService.updateIntensityByCategory(userId, categoryId, intensityEnabled);
+      const scope =
+        adminMode === 'player' && adminTargetType === 'player' && adminTargetId
+          ? { playerId: adminTargetId, teamId: null }
+          : adminMode === 'team' && adminTargetType === 'team' && adminTargetId
+            ? { playerId: null, teamId: adminTargetId }
+            : { playerId: null, teamId: null };
+
+      await activityService.updateIntensityByCategory(userId, categoryId, intensityEnabled, scope);
       await Promise.all([fetchActivities(), fetchCurrentWeekStats()]);
       emitActivitiesRefreshRequested({ reason: 'category_intensity_updated' });
     } catch (error) {
       console.error('[updateIntensityByCategory] failed:', error);
       throw error;
     }
-  }, [fetchActivities, fetchCurrentWeekStats, getCurrentUserId]);
+  }, [
+    adminMode,
+    adminTargetId,
+    adminTargetType,
+    fetchActivities,
+    fetchCurrentWeekStats,
+    getCurrentUserId,
+  ]);
 
   const updateActivitySeries = useCallback(async (
     seriesId: string,
