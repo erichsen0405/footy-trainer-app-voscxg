@@ -48,6 +48,7 @@ interface FootballContextType {
     intensityEnabled?: boolean;
     intensityNote?: string | null;
   }) => Promise<void>;
+  updateIntensityByCategory: (categoryId: string, intensityEnabled: boolean) => Promise<void>;
   updateActivitySeries: (seriesId: string, updates: {
     title?: string;
     location?: string;
@@ -101,6 +102,7 @@ export function FootballProvider({ children }: { children: ReactNode }) {
     createActivity,
     updateActivity,
     updateActivitySingle,
+    updateIntensityByCategory,
     updateActivitySeries,
     deleteActivity,
     deleteActivitySingle,
@@ -182,6 +184,7 @@ export function FootballProvider({ children }: { children: ReactNode }) {
       createActivity: safeCreateActivity,
       updateActivity,
       updateActivitySingle,
+      updateIntensityByCategory,
       updateActivitySeries,
       deleteActivity,
       deleteActivitySingle,
@@ -218,6 +221,7 @@ export function FootballProvider({ children }: { children: ReactNode }) {
       safeCreateActivity,
       updateActivity,
       updateActivitySingle,
+      updateIntensityByCategory,
       updateActivitySeries,
       deleteActivity,
       deleteActivitySingle,
@@ -256,4 +260,3 @@ export function useFootball() {
   }
   return context;
 }
-

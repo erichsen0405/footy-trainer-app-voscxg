@@ -109,6 +109,11 @@ tags:
     timeout: 15000
 - tapOn:
     id: '^activity\.create\.intensityToggle$'
+- runFlow:
+    when:
+      visible: '^Ja, tilføj til alle$'
+    commands:
+      - tapOn: '^Ja, tilføj til alle$'
 - tapOn:
     id: '^activity\.create\.submitButton$'
 - runFlow:
