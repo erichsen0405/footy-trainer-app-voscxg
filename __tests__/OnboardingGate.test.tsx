@@ -165,4 +165,44 @@ describe('OnboardingGate startup hydration', () => {
     expect(screen.queryByText('Kunne ikke klargøre konto. Prøv igen.')).toBeNull();
     expect(screen.queryByTestId('onboarding.error.retryButton')).toBeNull();
   });
+
+  it('does not overwrite newer hydrated state when retry times out later', async () => {
+    mockGetUser.mockImplementation(() => new Promise(() => {}));
+
+    render(
+      <OnboardingGate>
+        <Text>App indhold</Text>
+      </OnboardingGate>
+    );
+
+    await act(async () => {
+      jest.advanceTimersByTime(12000);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId('onboarding.error.retryButton')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('onboarding.error.retryButton'));
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Klargører konto')).toBeTruthy();
+
+    await act(async () => {
+      authStateHandler?.('INITIAL_SESSION', { user: null });
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText('Klargører konto')).toBeNull();
+    expect(screen.queryByText('Kunne ikke klargøre konto. Prøv igen.')).toBeNull();
+
+    await act(async () => {
+      jest.advanceTimersByTime(12000);
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText('Kunne ikke klargøre konto. Prøv igen.')).toBeNull();
+    expect(screen.queryByTestId('onboarding.error.retryButton')).toBeNull();
+  });
 });
