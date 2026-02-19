@@ -315,6 +315,7 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
         STARTUP_TIMEOUT_MS,
         'Onboarding retry auth lookup timed out'
       );
+      if (!isMountedRef.current || hydrationRunRef.current !== retryRunId) return;
       await refreshRoleAndSubscription(data.user ?? null);
     } catch (error) {
       console.warn('[OnboardingGate] Startup retry failed', error);
