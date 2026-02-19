@@ -28,6 +28,12 @@ export interface ScheduledNotification {
 const NOTIFICATION_PERMISSION_KEY = '@notification_permission_status';
 const NOTIFICATION_IDENTIFIERS_KEY = '@notification_identifiers';
 
+function sanitizeNotificationLabel(value: unknown, fallback: string): string {
+  if (typeof value !== 'string') return fallback;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : fallback;
+}
+
 // CRITICAL FIX: Persist notification identifiers to AsyncStorage
 export async function saveNotificationIdentifier(
   taskId: string,
@@ -369,15 +375,17 @@ export async function scheduleTaskReminder(
       await removeNotificationIdentifier(taskId);
     }
 
-    // Build notification body with task description
-    let notificationBody = `${activityTitle} starter om ${reminderMinutes} minutter`;
-    if (taskDescription) {
-      notificationBody += `\n\n${taskDescription}`;
-    }
+    const safeTaskTitle = sanitizeNotificationLabel(
+      taskTitle,
+      sanitizeNotificationLabel(taskDescription, 'Opgave'),
+    );
+    const safeActivityTitle = sanitizeNotificationLabel(activityTitle, 'Aktivitet');
+    const notificationTitle = 'Opgave snart';
+    const notificationBody = `${safeTaskTitle} · ${safeActivityTitle}`;
 
     // iOS CRITICAL FIX: Build notification content with iOS-specific options and deep linking
     const notificationContent: Notifications.NotificationContentInput = {
-      title: `⚽ Påmindelse: ${taskTitle}`,
+      title: notificationTitle,
       body: notificationBody,
       sound: 'default',
       data: {
@@ -728,4 +736,3 @@ export async function getNotificationStats(): Promise<{
     };
   }
 }
-

@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 
 import * as ActivityDetailsModule from '../app/activity-details';
@@ -207,6 +207,190 @@ describe('ActivityDetails add-task flow', () => {
     fireEvent.press(getByTestId('mock.createActivityTaskModal.complete'));
     await waitFor(() => expect(mockSupabaseFrom).toHaveBeenCalledWith('activities'));
     expect(await findByTestId('activity.taskRow.task-1')).toBeTruthy();
+  });
+
+  it('shows deep-link loader and fetches tasks after render when task is missing at mount', async () => {
+    let resolveActivityFetch: ((value: any) => void) | null = null;
+    const activityFetchPromise = new Promise((resolve) => {
+      resolveActivityFetch = resolve;
+    });
+
+    mockSupabaseFrom.mockImplementation((table: string) => {
+      if (table !== 'activities') {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: async () => ({ data: null, error: null }),
+            }),
+          }),
+        };
+      }
+
+      const builder: any = {
+        select: () => builder,
+        eq: () => builder,
+        single: () => activityFetchPromise,
+      };
+      return builder;
+    });
+
+    const baseActivity = {
+      id: 'activity-deeplink-1',
+      title: 'Session',
+      date: new Date('2026-02-10T10:00:00.000Z'),
+      time: '10:00',
+      location: 'Pitch',
+      category: {
+        id: 'cat-1',
+        name: 'Training',
+        color: '#123456',
+        emoji: '⚽️',
+      },
+      tasks: [],
+      isExternal: false,
+      intensityEnabled: false,
+      intensity: null,
+    };
+
+    const { getByTestId, queryByTestId } = render(
+      <ActivityDetailsModule.ActivityDetailsContent
+        activity={baseActivity as any}
+        categories={[baseActivity.category as any]}
+        isAdmin
+        isDark={false}
+        onBack={jest.fn()}
+        onActivityUpdated={jest.fn()}
+        initialOpenTaskId="task-deeplink-1"
+      />,
+    );
+
+    await waitFor(() => expect(getByTestId('activity.details.taskLookup.loading')).toBeTruthy());
+
+    await act(async () => {
+      resolveActivityFetch?.({
+        data: {
+          id: 'activity-deeplink-1',
+          title: 'Session',
+          activity_date: '2026-02-10',
+          activity_time: '10:00',
+          activity_end_time: null,
+          location: 'Pitch',
+          category_id: 'cat-1',
+          intensity: null,
+          intensity_enabled: false,
+          intensity_note: null,
+          is_external: false,
+          external_calendar_id: null,
+          external_event_id: null,
+          series_id: null,
+          series_instance_date: null,
+          activity_categories: {
+            id: 'cat-1',
+            name: 'Training',
+            color: '#123456',
+            emoji: '⚽️',
+          },
+          activity_tasks: [
+            {
+              id: 'task-deeplink-1',
+              title: 'Deep link opgave',
+              description: 'Synlig efter refresh',
+              completed: false,
+              reminder_minutes: null,
+              task_template_id: null,
+              feedback_template_id: null,
+            },
+          ],
+        },
+        error: null,
+      });
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(getByTestId('activity.details.task.loaded.task-deeplink-1')).toBeTruthy());
+    expect(queryByTestId('activity.details.taskLookup.error')).toBeNull();
+  });
+
+  it('shows deep-link error state with back CTA when task cannot be loaded', async () => {
+    const onBack = jest.fn();
+    mockSupabaseFrom.mockImplementation((table: string) => {
+      if (table !== 'activities') {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: async () => ({ data: null, error: null }),
+            }),
+          }),
+        };
+      }
+
+      const builder: any = {
+        select: () => builder,
+        eq: () => builder,
+        single: async () => ({
+          data: {
+            id: 'activity-deeplink-2',
+            title: 'Session',
+            activity_date: '2026-02-10',
+            activity_time: '10:00',
+            activity_end_time: null,
+            location: 'Pitch',
+            category_id: 'cat-1',
+            intensity: null,
+            intensity_enabled: false,
+            intensity_note: null,
+            is_external: false,
+            external_calendar_id: null,
+            external_event_id: null,
+            series_id: null,
+            series_instance_date: null,
+            activity_categories: {
+              id: 'cat-1',
+              name: 'Training',
+              color: '#123456',
+              emoji: '⚽️',
+            },
+            activity_tasks: [],
+          },
+          error: null,
+        }),
+      };
+      return builder;
+    });
+
+    const baseActivity = {
+      id: 'activity-deeplink-2',
+      title: 'Session',
+      date: new Date('2026-02-10T10:00:00.000Z'),
+      time: '10:00',
+      location: 'Pitch',
+      category: {
+        id: 'cat-1',
+        name: 'Training',
+        color: '#123456',
+        emoji: '⚽️',
+      },
+      tasks: [],
+      isExternal: false,
+      intensityEnabled: false,
+      intensity: null,
+    };
+
+    const { getByTestId } = render(
+      <ActivityDetailsModule.ActivityDetailsContent
+        activity={baseActivity as any}
+        categories={[baseActivity.category as any]}
+        isAdmin
+        isDark={false}
+        onBack={onBack}
+        onActivityUpdated={jest.fn()}
+        initialOpenTaskId="missing-task-id"
+      />,
+    );
+
+    await waitFor(() => expect(getByTestId('activity.details.taskLookup.error')).toBeTruthy());
+    fireEvent.press(getByTestId('activity.details.taskLookup.backButton'));
+    expect(onBack).toHaveBeenCalled();
   });
 
   it('reverts intensity toggle on cancel from category modal', async () => {
