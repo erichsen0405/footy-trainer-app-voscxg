@@ -60,6 +60,12 @@ export default function TaskScoreNoteScreen() {
     if (isMountedRef.current) setIsSaving(value);
   }, []);
 
+  const resetDraftState = useCallback(() => {
+    if (!isMountedRef.current) return;
+    setInitialScore(null);
+    setInitialNote('');
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -67,6 +73,11 @@ export default function TaskScoreNoteScreen() {
       if (!activityId) {
         safeDismiss();
         return;
+      }
+
+      if (!cancelled) {
+        resetDraftState();
+        setErrorSafe(null);
       }
 
       const paramScore = decodeParam((params as any).initialScore);
@@ -117,6 +128,12 @@ export default function TaskScoreNoteScreen() {
         }
 
         const intensity = typeof intensityCarrier.intensity === 'number' ? intensityCarrier.intensity : null;
+        if (intensity === null) {
+          setInitialScore(null);
+          setInitialNote('');
+          return;
+        }
+
         setInitialScore(intensity);
         setInitialNote(typeof intensityCarrier.intensity_note === 'string' ? intensityCarrier.intensity_note : '');
       } catch {
@@ -127,7 +144,14 @@ export default function TaskScoreNoteScreen() {
     return () => {
       cancelled = true;
     };
-  }, [activityId, params, safeDismiss]);
+  }, [activityId, params, resetDraftState, safeDismiss, setErrorSafe]);
+
+  const handleClose = useCallback(() => {
+    if (isSaving) return;
+    resetDraftState();
+    setErrorSafe(null);
+    safeDismiss();
+  }, [isSaving, resetDraftState, safeDismiss, setErrorSafe]);
 
   const handleSave = useCallback(
     async ({ score, note }: TaskScoreNoteModalPayload) => {
@@ -193,6 +217,7 @@ export default function TaskScoreNoteScreen() {
 
   return (
     <TaskScoreNoteModal
+      key={`intensity-${activityId}`}
       visible
       title="Feedback på Intensitet"
       introText="Hvordan gik det?"
@@ -208,7 +233,7 @@ export default function TaskScoreNoteScreen() {
       clearLabel="Markér som ikke udført"
       missingScoreTitle="Manglende intensitet"
       missingScoreMessage="Vælg en intensitet før du kan markere som udført."
-      onClose={safeDismiss}
+      onClose={handleClose}
     />
   );
 }
