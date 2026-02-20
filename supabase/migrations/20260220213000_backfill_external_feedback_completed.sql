@@ -30,6 +30,8 @@ external_feedback_candidates AS (
   WHERE COALESCE(eet.completed, false) = false
     AND TRANSLATE(LOWER(COALESCE(eet.title, '')), 'åæø', 'aao') ~ '^\s*feedback\s+pa\s+'
     AND (
+      eet.feedback_template_id = af.task_template_id
+      OR
       eet.task_template_id = af.task_template_id
       OR (
         eet.task_template_id IS NULL
