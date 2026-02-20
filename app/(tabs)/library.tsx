@@ -468,9 +468,18 @@ export default function LibraryScreen() {
   }, [counterOverrides]);
 
   const appliedFeedbackEventsRef = useRef<
-    Record<string, { exerciseId: string; rollback: ExerciseCounterOverride }>
+    Record<
+      string,
+      {
+        exerciseId: string;
+        rollback: ExerciseCounterOverride;
+        executionIdentity: string | null;
+        seenAdded: boolean;
+      }
+    >
   >({});
   const pendingRollbackByExerciseRef = useRef<Record<string, ExerciseCounterOverride>>({});
+  const seenExecutionIdentitiesRef = useRef<Set<string>>(new Set());
 
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addModalExercise, setAddModalExercise] = useState<Exercise | null>(null);
@@ -723,6 +732,8 @@ export default function LibraryScreen() {
       const templateId = String(payload?.templateId ?? '').trim();
       const optimisticId = String(payload?.optimisticId ?? '').trim();
       const rating = typeof payload?.rating === 'number' ? payload.rating : null;
+      const activityId = String(payload?.activityId ?? '').trim();
+      const taskInstanceId = String(payload?.taskInstanceId ?? '').trim();
 
       if (optimisticId && appliedFeedbackEventsRef.current[optimisticId]) {
         setReloadNonce(n => n + 1);
@@ -754,17 +765,32 @@ export default function LibraryScreen() {
               : typeof exercise?.execution_count === 'number'
               ? exercise.execution_count
               : 0;
+          const executionIdentity =
+            activityId && (taskInstanceId || templateId)
+              ? `${exerciseId}::${activityId}::${taskInstanceId || templateId}`
+              : null;
+          const alreadySeen =
+            executionIdentity ? seenExecutionIdentitiesRef.current.has(executionIdentity) : false;
+          const increment = alreadySeen ? 0 : 1;
+          if (executionIdentity && !alreadySeen) {
+            seenExecutionIdentitiesRef.current.add(executionIdentity);
+          }
 
           setCounterOverrides((prev) => ({
             ...prev,
             [exerciseId]: {
               last_score: rating,
-              execution_count: Math.max(0, baseCount + 1),
+              execution_count: Math.max(0, baseCount + increment),
             },
           }));
 
           if (optimisticId) {
-            appliedFeedbackEventsRef.current[optimisticId] = { exerciseId, rollback };
+            appliedFeedbackEventsRef.current[optimisticId] = {
+              exerciseId,
+              rollback,
+              executionIdentity,
+              seenAdded: increment === 1,
+            };
           }
           delete pendingRollbackByExerciseRef.current[exerciseId];
         }
@@ -777,8 +803,11 @@ export default function LibraryScreen() {
       if (!optimisticId) return;
       const applied = appliedFeedbackEventsRef.current[optimisticId];
       if (!applied?.exerciseId) return;
-      const { exerciseId, rollback } = applied;
+      const { exerciseId, rollback, executionIdentity, seenAdded } = applied;
       pendingRollbackByExerciseRef.current[exerciseId] = rollback;
+      if (seenAdded && executionIdentity) {
+        seenExecutionIdentitiesRef.current.delete(executionIdentity);
+      }
       setCounterOverrides((prev) => {
         return {
           ...prev,
