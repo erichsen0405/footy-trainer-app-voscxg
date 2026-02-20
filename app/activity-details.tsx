@@ -58,6 +58,7 @@ const colors =
 
 const V2_WAVE_HEIGHT = 60;
 const V2_CTA_HEIGHT = 56;
+const FOCUS_CHANGE_PERFECT_SCORE_STREAK = 15;
 
 // Header action buttons
 const HEADER_ACTION_BUTTON_SIZE = 36;
@@ -1577,9 +1578,9 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       const ratings = rows
         .map((row) => row.rating)
         .filter((rating): rating is number => typeof rating === 'number');
-      const lastFive = ratings.slice(0, 5);
-      if (lastFive.length < 5) continue;
-      if (!lastFive.every((rating) => rating === 10)) continue;
+      const latestPerfectScores = ratings.slice(0, FOCUS_CHANGE_PERFECT_SCORE_STREAK);
+      if (latestPerfectScores.length < FOCUS_CHANGE_PERFECT_SCORE_STREAK) continue;
+      if (!latestPerfectScores.every((rating) => rating === 10)) continue;
 
       items.push({
         templateId,
@@ -1601,8 +1602,8 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     const names = focusChangeRecommendations.map((item) => item.name).join(', ');
     const message =
       focusChangeRecommendations.length === 1
-        ? `Du har scoret 10 fem gange i træk på "${names}". Vi anbefaler, at du skifter fokuspunkt for at udvikle andre skills.`
-        : `Du har scoret 10 fem gange i træk på: ${names}. Vi anbefaler, at du skifter fokuspunkt for at udvikle andre skills.`;
+        ? `Du har scoret 10 ${FOCUS_CHANGE_PERFECT_SCORE_STREAK} gange i træk på "${names}". Vi anbefaler, at du skifter fokuspunkt for at udvikle andre skills.`
+        : `Du har scoret 10 ${FOCUS_CHANGE_PERFECT_SCORE_STREAK} gange i træk på: ${names}. Vi anbefaler, at du skifter fokuspunkt for at udvikle andre skills.`;
 
     Alert.alert('Overvej at skifte fokus', message);
   }, [activityId, focusChangeRecommendations]);
