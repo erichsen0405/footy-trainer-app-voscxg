@@ -65,6 +65,7 @@ export interface Task {
   isFeedbackTask?: boolean;
   source_folder?: string | null;
   sourceFolder?: string | null;
+  archivedAt?: string | null;
 }
 
 export interface Subtask {

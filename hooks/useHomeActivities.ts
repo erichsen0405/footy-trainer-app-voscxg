@@ -6,6 +6,7 @@ import { getCategories, DatabaseActivityCategory } from '@/services/activities';
 import { resolveActivityCategory, type CategoryMappingRecord } from '@/shared/activityCategoryResolver';
 import { subscribeToTaskCompletion } from '@/utils/taskEvents';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
+import { filterVisibleTasksForActivity } from '@/utils/taskTemplateVisibility';
 import { useUserRole } from '@/hooks/useUserRole';
 import {
   subscribeToActivityPatch,
@@ -850,16 +851,19 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       );
 
       let templateDelayById: Record<string, number | null> = {};
+      let templateArchivedAtById: Record<string, string | null> = {};
       if (templateIdCandidates.size) {
         const { data: templateRows } = await supabase
           .from('task_templates')
-          .select('id, after_training_delay_minutes')
+          .select('id, after_training_delay_minutes, archived_at')
           .in('id', Array.from(templateIdCandidates));
         if (Array.isArray(templateRows)) {
           templateRows.forEach((row: any) => {
             const tid = normalizeId(row?.id);
             if (!tid) return;
             templateDelayById[tid] = coerceReminderMinutes(row.after_training_delay_minutes);
+            templateArchivedAtById[tid] =
+              typeof row?.archived_at === 'string' ? row.archived_at : null;
           });
         }
       }
@@ -1017,6 +1021,12 @@ export function useHomeActivities(): UseHomeActivitiesResult {
               (task as any).after_training_delay_minutes ?? inherited,
           };
         });
+        tasks = filterVisibleTasksForActivity(
+          tasks,
+          activity.activity_date,
+          activity.activity_time,
+          templateArchivedAtById,
+        );
 
         return {
           ...activity,
@@ -1236,4 +1246,3 @@ export function useHomeActivities(): UseHomeActivitiesResult {
     refresh,
   };
 }
-

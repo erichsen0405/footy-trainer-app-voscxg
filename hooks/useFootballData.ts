@@ -460,6 +460,7 @@ export const useFootballData = () => {
           after_training_feedback_score_explanation,
           after_training_feedback_enable_intensity,
           after_training_feedback_enable_note,
+          archived_at,
           task_template_categories (
             category_id
           )
@@ -486,6 +487,7 @@ export const useFootballData = () => {
         afterTrainingFeedbackScoreExplanation: t.after_training_feedback_score_explanation ?? null,
         afterTrainingFeedbackEnableIntensity: t.after_training_feedback_enable_intensity ?? false,
         afterTrainingFeedbackEnableNote: t.after_training_feedback_enable_note ?? true,
+        archivedAt: t.archived_at ?? null,
       }));
 
       // Filter out hidden tasks
