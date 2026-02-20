@@ -425,4 +425,74 @@ describe('Library screen gating and card state', () => {
       expect(await findByTestId('library.counter.executionCount.ex-map-1')).toHaveTextContent('Udført: 1x');
     });
   });
+
+  it('does not double increment counter on save_failed followed by corrected saved event', async () => {
+    const addTask = jest.fn().mockResolvedValue({ id: 'template-corrected' });
+    mockUseFootball.mockReturnValue({ addTask, tasks: [] });
+
+    setupSupabaseFixture({
+      personalExercises: [
+        {
+          id: 'ex-map-2',
+          trainer_id: 'user-1',
+          title: 'Corrected Drill',
+          is_system: false,
+          is_added_to_tasks: false,
+          last_score: null,
+          execution_count: 0,
+        },
+      ],
+    });
+
+    mockUseUserRole.mockReturnValue({ userRole: 'trainer', isTrainer: true, isAdmin: false });
+    mockUseSubscriptionFeatures.mockReturnValue({
+      featureAccess: { library: true, calendarSync: true, trainerLinking: true },
+      isLoading: false,
+      subscriptionTier: 'trainer_basic',
+    });
+
+    const { findByText, findByTestId } = render(<LibraryScreen />);
+
+    fireEvent.press(await findByText(/Personlige/i));
+    fireEvent.press(await findByTestId('library.addToTasksButton.ex-map-2'));
+    fireEvent.press(await findByText(/^Tilf.*j$/i));
+
+    await waitFor(() => {
+      expect(addTask).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(async () => {
+      const addButton = await findByTestId('library.addToTasksButton.ex-map-2');
+      expect(addButton.props.accessibilityState?.disabled).toBe(true);
+    });
+
+    act(() => {
+      DeviceEventEmitter.emit('feedback:saved', {
+        templateId: 'template-corrected',
+        taskInstanceId: 'task-instance-1',
+        rating: 6,
+        optimisticId: 'optimistic:fail-1',
+      });
+    });
+
+    await waitFor(async () => {
+      expect(await findByTestId('library.counter.executionCount.ex-map-2')).toHaveTextContent('Udført: 1x');
+    });
+
+    act(() => {
+      DeviceEventEmitter.emit('feedback:save_failed', {
+        optimisticId: 'optimistic:fail-1',
+      });
+      DeviceEventEmitter.emit('feedback:saved', {
+        templateId: 'template-corrected',
+        taskInstanceId: 'task-instance-1',
+        rating: 6,
+        optimisticId: 'optimistic:corrected-1',
+      });
+    });
+
+    await waitFor(async () => {
+      expect(await findByTestId('library.counter.lastScore.ex-map-2')).toHaveTextContent('Senest: 6/10');
+      expect(await findByTestId('library.counter.executionCount.ex-map-2')).toHaveTextContent('Udført: 1x');
+    });
+  });
 });
