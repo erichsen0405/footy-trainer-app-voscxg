@@ -25,8 +25,16 @@ import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { isTaskVisibleForActivity } from '@/utils/taskTemplateVisibility';
 
 type ExternalTaskForPerformance = {
+  id?: string | number | null;
+  title?: string | null;
+  description?: string | null;
+  task_template_id?: string | null;
+  feedback_template_id?: string | null;
+  local_meta_id?: string | null;
   completed?: boolean | null;
   events_local_meta?: {
+    id?: string | null;
+    external_event_id?: string | null;
     events_external?: {
       start_date?: string | null;
       deleted?: boolean | null;
@@ -626,7 +634,7 @@ export const useFootballData = () => {
           .lt('activities.activity_date', endIsoExclusive),
         supabase
           .from('external_event_tasks')
-          .select('id, completed, title, description, task_template_id, feedback_template_id, events_local_meta!inner(events_external!inner(start_date, deleted))')
+          .select('id, local_meta_id, completed, title, description, task_template_id, feedback_template_id, events_local_meta!inner(id, external_event_id, events_external!inner(start_date, deleted))')
           .gte('events_local_meta.events_external.start_date', startIso)
           .lt('events_local_meta.events_external.start_date', endIsoExclusive),
         supabase
@@ -743,15 +751,28 @@ export const useFootballData = () => {
       };
       const feedbackByActivityTask: Record<string, any> = {};
       const feedbackByActivityTemplate: Record<string, any> = {};
+      const getExternalActivityCandidateIds = (task: any): string[] => {
+        const ids = new Set<string>();
+        const push = (value: unknown) => {
+          const id = normalizeId(value);
+          if (id) ids.add(id);
+        };
+        push(task?.local_meta_id);
+        push(task?.events_local_meta?.id);
+        push(task?.events_local_meta?.external_event_id);
+        return Array.from(ids);
+      };
 
-      if (userId && internalWeeklyTasks.length) {
-        const activityIds = Array.from(
-          new Set(
-            internalWeeklyTasks
-              .map(task => normalizeId((task as any)?.activity_id))
-              .filter(Boolean)
-          )
-        ) as string[];
+      if (userId) {
+        const feedbackActivityIds = new Set<string>();
+        internalWeeklyTasks.forEach((task: any) => {
+          const activityId = normalizeId(task?.activity_id);
+          if (activityId) feedbackActivityIds.add(activityId);
+        });
+        externalWeeklyTasks.forEach((task: any) => {
+          getExternalActivityCandidateIds(task).forEach((id) => feedbackActivityIds.add(id));
+        });
+        const activityIds = Array.from(feedbackActivityIds);
 
         if (activityIds.length) {
           const { data: feedbackRows, error: feedbackError } = await supabase
@@ -804,12 +825,43 @@ export const useFootballData = () => {
         }
         return false;
       };
+      const isExternalTaskCompleted = (task: any): boolean => {
+        if (task?.completed === true) return true;
+
+        const taskId = normalizeId(task?.id);
+        const feedbackTemplateId = normalizeId(task?.feedback_template_id);
+        const templateId = normalizeId(task?.task_template_id);
+        const markerTemplateId =
+          normalizeId(
+            parseTemplateIdFromMarker(typeof task?.description === 'string' ? task.description : '') ||
+            parseTemplateIdFromMarker(typeof task?.title === 'string' ? task.title : '')
+          );
+        const templateKey = feedbackTemplateId ?? markerTemplateId ?? templateId;
+        const looksLikeFeedbackTask = !!feedbackTemplateId || !!markerTemplateId || isFeedbackTitle(task?.title);
+        if (!looksLikeFeedbackTask) return false;
+
+        const activityIds = getExternalActivityCandidateIds(task);
+        if (!activityIds.length) return false;
+
+        for (const activityId of activityIds) {
+          if (taskId) {
+            const byTask = feedbackByActivityTask[`${activityId}::${taskId}`];
+            if (feedbackAnswered(byTask)) return true;
+          }
+          if (templateKey) {
+            const byTemplate = feedbackByActivityTemplate[`${activityId}::${templateKey}`];
+            if (feedbackAnswered(byTemplate)) return true;
+          }
+        }
+
+        return false;
+      };
 
       const internalTotalWeek = internalWeeklyTasks.length;
       const internalCompletedWeek = internalWeeklyTasks.filter(isInternalTaskCompleted).length;
 
       const externalTotalWeek = externalWeeklyTasks.length;
-      const externalCompletedWeek = externalWeeklyTasks.filter(task => task.completed).length;
+      const externalCompletedWeek = externalWeeklyTasks.filter(isExternalTaskCompleted).length;
 
       const internalTasksUpToToday = internalWeeklyTasks.filter(task => {
         const activityDate = (task as any)?.activities?.activity_date as string | undefined;
@@ -826,7 +878,7 @@ export const useFootballData = () => {
       const taskTotalToday = internalTasksUpToToday.length + externalTasksUpToToday.length;
       const taskCompletedToday =
         internalTasksUpToToday.filter(isInternalTaskCompleted).length +
-        externalTasksUpToToday.filter(task => task.completed).length;
+        externalTasksUpToToday.filter(isExternalTaskCompleted).length;
       const intensityTotals = calculateIntensityPerformanceTotals({
         internalIntensityRows: internalIntensityWeekly,
         externalIntensityRows: externalIntensityWeekly,
@@ -840,7 +892,7 @@ export const useFootballData = () => {
           .map(task => `internal:${String((task as any)?.id ?? '').trim()}`)
           .filter(id => id !== 'internal:'),
         ...externalTasksUpToToday
-          .filter(task => task?.completed !== true)
+          .filter(task => !isExternalTaskCompleted(task))
           .map(task => `external:${String((task as any)?.id ?? '').trim()}`)
           .filter(id => id !== 'external:'),
       ];
