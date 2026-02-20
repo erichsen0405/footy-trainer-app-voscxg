@@ -35,10 +35,24 @@ tags:
     id: '^library\.screen$'
 - tapOn:
     id: '^library\.folder\.footballcoach$'
+- runFlow:
+    when:
+      notVisible:
+        id: '^library\.folder\.holdtraening$'
+    commands:
+      - tapOn:
+          id: '^library\.folder\.footballcoach$'
 - assertVisible:
     id: '^library\.folder\.holdtraening$'
 - tapOn:
     id: '^library\.folder\.holdtraening$'
+- runFlow:
+    when:
+      notVisible:
+        id: '^library\.folder\.holdtraening_faelles$'
+    commands:
+      - tapOn:
+          id: '^library\.folder\.holdtraening$'
 - extendedWaitUntil:
     visible:
       id: '^library\.folder\.holdtraening_faelles$'
@@ -362,8 +376,22 @@ tags:
     timeout: 15000
 - tapOn:
     id: '^library\.folder\.footballcoach$'
+- runFlow:
+    when:
+      notVisible:
+        id: '^library\.folder\.holdtraening$'
+    commands:
+      - tapOn:
+          id: '^library\.folder\.footballcoach$'
 - tapOn:
     id: '^library\.folder\.holdtraening$'
+- runFlow:
+    when:
+      notVisible:
+        id: '^library\.folder\.holdtraening_faelles$'
+    commands:
+      - tapOn:
+          id: '^library\.folder\.holdtraening$'
 - extendedWaitUntil:
     visible:
       id: '^library\.folder\.holdtraening_faelles$'
