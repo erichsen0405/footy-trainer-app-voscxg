@@ -73,4 +73,18 @@ describe('notification deeplink mapping', () => {
       }),
     ).toBeNull();
   });
+
+  it('does not infer openTaskId from query id when only activity id is present in url', () => {
+    const route = buildNotificationRouteFromData({
+      url: '/activity-details?id=activity-only',
+    });
+
+    expect(route).toEqual({
+      pathname: '/activity-details',
+      params: {
+        id: 'activity-only',
+        activityId: 'activity-only',
+      },
+    });
+  });
 });
