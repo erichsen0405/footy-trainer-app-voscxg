@@ -355,6 +355,35 @@ tags:
             - tapOn: '^Markér som udført$'
 
 # 50-56) Performance asserts
+- openLink: "footballcoach:///(tabs)/library"
+- extendedWaitUntil:
+    visible:
+      id: '^library\.screen$'
+    timeout: 15000
+- tapOn:
+    id: '^library\.folder\.footballcoach$'
+- tapOn:
+    id: '^library\.folder\.holdtraening$'
+- extendedWaitUntil:
+    visible:
+      id: '^library\.folder\.holdtraening_faelles$'
+    timeout: 15000
+- tapOn:
+    id: '^library\.folder\.holdtraening_faelles$'
+- scrollUntilVisible:
+    element:
+      id: '^library\.counter\.lastScore\.711f3229-2fee-45fe-b46e-87dd1605af03$'
+    direction: DOWN
+    timeout: 15000
+- extendedWaitUntil:
+    visible:
+      text: '^Senest:\s*5/10$'
+    timeout: 15000
+- assertVisible:
+    id: '^library\.counter\.lastScore\.711f3229-2fee-45fe-b46e-87dd1605af03$'
+- assertVisible:
+    id: '^library\.counter\.executionCount\.711f3229-2fee-45fe-b46e-87dd1605af03$'
+
 - openLink: "footballcoach:///(tabs)/(home)"
 - extendedWaitUntil:
     visible:

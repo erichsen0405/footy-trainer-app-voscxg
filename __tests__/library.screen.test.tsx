@@ -1,5 +1,6 @@
 import React from 'react';
-import { render, fireEvent, waitFor } from '@testing-library/react-native';
+import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
+import { DeviceEventEmitter } from 'react-native';
 
 import LibraryScreen from '../app/(tabs)/library';
 
@@ -101,6 +102,8 @@ type ExerciseRow = {
   category_path?: string | null;
   difficulty?: number | null;
   is_added_to_tasks?: boolean | null;
+  last_score?: number | null;
+  execution_count?: number | null;
   created_at?: string;
   updated_at?: string;
   video_url?: string | null;
@@ -298,5 +301,128 @@ describe('Library screen gating and card state', () => {
     const addButton = await findByTestId('library.addToTasksButton.ex-3');
     expect(addButton.props.accessibilityState?.disabled).toBe(true);
     expect(addButton.props.accessibilityLabel).toMatch(/Allerede tilføjet/i);
+  });
+
+  it('refreshes library counters after feedback:saved event', async () => {
+    mockAuthGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+
+    let personalFetchCount = 0;
+    mockResolveQuery.mockImplementation((state: any) => {
+      if (state.table === 'exercise_library') {
+        const eqMap = new Map(state.eqFilters.map((entry: any) => [entry.column, entry.value]));
+        if (eqMap.get('is_system') === true) {
+          return { data: [], error: null };
+        }
+        if (eqMap.get('is_system') === false && eqMap.get('trainer_id') === 'user-1') {
+          personalFetchCount += 1;
+          return {
+            data: [
+              {
+                id: 'ex-refresh-1',
+                trainer_id: 'user-1',
+                title: 'Refresh Drill',
+                is_system: false,
+                is_added_to_tasks: false,
+                last_score: personalFetchCount >= 2 ? 7 : null,
+                execution_count: personalFetchCount >= 2 ? 1 : 0,
+              },
+            ],
+            error: null,
+          };
+        }
+        return { data: [], error: null };
+      }
+      if (state.table === 'exercise_assignments') {
+        return { data: [], error: null };
+      }
+      if (state.table === 'profiles') {
+        return { data: [], error: null };
+      }
+      return { data: [], error: null };
+    });
+
+    mockUseUserRole.mockReturnValue({ userRole: 'trainer', isTrainer: true, isAdmin: false });
+    mockUseSubscriptionFeatures.mockReturnValue({
+      featureAccess: { library: true, calendarSync: true, trainerLinking: true },
+      isLoading: false,
+      subscriptionTier: 'trainer_basic',
+    });
+
+    const { findByText, findByTestId } = render(<LibraryScreen />);
+
+    fireEvent.press(await findByText(/Personlige/i));
+
+    expect(await findByTestId('library.counter.lastScore.ex-refresh-1')).toHaveTextContent('Senest: –/10');
+    expect(await findByTestId('library.counter.executionCount.ex-refresh-1')).toHaveTextContent('Udført: –x');
+
+    act(() => {
+      DeviceEventEmitter.emit('feedback:saved', {
+        activityId: 'activity-1',
+        templateId: 'template-1',
+        taskInstanceId: 'task-instance-1',
+      });
+    });
+
+    await waitFor(async () => {
+      expect(await findByTestId('library.counter.lastScore.ex-refresh-1')).toHaveTextContent('Senest: 7/10');
+      expect(await findByTestId('library.counter.executionCount.ex-refresh-1')).toHaveTextContent('Udført: 1x');
+    });
+  });
+
+  it('updates counters in-session for exercise mapped to saved feedback template', async () => {
+    const addTask = jest.fn().mockResolvedValue({ id: 'template-xyz' });
+    mockUseFootball.mockReturnValue({ addTask, tasks: [] });
+
+    setupSupabaseFixture({
+      personalExercises: [
+        {
+          id: 'ex-map-1',
+          trainer_id: 'user-1',
+          title: 'Mapped Drill',
+          is_system: false,
+          is_added_to_tasks: false,
+          last_score: null,
+          execution_count: 0,
+        },
+      ],
+    });
+
+    mockUseUserRole.mockReturnValue({ userRole: 'trainer', isTrainer: true, isAdmin: false });
+    mockUseSubscriptionFeatures.mockReturnValue({
+      featureAccess: { library: true, calendarSync: true, trainerLinking: true },
+      isLoading: false,
+      subscriptionTier: 'trainer_basic',
+    });
+
+    const { findByText, findByTestId } = render(<LibraryScreen />);
+
+    fireEvent.press(await findByText(/Personlige/i));
+    expect(await findByTestId('library.counter.lastScore.ex-map-1')).toHaveTextContent('Senest: –/10');
+    expect(await findByTestId('library.counter.executionCount.ex-map-1')).toHaveTextContent('Udført: –x');
+
+    fireEvent.press(await findByTestId('library.addToTasksButton.ex-map-1'));
+    fireEvent.press(await findByText(/^Tilf.*j$/i));
+
+    await waitFor(() => {
+      expect(addTask).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(async () => {
+      const addButton = await findByTestId('library.addToTasksButton.ex-map-1');
+      expect(addButton.props.accessibilityState?.disabled).toBe(true);
+    });
+
+    act(() => {
+      DeviceEventEmitter.emit('feedback:saved', {
+        templateId: 'template-xyz',
+        taskInstanceId: 'task-instance-xyz',
+        rating: 8,
+        optimisticId: 'optimistic:test:1',
+      });
+    });
+
+    await waitFor(async () => {
+      expect(await findByTestId('library.counter.lastScore.ex-map-1')).toHaveTextContent('Senest: 8/10');
+      expect(await findByTestId('library.counter.executionCount.ex-map-1')).toHaveTextContent('Udført: 1x');
+    });
   });
 });

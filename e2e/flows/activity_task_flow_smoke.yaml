@@ -293,6 +293,28 @@ tags:
             - tapOn: '^Markér som udført$'
 
 # Performance smoke-check
+- openLink: "footballcoach:///(tabs)/library"
+- extendedWaitUntil:
+    visible:
+      id: '^library\.screen$'
+    timeout: 15000
+- tapOn:
+    id: '^library\.folder\.footballcoach$'
+- tapOn:
+    id: '^library\.folder\.holdtraening$'
+- extendedWaitUntil:
+    visible:
+      id: '^library\.folder\.holdtraening_faelles$'
+    timeout: 15000
+- tapOn:
+    id: '^library\.folder\.holdtraening_faelles$'
+- extendedWaitUntil:
+    visible:
+      id: '^library\.counter\.lastScore\..*$'
+    timeout: 15000
+- assertVisible:
+    id: '^library\.counter\.executionCount\..*$'
+
 - openLink: "footballcoach:///(tabs)/performance"
 - extendedWaitUntil:
     visible:
