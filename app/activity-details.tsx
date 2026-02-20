@@ -3690,19 +3690,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         }));
 
         try {
-          if (activity.isExternal) {
-            const { error } = await supabase
-              .from('external_event_tasks')
-              .update({ completed: true })
-              .eq('id', feedbackTaskId);
-            if (error) throw error;
-          } else {
-            const { error } = await supabase
-              .from('activity_tasks')
-              .update({ completed: true })
-              .eq('id', feedbackTaskId);
-            if (error) throw error;
-          }
+          await toggleTaskCompletion(activity.id, feedbackTaskId, true);
         } catch (e) {
           if (__DEV__) console.log('[ActivityDetails] feedback completion update failed', e);
         }
@@ -3765,6 +3753,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       selfFeedbackByTaskId,
       selfFeedbackByTemplate,
       tasksState,
+      toggleTaskCompletion,
     ],
   );
 
@@ -3935,19 +3924,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       }));
 
       try {
-        if (activity.isExternal) {
-          const { error } = await supabase
-            .from('external_event_tasks')
-            .update({ completed: false })
-            .eq('id', feedbackTaskId);
-          if (error) throw error;
-        } else {
-          const { error } = await supabase
-            .from('activity_tasks')
-            .update({ completed: false })
-            .eq('id', feedbackTaskId);
-          if (error) throw error;
-        }
+        await toggleTaskCompletion(activity.id, feedbackTaskId, false);
       } catch (e) {
         if (__DEV__) console.log('[ActivityDetails] feedback clear completion update failed', e);
       }
@@ -4009,6 +3986,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     selfFeedbackByTaskId,
     selfFeedbackByTemplate,
     tasksState,
+    toggleTaskCompletion,
   ]);
 
   const feedbackModalConfig = useMemo(() => {

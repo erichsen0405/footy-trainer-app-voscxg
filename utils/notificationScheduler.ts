@@ -245,7 +245,6 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
         const { data: templates, error: templatesError } = await supabase
           .from('task_templates')
           .select('id, archived_at')
-          .eq('user_id', user.id)
           .in('id', templateIds);
 
         if (templatesError) {
@@ -349,7 +348,6 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
           const { data: templates, error: templatesError } = await supabase
             .from('task_templates')
             .select('id, after_training_enabled, after_training_delay_minutes, archived_at')
-            .eq('user_id', user.id)
             .in('id', templateIds);
 
           if (templatesError) {
