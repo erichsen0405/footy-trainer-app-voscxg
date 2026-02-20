@@ -57,7 +57,7 @@ function normalizeActivityId(data: Record<string, unknown>, queryParams: Record<
 function normalizeTaskId(data: Record<string, unknown>, queryParams: Record<string, string>): string | null {
   return (
     getFirstString(data, ['taskId', 'task_id', 'taskID', 'id']) ??
-    getFirstString(queryParams, ['openTaskId', 'openFeedbackTaskId', 'taskId', 'task_id', 'id'])
+    getFirstString(queryParams, ['openTaskId', 'openFeedbackTaskId', 'taskId', 'task_id'])
   );
 }
 
