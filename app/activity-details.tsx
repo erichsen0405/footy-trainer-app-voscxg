@@ -34,6 +34,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { TaskScoreNoteModal, TaskScoreNoteModalPayload } from '@/components/TaskScoreNoteModal';
 import { fetchSelfFeedbackForActivities, fetchSelfFeedbackForTemplates, upsertSelfFeedback } from '@/services/feedbackService';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
+import { filterVisibleTasksForActivity } from '@/utils/taskTemplateVisibility';
 import { resolveActivityIntensityEnabled } from '@/utils/activityIntensity';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
@@ -502,6 +503,54 @@ async function selectSingleWithOptionalColumn<T>(opts: {
   return { data: (second.data as T) ?? null, error: second.error ?? null, usedFallback: true };
 }
 
+async function fetchArchivedAtByTemplateIds(tasks: any[]): Promise<Record<string, string | null>> {
+  const normalizeId = (value: unknown): string | null => {
+    if (value === null || value === undefined) return null;
+    const normalized = String(value).trim();
+    return normalized.length ? normalized : null;
+  };
+
+  const templateIds = new Set<string>();
+
+  (tasks || []).forEach((task) => {
+    const directTemplateId = normalizeId(task?.task_template_id ?? task?.taskTemplateId);
+    if (directTemplateId) templateIds.add(directTemplateId);
+
+    const feedbackTemplateId = normalizeId(task?.feedback_template_id ?? task?.feedbackTemplateId);
+    if (feedbackTemplateId) templateIds.add(feedbackTemplateId);
+
+    const markerTemplateId =
+      parseTemplateIdFromMarker(typeof task?.description === 'string' ? task.description : '') ||
+      parseTemplateIdFromMarker(typeof task?.title === 'string' ? task.title : '');
+    const normalizedMarkerId = normalizeId(markerTemplateId);
+    if (normalizedMarkerId) templateIds.add(normalizedMarkerId);
+  });
+
+  const ids = Array.from(templateIds);
+  if (!ids.length) return {};
+
+  try {
+    const { data, error } = await (supabase as any)
+      .from('task_templates')
+      .select('id, archived_at')
+      .in('id', ids);
+
+    if (error || !Array.isArray(data)) {
+      return {};
+    }
+
+    const map: Record<string, string | null> = {};
+    data.forEach((row: any) => {
+      const id = normalizeId(row?.id);
+      if (!id) return;
+      map[id] = typeof row?.archived_at === 'string' ? row.archived_at : null;
+    });
+    return map;
+  } catch {
+    return {};
+  }
+}
+
 export async function fetchActivityFromDatabase(activityId: string): Promise<Activity | null> {
   try {
     const { data: internalActivity, error: internalError } = await selectSingleWithOptionalColumn<any>({
@@ -559,6 +608,14 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
           ? internalActivityAny.intensity_note
           : null;
 
+      const archivedAtByTemplateId = await fetchArchivedAtByTemplateIds(tasks as any[]);
+      const visibleTasks = filterVisibleTasksForActivity<FeedbackTask>(
+        tasks,
+        internalActivityAny.activity_date,
+        internalActivityAny.activity_time,
+        archivedAtByTemplateId,
+      );
+
       return {
         id: internalActivityAny.id,
         title: internalActivityAny.title,
@@ -567,7 +624,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         endTime: internalActivityAny.activity_end_time ?? undefined,
         location: internalActivityAny.location || '',
         category,
-        tasks,
+        tasks: visibleTasks,
         isExternal: false,
         externalCalendarId: internalActivityAny.external_calendar_id ?? undefined,
         externalEventId: internalActivityAny.external_event_id ?? undefined,
@@ -624,6 +681,40 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
           ? localMetaAny.intensity_note
           : null;
 
+      const externalTasks = (localMetaAny.external_event_tasks || []).map((task: any) => {
+        const directFeedbackTemplateId = normalizeId(task.feedback_template_id ?? task.feedbackTemplateId);
+        const markerTemplateId = getMarkerTemplateId({ description: task.description, title: task.title });
+        const feedbackTemplateId = directFeedbackTemplateId ?? markerTemplateId ?? null;
+        const isFeedbackTask = Boolean(feedbackTemplateId) || isFeedbackTitle(task.title);
+        const resolvedVideo = getTaskVideoUrl(task);
+        const mapped: any = {
+          id: task.id,
+          title: task.title,
+          description: task.description || '',
+          completed: task.completed,
+          isTemplate: false,
+          categoryIds: [],
+          reminder_minutes: task.reminder_minutes ?? null,
+          reminder: task.reminder_minutes ?? null,
+          subtasks: [],
+          videoUrl: resolvedVideo ?? undefined,
+          video_url: resolvedVideo,
+          taskTemplateId: task.task_template_id,
+          feedback_template_id: task.feedback_template_id,
+          feedbackTemplateId,
+          isFeedbackTask,
+        };
+        return mapped as FeedbackTask;
+      });
+
+      const archivedAtByTemplateId = await fetchArchivedAtByTemplateIds(externalTasks as any[]);
+      const visibleExternalTasks = filterVisibleTasksForActivity<FeedbackTask>(
+        externalTasks,
+        externalEvent.start_date,
+        externalEvent.start_time,
+        archivedAtByTemplateId,
+      );
+
       return {
         id: localMetaAny.id,
         title: eventTitle,
@@ -638,31 +729,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
             color: '#999999',
             emoji: '⚽️',
           },
-        tasks: (localMetaAny.external_event_tasks || []).map((task: any) => {
-          const directFeedbackTemplateId = normalizeId(task.feedback_template_id ?? task.feedbackTemplateId);
-          const markerTemplateId = getMarkerTemplateId({ description: task.description, title: task.title });
-          const feedbackTemplateId = directFeedbackTemplateId ?? markerTemplateId ?? null;
-          const isFeedbackTask = Boolean(feedbackTemplateId) || isFeedbackTitle(task.title);
-          const resolvedVideo = getTaskVideoUrl(task);
-          const mapped: any = {
-            id: task.id,
-            title: task.title,
-            description: task.description || '',
-            completed: task.completed,
-            isTemplate: false,
-            categoryIds: [],
-            reminder_minutes: task.reminder_minutes ?? null,
-            reminder: task.reminder_minutes ?? null,
-            subtasks: [],
-            videoUrl: resolvedVideo ?? undefined,
-            video_url: resolvedVideo,
-            taskTemplateId: task.task_template_id,
-            feedback_template_id: task.feedback_template_id,
-            feedbackTemplateId,
-            isFeedbackTask,
-          };
-          return mapped as FeedbackTask;
-        }),
+        tasks: visibleExternalTasks,
         isExternal: true,
         externalCalendarId: externalEvent.provider_calendar_id,
         externalEventId: localMetaAny.external_event_id,

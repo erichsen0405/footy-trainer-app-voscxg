@@ -323,6 +323,29 @@ tags:
 - assertVisible:
     id: '^performance\.screen$'
 
+# Arkiv smoke-check
+- openLink: "footballcoach:///(tabs)/tasks"
+- extendedWaitUntil:
+    visible:
+      id: '^tasks\.folder\.toggle\.personal$'
+    timeout: 15000
+- tapOn:
+    id: '^tasks\.folder\.toggle\.personal$'
+- runFlow:
+    when:
+      visible:
+        id: '^tasks\.template\.archiveButton\..+$'
+    commands:
+      - tapOn:
+          id: '^tasks\.template\.archiveButton\..+$'
+          index: 0
+- tapOn:
+    id: '^tasks\.template\.filter\.archivedButton$'
+- assertVisible:
+    id: '^tasks\.template\.card\..+$'
+- tapOn:
+    id: '^tasks\.template\.filter\.activeButton$'
+
 # Cleanup: slet aktivitet hvis muligt
 - openLink: "footballcoach:///(tabs)/(home)"
 - runFlow:
@@ -355,28 +378,28 @@ tags:
 - openLink: "footballcoach:///(tabs)/tasks"
 - extendedWaitUntil:
     visible:
-      id: '^tasks.folder.toggle.personal$'
+      id: '^tasks\.folder\.toggle\.personal$'
     timeout: 15000
 - tapOn:
-    id: '^tasks.folder.toggle.personal$'
+    id: '^tasks\.folder\.toggle\.personal$'
 - runFlow:
     when:
       visible:
-        id: '^tasks\.template\.deleteButton$'
+        id: '^tasks\.template\.deleteButton\..+$'
     commands:
       - tapOn:
-          id: '^tasks\.template\.deleteButton$'
+          id: '^tasks\.template\.deleteButton\..+$'
           index: 0
       - runFlow:
           when:
             visible: '^Fortsæt$'
           commands:
             - tapOn: '^Fortsæt$'
-      - runFlow:
-          when:
-            visible: '^Slet$'
-          commands:
-            - tapOn: '^Slet$'
+      - tapOn:
+          id: '^tasks\.template\.deleteModal\.input$'
+      - inputText: 'SLET'
+      - tapOn:
+          id: '^tasks\.template\.deleteModal\.confirmButton$'
       - runFlow:
           when:
             visible: '^(OK|Ok)$'
@@ -385,21 +408,21 @@ tags:
 - runFlow:
     when:
       visible:
-        id: '^tasks\.template\.deleteButton$'
+        id: '^tasks\.template\.deleteButton\..+$'
     commands:
       - tapOn:
-          id: '^tasks\.template\.deleteButton$'
+          id: '^tasks\.template\.deleteButton\..+$'
           index: 0
       - runFlow:
           when:
             visible: '^Fortsæt$'
           commands:
             - tapOn: '^Fortsæt$'
-      - runFlow:
-          when:
-            visible: '^Slet$'
-          commands:
-            - tapOn: '^Slet$'
+      - tapOn:
+          id: '^tasks\.template\.deleteModal\.input$'
+      - inputText: 'SLET'
+      - tapOn:
+          id: '^tasks\.template\.deleteModal\.confirmButton$'
       - runFlow:
           when:
             visible: '^(OK|Ok)$'
@@ -408,136 +431,21 @@ tags:
 - runFlow:
     when:
       visible:
-        id: '^tasks\.template\.deleteButton$'
+        id: '^tasks\.template\.deleteButton\..+$'
     commands:
       - tapOn:
-          id: '^tasks\.template\.deleteButton$'
+          id: '^tasks\.template\.deleteButton\..+$'
           index: 0
       - runFlow:
           when:
             visible: '^Fortsæt$'
           commands:
             - tapOn: '^Fortsæt$'
-      - runFlow:
-          when:
-            visible: '^Slet$'
-          commands:
-            - tapOn: '^Slet$'
-      - runFlow:
-          when:
-            visible: '^(OK|Ok)$'
-          commands:
-            - tapOn: '^(OK|Ok)$'
-- runFlow:
-    when:
-      visible:
-        id: '^tasks\.template\.deleteButton$'
-    commands:
       - tapOn:
-          id: '^tasks\.template\.deleteButton$'
-          index: 0
-      - runFlow:
-          when:
-            visible: '^Fortsæt$'
-          commands:
-            - tapOn: '^Fortsæt$'
-      - runFlow:
-          when:
-            visible: '^Slet$'
-          commands:
-            - tapOn: '^Slet$'
-      - runFlow:
-          when:
-            visible: '^(OK|Ok)$'
-          commands:
-            - tapOn: '^(OK|Ok)$'
-- runFlow:
-    when:
-      visible:
-        id: '^tasks\.template\.deleteButton$'
-    commands:
+          id: '^tasks\.template\.deleteModal\.input$'
+      - inputText: 'SLET'
       - tapOn:
-          id: '^tasks\.template\.deleteButton$'
-          index: 0
-      - runFlow:
-          when:
-            visible: '^Fortsæt$'
-          commands:
-            - tapOn: '^Fortsæt$'
-      - runFlow:
-          when:
-            visible: '^Slet$'
-          commands:
-            - tapOn: '^Slet$'
-      - runFlow:
-          when:
-            visible: '^(OK|Ok)$'
-          commands:
-            - tapOn: '^(OK|Ok)$'
-- runFlow:
-    when:
-      visible:
-        id: '^tasks\.template\.deleteButton$'
-    commands:
-      - tapOn:
-          id: '^tasks\.template\.deleteButton$'
-          index: 0
-      - runFlow:
-          when:
-            visible: '^Fortsæt$'
-          commands:
-            - tapOn: '^Fortsæt$'
-      - runFlow:
-          when:
-            visible: '^Slet$'
-          commands:
-            - tapOn: '^Slet$'
-      - runFlow:
-          when:
-            visible: '^(OK|Ok)$'
-          commands:
-            - tapOn: '^(OK|Ok)$'
-- runFlow:
-    when:
-      visible:
-        id: '^tasks\.template\.deleteButton$'
-    commands:
-      - tapOn:
-          id: '^tasks\.template\.deleteButton$'
-          index: 0
-      - runFlow:
-          when:
-            visible: '^Fortsæt$'
-          commands:
-            - tapOn: '^Fortsæt$'
-      - runFlow:
-          when:
-            visible: '^Slet$'
-          commands:
-            - tapOn: '^Slet$'
-      - runFlow:
-          when:
-            visible: '^(OK|Ok)$'
-          commands:
-            - tapOn: '^(OK|Ok)$'
-- runFlow:
-    when:
-      visible:
-        id: '^tasks\.template\.deleteButton$'
-    commands:
-      - tapOn:
-          id: '^tasks\.template\.deleteButton$'
-          index: 0
-      - runFlow:
-          when:
-            visible: '^Fortsæt$'
-          commands:
-            - tapOn: '^Fortsæt$'
-      - runFlow:
-          when:
-            visible: '^Slet$'
-          commands:
-            - tapOn: '^Slet$'
+          id: '^tasks\.template\.deleteModal\.confirmButton$'
       - runFlow:
           when:
             visible: '^(OK|Ok)$'

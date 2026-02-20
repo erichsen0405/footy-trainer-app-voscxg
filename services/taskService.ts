@@ -391,6 +391,34 @@ export const taskService = {
     return (data || []).map(d => d.task_template_id);
   },
 
+  async setTaskTemplateArchived(
+    taskId: string,
+    userId: string,
+    archived: boolean,
+    signal: AbortSignal = new AbortController().signal,
+  ): Promise<void> {
+    const archivedAt = archived ? new Date().toISOString() : null;
+    const nowIso = new Date().toISOString();
+
+    const { data, error } = await (supabase.from('task_templates') as any)
+      .update({
+        archived_at: archivedAt,
+        updated_at: nowIso,
+      })
+      .eq('id', taskId)
+      .eq('user_id', userId)
+      .select('id')
+      .abortSignal(signal);
+
+    if (error) {
+      throw error;
+    }
+
+    if (!Array.isArray(data) || data.length === 0) {
+      throw new Error('Du kan kun arkivere dine egne opgaveskabeloner');
+    }
+  },
+
   async deleteTask(taskId: string, userId: string, signal: AbortSignal = new AbortController().signal): Promise<void> {
     let templateTitle: string | null = null;
     const normalizeId = (value: unknown): string | null => {
