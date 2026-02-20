@@ -3,6 +3,7 @@ import { DeviceEventEmitter } from 'react-native';
 import { subDays, startOfDay, parseISO, format, differenceInCalendarDays, addDays } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { ActivityCategory } from '@/types';
+import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 
 export type ProgressionMetric = 'rating' | 'intensity';
 
@@ -600,14 +601,22 @@ export function useProgressionData({
         )
       `;
       const taskCounterInternalSelect =
-        'id, activity_id, completed, title, task_template_id, feedback_template_id, activities!inner ( activity_date, user_id )';
+        'id, activity_id, completed, title, description, task_template_id, feedback_template_id, activities!inner ( activity_date, user_id )';
       const taskCounterExternalSelect = `
         id,
+        title,
+        description,
+        local_meta_id,
+        task_template_id,
+        feedback_template_id,
         completed,
         events_local_meta!inner (
+          id,
           user_id,
+          external_event_id,
           events_external!inner (
-            start_date
+            start_date,
+            deleted
           )
         )
       `;
@@ -759,16 +768,38 @@ export function useProgressionData({
       };
       const feedbackByActivityTask: Record<string, any> = {};
       const feedbackByActivityTemplate: Record<string, any> = {};
-      const taskCounterActivityIds = Array.from(
-        new Set(
-          [
-            ...(taskCounterInternalCurrent || []),
-            ...(taskCounterInternalPrevious || []),
-          ]
-            .map(row => normalizeId(row?.activity_id))
-            .filter(Boolean)
-        )
-      ) as string[];
+      const shouldIncludeExternalTaskInCounter = (task: any): boolean => {
+        const externalEvent = task?.events_local_meta?.events_external;
+        const startDate = typeof externalEvent?.start_date === 'string' ? externalEvent.start_date : null;
+        if (!startDate) return false;
+
+        const isSoftDeleted = externalEvent?.deleted === true;
+        const isCompleted = task?.completed === true;
+        return !isSoftDeleted || isCompleted;
+      };
+      const getExternalActivityCandidateIds = (task: any): string[] => {
+        const ids = new Set<string>();
+        const push = (value: unknown) => {
+          const id = normalizeId(value);
+          if (id) ids.add(id);
+        };
+        push(task?.local_meta_id);
+        push(task?.events_local_meta?.id);
+        push(task?.events_local_meta?.external_event_id);
+        return Array.from(ids);
+      };
+
+      const taskCounterExternalCurrentFiltered = (taskCounterExternalCurrent || []).filter(shouldIncludeExternalTaskInCounter);
+      const taskCounterExternalPreviousFiltered = (taskCounterExternalPrevious || []).filter(shouldIncludeExternalTaskInCounter);
+      const taskCounterActivityIdSet = new Set<string>();
+      [...(taskCounterInternalCurrent || []), ...(taskCounterInternalPrevious || [])].forEach((row: any) => {
+        const activityId = normalizeId(row?.activity_id);
+        if (activityId) taskCounterActivityIdSet.add(activityId);
+      });
+      [...taskCounterExternalCurrentFiltered, ...taskCounterExternalPreviousFiltered].forEach((row: any) => {
+        getExternalActivityCandidateIds(row).forEach(activityId => taskCounterActivityIdSet.add(activityId));
+      });
+      const taskCounterActivityIds = Array.from(taskCounterActivityIdSet);
       if (taskCounterActivityIds.length) {
         const { data: taskCounterFeedbackRows, error: taskCounterFeedbackError } = await supabase
           .from('task_template_self_feedback')
@@ -799,18 +830,54 @@ export function useProgressionData({
         const taskId = normalizeId(taskRow?.id);
         const feedbackTemplateId = normalizeId(taskRow?.feedback_template_id);
         const templateId = normalizeId(taskRow?.task_template_id);
-        const looksLikeFeedbackTask = !!feedbackTemplateId || isFeedbackTitle(taskRow?.title);
+        const markerTemplateId =
+          normalizeId(
+            parseTemplateIdFromMarker(typeof taskRow?.description === 'string' ? taskRow.description : '') ||
+            parseTemplateIdFromMarker(typeof taskRow?.title === 'string' ? taskRow.title : '')
+          );
+        const looksLikeFeedbackTask = !!feedbackTemplateId || !!markerTemplateId || isFeedbackTitle(taskRow?.title);
         if (!looksLikeFeedbackTask || !activityId) return false;
 
         if (taskId) {
           const byTask = feedbackByActivityTask[`${activityId}::${taskId}`];
           if (feedbackAnswered(byTask)) return true;
         }
-        const templateKey = feedbackTemplateId ?? templateId;
+        const templateKey = feedbackTemplateId ?? markerTemplateId ?? templateId;
         if (templateKey) {
           const byTemplate = feedbackByActivityTemplate[`${activityId}::${templateKey}`];
           if (feedbackAnswered(byTemplate)) return true;
         }
+        return false;
+      };
+      const isExternalTaskCompletedForCounter = (taskRow: any): boolean => {
+        if (taskRow?.completed === true) return true;
+
+        const taskId = normalizeId(taskRow?.id);
+        const feedbackTemplateId = normalizeId(taskRow?.feedback_template_id);
+        const templateId = normalizeId(taskRow?.task_template_id);
+        const markerTemplateId =
+          normalizeId(
+            parseTemplateIdFromMarker(typeof taskRow?.description === 'string' ? taskRow.description : '') ||
+            parseTemplateIdFromMarker(typeof taskRow?.title === 'string' ? taskRow.title : '')
+          );
+        const templateKey = feedbackTemplateId ?? markerTemplateId ?? templateId;
+        const looksLikeFeedbackTask = !!feedbackTemplateId || !!markerTemplateId || isFeedbackTitle(taskRow?.title);
+        if (!looksLikeFeedbackTask) return false;
+
+        const activityIds = getExternalActivityCandidateIds(taskRow);
+        if (!activityIds.length) return false;
+
+        for (const activityId of activityIds) {
+          if (taskId) {
+            const byTask = feedbackByActivityTask[`${activityId}::${taskId}`];
+            if (feedbackAnswered(byTask)) return true;
+          }
+          if (templateKey) {
+            const byTemplate = feedbackByActivityTemplate[`${activityId}::${templateKey}`];
+            if (feedbackAnswered(byTemplate)) return true;
+          }
+        }
+
         return false;
       };
 
@@ -1033,26 +1100,26 @@ export function useProgressionData({
       };
       const toCurrentPossibleIds = [
         ...(taskCounterInternalCurrent || []).map(row => mapTaskCounterId('internal', row)),
-        ...(taskCounterExternalCurrent || []).map(row => mapTaskCounterId('external', row)),
+        ...taskCounterExternalCurrentFiltered.map(row => mapTaskCounterId('external', row)),
       ].filter(Boolean) as string[];
       const toCurrentCompletedIds = [
         ...(taskCounterInternalCurrent || [])
           .filter(row => isInternalTaskCompletedForCounter(row))
           .map(row => mapTaskCounterId('internal', row)),
-        ...(taskCounterExternalCurrent || [])
-          .filter(row => row?.completed === true)
+        ...taskCounterExternalCurrentFiltered
+          .filter(row => isExternalTaskCompletedForCounter(row))
           .map(row => mapTaskCounterId('external', row)),
       ].filter(Boolean) as string[];
       const toPreviousPossibleIds = [
         ...(taskCounterInternalPrevious || []).map(row => mapTaskCounterId('internal', row)),
-        ...(taskCounterExternalPrevious || []).map(row => mapTaskCounterId('external', row)),
+        ...taskCounterExternalPreviousFiltered.map(row => mapTaskCounterId('external', row)),
       ].filter(Boolean) as string[];
       const toPreviousCompletedIds = [
         ...(taskCounterInternalPrevious || [])
           .filter(row => isInternalTaskCompletedForCounter(row))
           .map(row => mapTaskCounterId('internal', row)),
-        ...(taskCounterExternalPrevious || [])
-          .filter(row => row?.completed === true)
+        ...taskCounterExternalPreviousFiltered
+          .filter(row => isExternalTaskCompletedForCounter(row))
           .map(row => mapTaskCounterId('external', row)),
       ].filter(Boolean) as string[];
       const mappedIntensityCurrent = [
@@ -1221,12 +1288,6 @@ export function useProgressionData({
   }, [filteredFocusPossiblePrevious]);
 
   const focusCompletedDeduped = useMemo(() => {
-    const possibleKeys = new Set<string>(
-      focusPossibleDeduped.map(entry => {
-        const baseKey = resolveBaseKey(entry);
-        return `${baseKey}::${entry.templateId ?? 'none'}`;
-      })
-    );
     const seen = new Set<string>();
     return filteredFocusEntries
       .filter(entry => typeof entry.rating === 'number')
@@ -1234,19 +1295,12 @@ export function useProgressionData({
         const baseKey = resolveBaseKey(entry);
         const key = `${baseKey}::${entry.taskTemplateId ?? 'none'}`;
         if (seen.has(key)) return false;
-        if (possibleKeys.size && !possibleKeys.has(key)) return false;
         seen.add(key);
         return true;
       });
-  }, [filteredFocusEntries, focusPossibleDeduped]);
+  }, [filteredFocusEntries]);
 
   const focusCompletedAllDeduped = useMemo(() => {
-    const possibleKeys = new Set<string>(
-      focusPossibleAllDeduped.map(entry => {
-        const baseKey = resolveBaseKey(entry);
-        return `${baseKey}::${entry.templateId ?? 'none'}`;
-      })
-    );
     const seen = new Set<string>();
     return focusEntries
       .filter(entry => typeof entry.rating === 'number')
@@ -1254,19 +1308,12 @@ export function useProgressionData({
         const baseKey = resolveBaseKey(entry);
         const key = `${baseKey}::${entry.taskTemplateId ?? 'none'}`;
         if (seen.has(key)) return false;
-        if (possibleKeys.size && !possibleKeys.has(key)) return false;
         seen.add(key);
         return true;
       });
-  }, [focusEntries, focusPossibleAllDeduped]);
+  }, [focusEntries]);
 
   const focusCompletedPreviousDeduped = useMemo(() => {
-    const possibleKeys = new Set<string>(
-      focusPossiblePreviousDeduped.map(entry => {
-        const baseKey = resolveBaseKey(entry);
-        return `${baseKey}::${entry.templateId ?? 'none'}`;
-      })
-    );
     const seen = new Set<string>();
     return filteredFocusPrevious
       .filter(entry => typeof entry.rating === 'number')
@@ -1274,11 +1321,10 @@ export function useProgressionData({
         const baseKey = resolveBaseKey(entry);
         const key = `${baseKey}::${entry.taskTemplateId ?? 'none'}`;
         if (seen.has(key)) return false;
-        if (possibleKeys.size && !possibleKeys.has(key)) return false;
         seen.add(key);
         return true;
       });
-  }, [filteredFocusPrevious, focusPossiblePreviousDeduped]);
+  }, [filteredFocusPrevious]);
 
   const intensityPossibleDeduped = useMemo(() => {
     const seen = new Set<string>();
@@ -1412,4 +1458,3 @@ export function useProgressionData({
     requiresLogin,
   };
 }
-
