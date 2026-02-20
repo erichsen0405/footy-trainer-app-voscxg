@@ -470,6 +470,7 @@ export default function LibraryScreen() {
   const appliedFeedbackEventsRef = useRef<
     Record<string, { exerciseId: string; rollback: ExerciseCounterOverride }>
   >({});
+  const pendingRollbackByExerciseRef = useRef<Record<string, ExerciseCounterOverride>>({});
 
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addModalExercise, setAddModalExercise] = useState<Exercise | null>(null);
@@ -732,9 +733,10 @@ export default function LibraryScreen() {
         const entry = Object.entries(exerciseTaskMapRef.current).find(([, taskTemplateId]) => String(taskTemplateId) === templateId);
         const exerciseId = entry?.[0];
         if (exerciseId) {
+          const pendingRollback = pendingRollbackByExerciseRef.current[exerciseId];
           const previous = counterOverridesRef.current[exerciseId];
           const exercise = findExerciseById(exerciseId);
-          const rollback: ExerciseCounterOverride = previous ?? {
+          const rollback: ExerciseCounterOverride = pendingRollback ?? previous ?? {
             last_score:
               typeof exercise?.last_score === 'number'
                 ? exercise.last_score
@@ -745,7 +747,9 @@ export default function LibraryScreen() {
                 : null,
           };
           const baseCount =
-            typeof previous?.execution_count === 'number'
+            typeof pendingRollback?.execution_count === 'number'
+              ? pendingRollback.execution_count
+              : typeof previous?.execution_count === 'number'
               ? previous.execution_count
               : typeof exercise?.execution_count === 'number'
               ? exercise.execution_count
@@ -762,6 +766,7 @@ export default function LibraryScreen() {
           if (optimisticId) {
             appliedFeedbackEventsRef.current[optimisticId] = { exerciseId, rollback };
           }
+          delete pendingRollbackByExerciseRef.current[exerciseId];
         }
       }
 
@@ -773,6 +778,7 @@ export default function LibraryScreen() {
       const applied = appliedFeedbackEventsRef.current[optimisticId];
       if (!applied?.exerciseId) return;
       const { exerciseId, rollback } = applied;
+      pendingRollbackByExerciseRef.current[exerciseId] = rollback;
       setCounterOverrides((prev) => {
         return {
           ...prev,
