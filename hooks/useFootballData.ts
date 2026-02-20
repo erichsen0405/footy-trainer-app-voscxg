@@ -22,6 +22,7 @@ import { useAdmin } from '@/contexts/AdminContext';
 import { subscribeToTaskCompletion, emitTaskCompletionEvent } from '@/utils/taskEvents';
 import { emitActivityPatch, emitActivitiesRefreshRequested } from '@/utils/activityEvents';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
+import { isTaskVisibleForActivity } from '@/utils/taskTemplateVisibility';
 
 type ExternalTaskForPerformance = {
   completed?: boolean | null;
@@ -620,12 +621,12 @@ export const useFootballData = () => {
       const [internalRes, externalRes, internalIntensityRes, externalIntensityRes] = await Promise.all([
         supabase
           .from('activity_tasks')
-          .select('id, activity_id, completed, title, description, task_template_id, feedback_template_id, activities!inner(activity_date)')
+          .select('id, activity_id, completed, title, description, task_template_id, feedback_template_id, activities!inner(activity_date, activity_time)')
           .gte('activities.activity_date', startIso)
           .lt('activities.activity_date', endIsoExclusive),
         supabase
           .from('external_event_tasks')
-          .select('id, completed, events_local_meta!inner(events_external!inner(start_date, deleted))')
+          .select('id, completed, title, description, task_template_id, feedback_template_id, events_local_meta!inner(events_external!inner(start_date, deleted))')
           .gte('events_local_meta.events_external.start_date', startIso)
           .lt('events_local_meta.events_external.start_date', endIsoExclusive),
         supabase
@@ -645,16 +646,89 @@ export const useFootballData = () => {
       if (internalIntensityRes.error) throw internalIntensityRes.error;
       if (externalIntensityRes.error) throw externalIntensityRes.error;
 
-      const internalWeeklyTasks = internalRes.data || [];
-      const externalWeeklyTasks = (externalRes.data || []).filter(shouldIncludeExternalTaskInPerformance);
-      const internalIntensityWeekly = (internalIntensityRes.data || []) as InternalIntensityForPerformance[];
-      const externalIntensityWeekly = (externalIntensityRes.data || []) as ExternalIntensityForPerformance[];
-
       const normalizeId = (value: unknown): string | null => {
         if (value === null || value === undefined) return null;
         const normalized = String(value).trim();
         return normalized.length ? normalized : null;
       };
+      const getExternalDateTimeParts = (value: unknown): { activityDate: string | null; activityTime: string | null } => {
+        if (typeof value !== 'string') {
+          return { activityDate: null, activityTime: null };
+        }
+        const trimmed = value.trim();
+        if (!trimmed) {
+          return { activityDate: null, activityTime: null };
+        }
+
+        const separator = trimmed.includes('T') ? 'T' : trimmed.includes(' ') ? ' ' : null;
+        if (!separator) {
+          return { activityDate: trimmed.slice(0, 10), activityTime: null };
+        }
+
+        const [rawDate, rawTime = ''] = trimmed.split(separator);
+        const activityDate = rawDate ? rawDate.slice(0, 10) : null;
+        const activityTime = rawTime ? rawTime.replace('Z', '').slice(0, 8) : null;
+        return { activityDate, activityTime };
+      };
+      const resolveTaskTemplateId = (task: any): string | null => {
+        const directTemplateId = normalizeId(task?.task_template_id);
+        if (directTemplateId) return directTemplateId;
+
+        const directFeedbackTemplateId = normalizeId(task?.feedback_template_id);
+        if (directFeedbackTemplateId) return directFeedbackTemplateId;
+
+        const markerTemplateId = normalizeId(
+          parseTemplateIdFromMarker(typeof task?.description === 'string' ? task.description : '') ||
+          parseTemplateIdFromMarker(typeof task?.title === 'string' ? task.title : '')
+        );
+        return markerTemplateId;
+      };
+
+      const internalWeeklyTasksRaw = internalRes.data || [];
+      const externalWeeklyTasksRaw = (externalRes.data || []).filter(shouldIncludeExternalTaskInPerformance);
+      const internalIntensityWeekly = (internalIntensityRes.data || []) as InternalIntensityForPerformance[];
+      const externalIntensityWeekly = (externalIntensityRes.data || []) as ExternalIntensityForPerformance[];
+
+      const templateIdCandidates = new Set<string>();
+      internalWeeklyTasksRaw.forEach((task: any) => {
+        const templateId = resolveTaskTemplateId(task);
+        if (templateId) templateIdCandidates.add(templateId);
+      });
+      externalWeeklyTasksRaw.forEach((task: any) => {
+        const templateId = resolveTaskTemplateId(task);
+        if (templateId) templateIdCandidates.add(templateId);
+      });
+
+      const templateArchivedAtById: Record<string, string | null> = {};
+      if (templateIdCandidates.size) {
+        const { data: templateRows, error: templateLookupError } = await supabase
+          .from('task_templates')
+          .select('id, archived_at')
+          .in('id', Array.from(templateIdCandidates));
+        if (templateLookupError) throw templateLookupError;
+
+        (templateRows || []).forEach((row: any) => {
+          const templateId = normalizeId(row?.id);
+          if (!templateId) return;
+          templateArchivedAtById[templateId] =
+            typeof row?.archived_at === 'string' && row.archived_at.trim().length
+              ? row.archived_at
+              : null;
+        });
+      }
+
+      const internalWeeklyTasks = internalWeeklyTasksRaw.filter((task: any) => {
+        const activityDate = (task as any)?.activities?.activity_date as string | undefined;
+        const activityTime = (task as any)?.activities?.activity_time as string | undefined;
+        return isTaskVisibleForActivity(task, activityDate ?? null, activityTime ?? null, templateArchivedAtById);
+      });
+
+      const externalWeeklyTasks = externalWeeklyTasksRaw.filter((task: any) => {
+        const startDate = (task as any)?.events_local_meta?.events_external?.start_date as string | undefined;
+        const { activityDate, activityTime } = getExternalDateTimeParts(startDate);
+        return isTaskVisibleForActivity(task, activityDate, activityTime, templateArchivedAtById);
+      });
+
       const normalizeFeedbackTitle = (value?: string | null): string => {
         if (typeof value !== 'string') return '';
         return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
