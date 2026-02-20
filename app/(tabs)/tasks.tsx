@@ -26,6 +26,7 @@ import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { AdminContextWrapper } from '@/components/AdminContextWrapper';
 import { supabase } from '@/integrations/supabase/client';
 import { taskService } from '@/services/taskService';
+import { forceRefreshNotificationQueue } from '@/utils/notificationScheduler';
 
 // ✅ Robust import: undgå Hermes-crash hvis named export "colors" ikke findes
 import * as CommonStyles from '@/styles/commonStyles';
@@ -646,6 +647,9 @@ export default function TasksScreen() {
 
         await taskService.setTaskTemplateArchived(taskId, session.user.id, !isArchived);
         await refreshAll?.();
+        if (!refreshAll) {
+          await forceRefreshNotificationQueue();
+        }
       } catch (error: any) {
         Alert.alert('Fejl', error?.message || 'Kunne ikke opdatere arkivstatus');
       }
