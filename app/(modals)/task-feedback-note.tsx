@@ -286,7 +286,7 @@ export default function TaskFeedbackNoteScreen() {
         setUserId(uid);
 
         const normalizedTaskInstanceId = normalizeId(taskInstanceId);
-        const shouldHydratePersisted = normalizedTaskInstanceId
+        const taskCompletedFromTable = normalizedTaskInstanceId
           ? await fetchTaskCompletion(normalizedTaskInstanceId)
           : false;
 
@@ -300,11 +300,6 @@ export default function TaskFeedbackNoteScreen() {
           if (!cancelled) setConfig(buildFeedbackConfig(data));
         } catch {
           // ignore
-        }
-
-        if (!shouldHydratePersisted) {
-          if (!cancelled) resetDraftState();
-          return;
         }
 
         try {
@@ -328,6 +323,15 @@ export default function TaskFeedbackNoteScreen() {
             if (!rowActivityId || !candidateIds.includes(rowActivityId)) return best;
             return !best || safeDateMs(row.createdAt) > safeDateMs(best.createdAt) ? row : best;
           }, undefined);
+
+          const shouldHydratePersisted = normalizedTaskInstanceId
+            ? taskCompletedFromTable || !!latestForInstance
+            : taskCompletedFromTable || !!latestForActivity;
+
+          if (!shouldHydratePersisted) {
+            resetDraftState();
+            return;
+          }
 
           const selected = normalizedTaskInstanceId
             ? latestForInstance ?? null

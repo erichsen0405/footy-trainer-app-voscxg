@@ -154,11 +154,10 @@ describe('task-feedback-note screen', () => {
     await waitFor(() => expect(screen.getByTestId('feedback.noteInput').props.value).toBe(''));
     expect(screen.getByTestId('feedback.selectedScore.none')).toBeTruthy();
     expect(mockDismiss).toHaveBeenCalled();
-    expect(mockFetchSelfFeedbackForTemplates).not.toHaveBeenCalled();
   });
 
-  it('hydrates persisted score+note only when the task is completed', async () => {
-    mockCompletionByTaskId['task-completed'] = true;
+  it('hydrates persisted score+note when task completion flag is stale but feedback exists', async () => {
+    mockCompletionByTaskId['task-completed'] = false;
     mockFetchSelfFeedbackForTemplates.mockResolvedValue([
       {
         id: 'row-other',
