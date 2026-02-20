@@ -413,6 +413,7 @@ describe('Library screen gating and card state', () => {
 
     act(() => {
       DeviceEventEmitter.emit('feedback:saved', {
+        activityId: 'activity-xyz',
         templateId: 'template-xyz',
         taskInstanceId: 'task-instance-xyz',
         rating: 8,
@@ -467,6 +468,7 @@ describe('Library screen gating and card state', () => {
 
     act(() => {
       DeviceEventEmitter.emit('feedback:saved', {
+        activityId: 'activity-1',
         templateId: 'template-corrected',
         taskInstanceId: 'task-instance-1',
         rating: 6,
@@ -483,6 +485,7 @@ describe('Library screen gating and card state', () => {
         optimisticId: 'optimistic:fail-1',
       });
       DeviceEventEmitter.emit('feedback:saved', {
+        activityId: 'activity-1',
         templateId: 'template-corrected',
         taskInstanceId: 'task-instance-1',
         rating: 6,
@@ -493,6 +496,75 @@ describe('Library screen gating and card state', () => {
     await waitFor(async () => {
       expect(await findByTestId('library.counter.lastScore.ex-map-2')).toHaveTextContent('Senest: 6/10');
       expect(await findByTestId('library.counter.executionCount.ex-map-2')).toHaveTextContent('Udført: 1x');
+    });
+  });
+
+  it('does not increment execution count when feedback is edited for same activity/task instance', async () => {
+    const addTask = jest.fn().mockResolvedValue({ id: 'template-edit' });
+    mockUseFootball.mockReturnValue({ addTask, tasks: [] });
+
+    setupSupabaseFixture({
+      personalExercises: [
+        {
+          id: 'ex-map-3',
+          trainer_id: 'user-1',
+          title: 'Edit Drill',
+          is_system: false,
+          is_added_to_tasks: false,
+          last_score: null,
+          execution_count: 0,
+        },
+      ],
+    });
+
+    mockUseUserRole.mockReturnValue({ userRole: 'trainer', isTrainer: true, isAdmin: false });
+    mockUseSubscriptionFeatures.mockReturnValue({
+      featureAccess: { library: true, calendarSync: true, trainerLinking: true },
+      isLoading: false,
+      subscriptionTier: 'trainer_basic',
+    });
+
+    const { findByText, findByTestId } = render(<LibraryScreen />);
+
+    fireEvent.press(await findByText(/Personlige/i));
+    fireEvent.press(await findByTestId('library.addToTasksButton.ex-map-3'));
+    fireEvent.press(await findByText(/^Tilf.*j$/i));
+
+    await waitFor(() => {
+      expect(addTask).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(async () => {
+      const addButton = await findByTestId('library.addToTasksButton.ex-map-3');
+      expect(addButton.props.accessibilityState?.disabled).toBe(true);
+    });
+
+    act(() => {
+      DeviceEventEmitter.emit('feedback:saved', {
+        activityId: 'activity-edit-1',
+        templateId: 'template-edit',
+        taskInstanceId: 'task-edit-1',
+        rating: 7,
+        optimisticId: 'optimistic:edit-1',
+      });
+    });
+
+    await waitFor(async () => {
+      expect(await findByTestId('library.counter.executionCount.ex-map-3')).toHaveTextContent('Udført: 1x');
+    });
+
+    act(() => {
+      DeviceEventEmitter.emit('feedback:saved', {
+        activityId: 'activity-edit-1',
+        templateId: 'template-edit',
+        taskInstanceId: 'task-edit-1',
+        rating: 9,
+        optimisticId: 'optimistic:edit-2',
+      });
+    });
+
+    await waitFor(async () => {
+      expect(await findByTestId('library.counter.lastScore.ex-map-3')).toHaveTextContent('Senest: 9/10');
+      expect(await findByTestId('library.counter.executionCount.ex-map-3')).toHaveTextContent('Udført: 1x');
     });
   });
 });
