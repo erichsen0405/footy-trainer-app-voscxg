@@ -467,7 +467,9 @@ export default function LibraryScreen() {
     counterOverridesRef.current = counterOverrides;
   }, [counterOverrides]);
 
-  const appliedFeedbackEventsRef = useRef<Record<string, { exerciseId: string; previous?: ExerciseCounterOverride }>>({});
+  const appliedFeedbackEventsRef = useRef<
+    Record<string, { exerciseId: string; rollback: ExerciseCounterOverride }>
+  >({});
 
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addModalExercise, setAddModalExercise] = useState<Exercise | null>(null);
@@ -732,6 +734,16 @@ export default function LibraryScreen() {
         if (exerciseId) {
           const previous = counterOverridesRef.current[exerciseId];
           const exercise = findExerciseById(exerciseId);
+          const rollback: ExerciseCounterOverride = previous ?? {
+            last_score:
+              typeof exercise?.last_score === 'number'
+                ? exercise.last_score
+                : null,
+            execution_count:
+              typeof exercise?.execution_count === 'number'
+                ? exercise.execution_count
+                : null,
+          };
           const baseCount =
             typeof previous?.execution_count === 'number'
               ? previous.execution_count
@@ -748,7 +760,7 @@ export default function LibraryScreen() {
           }));
 
           if (optimisticId) {
-            appliedFeedbackEventsRef.current[optimisticId] = { exerciseId, previous };
+            appliedFeedbackEventsRef.current[optimisticId] = { exerciseId, rollback };
           }
         }
       }
@@ -760,15 +772,12 @@ export default function LibraryScreen() {
       if (!optimisticId) return;
       const applied = appliedFeedbackEventsRef.current[optimisticId];
       if (!applied?.exerciseId) return;
-      const { exerciseId, previous } = applied;
+      const { exerciseId, rollback } = applied;
       setCounterOverrides((prev) => {
-        const next = { ...prev };
-        if (previous) {
-          next[exerciseId] = previous;
-        } else {
-          delete next[exerciseId];
-        }
-        return next;
+        return {
+          ...prev,
+          [exerciseId]: rollback,
+        };
       });
       delete appliedFeedbackEventsRef.current[optimisticId];
     });
