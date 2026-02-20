@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/integrations/supabase/client';
 import { Platform } from 'react-native';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
+import { isTaskVisibleForActivity } from '@/utils/taskTemplateVisibility';
 
 /**
  * SMART NOTIFICATION SCHEDULER
@@ -178,6 +179,23 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
     
     // Always build into this array so after-training can run even if there are 0 task reminders.
     const reminders: PendingReminder[] = [];
+    const normalizeId = (value: unknown): string | null => {
+      if (value === null || value === undefined) return null;
+      const normalized = String(value).trim();
+      return normalized.length ? normalized : null;
+    };
+    const resolveTaskTemplateId = (task: any): string | null => {
+      const directTemplateId = normalizeId(task?.task_template_id);
+      if (directTemplateId) return directTemplateId;
+
+      const directFeedbackTemplateId = normalizeId(task?.feedback_template_id);
+      if (directFeedbackTemplateId) return directFeedbackTemplateId;
+
+      return normalizeId(
+        parseTemplateIdFromMarker(typeof task?.description === 'string' ? task.description : '') ||
+        parseTemplateIdFromMarker(typeof task?.title === 'string' ? task.title : '')
+      );
+    };
 
     // --- Task reminders (reminder_minutes) ---
     const { data: tasks, error } = await supabase
@@ -187,6 +205,8 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
         title,
         description,
         reminder_minutes,
+        task_template_id,
+        feedback_template_id,
         activity_id,
         activities!inner (
           id,
@@ -212,10 +232,46 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
       console.log('ℹ️ No task reminders (reminder_minutes) found');
     } else {
       console.log(`✅ Found ${tasks.length} tasks with reminders`);
+
+      const templateIds = Array.from(
+        new Set(
+          tasks
+            .map((task: any) => resolveTaskTemplateId(task))
+            .filter((id: string | null): id is string => !!id)
+        )
+      );
+      const templateArchivedAtById: Record<string, string | null> = {};
+      if (templateIds.length) {
+        const { data: templates, error: templatesError } = await supabase
+          .from('task_templates')
+          .select('id, archived_at')
+          .eq('user_id', user.id)
+          .in('id', templateIds);
+
+        if (templatesError) {
+          console.error('❌ Error fetching template archive state for reminders:', templatesError);
+        } else {
+          (templates || []).forEach((template: any) => {
+            const templateId = normalizeId(template?.id);
+            if (!templateId) return;
+            templateArchivedAtById[templateId] =
+              typeof template?.archived_at === 'string' && template.archived_at.trim().length
+                ? template.archived_at
+                : null;
+          });
+        }
+      }
       
       for (const task of tasks) {
         const activity = (task as any).activities;
         if (!activity) continue;
+        if (!isTaskVisibleForActivity(task, activity.activity_date, activity.activity_time, templateArchivedAtById)) {
+          console.log('ℹ️ Skipping reminder for archived template task', {
+            activityId: activity.id,
+            taskId: task.id,
+          });
+          continue;
+        }
 
         const reminderMinutes = Number(task.reminder_minutes);
         if (!Number.isFinite(reminderMinutes)) {
@@ -288,10 +344,11 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
         ) as string[];
 
         const templateDelayById = new Map<string, number>();
+        const templateArchivedAtById: Record<string, string | null> = {};
         if (templateIds.length) {
           const { data: templates, error: templatesError } = await supabase
             .from('task_templates')
-            .select('id, after_training_enabled, after_training_delay_minutes')
+            .select('id, after_training_enabled, after_training_delay_minutes, archived_at')
             .eq('user_id', user.id)
             .in('id', templateIds);
 
@@ -299,10 +356,15 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
             console.error('❌ Error fetching template delay for after-training:', templatesError);
           } else {
             (templates || []).forEach((tt: any) => {
-              if (!tt?.id) return;
+              const templateId = normalizeId(tt?.id);
+              if (!templateId) return;
+              templateArchivedAtById[templateId] =
+                typeof tt?.archived_at === 'string' && tt.archived_at.trim().length
+                  ? tt.archived_at
+                  : null;
               if (!tt.after_training_enabled) return;
               const delay = tt.after_training_delay_minutes;
-              templateDelayById.set(String(tt.id), typeof delay === 'number' && Number.isFinite(delay) ? delay : 0);
+              templateDelayById.set(templateId, typeof delay === 'number' && Number.isFinite(delay) ? delay : 0);
             });
           }
         }
@@ -321,6 +383,21 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
           // Strict: skip when template is disabled/missing (no fallback)
           if (!templateDelayById.has(templateId)) {
             console.log('⚠️ Skipping after-training reminder (template disabled/missing)', {
+              activityId: activity.id,
+              taskId: feedbackTask.id,
+              templateId,
+            });
+            continue;
+          }
+          if (
+            !isTaskVisibleForActivity(
+              { feedback_template_id: templateId },
+              activity.activity_date,
+              activity.activity_time,
+              templateArchivedAtById
+            )
+          ) {
+            console.log('ℹ️ Skipping after-training reminder for archived template task', {
               activityId: activity.id,
               taskId: feedbackTask.id,
               templateId,

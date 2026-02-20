@@ -376,6 +376,8 @@ tags:
                   - tapOn: '^(OK|Ok)$'
 # Ryd opgaveskabelon op
 - openLink: "footballcoach:///(tabs)/tasks"
+- tapOn:
+    id: '^tasks\.template\.filter\.archivedButton$'
 - extendedWaitUntil:
     visible:
       id: '^tasks\.folder\.toggle\.personal$'
