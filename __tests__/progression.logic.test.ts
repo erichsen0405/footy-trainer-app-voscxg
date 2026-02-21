@@ -1,4 +1,9 @@
-import { computeProgressionSummary } from '@/hooks/useProgressionData';
+import {
+  computeProgressionSummary,
+  dedupeByLatestCreatedAt,
+  resolveBaseKey,
+  resolveFeedbackBaseKey,
+} from '@/hooks/useProgressionData';
 import type { ProgressionEntry } from '@/hooks/useProgressionData';
 
 jest.mock('@/integrations/supabase/client', () => ({
@@ -15,6 +20,7 @@ const makeEntry = (overrides: Partial<ProgressionEntry>): ProgressionEntry => ({
   createdAt: overrides.createdAt ?? '2026-01-10T12:00:00.000Z',
   activityId: overrides.activityId ?? 'a1',
   taskTemplateId: overrides.taskTemplateId ?? 't1',
+  taskInstanceId: overrides.taskInstanceId ?? null,
   taskTemplateName: overrides.taskTemplateName ?? null,
   taskTemplateDescription: overrides.taskTemplateDescription ?? null,
   taskTemplateScoreExplanation: overrides.taskTemplateScoreExplanation ?? null,
@@ -208,5 +214,134 @@ describe('progression KPI summary', () => {
 
     expect(summary.streakDays).toBe(1);
     expect(summary.badges).not.toContain('Streak 3+');
+  });
+
+  it('keeps only the latest feedback state per activity/template key', () => {
+    const entries = [
+      makeEntry({
+        id: 'older-completed',
+        createdAt: '2026-02-20T10:00:00.000Z',
+        activityId: '9b66da22-3ec4-4f6d-b7d4-f2234b58ab10',
+        taskTemplateId: 'template-1',
+        rating: 8,
+        note: 'gammel note',
+      }),
+      makeEntry({
+        id: 'latest-cleared',
+        createdAt: '2026-02-20T11:00:00.000Z',
+        activityId: '9b66da22-3ec4-4f6d-b7d4-f2234b58ab10',
+        taskTemplateId: 'template-1',
+        rating: null,
+        note: null,
+      }),
+    ];
+
+    const latest = dedupeByLatestCreatedAt(
+      entries,
+      (entry) => `${resolveFeedbackBaseKey(entry)}::${entry.taskTemplateId ?? 'none'}`
+    );
+
+    expect(latest).toHaveLength(1);
+    expect(latest[0].id).toBe('latest-cleared');
+    expect(latest[0].rating).toBeNull();
+    expect(latest[0].note).toBeNull();
+  });
+
+  it('never resurrects old note after clear and re-complete', () => {
+    const entries = [
+      makeEntry({
+        id: 'first-completed',
+        createdAt: '2026-02-20T10:00:00.000Z',
+        activityId: '1ce6adf1-32f1-47e3-a9e1-a0a7f2d70811',
+        taskTemplateId: 'template-1',
+        rating: 7,
+        note: 'oprindelig note',
+      }),
+      makeEntry({
+        id: 'cleared',
+        createdAt: '2026-02-20T11:00:00.000Z',
+        activityId: '1ce6adf1-32f1-47e3-a9e1-a0a7f2d70811',
+        taskTemplateId: 'template-1',
+        rating: null,
+        note: null,
+      }),
+      makeEntry({
+        id: 're-completed',
+        createdAt: '2026-02-20T12:00:00.000Z',
+        activityId: '1ce6adf1-32f1-47e3-a9e1-a0a7f2d70811',
+        taskTemplateId: 'template-1',
+        rating: 5,
+        note: null,
+      }),
+    ];
+
+    const latestCompleted = dedupeByLatestCreatedAt(
+      entries,
+      (entry) => `${resolveFeedbackBaseKey(entry)}::${entry.taskTemplateId ?? 'none'}`
+    ).filter((entry) => typeof entry.rating === 'number');
+
+    expect(latestCompleted).toHaveLength(1);
+    expect(latestCompleted[0].id).toBe('re-completed');
+    expect(latestCompleted[0].note).toBeNull();
+  });
+
+  it('prefers event session key over activity id for dedupe', () => {
+    const oldEntry = makeEntry({
+      id: 'old',
+      createdAt: '2026-02-20T10:00:00.000Z',
+      activityId: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',
+      sessionKey: 'event:feedfeed-feed-4eed-aeed-feedfeedfeed',
+      taskTemplateId: 'template-1',
+      rating: 4,
+      note: 'old note',
+    });
+    const latestEntry = makeEntry({
+      id: 'latest',
+      createdAt: '2026-02-20T11:00:00.000Z',
+      activityId: 'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb',
+      sessionKey: 'event:feedfeed-feed-4eed-aeed-feedfeedfeed',
+      taskTemplateId: 'template-1',
+      rating: 7,
+      note: 'new note',
+    });
+
+    const deduped = dedupeByLatestCreatedAt(
+      [oldEntry, latestEntry],
+      (entry) => `${resolveFeedbackBaseKey(entry)}::${entry.taskTemplateId ?? 'none'}`
+    );
+
+    expect(deduped).toHaveLength(1);
+    expect(deduped[0].id).toBe('latest');
+    expect(deduped[0].note).toBe('new note');
+  });
+
+  it('dedupes feedback by activity/session before task_instance_id', () => {
+    const oldEntry = makeEntry({
+      id: 'old',
+      createdAt: '2026-02-20T10:00:00.000Z',
+      activityId: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',
+      taskInstanceId: '11111111-1111-4111-8111-111111111111',
+      taskTemplateId: 'template-1',
+      rating: 4,
+      note: 'old note',
+    });
+    const latestEntry = makeEntry({
+      id: 'latest',
+      createdAt: '2026-02-20T11:00:00.000Z',
+      activityId: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',
+      taskInstanceId: '11111111-1111-4111-8111-111111111111',
+      taskTemplateId: 'template-1',
+      rating: 7,
+      note: 'new note',
+    });
+
+    const deduped = dedupeByLatestCreatedAt(
+      [oldEntry, latestEntry],
+      (entry) => `${resolveFeedbackBaseKey(entry)}::${entry.taskTemplateId ?? 'none'}`
+    );
+
+    expect(deduped).toHaveLength(1);
+    expect(deduped[0].id).toBe('latest');
+    expect(deduped[0].note).toBe('new note');
   });
 });

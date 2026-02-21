@@ -32,6 +32,9 @@ let iapReadyFlag = false;
 let iapInitPromise: Promise<void> | null = null;
 
 export async function ensureIapReady(): Promise<boolean> {
+  if (Platform.OS !== 'ios') {
+    return false;
+  }
   if (iapReadyFlag) return true;
   if (rniapImportPromise) {
     try {
@@ -77,7 +80,7 @@ const resolveRniapModule = (module: any) => {
   return module?.default ?? module;
 };
 
-if ((Platform.OS === 'ios' || Platform.OS === 'android') && !isExpoGo) {
+if (Platform.OS === 'ios' && !isExpoGo) {
   rniapImportPromise = import('react-native-iap')
     .then(module => {
       const resolved = resolveRniapModule(module);

@@ -26,6 +26,8 @@ yarn-error.*
 .env*.local
 e2e/maestro.env.sh
 e2e/maestro.env.ps1
+e2e/maestro.env.ios.sh
+e2e/maestro.env.android.sh
 e2e/maestro/
 e2e/maestro/artifacts/
 **/.maestro/

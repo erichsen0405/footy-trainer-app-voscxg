@@ -1,0 +1,15 @@
+appId: ${MAESTRO_APP_ID}
+---
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - runFlow:
+          when:
+            visible: '.*(vil gerne sende dig notifikationer|Would Like to Send You Notifications).*'
+          commands:
+            - runFlow:
+                when:
+                  visible: '^(Tillad|Allow)$'
+                commands:
+                  - tapOn: '^(Tillad|Allow)$'

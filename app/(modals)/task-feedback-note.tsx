@@ -467,6 +467,21 @@ export default function TaskFeedbackNoteScreen() {
           });
         }
 
+        if (normalizedTaskInstanceId) {
+          try {
+            await supabase
+              .from('activity_tasks')
+              .update({ completed: true })
+              .eq('id', normalizedTaskInstanceId);
+          } catch {}
+          try {
+            await supabase
+              .from('external_event_tasks')
+              .update({ completed: true })
+              .eq('id', normalizedTaskInstanceId);
+          } catch {}
+        }
+
         DeviceEventEmitter.emit('progression:refresh', {
           activityId: savedActivityId ?? optimisticActivityId,
           templateId,

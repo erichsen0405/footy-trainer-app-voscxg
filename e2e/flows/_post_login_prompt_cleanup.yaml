@@ -1,4 +1,4 @@
-appId: com.erichsen.footballcoach
+appId: ${MAESTRO_APP_ID}
 ---
 - runFlow:
     when:

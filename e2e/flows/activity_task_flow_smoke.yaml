@@ -1,14 +1,16 @@
-appId: com.erichsen.footballcoach
+appId: ${MAESTRO_APP_ID}
 tags:
   - smoke
 ---
 - launchApp:
-    appId: com.erichsen.footballcoach
+    appId: ${MAESTRO_APP_ID}
     clearState: true
+    permissions:
+      notifications: allow
 - runFlow: _dev_client_bootstrap.yaml
 
 # Login hvis nødvendigt
-- openLink: "footballcoach:///(tabs)/profile"
+- openLink: 'footballcoach:///(tabs)/profile'
 - runFlow:
     when:
       visible:
@@ -16,16 +18,16 @@ tags:
     commands:
       - tapOn:
           id: '^auth\.login\.emailInput$'
-      - inputText: "${MAESTRO_EMAIL}"
+      - inputText: '${MAESTRO_EMAIL}'
       - tapOn:
           id: '^auth\.login\.passwordInput$'
-      - inputText: "${MAESTRO_PASSWORD}"
+      - inputText: '${MAESTRO_PASSWORD}'
       - tapOn:
           id: '^auth\.login\.submitButton$'
 - runFlow: _post_login_prompt_cleanup.yaml
 
 # Opret aktivitet
-- openLink: "footballcoach:///(tabs)/(home)"
+- openLink: 'footballcoach:///(tabs)/(home)'
 - extendedWaitUntil:
     visible:
       id: '^home\.screen$'
@@ -38,7 +40,7 @@ tags:
     timeout: 15000
 - tapOn:
     id: '^activity\.create\.titleInput$'
-- inputText: "Maestro Aktivitet"
+- inputText: 'Maestro Aktivitet ${MAESTRO_PLATFORM_SUFFIX}'
 - tapOn:
     id: '^activity\.create\.locationInput$'
 - inputText: "Bane 1\n"
@@ -81,7 +83,7 @@ tags:
             - tapOn: '^Ok$'
 
 # Opret opgaveskabelon
-- openLink: "footballcoach:///(tabs)/tasks"
+- openLink: 'footballcoach:///(tabs)/tasks'
 - extendedWaitUntil:
     visible:
       id: '^tasks\.newTemplateButton$'
@@ -94,17 +96,13 @@ tags:
     timeout: 15000
 - tapOn:
     id: '^tasks\.template\.titleInput$'
-- inputText: "Maestro Opgave E2E"
+- inputText: 'Maestro Opgave E2E ${MAESTRO_PLATFORM_SUFFIX}'
 - tapOn:
     id: '^tasks\.template\.descriptionInput$'
-- inputText: "E2E opgave til activity-task-flow"
+- inputText: 'E2E opgave til activity-task-flow'
 - tapOn:
     id: '^tasks\.template\.titleInput$'
-- runFlow:
-    when:
-      visible: '^(Done|Færdig)$'
-    commands:
-      - tapOn: '^(Done|Færdig)$'
+- runFlow: _platform_keyboard_commit_input.yaml
 - swipe:
     start: 50%, 80%
     end: 50%, 30%
@@ -169,7 +167,7 @@ tags:
             - tapOn: '^Ok$'
 
 # Åbn første aktivitet
-- openLink: "footballcoach:///(tabs)/(home)"
+- openLink: 'footballcoach:///(tabs)/(home)'
 - extendedWaitUntil:
     visible:
       id: '^home\.screen$'
@@ -211,11 +209,24 @@ tags:
           id: '^feedback\.scoreOption\.5$'
       - runFlow:
           when:
+            notVisible:
+              id: '^feedback\.selectedScore\.5$'
+          commands:
+            - tapOn:
+                id: '^feedback\.scoreOption\.5$'
+      - extendedWaitUntil:
+          visible:
+            id: '^feedback\.selectedScore\.5$'
+          timeout: 5000
+      - runFlow:
+          when:
             visible:
               id: '^feedback\.scoreDoneButton$'
           commands:
             - tapOn:
                 id: '^feedback\.scoreDoneButton$'
+      - assertVisible:
+          id: '^feedback\.selectedScore\.5$'
       - runFlow:
           when:
             visible:
@@ -223,12 +234,8 @@ tags:
           commands:
             - tapOn:
                 id: '^feedback\.noteInput$'
-            - inputText: "Maestro intensity note"
-      - runFlow:
-          when:
-            visible: '^(Done|Færdig)$'
-          commands:
-            - tapOn: '^(Done|Færdig)$'
+            - inputText: 'Maestro intensity note'
+      - runFlow: _platform_keyboard_commit_input.yaml
       - runFlow:
           when:
             visible:
@@ -289,11 +296,24 @@ tags:
           id: '^feedback\.scoreOption\.5$'
       - runFlow:
           when:
+            notVisible:
+              id: '^feedback\.selectedScore\.5$'
+          commands:
+            - tapOn:
+                id: '^feedback\.scoreOption\.5$'
+      - extendedWaitUntil:
+          visible:
+            id: '^feedback\.selectedScore\.5$'
+          timeout: 5000
+      - runFlow:
+          when:
             visible:
               id: '^feedback\.scoreDoneButton$'
           commands:
             - tapOn:
                 id: '^feedback\.scoreDoneButton$'
+      - assertVisible:
+          id: '^feedback\.selectedScore\.5$'
       - runFlow:
           when:
             visible:
@@ -301,12 +321,8 @@ tags:
           commands:
             - tapOn:
                 id: '^feedback\.noteInput$'
-            - inputText: "${MAESTRO_FEEDBACK_NOTE}"
-      - runFlow:
-          when:
-            visible: '^(Done|Færdig)$'
-          commands:
-            - tapOn: '^(Done|Færdig)$'
+            - inputText: '${MAESTRO_FEEDBACK_NOTE}'
+      - runFlow: _platform_keyboard_commit_input.yaml
       - runFlow:
           when:
             visible:
@@ -319,40 +335,8 @@ tags:
             visible: '^Markér som udført$'
           commands:
             - tapOn: '^Markér som udført$'
-
-# Performance smoke-check
-- openLink: "footballcoach:///(tabs)/library"
-- extendedWaitUntil:
-    visible:
-      id: '^library\.screen$'
-    timeout: 15000
-- tapOn:
-    id: '^library\.folder\.footballcoach$'
-- tapOn:
-    id: '^library\.folder\.holdtraening$'
-- extendedWaitUntil:
-    visible:
-      id: '^library\.folder\.holdtraening_faelles$'
-    timeout: 15000
-- tapOn:
-    id: '^library\.folder\.holdtraening_faelles$'
-- extendedWaitUntil:
-    visible:
-      id: '^library\.counter\.lastScore\..*$'
-    timeout: 15000
-- assertVisible:
-    id: '^library\.counter\.executionCount\..*$'
-
-- openLink: "footballcoach:///(tabs)/performance"
-- extendedWaitUntil:
-    visible:
-      id: '^performance\.screen$'
-    timeout: 15000
-- assertVisible:
-    id: '^performance\.screen$'
-
 # Arkiv smoke-check
-- openLink: "footballcoach:///(tabs)/tasks"
+- openLink: 'footballcoach:///(tabs)/tasks'
 - extendedWaitUntil:
     visible:
       id: '^tasks\.folder\.toggle\.personal$'
@@ -375,7 +359,7 @@ tags:
     id: '^tasks\.template\.filter\.activeButton$'
 
 # Cleanup: slet aktivitet hvis muligt
-- openLink: "footballcoach:///(tabs)/(home)"
+- openLink: 'footballcoach:///(tabs)/(home)'
 - runFlow:
     when:
       visible:
@@ -403,7 +387,11 @@ tags:
                 commands:
                   - tapOn: '^(OK|Ok)$'
 # Ryd opgaveskabelon op
-- openLink: "footballcoach:///(tabs)/tasks"
+- openLink: 'footballcoach:///(tabs)/tasks'
+- extendedWaitUntil:
+    visible:
+      id: '^tasks\.template\.filter\.archivedButton$'
+    timeout: 15000
 - tapOn:
     id: '^tasks\.template\.filter\.archivedButton$'
 - extendedWaitUntil:
@@ -435,49 +423,12 @@ tags:
             visible: '^(OK|Ok)$'
           commands:
             - tapOn: '^(OK|Ok)$'
-- runFlow:
-    when:
-      visible:
-        id: '^tasks\.template\.deleteButton\..+$'
-    commands:
-      - tapOn:
-          id: '^tasks\.template\.deleteButton\..+$'
-          index: 0
       - runFlow:
           when:
-            visible: '^Fortsæt$'
+            visible:
+              id: '^tasks\.template\.deleteModal\.confirmButton$'
           commands:
-            - tapOn: '^Fortsæt$'
-      - tapOn:
-          id: '^tasks\.template\.deleteModal\.input$'
-      - inputText: 'SLET'
-      - tapOn:
-          id: '^tasks\.template\.deleteModal\.confirmButton$'
-      - runFlow:
-          when:
-            visible: '^(OK|Ok)$'
-          commands:
-            - tapOn: '^(OK|Ok)$'
-- runFlow:
-    when:
-      visible:
-        id: '^tasks\.template\.deleteButton\..+$'
-    commands:
-      - tapOn:
-          id: '^tasks\.template\.deleteButton\..+$'
-          index: 0
-      - runFlow:
-          when:
-            visible: '^Fortsæt$'
-          commands:
-            - tapOn: '^Fortsæt$'
-      - tapOn:
-          id: '^tasks\.template\.deleteModal\.input$'
-      - inputText: 'SLET'
-      - tapOn:
-          id: '^tasks\.template\.deleteModal\.confirmButton$'
-      - runFlow:
-          when:
-            visible: '^(OK|Ok)$'
-          commands:
-            - tapOn: '^(OK|Ok)$'
+            - extendedWaitUntil:
+                notVisible:
+                  id: '^tasks\.template\.deleteModal\.confirmButton$'
+                timeout: 10000

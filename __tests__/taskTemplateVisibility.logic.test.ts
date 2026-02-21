@@ -39,6 +39,21 @@ describe('task template archive visibility', () => {
     ).toBe(true);
   });
 
+  it('keeps completed tasks visible even when template is archived after activity', () => {
+    const task = {
+      id: 'task-1',
+      title: 'Template opgave',
+      task_template_id: 'template-1',
+      completed: true,
+    };
+
+    expect(
+      isTaskVisibleForActivity(task, '2026-02-21', '16:00:00', {
+        'template-1': '2026-02-20T14:00:00.000Z',
+      }),
+    ).toBe(true);
+  });
+
   it('resolves template id from feedback marker and filters without deleting rows', () => {
     const archivedTemplateId = '11111111-1111-1111-1111-111111111111';
     const tasks = [
