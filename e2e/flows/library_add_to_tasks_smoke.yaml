@@ -1,11 +1,13 @@
-appId: com.erichsen.footballcoach
+appId: ${MAESTRO_APP_ID}
 tags:
   - smoke
 ---
 # 1-2) Start app rent + bootstrap
 - launchApp:
-    appId: com.erichsen.footballcoach
+    appId: ${MAESTRO_APP_ID}
     clearState: true
+    permissions:
+      notifications: allow
 - runFlow: _dev_client_bootstrap.yaml
 
 # 3-5) Login (hvis nødvendigt)
@@ -98,17 +100,13 @@ tags:
     id: '^activity\.create\.locationInput$'
 - tapOn:
     id: '^activity\.create\.titleInput$'
-- inputText: "Maestro Library Aktivitet"
+- inputText: "Maestro Library Aktivitet ${MAESTRO_PLATFORM_SUFFIX}"
 - tapOn:
     id: '^activity\.create\.locationInput$'
 - inputText: "Bane 1"
 - tapOn:
     id: '^activity\.create\.titleInput$'
-- runFlow:
-    when:
-      visible: '^(Done|Færdig)$'
-    commands:
-      - tapOn: '^(Done|Færdig)$'
+- runFlow: _platform_keyboard_commit_input.yaml
 - scrollUntilVisible:
     element:
       text: '.*Fysisk træning.*'
@@ -179,11 +177,7 @@ tags:
 - inputText: "demo"
 - tapOn:
     id: '^tasks\.template\.descriptionInput$'
-- runFlow:
-    when:
-      visible: '^(Done|Færdig)$'
-    commands:
-      - tapOn: '^(Done|Færdig)$'
+- runFlow: _platform_keyboard_commit_input.yaml
 - swipe:
     start: 50%, 80%
     end: 50%, 30%
@@ -295,19 +289,28 @@ tags:
           id: '^feedback\.scoreOption\.5$'
       - runFlow:
           when:
+            notVisible:
+              id: '^feedback\.selectedScore\.5$'
+          commands:
+            - tapOn:
+                id: '^feedback\.scoreOption\.5$'
+      - extendedWaitUntil:
+          visible:
+            id: '^feedback\.selectedScore\.5$'
+          timeout: 5000
+      - runFlow:
+          when:
             visible:
               id: '^feedback\.scoreDoneButton$'
           commands:
             - tapOn:
                 id: '^feedback\.scoreDoneButton$'
+      - assertVisible:
+          id: '^feedback\.selectedScore\.5$'
       - tapOn:
           id: '^feedback\.noteInput$'
       - inputText: "maestro note intensistet"
-      - runFlow:
-          when:
-            visible: '^(Done|Færdig)$'
-          commands:
-            - tapOn: '^(Done|Færdig)$'
+      - runFlow: _platform_keyboard_commit_input.yaml
       - runFlow:
           when:
             visible:
@@ -370,19 +373,28 @@ tags:
           id: '^feedback\.scoreOption\.5$'
       - runFlow:
           when:
+            notVisible:
+              id: '^feedback\.selectedScore\.5$'
+          commands:
+            - tapOn:
+                id: '^feedback\.scoreOption\.5$'
+      - extendedWaitUntil:
+          visible:
+            id: '^feedback\.selectedScore\.5$'
+          timeout: 5000
+      - runFlow:
+          when:
             visible:
               id: '^feedback\.scoreDoneButton$'
           commands:
             - tapOn:
                 id: '^feedback\.scoreDoneButton$'
+      - assertVisible:
+          id: '^feedback\.selectedScore\.5$'
       - tapOn:
           id: '^feedback\.noteInput$'
       - inputText: "maestro note feedback"
-      - runFlow:
-          when:
-            visible: '^(Done|Færdig)$'
-          commands:
-            - tapOn: '^(Done|Færdig)$'
+      - runFlow: _platform_keyboard_commit_input.yaml
       - runFlow:
           when:
             visible:
@@ -610,10 +622,10 @@ tags:
     timeout: 15000
 - extendedWaitUntil:
     visible:
-      id: '^tasks\.template\.deleteButton$'
+      id: '^tasks\.template\.deleteButton\..+$'
     timeout: 15000
 - tapOn:
-    id: '^tasks\.template\.deleteButton$'
+    id: '^tasks\.template\.deleteButton\..+$'
     index: 0
 - runFlow:
     when:

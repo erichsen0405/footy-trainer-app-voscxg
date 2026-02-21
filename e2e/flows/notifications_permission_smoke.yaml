@@ -1,35 +1,15 @@
-appId: com.erichsen.footballcoach
+appId: ${MAESTRO_APP_ID}
 tags:
   - smoke
 ---
 # Deny path + fallback UI
 - stopApp
 - launchApp:
-    appId: com.erichsen.footballcoach
+    appId: ${MAESTRO_APP_ID}
     clearState: true
     permissions:
       notifications: unset
-- runFlow:
-    when:
-      visible: 'DEVELOPMENT SERVERS'
-    commands:
-      - tapOn: 'http://localhost:8081'
-      - extendedWaitUntil:
-          notVisible: 'DEVELOPMENT SERVERS'
-          timeout: 15000
-- runFlow:
-    when:
-      visible: '^(Continue|Fortsæt)$'
-    commands:
-      - tapOn: '^(Continue|Fortsæt)$'
-- runFlow:
-    when:
-      visible: 'Connected to:'
-    commands:
-      - tapOn: 'Reload'
-      - extendedWaitUntil:
-          notVisible: 'Connected to:'
-          timeout: 15000
+- runFlow: _dev_client_bootstrap.yaml
 - openLink: "footballcoach:///(tabs)/(home)"
 - runFlow:
     when:
@@ -57,25 +37,7 @@ tags:
     commands:
       - tapOn:
           id: '^notifications\.denyButton$'
-- runFlow:
-    when:
-      visible: '.*vil gerne sende dig notifikationer.*'
-    commands:
-      - runFlow:
-          when:
-            visible: '^Tillad ikke$'
-          commands:
-            - tapOn: '^Tillad ikke$'
-      - runFlow:
-          when:
-            visible: '^Don''t Allow$'
-          commands:
-            - tapOn: '^Don''t Allow$'
-      - runFlow:
-          when:
-            visible: '^Ikke tillad$'
-          commands:
-            - tapOn: '^Ikke tillad$'
+- runFlow: _platform_notifications_prompt_deny.yaml
 - openLink: "footballcoach:///(tabs)/profile"
 - runFlow:
     when:
@@ -89,9 +51,12 @@ tags:
       id: '^profile\.notificationsToggle$'
     direction: DOWN
     timeout: 15000
+- assertVisible:
+    id: '^profile\.notificationsToggle$'
+- assertVisible: '^(Deaktiveret|Disabled)$'
 - runFlow:
     when:
-      visible: '^Aktiveret$'
+      visible: '^(Aktiveret|Enabled)$'
     commands:
       - tapOn:
           id: '^profile\.notificationsToggle$'
@@ -109,31 +74,11 @@ tags:
 # Allow path
 - stopApp
 - launchApp:
-    appId: com.erichsen.footballcoach
+    appId: ${MAESTRO_APP_ID}
     clearState: true
     permissions:
       notifications: allow
-- runFlow:
-    when:
-      visible: 'DEVELOPMENT SERVERS'
-    commands:
-      - tapOn: 'http://localhost:8081'
-      - extendedWaitUntil:
-          notVisible: 'DEVELOPMENT SERVERS'
-          timeout: 15000
-- runFlow:
-    when:
-      visible: '^(Continue|Fortsæt)$'
-    commands:
-      - tapOn: '^(Continue|Fortsæt)$'
-- runFlow:
-    when:
-      visible: 'Connected to:'
-    commands:
-      - tapOn: 'Reload'
-      - extendedWaitUntil:
-          notVisible: 'Connected to:'
-          timeout: 15000
+- runFlow: _dev_client_bootstrap.yaml
 - openLink: "footballcoach:///(tabs)/(home)"
 - runFlow:
     when:
@@ -161,20 +106,7 @@ tags:
     commands:
       - tapOn:
           id: '^notifications\.allowButton$'
-- runFlow:
-    when:
-      visible: '.*vil gerne sende dig notifikationer.*'
-    commands:
-      - runFlow:
-          when:
-            visible: '^Tillad$'
-          commands:
-            - tapOn: '^Tillad$'
-      - runFlow:
-          when:
-            visible: '^Allow$'
-          commands:
-            - tapOn: '^Allow$'
+- runFlow: _platform_notifications_prompt_allow.yaml
 - openLink: "footballcoach:///(tabs)/profile"
 - runFlow:
     when:
@@ -190,7 +122,7 @@ tags:
     timeout: 15000
 - assertVisible:
     id: '^profile\.notificationsToggle$'
-- assertVisible: '^Aktiveret$'
+- assertVisible: '^(Aktiveret|Enabled)$'
 - openLink: "footballcoach:///(tabs)/(home)"
 - extendedWaitUntil:
     visible:

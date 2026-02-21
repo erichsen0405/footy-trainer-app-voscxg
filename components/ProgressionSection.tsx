@@ -688,9 +688,14 @@ export function ProgressionSection({ categories }: Props) {
                       <Text style={[styles.historyDate, { color: palette.text }]}>
                         {formatHistoryDate(entry.createdAt)}
                       </Text>
+                      {typeof entry.note === 'string' && entry.note.trim().length > 0 ? (
+                        <Text style={[styles.historyNote, { color: palette.textSecondary }]}>
+                          {`Note: ${entry.note.trim()}`}
+                        </Text>
+                      ) : null}
                       {entry.activityTitle ? (
                         <Text style={[styles.historyActivity, { color: palette.textSecondary }]}>
-                          {entry.activityTitle}
+                          {`Aktivitet: ${entry.activityTitle}`}
                         </Text>
                       ) : null}
                     </View>
@@ -970,6 +975,11 @@ const styles = StyleSheet.create({
   historyActivity: {
     fontSize: 12,
     marginTop: 2,
+  },
+  historyNote: {
+    fontSize: 12,
+    marginTop: 2,
+    lineHeight: 16,
   },
   historyScoreBadge: {
     minWidth: 56,

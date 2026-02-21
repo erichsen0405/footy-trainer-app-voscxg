@@ -1,10 +1,12 @@
-appId: com.erichsen.footballcoach
+appId: ${MAESTRO_APP_ID}
 tags:
   - smoke
 ---
 - launchApp:
-    appId: com.erichsen.footballcoach
+    appId: ${MAESTRO_APP_ID}
     clearState: true
+    permissions:
+      notifications: allow
 - runFlow: _dev_client_bootstrap.yaml
 - openLink: "footballcoach:///(tabs)/profile"
 - extendedWaitUntil:

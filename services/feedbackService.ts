@@ -1,6 +1,10 @@
 import { supabase } from '@/integrations/supabase/client';
 import { TaskTemplateSelfFeedback } from '@/types';
 
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
 export function mapFeedbackRow(row: any): TaskTemplateSelfFeedback {
   return {
     id: row.id,
@@ -55,9 +59,6 @@ export async function fetchSelfFeedbackForActivities(
     return [];
   }
 
-  const isUuidString = (value: string): boolean =>
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
-
   const normalizedActivityIds = Array.from(
     new Set(
       activityIds
@@ -65,7 +66,7 @@ export async function fetchSelfFeedbackForActivities(
         .filter(Boolean)
         // `activity_id` is a uuid column. Filter out non-uuid candidates (e.g. provider_event_uid)
         // to avoid the entire query failing.
-        .filter(isUuidString)
+        .filter(isUuid)
     )
   );
 
@@ -155,6 +156,8 @@ export async function upsertSelfFeedback(args: UpsertSelfFeedbackArgs) {
   const templateId = requireNonEmpty('templateId', args.templateId);
   const taskInstanceIdRaw = String(args.taskInstanceId ?? args.task_instance_id ?? '').trim();
   const taskInstanceId = taskInstanceIdRaw.length ? taskInstanceIdRaw : templateId;
+  const shouldRunCrossActivityCleanup =
+    isUuid(taskInstanceIdRaw) && taskInstanceIdRaw.toLowerCase() !== templateId.toLowerCase();
 
   const trimmedNote = String(args.note ?? '').trim();
 
@@ -184,6 +187,45 @@ export async function upsertSelfFeedback(args: UpsertSelfFeedbackArgs) {
       taskInstanceId,
     });
     throw error;
+  }
+
+  // Keep only the newest feedback row for the same activity+template.
+  // This prevents stale notes from resurfacing when task_instance_id varies for the same task flow.
+  const { error: sameActivityCleanupError } = await supabase
+    .from('task_template_self_feedback')
+    .delete()
+    .eq('user_id', userId)
+    .eq('task_template_id', templateId)
+    .eq('activity_id', activityId)
+    .neq('id', data.id);
+
+  if (sameActivityCleanupError) {
+    logSupabaseError('upsertSelfFeedback cleanup same activity duplicates failed', sameActivityCleanupError, {
+      activityId,
+      userId,
+      templateId,
+      taskInstanceId,
+      keepId: data.id,
+    });
+  }
+
+  if (shouldRunCrossActivityCleanup) {
+    const { error: cleanupError } = await supabase
+      .from('task_template_self_feedback')
+      .delete()
+      .eq('user_id', userId)
+      .eq('task_template_id', templateId)
+      .eq('task_instance_id', taskInstanceIdRaw)
+      .neq('activity_id', activityId);
+
+    if (cleanupError) {
+      logSupabaseError('upsertSelfFeedback cleanup stale rows failed', cleanupError, {
+        activityId,
+        userId,
+        templateId,
+        taskInstanceId,
+      });
+    }
   }
 
   return mapFeedbackRow(data);

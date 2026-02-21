@@ -31,9 +31,28 @@ export async function syncPushTokenForCurrentUser(force = false): Promise<boolea
     }
 
     const projectId = readProjectId();
-    const tokenResponse = await Notifications.getExpoPushTokenAsync(
-      projectId ? { projectId } : undefined,
-    );
+    let tokenResponse: Notifications.ExpoPushToken | null = null;
+    try {
+      tokenResponse = await Notifications.getExpoPushTokenAsync(
+        projectId ? { projectId } : undefined,
+      );
+    } catch (tokenError: any) {
+      const message = String(tokenError?.message || '');
+      const isAndroidFcmConfigIssue =
+        Platform.OS === 'android' &&
+        (message.includes('Default FirebaseApp is not initialized') ||
+          message.includes('fcm-credentials') ||
+          message.includes('FCM'));
+
+      if (isAndroidFcmConfigIssue) {
+        console.log(
+          '[pushTokenService] Android FCM is not configured for this build, skipping push token sync',
+        );
+        return false;
+      }
+
+      throw tokenError;
+    }
 
     const expoPushToken = tokenResponse?.data;
     if (!expoPushToken) {

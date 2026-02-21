@@ -4,6 +4,7 @@ export interface ArchiveVisibilityTask {
   id?: string;
   title?: string | null;
   description?: string | null;
+  completed?: boolean | null;
   task_template_id?: string | null;
   taskTemplateId?: string | null;
   feedback_template_id?: string | null;
@@ -60,6 +61,9 @@ export const isTaskVisibleForActivity = (
   activityTime: string | null | undefined,
   archivedAtByTemplateId: TemplateArchivedAtById,
 ): boolean => {
+  // Preserve history: already completed tasks stay visible even if template is archived.
+  if (task?.completed === true) return true;
+
   const templateId = resolveTemplateId(task);
   if (!templateId) return true;
 

@@ -60,8 +60,26 @@ describe('API mocking harness (offline deterministic)', () => {
     });
 
     const log = getMockApiRequestLog();
-    expect(log).toHaveLength(1);
+    expect(log).toHaveLength(2);
     expect(log[0]).toMatchObject({ method: 'POST', table: 'task_template_self_feedback' });
+    expect(log[1]).toMatchObject({ method: 'DELETE', table: 'task_template_self_feedback' });
+  });
+
+  it('does not run cross-activity cleanup when taskInstanceId is omitted', async () => {
+    await upsertSelfFeedback({
+      templateId: '11111111-1111-4111-8111-111111111111',
+      userId: fixtureFeedbackSaved.user_id,
+      activity_id: fixtureFeedbackSaved.activity_id,
+      rating: 6,
+      note: 'Latest note',
+    });
+
+    const log = getMockApiRequestLog();
+    const deleteRequests = log.filter(
+      (entry) => entry.method === 'DELETE' && entry.table === 'task_template_self_feedback'
+    );
+
+    expect(deleteRequests).toHaveLength(1);
   });
 
   it('duplicates deterministic activity with tasks without real backend access', async () => {

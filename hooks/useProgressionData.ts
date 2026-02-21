@@ -12,6 +12,7 @@ export interface ProgressionEntry {
   kind: ProgressionMetric;
   createdAt: string;
   activityId: string | null;
+  taskInstanceId?: string | null;
   taskTemplateId: string | null;
   taskTemplateName?: string | null;
   taskTemplateDescription?: string | null;
@@ -129,21 +130,72 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-
 
 type DedupeSource = {
   activityId?: string | null;
+  taskInstanceId?: string | null;
   sessionKey?: string | null;
   dateKey?: string | null;
   id?: string | null;
 };
 
+type CreatedAtSource = {
+  createdAt?: string | null;
+};
+
 // Exported for unit tests; keep usage internal to this module in app code.
 export const resolveBaseKey = (entry: DedupeSource) => {
+  const sessionKey = entry?.sessionKey ?? null;
+  if (sessionKey && sessionKey.startsWith('event:')) {
+    return sessionKey;
+  }
   const activityId = entry?.activityId ?? null;
   if (activityId && UUID_REGEX.test(activityId)) {
     return activityId;
   }
-  const sessionKey = entry?.sessionKey ?? null;
   const dateKey = entry?.dateKey ?? null;
   const id = entry?.id ?? null;
   return sessionKey ?? activityId ?? dateKey ?? id ?? 'na';
+};
+
+export const resolveFeedbackBaseKey = (entry: DedupeSource) => {
+  const sessionKey = entry?.sessionKey ?? null;
+  if (sessionKey && sessionKey.startsWith('event:')) {
+    return sessionKey;
+  }
+  const activityId = entry?.activityId ?? null;
+  if (activityId && UUID_REGEX.test(activityId)) {
+    return activityId;
+  }
+  const taskInstanceId = entry?.taskInstanceId ?? null;
+  if (taskInstanceId && UUID_REGEX.test(taskInstanceId)) {
+    return `task:${taskInstanceId}`;
+  }
+  return sessionKey ?? activityId ?? taskInstanceId ?? entry?.dateKey ?? entry?.id ?? 'na';
+};
+
+export const safeDateMs = (value?: string | null) => {
+  const ms = new Date(String(value ?? '')).getTime();
+  return Number.isFinite(ms) ? ms : 0;
+};
+
+export const dedupeByLatestCreatedAt = <T extends CreatedAtSource>(
+  entries: T[],
+  keyBuilder: (entry: T) => string
+): T[] => {
+  const latestByKey = new Map<string, { item: T; ms: number; index: number }>();
+
+  entries.forEach((entry, index) => {
+    const key = keyBuilder(entry);
+    const currentMs = safeDateMs(entry.createdAt);
+    const previous = latestByKey.get(key);
+    if (!previous) {
+      latestByKey.set(key, { item: entry, ms: currentMs, index });
+      return;
+    }
+    if (currentMs > previous.ms || (currentMs === previous.ms && index > previous.index)) {
+      latestByKey.set(key, { item: entry, ms: currentMs, index });
+    }
+  });
+
+  return Array.from(latestByKey.values()).map((entry) => entry.item);
 };
 
 export const toDateKey = (value?: string | null) => (value ? value.slice(0, 10) : '');
@@ -438,6 +490,7 @@ export function useProgressionData({
       kind: 'rating',
       createdAt: createdIso,
       activityId: row.activity_id ? String(row.activity_id) : null,
+      taskInstanceId: row.task_instance_id ? String(row.task_instance_id) : null,
       taskTemplateId: templateId,
       taskTemplateName: templateName,
       taskTemplateDescription: templateDescription,
@@ -551,6 +604,7 @@ export function useProgressionData({
         rating,
         note,
         created_at,
+        task_instance_id,
         task_template_id,
         activity_id
       `;
@@ -970,6 +1024,39 @@ export function useProgressionData({
       if (missingActivityIds.length) {
         for (const chunk of chunkArray(missingActivityIds, 50)) {
           const { data, error } = await supabase
+            .from('events_local_meta')
+            .select(`
+              id,
+              user_id,
+              external_event_id,
+              events_external!inner (
+                id,
+                start_date,
+                start_time,
+                title
+              )
+            `)
+            .in('id', chunk);
+          if (error) throw error;
+          (data || []).forEach((row: any) => {
+            if (!row?.id) return;
+            const event = row.events_external ?? {};
+            activityMetaById.set(String(row.id), {
+              activity_date: event.start_date ?? null,
+              activity_time: event.start_time ?? null,
+              title: event.title ?? null,
+              event_id: event.id ?? null,
+              external_event_id: row.external_event_id ?? null,
+              user_id: row.user_id ?? null,
+            });
+          });
+        }
+      }
+
+      const stillMissingActivityIds = uniqueActivityIds.filter(id => !activityMetaById.has(id));
+      if (stillMissingActivityIds.length) {
+        for (const chunk of chunkArray(stillMissingActivityIds, 50)) {
+          const { data, error } = await supabase
             .from('events_external')
             .select('id, start_date, start_time, title')
             .in('id', chunk);
@@ -1288,76 +1375,52 @@ export function useProgressionData({
   }, [filteredFocusPossiblePrevious]);
 
   const focusCompletedDeduped = useMemo(() => {
-    const seen = new Set<string>();
-    return filteredFocusEntries
-      .filter(entry => typeof entry.rating === 'number')
-      .filter(entry => {
-        const baseKey = resolveBaseKey(entry);
-        const key = `${baseKey}::${entry.taskTemplateId ?? 'none'}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
+    return dedupeByLatestCreatedAt(
+      filteredFocusEntries,
+      (entry) => `${resolveFeedbackBaseKey(entry)}::${entry.taskTemplateId ?? 'none'}`
+    ).filter((entry) => typeof entry.rating === 'number');
   }, [filteredFocusEntries]);
 
   const focusCompletedAllDeduped = useMemo(() => {
-    const seen = new Set<string>();
-    return focusEntries
-      .filter(entry => typeof entry.rating === 'number')
-      .filter(entry => {
-        const baseKey = resolveBaseKey(entry);
-        const key = `${baseKey}::${entry.taskTemplateId ?? 'none'}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
+    return dedupeByLatestCreatedAt(
+      focusEntries,
+      (entry) => `${resolveFeedbackBaseKey(entry)}::${entry.taskTemplateId ?? 'none'}`
+    ).filter((entry) => typeof entry.rating === 'number');
   }, [focusEntries]);
 
   const focusCompletedPreviousDeduped = useMemo(() => {
-    const seen = new Set<string>();
-    return filteredFocusPrevious
-      .filter(entry => typeof entry.rating === 'number')
-      .filter(entry => {
-        const baseKey = resolveBaseKey(entry);
-        const key = `${baseKey}::${entry.taskTemplateId ?? 'none'}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
+    return dedupeByLatestCreatedAt(
+      filteredFocusPrevious,
+      (entry) => `${resolveFeedbackBaseKey(entry)}::${entry.taskTemplateId ?? 'none'}`
+    ).filter((entry) => typeof entry.rating === 'number');
   }, [filteredFocusPrevious]);
 
   const intensityPossibleDeduped = useMemo(() => {
-    const seen = new Set<string>();
-    return filteredIntensityEntries.filter(entry => {
-      const key = resolveBaseKey(entry);
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+    return dedupeByLatestCreatedAt(
+      filteredIntensityEntries,
+      (entry) => resolveBaseKey(entry)
+    );
   }, [filteredIntensityEntries]);
 
   const intensityPossiblePreviousDeduped = useMemo(() => {
-    const seen = new Set<string>();
-    return filteredIntensityPrevious.filter(entry => {
-      const key = resolveBaseKey(entry);
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+    return dedupeByLatestCreatedAt(
+      filteredIntensityPrevious,
+      (entry) => resolveBaseKey(entry)
+    );
   }, [filteredIntensityPrevious]);
 
   const intensityCompletedDeduped = useMemo(() => {
     const possibleKeys = new Set<string>(
       intensityPossibleDeduped.map(entry => resolveBaseKey(entry))
     );
-    const seen = new Set<string>();
-    return filteredIntensityEntries
+    return dedupeByLatestCreatedAt(
+      filteredIntensityEntries,
+      (entry) => resolveBaseKey(entry)
+    )
       .filter(entry => typeof entry.intensity === 'number')
       .filter(entry => {
         const key = resolveBaseKey(entry);
-        if (seen.has(key)) return false;
         if (possibleKeys.size && !possibleKeys.has(key)) return false;
-        seen.add(key);
         return true;
       });
   }, [filteredIntensityEntries, intensityPossibleDeduped]);
@@ -1366,14 +1429,14 @@ export function useProgressionData({
     const possibleKeys = new Set<string>(
       intensityPossiblePreviousDeduped.map(entry => resolveBaseKey(entry))
     );
-    const seen = new Set<string>();
-    return filteredIntensityPrevious
+    return dedupeByLatestCreatedAt(
+      filteredIntensityPrevious,
+      (entry) => resolveBaseKey(entry)
+    )
       .filter(entry => typeof entry.intensity === 'number')
       .filter(entry => {
         const key = resolveBaseKey(entry);
-        if (seen.has(key)) return false;
         if (possibleKeys.size && !possibleKeys.has(key)) return false;
-        seen.add(key);
         return true;
       });
   }, [filteredIntensityPrevious, intensityPossiblePreviousDeduped]);

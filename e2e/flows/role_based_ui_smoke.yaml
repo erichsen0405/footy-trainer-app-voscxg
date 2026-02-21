@@ -1,10 +1,12 @@
-appId: com.erichsen.footballcoach
+appId: ${MAESTRO_APP_ID}
 tags:
   - smoke
 ---
 - launchApp:
-    appId: com.erichsen.footballcoach
+    appId: ${MAESTRO_APP_ID}
     clearState: true
+    permissions:
+      notifications: allow
 - runFlow: _dev_client_bootstrap.yaml
 
 # Player: trainer-only UI skal ikke vises
@@ -108,16 +110,12 @@ tags:
 - tapOn:
     id: '^team\.create\.nameInput$'
 - eraseText
-- inputText: 'test team'
+- inputText: 'test team ${MAESTRO_PLATFORM_SUFFIX}'
 - tapOn:
     id: '^team\.create\.descriptionInput$'
 - eraseText
 - inputText: 'Maestro test'
-- runFlow:
-    when:
-      visible: '^(Done|Færdig)$'
-    commands:
-      - tapOn: '^(Done|Færdig)$'
+- runFlow: _platform_keyboard_commit_input.yaml
 - tapOn:
     id: '^team\.create\.submitButton$'
 - runFlow:
@@ -157,12 +155,8 @@ tags:
 - tapOn:
     id: '^player\.create\.emailInput$'
 - eraseText
-- inputText: 'testplayer@footballcoach.com'
-- runFlow:
-    when:
-      visible: '^(Done|Færdig)$'
-    commands:
-      - tapOn: '^(Done|Færdig)$'
+- inputText: '${MAESTRO_TEAM_PLAYER_EMAIL}'
+- runFlow: _platform_keyboard_commit_input.yaml
 - tapOn:
     id: '^player\.create\.searchButton$'
 - extendedWaitUntil:
