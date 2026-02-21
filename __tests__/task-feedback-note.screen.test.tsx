@@ -157,7 +157,8 @@ describe('task-feedback-note screen', () => {
   });
 
   it('hydrates persisted score+note when task completion flag is stale but feedback exists', async () => {
-    mockCompletionByTaskId['task-completed'] = false;
+    const taskInstanceId = '11111111-1111-4111-8111-111111111111';
+    mockCompletionByTaskId[taskInstanceId] = false;
     mockFetchSelfFeedbackForTemplates.mockResolvedValue([
       {
         id: 'row-other',
@@ -174,7 +175,7 @@ describe('task-feedback-note screen', () => {
         id: 'row-current',
         userId: 'user-1',
         taskTemplateId: 'template-1',
-        taskInstanceId: 'task-completed',
+        taskInstanceId,
         activityId: '2ac31159-22f6-42a2-a067-4fb3ab6dd2ab',
         rating: 6,
         note: 'Gemt feedback note',
@@ -185,12 +186,41 @@ describe('task-feedback-note screen', () => {
 
     mockParams = {
       ...mockParams,
-      taskInstanceId: 'task-completed',
+      taskInstanceId,
     };
 
     const screen = render(<TaskFeedbackNoteScreen />);
 
     await waitFor(() => expect(screen.getByTestId('feedback.noteInput').props.value).toBe('Gemt feedback note'));
     expect(screen.getByTestId('feedback.selectedScore.6')).toBeTruthy();
+  });
+
+  it('hydrates persisted feedback for non-UUID task id using template fallback instance id', async () => {
+    mockCompletionByTaskId['task-local-1'] = false;
+    mockFetchSelfFeedbackForTemplates.mockResolvedValue([
+      {
+        id: 'row-template-fallback',
+        userId: 'user-1',
+        taskTemplateId: 'template-1',
+        taskInstanceId: 'template-1',
+        activityId: '2ac31159-22f6-42a2-a067-4fb3ab6dd2ab',
+        rating: 4,
+        note: 'Gemt via template fallback',
+        createdAt: '2026-02-20T10:00:00.000Z',
+        updatedAt: '2026-02-20T10:00:00.000Z',
+      },
+    ]);
+
+    mockParams = {
+      ...mockParams,
+      taskInstanceId: 'task-local-1',
+    };
+
+    const screen = render(<TaskFeedbackNoteScreen />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId('feedback.noteInput').props.value).toBe('Gemt via template fallback'),
+    );
+    expect(screen.getByTestId('feedback.selectedScore.4')).toBeTruthy();
   });
 });
