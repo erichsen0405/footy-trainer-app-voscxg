@@ -8,13 +8,7 @@ tags:
     permissions:
       notifications: allow
 - runFlow: _dev_client_bootstrap.yaml
-- runFlow:
-    when:
-      visible:
-        id: '^notifications\.enableButton$'
-    commands:
-      - tapOn:
-          id: '^notifications\.enableButton$'
+- runFlow: _notifications_allow_if_visible.yaml
 - openLink: "footballcoach:///(tabs)/profile"
 - runFlow:
     when:

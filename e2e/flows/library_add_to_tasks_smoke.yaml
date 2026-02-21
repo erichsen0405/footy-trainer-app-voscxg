@@ -9,6 +9,7 @@ tags:
     permissions:
       notifications: allow
 - runFlow: _dev_client_bootstrap.yaml
+- runFlow: _notifications_allow_if_visible.yaml
 
 # 3-5) Login (hvis nødvendigt)
 - openLink: "footballcoach:///(tabs)/profile"
