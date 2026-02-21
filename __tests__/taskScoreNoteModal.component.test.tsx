@@ -44,6 +44,7 @@ describe('TaskScoreNoteModal', () => {
     );
 
     expect(getByTestId('feedback.scoreInput')).toBeTruthy();
+    expect(getByTestId('feedback.scoreScrollHint')).toBeTruthy();
     expect(getByTestId('feedback.noteInput')).toBeTruthy();
   });
 

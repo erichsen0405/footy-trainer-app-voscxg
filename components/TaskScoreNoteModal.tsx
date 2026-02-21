@@ -269,6 +269,11 @@ function TaskScoreNoteModalComponent({
 
               {renderScoreChips()}
               {enableScore ? (
+                <Text style={styles.scrollHint} testID="feedback.scoreScrollHint">
+                  Scroll til siden for flere scores (7-10)
+                </Text>
+              ) : null}
+              {enableScore ? (
                 <View testID={score === null ? 'feedback.selectedScore.none' : `feedback.selectedScore.${score}`} style={styles.testProbe} />
               ) : null}
 
@@ -451,6 +456,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.primary,
+    marginBottom: 8,
+  },
+  scrollHint: {
+    fontSize: 13,
+    color: 'rgba(32, 40, 62, 0.65)',
     marginBottom: 8,
   },
   resetDisabled: {

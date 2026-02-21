@@ -285,9 +285,13 @@ export default function TaskFeedbackNoteScreen() {
         }
         setUserId(uid);
 
-        const hasTaskInstanceIdParam = !!normalizeId(taskInstanceId);
+        const rawTaskInstanceId = normalizeId(taskInstanceId);
+        const hasTaskInstanceIdParam = !!rawTaskInstanceId;
         const normalizedTaskInstanceUuid = normalizeUuid(taskInstanceId);
         const effectiveTaskInstanceId = normalizedTaskInstanceUuid ?? templateId;
+        const taskInstanceMatchIds = Array.from(
+          new Set([effectiveTaskInstanceId, rawTaskInstanceId].filter(Boolean) as string[])
+        );
         const taskCompletedFromTable = normalizedTaskInstanceUuid
           ? await fetchTaskCompletion(normalizedTaskInstanceUuid)
           : false;
@@ -314,7 +318,7 @@ export default function TaskFeedbackNoteScreen() {
                 const rowInstanceId = normalizeId(
                   (row as any)?.taskInstanceId ?? (row as any)?.task_instance_id,
                 );
-                if (!rowInstanceId || rowInstanceId !== effectiveTaskInstanceId) return best;
+                if (!rowInstanceId || !taskInstanceMatchIds.includes(rowInstanceId)) return best;
                 return !best || safeDateMs(row.createdAt) > safeDateMs(best.createdAt) ? row : best;
               }, undefined)
             : undefined;
