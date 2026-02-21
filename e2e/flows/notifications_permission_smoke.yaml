@@ -8,7 +8,7 @@ tags:
     appId: ${MAESTRO_APP_ID}
     clearState: true
     permissions:
-      notifications: unset
+      notifications: deny
 - runFlow: _dev_client_bootstrap.yaml
 - openLink: "footballcoach:///(tabs)/(home)"
 - runFlow:
@@ -53,6 +53,9 @@ tags:
     timeout: 15000
 - assertVisible:
     id: '^profile\.notificationsToggle$'
+- extendedWaitUntil:
+    visible: '^(Deaktiveret|Disabled)$'
+    timeout: 15000
 - assertVisible: '^(Deaktiveret|Disabled)$'
 - runFlow:
     when:
@@ -122,6 +125,9 @@ tags:
     timeout: 15000
 - assertVisible:
     id: '^profile\.notificationsToggle$'
+- extendedWaitUntil:
+    visible: '^(Aktiveret|Enabled)$'
+    timeout: 15000
 - assertVisible: '^(Aktiveret|Enabled)$'
 - openLink: "footballcoach:///(tabs)/(home)"
 - extendedWaitUntil:
