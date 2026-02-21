@@ -44,7 +44,6 @@ describe('TaskScoreNoteModal', () => {
     );
 
     expect(getByTestId('feedback.scoreInput')).toBeTruthy();
-    expect(getByTestId('feedback.scoreScrollHint')).toBeTruthy();
     expect(getByTestId('feedback.noteInput')).toBeTruthy();
   });
 
@@ -54,6 +53,7 @@ describe('TaskScoreNoteModal', () => {
       <TaskScoreNoteModal visible onClose={jest.fn()} onSave={onSave} />
     );
 
+    fireEvent.press(getByTestId('feedback.scoreInput'));
     fireEvent.press(getByTestId('feedback.scoreOption.8'));
     fireEvent.changeText(getByTestId('feedback.noteInput'), '  Solid session  ');
     fireEvent.press(getByTestId('feedback.saveButton'));
