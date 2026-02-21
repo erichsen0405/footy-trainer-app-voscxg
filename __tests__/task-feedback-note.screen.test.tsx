@@ -110,6 +110,7 @@ jest.mock('expo-linear-gradient', () => {
 
 describe('task-feedback-note screen', () => {
   beforeEach(() => {
+    jest.useRealTimers();
     jest.clearAllMocks();
     mockCompletionByTaskId = {};
     mockFetchSelfFeedbackForTemplates.mockResolvedValue([]);
