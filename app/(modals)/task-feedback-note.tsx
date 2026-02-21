@@ -285,9 +285,11 @@ export default function TaskFeedbackNoteScreen() {
         }
         setUserId(uid);
 
-        const normalizedTaskInstanceId = normalizeId(taskInstanceId);
-        const taskCompletedFromTable = normalizedTaskInstanceId
-          ? await fetchTaskCompletion(normalizedTaskInstanceId)
+        const hasTaskInstanceIdParam = !!normalizeId(taskInstanceId);
+        const normalizedTaskInstanceUuid = normalizeUuid(taskInstanceId);
+        const effectiveTaskInstanceId = normalizedTaskInstanceUuid ?? templateId;
+        const taskCompletedFromTable = normalizedTaskInstanceUuid
+          ? await fetchTaskCompletion(normalizedTaskInstanceUuid)
           : false;
 
         try {
@@ -307,12 +309,12 @@ export default function TaskFeedbackNoteScreen() {
           if (cancelled) return;
 
           const candidateIds = candidates.filter((id) => normalizeUuid(id)) as string[];
-          const latestForInstance = normalizedTaskInstanceId
+          const latestForInstance = hasTaskInstanceIdParam
             ? rows.reduce<TaskTemplateSelfFeedback | undefined>((best, row) => {
                 const rowInstanceId = normalizeId(
                   (row as any)?.taskInstanceId ?? (row as any)?.task_instance_id,
                 );
-                if (!rowInstanceId || rowInstanceId !== normalizedTaskInstanceId) return best;
+                if (!rowInstanceId || rowInstanceId !== effectiveTaskInstanceId) return best;
                 return !best || safeDateMs(row.createdAt) > safeDateMs(best.createdAt) ? row : best;
               }, undefined)
             : undefined;
@@ -324,7 +326,7 @@ export default function TaskFeedbackNoteScreen() {
             return !best || safeDateMs(row.createdAt) > safeDateMs(best.createdAt) ? row : best;
           }, undefined);
 
-          const shouldHydratePersisted = normalizedTaskInstanceId
+          const shouldHydratePersisted = hasTaskInstanceIdParam
             ? taskCompletedFromTable || !!latestForInstance
             : taskCompletedFromTable || !!latestForActivity;
 
@@ -333,7 +335,7 @@ export default function TaskFeedbackNoteScreen() {
             return;
           }
 
-          const selected = normalizedTaskInstanceId
+          const selected = hasTaskInstanceIdParam
             ? latestForInstance ?? null
             : latestForActivity ?? null;
 
