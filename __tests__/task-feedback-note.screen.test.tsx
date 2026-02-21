@@ -1,6 +1,6 @@
 import React from 'react';
 import { Alert } from 'react-native';
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
 import TaskFeedbackNoteScreen from '../app/(modals)/task-feedback-note';
 
@@ -12,6 +12,12 @@ const mockFetchSelfFeedbackForTemplates = jest.fn();
 
 let mockParams: Record<string, unknown> = {};
 let mockCompletionByTaskId: Record<string, boolean> = {};
+
+async function flushMicrotasks(iterations: number = 4): Promise<void> {
+  for (let i = 0; i < iterations; i += 1) {
+    await Promise.resolve();
+  }
+}
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({
@@ -139,22 +145,29 @@ describe('task-feedback-note screen', () => {
 
     const screen = render(<TaskFeedbackNoteScreen />);
 
-    await waitFor(() => expect(screen.getByTestId('feedback.noteInput').props.value).toBe(''));
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    expect(screen.getByTestId('feedback.noteInput').props.value).toBe('');
     expect(screen.getByTestId('feedback.selectedScore.none')).toBeTruthy();
 
     fireEvent.press(screen.getByTestId('feedback.scoreInput'));
     fireEvent.press(screen.getByTestId('feedback.scoreOption.8'));
     fireEvent.press(screen.getByTestId('feedback.scoreDoneButton'));
     fireEvent.changeText(screen.getByTestId('feedback.noteInput'), 'Midlertidig note');
+    expect(screen.getByTestId('feedback.noteInput').props.value).toBe('Midlertidig note');
     fireEvent.press(screen.getByText('X'));
 
     mockParams = {
       ...mockParams,
       taskInstanceId: 'task-2',
     };
-    screen.rerender(<TaskFeedbackNoteScreen />);
+    await act(async () => {
+      screen.rerender(<TaskFeedbackNoteScreen />);
+      await flushMicrotasks();
+    });
 
-    await waitFor(() => expect(screen.getByTestId('feedback.noteInput').props.value).toBe(''));
+    expect(screen.getByTestId('feedback.noteInput').props.value).toBe('');
     expect(screen.getByTestId('feedback.selectedScore.none')).toBeTruthy();
     expect(mockDismiss).toHaveBeenCalled();
   });
