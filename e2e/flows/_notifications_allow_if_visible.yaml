@@ -1,0 +1,17 @@
+appId: ${MAESTRO_APP_ID}
+---
+- runFlow:
+    when:
+      visible:
+        id: '^notifications\.enableButton$'
+    commands:
+      - tapOn:
+          id: '^notifications\.enableButton$'
+- runFlow:
+    when:
+      visible:
+        id: '^notifications\.allowButton$'
+    commands:
+      - tapOn:
+          id: '^notifications\.allowButton$'
+- runFlow: _platform_notifications_prompt_allow.yaml

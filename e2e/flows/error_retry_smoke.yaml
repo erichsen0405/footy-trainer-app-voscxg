@@ -8,6 +8,7 @@ tags:
     permissions:
       notifications: allow
 - runFlow: _dev_client_bootstrap.yaml
+- runFlow: _notifications_allow_if_visible.yaml
 - openLink: "footballcoach:///(tabs)/profile"
 - runFlow:
     when:
@@ -41,6 +42,7 @@ tags:
           permissions:
             notifications: allow
       - runFlow: _dev_client_bootstrap.yaml
+      - runFlow: _notifications_allow_if_visible.yaml
       - openLink: "footballcoach:///(tabs)/library"
       - extendedWaitUntil:
           visible:
