@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/integrations/supabase/client';
 import { Platform } from 'react-native';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
+import { isTaskVisibleForActivity } from '@/utils/taskTemplateVisibility';
 
 /**
  * SMART NOTIFICATION SCHEDULER
@@ -40,6 +41,33 @@ interface PendingReminder {
   templateId?: string | null;
 }
 
+function cleanNotificationLabel(value: unknown, fallback: string): string {
+  if (typeof value !== 'string') return fallback;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : fallback;
+}
+
+function buildReminderNotificationText(args: {
+  kind: PendingReminder['kind'];
+  taskTitle: string;
+  activityTitle: string;
+}): { title: string; body: string } {
+  const taskTitle = cleanNotificationLabel(args.taskTitle, 'Opgave');
+  const activityTitle = cleanNotificationLabel(args.activityTitle, 'Aktivitet');
+
+  if (args.kind === 'after-training-feedback') {
+    return {
+      title: 'Feedback mangler',
+      body: activityTitle,
+    };
+  }
+
+  return {
+    title: 'Opgave snart',
+    body: `${taskTitle} · ${activityTitle}`,
+  };
+}
+
 /**
  * Calculate the notification time for a task reminder
  */
@@ -49,6 +77,13 @@ function calculateNotificationTime(
   reminderMinutes: number
 ): Date | null {
   try {
+    if (typeof activityDate !== 'string' || typeof activityTime !== 'string') {
+      return null;
+    }
+    if (!activityDate.includes('-') || !activityTime.includes(':')) {
+      return null;
+    }
+
     // Parse date in local timezone
     const dateParts = activityDate.split('T')[0].split('-');
     const year = parseInt(dateParts[0], 10);
@@ -59,6 +94,16 @@ function calculateNotificationTime(
     const timeParts = activityTime.split(':');
     const hours = parseInt(timeParts[0], 10);
     const minutes = parseInt(timeParts[1], 10);
+
+    if (
+      !Number.isFinite(year) ||
+      !Number.isFinite(month) ||
+      !Number.isFinite(day) ||
+      !Number.isFinite(hours) ||
+      !Number.isFinite(minutes)
+    ) {
+      return null;
+    }
     
     // Create activity datetime
     const activityDateTime = new Date(year, month, day, hours, minutes, 0, 0);
@@ -134,6 +179,23 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
     
     // Always build into this array so after-training can run even if there are 0 task reminders.
     const reminders: PendingReminder[] = [];
+    const normalizeId = (value: unknown): string | null => {
+      if (value === null || value === undefined) return null;
+      const normalized = String(value).trim();
+      return normalized.length ? normalized : null;
+    };
+    const resolveTaskTemplateId = (task: any): string | null => {
+      const directTemplateId = normalizeId(task?.task_template_id);
+      if (directTemplateId) return directTemplateId;
+
+      const directFeedbackTemplateId = normalizeId(task?.feedback_template_id);
+      if (directFeedbackTemplateId) return directFeedbackTemplateId;
+
+      return normalizeId(
+        parseTemplateIdFromMarker(typeof task?.description === 'string' ? task.description : '') ||
+        parseTemplateIdFromMarker(typeof task?.title === 'string' ? task.title : '')
+      );
+    };
 
     // --- Task reminders (reminder_minutes) ---
     const { data: tasks, error } = await supabase
@@ -143,6 +205,8 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
         title,
         description,
         reminder_minutes,
+        task_template_id,
+        feedback_template_id,
         activity_id,
         activities!inner (
           id,
@@ -168,10 +232,45 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
       console.log('ℹ️ No task reminders (reminder_minutes) found');
     } else {
       console.log(`✅ Found ${tasks.length} tasks with reminders`);
+
+      const templateIds = Array.from(
+        new Set(
+          tasks
+            .map((task: any) => resolveTaskTemplateId(task))
+            .filter((id: string | null): id is string => !!id)
+        )
+      );
+      const templateArchivedAtById: Record<string, string | null> = {};
+      if (templateIds.length) {
+        const { data: templates, error: templatesError } = await supabase
+          .from('task_templates')
+          .select('id, archived_at')
+          .in('id', templateIds);
+
+        if (templatesError) {
+          console.error('❌ Error fetching template archive state for reminders:', templatesError);
+        } else {
+          (templates || []).forEach((template: any) => {
+            const templateId = normalizeId(template?.id);
+            if (!templateId) return;
+            templateArchivedAtById[templateId] =
+              typeof template?.archived_at === 'string' && template.archived_at.trim().length
+                ? template.archived_at
+                : null;
+          });
+        }
+      }
       
       for (const task of tasks) {
         const activity = (task as any).activities;
         if (!activity) continue;
+        if (!isTaskVisibleForActivity(task, activity.activity_date, activity.activity_time, templateArchivedAtById)) {
+          console.log('ℹ️ Skipping reminder for archived template task', {
+            activityId: activity.id,
+            taskId: task.id,
+          });
+          continue;
+        }
 
         const reminderMinutes = Number(task.reminder_minutes);
         if (!Number.isFinite(reminderMinutes)) {
@@ -244,21 +343,26 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
         ) as string[];
 
         const templateDelayById = new Map<string, number>();
+        const templateArchivedAtById: Record<string, string | null> = {};
         if (templateIds.length) {
           const { data: templates, error: templatesError } = await supabase
             .from('task_templates')
-            .select('id, after_training_enabled, after_training_delay_minutes')
-            .eq('user_id', user.id)
+            .select('id, after_training_enabled, after_training_delay_minutes, archived_at')
             .in('id', templateIds);
 
           if (templatesError) {
             console.error('❌ Error fetching template delay for after-training:', templatesError);
           } else {
             (templates || []).forEach((tt: any) => {
-              if (!tt?.id) return;
+              const templateId = normalizeId(tt?.id);
+              if (!templateId) return;
+              templateArchivedAtById[templateId] =
+                typeof tt?.archived_at === 'string' && tt.archived_at.trim().length
+                  ? tt.archived_at
+                  : null;
               if (!tt.after_training_enabled) return;
               const delay = tt.after_training_delay_minutes;
-              templateDelayById.set(String(tt.id), typeof delay === 'number' && Number.isFinite(delay) ? delay : 0);
+              templateDelayById.set(templateId, typeof delay === 'number' && Number.isFinite(delay) ? delay : 0);
             });
           }
         }
@@ -277,6 +381,21 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
           // Strict: skip when template is disabled/missing (no fallback)
           if (!templateDelayById.has(templateId)) {
             console.log('⚠️ Skipping after-training reminder (template disabled/missing)', {
+              activityId: activity.id,
+              taskId: feedbackTask.id,
+              templateId,
+            });
+            continue;
+          }
+          if (
+            !isTaskVisibleForActivity(
+              { feedback_template_id: templateId },
+              activity.activity_date,
+              activity.activity_time,
+              templateArchivedAtById
+            )
+          ) {
+            console.log('ℹ️ Skipping after-training reminder for archived template task', {
               activityId: activity.id,
               taskId: feedbackTask.id,
               templateId,
@@ -372,29 +491,20 @@ async function scheduleNotifications(reminders: PendingReminder[]): Promise<numb
     
     for (const reminder of toSchedule) {
       try {
-        const isAfterTraining = reminder.kind === 'after-training-feedback';
-
-        // Build notification body with task description
-        let notificationBody = '';
-        if (isAfterTraining) {
-          notificationBody = `Husk at udfylde feedback efter ${reminder.activityTitle}`;
-        } else {
-          const mins = reminder.reminderMinutes ?? 0;
-          notificationBody = `${reminder.activityTitle} starter om ${mins} minutter`;
-        }
-
-        if (reminder.taskDescription) {
-          notificationBody += `\n\n${reminder.taskDescription}`;
-        }
+        const notificationText = buildReminderNotificationText({
+          kind: reminder.kind,
+          taskTitle: reminder.taskTitle,
+          activityTitle: reminder.activityTitle,
+        });
 
         const notificationContent: Notifications.NotificationContentInput = {
-          title: isAfterTraining ? `⚽ Feedback: ${reminder.activityTitle}` : `⚽ Påmindelse: ${reminder.taskTitle}`,
-          body: notificationBody,
+          title: notificationText.title,
+          body: notificationText.body,
           sound: 'default',
           data: {
             taskId: reminder.taskId,
             activityId: reminder.activityId,
-            type: isAfterTraining ? 'after-training-feedback' : 'task-reminder',
+            type: reminder.kind === 'after-training-feedback' ? 'after-training-feedback' : 'task-reminder',
             templateId: reminder.templateId ?? null,
             scheduledFor: reminder.notificationTime.toISOString(),
             // Deep linking data
@@ -566,16 +676,16 @@ export async function scheduleTaskReminderImmediate(
       return false;
     }
     
-    // Build notification body with task description
-    let notificationBody = `${activityTitle} starter om ${reminderMinutes} minutter`;
-    if (taskDescription) {
-      notificationBody += `\n\n${taskDescription}`;
-    }
+    const notificationText = buildReminderNotificationText({
+      kind: 'task-reminder',
+      taskTitle: cleanNotificationLabel(taskTitle, cleanNotificationLabel(taskDescription, 'Opgave')),
+      activityTitle,
+    });
 
     // Schedule the notification
     const notificationContent: Notifications.NotificationContentInput = {
-      title: `⚽ Påmindelse: ${taskTitle}`,
-      body: notificationBody,
+      title: notificationText.title,
+      body: notificationText.body,
       sound: 'default',
       data: {
         taskId,

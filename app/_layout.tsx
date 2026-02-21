@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useFonts } from 'expo-font';
-import { Stack, usePathname, useRouter, useRootNavigationState, router as globalRouter } from 'expo-router';
+import { Stack, usePathname, useRouter, useRootNavigationState } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
@@ -12,6 +12,8 @@ import { AdminProvider } from '@/contexts/AdminContext';
 import NotificationPermissionPrompt from '@/components/NotificationPermissionPrompt';
 import { supabase } from '@/integrations/supabase/client';
 import * as Notifications from 'expo-notifications';
+import { clearPushTokenCache, syncPushTokenForCurrentUser } from '@/utils/pushTokenService';
+import { buildNotificationRouteFromResponse } from '@/utils/notificationDeepLink';
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -45,8 +47,12 @@ export default function RootLayout() {
   });
   const didHideSplashRef = useRef(false);
   const pendingRouteRef = useRef<{ pathname: string; params?: Record<string, string> } | null>(null);
+  const pendingTaskIdRef = useRef<string | null>(null);
   const handledNotificationIdsRef = useRef<Set<string>>(new Set());
+  const [authReady, setAuthReady] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const isNavigationReady = Boolean(rootNavigationState?.key);
+  const canHandleNotificationNavigation = isNavigationReady && authReady && isAuthenticated;
 
   useEffect(() => {
     if (!loaded || didHideSplashRef.current) return;
@@ -71,60 +77,31 @@ export default function RootLayout() {
     }
   }, []);
 
-  const buildNotificationRoute = useCallback((response: Notifications.NotificationResponse) => {
-    const data = response?.notification?.request?.content?.data ?? {};
-    const activityIdRaw =
-      (data as any)?.activityId ??
-      (data as any)?.activity_id ??
-      (data as any)?.activityID;
-    const taskIdRaw = (data as any)?.taskId ?? (data as any)?.task_id ?? (data as any)?.taskID;
-    const typeRaw = (data as any)?.type;
-    const templateIdRaw = (data as any)?.templateId ?? (data as any)?.template_id;
-
-    if (activityIdRaw === undefined || activityIdRaw === null) return null;
-    const activityId = String(activityIdRaw);
-
-    const params: Record<string, string> = {
-      id: activityId,
-      activityId,
-    };
-
-    if (taskIdRaw !== undefined && taskIdRaw !== null) {
-      const taskId = String(taskIdRaw);
-      const type = typeof typeRaw === 'string' ? typeRaw.toLowerCase() : '';
-      const hasTemplate = typeof templateIdRaw === 'string' && templateIdRaw.length > 0;
-      const isFeedback = type === 'after-training-feedback' || type === 'feedback' || hasTemplate;
-      if (isFeedback) {
-        params.openFeedbackTaskId = taskId;
-      } else {
-        params.openTaskId = taskId;
-      }
-    }
-
-    return { pathname: '/activity-details', params };
-  }, []);
-
   const handleNotificationResponse = useCallback(
     (response: Notifications.NotificationResponse) => {
       if (response?.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
       const responseId = response?.notification?.request?.identifier;
       if (responseId && handledNotificationIdsRef.current.has(responseId)) return;
 
-      const route = buildNotificationRoute(response);
+      const route = buildNotificationRouteFromResponse(response);
       if (!route) return;
 
       if (responseId) handledNotificationIdsRef.current.add(responseId);
+      pendingRouteRef.current = route;
+      pendingTaskIdRef.current =
+        route.params?.openTaskId ?? route.params?.openFeedbackTaskId ?? null;
 
-      if (!isNavigationReady) {
-        pendingRouteRef.current = route;
+      if (!canHandleNotificationNavigation) {
         Notifications.clearLastNotificationResponseAsync().catch(() => {});
         return;
       }
 
+      pendingRouteRef.current = null;
+      pendingTaskIdRef.current = null;
       router.push(route as any);
       Notifications.clearLastNotificationResponseAsync().catch(() => {});
     },
-    [buildNotificationRoute, isNavigationReady, router],
+    [canHandleNotificationNavigation, router],
   );
 
   useEffect(() => {
@@ -151,12 +128,71 @@ export default function RootLayout() {
   }, [handleNotificationResponse]);
 
   useEffect(() => {
-    if (!isNavigationReady) return;
+    if (!canHandleNotificationNavigation) return;
     const pendingRoute = pendingRouteRef.current;
     if (!pendingRoute) return;
     pendingRouteRef.current = null;
+    pendingTaskIdRef.current = null;
     router.push(pendingRoute as any);
-  }, [isNavigationReady, router]);
+    Notifications.clearLastNotificationResponseAsync().catch(() => {});
+  }, [canHandleNotificationNavigation, router]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (!isMounted) return;
+        setIsAuthenticated(Boolean(data.session?.user));
+        setAuthReady(true);
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setIsAuthenticated(false);
+        setAuthReady(true);
+      });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthenticated(Boolean(session?.user));
+      setAuthReady(true);
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const syncPushToken = async (force = false) => {
+      if (cancelled) return;
+      await syncPushTokenForCurrentUser(force);
+    };
+
+    void syncPushToken();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        void clearPushTokenCache();
+        return;
+      }
+      if (session?.user) {
+        void syncPushToken(true);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   return (
     <SubscriptionProvider>
@@ -222,7 +258,10 @@ export default function RootLayout() {
                   />
                 ) : null}
                 <Stack.Screen name="auth/check-email" options={{ headerShown: false }} />
+                <Stack.Screen name="auth/forgot-password" options={{ headerShown: false }} />
                 <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
+                <Stack.Screen name="auth/recovery-callback" options={{ headerShown: false }} />
+                <Stack.Screen name="auth/recovery-redirect" options={{ headerShown: false }} />
                 <Stack.Screen name="email-confirmed" options={{ headerShown: false }} />
                 <Stack.Screen name="update-password" options={{ headerShown: false }} />
               </Stack>
@@ -258,6 +297,12 @@ function SubscriptionRedirectObserver() {
   const lastRedirectRef = useRef(0);
   const paywallRedirectedRef = useRef(false);
   const lastSuppressedLogAtRef = useRef(0);
+  const isRecoveryFlowRoute = Boolean(
+    pathname?.startsWith('/auth/callback') ||
+    pathname?.startsWith('/auth/recovery-callback') ||
+    pathname?.startsWith('/auth/recovery-redirect') ||
+    pathname?.startsWith('/update-password')
+  );
 
   useEffect(() => {
     paywallRedirectedRef.current = false;
@@ -281,7 +326,7 @@ function SubscriptionRedirectObserver() {
       const { data } = await supabase.auth.getSession();
       if (!isActive) return;
       const sessionUser = data.session?.user ?? null;
-      if (sessionUser && !isUserEmailConfirmed(sessionUser)) {
+      if (sessionUser && !isUserEmailConfirmed(sessionUser) && !isRecoveryFlowRoute) {
         setUnverifiedEmail(sessionUser.email ?? null);
         setUserId(null);
         forcingUnverifiedSignOutRef.current = true;
@@ -317,7 +362,7 @@ function SubscriptionRedirectObserver() {
         setAuthChecked(true);
         return;
       }
-      if (sessionUser && !isUserEmailConfirmed(sessionUser)) {
+      if (sessionUser && !isUserEmailConfirmed(sessionUser) && !isRecoveryFlowRoute) {
         setUnverifiedEmail(sessionUser.email ?? null);
         setUserId(null);
         forcingUnverifiedSignOutRef.current = true;
@@ -344,7 +389,7 @@ function SubscriptionRedirectObserver() {
       isActive = false;
       listener.subscription.unsubscribe();
     };
-  }, []);
+  }, [isRecoveryFlowRoute]);
 
   const isCreatorCandidate = Boolean(tierKey?.startsWith('trainer'));
 
@@ -353,7 +398,10 @@ function SubscriptionRedirectObserver() {
     '/update-password',
     '/email-confirmed',
     '/auth/check-email',
+    '/auth/forgot-password',
     '/auth/callback',
+    '/auth/recovery-callback',
+    '/auth/recovery-redirect',
   ];
   const isPaywallExemptRoute = PAYWALL_EXEMPT_PREFIXES.some(prefix =>
     pathname?.startsWith(prefix)

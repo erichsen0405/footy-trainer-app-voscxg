@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { colors } from '@/styles/commonStyles';
 import { requestNotificationPermissions, openNotificationSettings } from '@/utils/notificationService';
+import { syncPushTokenForCurrentUser } from '@/utils/pushTokenService';
 
 const STORAGE_KEY = '@notification_prompt_state_v1';
 
@@ -24,7 +25,6 @@ export default function NotificationPermissionPrompt() {
   const [loaded, setLoaded] = useState(false);
   const [show, setShow] = useState(false);
   const [status, setStatus] = useState<Notifications.PermissionStatus | null>(null);
-  const [dismissed, setDismissed] = useState(false);
   const stateRef = useRef<PromptState>(defaultState);
   const opacity = useRef(new Animated.Value(0)).current;
   const mountedRef = useRef(true);
@@ -55,7 +55,6 @@ export default function NotificationPermissionPrompt() {
         const storedRaw = await AsyncStorage.getItem(STORAGE_KEY);
         const stored = storedRaw ? (JSON.parse(storedRaw) as PromptState) : defaultState;
         stateRef.current = stored;
-        setDismissed(stored.dismissed);
 
         await refreshPermissions(stored);
       } finally {
@@ -95,7 +94,6 @@ export default function NotificationPermissionPrompt() {
 
   const persist = useCallback(async (next: PromptState) => {
     stateRef.current = next;
-    setDismissed(next.dismissed);
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   }, []);
 
@@ -110,6 +108,7 @@ export default function NotificationPermissionPrompt() {
     setStatus(latest);
 
     if (granted) {
+      await syncPushTokenForCurrentUser(true);
       await hide();
     } else {
       await persist({ dismissed: false, lastDecisionAt: Date.now() });
@@ -117,7 +116,7 @@ export default function NotificationPermissionPrompt() {
     }
   }, [hide, persist]);
 
-  const handleLater = useCallback(async () => {
+  const handleDeny = useCallback(async () => {
     await hide();
   }, [hide]);
 
@@ -128,12 +127,6 @@ export default function NotificationPermissionPrompt() {
   }, [persist]);
 
   const shouldRender = isIOS && loaded && show;
-  const canShowCta = isIOS && loaded && !show && status !== 'granted' && dismissed;
-
-  const reopen = useCallback(async () => {
-    await persist({ dismissed: false, lastDecisionAt: Date.now() });
-    setShow(true);
-  }, [persist]);
 
   const statusLabel = useMemo(() => {
     if (status === 'denied') return 'Notifikationer er slået fra';
@@ -150,31 +143,36 @@ export default function NotificationPermissionPrompt() {
 
           <View style={styles.buttons}>
             {status === 'denied' ? (
-              <TouchableOpacity style={[styles.button, styles.primary]} onPress={handleOpenSettings}>
+              <TouchableOpacity
+                style={[styles.button, styles.primary]}
+                onPress={handleOpenSettings}
+                testID="notifications.openSettingsButton"
+                accessibilityLabel="Åbn indstillinger"
+              >
                 <Text style={styles.primaryText}>Åbn indstillinger</Text>
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity style={[styles.button, styles.primary]} onPress={handleAllow}>
+              <TouchableOpacity
+                style={[styles.button, styles.primary]}
+                onPress={handleAllow}
+                testID="notifications.allowButton"
+                accessibilityLabel="Tillad notifikationer"
+              >
                 <Text style={styles.primaryText}>Tillad notifikationer</Text>
               </TouchableOpacity>
             )}
 
-            <TouchableOpacity style={[styles.button, styles.secondary]} onPress={handleLater}>
-              <Text style={styles.secondaryText}>Ikke nu</Text>
+            <TouchableOpacity
+              style={[styles.button, styles.secondary]}
+              onPress={handleDeny}
+              testID="notifications.denyButton"
+              accessibilityLabel="Tillad ikke"
+            >
+              <Text style={styles.secondaryText}>Tillad ikke</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Animated.View>
-    );
-  }
-
-  if (canShowCta) {
-    return (
-      <View style={styles.ctaContainer}>
-        <TouchableOpacity style={styles.ctaButton} onPress={reopen}>
-          <Text style={styles.ctaText}>Aktiver notifikationer</Text>
-        </TouchableOpacity>
-      </View>
     );
   }
 
@@ -224,22 +222,4 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
-  ctaContainer: {
-    position: 'absolute',
-    top: 70,
-    right: 16,
-    zIndex: 900,
-    elevation: 2,
-  },
-  ctaButton: {
-    backgroundColor: colors.primary ?? '#2563EB',
-    borderRadius: 999,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  ctaText: { color: '#fff', fontSize: 14, fontWeight: '700' },
 });

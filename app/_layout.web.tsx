@@ -107,7 +107,10 @@ export default function RootLayout() {
                 <Stack.Screen name="+not-found" />
                 <Stack.Screen name="activity-details" options={{ presentation: 'modal' }} />
                 <Stack.Screen name="auth/check-email" />
+                <Stack.Screen name="auth/forgot-password" />
                 <Stack.Screen name="auth/callback" />
+                <Stack.Screen name="auth/recovery-callback" />
+                <Stack.Screen name="auth/recovery-redirect" />
                 <Stack.Screen name="email-confirmed" />
                 <Stack.Screen name="update-password" />
                 {__DEV__ ? <Stack.Screen name="console-logs" options={{ headerShown: true }} /> : null}
@@ -147,6 +150,12 @@ function SubscriptionRedirectObserver() {
   const lastRedirectRef = useRef(0);
   const paywallRedirectedRef = useRef(false);
   const lastSuppressedLogAtRef = useRef(0);
+  const isRecoveryFlowRoute = Boolean(
+    pathname?.startsWith('/auth/callback') ||
+    pathname?.startsWith('/auth/recovery-callback') ||
+    pathname?.startsWith('/auth/recovery-redirect') ||
+    pathname?.startsWith('/update-password')
+  );
 
   useEffect(() => {
     paywallRedirectedRef.current = false;
@@ -171,7 +180,7 @@ function SubscriptionRedirectObserver() {
       const { data } = await supabase.auth.getSession();
       if (!isActive) return;
       const sessionUser = data.session?.user ?? null;
-      if (sessionUser && !isUserEmailConfirmed(sessionUser)) {
+      if (sessionUser && !isUserEmailConfirmed(sessionUser) && !isRecoveryFlowRoute) {
         setUnverifiedEmail(sessionUser.email ?? null);
         setUserId(null);
         forcingUnverifiedSignOutRef.current = true;
@@ -199,7 +208,7 @@ function SubscriptionRedirectObserver() {
         setAuthChecked(true);
         return;
       }
-      if (sessionUser && !isUserEmailConfirmed(sessionUser)) {
+      if (sessionUser && !isUserEmailConfirmed(sessionUser) && !isRecoveryFlowRoute) {
         setUnverifiedEmail(sessionUser.email ?? null);
         setUserId(null);
         forcingUnverifiedSignOutRef.current = true;
@@ -217,7 +226,7 @@ function SubscriptionRedirectObserver() {
       isActive = false;
       listener.subscription.unsubscribe();
     };
-  }, []);
+  }, [isRecoveryFlowRoute]);
 
   const isCreatorCandidate = Boolean(tierKey?.startsWith('trainer'));
 
@@ -226,7 +235,10 @@ function SubscriptionRedirectObserver() {
     '/update-password',
     '/email-confirmed',
     '/auth/check-email',
+    '/auth/forgot-password',
     '/auth/callback',
+    '/auth/recovery-callback',
+    '/auth/recovery-redirect',
   ];
   const isPaywallExemptRoute = PAYWALL_EXEMPT_PREFIXES.some(prefix => pathname?.startsWith(prefix));
   const onPaywall = pathname?.startsWith('/choose-plan');

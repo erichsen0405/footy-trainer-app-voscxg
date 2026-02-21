@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Database } from './types';
 import { createClient } from '@supabase/supabase-js'
@@ -15,6 +13,7 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     storage: AsyncStorage,
     autoRefreshToken: true,
     persistSession: true,
+    // Deep links are handled explicitly in auth callback screens.
     detectSessionInUrl: false,
   },
 })
@@ -58,10 +57,10 @@ supabase.auth.getUser = async (jwt?: string) => {
   try {
     const result = await originalGetUser(jwt);
     return result;
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (jwt === undefined && isInvalidRefreshTokenError(error)) {
       await handleInvalidRefreshToken();
-      return { data: { user: null }, error: null };
+      return originalGetUser();
     }
     throw error;
   }
@@ -102,5 +101,3 @@ async function handleInvalidRefreshToken() {
     console.error('[Supabase] Error clearing session:', error);
   }
 }
-
-

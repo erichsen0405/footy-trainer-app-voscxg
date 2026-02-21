@@ -57,6 +57,15 @@ const COLOR_OPTIONS = [
   '#E63946', '#457B9D', '#F77F00', '#06FFA5', '#9D4EDD'
 ];
 
+const toCategoryTestKey = (value: string): string => {
+  const normalized = value
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9_]/g, '');
+  return normalized || 'unknown';
+};
+
 export default function CategoryManagementModal({
   visible,
   onClose,
@@ -138,15 +147,6 @@ export default function CategoryManagementModal({
         throw new Error('User not authenticated');
       }
 
-      let player_id = null;
-      let team_id = null;
-
-      if (selectedContext?.type === 'player' && selectedContext?.id) {
-        player_id = selectedContext.id;
-      } else if (selectedContext?.type === 'team' && selectedContext?.id) {
-        team_id = selectedContext.id;
-      }
-
       const { error } = await supabase
         .from('activity_categories')
         .insert({
@@ -154,8 +154,8 @@ export default function CategoryManagementModal({
           name: categoryName.trim(),
           emoji: selectedEmoji,
           color: selectedColor,
-          player_id,
-          team_id,
+          player_id: null,
+          team_id: null,
         });
 
       if (error) {
@@ -175,7 +175,7 @@ export default function CategoryManagementModal({
     } finally {
       setIsLoading(false);
     }
-  }, [categoryName, selectedEmoji, selectedColor, selectedContext, onRefresh]);
+  }, [categoryName, selectedEmoji, selectedColor, onRefresh]);
 
   const handleEditCategory = useCallback(async () => {
     if (!selectedCategory || !categoryName.trim()) {
@@ -643,7 +643,7 @@ export default function CategoryManagementModal({
     <React.Fragment>
       <View style={styles.modalHeader}>
         <Text style={[styles.modalTitle, { color: textColor }]}>Administrer kategorier</Text>
-        <TouchableOpacity onPress={onClose} activeOpacity={0.7}>
+        <TouchableOpacity onPress={onClose} activeOpacity={0.7} testID="category.manage.closeButton">
           <IconSymbol
             ios_icon_name="xmark.circle.fill"
             android_material_icon_name="close"
@@ -659,6 +659,7 @@ export default function CategoryManagementModal({
           onPress={() => setMode('create')}
           activeOpacity={0.7}
           disabled={isLoading}
+          testID="category.manage.createNewButton"
         >
           <IconSymbol
             ios_icon_name="plus.circle.fill"
@@ -672,16 +673,18 @@ export default function CategoryManagementModal({
         <View style={styles.categoriesList}>
           {safeCategories.map((category) => {
             const isOwned = !!currentUserId && (category as any).user_id === currentUserId;
+            const categoryKey = toCategoryTestKey(String(category.name ?? ''));
 
             return (
               <View
                 key={category.id}
                 style={[styles.categoryItem, { backgroundColor: bgColor }]}
+                testID={`category.manage.row.${categoryKey}`}
               >
                 <View style={styles.categoryInfo}>
                   <View style={[styles.categoryColorDot, { backgroundColor: category.color }]} />
                   <Text style={styles.categoryEmoji}>{category.emoji}</Text>
-                  <Text style={[styles.categoryName, { color: textColor }]}>{category.name}</Text>
+                  <Text style={[styles.categoryName, { color: textColor }]} testID={`category.manage.name.${categoryKey}`}>{category.name}</Text>
                 </View>
                 <View style={styles.categoryActions}>
                   {isOwned ? (
@@ -704,6 +707,7 @@ export default function CategoryManagementModal({
                         activeOpacity={0.7}
                         style={styles.actionButton}
                         disabled={isLoading}
+                        testID={`category.manage.deleteButton.${categoryKey}`}
                       >
                         <IconSymbol
                           ios_icon_name="trash.circle.fill"
@@ -719,6 +723,7 @@ export default function CategoryManagementModal({
                       activeOpacity={0.7}
                       style={styles.actionButton}
                       disabled={isLoading}
+                      testID={`category.manage.removeButton.${categoryKey}`}
                     >
                       <IconSymbol
                         ios_icon_name="minus.circle.fill"
@@ -774,6 +779,7 @@ export default function CategoryManagementModal({
             onChangeText={setCategoryName}
             placeholder="F.eks. Træning"
             placeholderTextColor={textSecondaryColor}
+            testID="category.manage.nameInput"
           />
         </View>
 
@@ -867,6 +873,7 @@ export default function CategoryManagementModal({
           onPress={mode === 'create' ? handleCreateCategory : handleEditCategory}
           activeOpacity={0.7}
           disabled={isLoading}
+          testID="category.manage.submitButton"
         >
           {isLoading ? (
             <ActivityIndicator size="small" color="#fff" />

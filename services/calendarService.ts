@@ -1,11 +1,9 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 
 import { supabase } from '@/integrations/supabase/client';
 import { ExternalCalendar } from '@/types';
 
 export const calendarService = {
-  async addExternalCalendar(userId: string, name: string, icsUrl: string, enabled: boolean = true, signal?: AbortSignal): Promise<ExternalCalendar> {
+  async addExternalCalendar(userId: string, name: string, icsUrl: string, enabled: boolean = true, signal: AbortSignal = new AbortController().signal): Promise<ExternalCalendar> {
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !session) {
       throw new Error('No active session. Please log in again.');
@@ -35,7 +33,7 @@ export const calendarService = {
     };
   },
 
-  async toggleCalendar(calendarId: string, userId: string, newEnabled: boolean, signal?: AbortSignal): Promise<void> {
+  async toggleCalendar(calendarId: string, userId: string, newEnabled: boolean, signal: AbortSignal = new AbortController().signal): Promise<void> {
     const { error } = await supabase
       .from('external_calendars')
       .update({ enabled: newEnabled })
@@ -46,7 +44,7 @@ export const calendarService = {
     if (error) throw error;
   },
 
-  async deleteExternalCalendar(calendarId: string, userId: string, signal?: AbortSignal): Promise<void> {
+  async deleteExternalCalendar(calendarId: string, userId: string, signal: AbortSignal = new AbortController().signal): Promise<void> {
     const nowIso = new Date().toISOString();
     const { error: eventsError } = await supabase
       .from('events_external')
@@ -72,7 +70,7 @@ export const calendarService = {
     if (error) throw error;
   },
 
-  async syncCalendar(calendarId: string, signal?: AbortSignal): Promise<{ eventCount: number }> {
+  async syncCalendar(calendarId: string, signal: AbortSignal = new AbortController().signal): Promise<{ eventCount: number }> {
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !session) {
       throw new Error('No active session');
@@ -98,5 +96,4 @@ export const calendarService = {
     return { eventCount: data?.eventCount || 0 };
   },
 };
-
 

@@ -1,0 +1,33 @@
+appId: ${MAESTRO_APP_ID}
+tags:
+  - smoke
+---
+- launchApp:
+    appId: ${MAESTRO_APP_ID}
+    clearState: true
+    permissions:
+      notifications: allow
+- runFlow: _dev_client_bootstrap.yaml
+- runFlow: _notifications_allow_if_visible.yaml
+- openLink: "footballcoach:///(tabs)/profile"
+- extendedWaitUntil:
+    visible:
+      id: '^auth\.login\.emailInput$'
+    timeout: 15000
+- tapOn:
+    id: '^auth\.login\.emailInput$'
+- inputText: "${MAESTRO_LOCKED_EMAIL}"
+- tapOn:
+    id: '^auth\.login\.passwordInput$'
+- inputText: "${MAESTRO_LOCKED_PASSWORD}"
+- tapOn:
+    id: '^auth\.login\.submitButton$'
+- runFlow: _post_login_prompt_cleanup.yaml
+- extendedWaitUntil:
+    visible:
+      id: '^paywall\.primaryCtaButton$'
+    timeout: 15000
+- assertVisible:
+    id: '^paywall\.primaryCtaButton$'
+- assertNotVisible:
+    id: '^paywall\.closeButton$'

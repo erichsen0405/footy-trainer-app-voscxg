@@ -1,0 +1,25 @@
+appId: ${MAESTRO_APP_ID}
+---
+- runFlow:
+    when:
+      visible:
+        id: '^auth\.login\.submitButton$'
+    commands:
+      - extendedWaitUntil:
+          notVisible:
+            id: '^auth\.login\.submitButton$'
+          timeout: 15000
+- runFlow:
+    when:
+      visible: '(?i)^(ikke nu|not now)$'
+    commands:
+      - tapOn:
+          text: '(?i)^(ikke nu|not now)$'
+          retryTapIfNoChange: true
+- runFlow:
+    when:
+      visible: '(?i)^(gem ikke|don.t save|never save)$'
+    commands:
+      - tapOn:
+          text: '(?i)^(gem ikke|don.t save|never save)$'
+          retryTapIfNoChange: true

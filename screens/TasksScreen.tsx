@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -167,11 +165,15 @@ export default function TasksScreen() {
     ({ item }: { item: Task }) => (
       <TaskCard
         task={item}
+        isDark={scheme === 'dark'}
+        onPress={() => {}}
         onDuplicate={() => void handleDuplicateTask(item.id)}
         onDelete={() => void handleDeleteTask(item.id)}
+        onVideoPress={() => {}}
+        getCategoryNames={() => 'aktiviteter'}
       />
     ),
-    [handleDuplicateTask, handleDeleteTask],
+    [handleDuplicateTask, handleDeleteTask, scheme],
   );
 
   const styles = useMemo(
@@ -292,5 +294,4 @@ export default function TasksScreen() {
     </View>
   );
 }
-
 

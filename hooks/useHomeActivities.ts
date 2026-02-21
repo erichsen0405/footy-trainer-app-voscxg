@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import * as FileSystem from 'expo-file-system';
@@ -8,6 +6,7 @@ import { getCategories, DatabaseActivityCategory } from '@/services/activities';
 import { resolveActivityCategory, type CategoryMappingRecord } from '@/shared/activityCategoryResolver';
 import { subscribeToTaskCompletion } from '@/utils/taskEvents';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
+import { filterVisibleTasksForActivity } from '@/utils/taskTemplateVisibility';
 import { useUserRole } from '@/hooks/useUserRole';
 import {
   subscribeToActivityPatch,
@@ -35,7 +34,7 @@ interface ActivityWithCategory {
   activity_date: string;
   activity_time: string;
   location?: string;
-  category_id?: string;
+  category_id?: string | null;
   category?: DatabaseActivityCategory | null;
   intensity?: number | null;
   intensityNote?: string | null;
@@ -43,13 +42,13 @@ interface ActivityWithCategory {
   intensityEnabled?: boolean;
   intensity_enabled?: boolean;
   is_external: boolean;
-  external_calendar_id?: string;
-  external_event_id?: string;
+  external_calendar_id?: string | null;
+  external_event_id?: string | null;
   created_at: string;
   updated_at: string;
   tasks?: ActivityTask[];
   minReminderMinutes?: number | null;
-  external_event_row_id?: string;
+  external_event_row_id?: string | null;
 }
 
 const coerceReminderMinutes = (val: any): number | null => {
@@ -672,8 +671,10 @@ export function useHomeActivities(): UseHomeActivitiesResult {
             if (meta) matchedCount += 1;
 
             const categoryId = meta?.category_id || null;
-            const providerCategories = Array.isArray(event.raw_payload?.categories)
-              ? (event.raw_payload.categories as string[]).filter((cat) => typeof cat === 'string' && cat.trim().length > 0)
+            const rawPayload = event.raw_payload as Record<string, unknown> | null;
+            const rawCategories = rawPayload?.categories;
+            const providerCategories = Array.isArray(rawCategories)
+              ? (rawCategories as unknown[]).filter((cat): cat is string => typeof cat === 'string' && cat.trim().length > 0)
               : undefined;
             const resolvedCategory = resolveCategory(
               meta?.local_title_override || event.title,
@@ -850,16 +851,19 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       );
 
       let templateDelayById: Record<string, number | null> = {};
+      let templateArchivedAtById: Record<string, string | null> = {};
       if (templateIdCandidates.size) {
         const { data: templateRows } = await supabase
           .from('task_templates')
-          .select('id, after_training_delay_minutes')
+          .select('id, after_training_delay_minutes, archived_at')
           .in('id', Array.from(templateIdCandidates));
         if (Array.isArray(templateRows)) {
           templateRows.forEach((row: any) => {
             const tid = normalizeId(row?.id);
             if (!tid) return;
             templateDelayById[tid] = coerceReminderMinutes(row.after_training_delay_minutes);
+            templateArchivedAtById[tid] =
+              typeof row?.archived_at === 'string' ? row.archived_at : null;
           });
         }
       }
@@ -1017,6 +1021,12 @@ export function useHomeActivities(): UseHomeActivitiesResult {
               (task as any).after_training_delay_minutes ?? inherited,
           };
         });
+        tasks = filterVisibleTasksForActivity(
+          tasks,
+          activity.activity_date,
+          activity.activity_time,
+          templateArchivedAtById,
+        );
 
         return {
           ...activity,
@@ -1236,5 +1246,3 @@ export function useHomeActivities(): UseHomeActivitiesResult {
     refresh,
   };
 }
-
-

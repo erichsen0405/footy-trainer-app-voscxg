@@ -40,6 +40,12 @@ function normalizeUuid(value: unknown): string | null {
   return isUuid(trimmed) ? trimmed : null;
 }
 
+function normalizeId(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const trimmed = String(value).trim();
+  return trimmed.length ? trimmed : null;
+}
+
 function safeDateMs(value: unknown): number {
   const ms = new Date(String(value ?? '')).getTime();
   return Number.isFinite(ms) ? ms : 0;
@@ -130,6 +136,40 @@ async function getActivityIdCandidates(inputActivityId: string): Promise<string[
   return candidates;
 }
 
+async function fetchTaskCompletion(taskInstanceId: string): Promise<boolean> {
+  if (!taskInstanceId) return false;
+
+  try {
+    const activityTask = await supabase
+      .from('activity_tasks')
+      .select('completed')
+      .eq('id', taskInstanceId)
+      .maybeSingle();
+
+    if (typeof activityTask.data?.completed === 'boolean') {
+      return activityTask.data.completed;
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    const externalTask = await supabase
+      .from('external_event_tasks')
+      .select('completed')
+      .eq('id', taskInstanceId)
+      .maybeSingle();
+
+    if (typeof externalTask.data?.completed === 'boolean') {
+      return externalTask.data.completed;
+    }
+  } catch {
+    // ignore
+  }
+
+  return false;
+}
+
 type AfterTrainingFeedbackConfig = {
   enableScore: boolean;
   scoreExplanation?: string | null;
@@ -206,6 +246,12 @@ export default function TaskFeedbackNoteScreen() {
     if (isMountedRef.current) setIsSaving(value);
   }, []);
 
+  const resetDraftState = useCallback(() => {
+    if (!isMountedRef.current) return;
+    setInitialScore(null);
+    setInitialNote('');
+  }, []);
+
   useEffect(() => {
     if (!activityId || !templateId) {
       Alert.alert('Kan ikke åbne', 'Mangler nødvendige parametre (activityId/templateId).');
@@ -218,6 +264,11 @@ export default function TaskFeedbackNoteScreen() {
 
     (async () => {
       if (!activityId || !templateId) return;
+
+      if (!cancelled) {
+        resetDraftState();
+        setErrorSafe(null);
+      }
 
       const candidates = await getActivityIdCandidates(activityId);
       if (!cancelled) setActivityIdCandidates(candidates);
@@ -233,6 +284,17 @@ export default function TaskFeedbackNoteScreen() {
           return;
         }
         setUserId(uid);
+
+        const rawTaskInstanceId = normalizeId(taskInstanceId);
+        const hasTaskInstanceIdParam = !!rawTaskInstanceId;
+        const normalizedTaskInstanceUuid = normalizeUuid(taskInstanceId);
+        const effectiveTaskInstanceId = normalizedTaskInstanceUuid ?? templateId;
+        const taskInstanceMatchIds = Array.from(
+          new Set([effectiveTaskInstanceId, rawTaskInstanceId].filter(Boolean) as string[])
+        );
+        const taskCompletedFromTable = normalizedTaskInstanceUuid
+          ? await fetchTaskCompletion(normalizedTaskInstanceUuid)
+          : false;
 
         try {
           const { data } = await supabase
@@ -251,14 +313,12 @@ export default function TaskFeedbackNoteScreen() {
           if (cancelled) return;
 
           const candidateIds = candidates.filter((id) => normalizeUuid(id)) as string[];
-          const normalizedTaskInstanceId = normalizeUuid(taskInstanceId);
-
-          const latestForInstance = normalizedTaskInstanceId
+          const latestForInstance = hasTaskInstanceIdParam
             ? rows.reduce<TaskTemplateSelfFeedback | undefined>((best, row) => {
-                const rowInstanceId = normalizeUuid(
+                const rowInstanceId = normalizeId(
                   (row as any)?.taskInstanceId ?? (row as any)?.task_instance_id,
                 );
-                if (!rowInstanceId || rowInstanceId !== normalizedTaskInstanceId) return best;
+                if (!rowInstanceId || !taskInstanceMatchIds.includes(rowInstanceId)) return best;
                 return !best || safeDateMs(row.createdAt) > safeDateMs(best.createdAt) ? row : best;
               }, undefined)
             : undefined;
@@ -270,11 +330,18 @@ export default function TaskFeedbackNoteScreen() {
             return !best || safeDateMs(row.createdAt) > safeDateMs(best.createdAt) ? row : best;
           }, undefined);
 
-          const latestOverall = rows.reduce<TaskTemplateSelfFeedback | undefined>((best, row) => {
-            return !best || safeDateMs(row.createdAt) > safeDateMs(best.createdAt) ? row : best;
-          }, undefined);
+          const shouldHydratePersisted = hasTaskInstanceIdParam
+            ? taskCompletedFromTable || !!latestForInstance
+            : taskCompletedFromTable || !!latestForActivity;
 
-          const selected = latestForInstance ?? latestForActivity ?? latestOverall ?? null;
+          if (!shouldHydratePersisted) {
+            resetDraftState();
+            return;
+          }
+
+          const selected = hasTaskInstanceIdParam
+            ? latestForInstance ?? null
+            : latestForActivity ?? null;
 
           setInitialScore(typeof selected?.rating === 'number' ? selected.rating : null);
           setInitialNote(typeof selected?.note === 'string' ? selected.note : '');
@@ -289,7 +356,14 @@ export default function TaskFeedbackNoteScreen() {
     return () => {
       cancelled = true;
     };
-  }, [activityId, setErrorSafe, taskInstanceId, templateId]);
+  }, [activityId, resetDraftState, setErrorSafe, taskInstanceId, templateId]);
+
+  const handleClose = useCallback(() => {
+    if (isSaving) return;
+    resetDraftState();
+    setErrorSafe(null);
+    safeDismiss();
+  }, [isSaving, resetDraftState, safeDismiss, setErrorSafe]);
 
   const handleSave = useCallback(
     async ({ score, note }: TaskScoreNoteModalPayload) => {
@@ -391,6 +465,21 @@ export default function TaskFeedbackNoteScreen() {
             optimisticId: correctedOptimisticId,
             source: 'task-feedback-note',
           });
+        }
+
+        if (normalizedTaskInstanceId) {
+          try {
+            await supabase
+              .from('activity_tasks')
+              .update({ completed: true })
+              .eq('id', normalizedTaskInstanceId);
+          } catch {}
+          try {
+            await supabase
+              .from('external_event_tasks')
+              .update({ completed: true })
+              .eq('id', normalizedTaskInstanceId);
+          } catch {}
         }
 
         DeviceEventEmitter.emit('progression:refresh', {
@@ -600,6 +689,7 @@ export default function TaskFeedbackNoteScreen() {
 
   return (
     <TaskScoreNoteModal
+      key={`feedback-${taskInstanceId ?? 'missing'}-${templateId ?? 'missing'}`}
       visible
       title={`Feedback på ${stripLeadingFeedbackPrefix(taskTitle)}`}
       introText="Hvordan gik det?"
@@ -613,7 +703,7 @@ export default function TaskFeedbackNoteScreen() {
       onSave={handleSave}
       onClear={handleClear}
       clearLabel="Markér som ikke udført"
-      onClose={safeDismiss}
+      onClose={handleClose}
     />
   );
 }

@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 
 import * as Notifications from 'expo-notifications';
 import { Platform, Alert, Linking } from 'react-native';
@@ -29,6 +27,12 @@ export interface ScheduledNotification {
 
 const NOTIFICATION_PERMISSION_KEY = '@notification_permission_status';
 const NOTIFICATION_IDENTIFIERS_KEY = '@notification_identifiers';
+
+function sanitizeNotificationLabel(value: unknown, fallback: string): string {
+  if (typeof value !== 'string') return fallback;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : fallback;
+}
 
 // CRITICAL FIX: Persist notification identifiers to AsyncStorage
 export async function saveNotificationIdentifier(
@@ -371,15 +375,17 @@ export async function scheduleTaskReminder(
       await removeNotificationIdentifier(taskId);
     }
 
-    // Build notification body with task description
-    let notificationBody = `${activityTitle} starter om ${reminderMinutes} minutter`;
-    if (taskDescription) {
-      notificationBody += `\n\n${taskDescription}`;
-    }
+    const safeTaskTitle = sanitizeNotificationLabel(
+      taskTitle,
+      sanitizeNotificationLabel(taskDescription, 'Opgave'),
+    );
+    const safeActivityTitle = sanitizeNotificationLabel(activityTitle, 'Aktivitet');
+    const notificationTitle = 'Opgave snart';
+    const notificationBody = `${safeTaskTitle} · ${safeActivityTitle}`;
 
     // iOS CRITICAL FIX: Build notification content with iOS-specific options and deep linking
     const notificationContent: Notifications.NotificationContentInput = {
-      title: `⚽ Påmindelse: ${taskTitle}`,
+      title: notificationTitle,
       body: notificationBody,
       sound: 'default',
       data: {
@@ -633,6 +639,7 @@ export async function testNotification(): Promise<void> {
     }
 
     const trigger: Notifications.NotificationTriggerInput = {
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
       seconds: 2,
     };
 
@@ -703,8 +710,9 @@ export async function getNotificationStats(): Promise<{
       .map(n => {
         const triggerDate = new Date((n.trigger as any).date);
         const minutesUntil = Math.floor((triggerDate.getTime() - now) / 60000);
+        const taskIdValue = n.content.data?.taskId;
         return {
-          taskId: n.content.data?.taskId || 'unknown',
+          taskId: typeof taskIdValue === 'string' ? taskIdValue : 'unknown',
           scheduledFor: triggerDate.toISOString(),
           minutesUntil,
         };
@@ -728,5 +736,3 @@ export async function getNotificationStats(): Promise<{
     };
   }
 }
-
-

@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable, TextInput, useColorScheme, Platform, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -18,8 +16,8 @@ import { useAppleIAP, PRODUCT_IDS } from '@/contexts/AppleIAPContext';
 import { getSubscriptionGateState } from '@/utils/subscriptionGate';
 
 interface UserProfile {
-  full_name: string;
-  phone_number: string;
+  full_name: string | null;
+  phone_number: string | null;
 }
 
 interface AdminInfo {
@@ -573,7 +571,19 @@ export default function ProfileScreen() {
 
       addDebugInfo(`✅ User created: ${data.user.id}`);
       addDebugInfo(`Session exists: ${data.session ? 'Yes - Auto logged in!' : 'No - Email confirmation required'}`);
-
+      const identities = Array.isArray((data.user as any)?.identities) ? (data.user as any).identities : null;
+      const isExistingUserResponse = Boolean(data.user && identities && identities.length === 0);
+      if (isExistingUserResponse) {
+        addDebugInfo('Account already exists (identities empty), redirecting to login');
+        window.alert(
+          'Denne e-mail har sandsynligvis allerede en konto. Derfor sendes der ikke altid en ny bekrAeftelsesmail. Proev at logge ind i stedet.'
+        );
+        router.replace({
+          pathname: '/(tabs)/profile',
+          params: { email: email.trim().toLowerCase(), authMode: 'login' },
+        });
+        return;
+      }
       setEmail('');
       setPassword('');
       setShowSuccessMessage(false);
@@ -640,6 +650,20 @@ export default function ProfileScreen() {
       window.alert(`Fejl: ${error.message || 'Der opstod en uventet fejl. Prøv venligst igen.'}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = () => {
+    try {
+      const normalizedEmail = email.trim().toLowerCase();
+      console.log('[PROFILE WEB] Opening forgot-password', { normalizedEmail });
+      router.replace({
+        pathname: '/auth/forgot-password',
+        params: { email: normalizedEmail },
+      });
+    } catch (error: any) {
+      console.error('[PROFILE WEB] Failed to open forgot-password screen', error);
+      window.alert('Kunne ikke aabne nulstilling af adgangskode.');
     }
   };
 
@@ -729,11 +753,12 @@ export default function ProfileScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: bgColor }]}>
-      <ScrollView 
+      <ScrollView
         ref={scrollViewRef}
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         <View style={styles.header}>
           <Text style={[styles.headerTitle, { color: textColor }]}>Profil</Text>
@@ -1173,6 +1198,8 @@ export default function ProfileScreen() {
                     placeholderTextColor={textSecondaryColor}
                     autoCapitalize="none"
                     autoCorrect={false}
+                    testID="auth.login.emailInput"
+                    accessibilityLabel="Email"
                   />
 
                   <Text style={[styles.label, { color: textColor }]}>Adgangskode</Text>
@@ -1185,6 +1212,8 @@ export default function ProfileScreen() {
                     secureTextEntry
                     autoCorrect={false}
                     autoCapitalize="none"
+                    testID="auth.login.passwordInput"
+                    accessibilityLabel="Adgangskode"
                   />
 
                   <TouchableOpacity
@@ -1196,6 +1225,8 @@ export default function ProfileScreen() {
                     onPress={isSignUp ? handleSignup : handleLogin}
                     disabled={loading}
                     activeOpacity={0.7}
+                    testID="auth.login.submitButton"
+                    accessibilityLabel={isSignUp ? 'Opret konto' : 'Log ind'}
                   >
                     {loading ? (
                       <View style={styles.loadingContainer}>
@@ -1210,6 +1241,17 @@ export default function ProfileScreen() {
                       </Text>
                     )}
                   </TouchableOpacity>
+
+                  {!isSignUp ? (
+                    <TouchableOpacity
+                      style={styles.forgotPasswordButton}
+                      onPress={handleForgotPassword}
+                      activeOpacity={0.7}
+                      disabled={loading}
+                    >
+                      <Text style={[styles.forgotPasswordText, { color: colors.primary }]}>Glemt adgangskode?</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
 
                 <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd', marginTop: 24 }]}>
@@ -1488,6 +1530,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 16,
   },
+  forgotPasswordButton: {
+    marginTop: 10,
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  forgotPasswordText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
   authButtonText: {
     fontSize: 18,
     fontWeight: '600',
@@ -1579,5 +1630,3 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 });
-
-

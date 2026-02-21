@@ -388,18 +388,37 @@ export function ProgressionSection({ categories }: Props) {
   return (
     <>
       <View style={styles.filterContainer}>
-        <DropdownSelect options={periodOptions} selectedValue={periodDays} onSelect={setPeriodDays} label="Periode" />
-        <DropdownSelect options={metricOptions} selectedValue={metric} onSelect={setMetric} label="Score" />
+        <DropdownSelect
+          options={periodOptions}
+          selectedValue={periodDays}
+          onSelect={setPeriodDays}
+          label="Periode"
+          testIDPrefix="progression.period"
+        />
+        <DropdownSelect
+          options={metricOptions}
+          selectedValue={metric}
+          onSelect={setMetric}
+          label="Score"
+          testIDPrefix="progression.score"
+        />
       </View>
 
       {metric === 'rating' ? (
-        <DropdownSelect options={focusOptions} selectedValue={selectedFocusId} onSelect={setSelectedFocusId} label="Feedback opgaver" />
+        <DropdownSelect
+          options={focusOptions}
+          selectedValue={selectedFocusId}
+          onSelect={setSelectedFocusId}
+          label="Feedback opgaver"
+          testIDPrefix="progression.feedbackTasks"
+        />
       ) : (
         <DropdownSelect
           options={intensityOptions}
           selectedValue={selectedCategoryId}
           onSelect={setSelectedCategoryId}
           label="Kategori"
+          testIDPrefix="progression.category"
         />
       )}
 
@@ -425,6 +444,7 @@ export function ProgressionSection({ categories }: Props) {
         <View
           style={[styles.chartCard, { backgroundColor: palette.card, shadowColor: palette.shadow }]}
           onLayout={event => setChartWidth(event.nativeEvent.layout.width)}
+          testID="progression.chartCard"
         >
           <View style={styles.chartHeader}>
             <Text style={[styles.chartTitle, { color: palette.text }]}>
@@ -435,7 +455,7 @@ export function ProgressionSection({ categories }: Props) {
 
           {chartWidth > 0 && (
             <View>
-              <Svg height={chartHeight} width={chartWidth}>
+              <Svg height={chartHeight} width={chartWidth} testID="progression.chartSvg">
 
                 {/* Y-axis */}
                 {yAxisLabels.map(label => {
@@ -534,11 +554,11 @@ export function ProgressionSection({ categories }: Props) {
 
       {metric === 'rating' && focusTierBuckets && allPointsSorted.length > 0 && (
         <View style={styles.tierSection}>
-          {[
-            { key: 'elite', label: 'Elite', color: palette.gold },
-            { key: 'oevet', label: 'Øvet', color: palette.silver },
-            { key: 'begynder', label: 'Begynder', color: palette.bronze },
-          ].map(tier => {
+                {[
+                  { key: 'elite', label: 'Elite', color: palette.gold },
+                  { key: 'oevet', label: 'Øvet', color: palette.silver },
+                  { key: 'begynder', label: 'Begynder', color: palette.bronze },
+                ].map(tier => {
             const items = focusTierBuckets[tier.key as keyof typeof focusTierBuckets];
             return (
               <View key={tier.key} style={[styles.tierCard, { backgroundColor: tier.color }]}>
@@ -566,6 +586,7 @@ export function ProgressionSection({ categories }: Props) {
                         }))
                       }
                       style={styles.tierToggleButton}
+                      testID={`progression.tier.${tier.key}.toggleButton`}
                       accessibilityRole="button"
                       accessibilityLabel={`${expandedTiers[tier.key as keyof typeof expandedTiers] ? 'Skjul' : 'Vis'} ${tier.label}`}
                     >
@@ -667,9 +688,14 @@ export function ProgressionSection({ categories }: Props) {
                       <Text style={[styles.historyDate, { color: palette.text }]}>
                         {formatHistoryDate(entry.createdAt)}
                       </Text>
+                      {typeof entry.note === 'string' && entry.note.trim().length > 0 ? (
+                        <Text style={[styles.historyNote, { color: palette.textSecondary }]}>
+                          {`Note: ${entry.note.trim()}`}
+                        </Text>
+                      ) : null}
                       {entry.activityTitle ? (
                         <Text style={[styles.historyActivity, { color: palette.textSecondary }]}>
-                          {entry.activityTitle}
+                          {`Aktivitet: ${entry.activityTitle}`}
                         </Text>
                       ) : null}
                     </View>
@@ -693,6 +719,7 @@ export function ProgressionSection({ categories }: Props) {
             <TouchableOpacity
               onPress={() => setSelectedTask(null)}
               style={[styles.closeButton, { backgroundColor: palette.primary }]}
+              testID="progression.taskDetail.closeButton"
               accessibilityRole="button"
             >
               <Text style={[styles.closeButtonText, { color: '#fff' }]}>Luk</Text>
@@ -741,6 +768,7 @@ export function ProgressionSection({ categories }: Props) {
             <TouchableOpacity
               onPress={() => setSelectedPoint(null)}
               style={[styles.closeButton, { backgroundColor: palette.primary }]}
+              testID="progression.pointDetail.closeButton"
               accessibilityRole="button"
             >
               <Text style={[styles.closeButtonText, { color: '#fff' }]}>Luk</Text>
@@ -947,6 +975,11 @@ const styles = StyleSheet.create({
   historyActivity: {
     fontSize: 12,
     marginTop: 2,
+  },
+  historyNote: {
+    fontSize: 12,
+    marginTop: 2,
+    lineHeight: 16,
   },
   historyScoreBadge: {
     minWidth: 56,

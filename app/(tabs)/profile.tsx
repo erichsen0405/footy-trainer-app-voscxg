@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
@@ -14,6 +12,7 @@ import {
   ActivityIndicator,
   FlatList,
   Modal,
+  Switch,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -25,6 +24,7 @@ import { supabase } from '@/integrations/supabase/client';
 import ExternalCalendarManager from '@/components/ExternalCalendarManager';
 import SubscriptionManager from '@/components/SubscriptionManager';
 import AppleSubscriptionManager from '@/components/AppleSubscriptionManager';
+import CreatePlayerModal from '@/components/CreatePlayerModal';
 import PlayersList from '@/components/PlayersList';
 import TeamManagement from '@/components/TeamManagement';
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -35,6 +35,8 @@ import { useSubscriptionFeatures } from '@/hooks/useSubscriptionFeatures';
 import { forceUserRoleRefresh } from '@/hooks/useUserRole';
 import { useAppleIAP, PRODUCT_IDS } from '@/contexts/AppleIAPContext';
 import { getSubscriptionGateState } from '@/utils/subscriptionGate';
+import { checkNotificationPermissions, openNotificationSettings, requestNotificationPermissions } from '@/utils/notificationService';
+import { syncPushTokenForCurrentUser } from '@/utils/pushTokenService';
 
 // Conditionally import GlassView only on native platforms
 let GlassView: any = View;
@@ -49,14 +51,17 @@ if (Platform.OS !== 'web') {
 }
 
 interface UserProfile {
-  full_name: string;
-  phone_number: string;
+  full_name: string | null;
+  phone_number: string | null;
 }
 
 interface AdminInfo {
+  admin_id: string;
   full_name: string;
   phone_number: string;
   email: string;
+  link_status: 'pending' | 'accepted';
+  request_id: string | null;
 }
 
 type SubscriptionStatusType = ReturnType<typeof useSubscription>['subscriptionStatus'];
@@ -71,6 +76,7 @@ type CollapsibleSectionProps = {
   chevronColor: string;
   icon?: React.ReactNode;
   headerActions?: React.ReactNode;
+  testID?: string;
   children: React.ReactNode;
 };
 
@@ -216,6 +222,45 @@ const styles = StyleSheet.create({
   settingsRowContent: { flex: 1 },
   settingsRowTitle: { fontSize: 16, fontWeight: '700' },
   settingsRowSubtitle: { fontSize: 13, lineHeight: 18 },
+  addPlayerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  addPlayerButtonText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  statusBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    alignSelf: 'flex-start',
+  },
+  statusBadgePending: {
+    backgroundColor: '#f59e0b',
+  },
+  statusBadgeAccepted: {
+    backgroundColor: '#16a34a',
+  },
+  statusBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  acceptButton: {
+    marginTop: 12,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  acceptButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
   signOutButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -228,6 +273,15 @@ const styles = StyleSheet.create({
   },
   signOutButtonText: { fontSize: 16, fontWeight: '700', color: '#fff' },
   authCard: { borderRadius: 24, padding: 24, marginHorizontal: 16, marginTop: 24 },
+  loginNoticeBanner: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  loginNoticeText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   successMessage: { borderRadius: 20, padding: 24, alignItems: 'center', gap: 12 },
   successTitle: { fontSize: 22, fontWeight: '800', textAlign: 'center' },
   successText: { fontSize: 15, lineHeight: 22, textAlign: 'center' },
@@ -239,6 +293,8 @@ const styles = StyleSheet.create({
   form: { gap: 12 },
   authButton: { borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 12 },
   authButtonText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  forgotPasswordButton: { marginTop: 10, alignItems: 'center', paddingVertical: 6 },
+  forgotPasswordText: { fontSize: 14, fontWeight: '600' },
   infoBox: { flexDirection: 'row', gap: 12, padding: 16, borderRadius: 16 },
   infoTextContainer: { flex: 1, minWidth: 0 },
   infoTitle: { fontSize: 16, fontWeight: '700', marginBottom: 6 },
@@ -269,6 +325,7 @@ const CollapsibleSection = ({
   chevronColor,
   icon,
   headerActions,
+  testID,
   children,
 }: CollapsibleSectionProps) => (
   <>
@@ -277,6 +334,7 @@ const CollapsibleSection = ({
       onPress={onToggle}
       accessibilityRole="button"
       accessibilityState={{ expanded }}
+      testID={testID}
     >
       <View style={styles.sectionTitleContainer}>
         {icon}
@@ -306,6 +364,7 @@ export default function ProfileScreen() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [showLoginNotice, setShowLoginNotice] = useState(false);
   const [showPaywallModal, setShowPaywallModal] = useState(false);
   const [, setPaywallProcessing] = useState(false);
   const [purchaseProcessing, setPurchaseProcessing] = useState(false);
@@ -334,11 +393,16 @@ export default function ProfileScreen() {
     upgradeTarget?: string;
     email?: string | string[];
     authMode?: string | string[];
+    openTrainerRequests?: string | string[];
+    openTeamPlayers?: string | string[];
+    requestId?: string | string[];
   }>();
   const router = useRouter();
   const routeUpgradeTarget = normalizeUpgradeTarget(params.upgradeTarget);
   const routeEmail = extractFirstParamValue(params.email);
   const routeAuthMode = extractFirstParamValue(params.authMode);
+  const routeOpenTrainerRequests = extractFirstParamValue(params.openTrainerRequests);
+  const routeOpenTeamPlayers = extractFirstParamValue(params.openTeamPlayers);
   const [manualUpgradeTarget, setManualUpgradeTarget] = useState<UpgradeTarget | null>(null);
   const hasAutoOpenedUpgradeTargetRef = useRef<UpgradeTarget | null>(null);
 
@@ -348,6 +412,12 @@ export default function ProfileScreen() {
   const [deleteConfirmationInput, setDeleteConfirmationInput] = useState('');
   const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(false);
+  const [notificationsUpdating, setNotificationsUpdating] = useState(false);
+  const [showCreatePlayerModal, setShowCreatePlayerModal] = useState(false);
+  const [playersRefreshTrigger, setPlayersRefreshTrigger] = useState(0);
+  const [isAcceptingTrainerRequest, setIsAcceptingTrainerRequest] = useState(false);
+  const loginNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -357,6 +427,14 @@ export default function ProfileScreen() {
       return () => cancelAnimationFrame(frame);
     }, [])
   );
+
+  useEffect(() => {
+    return () => {
+      if (loginNoticeTimerRef.current) {
+        clearTimeout(loginNoticeTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!routeEmail) return;
@@ -370,6 +448,67 @@ export default function ProfileScreen() {
       setIsSignUp(false);
     }
   }, [routeAuthMode]);
+
+  useEffect(() => {
+    if (routeOpenTrainerRequests === '1' || routeOpenTrainerRequests === 'true') {
+      setIsAdminInfoExpanded(true);
+    }
+  }, [routeOpenTrainerRequests]);
+
+  useEffect(() => {
+    if (routeOpenTeamPlayers === '1' || routeOpenTeamPlayers === 'true') {
+      setIsTeamManagementExpanded(true);
+      setPlayersRefreshTrigger(prev => prev + 1);
+    }
+  }, [routeOpenTeamPlayers]);
+
+  const refreshNotificationPermission = useCallback(async () => {
+    try {
+      const granted = await checkNotificationPermissions();
+      setNotificationsEnabled(granted);
+    } catch {
+      setNotificationsEnabled(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    refreshNotificationPermission();
+  }, [user, focusNonce, refreshNotificationPermission]);
+
+  const handleNotificationsToggle = useCallback(
+    async (nextValue: boolean) => {
+      if (notificationsUpdating) return;
+      setNotificationsUpdating(true);
+      try {
+        if (nextValue) {
+          await requestNotificationPermissions();
+        } else {
+          Alert.alert(
+            'Notifikationer',
+            'For at deaktivere notifikationer skal du bruge systemindstillinger.',
+            [
+              { text: 'Annuller', style: 'cancel' },
+              {
+                text: 'Åbn indstillinger',
+                onPress: () => {
+                  void openNotificationSettings();
+                },
+              },
+            ]
+          );
+        }
+        const granted = await checkNotificationPermissions();
+        setNotificationsEnabled(granted);
+        if (granted) {
+          await syncPushTokenForCurrentUser(true);
+        }
+      } finally {
+        setNotificationsUpdating(false);
+      }
+    },
+    [notificationsUpdating]
+  );
 
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -484,6 +623,15 @@ export default function ProfileScreen() {
     setPaywallProcessing(false);
   }, []);
 
+  const handleCreatePlayer = useCallback(() => {
+    setShowCreatePlayerModal(true);
+  }, []);
+
+  const handlePlayerCreated = useCallback(() => {
+    setShowCreatePlayerModal(false);
+    setPlayersRefreshTrigger(prev => prev + 1);
+  }, []);
+
   const fetchUserProfile = async (userId: string) => {
     try {
       if (__DEV__) {
@@ -523,41 +671,101 @@ export default function ProfileScreen() {
 
   const fetchAdminInfo = async (playerId: string) => {
     try {
-      const { data: relationship, error: relError } = await supabase
-        .from('admin_player_relationships')
-        .select('admin_id')
+      const { data: pendingRequest, error: pendingError } = await supabase
+        .from('admin_player_link_requests')
+        .select('id, admin_id')
         .eq('player_id', playerId)
+        .eq('status', 'pending')
+        .order('updated_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
 
-      // If no relationship exists yet (player hasn't been added by a trainer), just return
-      if (relError && relError.code !== 'PGRST116') {
-        console.error('Error fetching admin relationship:', relError);
+      if (pendingError && pendingError.code !== 'PGRST116') {
+        console.error('Error fetching pending trainer request:', pendingError);
         return;
       }
 
-      if (!relationship) {
-        console.log('No admin relationship found yet - player has not been added by a trainer');
-        setAdminInfo(null);
-        return;
+      let adminId: string | null = null;
+      let linkStatus: 'pending' | 'accepted' = 'accepted';
+      let requestId: string | null = null;
+
+      if (pendingRequest?.admin_id) {
+        adminId = pendingRequest.admin_id;
+        requestId = pendingRequest.id;
+        linkStatus = 'pending';
+      } else {
+        const { data: relationship, error: relError } = await supabase
+          .from('admin_player_relationships')
+          .select('admin_id')
+          .eq('player_id', playerId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (relError && relError.code !== 'PGRST116') {
+          console.error('Error fetching admin relationship:', relError);
+          return;
+        }
+
+        if (!relationship?.admin_id) {
+          setAdminInfo(null);
+          return;
+        }
+
+        adminId = relationship.admin_id;
+        linkStatus = 'accepted';
       }
 
       const { data: adminProfile, error: profileError } = await supabase
         .from('profiles')
         .select('full_name, phone_number')
-        .eq('user_id', relationship.admin_id)
-        .single();
+        .eq('user_id', adminId)
+        .maybeSingle();
 
       if (profileError) {
         console.error('Error fetching admin profile:', profileError);
       }
 
       setAdminInfo({
+        admin_id: adminId,
         full_name: adminProfile?.full_name || 'Din træner',
         phone_number: adminProfile?.phone_number || '',
         email: '',
+        link_status: linkStatus,
+        request_id: requestId,
       });
     } catch (error) {
       console.error('Error in fetchAdminInfo:', error);
+    }
+  };
+
+  const handleAcceptTrainerRequest = async () => {
+    if (!adminInfo?.request_id || !user?.id || isAcceptingTrainerRequest) {
+      return;
+    }
+
+    setIsAcceptingTrainerRequest(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('player-link-requests', {
+        body: {
+          action: 'accept',
+          requestId: adminInfo.request_id,
+        },
+      });
+
+      if (error || !data?.success) {
+        const message = data?.error || error?.message || 'Kunne ikke acceptere anmodningen';
+        Alert.alert('Fejl', message);
+        return;
+      }
+
+      Alert.alert('Succes', 'Anmodningen er accepteret.');
+      await fetchAdminInfo(user.id);
+      setPlayersRefreshTrigger(prev => prev + 1);
+    } catch (acceptError: any) {
+      Alert.alert('Fejl', acceptError?.message || 'Kunne ikke acceptere anmodningen');
+    } finally {
+      setIsAcceptingTrainerRequest(false);
     }
   };
 
@@ -605,6 +813,59 @@ export default function ProfileScreen() {
     },
     [refreshSubscription]
   );
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    if (userRole === 'player') {
+      void fetchAdminInfo(user.id);
+      return;
+    }
+
+    if (userRole === 'admin' || userRole === 'trainer') {
+      setPlayersRefreshTrigger(prev => prev + 1);
+    }
+  }, [focusNonce, user?.id, userRole]);
+
+  useEffect(() => {
+    if (!user?.id || userRole !== 'player') return;
+
+    const channel = supabase
+      .channel(`player-link-refresh-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'admin_player_relationships',
+          filter: `player_id=eq.${user.id}`,
+        },
+        () => {
+          void fetchAdminInfo(user.id);
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'admin_player_link_requests',
+          filter: `player_id=eq.${user.id}`,
+        },
+        () => {
+          void fetchAdminInfo(user.id);
+        },
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          void fetchAdminInfo(user.id);
+        }
+      });
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [user?.id, userRole]);
 
   const handleIOSSubscriptionStarted = useCallback(() => {
     setPurchaseProcessing(true);
@@ -805,6 +1066,20 @@ export default function ProfileScreen() {
         return;
       }
 
+      const identities = Array.isArray((data.user as any)?.identities) ? (data.user as any).identities : null;
+      const isExistingUserResponse = Boolean(data.user && identities && identities.length === 0);
+      if (isExistingUserResponse) {
+        Alert.alert(
+          'Konto findes allerede',
+          'Denne e-mail har sandsynligvis allerede en konto. Derfor sendes der ikke altid en ny bekræftelsesmail. Proev at logge ind i stedet.'
+        );
+        router.replace({
+          pathname: '/(tabs)/profile',
+          params: { email: normalizedEmail, authMode: 'login' },
+        });
+        return;
+      }
+
       if (!data.user) {
         if (__DEV__) {
           console.log('[PROFILE] No user returned from signup');
@@ -875,7 +1150,13 @@ export default function ProfileScreen() {
       }
 
       if (data.session) {
-        Alert.alert('Succes!', 'Du er nu logget ind!');
+        setShowLoginNotice(true);
+        if (loginNoticeTimerRef.current) {
+          clearTimeout(loginNoticeTimerRef.current);
+        }
+        loginNoticeTimerRef.current = setTimeout(() => {
+          setShowLoginNotice(false);
+        }, 2500);
         setEmail('');
         setPassword('');
       }
@@ -886,6 +1167,20 @@ export default function ProfileScreen() {
       setLoading(false);
     }
   };
+
+  const handleForgotPassword = useCallback(() => {
+    try {
+      const normalizedEmail = email.trim().toLowerCase();
+      console.log('[PROFILE] Navigating to forgot-password screen', { normalizedEmail });
+      router.replace({
+        pathname: '/auth/forgot-password',
+        params: { email: normalizedEmail },
+      });
+    } catch (error: any) {
+      console.error('[PROFILE] Failed to open forgot-password screen', error);
+      Alert.alert('Fejl', 'Kunne ikke aabne nulstilling af adgangskode.');
+    }
+  }, [email, router]);
 
   const handleCompleteSubscription = async (planId: string) => {
     if (!user) return;
@@ -1198,6 +1493,11 @@ export default function ProfileScreen() {
   // Logged-in main view now rendered via FlatList (see return)
   const renderProfileContent = () => (
     <View>
+      {showLoginNotice && (
+        <View style={[styles.loginNoticeBanner, { backgroundColor: colors.primary }]} testID="auth.login.successNotice">
+          <Text style={styles.loginNoticeText}>Du er nu logget ind!</Text>
+        </View>
+      )}
       {user ? (
         <>
           <CardWrapper style={[styles.profileHeader, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
@@ -1225,7 +1525,7 @@ export default function ProfileScreen() {
               <View style={styles.badgesRow}>
                 <View style={[styles.planBadge, { backgroundColor: getPlanColor(subscriptionStatus.planName) }]}>
                   <IconSymbol ios_icon_name="star.fill" android_material_icon_name="star" size={12} color="#fff" />
-                  <Text style={styles.planBadgeText}>{subscriptionStatus.planName}</Text>
+                  <Text style={styles.planBadgeText} testID="profile.subscriptionPlanBadgeText">{subscriptionStatus.planName}</Text>
                 </View>
               </View>
             )}
@@ -1355,35 +1655,84 @@ export default function ProfileScreen() {
                   </View>
                 </CollapsibleSection>
               </CardWrapper>
-            ) : canLinkTrainer ? (
-              adminInfo ? (
-                <CardWrapper
-                  style={[styles.section, sectionCardStyle]}
-                  {...cardWrapperProps}
+            ) : adminInfo ? (
+              <CardWrapper
+                style={[styles.section, sectionCardStyle]}
+                {...cardWrapperProps}
+              >
+                <CollapsibleSection
+                  title="Din Træner"
+                  expanded={isAdminInfoExpanded}
+                  onToggle={() => setIsAdminInfoExpanded(prev => !prev)}
+                  titleColor={textColor}
+                  chevronColor={textSecondaryColor}
+                  icon={<IconSymbol ios_icon_name="person.2.fill" android_material_icon_name="groups" size={24} color={colors.primary} />}
                 >
-                  <CollapsibleSection
-                    title="Din Træner"
-                    expanded={isAdminInfoExpanded}
-                    onToggle={() => setIsAdminInfoExpanded(prev => !prev)}
-                    titleColor={textColor}
-                    chevronColor={textSecondaryColor}
-                    icon={<IconSymbol ios_icon_name="person.2.fill" android_material_icon_name="groups" size={24} color={colors.primary} />}
-                  >
-                    <View style={styles.profileInfo}>
-                      <View style={styles.infoRow}>
-                        <IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={20} color={colors.primary} />
-                        <Text style={[styles.infoText, { color: textColor }]}>{adminInfo.full_name}</Text>
-                      </View>
-                      {adminInfo.phone_number && (
-                        <View style={styles.infoRow}>
-                          <IconSymbol ios_icon_name="phone.fill" android_material_icon_name="phone" size={20} color={colors.primary} />
-                          <Text style={[styles.infoText, { color: textColor }]}>{adminInfo.phone_number}</Text>
-                        </View>
-                      )}
+                  <View style={styles.profileInfo}>
+                    <View style={styles.infoRow}>
+                      <IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={20} color={colors.primary} />
+                      <Text style={[styles.infoText, { color: textColor }]}>{adminInfo.full_name}</Text>
                     </View>
-                  </CollapsibleSection>
-                </CardWrapper>
-              ) : null
+                    {adminInfo.phone_number && (
+                      <View style={styles.infoRow}>
+                        <IconSymbol ios_icon_name="phone.fill" android_material_icon_name="phone" size={20} color={colors.primary} />
+                        <Text style={[styles.infoText, { color: textColor }]}>{adminInfo.phone_number}</Text>
+                      </View>
+                    )}
+                    <View
+                      style={[
+                        styles.statusBadge,
+                        adminInfo.link_status === 'pending'
+                          ? styles.statusBadgePending
+                          : styles.statusBadgeAccepted,
+                      ]}
+                      testID="profile.trainerRequest.statusBadge"
+                    >
+                      <Text style={styles.statusBadgeText}>
+                        {adminInfo.link_status === 'pending' ? 'Afventer accept' : 'Accepteret'}
+                      </Text>
+                    </View>
+                    {adminInfo.link_status === 'pending' && (
+                      <TouchableOpacity
+                        style={[
+                          styles.acceptButton,
+                          { backgroundColor: colors.primary },
+                          isAcceptingTrainerRequest && { opacity: 0.7 },
+                        ]}
+                        onPress={() => {
+                          void handleAcceptTrainerRequest();
+                        }}
+                        disabled={isAcceptingTrainerRequest}
+                        testID="profile.trainerRequest.acceptButton"
+                      >
+                        {isAcceptingTrainerRequest ? (
+                          <ActivityIndicator color="#fff" size="small" />
+                        ) : (
+                          <Text style={styles.acceptButtonText}>Accepter anmodning</Text>
+                        )}
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </CollapsibleSection>
+              </CardWrapper>
+            ) : canLinkTrainer ? (
+              <CardWrapper
+                style={[styles.section, sectionCardStyle]}
+                {...cardWrapperProps}
+              >
+                <CollapsibleSection
+                  title="Din Træner"
+                  expanded={isAdminInfoExpanded}
+                  onToggle={() => setIsAdminInfoExpanded(prev => !prev)}
+                  titleColor={textColor}
+                  chevronColor={textSecondaryColor}
+                  icon={<IconSymbol ios_icon_name="person.2.fill" android_material_icon_name="groups" size={24} color={colors.primary} />}
+                >
+                  <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
+                    Du har ingen aktive træneranmodninger endnu.
+                  </Text>
+                </CollapsibleSection>
+              </CardWrapper>
             ) : (
               <CardWrapper
                 style={[styles.section, sectionCardStyle]}
@@ -1419,6 +1768,7 @@ export default function ProfileScreen() {
                 onToggle={() => setIsTeamManagementExpanded(prev => !prev)}
                 titleColor={textColor}
                 chevronColor={textSecondaryColor}
+                testID="profile.teamPlayersSection.toggle"
                 icon={(
                   <IconSymbol
                     ios_icon_name="person.3.fill"
@@ -1431,7 +1781,26 @@ export default function ProfileScreen() {
                 <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>Administrer dine teams og spillere direkte fra din profil.</Text>
                 <TeamManagement />
                 <View style={{ marginTop: 16 }}>
-                  <PlayersList />
+                  <TouchableOpacity
+                    style={[styles.addPlayerButton, { backgroundColor: colors.primary }]}
+                    onPress={handleCreatePlayer}
+                    activeOpacity={0.7}
+                    testID="profile.addPlayerButton"
+                  >
+                    <IconSymbol
+                      ios_icon_name="plus"
+                      android_material_icon_name="add"
+                      size={20}
+                      color="#fff"
+                    />
+                    <Text style={styles.addPlayerButtonText}>Tilføj spiller</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={{ marginTop: 16 }}>
+                  <PlayersList
+                    onCreatePlayer={handleCreatePlayer}
+                    refreshTrigger={playersRefreshTrigger}
+                  />
                 </View>
               </CollapsibleSection>
             </CardWrapper>
@@ -1541,7 +1910,7 @@ export default function ProfileScreen() {
                   onPurchaseFinished={handleIOSSubscriptionFinished}
                   />
                 ) : (
-                  <SubscriptionManager transparentBackground={Platform.OS === 'ios'} />
+                  <SubscriptionManager transparentBackground={false} />
                 )}
               </CollapsibleSection>
             </SubscriptionCardWrapper>
@@ -1557,11 +1926,38 @@ export default function ProfileScreen() {
               onToggle={() => setIsSettingsExpanded(prev => !prev)}
               titleColor={textColor}
               chevronColor={textSecondaryColor}
+              testID="profile.settingsSection.toggle"
               icon={<IconSymbol ios_icon_name="gearshape.fill" android_material_icon_name="settings" size={24} color={colors.primary} />}
             >
               <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>Administrer din konto og sikkerhed.</Text>
               <View style={styles.settingsGroup}>
                 <Text style={[styles.settingsGroupTitle, { color: textSecondaryColor }]}>Konto</Text>
+                <View
+                  style={[styles.settingsRow, { backgroundColor: nestedCardBgColor }]}
+                  testID="profile.notificationsRow"
+                >
+                  <IconSymbol
+                    ios_icon_name="bell.badge.fill"
+                    android_material_icon_name="notifications"
+                    size={22}
+                    color={colors.primary}
+                  />
+                  <View style={styles.settingsRowContent}>
+                    <Text style={[styles.settingsRowTitle, { color: textColor }]}>Notifikationer</Text>
+                    <Text style={[styles.settingsRowSubtitle, { color: textSecondaryColor }]}>
+                      {notificationsEnabled ? 'Aktiveret' : 'Deaktiveret'}
+                    </Text>
+                  </View>
+                  <Switch
+                    testID="profile.notificationsToggle"
+                    value={notificationsEnabled}
+                    onValueChange={(value) => {
+                      void handleNotificationsToggle(value);
+                    }}
+                    disabled={notificationsUpdating}
+                    trackColor={{ false: '#c7c7cc', true: colors.primary }}
+                  />
+                </View>
                 {/* Review note (App Store): Indstillinger -> Konto -> Slet konto */}
                 <TouchableOpacity
                   style={[styles.settingsRow, { backgroundColor: deleteRowBackground }]}
@@ -1597,6 +1993,7 @@ export default function ProfileScreen() {
             style={[styles.signOutButton, { backgroundColor: Platform.OS === 'ios' ? '#ff3b30' : colors.error }]}
             onPress={handleSignOut}
             activeOpacity={0.7}
+            testID="auth.signOutButton"
           >
             {Platform.OS !== 'ios' && <IconSymbol ios_icon_name="arrow.right.square" android_material_icon_name="logout" size={24} color="#fff" />}
             <Text style={styles.signOutButtonText}>Log ud</Text>
@@ -1687,6 +2084,8 @@ export default function ProfileScreen() {
                   keyboardType="email-address"
                   editable={!loading}
                   autoCorrect={false}
+                  testID="auth.login.emailInput"
+                  accessibilityLabel="Email"
                 />
 
                 <Text style={[styles.label, { color: textColor }]}>Adgangskode</Text>
@@ -1706,6 +2105,8 @@ export default function ProfileScreen() {
                   editable={!loading}
                   autoCorrect={false}
                   autoCapitalize="none"
+                  testID="auth.login.passwordInput"
+                  accessibilityLabel="Adgangskode"
                 />
 
                 <TouchableOpacity
@@ -1713,6 +2114,8 @@ export default function ProfileScreen() {
                   onPress={isSignUp ? handleSignup : handleLogin}
                   disabled={loading}
                   activeOpacity={0.7}
+                  testID="auth.login.submitButton"
+                  accessibilityLabel={isSignUp ? 'Opret konto' : 'Log ind'}
                 >
                   {loading ? (
                     <View style={styles.loadingContainer}>
@@ -1723,6 +2126,18 @@ export default function ProfileScreen() {
                     <Text style={styles.authButtonText}>{isSignUp ? 'Opret konto' : 'Log ind'}</Text>
                   )}
                 </TouchableOpacity>
+
+                {!isSignUp ? (
+                  <TouchableOpacity
+                    style={styles.forgotPasswordButton}
+                    onPress={handleForgotPassword}
+                    activeOpacity={0.7}
+                    disabled={loading}
+                    accessibilityLabel="Glemt adgangskode"
+                  >
+                    <Text style={[styles.forgotPasswordText, { color: colors.primary }]}>Glemt adgangskode?</Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
 
               <View
@@ -1764,6 +2179,7 @@ export default function ProfileScreen() {
         data={[]}
         keyExtractor={(_, index) => `profile-flatlist-${index}`}
         renderItem={() => null}
+        keyboardShouldPersistTaps="handled"
         extraData={focusNonce}
         ListHeaderComponent={
           <React.Fragment>
@@ -1877,6 +2293,8 @@ export default function ProfileScreen() {
                 onPress={closePaywallModal}
                 style={styles.paywallCloseButton}
                 activeOpacity={0.7}
+                testID="paywall.closeButton"
+                accessibilityLabel="Luk paywall"
               >
                 <IconSymbol
                   ios_icon_name="xmark"
@@ -1908,8 +2326,11 @@ export default function ProfileScreen() {
       </Modal>
 
       {purchaseProcessingModal}
+      <CreatePlayerModal
+        visible={showCreatePlayerModal}
+        onClose={() => setShowCreatePlayerModal(false)}
+        onPlayerCreated={handlePlayerCreated}
+      />
     </ContainerWrapper>
   );
 }
-
-

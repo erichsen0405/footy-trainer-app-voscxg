@@ -1,0 +1,645 @@
+appId: ${MAESTRO_APP_ID}
+tags:
+  - smoke
+---
+# 1-2) Start app rent + bootstrap
+- launchApp:
+    appId: ${MAESTRO_APP_ID}
+    clearState: true
+    permissions:
+      notifications: allow
+- runFlow: _dev_client_bootstrap.yaml
+- runFlow: _notifications_allow_if_visible.yaml
+
+# 3-5) Login (hvis nødvendigt)
+- openLink: "footballcoach:///(tabs)/profile"
+- runFlow:
+    when:
+      visible:
+        id: '^auth\.login\.emailInput$'
+    commands:
+      - tapOn:
+          id: '^auth\.login\.emailInput$'
+      - inputText: "${MAESTRO_EMAIL}"
+      - tapOn:
+          id: '^auth\.login\.passwordInput$'
+      - inputText: "${MAESTRO_PASSWORD}"
+      - tapOn:
+          id: '^auth\.login\.submitButton$'
+- runFlow: _post_login_prompt_cleanup.yaml
+
+# 6-14) Library add-to-tasks
+- openLink: "footballcoach:///(tabs)/library"
+- extendedWaitUntil:
+    visible:
+      id: '^library\.screen$'
+    timeout: 15000
+- assertVisible:
+    id: '^library\.screen$'
+- tapOn:
+    id: '^library\.folder\.footballcoach$'
+- runFlow:
+    when:
+      notVisible:
+        id: '^library\.folder\.holdtraening$'
+    commands:
+      - tapOn:
+          id: '^library\.folder\.footballcoach$'
+- assertVisible:
+    id: '^library\.folder\.holdtraening$'
+- tapOn:
+    id: '^library\.folder\.holdtraening$'
+- runFlow:
+    when:
+      notVisible:
+        id: '^library\.folder\.holdtraening_faelles$'
+    commands:
+      - tapOn:
+          id: '^library\.folder\.holdtraening$'
+- extendedWaitUntil:
+    visible:
+      id: '^library\.folder\.holdtraening_faelles$'
+    timeout: 15000
+- tapOn:
+    id: '^library\.folder\.holdtraening_faelles$'
+- scrollUntilVisible:
+    element:
+      id: '^library\.addToTasksButton\.711f3229-2fee-45fe-b46e-87dd1605af03$'
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: '^library\.addToTasksButton\.711f3229-2fee-45fe-b46e-87dd1605af03$'
+    point: 50%,50%
+- extendedWaitUntil:
+    visible:
+      id: '^library\.addToTasksModal\.confirmButton$'
+    timeout: 15000
+- assertVisible:
+    id: '^library\.addToTasksModal\.confirmButton$'
+- tapOn:
+    id: '^library\.addToTasksModal\.confirmButton$'
+- extendedWaitUntil:
+    visible: 'Allerede tilføjet til opgaver'
+    timeout: 15000
+- assertVisible: 'Allerede tilføjet til opgaver'
+
+# 15-22) Opret aktivitet
+- openLink: "footballcoach:///(tabs)/(home)"
+- extendedWaitUntil:
+    visible:
+      id: '^home\.screen$'
+    timeout: 15000
+- assertVisible:
+    id: '^home\.createActivityButton$'
+- tapOn:
+    id: '^home\.createActivityButton$'
+- extendedWaitUntil:
+    visible:
+      id: '^activity\.create\.titleInput$'
+    timeout: 15000
+- assertVisible:
+    id: '^activity\.create\.locationInput$'
+- tapOn:
+    id: '^activity\.create\.titleInput$'
+- inputText: "Maestro Library Aktivitet ${MAESTRO_PLATFORM_SUFFIX}"
+- tapOn:
+    id: '^activity\.create\.locationInput$'
+- inputText: "Bane 1"
+- tapOn:
+    id: '^activity\.create\.titleInput$'
+- runFlow: _platform_keyboard_commit_input.yaml
+- scrollUntilVisible:
+    element:
+      text: '.*Fysisk træning.*'
+    direction: DOWN
+    timeout: 15000
+- tapOn: '.*Fysisk træning.*'
+- assertVisible: '.*Fysisk træning.*'
+- scrollUntilVisible:
+    element:
+      id: '^activity\.create\.intensityToggle$'
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: '^activity\.create\.intensityToggle$'
+- runFlow:
+    when:
+      visible: '^Ja, tilføj til alle$'
+    commands:
+      - tapOn: '^Ja, tilføj til alle$'
+- tapOn:
+    id: '^activity\.create\.submitButton$'
+- runFlow:
+    when:
+      visible: 'Succes'
+    commands:
+      - runFlow:
+          when:
+            visible: '^OK$'
+          commands:
+            - tapOn: '^OK$'
+      - runFlow:
+          when:
+            visible: '^Ok$'
+          commands:
+            - tapOn: '^Ok$'
+
+# 23-34) Opdater template i tasks
+- openLink: "footballcoach:///(tabs)/tasks"
+- extendedWaitUntil:
+    visible:
+      id: '^tasks\.folder\.toggle\.footballcoach$'
+    timeout: 15000
+- assertVisible:
+    id: '^tasks\.folder\.toggle\.footballcoach$'
+- tapOn:
+    id: '^tasks\.folder\.toggle\.footballcoach$'
+- extendedWaitUntil:
+    visible:
+      id: '^tasks\.template\.card\..*$'
+    timeout: 15000
+- tapOn:
+    id: '^tasks\.template\.card\..*$'
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: '^tasks\.template\.formBody$'
+    timeout: 15000
+- assertVisible:
+    id: '^tasks\.template\.formBody$'
+- scrollUntilVisible:
+    element:
+      id: '^tasks\.template\.subtaskInput\.0$'
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: '^tasks\.template\.subtaskInput\.0$'
+- eraseText
+- inputText: "demo"
+- tapOn:
+    id: '^tasks\.template\.descriptionInput$'
+- runFlow: _platform_keyboard_commit_input.yaml
+- swipe:
+    start: 50%, 80%
+    end: 50%, 30%
+- scrollUntilVisible:
+    element:
+      id: '^tasks\.template\.reminderToggle$'
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: '^tasks\.template\.reminderToggle$'
+- tapOn:
+    id: '^tasks\.template\.reminderOption\.15$'
+- swipe:
+    start: 50%, 80%
+    end: 50%, 30%
+- scrollUntilVisible:
+    element:
+      id: '^tasks\.template\.feedbackToggle$'
+    direction: DOWN
+    timeout: 15000
+- assertVisible:
+    id: '^tasks\.template\.feedbackToggle$'
+- tapOn:
+    id: '^tasks\.template\.feedbackToggle$'
+- extendedWaitUntil:
+    visible:
+      id: '^tasks\.template\.feedbackDelayOption\.15$'
+    timeout: 15000
+- tapOn:
+    id: '^tasks\.template\.feedbackDelayOption\.15$'
+- scrollUntilVisible:
+    element:
+      text: '.*Fysisk træning.*'
+    direction: DOWN
+    timeout: 15000
+- assertVisible: '.*Fysisk træning.*'
+- tapOn: '.*Fysisk træning.*'
+- tapOn:
+    id: '^tasks\.template\.saveButton$'
+- runFlow:
+    when:
+      visible: 'Succes'
+    commands:
+      - runFlow:
+          when:
+            visible: '^OK$'
+          commands:
+            - tapOn: '^OK$'
+      - runFlow:
+          when:
+            visible: '^Ok$'
+          commands:
+            - tapOn: '^Ok$'
+
+# 35-38) Bliv på home-kortet (ingen åbning af aktivitet)
+- openLink: "footballcoach:///(tabs)/(home)"
+- extendedWaitUntil:
+    visible:
+      id: '^home\.screen$'
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: '^home\.activityCardButton$'
+    direction: DOWN
+    timeout: 15000
+- assertVisible:
+    id: '^home\.activityCardButton$'
+
+# 39-42) Intensitet-opgave fra home-kort
+- runFlow:
+    when:
+      visible:
+        id: '^home\.activityCardButton$'
+    commands:
+      - tapOn:
+          id: '^home\.activityCardButton$'
+          index: 0
+          point: 26%,58%
+      - runFlow:
+          when:
+            notVisible:
+              id: '^feedback\.scoreInput$'
+          commands:
+            - tapOn:
+                id: '^home\.activityCardButton$'
+                index: 0
+                point: 28%,56%
+      - runFlow:
+          when:
+            notVisible:
+              id: '^feedback\.scoreInput$'
+          commands:
+            - tapOn:
+                id: '^home\.activityCardButton$'
+                index: 0
+                point: 24%,60%
+      - extendedWaitUntil:
+          visible:
+            id: '^feedback\.scoreInput$'
+          timeout: 15000
+      - tapOn:
+          id: '^feedback\.scoreInput$'
+      - scrollUntilVisible:
+          element:
+            id: '^feedback\.scoreOption\.5$'
+          direction: DOWN
+          timeout: 8000
+      - tapOn:
+          id: '^feedback\.scoreOption\.5$'
+      - runFlow:
+          when:
+            notVisible:
+              id: '^feedback\.selectedScore\.5$'
+          commands:
+            - tapOn:
+                id: '^feedback\.scoreOption\.5$'
+      - extendedWaitUntil:
+          visible:
+            id: '^feedback\.selectedScore\.5$'
+          timeout: 5000
+      - runFlow:
+          when:
+            visible:
+              id: '^feedback\.scoreDoneButton$'
+          commands:
+            - tapOn:
+                id: '^feedback\.scoreDoneButton$'
+      - assertVisible:
+          id: '^feedback\.selectedScore\.5$'
+      - tapOn:
+          id: '^feedback\.noteInput$'
+      - inputText: "maestro note intensistet"
+      - runFlow: _platform_keyboard_commit_input.yaml
+      - runFlow:
+          when:
+            visible:
+              id: '^feedback\.saveButton$'
+          commands:
+            - tapOn:
+                id: '^feedback\.saveButton$'
+      - runFlow:
+          when:
+            visible: '^Markér som udført$'
+          commands:
+            - tapOn: '^Markér som udført$'
+
+# 43-44) Normal opgave fra home-kort
+- runFlow:
+    when:
+      visible:
+        id: '^home\.activityCardButton$'
+    commands:
+      - tapOn:
+          id: '^home\.activityCardButton$'
+          index: 0
+          point: 26%,69%
+      - extendedWaitUntil:
+          visible:
+            id: '^activity\.completeButton\.markDone$'
+          timeout: 15000
+      - tapOn:
+          id: '^activity\.completeButton\.markDone$'
+
+# 45-49) Feedback opgave fra home-kort
+- runFlow:
+    when:
+      visible:
+        id: '^home\.activityCardButton$'
+    commands:
+      - tapOn:
+          id: '^home\.activityCardButton$'
+          index: 0
+          point: 26%,79%
+      - runFlow:
+          when:
+            visible:
+              id: '^activity\.completeButton\.markDone$'
+          commands:
+            - tapOn:
+                id: '^activity\.completeButton\.markDone$'
+      - extendedWaitUntil:
+          visible:
+            id: '^feedback\.scoreInput$'
+          timeout: 15000
+      - tapOn:
+          id: '^feedback\.scoreInput$'
+      - scrollUntilVisible:
+          element:
+            id: '^feedback\.scoreOption\.5$'
+          direction: DOWN
+          timeout: 8000
+      - tapOn:
+          id: '^feedback\.scoreOption\.5$'
+      - runFlow:
+          when:
+            notVisible:
+              id: '^feedback\.selectedScore\.5$'
+          commands:
+            - tapOn:
+                id: '^feedback\.scoreOption\.5$'
+      - extendedWaitUntil:
+          visible:
+            id: '^feedback\.selectedScore\.5$'
+          timeout: 5000
+      - runFlow:
+          when:
+            visible:
+              id: '^feedback\.scoreDoneButton$'
+          commands:
+            - tapOn:
+                id: '^feedback\.scoreDoneButton$'
+      - assertVisible:
+          id: '^feedback\.selectedScore\.5$'
+      - tapOn:
+          id: '^feedback\.noteInput$'
+      - inputText: "maestro note feedback"
+      - runFlow: _platform_keyboard_commit_input.yaml
+      - runFlow:
+          when:
+            visible:
+              id: '^feedback\.saveButton$'
+          commands:
+            - tapOn:
+                id: '^feedback\.saveButton$'
+      - runFlow:
+          when:
+            visible: '^Markér som udført$'
+          commands:
+            - tapOn: '^Markér som udført$'
+
+# 50-56) Performance asserts
+- openLink: "footballcoach:///(tabs)/library"
+- extendedWaitUntil:
+    visible:
+      id: '^library\.screen$'
+    timeout: 15000
+- tapOn:
+    id: '^library\.folder\.footballcoach$'
+- runFlow:
+    when:
+      notVisible:
+        id: '^library\.folder\.holdtraening$'
+    commands:
+      - tapOn:
+          id: '^library\.folder\.footballcoach$'
+- tapOn:
+    id: '^library\.folder\.holdtraening$'
+- runFlow:
+    when:
+      notVisible:
+        id: '^library\.folder\.holdtraening_faelles$'
+    commands:
+      - tapOn:
+          id: '^library\.folder\.holdtraening$'
+- extendedWaitUntil:
+    visible:
+      id: '^library\.folder\.holdtraening_faelles$'
+    timeout: 15000
+- tapOn:
+    id: '^library\.folder\.holdtraening_faelles$'
+- scrollUntilVisible:
+    element:
+      id: '^library\.counter\.lastScore\.711f3229-2fee-45fe-b46e-87dd1605af03$'
+    direction: DOWN
+    timeout: 15000
+- extendedWaitUntil:
+    visible:
+      text: '^Senest:\s*5/10$'
+    timeout: 15000
+- assertVisible:
+    id: '^library\.counter\.lastScore\.711f3229-2fee-45fe-b46e-87dd1605af03$'
+- assertVisible:
+    id: '^library\.counter\.executionCount\.711f3229-2fee-45fe-b46e-87dd1605af03$'
+
+- openLink: "footballcoach:///(tabs)/(home)"
+- extendedWaitUntil:
+    visible:
+      id: '^home\.screen$'
+    timeout: 15000
+- openLink: "footballcoach:///(tabs)/performance"
+- extendedWaitUntil:
+    visible:
+      id: '^performance\.screen$'
+    timeout: 15000
+- assertVisible:
+    id: '^performance\.screen$'
+- extendedWaitUntil:
+    visible:
+      id: '^performance\.statBox\.today$'
+    timeout: 15000
+- assertVisible:
+    id: '^performance\.statTasks\.today$'
+- assertVisible:
+    id: '^performance\.statPercentage\.today$'
+- assertVisible: '^100%$'
+- assertVisible: '^3\s*/\s*3$'
+
+# 57-60) Chart details modal
+- scrollUntilVisible:
+    element:
+      id: '^progression\.chartCard$'
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: '^progression\.chartSvg$'
+    point: 52%,45%
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '47%,45%' } } ] }
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '57%,45%' } } ] }
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '42%,45%' } } ] }
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '62%,45%' } } ] }
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '37%,45%' } } ] }
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '67%,45%' } } ] }
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '32%,45%' } } ] }
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '72%,45%' } } ] }
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '27%,45%' } } ] }
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '77%,45%' } } ] }
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '22%,45%' } } ] }
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '82%,45%' } } ] }
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '17%,45%' } } ] }
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '12%,45%' } } ] }
+- extendedWaitUntil:
+    visible: '^Detaljer$'
+    timeout: 15000
+- assertVisible: '^Detaljer$'
+- assertVisible: '.*Aktivitet:\s*Maestro Library Aktivitet.*'
+- assertVisible: '.*Score:\s*5.*'
+- assertVisible: '.*Note:\s*maestro note feedback.*'
+- tapOn:
+    id: '^progression\.pointDetail\.closeButton$'
+
+# 61-62) Begynder box
+- scrollUntilVisible:
+    element:
+      id: '^progression\.tier\.begynder\.toggleButton$'
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: '^progression\.tier\.begynder\.toggleButton$'
+
+# 63-64) Score dropdown -> intensitet
+- scrollUntilVisible:
+    element:
+      id: '^progression\.score\.button$'
+    direction: UP
+    timeout: 15000
+- tapOn:
+    id: '^progression\.score\.button$'
+- extendedWaitUntil:
+    visible:
+      id: '^progression\.score\.option\.intensitet$'
+    timeout: 15000
+- assertVisible:
+    id: '^progression\.score\.option\.intensitet$'
+- tapOn:
+    id: '^progression\.score\.option\.intensitet$'
+
+# 65-68) Chart details modal igen
+- scrollUntilVisible:
+    element:
+      id: '^progression\.chartCard$'
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: '^progression\.chartSvg$'
+    point: 52%,45%
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '47%,45%' } } ] }
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '57%,45%' } } ] }
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '42%,45%' } } ] }
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '62%,45%' } } ] }
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '37%,45%' } } ] }
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '67%,45%' } } ] }
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '32%,45%' } } ] }
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '72%,45%' } } ] }
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '27%,45%' } } ] }
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '77%,45%' } } ] }
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '22%,45%' } } ] }
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '82%,45%' } } ] }
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '17%,45%' } } ] }
+- runFlow: { when: { notVisible: '^Detaljer$' }, commands: [ { tapOn: { id: '^progression\.chartSvg$', point: '12%,45%' } } ] }
+- extendedWaitUntil:
+    visible: '^Detaljer$'
+    timeout: 15000
+- assertVisible: '.*Aktivitet:\s*Maestro Library Aktivitet.*'
+- assertVisible: '.*Intensitet:\s*5.*'
+- assertVisible: '.*Note:\s*maestro note intensistet.*'
+- tapOn:
+    id: '^progression\.pointDetail\.closeButton$'
+
+# 69) Slet aktivitet
+- openLink: "footballcoach:///(tabs)/(home)"
+- extendedWaitUntil:
+    visible:
+      id: '^home\.screen$'
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: '^home\.activityCardButton$'
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: '^home\.activityCardButton$'
+    index: 0
+    point: 50%,12%
+- extendedWaitUntil:
+    visible:
+      id: '^activity\.details\.deleteButton$'
+    timeout: 15000
+- tapOn:
+    id: '^activity\.details\.deleteButton$'
+- runFlow:
+    when:
+      visible: '^Slet$'
+    commands:
+      - tapOn: '^Slet$'
+- runFlow:
+    when:
+      visible: 'Slettet'
+    commands:
+      - runFlow:
+          when:
+            visible: '^OK$'
+          commands:
+            - tapOn: '^OK$'
+      - runFlow:
+          when:
+            visible: '^Ok$'
+          commands:
+            - tapOn: '^Ok$'
+
+# Ryd opgaveskabelon op
+- openLink: "footballcoach:///(tabs)/tasks"
+- extendedWaitUntil:
+    visible:
+      id: '^tasks\.folder\.toggle\.footballcoach$'
+    timeout: 15000
+- tapOn:
+    id: '^tasks\.folder\.toggle\.footballcoach$'
+- scrollUntilVisible:
+    element:
+      id: '^tasks\.template\.card\..*$'
+    direction: DOWN
+    timeout: 15000
+- extendedWaitUntil:
+    visible:
+      id: '^tasks\.template\.deleteButton\..+$'
+    timeout: 15000
+- tapOn:
+    id: '^tasks\.template\.deleteButton\..+$'
+    index: 0
+- runFlow:
+    when:
+      visible: '^Fortsæt$'
+    commands:
+      - tapOn: '^Fortsæt$'
+- runFlow:
+    when:
+      visible: '^Slet$'
+    commands:
+      - tapOn: '^Slet$'
+- runFlow:
+    when:
+      visible: '^(OK|Ok)$'
+    commands:
+      - tapOn: '^(OK|Ok)$'

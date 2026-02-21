@@ -1,0 +1,155 @@
+appId: ${MAESTRO_APP_ID}
+tags:
+  - smoke
+---
+# Deny path + fallback UI
+- stopApp
+- launchApp:
+    appId: ${MAESTRO_APP_ID}
+    clearState: true
+    permissions:
+      notifications: deny
+- runFlow: _dev_client_bootstrap.yaml
+- openLink: "footballcoach:///(tabs)/(home)"
+- runFlow:
+    when:
+      visible:
+        id: '^auth\.login\.emailInput$'
+    commands:
+      - tapOn:
+          id: '^auth\.login\.emailInput$'
+      - inputText: "${MAESTRO_EMAIL}"
+      - tapOn:
+          id: '^auth\.login\.passwordInput$'
+      - inputText: "${MAESTRO_PASSWORD}"
+      - tapOn:
+          id: '^auth\.login\.submitButton$'
+- runFlow: _post_login_prompt_cleanup.yaml
+- openLink: "footballcoach:///(tabs)/(home)"
+- extendedWaitUntil:
+    visible:
+      id: '^home\.screen$'
+    timeout: 15000
+- runFlow:
+    when:
+      visible:
+        id: '^notifications\.denyButton$'
+    commands:
+      - tapOn:
+          id: '^notifications\.denyButton$'
+- runFlow: _platform_notifications_prompt_deny.yaml
+- openLink: "footballcoach:///(tabs)/profile"
+- runFlow:
+    when:
+      visible:
+        id: '^profile\.settingsSection\.toggle$'
+    commands:
+      - tapOn:
+          id: '^profile\.settingsSection\.toggle$'
+- scrollUntilVisible:
+    element:
+      id: '^profile\.notificationsToggle$'
+    direction: DOWN
+    timeout: 15000
+- assertVisible:
+    id: '^profile\.notificationsToggle$'
+- extendedWaitUntil:
+    visible: '^(Deaktiveret|Disabled)$'
+    timeout: 15000
+- assertVisible: '^(Deaktiveret|Disabled)$'
+- runFlow:
+    when:
+      visible: '^(Aktiveret|Enabled)$'
+    commands:
+      - tapOn:
+          id: '^profile\.notificationsToggle$'
+- runFlow:
+    when:
+      visible: '^Annuller$'
+    commands:
+      - tapOn: '^Annuller$'
+- runFlow:
+    when:
+      visible: '^Senere$'
+    commands:
+      - tapOn: '^Senere$'
+
+# Allow path
+- stopApp
+- launchApp:
+    appId: ${MAESTRO_APP_ID}
+    clearState: true
+    permissions:
+      notifications: allow
+- runFlow: _dev_client_bootstrap.yaml
+- openLink: "footballcoach:///(tabs)/(home)"
+- runFlow:
+    when:
+      visible:
+        id: '^auth\.login\.emailInput$'
+    commands:
+      - tapOn:
+          id: '^auth\.login\.emailInput$'
+      - inputText: "${MAESTRO_EMAIL}"
+      - tapOn:
+          id: '^auth\.login\.passwordInput$'
+      - inputText: "${MAESTRO_PASSWORD}"
+      - tapOn:
+          id: '^auth\.login\.submitButton$'
+- runFlow: _post_login_prompt_cleanup.yaml
+- openLink: "footballcoach:///(tabs)/(home)"
+- extendedWaitUntil:
+    visible:
+      id: '^home\.screen$'
+    timeout: 15000
+- runFlow:
+    when:
+      visible:
+        id: '^notifications\.allowButton$'
+    commands:
+      - tapOn:
+          id: '^notifications\.allowButton$'
+- runFlow: _platform_notifications_prompt_allow.yaml
+- openLink: "footballcoach:///(tabs)/profile"
+- runFlow:
+    when:
+      visible:
+        id: '^profile\.settingsSection\.toggle$'
+    commands:
+      - tapOn:
+          id: '^profile\.settingsSection\.toggle$'
+- scrollUntilVisible:
+    element:
+      id: '^profile\.notificationsToggle$'
+    direction: DOWN
+    timeout: 15000
+- assertVisible:
+    id: '^profile\.notificationsToggle$'
+- extendedWaitUntil:
+    visible: '^(Aktiveret|Enabled)$'
+    timeout: 15000
+- assertVisible: '^(Aktiveret|Enabled)$'
+- openLink: "footballcoach:///(tabs)/(home)"
+- extendedWaitUntil:
+    visible:
+      id: '^home\.screen$'
+    timeout: 15000
+- assertNotVisible:
+    id: '^notifications\.openSettingsButton$'
+- assertNotVisible:
+    id: '^notifications\.allowButton$'
+
+# Verify activity task content renders (non-blank task area)
+- runFlow:
+    when:
+      visible:
+        id: '^home\.activityCardButton$'
+    commands:
+      - tapOn:
+          id: '^home\.activityCardButton$'
+      - extendedWaitUntil:
+          visible:
+            id: '^activity\.details\.task\.loaded\..+$'
+          timeout: 15000
+      - assertNotVisible:
+          id: '^activity\.details\.taskLookup\.error$'

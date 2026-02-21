@@ -1,0 +1,71 @@
+appId: ${MAESTRO_APP_ID}
+tags:
+  - smoke
+---
+- launchApp:
+    appId: ${MAESTRO_APP_ID}
+    clearState: true
+    permissions:
+      notifications: allow
+- runFlow: _dev_client_bootstrap.yaml
+- runFlow: _notifications_allow_if_visible.yaml
+- openLink: "footballcoach:///(tabs)/profile"
+- runFlow:
+    when:
+      visible:
+        id: '^auth\.login\.emailInput$'
+    commands:
+      - tapOn:
+          id: '^auth\.login\.emailInput$'
+      - inputText: "${MAESTRO_EMAIL}"
+      - tapOn:
+          id: '^auth\.login\.passwordInput$'
+      - inputText: "${MAESTRO_PASSWORD}"
+      - tapOn:
+          id: '^auth\.login\.submitButton$'
+- runFlow: _post_login_prompt_cleanup.yaml
+- openLink: "footballcoach:///(tabs)/library"
+- extendedWaitUntil:
+    visible:
+      id: '^library\.screen$'
+    timeout: 15000
+
+# Android-only: deterministisk offline -> retry -> success
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - setAirplaneMode: enabled
+      - stopApp
+      - launchApp:
+          appId: ${MAESTRO_APP_ID}
+          permissions:
+            notifications: allow
+      - runFlow: _dev_client_bootstrap.yaml
+      - runFlow: _notifications_allow_if_visible.yaml
+      - openLink: "footballcoach:///(tabs)/library"
+      - extendedWaitUntil:
+          visible:
+            id: '^library\.errorState$'
+          timeout: 15000
+      - assertVisible:
+          id: '^library\.error\.retryButton$'
+      - setAirplaneMode: disabled
+      - tapOn:
+          id: '^library\.error\.retryButton$'
+      - extendedWaitUntil:
+          notVisible:
+            id: '^library\.errorState$'
+          timeout: 15000
+      - extendedWaitUntil:
+          visible:
+            id: '^library\.folder\.footballcoach$'
+          timeout: 15000
+
+# iOS: smoke-pass + manuel workaround dokumenteret i README
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - assertVisible:
+          id: '^library\.screen$'

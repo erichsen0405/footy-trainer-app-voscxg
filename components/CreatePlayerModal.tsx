@@ -16,6 +16,7 @@ import {
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { supabase } from '@/integrations/supabase/client';
+import { FunctionsHttpError } from '@supabase/functions-js';
 
 /*
  * ========================================
@@ -60,10 +61,12 @@ export default function CreatePlayerModal({
   const [searching, setSearching] = useState(false);
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
   const resetForm = useCallback(() => {
     setSearchEmail('');
     setSearchResult(null);
+    setSuccessMessage('');
   }, []);
 
   const handleSearch = useCallback(async () => {
@@ -97,7 +100,15 @@ export default function CreatePlayerModal({
 
       if (error) {
         console.error('Search error:', error);
-        throw new Error('Kunne ikke søge efter bruger. Prøv igen.');
+        if (error instanceof FunctionsHttpError && error.context) {
+          let message = 'Kunne ikke søge efter bruger. Prøv igen.';
+          try {
+            const body = await error.context.clone().json();
+            if (body?.error) message = body.error;
+          } catch {}
+          throw new Error(message);
+        }
+        throw new Error(error.message || 'Kunne ikke søge efter bruger. Prøv igen.');
       }
 
       if (!data || !data.success) {
@@ -152,7 +163,15 @@ export default function CreatePlayerModal({
 
       if (error) {
         console.error('Add player error:', error);
-        throw new Error('Kunne ikke tilføje spiller. Prøv igen.');
+        if (error instanceof FunctionsHttpError && error.context) {
+          let message = 'Kunne ikke tilføje spiller. Prøv igen.';
+          try {
+            const body = await error.context.clone().json();
+            if (body?.error) message = body.error;
+          } catch {}
+          throw new Error(message);
+        }
+        throw new Error(error.message || 'Kunne ikke tilføje spiller. Prøv igen.');
       }
 
       if (!data || !data.success) {
@@ -167,6 +186,7 @@ export default function CreatePlayerModal({
       }
 
       console.log('Player added successfully');
+      setSuccessMessage(data?.message || 'Anmodning sendt til spilleren.');
 
       // Show success message
       setShowSuccess(true);
@@ -211,9 +231,9 @@ export default function CreatePlayerModal({
                 color="#fff"
               />
             </View>
-            <Text style={styles.successTitle}>Spiller tilføjet! 🎉</Text>
+            <Text style={styles.successTitle}>Anmodning sendt! 🎉</Text>
             <Text style={styles.successMessage}>
-              {searchResult?.full_name || searchResult?.email} er nu tilknyttet din profil.
+              {successMessage || `${searchResult?.full_name || searchResult?.email} er tilføjet.`}
             </Text>
             <View style={styles.successDetails}>
               <View style={styles.successDetailRow}>
@@ -281,6 +301,7 @@ export default function CreatePlayerModal({
                     editable={!searching && !loading}
                     autoCorrect={false}
                     onSubmitEditing={handleSearch}
+                    testID="player.create.emailInput"
                   />
                   <TouchableOpacity
                     style={[
@@ -290,6 +311,7 @@ export default function CreatePlayerModal({
                     ]}
                     onPress={handleSearch}
                     disabled={searching || loading}
+                    testID="player.create.searchButton"
                   >
                     {searching ? (
                       <ActivityIndicator color="#fff" size="small" />
@@ -305,7 +327,7 @@ export default function CreatePlayerModal({
                 </View>
 
                 {searchResult && (
-                  <View style={styles.resultCard}>
+                  <View style={styles.resultCard} testID={`player.create.resultCard.${searchResult.id}`}>
                     <View style={styles.resultHeader}>
                       <IconSymbol
                         ios_icon_name="person.circle.fill"
@@ -328,6 +350,7 @@ export default function CreatePlayerModal({
                       ]}
                       onPress={handleAddPlayer}
                       disabled={loading}
+                      testID="player.create.addPlayerButton"
                     >
                       {loading ? (
                         <ActivityIndicator color="#fff" size="small" />

@@ -1,6 +1,5 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 import { supabase } from '@/integrations/supabase/client';
+import { resolveExternalCategoryIntensityTargetIds } from '@/utils/activityIntensity';
 
 export interface CreateActivityData {
   title: string;
@@ -32,6 +31,11 @@ export interface UpdateActivityData {
   intensityNote?: string | null;
 }
 
+export interface ActivityContextScope {
+  playerId?: string | null;
+  teamId?: string | null;
+}
+
 const normalizeEndTime = (value?: string | null): string | null => {
   if (typeof value !== 'string') {
     return null;
@@ -39,6 +43,39 @@ const normalizeEndTime = (value?: string | null): string | null => {
 
   const trimmed = value.trim();
   return trimmed.length ? trimmed : null;
+};
+
+const parseTimeToMinutes = (value?: string | null): number | null => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parts = trimmed.split(':');
+  if (parts.length < 2) return null;
+  const hours = Number(parts[0]);
+  const minutes = Number(parts[1]);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+  return hours * 60 + minutes;
+};
+
+const minutesToTime = (totalMinutes: number): string => {
+  const clamped = Math.max(0, Math.min(23 * 60 + 59, totalMinutes));
+  const hours = String(Math.floor(clamped / 60)).padStart(2, '0');
+  const minutes = String(clamped % 60).padStart(2, '0');
+  return `${hours}:${minutes}`;
+};
+
+const ensureEndTimeAfterStart = (startTime?: string | null, endTime?: string | null): string | null => {
+  const normalizedEnd = normalizeEndTime(endTime);
+  if (!normalizedEnd) return null;
+
+  const startMinutes = parseTimeToMinutes(startTime);
+  const endMinutes = parseTimeToMinutes(normalizedEnd);
+  if (startMinutes === null || endMinutes === null) return normalizedEnd;
+  if (endMinutes > startMinutes) return normalizedEnd;
+
+  // Keep duplicated activity valid if source data has invalid order.
+  return minutesToTime(startMinutes + 60);
 };
 
 const normalizeIntensity = (value?: number | null): number | null => {
@@ -52,6 +89,14 @@ const normalizeIntensity = (value?: number | null): number | null => {
 const normalizeIntensityNote = (value?: string | null): string | null => {
   if (typeof value !== 'string') {
     return value === null ? null : null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+};
+
+const normalizeScopeId = (value?: string | null): string | null => {
+  if (typeof value !== 'string') {
+    return null;
   }
   const trimmed = value.trim();
   return trimmed.length ? trimmed : null;
@@ -151,7 +196,7 @@ function generateRecurringDates(
 }
 
 export const activityService = {
-  async createActivity(data: CreateActivityData, signal?: AbortSignal): Promise<void> {
+  async createActivity(data: CreateActivityData, signal: AbortSignal = new AbortController().signal): Promise<void> {
     console.log('Creating activity:', data);
 
     const normalizedEndTime = normalizeEndTime(data.endTime);
@@ -163,7 +208,6 @@ export const activityService = {
 
     if (!normalizedIntensity) {
       normalizedIntensity = null;
-      normalizedIntensityEnabled = false;
     }
 
     if (data.isRecurring) {
@@ -243,7 +287,7 @@ export const activityService = {
     }
   },
 
-  async updateActivitySingle(activityId: string, updates: UpdateActivityData, isExternal: boolean, signal?: AbortSignal): Promise<void> {
+  async updateActivitySingle(activityId: string, updates: UpdateActivityData, isExternal: boolean, signal: AbortSignal = new AbortController().signal): Promise<void> {
     const intensityChanges = buildIntensityUpdate(updates.intensity, updates.intensityEnabled);
 
     if (isExternal) {
@@ -344,7 +388,196 @@ export const activityService = {
     }
   },
 
-  async updateActivitySeries(seriesId: string, userId: string, updates: UpdateActivityData, signal?: AbortSignal): Promise<void> {
+  async updateIntensityByCategory(
+    userId: string,
+    categoryId: string,
+    intensityEnabled: boolean,
+    scope: ActivityContextScope = {},
+    signal: AbortSignal = new AbortController().signal
+  ): Promise<void> {
+    const nowIso = new Date().toISOString();
+    const normalizedCategoryId = typeof categoryId === 'string' ? categoryId.trim() : '';
+    const normalizedPlayerId = normalizeScopeId(scope.playerId);
+    const normalizedTeamId = normalizeScopeId(scope.teamId);
+    const shouldPersistGlobalRule = !normalizedPlayerId && !normalizedTeamId;
+
+    if (!normalizedCategoryId) {
+      throw new Error('Category ID is required');
+    }
+
+    if (shouldPersistGlobalRule) {
+      const { error: ruleError } = await (supabase as any)
+        .from('external_category_intensity_rules')
+        .upsert(
+          {
+            user_id: userId,
+            category_id: normalizedCategoryId,
+            intensity_enabled: intensityEnabled,
+            updated_at: nowIso,
+          },
+          { onConflict: 'user_id,category_id' }
+        )
+        .abortSignal(signal);
+
+      if (ruleError) {
+        throw ruleError;
+      }
+    }
+
+    let internalCandidatesQuery = supabase
+      .from('activities')
+      .select('id, intensity, intensity_enabled')
+      .eq('user_id', userId)
+      .eq('category_id', normalizedCategoryId);
+
+    if (normalizedPlayerId) {
+      internalCandidatesQuery = internalCandidatesQuery.eq('player_id', normalizedPlayerId);
+    } else {
+      internalCandidatesQuery = internalCandidatesQuery.is('player_id', null);
+    }
+
+    if (normalizedTeamId) {
+      internalCandidatesQuery = internalCandidatesQuery.eq('team_id', normalizedTeamId);
+    } else {
+      internalCandidatesQuery = internalCandidatesQuery.is('team_id', null);
+    }
+
+    const { data: internalCandidates, error: internalCandidatesError } = await internalCandidatesQuery
+      .abortSignal(signal);
+
+    if (internalCandidatesError) {
+      throw internalCandidatesError;
+    }
+
+    let externalCandidatesQuery = supabase
+      .from('events_local_meta')
+      .select('id, intensity, intensity_enabled')
+      .eq('user_id', userId)
+      .eq('category_id', normalizedCategoryId);
+
+    if (normalizedPlayerId) {
+      externalCandidatesQuery = externalCandidatesQuery.eq('player_id', normalizedPlayerId);
+    } else {
+      externalCandidatesQuery = externalCandidatesQuery.is('player_id', null);
+    }
+
+    if (normalizedTeamId) {
+      externalCandidatesQuery = externalCandidatesQuery.eq('team_id', normalizedTeamId);
+    } else {
+      externalCandidatesQuery = externalCandidatesQuery.is('team_id', null);
+    }
+
+    const { data: externalCandidates, error: externalCandidatesError } = await externalCandidatesQuery
+      .abortSignal(signal);
+
+    if (externalCandidatesError) {
+      throw externalCandidatesError;
+    }
+
+    const internalTargetIds = resolveExternalCategoryIntensityTargetIds(
+      (internalCandidates || []).map((row: any) => ({
+        id: String(row?.id ?? ''),
+        intensityEnabled: row?.intensity_enabled ?? false,
+        intensity: row?.intensity ?? null,
+      })),
+      intensityEnabled
+    );
+
+    const externalTargetIds = resolveExternalCategoryIntensityTargetIds(
+      (externalCandidates || []).map((row: any) => ({
+        id: String(row?.id ?? ''),
+        intensityEnabled: row?.intensity_enabled ?? false,
+        intensity: row?.intensity ?? null,
+      })),
+      intensityEnabled
+    );
+
+    if (!internalTargetIds.length && !externalTargetIds.length) {
+      return;
+    }
+
+    const updateData = intensityEnabled
+      ? {
+          intensity_enabled: true,
+          updated_at: nowIso,
+          last_local_modified: nowIso,
+        }
+      : {
+          intensity_enabled: false,
+          intensity: null,
+          intensity_note: null,
+          updated_at: nowIso,
+          last_local_modified: nowIso,
+        };
+
+    if (internalTargetIds.length) {
+      const internalUpdateData = intensityEnabled
+        ? {
+            intensity_enabled: true,
+            updated_at: nowIso,
+          }
+        : {
+            intensity_enabled: false,
+            intensity: null,
+            intensity_note: null,
+            updated_at: nowIso,
+          };
+
+      let internalUpdateQuery = supabase
+        .from('activities')
+        .update(internalUpdateData)
+        .in('id', internalTargetIds)
+        .eq('user_id', userId)
+        .eq('category_id', normalizedCategoryId);
+
+      if (normalizedPlayerId) {
+        internalUpdateQuery = internalUpdateQuery.eq('player_id', normalizedPlayerId);
+      } else {
+        internalUpdateQuery = internalUpdateQuery.is('player_id', null);
+      }
+
+      if (normalizedTeamId) {
+        internalUpdateQuery = internalUpdateQuery.eq('team_id', normalizedTeamId);
+      } else {
+        internalUpdateQuery = internalUpdateQuery.is('team_id', null);
+      }
+
+      const { error: internalUpdateError } = await internalUpdateQuery.abortSignal(signal);
+
+      if (internalUpdateError) {
+        throw internalUpdateError;
+      }
+    }
+
+    if (externalTargetIds.length) {
+      let externalUpdateQuery = supabase
+        .from('events_local_meta')
+        .update(updateData)
+        .in('id', externalTargetIds)
+        .eq('user_id', userId)
+        .eq('category_id', normalizedCategoryId);
+
+      if (normalizedPlayerId) {
+        externalUpdateQuery = externalUpdateQuery.eq('player_id', normalizedPlayerId);
+      } else {
+        externalUpdateQuery = externalUpdateQuery.is('player_id', null);
+      }
+
+      if (normalizedTeamId) {
+        externalUpdateQuery = externalUpdateQuery.eq('team_id', normalizedTeamId);
+      } else {
+        externalUpdateQuery = externalUpdateQuery.is('team_id', null);
+      }
+
+      const { error: externalUpdateError } = await externalUpdateQuery.abortSignal(signal);
+
+      if (externalUpdateError) {
+        throw externalUpdateError;
+      }
+    }
+  },
+
+  async updateActivitySeries(seriesId: string, userId: string, updates: UpdateActivityData, signal: AbortSignal = new AbortController().signal): Promise<void> {
     const seriesUpdate: any = {
       updated_at: new Date().toISOString(),
     };
@@ -401,7 +634,7 @@ export const activityService = {
     }
   },
 
-  async deleteActivitySingle(activityId: string, userId: string, signal?: AbortSignal): Promise<void> {
+  async deleteActivitySingle(activityId: string, userId: string, signal: AbortSignal = new AbortController().signal): Promise<void> {
     const { error } = await supabase
       .from('activities')
       .delete()
@@ -412,7 +645,7 @@ export const activityService = {
     if (error) throw error;
   },
 
-  async deleteActivitySeries(seriesId: string, userId: string, signal?: AbortSignal): Promise<void> {
+  async deleteActivitySeries(seriesId: string, userId: string, signal: AbortSignal = new AbortController().signal): Promise<void> {
     const { error: activitiesError } = await supabase
       .from('activities')
       .delete()
@@ -432,7 +665,7 @@ export const activityService = {
     if (seriesError) throw seriesError;
   },
 
-  async duplicateActivity(activityId: string, userId: string, playerId?: string | null, teamId?: string | null, signal?: AbortSignal): Promise<void> {
+  async duplicateActivity(activityId: string, userId: string, playerId?: string | null, teamId?: string | null, signal: AbortSignal = new AbortController().signal): Promise<void> {
     const { data: activity, error: fetchError } = await supabase
       .from('activities')
       .select(`
@@ -464,7 +697,7 @@ export const activityService = {
         title: duplicateTitle,
         activity_date: activity.activity_date,
         activity_time: activity.activity_time,
-        activity_end_time: normalizeEndTime(activity.activity_end_time),
+        activity_end_time: ensureEndTimeAfterStart(activity.activity_time, activity.activity_end_time),
         location: activity.location,
         category_id: activity.category_id,
         intensity: normalizeIntensity(activity.intensity),
@@ -479,24 +712,30 @@ export const activityService = {
 
     if (activityError) throw activityError;
 
-    if (activity.activity_tasks && activity.activity_tasks.length > 0) {
-      const tasksToInsert = activity.activity_tasks.map((task: any) => ({
-        activity_id: newActivity.id,
-        task_template_id: null,
-        title: task.title,
-        description: task.description,
-        completed: false,
-        reminder_minutes: task.reminder_minutes,
-      }));
+    const sourceTasks = Array.isArray((activity as any)?.activity_tasks)
+      ? ((activity as any).activity_tasks as any[])
+      : [];
 
-      const { error: tasksError } = await supabase
-        .from('activity_tasks')
-        .insert(tasksToInsert)
-        .abortSignal(signal);
-
-      if (tasksError) console.error('Error duplicating tasks:', tasksError);
+    if (!sourceTasks.length) {
+      return;
     }
+
+    const taskRows = sourceTasks.map((task: any) => ({
+      activity_id: newActivity.id,
+      title: task?.title ?? '',
+      description: task?.description ?? '',
+      completed: !!task?.completed,
+      reminder_minutes:
+        typeof task?.reminder_minutes === 'number'
+          ? task.reminder_minutes
+          : null,
+    }));
+
+    const { error: taskInsertError } = await supabase
+      .from('activity_tasks')
+      .insert(taskRows)
+      .abortSignal(signal);
+
+    if (taskInsertError) throw taskInsertError;
   },
 };
-
-

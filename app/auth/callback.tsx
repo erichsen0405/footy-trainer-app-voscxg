@@ -125,32 +125,36 @@ export default function AuthCallbackScreen() {
         const code = effectiveParams.get('code');
         const accessToken = effectiveParams.get('access_token');
         const refreshToken = effectiveParams.get('refresh_token');
-        const tokenHash = effectiveParams.get('token_hash') ?? effectiveParams.get('token');
+        const tokenHash = effectiveParams.get('token_hash');
         const token = effectiveParams.get('token');
         const email = effectiveParams.get('email');
         const otpType = getEmailOtpType(effectiveParams.get('type'));
+        const flow = effectiveParams.get('flow');
+        const fallbackOtpType: EmailOtpType | null =
+          flow === 'reset-password' ? 'recovery' : null;
+        const resolvedOtpType = otpType ?? fallbackOtpType;
 
-        if (code) {
-          const { error } = await supabase.auth.exchangeCodeForSession(code);
-          if (error) throw error;
-        } else if (accessToken && refreshToken) {
+        if (accessToken && refreshToken) {
           const { error } = await supabase.auth.setSession({
             access_token: accessToken,
             refresh_token: refreshToken,
           });
           if (error) throw error;
-        } else if (tokenHash && otpType) {
+        } else if (tokenHash && resolvedOtpType) {
           const { error } = await supabase.auth.verifyOtp({
-            type: otpType,
+            type: resolvedOtpType,
             token_hash: tokenHash,
           });
           if (error) throw error;
-        } else if (token && otpType && email) {
+        } else if (token && resolvedOtpType && email) {
           const { error } = await supabase.auth.verifyOtp({
-            type: otpType,
+            type: resolvedOtpType,
             token,
             email,
           });
+          if (error) throw error;
+        } else if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
           if (error) throw error;
         } else {
           // Some clients can strip/consume callback params. Fall back to login flow.
@@ -166,7 +170,13 @@ export default function AuthCallbackScreen() {
         }
 
         if (!cancelled) {
-          router.replace('/(tabs)/profile');
+          const shouldGoToPasswordReset =
+            otpType === 'recovery' || flow === 'reset-password';
+          if (shouldGoToPasswordReset) {
+            router.replace('/update-password');
+          } else {
+            router.replace('/(tabs)/profile');
+          }
         }
       } catch (error: any) {
         if (!cancelled) {

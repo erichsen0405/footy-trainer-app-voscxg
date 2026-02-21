@@ -274,6 +274,7 @@ export type Database = {
           completed: boolean
           created_at: string
           description: string | null
+          feedback_template_id: string | null
           id: string
           reminder_minutes: number | null
           task_template_id: string | null
@@ -285,6 +286,7 @@ export type Database = {
           completed?: boolean
           created_at?: string
           description?: string | null
+          feedback_template_id?: string | null
           id?: string
           reminder_minutes?: number | null
           task_template_id?: string | null
@@ -296,6 +298,7 @@ export type Database = {
           completed?: boolean
           created_at?: string
           description?: string | null
+          feedback_template_id?: string | null
           id?: string
           reminder_minutes?: number | null
           task_template_id?: string | null
@@ -337,6 +340,39 @@ export type Database = {
           created_at?: string | null
           id?: string
           player_id?: string
+        }
+        Relationships: []
+      }
+      admin_player_link_requests: {
+        Row: {
+          accepted_at: string | null
+          accepted_by: string | null
+          admin_id: string
+          created_at: string
+          id: string
+          player_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          admin_id: string
+          created_at?: string
+          id?: string
+          player_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          admin_id?: string
+          created_at?: string
+          id?: string
+          player_id?: string
+          status?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -504,6 +540,7 @@ export type Database = {
           created_at: string | null
           custom_fields: Json | null
           external_event_id: string | null
+          external_event_uid: string | null
           id: string
           intensity: number | null
           intensity_note: string | null
@@ -527,6 +564,7 @@ export type Database = {
           created_at?: string | null
           custom_fields?: Json | null
           external_event_id?: string | null
+          external_event_uid?: string | null
           id?: string
           intensity?: number | null
           intensity_note?: string | null
@@ -550,6 +588,7 @@ export type Database = {
           created_at?: string | null
           custom_fields?: Json | null
           external_event_id?: string | null
+          external_event_uid?: string | null
           id?: string
           intensity?: number | null
           intensity_note?: string | null
@@ -783,6 +822,7 @@ export type Database = {
           completed: boolean | null
           created_at: string | null
           description: string | null
+          feedback_template_id: string | null
           id: string
           local_meta_id: string
           reminder_minutes: number | null
@@ -794,6 +834,7 @@ export type Database = {
           completed?: boolean | null
           created_at?: string | null
           description?: string | null
+          feedback_template_id?: string | null
           id?: string
           local_meta_id: string
           reminder_minutes?: number | null
@@ -805,6 +846,7 @@ export type Database = {
           completed?: boolean | null
           created_at?: string | null
           description?: string | null
+          feedback_template_id?: string | null
           id?: string
           local_meta_id?: string
           reminder_minutes?: number | null
@@ -1507,6 +1549,33 @@ export type Database = {
         }
         Relationships: []
       }
+      user_push_tokens: {
+        Row: {
+          created_at: string
+          expo_push_token: string
+          id: string
+          platform: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expo_push_token: string
+          id?: string
+          platform?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expo_push_token?: string
+          id?: string
+          platform?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       weekly_performance: {
         Row: {
           completed_tasks: number
@@ -1641,6 +1710,14 @@ export type Database = {
           admin_email: string
           admin_id: string
           created_at: string
+        }[]
+      }
+      get_my_entitlements: {
+        Args: never
+        Returns: {
+          entitlement: string
+          source: string
+          expires_at: string | null
         }[]
       }
       get_subscription_status: {

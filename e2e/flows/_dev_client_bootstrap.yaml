@@ -1,0 +1,60 @@
+appId: ${MAESTRO_APP_ID}
+---
+# 0) Dev client launcher: vælg en lokal dev server (iOS/Android)
+- runFlow:
+    when:
+      visible: 'DEVELOPMENT SERVERS'
+    commands:
+      - runFlow:
+          when:
+            visible: 'http://localhost:8081.*'
+          commands:
+            - tapOn: 'http://localhost:8081.*'
+            - extendedWaitUntil:
+                notVisible: 'DEVELOPMENT SERVERS'
+                timeout: 15000
+      - runFlow:
+          when:
+            visible: 'http://10\.0\.2\.2:8081.*'
+          commands:
+            - tapOn: 'http://10\.0\.2\.2:8081.*'
+            - extendedWaitUntil:
+                notVisible: 'DEVELOPMENT SERVERS'
+                timeout: 15000
+      - runFlow:
+          when:
+            visible: 'http://127\.0\.0\.1:8081.*'
+          commands:
+            - tapOn: 'http://127\.0\.0\.1:8081.*'
+            - extendedWaitUntil:
+                notVisible: 'DEVELOPMENT SERVERS'
+                timeout: 15000
+      - runFlow:
+          when:
+            visible: 'http://.*:8081.*'
+          commands:
+            - tapOn: 'http://.*:8081.*'
+            - extendedWaitUntil:
+                notVisible: 'DEVELOPMENT SERVERS'
+                timeout: 15000
+
+# 1) Dev menu intro: Continue
+- runFlow:
+    when:
+      visible: '^(Continue|Fortsæt)$'
+    commands:
+      - tapOn: '^(Continue|Fortsæt)$'
+
+# 2) Expo developer menu: Reload
+- runFlow:
+    when:
+      visible: 'Connected to:'
+    commands:
+      - tapOn: '^(Reload|Genindlæs)$'
+      - extendedWaitUntil:
+          notVisible: 'Connected to:'
+          timeout: 15000
+
+# 3) NOTE: Notification prompts are handled in each smoke flow via
+# `launchApp.permissions` (allow/deny) and dedicated platform subflows.
+# Bootstrap must stay neutral so notifications_permission_smoke can verify deny path deterministically.

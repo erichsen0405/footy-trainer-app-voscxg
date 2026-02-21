@@ -13,6 +13,7 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  DeviceEventEmitter,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
@@ -53,6 +54,11 @@ type Exercise = {
   last_score?: number | null;
   execution_count?: number | null;
   is_added_to_tasks?: boolean | null;
+};
+
+type ExerciseCounterOverride = {
+  last_score: number | null;
+  execution_count: number | null;
 };
 
 type FolderVM = {
@@ -123,12 +129,11 @@ const clampDifficulty = (value: any): number => {
   return Math.max(0, Math.min(5, Math.round(n)));
 };
 
-// ✅ Always show placeholders
-const formatMetaLine = (lastScore?: number | null, executionCount?: number | null) => {
-  const scorePart = typeof lastScore === 'number' ? `Senest: ${lastScore}/10` : 'Senest: –/10';
-  const countPart = typeof executionCount === 'number' && executionCount > 0 ? `Udført: ${executionCount}x` : 'Udført: –x';
-  return `${scorePart}  |  ${countPart}`;
-};
+const formatLatestScoreLine = (lastScore?: number | null) =>
+  typeof lastScore === 'number' ? `Senest: ${lastScore}/10` : 'Senest: –/10';
+
+const formatExecutionCountLine = (executionCount?: number | null) =>
+  typeof executionCount === 'number' && executionCount > 0 ? `Udført: ${executionCount}x` : 'Udført: –x';
 
 const buildIcon = (kind: FolderVM['kind']): FolderVM['icon'] => {
   switch (kind) {
@@ -164,6 +169,7 @@ const FolderRow = memo(function FolderRow({
     <TouchableOpacity
       onPress={handlePress}
       activeOpacity={0.85}
+      testID={`library.folder.${item.id}`}
       style={[
         styles.folderRow,
         { backgroundColor: theme.card },
@@ -221,7 +227,8 @@ const ExerciseCard = memo(function ExerciseCard({
   const handleCtaPress = useCallback(() => onPressCta(exercise), [onPressCta, exercise]);
 
   const difficulty = clampDifficulty(exercise.difficulty);
-  const metaLine = formatMetaLine(exercise.last_score ?? null, exercise.execution_count ?? null);
+  const latestScoreLine = formatLatestScoreLine(exercise.last_score ?? null);
+  const executionCountLine = formatExecutionCountLine(exercise.execution_count ?? null);
   const isAdded = !!exercise.is_added_to_tasks;
   const isAdding = !!isAddingToTasks;
   const ctaDisabled = isAdded || isAdding;
@@ -268,7 +275,21 @@ const ExerciseCard = memo(function ExerciseCard({
             </View>
           </View>
 
-          <Text style={[styles.exerciseMetaLine, { color: theme.textSecondary }]}>{metaLine}</Text>
+          <View style={styles.exerciseMetaLineRow}>
+            <Text
+              style={[styles.exerciseMetaLine, { color: theme.textSecondary }]}
+              testID={`library.counter.lastScore.${exercise.id}`}
+            >
+              {latestScoreLine}
+            </Text>
+            <Text style={[styles.exerciseMetaLineSeparator, { color: theme.textSecondary }]}>|</Text>
+            <Text
+              style={[styles.exerciseMetaLine, { color: theme.textSecondary }]}
+              testID={`library.counter.executionCount.${exercise.id}`}
+            >
+              {executionCountLine}
+            </Text>
+          </View>
         </View>
 
         <View style={styles.exerciseRight}>
@@ -297,6 +318,8 @@ const ExerciseCard = memo(function ExerciseCard({
           activeOpacity={0.9}
           style={[styles.ctaBadge, { backgroundColor: ctaBgColor }]}
           disabled={ctaDisabled}
+          testID={`library.addToTasksButton.${exercise.id}`}
+          accessibilityLabel={isAdded ? 'Allerede tilføjet til opgaver' : 'Tilføj til opgaver'}
         >
           {isAdding ? (
             <>
@@ -438,6 +461,26 @@ export default function LibraryScreen() {
     exerciseTaskMapRef.current = exerciseTaskMap;
   }, [exerciseTaskMap]);
 
+  const [counterOverrides, setCounterOverrides] = useState<Record<string, ExerciseCounterOverride>>({});
+  const counterOverridesRef = useRef<Record<string, ExerciseCounterOverride>>({});
+  useEffect(() => {
+    counterOverridesRef.current = counterOverrides;
+  }, [counterOverrides]);
+
+  const appliedFeedbackEventsRef = useRef<
+    Record<
+      string,
+      {
+        exerciseId: string;
+        rollback: ExerciseCounterOverride;
+        executionIdentity: string | null;
+        seenAdded: boolean;
+      }
+    >
+  >({});
+  const pendingRollbackByExerciseRef = useRef<Record<string, ExerciseCounterOverride>>({});
+  const seenExecutionIdentitiesRef = useRef<Set<string>>(new Set());
+
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addModalExercise, setAddModalExercise] = useState<Exercise | null>(null);
   const [isAddModalSaving, setIsAddModalSaving] = useState(false);
@@ -532,6 +575,21 @@ export default function LibraryScreen() {
     return xs.map(e => ({ ...e, is_added_to_tasks: set.has(e.id) ? true : e.is_added_to_tasks }));
   }, []);
 
+  const applyCounterOverrides = useCallback((xs: Exercise[]) => {
+    const map = counterOverridesRef.current;
+    const ids = Object.keys(map || {});
+    if (!ids.length) return xs;
+    return xs.map((exercise) => {
+      const override = map[exercise.id];
+      if (!override) return exercise;
+      return {
+        ...exercise,
+        last_score: override.last_score,
+        execution_count: override.execution_count,
+      };
+    });
+  }, []);
+
   const loadLibraryData = useCallback(
     async (userId: string) => {
       try {
@@ -571,7 +629,7 @@ export default function LibraryScreen() {
         const personal = (personalRes?.data || []) as any[];
         const assignments = (assignmentsRes?.data || []) as any[];
 
-        const systemExercises = applyAdded(system.map(normalizeExercise));
+        const systemExercises = applyCounterOverrides(applyAdded(system.map(normalizeExercise)));
 
         let trainerGrouped: { trainerId: string; trainerName: string; exercises: Exercise[] }[] = [];
         if (!isCreator) {
@@ -581,7 +639,7 @@ export default function LibraryScreen() {
           if (exerciseIds.length) {
             const { data: exerciseRows, error: exErr } = await supabase.from('exercise_library').select('*').in('id', exerciseIds);
             if (exErr) throw exErr;
-            assignedExercises = applyAdded((exerciseRows || []).map(normalizeExercise));
+            assignedExercises = applyCounterOverrides(applyAdded((exerciseRows || []).map(normalizeExercise)));
           }
 
           const trainerIds = Array.from(new Set(assignments.map((a: any) => String(a.trainer_id)).filter(Boolean)));
@@ -616,7 +674,7 @@ export default function LibraryScreen() {
           }));
         }
 
-        const personalExercises = isCreator ? applyAdded(personal.map(normalizeExercise)) : [];
+        const personalExercises = isCreator ? applyCounterOverrides(applyAdded(personal.map(normalizeExercise))) : [];
 
         if (!isMountedRef.current) return;
 
@@ -636,7 +694,7 @@ export default function LibraryScreen() {
         setErrorMessage(e?.message || 'Kunne ikke hente bibliotek');
       }
     },
-    [isCreator, teams, normalizeExercise, applyAdded]
+    [isCreator, teams, normalizeExercise, applyAdded, applyCounterOverrides]
   );
 
   useEffect(() => {
@@ -656,6 +714,113 @@ export default function LibraryScreen() {
       setReloadNonce(n => n + 1);
     }, [])
   );
+
+  useEffect(() => {
+    const findExerciseById = (exerciseId: string): Exercise | null => {
+      const fromPersonal = personalExercises.find((exercise) => exercise.id === exerciseId);
+      if (fromPersonal) return fromPersonal;
+      const fromCoach = footballCoachExercises.find((exercise) => exercise.id === exerciseId);
+      if (fromCoach) return fromCoach;
+      for (const folder of trainerFolders) {
+        const match = (folder.exercises || []).find((exercise) => exercise.id === exerciseId);
+        if (match) return match;
+      }
+      return null;
+    };
+
+    const savedSub = DeviceEventEmitter.addListener('feedback:saved', (payload: any) => {
+      const templateId = String(payload?.templateId ?? '').trim();
+      const optimisticId = String(payload?.optimisticId ?? '').trim();
+      const rating = typeof payload?.rating === 'number' ? payload.rating : null;
+      const activityId = String(payload?.activityId ?? '').trim();
+      const taskInstanceId = String(payload?.taskInstanceId ?? '').trim();
+
+      if (optimisticId && appliedFeedbackEventsRef.current[optimisticId]) {
+        setReloadNonce(n => n + 1);
+        return;
+      }
+
+      if (templateId) {
+        const entry = Object.entries(exerciseTaskMapRef.current).find(([, taskTemplateId]) => String(taskTemplateId) === templateId);
+        const exerciseId = entry?.[0];
+        if (exerciseId) {
+          const pendingRollback = pendingRollbackByExerciseRef.current[exerciseId];
+          const previous = counterOverridesRef.current[exerciseId];
+          const exercise = findExerciseById(exerciseId);
+          const rollback: ExerciseCounterOverride = pendingRollback ?? previous ?? {
+            last_score:
+              typeof exercise?.last_score === 'number'
+                ? exercise.last_score
+                : null,
+            execution_count:
+              typeof exercise?.execution_count === 'number'
+                ? exercise.execution_count
+                : null,
+          };
+          const baseCount =
+            typeof pendingRollback?.execution_count === 'number'
+              ? pendingRollback.execution_count
+              : typeof previous?.execution_count === 'number'
+              ? previous.execution_count
+              : typeof exercise?.execution_count === 'number'
+              ? exercise.execution_count
+              : 0;
+          const executionIdentity =
+            activityId && (taskInstanceId || templateId)
+              ? `${exerciseId}::${activityId}::${taskInstanceId || templateId}`
+              : null;
+          const alreadySeen =
+            executionIdentity ? seenExecutionIdentitiesRef.current.has(executionIdentity) : false;
+          const increment = alreadySeen ? 0 : 1;
+          if (executionIdentity && !alreadySeen) {
+            seenExecutionIdentitiesRef.current.add(executionIdentity);
+          }
+
+          setCounterOverrides((prev) => ({
+            ...prev,
+            [exerciseId]: {
+              last_score: rating,
+              execution_count: Math.max(0, baseCount + increment),
+            },
+          }));
+
+          if (optimisticId) {
+            appliedFeedbackEventsRef.current[optimisticId] = {
+              exerciseId,
+              rollback,
+              executionIdentity,
+              seenAdded: increment === 1,
+            };
+          }
+          delete pendingRollbackByExerciseRef.current[exerciseId];
+        }
+      }
+
+      setReloadNonce(n => n + 1);
+    });
+    const failedSub = DeviceEventEmitter.addListener('feedback:save_failed', (payload: any) => {
+      const optimisticId = String(payload?.optimisticId ?? '').trim();
+      if (!optimisticId) return;
+      const applied = appliedFeedbackEventsRef.current[optimisticId];
+      if (!applied?.exerciseId) return;
+      const { exerciseId, rollback, executionIdentity, seenAdded } = applied;
+      pendingRollbackByExerciseRef.current[exerciseId] = rollback;
+      if (seenAdded && executionIdentity) {
+        seenExecutionIdentitiesRef.current.delete(executionIdentity);
+      }
+      setCounterOverrides((prev) => {
+        return {
+          ...prev,
+          [exerciseId]: rollback,
+        };
+      });
+      delete appliedFeedbackEventsRef.current[optimisticId];
+    });
+    return () => {
+      savedSub.remove();
+      failedSub.remove();
+    };
+  }, [personalExercises, footballCoachExercises, trainerFolders]);
 
   const isPlayer = !isAdmin && !isTrainerLike && !isTrainerByTier;
   const entitlementsReady = !subscriptionFeaturesLoading;
@@ -1061,6 +1226,42 @@ export default function LibraryScreen() {
   }, [addedToTasksIds]);
 
   useEffect(() => {
+    const ids = Object.keys(counterOverrides);
+    if (!ids.length) return;
+    const set = new Set(ids);
+    setPersonalExercises((prev) =>
+      prev.map((exercise) => {
+        if (!set.has(exercise.id)) return exercise;
+        const override = counterOverrides[exercise.id];
+        return override
+          ? { ...exercise, last_score: override.last_score, execution_count: override.execution_count }
+          : exercise;
+      })
+    );
+    setFootballCoachExercises((prev) =>
+      prev.map((exercise) => {
+        if (!set.has(exercise.id)) return exercise;
+        const override = counterOverrides[exercise.id];
+        return override
+          ? { ...exercise, last_score: override.last_score, execution_count: override.execution_count }
+          : exercise;
+      })
+    );
+    setTrainerFolders((prev) =>
+      prev.map((folder) => ({
+        ...folder,
+        exercises: (folder.exercises || []).map((exercise) => {
+          if (!set.has(exercise.id)) return exercise;
+          const override = counterOverrides[exercise.id];
+          return override
+            ? { ...exercise, last_score: override.last_score, execution_count: override.execution_count }
+            : exercise;
+        }),
+      }))
+    );
+  }, [counterOverrides]);
+
+  useEffect(() => {
     const map = exerciseTaskMapRef.current;
     const exerciseIds = Object.keys(map || {});
     if (!exerciseIds.length) return;
@@ -1248,6 +1449,7 @@ export default function LibraryScreen() {
             activeOpacity={0.9}
             style={[styles.createButton, { backgroundColor: theme.primary }]}
             onPress={handleCreateExercise}
+            testID="library.createExerciseButton"
           >
             <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color="#fff" />
             <Text style={styles.createButtonText}>Opret øvelse</Text>
@@ -1338,10 +1540,15 @@ export default function LibraryScreen() {
             </TouchableOpacity>
           </View>
         ) : null}
-        <View style={[styles.stateCard, { backgroundColor: theme.card }]}>
+        <View style={[styles.stateCard, { backgroundColor: theme.card }]} testID="library.errorState">
           <Text style={[styles.stateTitle, { color: theme.error }]}>Kunne ikke hente bibliotek</Text>
           <Text style={[styles.stateMessage, { color: theme.textSecondary }]}>{errorMessage}</Text>
-          <TouchableOpacity onPress={handleRetry} activeOpacity={0.9} style={[styles.retryButton, { backgroundColor: theme.primary }]}>
+          <TouchableOpacity
+            onPress={handleRetry}
+            activeOpacity={0.9}
+            style={[styles.retryButton, { backgroundColor: theme.primary }]}
+            testID="library.error.retryButton"
+          >
             <Text style={styles.retryButtonText}>Prøv igen</Text>
           </TouchableOpacity>
         </View>
@@ -1350,7 +1557,7 @@ export default function LibraryScreen() {
   }
 
   return (
-    <View style={[styles.screen, { backgroundColor: theme.background }]}>
+    <View style={[styles.screen, { backgroundColor: theme.background }]} testID="library.screen">
       {renderTopBar()}
       {searchOpen ? (
         <View style={[styles.searchBarWrap, { backgroundColor: theme.card, borderColor: theme.highlight }]}>
@@ -1446,6 +1653,7 @@ export default function LibraryScreen() {
                     style={[styles.modalActionPrimary, { backgroundColor: colors.success }]}
                     onPress={handleConfirmAddToTasks}
                     disabled={isAddModalSaving}
+                    testID="library.addToTasksModal.confirmButton"
                   >
                     {isAddModalSaving ? (
                       <ActivityIndicator size="small" color="#fff" />
@@ -1585,7 +1793,9 @@ const styles = StyleSheet.create({
   starRow: { flexDirection: 'row', gap: 2 },
   positionPill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, maxWidth: 140 },
   positionPillText: { fontSize: 12, fontWeight: '700' },
-  exerciseMetaLine: { fontSize: 13, fontWeight: '600', marginTop: 10 },
+  exerciseMetaLineRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 },
+  exerciseMetaLine: { fontSize: 13, fontWeight: '600' },
+  exerciseMetaLineSeparator: { fontSize: 13, fontWeight: '600' },
 
   exerciseBottom: { marginTop: 12, flexDirection: 'row', justifyContent: 'flex-end' },
   ctaBadge: {

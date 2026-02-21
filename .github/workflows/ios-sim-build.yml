@@ -1,0 +1,104 @@
+name: iOS Simulator Build
+
+on:
+  push:
+    branches:
+      - '**'
+    paths:
+      - 'ios/**'
+      - 'app.json'
+      - 'app.config.js'
+      - 'app.config.ts'
+      - 'app.config.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'yarn.lock'
+      - 'Podfile'
+      - 'Podfile.lock'
+  workflow_dispatch:
+
+concurrency:
+  group: ios-sim-build-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-ios-sim-app:
+    name: Build iOS Simulator .app
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Select and boot iOS Simulator
+        run: |
+          SIM_DEVICE_LINE="$(xcrun simctl list devices available | grep -E 'iPhone .*\((Booted|Shutdown)\)' | head -n1 || true)"
+          if [ -z "$SIM_DEVICE_LINE" ]; then
+            echo "No available iPhone simulator found."
+            xcrun simctl list devices available
+            exit 1
+          fi
+          SIM_UDID="$(echo "$SIM_DEVICE_LINE" | grep -Eo '[0-9A-Fa-f-]{36}' | head -n1 || true)"
+          if [ -z "$SIM_UDID" ]; then
+            echo "Failed to parse simulator UDID from line:"
+            echo "$SIM_DEVICE_LINE"
+            exit 1
+          fi
+          SIM_NAME="$(echo "$SIM_DEVICE_LINE" | sed -E 's/^[[:space:]]*([^()]+).*/\1/' | xargs)"
+          xcrun simctl boot "$SIM_UDID" || true
+          xcrun simctl bootstatus "$SIM_UDID" -b
+          echo "SIM_UDID=$SIM_UDID" >> "$GITHUB_ENV"
+          echo "SIM_NAME=$SIM_NAME" >> "$GITHUB_ENV"
+
+      - name: Build app for simulator (build-only)
+        env:
+          CI: "1"
+          EXPO_NO_INTERACTIVE: "1"
+          EXPO_NO_TELEMETRY: "1"
+        run: |
+          mkdir -p "$HOME/.expo"
+          npx expo prebuild --platform ios --non-interactive
+          npx pod-install ios
+          xcodebuild \
+            -workspace ios/Footballcoach.xcworkspace \
+            -scheme Footballcoach \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination "id=$SIM_UDID" \
+            -derivedDataPath ios/build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package simulator .app artifact
+        run: |
+          APP_PATH="$(find ios/build/Build/Products -type d -name '*.app' -path '*iphonesimulator*' -print 2>/dev/null | xargs -I{} ls -td "{}" 2>/dev/null | head -n1 || true)"
+          if [ -z "$APP_PATH" ]; then
+            APP_PATH="$(find "$HOME/Library/Developer/Xcode/DerivedData" -type d -path '*/Build/Products/*iphonesimulator/*.app' -print 2>/dev/null | xargs -I{} ls -td "{}" 2>/dev/null | head -n1 || true)"
+          fi
+          if [ -z "$APP_PATH" ]; then
+            echo "Could not locate built .app in DerivedData."
+            exit 1
+          fi
+          echo "Using app path: $APP_PATH"
+          mkdir -p e2e-prebuilt
+          tar -czf "e2e-prebuilt/ios-sim-app.tgz" -C "$(dirname "$APP_PATH")" "$(basename "$APP_PATH")"
+
+      - name: Upload simulator app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-sim-app-${{ github.sha }}
+          path: e2e-prebuilt/ios-sim-app.tgz
+          retention-days: 30

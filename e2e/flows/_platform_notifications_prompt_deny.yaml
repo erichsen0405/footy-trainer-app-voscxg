@@ -1,0 +1,25 @@
+appId: ${MAESTRO_APP_ID}
+---
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - runFlow:
+          when:
+            visible: '.*(vil gerne sende dig notifikationer|Would Like to Send You Notifications).*'
+          commands:
+            - runFlow:
+                when:
+                  visible: '^Tillad ikke$'
+                commands:
+                  - tapOn: '^Tillad ikke$'
+            - runFlow:
+                when:
+                  visible: '^Don''t Allow$'
+                commands:
+                  - tapOn: '^Don''t Allow$'
+            - runFlow:
+                when:
+                  visible: '^Ikke tillad$'
+                commands:
+                  - tapOn: '^Ikke tillad$'

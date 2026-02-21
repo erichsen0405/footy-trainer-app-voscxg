@@ -333,7 +333,15 @@ export default function HomeScreen() {
   const router = useRouter();
   const { userRole } = useUserRole();
   const { activities, loading, refresh: refreshActivities } = useHomeActivities();
-  const { categories, createActivity, refreshData, currentWeekStats, toggleTaskCompletion, updateActivitySingle } = useFootball();
+  const {
+    categories,
+    createActivity,
+    refreshData,
+    currentWeekStats,
+    toggleTaskCompletion,
+    updateActivitySingle,
+    updateIntensityByCategory,
+  } = useFootball();
   const { adminMode, adminTargetId, adminTargetType } = useAdmin();
   const { selectedContext } = useTeamPlayer();
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -851,13 +859,26 @@ export default function HomeScreen() {
         return;
       }
 
-      await createActivity(activityData);
+      const { intensityApplyScope, ...createPayload } = activityData || {};
+
+      await createActivity(createPayload);
+      if (
+        intensityApplyScope === 'category' &&
+        typeof updateIntensityByCategory === 'function' &&
+        typeof createPayload?.categoryId === 'string' &&
+        createPayload.categoryId.trim().length > 0
+      ) {
+        await updateIntensityByCategory(
+          createPayload.categoryId,
+          createPayload.intensityEnabled === true
+        );
+      }
       refreshData();
     } catch (error) {
       console.error('[Home] Error creating activity:', error);
       // STEP H: Safe fallback - no throw
     }
-  }, [createActivity, refreshData]);
+  }, [createActivity, refreshData, updateIntensityByCategory]);
 
   const handleLoadMorePrevious = useCallback(() => {
     setShowPreviousWeeks(prev => {
@@ -1603,6 +1624,7 @@ export default function HomeScreen() {
       <Pressable 
         style={styles.createButton}
         onPress={() => setShowCreateModal(true)}
+        testID="home.createActivityButton"
       >
         <Text style={styles.createButtonText}>+  Opret Aktivitet</Text>
       </Pressable>

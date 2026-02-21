@@ -203,6 +203,7 @@ export default function TeamManagement() {
           style={[styles.addButton, { backgroundColor: colors.primary }]}
           onPress={() => setShowCreateModal(true)}
           activeOpacity={0.7}
+          testID="team.createButton"
         >
           <IconSymbol
             ios_icon_name="plus"
@@ -230,7 +231,7 @@ export default function TeamManagement() {
       ) : (
         <ScrollView style={styles.teamsList} showsVerticalScrollIndicator={false}>
           {teams.map((team) => (
-            <View key={team.id} style={styles.teamCard}>
+            <View key={team.id} style={styles.teamCard} testID={`team.card.${team.id}`}>
               <View style={styles.teamIcon}>
                 <IconSymbol
                   ios_icon_name="person.3.fill"
@@ -240,7 +241,7 @@ export default function TeamManagement() {
                 />
               </View>
               <View style={styles.teamInfo}>
-                <Text style={styles.teamName}>{team.name}</Text>
+                <Text style={styles.teamName} testID={`team.card.name.${team.id}`}>{team.name}</Text>
                 {team.description && (
                   <Text style={styles.teamDescription}>{team.description}</Text>
                 )}
@@ -274,6 +275,7 @@ export default function TeamManagement() {
                   style={styles.actionButton}
                   onPress={() => handleDeleteTeam(team)}
                   disabled={processing}
+                  testID={`team.card.deleteButton.${team.id}`}
                 >
                   <IconSymbol
                     ios_icon_name="trash"
@@ -308,7 +310,7 @@ export default function TeamManagement() {
                 color={colors.text}
               />
             </TouchableOpacity>
-            <Text style={styles.modalTitle}>Opret team</Text>
+            <Text style={styles.modalTitle} testID="team.create.modalTitle">Opret team</Text>
             <View style={{ width: 24 }} />
           </View>
 
@@ -321,6 +323,7 @@ export default function TeamManagement() {
               placeholder="F.eks. U15 Drenge"
               placeholderTextColor={colors.textSecondary}
               editable={!processing}
+              testID="team.create.nameInput"
             />
 
             <Text style={styles.label}>Beskrivelse</Text>
@@ -333,6 +336,7 @@ export default function TeamManagement() {
               multiline
               numberOfLines={4}
               editable={!processing}
+              testID="team.create.descriptionInput"
             />
           </ScrollView>
 
@@ -348,6 +352,7 @@ export default function TeamManagement() {
               style={[styles.saveButton, { backgroundColor: colors.primary }]}
               onPress={handleCreateTeam}
               disabled={processing}
+              testID="team.create.submitButton"
             >
               {processing ? (
                 <ActivityIndicator color="#fff" size="small" />

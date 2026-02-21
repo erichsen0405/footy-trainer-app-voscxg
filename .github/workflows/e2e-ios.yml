@@ -1,0 +1,523 @@
+name: E2E iOS
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "E2E target to run"
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - activity-task
+          - auth
+          - error-retry
+          - library-add-to-tasks
+          - notifications-permission
+          - paywall-gating
+          - role-based-ui
+
+concurrency:
+  group: e2e-ios-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e-ios:
+    name: E2E iOS
+    runs-on: macos-latest
+    permissions:
+      actions: read
+      contents: read
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'run-e2e-ios') ||
+      contains(github.event.pull_request.labels.*.name, 'run-e2e-ios-all') ||
+      contains(github.event.pull_request.labels.*.name, 'run-e2e-ios-activity-task') ||
+      contains(github.event.pull_request.labels.*.name, 'run-e2e-ios-auth') ||
+      contains(github.event.pull_request.labels.*.name, 'run-e2e-ios-error-retry') ||
+      contains(github.event.pull_request.labels.*.name, 'run-e2e-ios-library-add-to-tasks') ||
+      contains(github.event.pull_request.labels.*.name, 'run-e2e-ios-notifications-permission') ||
+      contains(github.event.pull_request.labels.*.name, 'run-e2e-ios-paywall-gating') ||
+      contains(github.event.pull_request.labels.*.name, 'run-e2e-ios-role-based-ui')
+    env:
+      MAESTRO_EMAIL: ${{ secrets.MAESTRO_EMAIL }}
+      MAESTRO_PASSWORD: ${{ secrets.MAESTRO_PASSWORD }}
+      MAESTRO_LOCKED_EMAIL: ${{ secrets.MAESTRO_LOCKED_EMAIL }}
+      MAESTRO_LOCKED_PASSWORD: ${{ secrets.MAESTRO_LOCKED_PASSWORD }}
+      MAESTRO_FEEDBACK_NOTE: ${{ secrets.MAESTRO_FEEDBACK_NOTE }}
+      MAESTRO_PLAYER_EMAIL: ${{ secrets.MAESTRO_PLAYER_EMAIL }}
+      MAESTRO_PLAYER_PASSWORD: ${{ secrets.MAESTRO_PLAYER_PASSWORD }}
+      MAESTRO_TRAINER_EMAIL: ${{ secrets.MAESTRO_TRAINER_EMAIL }}
+      MAESTRO_TRAINER_PASSWORD: ${{ secrets.MAESTRO_TRAINER_PASSWORD }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Maestro CLI
+        run: curl -Ls "https://get.maestro.mobile.dev" | bash
+
+      - name: Select and boot iOS Simulator
+        run: |
+          SIM_DEVICE_LINE="$(xcrun simctl list devices available | grep -E 'iPhone .*\((Booted|Shutdown)\)' | head -n1 || true)"
+          if [ -z "$SIM_DEVICE_LINE" ]; then
+            echo "No available iPhone simulator found."
+            xcrun simctl list devices available
+            exit 1
+          fi
+          SIM_UDID="$(echo "$SIM_DEVICE_LINE" | grep -Eo '[0-9A-Fa-f-]{36}' | head -n1 || true)"
+          if [ -z "$SIM_UDID" ]; then
+            echo "Failed to parse simulator UDID from line:"
+            echo "$SIM_DEVICE_LINE"
+            exit 1
+          fi
+          SIM_NAME="$(echo "$SIM_DEVICE_LINE" | sed -E 's/^[[:space:]]*([^()]+).*/\1/' | xargs)"
+          echo "Using simulator: $SIM_NAME ($SIM_UDID)"
+          echo "SIM_UDID=$SIM_UDID" >> "$GITHUB_ENV"
+          echo "SIM_NAME=$SIM_NAME" >> "$GITHUB_ENV"
+          xcrun simctl boot "$SIM_UDID" || true
+          xcrun simctl bootstatus "$SIM_UDID" -b
+
+      - name: Detect native-impacting changes
+        id: native_changes
+        run: |
+          is_native_change() {
+            local files="$1"
+            if echo "$files" | grep -Eq '^(ios/|app\.json$|app\.config\.(js|ts|json)$|package\.json$|package-lock\.json$|yarn\.lock$|Podfile$|Podfile\.lock$)'; then
+              return 0
+            fi
+            return 1
+          }
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+            git fetch --no-tags origin "${DEFAULT_BRANCH}"
+            if git merge-base "origin/${DEFAULT_BRANCH}" HEAD >/dev/null 2>&1; then
+              CHANGED_FILES="$(git diff --name-only "origin/${DEFAULT_BRANCH}...HEAD")"
+            else
+              echo "No merge-base found for origin/${DEFAULT_BRANCH}...HEAD in workflow_dispatch, falling back to two-dot diff."
+              CHANGED_FILES="$(git diff --name-only "origin/${DEFAULT_BRANCH}..HEAD")"
+            fi
+            echo "Changed files in workflow_dispatch ref range:"
+            echo "$CHANGED_FILES"
+            if is_native_change "$CHANGED_FILES"; then
+              echo "native_changed=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "native_changed=false" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            echo "native_changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          PR_HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          git fetch --no-tags --depth=1 origin "${PR_HEAD_SHA}" >/dev/null 2>&1 || true
+          git fetch --no-tags origin "${{ github.base_ref }}"
+
+          if git merge-base "origin/${{ github.base_ref }}" "${PR_HEAD_SHA}" >/dev/null 2>&1; then
+            CHANGED_FILES="$(git diff --name-only "origin/${{ github.base_ref }}...${PR_HEAD_SHA}")"
+          else
+            echo "No merge-base found for origin/${{ github.base_ref }}...${PR_HEAD_SHA}, falling back to two-dot diff."
+            CHANGED_FILES="$(git diff --name-only "origin/${{ github.base_ref }}..${PR_HEAD_SHA}")"
+          fi
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+
+          if is_native_change "$CHANGED_FILES"; then
+            echo "native_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "native_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resolve and download prebuilt simulator app artifact
+        id: resolve_app
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          find_run_by_sha() {
+            local sha="$1"
+            local result
+            local artifact_name="ios-sim-app-${sha}"
+            result="$(
+              gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=${artifact_name}&per_page=100" \
+                --jq '.artifacts[] | select(.expired==false) | .workflow_run.id' \
+                | head -n1 || true
+            )"
+            echo "$result"
+          }
+
+          find_latest_ios_sim_artifact() {
+            local result
+            result="$(
+              gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100" \
+                --jq '.artifacts
+                  | map(select(.expired==false and (.name | startswith("ios-sim-app-"))))
+                  | sort_by(.created_at)
+                  | reverse
+                  | .[]
+                  | "\(.workflow_run.id) \(.name)"' \
+                | head -n1 || true
+            )"
+            echo "$result"
+          }
+
+          latest_native_sha_in_pr() {
+            local base_ref="$1"
+            local head_sha="$2"
+            local merge_base=""
+            merge_base="$(git merge-base "origin/$base_ref" "$head_sha" 2>/dev/null || true)"
+            if [ -z "$merge_base" ]; then
+              echo ""
+              return 0
+            fi
+            git rev-list --ancestry-path "${merge_base}..${head_sha}" | while read -r commit; do
+              if git diff-tree --no-commit-id --name-only -r "$commit" | grep -Eq '^(ios/|app\.json$|app\.config\.(js|ts|json)$|package\.json$|package-lock\.json$|yarn\.lock$|Podfile$|Podfile\.lock$)'; then
+                echo "$commit"
+                break
+              fi
+            done
+          }
+
+          is_compatible_fallback_sha() {
+            local candidate_sha="$1"
+            local base_ref="$2"
+            local native_baseline_sha=""
+
+            git fetch --no-tags --depth=1 origin "$candidate_sha" >/dev/null 2>&1 || true
+
+            # Fallback build must be on current base branch history.
+            if [ -z "$base_ref" ]; then
+              return 1
+            fi
+            git fetch --no-tags --depth=500 origin "$base_ref" >/dev/null 2>&1 || true
+            if ! git merge-base --is-ancestor "$candidate_sha" "origin/$base_ref"; then
+              return 1
+            fi
+
+            # Find latest native-impacting commit on base branch and ensure
+            # candidate is not older than that native baseline.
+            native_baseline_sha="$(
+              git log --first-parent --format='%H' "origin/$base_ref" | while read -r commit; do
+                if git diff-tree --no-commit-id --name-only -r "$commit" | grep -Eq '^(ios/|app\.json$|app\.config\.(js|ts|json)$|package\.json$|package-lock\.json$|yarn\.lock$|Podfile$|Podfile\.lock$)'; then
+                  echo "$commit"
+                  break
+                fi
+              done
+            )"
+
+            if [ -n "$native_baseline_sha" ]; then
+              if ! git merge-base --is-ancestor "$native_baseline_sha" "$candidate_sha"; then
+                return 1
+              fi
+            fi
+
+            return 0
+          }
+
+          is_native_commit_sha() {
+            local sha="$1"
+            if git diff-tree --no-commit-id --name-only -r "$sha" | grep -Eq '^(ios/|app\.json$|app\.config\.(js|ts|json)$|package\.json$|package-lock\.json$|yarn\.lock$|Podfile$|Podfile\.lock$)'; then
+              return 0
+            fi
+            return 1
+          }
+
+          SELECTED_RUN=""
+          SELECTED_SHA=""
+          SELECTED_ARTIFACT_NAME=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            TARGET_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            TARGET_SHA="${GITHUB_SHA}"
+          fi
+          echo "target_sha=${TARGET_SHA}" >> "$GITHUB_OUTPUT"
+          if is_native_commit_sha "${TARGET_SHA}"; then
+            TARGET_COMMIT_NATIVE="true"
+          else
+            TARGET_COMMIT_NATIVE="false"
+          fi
+
+          EXACT_MATCH="$(find_run_by_sha "${TARGET_SHA}")"
+          if [ -n "$EXACT_MATCH" ]; then
+            SELECTED_RUN="$EXACT_MATCH"
+            SELECTED_SHA="$TARGET_SHA"
+            SELECTED_ARTIFACT_NAME="ios-sim-app-${TARGET_SHA}"
+            echo "Using exact artifact match for commit ${TARGET_SHA}."
+          fi
+
+          # If exact build is required (native head commit on PR), wait for the
+          # build workflow to finish instead of failing immediately.
+          if [ -z "$SELECTED_RUN" ] && [ "${{ steps.native_changes.outputs.native_changed }}" = "true" ] && [ "${TARGET_COMMIT_NATIVE}" = "true" ] && [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "Native-impacting PR changes detected. Waiting for exact simulator build artifact for ${TARGET_SHA}..."
+            for attempt in {1..60}; do
+              EXACT_MATCH="$(find_run_by_sha "${TARGET_SHA}")"
+              if [ -n "$EXACT_MATCH" ]; then
+                SELECTED_RUN="$EXACT_MATCH"
+                SELECTED_SHA="$TARGET_SHA"
+                SELECTED_ARTIFACT_NAME="ios-sim-app-${TARGET_SHA}"
+                echo "Found exact artifact after waiting (attempt ${attempt}/60)."
+                break
+              fi
+              echo "No exact artifact yet (attempt ${attempt}/60). Sleeping 30s..."
+              sleep 30
+            done
+          fi
+
+          # For native PRs where exact artifact is missing, allow fallback to
+          # latest successful build on PR head branch, guarded by native floor.
+          if [ -z "$SELECTED_RUN" ] && [ "${{ steps.native_changes.outputs.native_changed }}" = "true" ] && [ "${{ github.event_name }}" = "pull_request" ]; then
+            PR_HEAD_BRANCH="${{ github.event.pull_request.head.ref }}"
+            BASE_REF="${{ github.base_ref }}"
+            git fetch --no-tags --depth=500 origin "$BASE_REF" >/dev/null 2>&1 || true
+            PR_NATIVE_FLOOR_SHA="$(latest_native_sha_in_pr "$BASE_REF" "$TARGET_SHA")"
+            echo "Exact artifact not available. Trying PR-branch native-compatible fallback."
+            echo "PR head branch: $PR_HEAD_BRANCH"
+            echo "PR native floor SHA: ${PR_NATIVE_FLOOR_SHA:-<none>}"
+            while IFS= read -r candidate; do
+              [ -z "$candidate" ] && continue
+              CANDIDATE_RUN="$(echo "$candidate" | awk '{print $1}')"
+              CANDIDATE_SHA="$(echo "$candidate" | awk '{print $2}')"
+
+              git fetch --no-tags --depth=1 origin "$CANDIDATE_SHA" >/dev/null 2>&1 || true
+              if ! git merge-base --is-ancestor "$CANDIDATE_SHA" "$TARGET_SHA"; then
+                continue
+              fi
+              if [ -n "$PR_NATIVE_FLOOR_SHA" ] && ! git merge-base --is-ancestor "$PR_NATIVE_FLOOR_SHA" "$CANDIDATE_SHA"; then
+                continue
+              fi
+
+              SELECTED_RUN="$CANDIDATE_RUN"
+              SELECTED_SHA="$CANDIDATE_SHA"
+              SELECTED_ARTIFACT_NAME="ios-sim-app-${CANDIDATE_SHA}"
+              echo "Using PR-native-compatible fallback artifact (${SELECTED_SHA}) from branch ${PR_HEAD_BRANCH}."
+              break
+            done < <(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ios-sim-build.yml/runs?status=completed&per_page=100" | jq -r --arg branch "$PR_HEAD_BRANCH" '.workflow_runs[] | select(.conclusion=="success" and .head_branch==$branch) | "\(.id) \(.head_sha)"')
+          fi
+
+          # Relaxed fallback: take latest available iOS simulator artifact globally.
+          if [ -z "$SELECTED_RUN" ]; then
+            RELAXED_MATCH="$(find_latest_ios_sim_artifact)"
+            if [ -n "$RELAXED_MATCH" ]; then
+              SELECTED_RUN="$(echo "$RELAXED_MATCH" | awk '{print $1}')"
+              SELECTED_ARTIFACT_NAME="$(echo "$RELAXED_MATCH" | awk '{print $2}')"
+              SELECTED_SHA="${SELECTED_ARTIFACT_NAME#ios-sim-app-}"
+              echo "No exact/compatible artifact found. Using relaxed latest artifact fallback: ${SELECTED_ARTIFACT_NAME}."
+            fi
+          fi
+
+          if [ -z "$SELECTED_RUN" ]; then
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "No exact prebuilt artifact found for workflow_dispatch target ${TARGET_SHA}. Falling back to local simulator build in this job."
+              echo "artifact_found=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            if [ "${{ steps.native_changes.outputs.native_changed }}" = "true" ]; then
+              if [ "${{ github.event_name }}" = "pull_request" ]; then
+                echo "Native-impacting PR changes detected, but no compatible prebuilt artifact was found for ${TARGET_SHA}."
+                echo "Falling back to local simulator build in this job."
+                echo "artifact_found=false" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              echo "Native-impacting changes detected, but no exact artifact exists for ${TARGET_SHA}."
+              echo "Wait for '.github/workflows/ios-sim-build.yml' to finish for this commit."
+              exit 1
+            fi
+
+            if [ "${{ github.event_name }}" = "pull_request" ]; then
+              BASE_REF="${{ github.base_ref }}"
+            else
+              BASE_REF="${{ github.ref_name }}"
+            fi
+
+            while IFS= read -r candidate; do
+              [ -z "$candidate" ] && continue
+              CANDIDATE_RUN="$(echo "$candidate" | awk '{print $1}')"
+              CANDIDATE_SHA="$(echo "$candidate" | awk '{print $2}')"
+              CANDIDATE_BRANCH="$(echo "$candidate" | awk '{print $3}')"
+
+              if is_compatible_fallback_sha "$CANDIDATE_SHA" "$BASE_REF"; then
+                SELECTED_RUN="$CANDIDATE_RUN"
+                SELECTED_SHA="$CANDIDATE_SHA"
+                SELECTED_ARTIFACT_NAME="ios-sim-app-${CANDIDATE_SHA}"
+                SELECTED_BRANCH="$CANDIDATE_BRANCH"
+                echo "No exact artifact found. Falling back to latest compatible global build (${SELECTED_SHA} from branch ${SELECTED_BRANCH})."
+                break
+              fi
+            done < <(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ios-sim-build.yml/runs?status=completed&per_page=100" --jq '.workflow_runs[] | select(.conclusion=="success") | "\(.id) \(.head_sha) \(.head_branch)"')
+          fi
+
+          if [ -z "$SELECTED_RUN" ] || [ -z "$SELECTED_SHA" ]; then
+            echo "No compatible iOS simulator build artifact found."
+            echo "Expected exact match for ${TARGET_SHA}, or latest compatible global fallback build when no native changes."
+            exit 1
+          fi
+
+          ARTIFACT_NAME="${SELECTED_ARTIFACT_NAME:-ios-sim-app-${SELECTED_SHA}}"
+          echo "Using build workflow run id: $SELECTED_RUN"
+          echo "Using artifact name: $ARTIFACT_NAME"
+          mkdir -p e2e-prebuilt
+          gh run download "$SELECTED_RUN" -n "$ARTIFACT_NAME" -D e2e-prebuilt
+          tar -xzf e2e-prebuilt/ios-sim-app.tgz -C e2e-prebuilt
+          APP_PATH="$(find e2e-prebuilt -type d -name '*.app' | head -n1 || true)"
+          if [ -z "$APP_PATH" ]; then
+            echo "Downloaded artifact did not contain a .app bundle."
+            exit 1
+          fi
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          echo "artifact_found=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build app locally when prebuilt artifact is unavailable
+        if: steps.resolve_app.outputs.artifact_found != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request')
+        env:
+          CI: "1"
+          EXPO_NO_INTERACTIVE: "1"
+          EXPO_NO_TELEMETRY: "1"
+        run: |
+          echo "Building simulator app locally as fallback..."
+          mkdir -p "$HOME/.expo"
+          npx expo prebuild --platform ios --non-interactive
+          npx pod-install ios
+          xcodebuild \
+            -workspace ios/Footballcoach.xcworkspace \
+            -scheme Footballcoach \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination "id=$SIM_UDID" \
+            -derivedDataPath ios/build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+          APP_PATH="$(find ios/build/Build/Products -type d -name '*.app' -path '*iphonesimulator*' -print 2>/dev/null | xargs -I{} ls -td "{}" 2>/dev/null | head -n1 || true)"
+          if [ -z "$APP_PATH" ]; then
+            APP_PATH="$(find "$HOME/Library/Developer/Xcode/DerivedData" -type d -path '*/Build/Products/*iphonesimulator/*.app' -print 2>/dev/null | xargs -I{} ls -td "{}" 2>/dev/null | head -n1 || true)"
+          fi
+          if [ -z "$APP_PATH" ]; then
+            echo "Could not locate locally built .app in DerivedData."
+            exit 1
+          fi
+          mkdir -p e2e-prebuilt
+          tar -czf "e2e-prebuilt/ios-sim-app.tgz" -C "$(dirname "$APP_PATH")" "$(basename "$APP_PATH")"
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+
+      - name: Upload fallback simulator app artifact
+        if: steps.resolve_app.outputs.artifact_found != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-sim-app-${{ steps.resolve_app.outputs.target_sha }}
+          path: e2e-prebuilt/ios-sim-app.tgz
+          retention-days: 30
+
+      - name: Install app in simulator
+        run: |
+          xcrun simctl install "$SIM_UDID" "$APP_PATH"
+          xcrun simctl get_app_container "$SIM_UDID" com.erichsen.footballcoach data >/dev/null
+
+      - name: Start Metro on 8081
+        run: |
+          nohup npm run ios:metro > /tmp/metro.log 2>&1 &
+          for i in {1..60}; do
+            curl -sf http://127.0.0.1:8081/status && break
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:8081/status | grep -q "packager-status:running"
+
+      - name: Preflight checks
+        run: |
+          xcrun simctl list devices | grep -q "Booted"
+          xcrun simctl get_app_container booted com.erichsen.footballcoach data >/dev/null
+
+      - name: Resolve E2E scripts from label/dispatch
+        id: resolve
+        run: |
+          add_unique() {
+            local item="$1"
+            for existing in "${selected[@]}"; do
+              if [[ "$existing" == "$item" ]]; then
+                return
+              fi
+            done
+            selected+=("$item")
+          }
+
+          selected=()
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            case "${{ inputs.target }}" in
+              all) add_unique "e2e:ios:all" ;;
+              activity-task) add_unique "e2e:ios:activity-task-flow" ;;
+              auth) add_unique "e2e:ios:auth-flow" ;;
+              error-retry) add_unique "e2e:ios:error-retry-flow" ;;
+              library-add-to-tasks) add_unique "e2e:ios:library-add-to-tasks-flow" ;;
+              notifications-permission) add_unique "e2e:ios:notifications-permission-flow" ;;
+              paywall-gating) add_unique "e2e:ios:paywall-flow" ;;
+              role-based-ui) add_unique "e2e:ios:role-based-ui-flow" ;;
+              *) echo "Unsupported workflow_dispatch target: ${{ inputs.target }}"; exit 1 ;;
+            esac
+          else
+            labels_raw="${{ join(github.event.pull_request.labels.*.name, ' ') }}"
+            labels=" ${labels_raw} "
+
+            # "all" wins and runs the dedicated ordered suite (bootstrap first).
+            if [[ "$labels" == *" run-e2e-ios "* || "$labels" == *" run-e2e-ios-all "* ]]; then
+              add_unique "e2e:ios:all"
+            else
+              [[ "$labels" == *" run-e2e-ios-activity-task "* ]] && add_unique "e2e:ios:activity-task-flow"
+              [[ "$labels" == *" run-e2e-ios-auth "* ]] && add_unique "e2e:ios:auth-flow"
+              [[ "$labels" == *" run-e2e-ios-error-retry "* ]] && add_unique "e2e:ios:error-retry-flow"
+              [[ "$labels" == *" run-e2e-ios-library-add-to-tasks "* ]] && add_unique "e2e:ios:library-add-to-tasks-flow"
+              [[ "$labels" == *" run-e2e-ios-notifications-permission "* ]] && add_unique "e2e:ios:notifications-permission-flow"
+              [[ "$labels" == *" run-e2e-ios-paywall-gating "* ]] && add_unique "e2e:ios:paywall-flow"
+              [[ "$labels" == *" run-e2e-ios-role-based-ui "* ]] && add_unique "e2e:ios:role-based-ui-flow"
+            fi
+          fi
+
+          if [[ "${#selected[@]}" -eq 0 ]]; then
+            echo "No supported E2E labels/targets resolved."
+            exit 1
+          fi
+
+          echo "Resolved scripts:"
+          printf '%s\n' "${selected[@]}"
+          {
+            echo "scripts<<EOF"
+            printf '%s\n' "${selected[@]}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Run iOS E2E suite
+        run: |
+          export PATH="$HOME/.maestro/bin:$PATH"
+          while IFS= read -r script; do
+            if [[ -z "$script" ]]; then
+              continue
+            fi
+            echo "Running $script"
+            npm run "$script"
+          done <<< "${{ steps.resolve.outputs.scripts }}"

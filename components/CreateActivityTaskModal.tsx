@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
@@ -247,6 +245,7 @@ export function CreateActivityTaskModal({
         const success = await scheduleTaskReminderImmediate(
           taskData.id,
           title.trim(),
+          description.trim(),
           activityId,
           activityTitle,
           activityDateStr,
@@ -615,5 +614,4 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
 });
-
 

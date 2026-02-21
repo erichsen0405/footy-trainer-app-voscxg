@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
@@ -9,7 +7,7 @@ export interface Team {
   id: string;
   admin_id: string;
   name: string;
-  description?: string;
+  description?: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -48,6 +46,7 @@ interface TeamPlayerContextType {
 const TeamPlayerContext = createContext<TeamPlayerContextType | undefined>(undefined);
 
 const SELECTED_CONTEXT_KEY = '@selected_context';
+const toDateOrNow = (value: string | null | undefined): Date => (value ? new Date(value) : new Date());
 
 export function TeamPlayerProvider({ children }: { children: ReactNode }) {
   const [teams, setTeams] = useState<Team[]>([]);
@@ -60,15 +59,50 @@ export function TeamPlayerProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
 
-  // Get current user
+  // Keep userId in sync with auth state (initial load + sign in/out)
   useEffect(() => {
-    const getCurrentUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+    let mounted = true;
+
+    const syncCurrentUser = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!mounted) return;
       console.log('TeamPlayerContext - Current user:', user?.id);
       setUserId(user?.id || null);
     };
-    getCurrentUser();
+
+    syncCurrentUser();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      const nextUserId = session?.user?.id || null;
+      console.log('TeamPlayerContext - Auth state changed:', _event, nextUserId);
+      setUserId(nextUserId);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
+
+  const requireUserId = useCallback(async (): Promise<string> => {
+    if (userId) return userId;
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const resolvedUserId = user?.id || null;
+    setUserId(resolvedUserId);
+    if (!resolvedUserId) {
+      throw new Error('User not authenticated');
+    }
+
+    return resolvedUserId;
+  }, [userId]);
 
   // Load saved selection from AsyncStorage
   useEffect(() => {
@@ -109,8 +143,8 @@ export function TeamPlayerProvider({ children }: { children: ReactNode }) {
         admin_id: team.admin_id,
         name: team.name,
         description: team.description,
-        created_at: new Date(team.created_at),
-        updated_at: new Date(team.updated_at),
+        created_at: toDateOrNow(team.created_at),
+        updated_at: toDateOrNow(team.updated_at),
       }));
 
       console.log('Loaded teams:', loadedTeams.length);
@@ -202,16 +236,14 @@ export function TeamPlayerProvider({ children }: { children: ReactNode }) {
 
   // Create team
   const createTeam = async (name: string, description?: string): Promise<Team> => {
-    if (!userId) {
-      throw new Error('User not authenticated');
-    }
+    const resolvedUserId = await requireUserId();
 
     console.log('Creating team:', name);
 
     const { data, error } = await supabase
       .from('teams')
       .insert({
-        admin_id: userId,
+        admin_id: resolvedUserId,
         name,
         description,
       })
@@ -228,8 +260,8 @@ export function TeamPlayerProvider({ children }: { children: ReactNode }) {
       admin_id: data.admin_id,
       name: data.name,
       description: data.description,
-      created_at: new Date(data.created_at),
-      updated_at: new Date(data.updated_at),
+      created_at: toDateOrNow(data.created_at),
+      updated_at: toDateOrNow(data.updated_at),
     };
 
     console.log('Team created:', newTeam.id);
@@ -239,9 +271,7 @@ export function TeamPlayerProvider({ children }: { children: ReactNode }) {
 
   // Update team
   const updateTeam = async (teamId: string, name: string, description?: string) => {
-    if (!userId) {
-      throw new Error('User not authenticated');
-    }
+    const resolvedUserId = await requireUserId();
 
     console.log('Updating team:', teamId);
 
@@ -253,7 +283,7 @@ export function TeamPlayerProvider({ children }: { children: ReactNode }) {
         updated_at: new Date().toISOString(),
       })
       .eq('id', teamId)
-      .eq('admin_id', userId);
+      .eq('admin_id', resolvedUserId);
 
     if (error) {
       console.error('Error updating team:', error);
@@ -266,9 +296,7 @@ export function TeamPlayerProvider({ children }: { children: ReactNode }) {
 
   // Delete team
   const deleteTeam = async (teamId: string) => {
-    if (!userId) {
-      throw new Error('User not authenticated');
-    }
+    const resolvedUserId = await requireUserId();
 
     console.log('Deleting team:', teamId);
 
@@ -276,7 +304,7 @@ export function TeamPlayerProvider({ children }: { children: ReactNode }) {
       .from('teams')
       .delete()
       .eq('id', teamId)
-      .eq('admin_id', userId);
+      .eq('admin_id', resolvedUserId);
 
     if (error) {
       console.error('Error deleting team:', error);
@@ -295,9 +323,7 @@ export function TeamPlayerProvider({ children }: { children: ReactNode }) {
 
   // Add player to team
   const addPlayerToTeam = async (teamId: string, playerId: string) => {
-    if (!userId) {
-      throw new Error('User not authenticated');
-    }
+    await requireUserId();
 
     console.log('Adding player to team:', { teamId, playerId });
 
@@ -318,9 +344,7 @@ export function TeamPlayerProvider({ children }: { children: ReactNode }) {
 
   // Remove player from team
   const removePlayerFromTeam = async (teamId: string, playerId: string) => {
-    if (!userId) {
-      throw new Error('User not authenticated');
-    }
+    await requireUserId();
 
     console.log('Removing player from team:', { teamId, playerId });
 
@@ -340,9 +364,7 @@ export function TeamPlayerProvider({ children }: { children: ReactNode }) {
 
   // Get team members
   const getTeamMembers = async (teamId: string): Promise<Player[]> => {
-    if (!userId) {
-      throw new Error('User not authenticated');
-    }
+    await requireUserId();
 
     console.log('Fetching team members for team:', teamId);
 
@@ -413,5 +435,3 @@ export function useTeamPlayer() {
   }
   return context;
 }
-
-

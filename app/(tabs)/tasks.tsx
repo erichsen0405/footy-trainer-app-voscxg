@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
@@ -28,6 +26,7 @@ import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { AdminContextWrapper } from '@/components/AdminContextWrapper';
 import { supabase } from '@/integrations/supabase/client';
 import { taskService } from '@/services/taskService';
+import { forceRefreshNotificationQueue } from '@/utils/notificationScheduler';
 
 // ✅ Robust import: undgå Hermes-crash hvis named export "colors" ikke findes
 import * as CommonStyles from '@/styles/commonStyles';
@@ -113,6 +112,10 @@ interface FolderItem {
 type PendingAction =
   | { type: 'create' | 'edit'; data: { task: Task; videoUrl: string; subtasks: Subtask[]; isCreating: boolean } }
   | { type: 'delete'; data: { taskId: string } };
+
+const DELETE_TEMPLATE_CONFIRM_TEXT = 'SLET';
+const DELETE_TEMPLATE_WARNING_TEXT =
+  'Hvis du sletter denne opgaveskabelon, slettes alle tidligere og fremtidige opgaver på relaterede aktiviteter. Hvis du vil beholde historik, vælg Arkiver i stedet.';
 
 // ✅ læs source-folder robust (snake_case eller camelCase)
 function getTaskSourceFolder(task: any): string {
@@ -231,23 +234,32 @@ export const TaskCard = React.memo(
     isDark,
     onPress,
     onDuplicate,
+    onArchive = () => {},
     onDelete,
     onVideoPress,
     getCategoryNames,
+    isArchived = false,
   }: {
     task: Task;
     isDark: boolean;
     onPress: () => void;
     onDuplicate: () => void;
+    onArchive?: () => void;
     onDelete: () => void;
     onVideoPress: (url: string) => void;
     getCategoryNames: (categoryIds: string[]) => string;
+    isArchived?: boolean;
   }) => {
     const videoUrl = (task as any)?.videoUrl ?? null;
     const ytThumb = typeof videoUrl === 'string' && videoUrl.includes('youtu') ? getYouTubeThumbnail(videoUrl) : null;
+    const taskId = String((task as any)?.id ?? '');
 
     return (
-      <TouchableOpacity style={[styles.taskCard, { backgroundColor: isDark ? '#2a2a2a' : colors.card }]} onPress={onPress}>
+      <TouchableOpacity
+        style={[styles.taskCard, { backgroundColor: isDark ? '#2a2a2a' : colors.card }]}
+        onPress={onPress}
+        testID={`tasks.template.card.${taskId}`}
+      >
         <View style={styles.taskHeader}>
           <View style={styles.taskHeaderLeft}>
             <IconSymbol ios_icon_name="doc.text" android_material_icon_name="description" size={20} color={colors.secondary} />
@@ -262,7 +274,19 @@ export const TaskCard = React.memo(
             <TouchableOpacity onPress={onPress} style={styles.actionButton}>
               <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={20} color={colors.accent} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={onDelete} style={styles.actionButton}>
+            <TouchableOpacity
+              onPress={onArchive}
+              style={styles.actionButton}
+              testID={`tasks.template.archiveButton.${taskId}`}
+            >
+              <IconSymbol
+                ios_icon_name={isArchived ? 'arrow.uturn.backward.circle' : 'archivebox'}
+                android_material_icon_name={isArchived ? 'unarchive' : 'archive'}
+                size={20}
+                color={colors.primary}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onDelete} style={styles.actionButton} testID={`tasks.template.deleteButton.${taskId}`}>
               <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={20} color={colors.error} />
             </TouchableOpacity>
           </View>
@@ -313,14 +337,18 @@ const FolderItemComponent = React.memo(
     folder: FolderItem;
     isExpanded: boolean;
     onToggle: () => void;
-    renderTaskCard: (task: Task) => React.ReactNode;
+    renderTaskCard: (task: Task) => React.ReactElement | null;
     textColor: string;
     textSecondaryColor: string;
     cardBgColor: string;
   }) => {
     return (
       <View>
-        <TouchableOpacity style={[styles.folderHeader, { backgroundColor: cardBgColor }]} onPress={onToggle}>
+        <TouchableOpacity
+          style={[styles.folderHeader, { backgroundColor: cardBgColor }]}
+          onPress={onToggle}
+          testID={`tasks.folder.toggle.${folder.id}`}
+        >
           <View style={styles.folderHeaderLeft}>
             <IconSymbol ios_icon_name={folder.icon} android_material_icon_name={folder.androidIcon} size={24} color={colors.primary} />
             <Text style={[styles.folderName, { color: textColor }]}>{folder.name}</Text>
@@ -419,6 +447,10 @@ export default function TasksScreen() {
 
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [templateView, setTemplateView] = useState<'active' | 'archived'>('active');
+  const [deleteCandidate, setDeleteCandidate] = useState<{ taskId: string; title: string } | null>(null);
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
+  const [isDeleteConfirming, setIsDeleteConfirming] = useState(false);
 
   const safeTasks = useMemo(() => (tasks || []).filter(Boolean) as Task[], [tasks]);
 
@@ -432,7 +464,15 @@ export default function TasksScreen() {
     });
   }, [safeTasks, searchQuery]);
 
-  const templateTasks = useMemo(() => filteredTasks.filter((t: any) => !!t?.isTemplate), [filteredTasks]);
+  const templateTasks = useMemo(
+    () =>
+      filteredTasks.filter((t: any) => {
+        if (!t?.isTemplate) return false;
+        const isArchived = typeof t?.archivedAt === 'string' && t.archivedAt.trim().length > 0;
+        return templateView === 'active' ? !isArchived : isArchived;
+      }),
+    [filteredTasks, templateView],
+  );
   const folders = useMemo(() => organizeFolders(templateTasks), [templateTasks]);
 
   const onRefresh = useCallback(async () => {
@@ -588,19 +628,78 @@ export default function TasksScreen() {
     await executeSaveTask();
   }, [selectedTask, adminMode, selectedContext, isCreating, videoUrl, subtasks, executeSaveTask]);
 
-  const handleDeleteTask = useCallback(
-    (taskId: string) => {
+  const handleArchiveTask = useCallback(
+    async (task: Task) => {
+      const taskId = String((task as any)?.id ?? '').trim();
+      if (!taskId) return;
+
+      const isArchived = typeof (task as any)?.archivedAt === 'string' && String((task as any).archivedAt).trim().length > 0;
+
+      try {
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (sessionError || !session?.user?.id) {
+          throw new Error('No authenticated user');
+        }
+
+        await taskService.setTaskTemplateArchived(taskId, session.user.id, !isArchived);
+        await refreshAll?.();
+        if (!refreshAll) {
+          await forceRefreshNotificationQueue();
+        }
+      } catch (error: any) {
+        Alert.alert('Fejl', error?.message || 'Kunne ikke opdatere arkivstatus');
+      }
+    },
+    [refreshAll],
+  );
+
+  const handleDeleteTask = useCallback((task: Task) => {
+    const taskId = String((task as any)?.id ?? '').trim();
+    if (!taskId) return;
+    setDeleteCandidate({
+      taskId,
+      title: String((task as any)?.title ?? '').trim(),
+    });
+    setDeleteConfirmationText('');
+  }, []);
+
+  const closeDeleteTemplateModal = useCallback(() => {
+    setDeleteCandidate(null);
+    setDeleteConfirmationText('');
+    setIsDeleteConfirming(false);
+  }, []);
+
+  const runDeleteTask = useCallback(
+    async (taskId: string) => {
       if (adminMode !== 'self' && selectedContext?.type) {
         setPendingAction({ type: 'delete', data: { taskId } });
         setShowConfirmDialog(true);
         return;
       }
 
-      deleteTask?.(taskId);
+      await deleteTask?.(taskId);
       closeTaskModal();
     },
     [adminMode, selectedContext, deleteTask, closeTaskModal],
   );
+
+  const confirmDeleteTemplate = useCallback(async () => {
+    if (!deleteCandidate) return;
+    if (deleteConfirmationText !== DELETE_TEMPLATE_CONFIRM_TEXT) return;
+
+    setIsDeleteConfirming(true);
+    try {
+      await runDeleteTask(deleteCandidate.taskId);
+      closeDeleteTemplateModal();
+    } catch (error: any) {
+      Alert.alert('Fejl', error?.message || 'Kunne ikke slette opgaveskabelonen');
+      setIsDeleteConfirming(false);
+    }
+  }, [deleteCandidate, deleteConfirmationText, runDeleteTask, closeDeleteTemplateModal]);
 
   const handleConfirmAction = useCallback(async () => {
     setShowConfirmDialog(false);
@@ -741,12 +840,14 @@ export default function TasksScreen() {
         isDark={isDark}
         onPress={() => openTaskModal(task)}
         onDuplicate={() => handleDuplicateTask(String((task as any).id))}
-        onDelete={() => handleDeleteTask(String((task as any).id))}
+        onArchive={() => void handleArchiveTask(task)}
+        onDelete={() => handleDeleteTask(task)}
         onVideoPress={openVideoModal}
         getCategoryNames={getCategoryNames}
+        isArchived={typeof (task as any)?.archivedAt === 'string' && String((task as any).archivedAt).trim().length > 0}
       />
     ),
-    [isDark, openTaskModal, handleDuplicateTask, handleDeleteTask, openVideoModal, getCategoryNames],
+    [isDark, openTaskModal, handleDuplicateTask, handleArchiveTask, handleDeleteTask, openVideoModal, getCategoryNames],
   );
 
   const bgColor = isDark ? '#1a1a1a' : colors.background;
@@ -797,6 +898,7 @@ export default function TasksScreen() {
             placeholderTextColor={textSecondaryColor}
             value={searchQuery}
             onChangeText={setSearchQuery}
+            testID="tasks.searchInput"
           />
         </View>
 
@@ -825,6 +927,7 @@ export default function TasksScreen() {
                   true,
                 )
               }
+              testID="tasks.newTemplateButton"
             >
               <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add_circle" size={28} color={colors.primary} />
               <Text style={[styles.addButtonText, { color: colors.primary }]}>Ny skabelon</Text>
@@ -836,21 +939,63 @@ export default function TasksScreen() {
               ? `Opgaveskabeloner for ${String(selectedContext?.name ?? '')}. Disse vil automatisk blive tilføjet til relevante aktiviteter.`
               : 'Opgaver organiseret i mapper efter oprindelse'}
           </Text>
+
+          <View style={[styles.templateViewToggle, { backgroundColor: cardBgColor }]}>
+            <TouchableOpacity
+              style={[
+                styles.templateViewToggleButton,
+                templateView === 'active' && { backgroundColor: colors.primary },
+              ]}
+              onPress={() => setTemplateView('active')}
+              testID="tasks.template.filter.activeButton"
+            >
+              <Text style={[styles.templateViewToggleText, { color: templateView === 'active' ? '#fff' : textColor }]}>
+                Aktive
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.templateViewToggleButton,
+                templateView === 'archived' && { backgroundColor: colors.primary },
+              ]}
+              onPress={() => setTemplateView('archived')}
+              testID="tasks.template.filter.archivedButton"
+            >
+              <Text style={[styles.templateViewToggleText, { color: templateView === 'archived' ? '#fff' : textColor }]}>
+                Arkiverede
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </>
     );
-  }, [templateTasks.length, adminMode, selectedContext, isDark, textColor, textSecondaryColor, searchQuery, openTaskModal, cardBgColor]);
+  }, [
+    templateTasks.length,
+    adminMode,
+    selectedContext,
+    isDark,
+    textColor,
+    textSecondaryColor,
+    searchQuery,
+    openTaskModal,
+    cardBgColor,
+    templateView,
+  ]);
 
   const ListEmptyComponent = useMemo(() => {
     return (
       <View style={[styles.emptyState, { backgroundColor: cardBgColor }]}>
         <IconSymbol ios_icon_name="folder" android_material_icon_name="folder_open" size={48} color={textSecondaryColor} />
         <Text style={[styles.emptyStateText, { color: textSecondaryColor }]}>
-          {searchQuery ? 'Ingen opgaver matcher din søgning' : 'Ingen opgaveskabeloner endnu'}
+          {searchQuery
+            ? 'Ingen opgaver matcher din søgning'
+            : templateView === 'active'
+              ? 'Ingen aktive opgaveskabeloner'
+              : 'Ingen arkiverede opgaveskabeloner'}
         </Text>
       </View>
     );
-  }, [searchQuery, cardBgColor, textSecondaryColor]);
+  }, [searchQuery, cardBgColor, textSecondaryColor, templateView]);
 
   const ListFooterComponent = useMemo(() => <View style={{ height: 100 }} />, []);
 
@@ -909,7 +1054,7 @@ export default function TasksScreen() {
               data={[{ key: 'form' }]}
               keyExtractor={(item) => item.key}
               renderItem={() => (
-                <View style={styles.modalBody}>
+                <View style={styles.modalBody} testID="tasks.template.formBody">
                   <Text style={[styles.label, { color: textColor }]}>Titel</Text>
                   <TextInput
                     style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
@@ -918,6 +1063,7 @@ export default function TasksScreen() {
                     placeholder="Opgavens titel"
                     placeholderTextColor={textSecondaryColor}
                     editable={!isSaving}
+                    testID="tasks.template.titleInput"
                   />
 
                   <Text style={[styles.label, { color: textColor }]}>Beskrivelse</Text>
@@ -930,6 +1076,7 @@ export default function TasksScreen() {
                     multiline
                     numberOfLines={4}
                     editable={!isSaving}
+                    testID="tasks.template.descriptionInput"
                   />
 
                   <View style={styles.videoSection}>
@@ -986,6 +1133,7 @@ export default function TasksScreen() {
                           placeholder={`Delopgave ${index + 1}`}
                           placeholderTextColor={textSecondaryColor}
                           editable={!isSaving}
+                          testID={`tasks.template.subtaskInput.${index}`}
                         />
                         {subtasks.length > 1 && (
                           <TouchableOpacity style={styles.removeSubtaskButton} onPress={() => removeSubtask(index)} disabled={isSaving}>
@@ -1019,6 +1167,7 @@ export default function TasksScreen() {
                         thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
                         ios_backgroundColor={isDark ? '#555' : '#d0d7e3'}
                         disabled={isSaving}
+                        testID="tasks.template.reminderToggle"
                       />
                     </View>
 
@@ -1048,6 +1197,7 @@ export default function TasksScreen() {
                                   )
                                 }
                                 disabled={isSaving}
+                                testID={`tasks.template.reminderOption.${option.value}`}
                               >
                                 <Text style={{ color: selected ? '#fff' : textColor, fontWeight: selected ? '700' : '600' }}>
                                   {option.label}
@@ -1089,6 +1239,7 @@ export default function TasksScreen() {
                         thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
                         ios_backgroundColor={isDark ? '#555' : '#d0d7e3'}
                         disabled={isSaving}
+                        testID="tasks.template.feedbackToggle"
                       />
                     </View>
 
@@ -1116,6 +1267,7 @@ export default function TasksScreen() {
                                   setSelectedTask(prev => (prev ? ({ ...prev, afterTrainingDelayMinutes: option.value } as Task) : prev))
                                 }
                                 disabled={isSaving}
+                                testID={`tasks.template.feedbackDelayOption.${option.value}`}
                               >
                                 <Text style={{ color: selected ? '#fff' : textColor, fontWeight: selected ? '700' : '600' }}>
                                   {option.label}
@@ -1133,7 +1285,7 @@ export default function TasksScreen() {
 
                   <Text style={[styles.label, { color: textColor }]}>Aktivitetskategorier</Text>
                   <View style={styles.categoriesGrid}>
-                    {uniqueCategories.map((category: any) => {
+                    {uniqueCategories.map((category: any, index: number) => {
                       const catId = String(category.id);
                       const catColor = category.color || colors.primary;
                       const selected = !!selectedTask?.categoryIds?.includes?.(catId);
@@ -1147,6 +1299,7 @@ export default function TasksScreen() {
                           ]}
                           onPress={() => toggleCategory(catId)}
                           disabled={isSaving}
+                          testID={`tasks.template.categoryChip.${index}`}
                         >
                           <Text style={styles.categoryEmoji}>{String(category.emoji ?? '')}</Text>
                           <Text style={[styles.categoryName, { color: selected ? '#fff' : textColor }]}>{String(category.name ?? '')}</Text>
@@ -1167,6 +1320,7 @@ export default function TasksScreen() {
                 style={[styles.modalButton, styles.saveButton, { backgroundColor: colors.primary, opacity: isSaving ? 0.6 : 1 }]}
                 onPress={handleSaveTask}
                 disabled={isSaving}
+                testID="tasks.template.saveButton"
               >
                 <Text style={[styles.modalButtonText, { color: '#fff' }]}>{isSaving ? 'Gemmer...' : 'Gem'}</Text>
               </TouchableOpacity>
@@ -1201,9 +1355,73 @@ export default function TasksScreen() {
         </View>
       </Modal>
 
+      <Modal
+        visible={!!deleteCandidate}
+        animationType="fade"
+        transparent
+        onRequestClose={closeDeleteTemplateModal}
+      >
+        <View style={styles.deleteConfirmOverlay}>
+          <View style={[styles.deleteConfirmCard, { backgroundColor: cardBgColor }]}>
+            <Text style={[styles.deleteConfirmTitle, { color: textColor }]}>Slet opgaveskabelon</Text>
+            <Text style={[styles.deleteConfirmWarning, { color: textColor }]}>
+              {DELETE_TEMPLATE_WARNING_TEXT}
+            </Text>
+            <Text style={[styles.deleteConfirmHelper, { color: textSecondaryColor }]}>
+              Skriv {DELETE_TEMPLATE_CONFIRM_TEXT} for at aktivere sletning.
+            </Text>
+            <TextInput
+              style={[styles.deleteConfirmInput, { backgroundColor: bgColor, color: textColor, borderColor: isDark ? '#3a3a3a' : '#d0d7e3' }]}
+              value={deleteConfirmationText}
+              onChangeText={setDeleteConfirmationText}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              placeholder={DELETE_TEMPLATE_CONFIRM_TEXT}
+              placeholderTextColor={textSecondaryColor}
+              testID="tasks.template.deleteModal.input"
+            />
+
+            <View style={styles.deleteConfirmActions}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton, { backgroundColor: bgColor }]}
+                onPress={closeDeleteTemplateModal}
+              >
+                <Text style={[styles.modalButtonText, { color: textColor }]}>Annuller</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalButton,
+                  styles.deleteConfirmButton,
+                  {
+                    backgroundColor: colors.error,
+                    opacity:
+                      deleteConfirmationText === DELETE_TEMPLATE_CONFIRM_TEXT && !isDeleteConfirming
+                        ? 1
+                        : 0.45,
+                  },
+                ]}
+                disabled={deleteConfirmationText !== DELETE_TEMPLATE_CONFIRM_TEXT || isDeleteConfirming}
+                onPress={() => {
+                  void confirmDeleteTemplate();
+                }}
+                testID="tasks.template.deleteModal.confirmButton"
+              >
+                <Text style={[styles.modalButtonText, { color: '#fff' }]}>
+                  {isDeleteConfirming ? 'Sletter...' : 'Slet'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <ContextConfirmationDialog
         visible={showConfirmDialog}
-        contextType={String(selectedContext?.type ?? 'player')}
+        contextType={
+          selectedContext?.type === 'player' || selectedContext?.type === 'team'
+            ? selectedContext.type
+            : null
+        }
         contextName={String(selectedContext?.name ?? '')}
         actionType={(pendingAction?.type as any) || 'edit'}
         itemType="opgave"
@@ -1230,6 +1448,9 @@ const styles = StyleSheet.create({
   sectionDescription: { fontSize: 14, marginBottom: 12, lineHeight: 20 },
   addButton: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   addButtonText: { fontSize: 16, fontWeight: '600' },
+  templateViewToggle: { flexDirection: 'row', padding: 4, borderRadius: 12, gap: 6 },
+  templateViewToggleButton: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 10 },
+  templateViewToggleText: { fontSize: 14, fontWeight: '600' },
   folderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderRadius: 12, marginBottom: 8 },
   folderHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
   folderName: { fontSize: 18, fontWeight: '600', flex: 1 },
@@ -1299,6 +1520,43 @@ const styles = StyleSheet.create({
   cancelButton: { borderWidth: 1, borderColor: colors.highlight },
   saveButton: {},
   modalButtonText: { fontSize: 16, fontWeight: '600' },
+  deleteConfirmOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  deleteConfirmCard: {
+    borderRadius: 16,
+    padding: 16,
+  },
+  deleteConfirmTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  deleteConfirmWarning: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 10,
+  },
+  deleteConfirmHelper: {
+    fontSize: 13,
+    marginBottom: 8,
+  },
+  deleteConfirmInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+  },
+  deleteConfirmActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+  deleteConfirmButton: {},
 
   reminderSectionCard: {
     borderRadius: 16,
@@ -1335,5 +1593,3 @@ const styles = StyleSheet.create({
     height: 12,
   },
 });
-
-

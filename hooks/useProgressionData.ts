@@ -1,10 +1,9 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DeviceEventEmitter } from 'react-native';
 import { subDays, startOfDay, parseISO, format, differenceInCalendarDays, addDays } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { ActivityCategory } from '@/types';
+import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 
 export type ProgressionMetric = 'rating' | 'intensity';
 
@@ -13,6 +12,7 @@ export interface ProgressionEntry {
   kind: ProgressionMetric;
   createdAt: string;
   activityId: string | null;
+  taskInstanceId?: string | null;
   taskTemplateId: string | null;
   taskTemplateName?: string | null;
   taskTemplateDescription?: string | null;
@@ -130,39 +130,91 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-
 
 type DedupeSource = {
   activityId?: string | null;
+  taskInstanceId?: string | null;
   sessionKey?: string | null;
   dateKey?: string | null;
   id?: string | null;
 };
 
-const resolveBaseKey = (entry: DedupeSource) => {
+type CreatedAtSource = {
+  createdAt?: string | null;
+};
+
+// Exported for unit tests; keep usage internal to this module in app code.
+export const resolveBaseKey = (entry: DedupeSource) => {
+  const sessionKey = entry?.sessionKey ?? null;
+  if (sessionKey && sessionKey.startsWith('event:')) {
+    return sessionKey;
+  }
   const activityId = entry?.activityId ?? null;
   if (activityId && UUID_REGEX.test(activityId)) {
     return activityId;
   }
-  const sessionKey = entry?.sessionKey ?? null;
   const dateKey = entry?.dateKey ?? null;
   const id = entry?.id ?? null;
   return sessionKey ?? activityId ?? dateKey ?? id ?? 'na';
 };
 
-const toDateKey = (value?: string | null) => (value ? value.slice(0, 10) : '');
-const normalizeTime = (value?: string | null) => {
+export const resolveFeedbackBaseKey = (entry: DedupeSource) => {
+  const sessionKey = entry?.sessionKey ?? null;
+  if (sessionKey && sessionKey.startsWith('event:')) {
+    return sessionKey;
+  }
+  const activityId = entry?.activityId ?? null;
+  if (activityId && UUID_REGEX.test(activityId)) {
+    return activityId;
+  }
+  const taskInstanceId = entry?.taskInstanceId ?? null;
+  if (taskInstanceId && UUID_REGEX.test(taskInstanceId)) {
+    return `task:${taskInstanceId}`;
+  }
+  return sessionKey ?? activityId ?? taskInstanceId ?? entry?.dateKey ?? entry?.id ?? 'na';
+};
+
+export const safeDateMs = (value?: string | null) => {
+  const ms = new Date(String(value ?? '')).getTime();
+  return Number.isFinite(ms) ? ms : 0;
+};
+
+export const dedupeByLatestCreatedAt = <T extends CreatedAtSource>(
+  entries: T[],
+  keyBuilder: (entry: T) => string
+): T[] => {
+  const latestByKey = new Map<string, { item: T; ms: number; index: number }>();
+
+  entries.forEach((entry, index) => {
+    const key = keyBuilder(entry);
+    const currentMs = safeDateMs(entry.createdAt);
+    const previous = latestByKey.get(key);
+    if (!previous) {
+      latestByKey.set(key, { item: entry, ms: currentMs, index });
+      return;
+    }
+    if (currentMs > previous.ms || (currentMs === previous.ms && index > previous.index)) {
+      latestByKey.set(key, { item: entry, ms: currentMs, index });
+    }
+  });
+
+  return Array.from(latestByKey.values()).map((entry) => entry.item);
+};
+
+export const toDateKey = (value?: string | null) => (value ? value.slice(0, 10) : '');
+export const normalizeTime = (value?: string | null) => {
   if (!value) return null;
   const trimmed = String(value).trim();
   if (!trimmed) return null;
   return trimmed.slice(0, 5);
 };
-const isUuid = (value?: string | null) => {
+export const isUuid = (value?: string | null) => {
   if (!value) return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+  return UUID_REGEX.test(value);
 };
-const normalizeEventId = (value?: string | null) => {
+export const normalizeEventId = (value?: string | null) => {
   const trimmed = String(value ?? '').trim();
   if (!trimmed) return null;
   return isUuid(trimmed) ? trimmed : null;
 };
-const buildSessionKey = (args: {
+export const buildSessionKey = (args: {
   eventId?: string | null;
   userId?: string | null;
   date?: string | null;
@@ -175,6 +227,178 @@ const buildSessionKey = (args: {
   const owner = String(args.userId ?? '').trim();
   if (!owner || !dateKey) return null;
   return `${owner}:${dateKey}:${timeKey}`;
+};
+
+type ProgressionSummaryArgs = {
+  metric: ProgressionMetric;
+  days: number;
+  focusCompleted: ProgressionEntry[];
+  focusCompletedPrevious: ProgressionEntry[];
+  intensityCompleted: ProgressionEntry[];
+  intensityCompletedPrevious: ProgressionEntry[];
+  intensityPossible: ProgressionEntry[];
+  intensityPossiblePrevious: ProgressionEntry[];
+  ratingPossibleCount: number;
+  ratingCompletedCount: number;
+  ratingPreviousPossibleCount: number;
+  ratingPreviousCompletedCount: number;
+};
+
+export const buildPeriodBounds = (days: number, now = new Date()) => {
+  const today = startOfDay(now);
+  const periodStart = startOfDay(subDays(today, Math.max(days - 1, 0)));
+  const periodEndExclusive = startOfDay(addDays(today, 1));
+  const previousStart = startOfDay(subDays(periodStart, days));
+  return {
+    periodStart,
+    periodEndExclusive,
+    previousStart,
+    periodStartDate: format(periodStart, 'yyyy-MM-dd'),
+    periodEndDate: format(periodEndExclusive, 'yyyy-MM-dd'),
+    previousStartDate: format(previousStart, 'yyyy-MM-dd'),
+    previousEndDate: format(periodStart, 'yyyy-MM-dd'),
+    periodEndInclusiveDate: format(addDays(periodEndExclusive, -1), 'yyyy-MM-dd'),
+  };
+};
+
+export const computeProgressionSummary = ({
+  metric,
+  days,
+  focusCompleted,
+  focusCompletedPrevious,
+  intensityCompleted,
+  intensityCompletedPrevious,
+  intensityPossible,
+  intensityPossiblePrevious,
+  ratingPossibleCount,
+  ratingCompletedCount,
+  ratingPreviousPossibleCount,
+  ratingPreviousCompletedCount,
+}: ProgressionSummaryArgs): ProgressionSummary => {
+  if (metric === 'rating') {
+    const completed = focusCompleted;
+    const completedCount = ratingCompletedCount;
+    const possibleCount = ratingPossibleCount;
+    const previousCompleted = focusCompletedPrevious;
+    const previousCompletedCount = ratingPreviousCompletedCount;
+    const previousPossibleCount = ratingPreviousPossibleCount;
+    const completionRate = possibleCount ? Math.round((completedCount / possibleCount) * 100) : 0;
+    const previousRate = previousPossibleCount ? Math.round((previousCompletedCount / previousPossibleCount) * 100) : 0;
+    const delta = completionRate - previousRate;
+    const ratings = completed.map(entry => entry.rating ?? 0);
+    const ratingsPrev = previousCompleted.map(entry => entry.rating ?? 0);
+    const avgCurrent = ratings.length ? ratings.reduce((sum, v) => sum + v, 0) / ratings.length : 0;
+    const avgPrevious = ratingsPrev.length ? ratingsPrev.reduce((sum, v) => sum + v, 0) / ratingsPrev.length : 0;
+    const scorePercent = Math.round((avgCurrent / 10) * 100);
+    const previousScorePercent = Math.round((avgPrevious / 10) * 100);
+    const deltaPercentPoints = scorePercent - previousScorePercent;
+    const avgChangePercent =
+      avgPrevious > 0 ? ((avgCurrent - avgPrevious) / avgPrevious) * 100 : avgCurrent > 0 ? 100 : 0;
+    const successCount = completed.filter(entry => (entry.rating ?? 0) >= SUCCESS_THRESHOLD).length;
+    const uniqueDates = Array.from(
+      new Set(completed.map(entry => entry.dateKey || entry.createdAt.slice(0, 10)))
+    )
+      .map(d => parseISO(`${d}T00:00:00`))
+      .sort((a, b) => b.getTime() - a.getTime());
+
+    let streak = 0;
+    for (let i = 0; i < uniqueDates.length; i++) {
+      if (i === 0) {
+        streak = 1;
+        continue;
+      }
+      const diff = differenceInCalendarDays(uniqueDates[i - 1], uniqueDates[i]);
+      if (diff === 1) {
+        streak += 1;
+      } else if (diff > 1) {
+        break;
+      }
+    }
+
+    const badges: string[] = [];
+    if (streak >= 3) badges.push('Streak 3+');
+    if (delta > 0) badges.push('Momentum');
+    if (completedCount >= Math.max(3, Math.round(days / 4))) badges.push('Consistency');
+    if (successCount >= 3) badges.push('8+ mastery');
+
+    return {
+      completionRate,
+      previousRate,
+      delta,
+      totalEntries: completed.length,
+      successCount,
+      streakDays: streak,
+      badges,
+      possibleCount,
+      completedCount,
+      avgCurrent,
+      avgPrevious,
+      avgChangePercent,
+      scorePercent,
+      previousScorePercent,
+      deltaPercentPoints,
+    };
+  }
+
+  const registered = intensityCompleted;
+  const registeredCount = registered.length;
+  const possibleCount = intensityPossible.length;
+  const previousRegistered = intensityCompletedPrevious;
+  const previousPossibleCount = intensityPossiblePrevious.length;
+  const completionRate = possibleCount ? Math.round((registeredCount / possibleCount) * 100) : 0;
+  const previousRate = previousPossibleCount ? Math.round((previousRegistered.length / previousPossibleCount) * 100) : 0;
+  const delta = completionRate - previousRate;
+  const intensities = registered.map(entry => entry.intensity ?? 0);
+  const intensitiesPrev = previousRegistered.map(entry => entry.intensity ?? 0);
+  const avgCurrent = intensities.length ? intensities.reduce((sum, v) => sum + v, 0) / intensities.length : 0;
+  const avgPrevious = intensitiesPrev.length ? intensitiesPrev.reduce((sum, v) => sum + v, 0) / intensitiesPrev.length : 0;
+  const scorePercent = Math.round((avgCurrent / 10) * 100);
+  const previousScorePercent = Math.round((avgPrevious / 10) * 100);
+  const deltaPercentPoints = scorePercent - previousScorePercent;
+  const avgChangePercent =
+    avgPrevious > 0 ? ((avgCurrent - avgPrevious) / avgPrevious) * 100 : avgCurrent > 0 ? 100 : 0;
+  const successCount = registered.filter(entry => (entry.intensity ?? 0) >= SUCCESS_THRESHOLD).length;
+  const uniqueDates = Array.from(new Set(registered.map(entry => entry.dateKey || entry.createdAt.slice(0, 10))))
+    .map(d => parseISO(`${d}T00:00:00`))
+    .sort((a, b) => b.getTime() - a.getTime());
+
+  let streak = 0;
+  for (let i = 0; i < uniqueDates.length; i++) {
+    if (i === 0) {
+      streak = 1;
+      continue;
+    }
+    const diff = differenceInCalendarDays(uniqueDates[i - 1], uniqueDates[i]);
+    if (diff === 1) {
+      streak += 1;
+    } else if (diff > 1) {
+      break;
+    }
+  }
+
+  const badges: string[] = [];
+  if (streak >= 3) badges.push('Streak 3+');
+  if (delta > 0) badges.push('Momentum');
+  if (registeredCount >= Math.max(3, Math.round(days / 4))) badges.push('Consistency');
+  if (successCount >= 3) badges.push('8+ mastery');
+
+  return {
+    completionRate,
+    previousRate,
+    delta,
+    totalEntries: registeredCount,
+    successCount,
+    streakDays: streak,
+    badges,
+    possibleCount,
+    completedCount: registeredCount,
+    avgCurrent,
+    avgPrevious,
+    avgChangePercent,
+    scorePercent,
+    previousScorePercent,
+    deltaPercentPoints,
+  };
 };
 
 export function useProgressionData({
@@ -266,6 +490,7 @@ export function useProgressionData({
       kind: 'rating',
       createdAt: createdIso,
       activityId: row.activity_id ? String(row.activity_id) : null,
+      taskInstanceId: row.task_instance_id ? String(row.task_instance_id) : null,
       taskTemplateId: templateId,
       taskTemplateName: templateName,
       taskTemplateDescription: templateDescription,
@@ -363,20 +588,23 @@ export function useProgressionData({
 
       runIfMounted(() => setRequiresLogin(false));
 
-      const today = startOfDay(new Date());
-      const periodStart = startOfDay(subDays(today, Math.max(days - 1, 0)));
-      const periodEndExclusive = startOfDay(addDays(today, 1));
-      const previousStart = startOfDay(subDays(periodStart, days));
-      const periodStartDate = format(periodStart, 'yyyy-MM-dd');
-      const periodEndDate = format(periodEndExclusive, 'yyyy-MM-dd');
-      const previousStartDate = format(previousStart, 'yyyy-MM-dd');
-      const previousEndDate = format(periodStart, 'yyyy-MM-dd');
+      const {
+        periodStart,
+        periodEndExclusive,
+        previousStart,
+        periodStartDate,
+        periodEndDate,
+        previousStartDate,
+        previousEndDate,
+        periodEndInclusiveDate,
+      } = buildPeriodBounds(days);
 
       const focusSelect = `
         id,
         rating,
         note,
         created_at,
+        task_instance_id,
         task_template_id,
         activity_id
       `;
@@ -427,14 +655,22 @@ export function useProgressionData({
         )
       `;
       const taskCounterInternalSelect =
-        'id, activity_id, completed, title, task_template_id, feedback_template_id, activities!inner ( activity_date, user_id )';
+        'id, activity_id, completed, title, description, task_template_id, feedback_template_id, activities!inner ( activity_date, user_id )';
       const taskCounterExternalSelect = `
         id,
+        title,
+        description,
+        local_meta_id,
+        task_template_id,
+        feedback_template_id,
         completed,
         events_local_meta!inner (
+          id,
           user_id,
+          external_event_id,
           events_external!inner (
-            start_date
+            start_date,
+            deleted
           )
         )
       `;
@@ -586,16 +822,38 @@ export function useProgressionData({
       };
       const feedbackByActivityTask: Record<string, any> = {};
       const feedbackByActivityTemplate: Record<string, any> = {};
-      const taskCounterActivityIds = Array.from(
-        new Set(
-          [
-            ...(taskCounterInternalCurrent || []),
-            ...(taskCounterInternalPrevious || []),
-          ]
-            .map(row => normalizeId(row?.activity_id))
-            .filter(Boolean)
-        )
-      ) as string[];
+      const shouldIncludeExternalTaskInCounter = (task: any): boolean => {
+        const externalEvent = task?.events_local_meta?.events_external;
+        const startDate = typeof externalEvent?.start_date === 'string' ? externalEvent.start_date : null;
+        if (!startDate) return false;
+
+        const isSoftDeleted = externalEvent?.deleted === true;
+        const isCompleted = task?.completed === true;
+        return !isSoftDeleted || isCompleted;
+      };
+      const getExternalActivityCandidateIds = (task: any): string[] => {
+        const ids = new Set<string>();
+        const push = (value: unknown) => {
+          const id = normalizeId(value);
+          if (id) ids.add(id);
+        };
+        push(task?.local_meta_id);
+        push(task?.events_local_meta?.id);
+        push(task?.events_local_meta?.external_event_id);
+        return Array.from(ids);
+      };
+
+      const taskCounterExternalCurrentFiltered = (taskCounterExternalCurrent || []).filter(shouldIncludeExternalTaskInCounter);
+      const taskCounterExternalPreviousFiltered = (taskCounterExternalPrevious || []).filter(shouldIncludeExternalTaskInCounter);
+      const taskCounterActivityIdSet = new Set<string>();
+      [...(taskCounterInternalCurrent || []), ...(taskCounterInternalPrevious || [])].forEach((row: any) => {
+        const activityId = normalizeId(row?.activity_id);
+        if (activityId) taskCounterActivityIdSet.add(activityId);
+      });
+      [...taskCounterExternalCurrentFiltered, ...taskCounterExternalPreviousFiltered].forEach((row: any) => {
+        getExternalActivityCandidateIds(row).forEach(activityId => taskCounterActivityIdSet.add(activityId));
+      });
+      const taskCounterActivityIds = Array.from(taskCounterActivityIdSet);
       if (taskCounterActivityIds.length) {
         const { data: taskCounterFeedbackRows, error: taskCounterFeedbackError } = await supabase
           .from('task_template_self_feedback')
@@ -626,18 +884,54 @@ export function useProgressionData({
         const taskId = normalizeId(taskRow?.id);
         const feedbackTemplateId = normalizeId(taskRow?.feedback_template_id);
         const templateId = normalizeId(taskRow?.task_template_id);
-        const looksLikeFeedbackTask = !!feedbackTemplateId || isFeedbackTitle(taskRow?.title);
+        const markerTemplateId =
+          normalizeId(
+            parseTemplateIdFromMarker(typeof taskRow?.description === 'string' ? taskRow.description : '') ||
+            parseTemplateIdFromMarker(typeof taskRow?.title === 'string' ? taskRow.title : '')
+          );
+        const looksLikeFeedbackTask = !!feedbackTemplateId || !!markerTemplateId || isFeedbackTitle(taskRow?.title);
         if (!looksLikeFeedbackTask || !activityId) return false;
 
         if (taskId) {
           const byTask = feedbackByActivityTask[`${activityId}::${taskId}`];
           if (feedbackAnswered(byTask)) return true;
         }
-        const templateKey = feedbackTemplateId ?? templateId;
+        const templateKey = feedbackTemplateId ?? markerTemplateId ?? templateId;
         if (templateKey) {
           const byTemplate = feedbackByActivityTemplate[`${activityId}::${templateKey}`];
           if (feedbackAnswered(byTemplate)) return true;
         }
+        return false;
+      };
+      const isExternalTaskCompletedForCounter = (taskRow: any): boolean => {
+        if (taskRow?.completed === true) return true;
+
+        const taskId = normalizeId(taskRow?.id);
+        const feedbackTemplateId = normalizeId(taskRow?.feedback_template_id);
+        const templateId = normalizeId(taskRow?.task_template_id);
+        const markerTemplateId =
+          normalizeId(
+            parseTemplateIdFromMarker(typeof taskRow?.description === 'string' ? taskRow.description : '') ||
+            parseTemplateIdFromMarker(typeof taskRow?.title === 'string' ? taskRow.title : '')
+          );
+        const templateKey = feedbackTemplateId ?? markerTemplateId ?? templateId;
+        const looksLikeFeedbackTask = !!feedbackTemplateId || !!markerTemplateId || isFeedbackTitle(taskRow?.title);
+        if (!looksLikeFeedbackTask) return false;
+
+        const activityIds = getExternalActivityCandidateIds(taskRow);
+        if (!activityIds.length) return false;
+
+        for (const activityId of activityIds) {
+          if (taskId) {
+            const byTask = feedbackByActivityTask[`${activityId}::${taskId}`];
+            if (feedbackAnswered(byTask)) return true;
+          }
+          if (templateKey) {
+            const byTemplate = feedbackByActivityTemplate[`${activityId}::${templateKey}`];
+            if (feedbackAnswered(byTemplate)) return true;
+          }
+        }
+
         return false;
       };
 
@@ -729,6 +1023,39 @@ export function useProgressionData({
       const missingActivityIds = uniqueActivityIds.filter(id => !activityMetaById.has(id));
       if (missingActivityIds.length) {
         for (const chunk of chunkArray(missingActivityIds, 50)) {
+          const { data, error } = await supabase
+            .from('events_local_meta')
+            .select(`
+              id,
+              user_id,
+              external_event_id,
+              events_external!inner (
+                id,
+                start_date,
+                start_time,
+                title
+              )
+            `)
+            .in('id', chunk);
+          if (error) throw error;
+          (data || []).forEach((row: any) => {
+            if (!row?.id) return;
+            const event = row.events_external ?? {};
+            activityMetaById.set(String(row.id), {
+              activity_date: event.start_date ?? null,
+              activity_time: event.start_time ?? null,
+              title: event.title ?? null,
+              event_id: event.id ?? null,
+              external_event_id: row.external_event_id ?? null,
+              user_id: row.user_id ?? null,
+            });
+          });
+        }
+      }
+
+      const stillMissingActivityIds = uniqueActivityIds.filter(id => !activityMetaById.has(id));
+      if (stillMissingActivityIds.length) {
+        for (const chunk of chunkArray(stillMissingActivityIds, 50)) {
           const { data, error } = await supabase
             .from('events_external')
             .select('id, start_date, start_time, title')
@@ -860,26 +1187,26 @@ export function useProgressionData({
       };
       const toCurrentPossibleIds = [
         ...(taskCounterInternalCurrent || []).map(row => mapTaskCounterId('internal', row)),
-        ...(taskCounterExternalCurrent || []).map(row => mapTaskCounterId('external', row)),
+        ...taskCounterExternalCurrentFiltered.map(row => mapTaskCounterId('external', row)),
       ].filter(Boolean) as string[];
       const toCurrentCompletedIds = [
         ...(taskCounterInternalCurrent || [])
           .filter(row => isInternalTaskCompletedForCounter(row))
           .map(row => mapTaskCounterId('internal', row)),
-        ...(taskCounterExternalCurrent || [])
-          .filter(row => row?.completed === true)
+        ...taskCounterExternalCurrentFiltered
+          .filter(row => isExternalTaskCompletedForCounter(row))
           .map(row => mapTaskCounterId('external', row)),
       ].filter(Boolean) as string[];
       const toPreviousPossibleIds = [
         ...(taskCounterInternalPrevious || []).map(row => mapTaskCounterId('internal', row)),
-        ...(taskCounterExternalPrevious || []).map(row => mapTaskCounterId('external', row)),
+        ...taskCounterExternalPreviousFiltered.map(row => mapTaskCounterId('external', row)),
       ].filter(Boolean) as string[];
       const toPreviousCompletedIds = [
         ...(taskCounterInternalPrevious || [])
           .filter(row => isInternalTaskCompletedForCounter(row))
           .map(row => mapTaskCounterId('internal', row)),
-        ...(taskCounterExternalPrevious || [])
-          .filter(row => row?.completed === true)
+        ...taskCounterExternalPreviousFiltered
+          .filter(row => isExternalTaskCompletedForCounter(row))
           .map(row => mapTaskCounterId('external', row)),
       ].filter(Boolean) as string[];
       const mappedIntensityCurrent = [
@@ -893,8 +1220,8 @@ export function useProgressionData({
 
       const templateNameLookup = new Map<string, string>();
       mappedFocusCurrent
-        .filter(entry => typeof entry.rating === 'number')
-        .forEach(entry => {
+        .filter((entry: ProgressionEntry) => typeof entry.rating === 'number')
+        .forEach((entry: ProgressionEntry) => {
           if (!entry.taskTemplateId) return;
           const resolvedName =
             entry.taskTemplateName ??
@@ -936,7 +1263,7 @@ export function useProgressionData({
       if (__DEV__ && userEmail === 'mhe0405@gmail.com') {
         console.log('[RECON][PerformanceCounter]', {
           periodStart: periodStartDate,
-          periodEnd: format(addDays(periodEndExclusive, -1), 'yyyy-MM-dd'),
+          periodEnd: periodEndInclusiveDate,
           perfPossibleTaskIdsCount: toCurrentPossibleIds.length,
           perfPossibleTaskIdsSample: toCurrentPossibleIds.slice(0, 5),
           perfCompletedTaskIdsCount: toCurrentCompletedIds.length,
@@ -1048,97 +1375,52 @@ export function useProgressionData({
   }, [filteredFocusPossiblePrevious]);
 
   const focusCompletedDeduped = useMemo(() => {
-    const possibleKeys = new Set<string>(
-      focusPossibleDeduped.map(entry => {
-        const baseKey = resolveBaseKey(entry);
-        return `${baseKey}::${entry.templateId ?? 'none'}`;
-      })
-    );
-    const seen = new Set<string>();
-    return filteredFocusEntries
-      .filter(entry => typeof entry.rating === 'number')
-      .filter(entry => {
-        const baseKey = resolveBaseKey(entry);
-        const key = `${baseKey}::${entry.taskTemplateId ?? 'none'}`;
-        if (seen.has(key)) return false;
-        if (possibleKeys.size && !possibleKeys.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-  }, [filteredFocusEntries, focusPossibleDeduped]);
+    return dedupeByLatestCreatedAt(
+      filteredFocusEntries,
+      (entry) => `${resolveFeedbackBaseKey(entry)}::${entry.taskTemplateId ?? 'none'}`
+    ).filter((entry) => typeof entry.rating === 'number');
+  }, [filteredFocusEntries]);
 
   const focusCompletedAllDeduped = useMemo(() => {
-    const possibleKeys = new Set<string>(
-      focusPossibleAllDeduped.map(entry => {
-        const baseKey = resolveBaseKey(entry);
-        return `${baseKey}::${entry.templateId ?? 'none'}`;
-      })
-    );
-    const seen = new Set<string>();
-    return focusEntries
-      .filter(entry => typeof entry.rating === 'number')
-      .filter(entry => {
-        const baseKey = resolveBaseKey(entry);
-        const key = `${baseKey}::${entry.taskTemplateId ?? 'none'}`;
-        if (seen.has(key)) return false;
-        if (possibleKeys.size && !possibleKeys.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-  }, [focusEntries, focusPossibleAllDeduped]);
+    return dedupeByLatestCreatedAt(
+      focusEntries,
+      (entry) => `${resolveFeedbackBaseKey(entry)}::${entry.taskTemplateId ?? 'none'}`
+    ).filter((entry) => typeof entry.rating === 'number');
+  }, [focusEntries]);
 
   const focusCompletedPreviousDeduped = useMemo(() => {
-    const possibleKeys = new Set<string>(
-      focusPossiblePreviousDeduped.map(entry => {
-        const baseKey = resolveBaseKey(entry);
-        return `${baseKey}::${entry.templateId ?? 'none'}`;
-      })
-    );
-    const seen = new Set<string>();
-    return filteredFocusPrevious
-      .filter(entry => typeof entry.rating === 'number')
-      .filter(entry => {
-        const baseKey = resolveBaseKey(entry);
-        const key = `${baseKey}::${entry.taskTemplateId ?? 'none'}`;
-        if (seen.has(key)) return false;
-        if (possibleKeys.size && !possibleKeys.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-  }, [filteredFocusPrevious, focusPossiblePreviousDeduped]);
+    return dedupeByLatestCreatedAt(
+      filteredFocusPrevious,
+      (entry) => `${resolveFeedbackBaseKey(entry)}::${entry.taskTemplateId ?? 'none'}`
+    ).filter((entry) => typeof entry.rating === 'number');
+  }, [filteredFocusPrevious]);
 
   const intensityPossibleDeduped = useMemo(() => {
-    const seen = new Set<string>();
-    return filteredIntensityEntries.filter(entry => {
-      const key = resolveBaseKey(entry);
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+    return dedupeByLatestCreatedAt(
+      filteredIntensityEntries,
+      (entry) => resolveBaseKey(entry)
+    );
   }, [filteredIntensityEntries]);
 
   const intensityPossiblePreviousDeduped = useMemo(() => {
-    const seen = new Set<string>();
-    return filteredIntensityPrevious.filter(entry => {
-      const key = resolveBaseKey(entry);
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+    return dedupeByLatestCreatedAt(
+      filteredIntensityPrevious,
+      (entry) => resolveBaseKey(entry)
+    );
   }, [filteredIntensityPrevious]);
 
   const intensityCompletedDeduped = useMemo(() => {
     const possibleKeys = new Set<string>(
       intensityPossibleDeduped.map(entry => resolveBaseKey(entry))
     );
-    const seen = new Set<string>();
-    return filteredIntensityEntries
+    return dedupeByLatestCreatedAt(
+      filteredIntensityEntries,
+      (entry) => resolveBaseKey(entry)
+    )
       .filter(entry => typeof entry.intensity === 'number')
       .filter(entry => {
         const key = resolveBaseKey(entry);
-        if (seen.has(key)) return false;
         if (possibleKeys.size && !possibleKeys.has(key)) return false;
-        seen.add(key);
         return true;
       });
   }, [filteredIntensityEntries, intensityPossibleDeduped]);
@@ -1147,14 +1429,14 @@ export function useProgressionData({
     const possibleKeys = new Set<string>(
       intensityPossiblePreviousDeduped.map(entry => resolveBaseKey(entry))
     );
-    const seen = new Set<string>();
-    return filteredIntensityPrevious
+    return dedupeByLatestCreatedAt(
+      filteredIntensityPrevious,
+      (entry) => resolveBaseKey(entry)
+    )
       .filter(entry => typeof entry.intensity === 'number')
       .filter(entry => {
         const key = resolveBaseKey(entry);
-        if (seen.has(key)) return false;
         if (possibleKeys.size && !possibleKeys.has(key)) return false;
-        seen.add(key);
         return true;
       });
   }, [filteredIntensityPrevious, intensityPossiblePreviousDeduped]);
@@ -1186,141 +1468,20 @@ export function useProgressionData({
   const heatmapRows = useMemo<HeatmapRow[]>(() => [], []);
 
   const summary = useMemo<ProgressionSummary>(() => {
-    if (metric === 'rating') {
-      const completed = focusCompletedDeduped;
-      const completedCount = homeAlignedTaskCounter.completedIds.length;
-      const possibleCount = homeAlignedTaskCounter.possibleIds.length;
-
-      const previousCompleted = focusCompletedPreviousDeduped;
-      const previousCompletedCount = homeAlignedTaskCounterPrevious.completedIds.length;
-      const previousPossibleCount = homeAlignedTaskCounterPrevious.possibleIds.length;
-
-      const completionRate = possibleCount ? Math.round((completedCount / possibleCount) * 100) : 0;
-      const previousRate = previousPossibleCount ? Math.round((previousCompletedCount / previousPossibleCount) * 100) : 0;
-      const delta = completionRate - previousRate;
-
-      const ratings = completed.map(entry => entry.rating ?? 0);
-      const ratingsPrev = previousCompleted.map(entry => entry.rating ?? 0);
-      const avgCurrent = ratings.length ? ratings.reduce((sum, v) => sum + v, 0) / ratings.length : 0;
-      const avgPrevious = ratingsPrev.length ? ratingsPrev.reduce((sum, v) => sum + v, 0) / ratingsPrev.length : 0;
-      const scorePercent = Math.round((avgCurrent / 10) * 100);
-      const previousScorePercent = Math.round((avgPrevious / 10) * 100);
-      const deltaPercentPoints = scorePercent - previousScorePercent;
-      const avgChangePercent =
-        avgPrevious > 0 ? ((avgCurrent - avgPrevious) / avgPrevious) * 100 : avgCurrent > 0 ? 100 : 0;
-
-      const successCount = completed.filter(entry => (entry.rating ?? 0) >= SUCCESS_THRESHOLD).length;
-
-      const uniqueDates = Array.from(
-        new Set(completed.map(entry => entry.dateKey || entry.createdAt.slice(0, 10)))
-      )
-        .map(d => parseISO(`${d}T00:00:00`))
-        .sort((a, b) => b.getTime() - a.getTime());
-
-      let streak = 0;
-      for (let i = 0; i < uniqueDates.length; i++) {
-        if (i === 0) {
-          streak = 1;
-          continue;
-        }
-        const diff = differenceInCalendarDays(uniqueDates[i - 1], uniqueDates[i]);
-        if (diff === 1) {
-          streak += 1;
-        } else if (diff > 1) {
-          break;
-        }
-      }
-
-      const badges: string[] = [];
-      if (streak >= 3) badges.push('Streak 3+');
-      if (delta > 0) badges.push('Momentum');
-      if (completedCount >= Math.max(3, Math.round(days / 4))) badges.push('Consistency');
-      if (successCount >= 3) badges.push('8+ mastery');
-
-      return {
-        completionRate,
-        previousRate,
-        delta,
-        totalEntries: completed.length,
-        successCount,
-        streakDays: streak,
-        badges,
-        possibleCount,
-        completedCount,
-        avgCurrent,
-        avgPrevious,
-        avgChangePercent,
-        scorePercent,
-        previousScorePercent,
-        deltaPercentPoints,
-      };
-    }
-
-    // Intensity summary
-    const registered = intensityCompletedDeduped;
-    const registeredCount = registered.length;
-    const possibleCount = intensityPossibleDeduped.length;
-
-    const previousRegistered = intensityCompletedPreviousDeduped;
-    const previousPossibleCount = intensityPossiblePreviousDeduped.length;
-
-    const completionRate = possibleCount ? Math.round((registeredCount / possibleCount) * 100) : 0;
-    const previousRate = previousPossibleCount ? Math.round((previousRegistered.length / previousPossibleCount) * 100) : 0;
-    const delta = completionRate - previousRate;
-
-    const intensities = registered.map(entry => entry.intensity ?? 0);
-    const intensitiesPrev = previousRegistered.map(entry => entry.intensity ?? 0);
-    const avgCurrent = intensities.length ? intensities.reduce((sum, v) => sum + v, 0) / intensities.length : 0;
-    const avgPrevious = intensitiesPrev.length ? intensitiesPrev.reduce((sum, v) => sum + v, 0) / intensitiesPrev.length : 0;
-    const scorePercent = Math.round((avgCurrent / 10) * 100);
-    const previousScorePercent = Math.round((avgPrevious / 10) * 100);
-    const deltaPercentPoints = scorePercent - previousScorePercent;
-    const avgChangePercent =
-      avgPrevious > 0 ? ((avgCurrent - avgPrevious) / avgPrevious) * 100 : avgCurrent > 0 ? 100 : 0;
-
-    const successCount = registered.filter(entry => (entry.intensity ?? 0) >= SUCCESS_THRESHOLD).length;
-
-    const uniqueDates = Array.from(new Set(registered.map(entry => entry.dateKey || entry.createdAt.slice(0, 10))))
-      .map(d => parseISO(`${d}T00:00:00`))
-      .sort((a, b) => b.getTime() - a.getTime());
-
-    let streak = 0;
-    for (let i = 0; i < uniqueDates.length; i++) {
-      if (i === 0) {
-        streak = 1;
-        continue;
-      }
-      const diff = differenceInCalendarDays(uniqueDates[i - 1], uniqueDates[i]);
-      if (diff === 1) {
-        streak += 1;
-      } else if (diff > 1) {
-        break;
-      }
-    }
-
-    const badges: string[] = [];
-    if (streak >= 3) badges.push('Streak 3+');
-    if (delta > 0) badges.push('Momentum');
-    if (registeredCount >= Math.max(3, Math.round(days / 4))) badges.push('Consistency');
-    if (successCount >= 3) badges.push('8+ mastery');
-
-    return {
-      completionRate,
-      previousRate,
-      delta,
-      totalEntries: registeredCount,
-      successCount,
-      streakDays: streak,
-      badges,
-      possibleCount,
-      completedCount: registeredCount,
-      avgCurrent,
-      avgPrevious,
-      avgChangePercent,
-      scorePercent,
-      previousScorePercent,
-      deltaPercentPoints,
-    };
+    return computeProgressionSummary({
+      metric,
+      days,
+      focusCompleted: focusCompletedDeduped,
+      focusCompletedPrevious: focusCompletedPreviousDeduped,
+      intensityCompleted: intensityCompletedDeduped,
+      intensityCompletedPrevious: intensityCompletedPreviousDeduped,
+      intensityPossible: intensityPossibleDeduped,
+      intensityPossiblePrevious: intensityPossiblePreviousDeduped,
+      ratingPossibleCount: homeAlignedTaskCounter.possibleIds.length,
+      ratingCompletedCount: homeAlignedTaskCounter.completedIds.length,
+      ratingPreviousPossibleCount: homeAlignedTaskCounterPrevious.possibleIds.length,
+      ratingPreviousCompletedCount: homeAlignedTaskCounterPrevious.completedIds.length,
+    });
   }, [
     days,
     focusCompletedDeduped,
@@ -1360,5 +1521,3 @@ export function useProgressionData({
     requiresLogin,
   };
 }
-
-

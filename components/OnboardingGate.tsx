@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,6 +17,7 @@ import SubscriptionManager from '@/components/SubscriptionManager';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useAppleIAP, PRODUCT_IDS, TRAINER_PRODUCT_IDS } from '@/contexts/AppleIAPContext';
 import { getSubscriptionGateState } from '@/utils/subscriptionGate';
+import { TimeoutError, withTimeout } from '@/utils/withTimeout';
 
 type Role = 'admin' | 'trainer' | 'player';
 
@@ -24,6 +26,7 @@ type GateState = {
   user: any;
   role: Role | null;
   needsSubscription: boolean;
+  initError: string | null;
 };
 
 interface OnboardingGateProps {
@@ -39,11 +42,15 @@ const FullScreenLoader = ({ message }: { message: string }) => (
 );
 
 export function OnboardingGate({ children, renderInlinePaywall = false }: OnboardingGateProps) {
+  const STARTUP_TIMEOUT_MS = 12000;
+  const STARTUP_ERROR_MESSAGE = 'Kunne ikke klargøre konto. Prøv igen.';
+
   const [state, setState] = useState<GateState>({
     hydrating: true,
     user: null,
     role: null,
     needsSubscription: false,
+    initError: null,
   });
   const [activatingSubscription, setActivatingSubscription] = useState(false);
   const [activationMessage, setActivationMessage] = useState('Aktiverer abonnement...');
@@ -59,6 +66,16 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
   const lastNavRef = useRef<number>(0);
   const lastGateUserIdRef = useRef<string | null>(null);
   const lastNonPaywallPathRef = useRef<string | null>(null);
+  const isMountedRef = useRef(true);
+  const hydrationRunRef = useRef(0);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      hydrationRunRef.current += 1;
+    };
+  }, []);
   const safeReplace = useCallback(
     (target: string) => {
       const now = Date.now();
@@ -152,58 +169,126 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
   }, []);
   const refreshRoleAndSubscription = useCallback(
     async (user: any) => {
+      const runId = ++hydrationRunRef.current;
+      const setStateIfCurrent = (next: React.SetStateAction<GateState>) => {
+        if (!isMountedRef.current || hydrationRunRef.current !== runId) {
+          return;
+        }
+        setState(next);
+      };
       const nextUserId = user?.id ?? null;
       if (lastGateUserIdRef.current !== nextUserId) {
         lastGateUserIdRef.current = nextUserId;
         refreshCalledRef.current = false;
         subscriptionStatusRef.current = null;
       }
-      setState(prev => ({ ...prev, hydrating: true, user }));
+      setStateIfCurrent(prev => ({ ...prev, hydrating: true, user, initError: null }));
 
       if (!user) {
-        setState({ hydrating: false, user: null, role: null, needsSubscription: false });
+        setStateIfCurrent({
+          hydrating: false,
+          user: null,
+          role: null,
+          needsSubscription: false,
+          initError: null,
+        });
         return;
       }
 
-      const { data: roleData } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.id)
-        .maybeSingle();
+      try {
+        const { data: roleData } = await withTimeout(
+          supabase
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', user.id)
+            .maybeSingle(),
+          STARTUP_TIMEOUT_MS,
+          'Onboarding role query timed out'
+        );
 
-      const roleFromDb = (roleData?.role as Role | null) ?? null;
+        const roleFromDb = (roleData?.role as Role | null) ?? null;
 
-      const visibleStatus = await ensureSubscriptionStatus();
-      const gateState = getSubscriptionGateState({
-        user,
-        subscriptionStatus: visibleStatus,
-        entitlementSnapshot,
-      });
-      const derivedRole = gateState.hasActiveSubscription
-        ? deriveRoleFromSubscription(visibleStatus) ?? roleFromDb
-        : roleFromDb;
+        const visibleStatus = await withTimeout(
+          ensureSubscriptionStatus(),
+          STARTUP_TIMEOUT_MS,
+          'Onboarding subscription query timed out'
+        );
+        const gateState = getSubscriptionGateState({
+          user,
+          subscriptionStatus: visibleStatus,
+          entitlementSnapshot,
+        });
+        const derivedRole = gateState.hasActiveSubscription
+          ? deriveRoleFromSubscription(visibleStatus) ?? roleFromDb
+          : roleFromDb;
 
-      if (derivedRole) {
-        await upsertRole(user.id, derivedRole);
+        if (derivedRole) {
+          await withTimeout(
+            upsertRole(user.id, derivedRole),
+            STARTUP_TIMEOUT_MS,
+            'Onboarding role upsert timed out'
+          );
+        }
+
+        setStateIfCurrent({
+          hydrating: false,
+          user,
+          role: derivedRole ?? roleFromDb,
+          needsSubscription: gateState.shouldShowChooseSubscription,
+          initError: null,
+        });
+      } catch (error) {
+        if (error instanceof TimeoutError) {
+          refreshCalledRef.current = false;
+        }
+        console.warn('[OnboardingGate] Startup hydration failed', error);
+        setStateIfCurrent(prev => ({
+          ...prev,
+          hydrating: false,
+          user,
+          needsSubscription: false,
+          initError: STARTUP_ERROR_MESSAGE,
+        }));
       }
-
-      setState({
-        hydrating: false,
-        user,
-        role: derivedRole ?? roleFromDb,
-        needsSubscription: gateState.shouldShowChooseSubscription,
-      });
     },
-    [deriveRoleFromSubscription, ensureSubscriptionStatus, entitlementSnapshot, upsertRole]
+    [
+      STARTUP_ERROR_MESSAGE,
+      STARTUP_TIMEOUT_MS,
+      deriveRoleFromSubscription,
+      ensureSubscriptionStatus,
+      entitlementSnapshot,
+      upsertRole,
+    ]
   );
 
   useEffect(() => {
     let active = true;
+    const bootstrapRunId = hydrationRunRef.current;
 
     const bootstrap = async () => {
-      const { data } = await supabase.auth.getUser();
-      if (active) {
-        await refreshRoleAndSubscription(data.user ?? null);
+      try {
+        const { data } = await withTimeout(
+          supabase.auth.getUser(),
+          STARTUP_TIMEOUT_MS,
+          'Onboarding auth lookup timed out'
+        );
+        if (active) {
+          await refreshRoleAndSubscription(data.user ?? null);
+        }
+      } catch (error) {
+        console.warn('[OnboardingGate] Startup bootstrap failed', error);
+        if (!active || !isMountedRef.current || hydrationRunRef.current !== bootstrapRunId) return;
+        setState(prev => {
+          if (!prev.hydrating) {
+            return prev;
+          }
+          return {
+            ...prev,
+            hydrating: false,
+            needsSubscription: false,
+            initError: STARTUP_ERROR_MESSAGE,
+          };
+        });
       }
     };
 
@@ -219,6 +304,36 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
       listener.subscription.unsubscribe();
     };
   }, [refreshRoleAndSubscription]);
+
+  const handleRetryStartup = useCallback(async () => {
+    if (!isMountedRef.current) return;
+    const retryRunId = hydrationRunRef.current;
+    refreshCalledRef.current = false;
+    setState(prev => ({ ...prev, hydrating: true, initError: null }));
+    try {
+      const { data } = await withTimeout(
+        supabase.auth.getUser(),
+        STARTUP_TIMEOUT_MS,
+        'Onboarding retry auth lookup timed out'
+      );
+      if (!isMountedRef.current || hydrationRunRef.current !== retryRunId) return;
+      await refreshRoleAndSubscription(data.user ?? null);
+    } catch (error) {
+      console.warn('[OnboardingGate] Startup retry failed', error);
+      if (!isMountedRef.current || hydrationRunRef.current !== retryRunId) return;
+      setState(prev => {
+        if (!prev.hydrating) {
+          return prev;
+        }
+        return {
+          ...prev,
+          hydrating: false,
+          needsSubscription: false,
+          initError: STARTUP_ERROR_MESSAGE,
+        };
+      });
+    }
+  }, [STARTUP_ERROR_MESSAGE, STARTUP_TIMEOUT_MS, refreshRoleAndSubscription]);
 
   const handleCreateSubscription = useCallback(async (planId: string) => {
     if (!state.user) return;
@@ -288,20 +403,6 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
   }, [needsPaywall, normalizeFallbackTarget, pathname, renderInlinePaywall, safeReplace]);
 
   if (needsPaywall && renderInlinePaywall) {
-    const PaywallManager = Platform.OS === 'ios' ? AppleSubscriptionManager : SubscriptionManager;
-    const paywallProps = Platform.OS === 'ios'
-      ? {
-          isSignupFlow: true,
-          forceShowPlans: true,
-          onPurchaseStarted: handleIOSPurchaseStarted,
-          onPurchaseFinished: handleIOSPurchaseFinished,
-        }
-      : {
-          onPlanSelected: handleCreateSubscription,
-          isSignupFlow: true,
-          forceShowPlans: true,
-        };
-
     return (
       <View style={styles.paywallContainer}>
         <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
@@ -309,9 +410,20 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
           <Text style={styles.subtitle}>Vælg et abonnement for at fortsætte — du kan altid ændre det senere.</Text>
 
           <View style={styles.card}>
-            {/* eslint-disable-next-line @typescript-eslint/ban-ts-comment */}
-            {/* @ts-ignore */}
-            <PaywallManager {...paywallProps} />
+            {Platform.OS === 'ios' ? (
+              <AppleSubscriptionManager
+                isSignupFlow
+                forceShowPlans
+                onPurchaseStarted={handleIOSPurchaseStarted}
+                onPurchaseFinished={handleIOSPurchaseFinished}
+              />
+            ) : (
+              <SubscriptionManager
+                onPlanSelected={handleCreateSubscription}
+                isSignupFlow
+                forceShowPlans
+              />
+            )}
           </View>
         </ScrollView>
 
@@ -326,16 +438,29 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
   }
 
   const showBlockingOverlay =
-    state.hydrating || (!renderInlinePaywall && needsPaywall && pathname !== '/choose-plan');
-  const overlayMessage = state.hydrating ? 'Klargører konto' : 'Åbner Vælg abonnement...';
+    state.hydrating ||
+    Boolean(state.initError) ||
+    (!renderInlinePaywall && needsPaywall && pathname !== '/choose-plan');
+  const overlayMessage = state.hydrating
+    ? 'Klargører konto'
+    : state.initError ?? 'Åbner Vælg abonnement...';
 
   return (
     <View style={styles.container}>
       {children}
       {showBlockingOverlay && (
         <View style={styles.blockingOverlay} pointerEvents="auto">
-          <ActivityIndicator size="large" color={colors.primary} />
+          {!state.initError ? <ActivityIndicator size="large" color={colors.primary} /> : null}
           <Text style={styles.blockingOverlayText}>{overlayMessage}</Text>
+          {state.initError ? (
+            <Pressable
+              style={styles.retryButton}
+              onPress={handleRetryStartup}
+              testID="onboarding.error.retryButton"
+            >
+              <Text style={styles.retryButtonText}>Prøv igen</Text>
+            </Pressable>
+          ) : null}
         </View>
       )}
     </View>
@@ -409,5 +534,17 @@ const styles = StyleSheet.create({
     marginTop: 16,
     color: colors.text,
     fontSize: 16,
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: 16,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontWeight: '700',
   },
 });

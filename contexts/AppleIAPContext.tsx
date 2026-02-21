@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef, useMemo } from 'react';
 import { Platform, Alert } from 'react-native';
 import Constants from 'expo-constants';
@@ -34,6 +32,9 @@ let iapReadyFlag = false;
 let iapInitPromise: Promise<void> | null = null;
 
 export async function ensureIapReady(): Promise<boolean> {
+  if (Platform.OS !== 'ios') {
+    return false;
+  }
   if (iapReadyFlag) return true;
   if (rniapImportPromise) {
     try {
@@ -79,7 +80,7 @@ const resolveRniapModule = (module: any) => {
   return module?.default ?? module;
 };
 
-if ((Platform.OS === 'ios' || Platform.OS === 'android') && !isExpoGo) {
+if (Platform.OS === 'ios' && !isExpoGo) {
   rniapImportPromise = import('react-native-iap')
     .then(module => {
       const resolved = resolveRniapModule(module);
@@ -112,7 +113,7 @@ export const APP_STORE_SUBSCRIPTION_SKUS = [
   PRODUCT_IDS.TRAINER_STANDARD,
   PRODUCT_IDS.TRAINER_PREMIUM,
 ] as const;
-const APP_STORE_SKU_SET = new Set(APP_STORE_SUBSCRIPTION_SKUS);
+const APP_STORE_SKU_SET = new Set<string>(APP_STORE_SUBSCRIPTION_SKUS);
 
 export const TRAINER_PRODUCT_IDS = [
   PRODUCT_IDS.TRAINER_BASIC,
@@ -329,6 +330,73 @@ type NormalizedPurchase = {
   transactionDate: number;
 };
 
+const pickLatestPurchase = (items: NormalizedPurchase[]) => {
+  if (!items.length) return null;
+  return items.reduce<NormalizedPurchase | null>((winner, candidate) => {
+    if (!candidate) return winner;
+    if (!winner) return candidate;
+    if (candidate.expiryDate !== winner.expiryDate) {
+      return candidate.expiryDate > winner.expiryDate ? candidate : winner;
+    }
+    return candidate.transactionDate > winner.transactionDate ? candidate : winner;
+  }, null);
+};
+
+const pickPreferredPurchase = (items: NormalizedPurchase[]) => {
+  if (!items.length) return null;
+  const now = Date.now();
+  const isNonExpiringPurchase = (item: NormalizedPurchase) => {
+    if (item.expiryDate) return false;
+    const original = item.original ?? {};
+    const hasNoExpiry =
+      original.expirationDateIOS == null &&
+      original.expiresDate == null &&
+      original.expiryTimeMs == null &&
+      original.purchaseTokenExpirationDate == null;
+    const isNonExpiring = Boolean(
+      original.isNonConsumable ||
+        original.isLifetime ||
+        original.productType === 'non-consumable' ||
+        original.type === 'non-consumable'
+    );
+    return hasNoExpiry && isNonExpiring;
+  };
+  const effectiveExpiry = (item: NormalizedPurchase) =>
+    isNonExpiringPurchase(item) ? Number.POSITIVE_INFINITY : (item.expiryDate ?? -1);
+  const activeItems = items.filter(item => {
+    if (item.expiryDate && item.expiryDate > now) return true;
+    if (!item.expiryDate) {
+      return isNonExpiringPurchase(item);
+    }
+    return false;
+  });
+  if (!activeItems.length) {
+    return pickLatestPurchase(items);
+  }
+  return activeItems.reduce<NormalizedPurchase | null>((winner, candidate) => {
+    if (!candidate) return winner;
+    if (!winner) return candidate;
+    const winnerMeta = getPlanMeta(winner.productId);
+    const candidateMeta = getPlanMeta(candidate.productId);
+    const winnerGroupPriority = winnerMeta.group === 'trainer' ? 2 : winnerMeta.group === 'player' ? 1 : 0;
+    const candidateGroupPriority = candidateMeta.group === 'trainer' ? 2 : candidateMeta.group === 'player' ? 1 : 0;
+    if (winnerGroupPriority !== candidateGroupPriority) {
+      return candidateGroupPriority > winnerGroupPriority ? candidate : winner;
+    }
+    const winnerTierRank = winnerMeta.tierRank ?? -1;
+    const candidateTierRank = candidateMeta.tierRank ?? -1;
+    if (winnerTierRank !== candidateTierRank) {
+      return candidateTierRank > winnerTierRank ? candidate : winner;
+    }
+    const winnerExpiry = effectiveExpiry(winner);
+    const candidateExpiry = effectiveExpiry(candidate);
+    if (candidateExpiry !== winnerExpiry) {
+      return candidateExpiry > winnerExpiry ? candidate : winner;
+    }
+    return candidate.transactionDate > winner.transactionDate ? candidate : winner;
+  }, null);
+};
+
 const normalizeProductId = (product: any): string | null => {
   const candidates = [
     product?.productId,
@@ -476,6 +544,9 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
   const handledPurchaseEventsRef = useRef<Map<string, number>>(new Map());
   const alertInFlightRef = useRef(false);
   const refreshAfterPurchasePromiseRef = useRef<Promise<void> | null>(null);
+  const queueRefreshAfterPurchaseRef = useRef<(targetSku: string | null) => Promise<void>>(
+    () => Promise.resolve()
+  );
   const activePurchaseFlowRef = useRef<{ key: string; sku: string; startedAt: number } | null>(null);
   const lastAlertKeyRef = useRef<string | null>(null);
   const lastAlertAtRef = useRef<number>(0);
@@ -536,7 +607,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
         setEntitlements([]);
         return;
       }
-      const { data, error } = await supabase.rpc('get_my_entitlements');
+      const { data, error } = await supabase.rpc('get_my_entitlements' as never);
       if (error) {
         const message = error.message ?? '';
         if (message.includes('get_my_entitlements')) {
@@ -551,7 +622,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
         console.warn('[AppleIAP] Failed to load entitlements', message);
         return;
       }
-      setEntitlements(Array.isArray(data) ? data : []);
+      setEntitlements((Array.isArray(data) ? data : []) as UserEntitlement[]);
     } catch (error: any) {
       const message = error?.message ?? '';
       if (message.includes('get_my_entitlements')) {
@@ -614,7 +685,10 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
         const purchases = await getAvailablePurchasesSafe();
         const restoredCount = (purchases ?? [])
           .map(normalizePurchaseProductId)
-          .filter(productId => productId && APP_STORE_SKU_SET.has(productId)).length;
+          .filter((productId: string | null): productId is string => {
+            if (!productId) return false;
+            return APP_STORE_SKU_SET.has(productId);
+          }).length;
         console.log(`[AppleIAP] Restore (${reason}) completed`, { restoredCount });
         return { restoredCount, purchases };
       } finally {
@@ -661,7 +735,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
             console.log('[AppleIAP] Refreshing subscription status…');
             const availablePurchases = await getAvailablePurchasesSafe();
             let normalizedPurchases: NormalizedPurchase[] = (availablePurchases ?? [])
-              .map(purchase => {
+              .map((purchase: any) => {
                 const productId = normalizePurchaseProductId(purchase);
                 if (!productId || !APP_STORE_SKU_SET.has(productId)) return null;
 
@@ -834,8 +908,6 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       fetchEntitlements,
       getAvailablePurchasesSafe,
       performRestore,
-      pickLatestPurchase,
-      pickPreferredPurchase,
       syncIapReadyState,
     ],
   );
@@ -1257,20 +1329,22 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
         });
       }
       const refreshTargetSku = isPendingUpgradeWithinGroup ? pendingUpgradeSku : purchasedSku;
-      void queueRefreshAfterPurchase(refreshTargetSku);
+      void queueRefreshAfterPurchaseRef.current(refreshTargetSku);
 
       if (receiptOrToken && !isDowngradeWithinGroup) {
         const entitlementSku = isPendingUpgradeWithinGroup ? pendingUpgradeSku : purchasedSku;
-        console.log('[AppleIAP] FLOW PURCHASE_VERIFY_START', {
-          productId: entitlementSku,
-          hasReceipt: Boolean(receiptOrToken),
-          source: 'purchase',
-        });
-        void persistAppleEntitlements({
-          productId: entitlementSku,
-          receipt: receiptOrToken,
-          reason: 'purchase',
-        }).catch(error => console.error('[AppleIAP] Error updating subscription after purchase:', error));
+        if (entitlementSku) {
+          console.log('[AppleIAP] FLOW PURCHASE_VERIFY_START', {
+            productId: entitlementSku,
+            hasReceipt: Boolean(receiptOrToken),
+            source: 'purchase',
+          });
+          void persistAppleEntitlements({
+            productId: entitlementSku,
+            receipt: receiptOrToken,
+            reason: 'purchase',
+          }).catch(error => console.error('[AppleIAP] Error updating subscription after purchase:', error));
+        }
       } else if (!receiptOrToken) {
         console.warn('[AppleIAP] Purchase missing receipt/purchaseToken.');
       }
@@ -1300,7 +1374,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       purchaseUpdateSubscription.remove();
       purchaseErrorSubscription.remove();
     };
-  }, [iapReady, queueRefreshAfterPurchase, refreshSubscriptionStatus]);
+  }, [iapReady, refreshSubscriptionStatus]);
 
   const startSubscriptionPurchase = useCallback(async (sku: string) => {
     const errors: { method: string; error: any }[] = [];
@@ -1425,73 +1499,6 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
     return `${sku ?? 'unknown'}_${fallbackDate || 'unknownDate'}`;
   };
 
-  const pickLatestPurchase = useCallback((items: NormalizedPurchase[]) => {
-    if (!items.length) return null;
-    return items.reduce<NormalizedPurchase | null>((winner, candidate) => {
-      if (!candidate) return winner;
-      if (!winner) return candidate;
-      if (candidate.expiryDate !== winner.expiryDate) {
-        return candidate.expiryDate > winner.expiryDate ? candidate : winner;
-      }
-      return candidate.transactionDate > winner.transactionDate ? candidate : winner;
-    }, null);
-  }, []);
-
-  const pickPreferredPurchase = useCallback((items: NormalizedPurchase[]) => {
-    if (!items.length) return null;
-    const now = Date.now();
-    const isNonExpiringPurchase = (item: NormalizedPurchase) => {
-      if (item.expiryDate) return false;
-      const original = item.original ?? {};
-      const hasNoExpiry =
-        original.expirationDateIOS == null &&
-        original.expiresDate == null &&
-        original.expiryTimeMs == null &&
-        original.purchaseTokenExpirationDate == null;
-      const isNonExpiring = Boolean(
-        original.isNonConsumable ||
-          original.isLifetime ||
-          original.productType === 'non-consumable' ||
-          original.type === 'non-consumable'
-      );
-      return hasNoExpiry && isNonExpiring;
-    };
-    const effectiveExpiry = (item: NormalizedPurchase) =>
-      isNonExpiringPurchase(item) ? Number.POSITIVE_INFINITY : (item.expiryDate ?? -1);
-    const activeItems = items.filter(item => {
-      if (item.expiryDate && item.expiryDate > now) return true;
-      if (!item.expiryDate) {
-        return isNonExpiringPurchase(item);
-      }
-      return false;
-    });
-    if (!activeItems.length) {
-      return pickLatestPurchase(items);
-    }
-    return activeItems.reduce<NormalizedPurchase | null>((winner, candidate) => {
-      if (!candidate) return winner;
-      if (!winner) return candidate;
-      const winnerMeta = getPlanMeta(winner.productId);
-      const candidateMeta = getPlanMeta(candidate.productId);
-      const winnerGroupPriority = winnerMeta.group === 'trainer' ? 2 : winnerMeta.group === 'player' ? 1 : 0;
-      const candidateGroupPriority = candidateMeta.group === 'trainer' ? 2 : candidateMeta.group === 'player' ? 1 : 0;
-      if (winnerGroupPriority !== candidateGroupPriority) {
-        return candidateGroupPriority > winnerGroupPriority ? candidate : winner;
-      }
-      const winnerTierRank = winnerMeta.tierRank ?? -1;
-      const candidateTierRank = candidateMeta.tierRank ?? -1;
-      if (winnerTierRank !== candidateTierRank) {
-        return candidateTierRank > winnerTierRank ? candidate : winner;
-      }
-      const winnerExpiry = effectiveExpiry(winner);
-      const candidateExpiry = effectiveExpiry(candidate);
-      if (candidateExpiry !== winnerExpiry) {
-        return candidateExpiry > winnerExpiry ? candidate : winner;
-      }
-      return candidate.transactionDate > winner.transactionDate ? candidate : winner;
-    }, null);
-  }, [pickLatestPurchase]);
-
   const pruneHandledPurchaseEvents = () => {
     const ttlMs = 10 * 60 * 1000;
     const now = Date.now();
@@ -1533,6 +1540,10 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
     });
     return refreshAfterPurchasePromiseRef.current;
   }, [refreshSubscriptionStatus]);
+
+  useEffect(() => {
+    queueRefreshAfterPurchaseRef.current = queueRefreshAfterPurchase;
+  }, [queueRefreshAfterPurchase]);
 
   const persistAppleEntitlements = async ({
     productId,
@@ -1690,5 +1701,3 @@ export function useAppleIAP() {
   }
   return context;
 }
-
-

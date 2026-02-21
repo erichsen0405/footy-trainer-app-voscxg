@@ -1,11 +1,9 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 
-import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, StyleSheet } from 'react-native';
 import { colors } from '@/styles/commonStyles';
-import { isValidVideoUrl, parseVideoUrl } from '@/utils/videoUrlParser';
-import { VideoModal, VideoThumbnail } from '@/components/VideoPlayer';
+import { parseVideoUrl, isValidVideoUrl } from '@/utils/videoUrlParser';
+import SmartVideoPlayer from '@/components/SmartVideoPlayer';
 import { stripAfterTrainingMarkers } from '@/utils/afterTrainingMarkers';
 
 interface TaskDescriptionRendererProps {
@@ -26,7 +24,6 @@ interface TaskDescriptionRendererProps {
  * 3. key prop on VideoPlayer to force unmount/remount (iOS cache fix)
  */
 export function TaskDescriptionRenderer({ description, textColor }: TaskDescriptionRendererProps) {
-  const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
   const sanitizedDescription = useMemo(() => {
     return stripAfterTrainingMarkers(description);
   }, [description]);
@@ -42,53 +39,27 @@ export function TaskDescriptionRenderer({ description, textColor }: TaskDescript
     const videoUrlRegex = /(https?:\/\/[^\s]+)/i;
     const match = sanitizedDescription.match(videoUrlRegex);
     
-    console.log('🔍 TaskDescriptionRenderer - Checking for video URL');
-    console.log('📝 Description:', sanitizedDescription.substring(0, 100));
-    console.log('🎯 Regex match:', match ? match[0] : 'No match');
-    
     return match ? match[0] : null;
   }, [sanitizedDescription]);
-
-  console.log('🎬 TaskDescriptionRenderer rendering');
-  console.log('📹 Video URL found:', videoUrl);
 
   if (!sanitizedDescription) {
     return null;
   }
 
   // If we found a video URL, render the video player
-  if (videoUrl) {
-    console.log('✅ Rendering VideoPlayer with URL:', videoUrl);
-    
-    // CRITICAL FIX: key={videoUrl} forces unmount/remount when URL changes
-    // This solves iOS tab screen caching issues
+  if (videoUrl && isValidVideoUrl(videoUrl)) {
     return (
       <View style={styles.container}>
-        <VideoThumbnail
-          key={videoUrl}
-          videoUrl={videoUrl}
-          onPress={() => setSelectedVideoUrl(videoUrl)}
-          style={styles.videoThumbnail}
-        />
+        <View style={styles.videoThumbnail}>
+          <SmartVideoPlayer url={videoUrl} />
+        </View>
         <Text style={[styles.videoLabel, { color: textColor }]}>
           {getVideoLabel(videoUrl)}
         </Text>
-
-        {/* Video Modal */}
-        {selectedVideoUrl && (
-          <VideoModal
-            visible={!!selectedVideoUrl}
-            videoUrl={selectedVideoUrl}
-            onClose={() => setSelectedVideoUrl(null)}
-            title="Opgave video"
-          />
-        )}
       </View>
     );
   }
 
-  // No video URL found, render as regular text
-  console.log('📝 No video URL found, rendering as text');
   return (
     <View style={styles.container}>
       <Text style={[styles.text, { color: textColor }]}>
@@ -133,5 +104,4 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
 });
-
 
