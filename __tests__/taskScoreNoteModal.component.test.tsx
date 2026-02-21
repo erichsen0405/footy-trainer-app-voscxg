@@ -32,7 +32,7 @@ describe('TaskScoreNoteModal', () => {
 
   it('does not render content before first visible mount', () => {
     const { queryByTestId } = render(
-      <TaskScoreNoteModal visible={false} onClose={jest.fn()} />
+      <TaskScoreNoteModal visible={false} title="Feedback" initialScore={null} onSave={jest.fn()} onClose={jest.fn()} />
     );
 
     expect(queryByTestId('feedback.saveButton')).toBeNull();
@@ -40,7 +40,7 @@ describe('TaskScoreNoteModal', () => {
 
   it('renders score and note inputs when visible', () => {
     const { getByTestId } = render(
-      <TaskScoreNoteModal visible onClose={jest.fn()} />
+      <TaskScoreNoteModal visible title="Feedback" initialScore={null} onSave={jest.fn()} onClose={jest.fn()} />
     );
 
     expect(getByTestId('feedback.scoreInput')).toBeTruthy();
@@ -50,11 +50,12 @@ describe('TaskScoreNoteModal', () => {
   it('sends expected payload on save after input changes', () => {
     const onSave = jest.fn();
     const { getByTestId } = render(
-      <TaskScoreNoteModal visible onClose={jest.fn()} onSave={onSave} />
+      <TaskScoreNoteModal visible title="Feedback" initialScore={null} onClose={jest.fn()} onSave={onSave} />
     );
 
     fireEvent.press(getByTestId('feedback.scoreInput'));
     fireEvent.press(getByTestId('feedback.scoreOption.8'));
+    fireEvent.press(getByTestId('feedback.scoreDoneButton'));
     fireEvent.changeText(getByTestId('feedback.noteInput'), '  Solid session  ');
     fireEvent.press(getByTestId('feedback.saveButton'));
 
@@ -64,11 +65,29 @@ describe('TaskScoreNoteModal', () => {
     });
   });
 
+  it('keeps wheel open after selecting and collapses when pressing Færdig', () => {
+    const { getByTestId, queryByTestId } = render(
+      <TaskScoreNoteModal visible title="Feedback" initialScore={null} onSave={jest.fn()} onClose={jest.fn()} />
+    );
+
+    fireEvent.press(getByTestId('feedback.scoreInput'));
+    expect(getByTestId('feedback.scoreDropdown.list')).toBeTruthy();
+
+    fireEvent.press(getByTestId('feedback.scoreOption.7'));
+    expect(getByTestId('feedback.scoreDropdown.list')).toBeTruthy();
+
+    fireEvent.press(getByTestId('feedback.scoreDoneButton'));
+
+    expect(queryByTestId('feedback.scoreDropdown.list')).toBeNull();
+    expect(getByTestId('feedback.selectedScore.7')).toBeTruthy();
+  });
+
   it('shows missing-score alert and does not call save when score is required', () => {
     const onSave = jest.fn();
     const { getByTestId } = render(
       <TaskScoreNoteModal
         visible
+        title="Feedback"
         onClose={jest.fn()}
         onSave={onSave}
         enableScore
@@ -87,6 +106,7 @@ describe('TaskScoreNoteModal', () => {
     const { getByTestId } = render(
       <TaskScoreNoteModal
         visible
+        title="Feedback"
         onClose={jest.fn()}
         onSave={jest.fn()}
         onClear={onClear}

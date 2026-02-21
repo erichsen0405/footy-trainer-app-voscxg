@@ -285,7 +285,21 @@ tags:
             id: '^feedback\.scoreInput$'
           timeout: 15000
       - tapOn:
+          id: '^feedback\.scoreInput$'
+      - scrollUntilVisible:
+          element:
+            id: '^feedback\.scoreOption\.5$'
+          direction: DOWN
+          timeout: 8000
+      - tapOn:
           id: '^feedback\.scoreOption\.5$'
+      - runFlow:
+          when:
+            visible:
+              id: '^feedback\.scoreDoneButton$'
+          commands:
+            - tapOn:
+                id: '^feedback\.scoreDoneButton$'
       - tapOn:
           id: '^feedback\.noteInput$'
       - inputText: "maestro note intensistet"
@@ -346,7 +360,21 @@ tags:
             id: '^feedback\.scoreInput$'
           timeout: 15000
       - tapOn:
+          id: '^feedback\.scoreInput$'
+      - scrollUntilVisible:
+          element:
+            id: '^feedback\.scoreOption\.5$'
+          direction: DOWN
+          timeout: 8000
+      - tapOn:
           id: '^feedback\.scoreOption\.5$'
+      - runFlow:
+          when:
+            visible:
+              id: '^feedback\.scoreDoneButton$'
+          commands:
+            - tapOn:
+                id: '^feedback\.scoreDoneButton$'
       - tapOn:
           id: '^feedback\.noteInput$'
       - inputText: "maestro note feedback"

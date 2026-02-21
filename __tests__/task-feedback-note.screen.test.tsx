@@ -143,6 +143,7 @@ describe('task-feedback-note screen', () => {
 
     fireEvent.press(screen.getByTestId('feedback.scoreInput'));
     fireEvent.press(screen.getByTestId('feedback.scoreOption.8'));
+    fireEvent.press(screen.getByTestId('feedback.scoreDoneButton'));
     fireEvent.changeText(screen.getByTestId('feedback.noteInput'), 'Midlertidig note');
     fireEvent.press(screen.getByText('X'));
 

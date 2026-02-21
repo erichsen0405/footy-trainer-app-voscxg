@@ -2,6 +2,7 @@ import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from '
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -16,6 +17,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '@/styles/commonStyles';
 
 const SCORE_VALUES = Array.from({ length: 10 }, (_, idx) => idx + 1);
+const SCORE_WHEEL_ITEM_HEIGHT = 42;
+const SCORE_WHEEL_VISIBLE_ITEMS = 5;
 
 export interface TaskScoreNoteModalPayload {
   score: number | null;
@@ -24,10 +27,10 @@ export interface TaskScoreNoteModalPayload {
 
 interface TaskScoreNoteModalProps {
   visible: boolean;
-  title?: string;              // was required
+  title: string;
   introText?: string;
   helperText?: string | null;
-  initialScore?: number | null; // was required
+  initialScore: number | null;
   initialNote?: string;
   enableScore?: boolean;
   enableNote?: boolean;
@@ -41,7 +44,7 @@ interface TaskScoreNoteModalProps {
   isSaving?: boolean;
   readonly?: boolean;
   error?: string | null;
-  onSave?: (payload: TaskScoreNoteModalPayload) => void | Promise<void>; // was required
+  onSave: (payload: TaskScoreNoteModalPayload) => void | Promise<void>;
   onClear?: () => void | Promise<void>;
   onClose: () => void;
   showLabels?: boolean; // default true
@@ -49,10 +52,10 @@ interface TaskScoreNoteModalProps {
 
 function TaskScoreNoteModalComponent({
   visible,
-  title = 'Feedback',
+  title,
   introText = 'Hvordan gik det?',
   helperText = 'Hvor god var du til dine fokuspunkter',
-  initialScore = null,
+  initialScore,
   initialNote = '',
   enableScore = true,
   enableNote = true,
@@ -65,13 +68,14 @@ function TaskScoreNoteModalComponent({
   isSaving = false,
   readonly = false,
   error,
-  onSave = () => {},
+  onSave,
   onClear,
   onClose,
 }: TaskScoreNoteModalProps) {
   const [score, setScore] = useState<number | null>(initialScore ?? null);
   const [note, setNote] = useState(initialNote ?? '');
   const [isScoreDropdownOpen, setIsScoreDropdownOpen] = useState(false);
+  const scoreWheelRef = useRef<FlatList<number> | null>(null);
   const hasMountedRef = useRef(false);
 
   useEffect(() => {
@@ -107,19 +111,39 @@ function TaskScoreNoteModalComponent({
   const shouldShowClear = !shouldShowUpdate && canMarkNotDone && !hasChanges;
   const scoreRequired = enableScore && score === null && !shouldShowClear;
 
+  const scrollWheelToValue = useCallback((value: number, animated: boolean) => {
+    const valueIndex = SCORE_VALUES.indexOf(value);
+    if (valueIndex < 0) return;
+    scoreWheelRef.current?.scrollToIndex?.({
+      index: valueIndex,
+      animated,
+      viewPosition: 0.5,
+    });
+  }, []);
+
   const handleSelectScore = useCallback(
-    (value: number) => {
+    (value: number, centerWheel: boolean = false) => {
       if (disableInteractions || !enableScore) return;
       setScore(value);
-      setIsScoreDropdownOpen(false);
+      if (centerWheel) {
+        scrollWheelToValue(value, true);
+      }
     },
-    [disableInteractions, enableScore]
+    [disableInteractions, enableScore, scrollWheelToValue]
   );
 
   const toggleScoreDropdown = useCallback(() => {
     if (disableInteractions || !enableScore) return;
-    setIsScoreDropdownOpen((prev) => !prev);
-  }, [disableInteractions, enableScore]);
+    setIsScoreDropdownOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        setTimeout(() => {
+          scrollWheelToValue(typeof score === 'number' ? score : 5, false);
+        }, 0);
+      }
+      return next;
+    });
+  }, [disableInteractions, enableScore, score, scrollWheelToValue]);
 
   const handleClear = useCallback(() => {
     if (disableInteractions || !hasClearAction) return;
@@ -210,24 +234,62 @@ function TaskScoreNoteModalComponent({
 
         {isScoreDropdownOpen ? (
           <View style={styles.scoreDropdownList} testID="feedback.scoreDropdown.list">
-            {SCORE_VALUES.map((value) => {
-              const isSelected = score === value;
-              return (
-                <Pressable
-                  key={`score-${value}`}
-                  style={[styles.scoreOption, isSelected && styles.scoreOptionSelected]}
-                  accessibilityRole="button"
-                  testID={`feedback.scoreOption.${value}`}
-                  accessibilityLabel={`Score ${value}`}
-                  onPress={() => handleSelectScore(value)}
-                  disabled={disableInteractions}
-                >
-                  <Text style={[styles.scoreOptionText, isSelected && styles.scoreOptionTextSelected]}>
-                    {value}
-                  </Text>
-                </Pressable>
-              );
-            })}
+            <View pointerEvents="none" style={styles.scoreWheelSelectionBand} />
+            <FlatList
+              ref={scoreWheelRef}
+              data={SCORE_VALUES}
+              keyExtractor={(item) => String(item)}
+              showsVerticalScrollIndicator={false}
+              snapToInterval={SCORE_WHEEL_ITEM_HEIGHT}
+              decelerationRate="fast"
+              getItemLayout={(_, index) => ({
+                length: SCORE_WHEEL_ITEM_HEIGHT,
+                offset: SCORE_WHEEL_ITEM_HEIGHT * index,
+                index,
+              })}
+              contentContainerStyle={styles.scoreWheelContent}
+              style={styles.scoreWheel}
+              renderItem={({ item: value }) => {
+                const isSelected = score === value;
+                return (
+                  <Pressable
+                    style={styles.scoreOption}
+                    accessibilityRole="button"
+                    testID={`feedback.scoreOption.${value}`}
+                    accessibilityLabel={`Score ${value}`}
+                    onPress={() => handleSelectScore(value, true)}
+                    disabled={disableInteractions}
+                  >
+                    <Text style={[styles.scoreOptionText, isSelected && styles.scoreOptionTextSelected]}>
+                      {value}
+                    </Text>
+                  </Pressable>
+                );
+              }}
+              onMomentumScrollEnd={(event) => {
+                const offsetY = event.nativeEvent.contentOffset.y;
+                const index = Math.round(offsetY / SCORE_WHEEL_ITEM_HEIGHT);
+                const clampedIndex = Math.max(0, Math.min(SCORE_VALUES.length - 1, index));
+                const picked = SCORE_VALUES[clampedIndex];
+                handleSelectScore(picked);
+              }}
+              onScrollToIndexFailed={({ index }) => {
+                scoreWheelRef.current?.scrollToOffset?.({
+                  offset: Math.max(0, index) * SCORE_WHEEL_ITEM_HEIGHT,
+                  animated: false,
+                });
+              }}
+            />
+            <Pressable
+              style={[styles.scoreDoneButton, disableInteractions && styles.scoreDoneButtonDisabled]}
+              testID="feedback.scoreDoneButton"
+              accessibilityRole="button"
+              accessibilityLabel="Færdig"
+              onPress={() => setIsScoreDropdownOpen(false)}
+              disabled={disableInteractions}
+            >
+              <Text style={styles.scoreDoneButtonText}>Færdig</Text>
+            </Pressable>
           </View>
         ) : null}
       </View>
@@ -433,20 +495,53 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: '#FFFFFF',
+    position: 'relative',
+  },
+  scoreWheel: {
+    height: SCORE_WHEEL_ITEM_HEIGHT * SCORE_WHEEL_VISIBLE_ITEMS,
+  },
+  scoreWheelContent: {
+    paddingVertical: SCORE_WHEEL_ITEM_HEIGHT * 2,
+  },
+  scoreWheelSelectionBand: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: SCORE_WHEEL_ITEM_HEIGHT * 2,
+    height: SCORE_WHEEL_ITEM_HEIGHT,
+    backgroundColor: 'rgba(11, 123, 90, 0.08)',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(11, 123, 90, 0.2)',
+    zIndex: 1,
   },
   scoreOption: {
-    minHeight: 42,
+    height: SCORE_WHEEL_ITEM_HEIGHT,
     paddingHorizontal: 14,
     justifyContent: 'center',
-  },
-  scoreOptionSelected: {
-    backgroundColor: 'rgba(11, 123, 90, 0.08)',
+    alignItems: 'center',
   },
   scoreOptionText: {
     fontSize: 16,
     color: '#20283E',
   },
   scoreOptionTextSelected: {
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  scoreDoneButton: {
+    borderTopWidth: 1,
+    borderColor: 'rgba(11, 15, 25, 0.12)',
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  scoreDoneButtonDisabled: {
+    opacity: 0.4,
+  },
+  scoreDoneButtonText: {
+    fontSize: 15,
     fontWeight: '700',
     color: colors.primary,
   },
