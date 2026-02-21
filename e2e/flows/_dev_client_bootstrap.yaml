@@ -55,14 +55,6 @@ appId: ${MAESTRO_APP_ID}
           notVisible: 'Connected to:'
           timeout: 15000
 
-# 3) App notifications modal: Tillad
-- runFlow:
-    when:
-      visible:
-        id: '^notifications\.allowButton$'
-    commands:
-      - tapOn:
-          id: '^notifications\.allowButton$'
-
-# 4) OS system-notification prompt (platform override)
-- runFlow: _platform_notifications_prompt_allow.yaml
+# 3) NOTE: Notification prompts are handled in each smoke flow via
+# `launchApp.permissions` (allow/deny) and dedicated platform subflows.
+# Bootstrap must stay neutral so notifications_permission_smoke can verify deny path deterministically.
