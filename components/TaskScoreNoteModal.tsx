@@ -6,7 +6,6 @@ import {
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -17,7 +16,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '@/styles/commonStyles';
 
 const SCORE_VALUES = Array.from({ length: 10 }, (_, idx) => idx + 1);
-const CHIP_HIT_SLOP = { top: 8, right: 8, bottom: 8, left: 8 };
 
 export interface TaskScoreNoteModalPayload {
   score: number | null;
@@ -35,7 +33,6 @@ interface TaskScoreNoteModalProps {
   enableNote?: boolean;
   noteLabel?: string;
   notePlaceholder?: string;
-  resetLabel?: string;
   clearLabel?: string;
   primaryButtonLabel?: string;
   secondaryButtonLabel?: string;
@@ -61,7 +58,6 @@ function TaskScoreNoteModalComponent({
   enableNote = true,
   noteLabel = 'Noter (valgfrit)',
   notePlaceholder = 'Skriv hvad der gik godt eller skidt...',
-  resetLabel = 'Nulstil score',
   clearLabel = 'Markér som ikke udført',
   primaryButtonLabel = 'Markér som udført',
   missingScoreTitle = 'Mangler score',
@@ -72,16 +68,17 @@ function TaskScoreNoteModalComponent({
   onSave = () => {},
   onClear,
   onClose,
-  showLabels = true,
 }: TaskScoreNoteModalProps) {
   const [score, setScore] = useState<number | null>(initialScore ?? null);
   const [note, setNote] = useState(initialNote ?? '');
+  const [isScoreDropdownOpen, setIsScoreDropdownOpen] = useState(false);
   const hasMountedRef = useRef(false);
 
   useEffect(() => {
     if (visible) {
       setScore(initialScore ?? null);
       setNote(initialNote ?? '');
+      setIsScoreDropdownOpen(false);
       hasMountedRef.current = true;
     }
   }, [initialNote, initialScore, visible]);
@@ -114,13 +111,14 @@ function TaskScoreNoteModalComponent({
     (value: number) => {
       if (disableInteractions || !enableScore) return;
       setScore(value);
+      setIsScoreDropdownOpen(false);
     },
     [disableInteractions, enableScore]
   );
 
-  const handleResetScore = useCallback(() => {
+  const toggleScoreDropdown = useCallback(() => {
     if (disableInteractions || !enableScore) return;
-    setScore(null);
+    setIsScoreDropdownOpen((prev) => !prev);
   }, [disableInteractions, enableScore]);
 
   const handleClear = useCallback(() => {
@@ -192,44 +190,47 @@ function TaskScoreNoteModalComponent({
     ]);
   }, [disableInteractions, hasChanges, onClose, visible]);
 
-  const renderScoreChips = () => {
+  const renderScoreDropdown = () => {
     if (!enableScore) return null;
+    const selectedLabel = typeof score === 'number' ? String(score) : 'Vælg score';
 
     return (
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.scoringRow}
-        testID="feedback.scoreInput"
-        accessibilityLabel="Vælg score"
-      >
-        {SCORE_VALUES.map(value => {
-          const isSelected = score === value;
-          return (
-            <Pressable
-              key={`score-${value}`}
-              style={[styles.chip, isSelected && styles.chipSelected, disableInteractions && styles.chipDisabled]}
-              accessibilityRole="button"
-              testID={`feedback.scoreOption.${value}`}
-              accessibilityLabel={`Score ${value}`}
-              hitSlop={CHIP_HIT_SLOP}
-              onPress={() => handleSelectScore(value)}
-              disabled={disableInteractions}
-            >
-              <Text
-                style={[
-                  styles.chipText,
-                  isSelected && styles.chipTextSelected,
-                  !showLabels && styles.chipTextHidden,
-                ]}
-                accessible={false}
-              >
-                {value}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+      <View style={styles.scoreDropdownWrap}>
+        <Pressable
+          style={[styles.scoreDropdownButton, disableInteractions && styles.scoreDropdownButtonDisabled]}
+          accessibilityRole="button"
+          testID="feedback.scoreInput"
+          accessibilityLabel="Vælg score"
+          onPress={toggleScoreDropdown}
+          disabled={disableInteractions}
+        >
+          <Text style={styles.scoreDropdownValue}>{selectedLabel}</Text>
+          <Text style={styles.scoreDropdownChevron}>{isScoreDropdownOpen ? '▲' : '▼'}</Text>
+        </Pressable>
+
+        {isScoreDropdownOpen ? (
+          <View style={styles.scoreDropdownList} testID="feedback.scoreDropdown.list">
+            {SCORE_VALUES.map((value) => {
+              const isSelected = score === value;
+              return (
+                <Pressable
+                  key={`score-${value}`}
+                  style={[styles.scoreOption, isSelected && styles.scoreOptionSelected]}
+                  accessibilityRole="button"
+                  testID={`feedback.scoreOption.${value}`}
+                  accessibilityLabel={`Score ${value}`}
+                  onPress={() => handleSelectScore(value)}
+                  disabled={disableInteractions}
+                >
+                  <Text style={[styles.scoreOptionText, isSelected && styles.scoreOptionTextSelected]}>
+                    {value}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
+      </View>
     );
   };
 
@@ -267,30 +268,9 @@ function TaskScoreNoteModalComponent({
                 {helperText ? <Text style={styles.helper}>{helperText}</Text> : null}
               </View>
 
-              {renderScoreChips()}
-              {enableScore ? (
-                <Text style={styles.scrollHint} testID="feedback.scoreScrollHint">
-                  Scroll til siden for flere scores (7-10)
-                </Text>
-              ) : null}
+              {renderScoreDropdown()}
               {enableScore ? (
                 <View testID={score === null ? 'feedback.selectedScore.none' : `feedback.selectedScore.${score}`} style={styles.testProbe} />
-              ) : null}
-
-              {enableScore ? (
-                <Pressable
-                  onPress={handleResetScore}
-                  disabled={disableInteractions || score === null}
-                >
-                  <Text
-                    style={[
-                      styles.resetText,
-                      (disableInteractions || score === null) && styles.resetDisabled,
-                    ]}
-                  >
-                    {resetLabel}
-                  </Text>
-                </Pressable>
               ) : null}
 
               {enableNote ? (
@@ -420,51 +400,55 @@ const styles = StyleSheet.create({
     color: 'rgba(32, 40, 62, 0.6)',
     marginTop: 4,
   },
-  scoringRow: {
-    paddingVertical: 16,
-    paddingHorizontal: 6,
+  scoreDropdownWrap: {
+    marginTop: 8,
   },
-  chip: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  scoreDropdownButton: {
+    minHeight: 50,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#D4D7E3',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: 'rgba(11, 15, 25, 0.12)',
     backgroundColor: '#FFFFFF',
-    marginRight: 10, // replaces scoringRow.gap
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  chipSelected: {
-    borderColor: colors.primary,
+  scoreDropdownButtonDisabled: {
+    opacity: 0.4,
   },
-  chipDisabled: {
-    opacity: 0.5,
-  },
-  chipText: {
+  scoreDropdownValue: {
     fontSize: 16,
     fontWeight: '700',
+    color: '#20283E',
+  },
+  scoreDropdownChevron: {
+    fontSize: 12,
     color: '#3B4256',
   },
-  chipTextSelected: {
+  scoreDropdownList: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(11, 15, 25, 0.12)',
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+  },
+  scoreOption: {
+    minHeight: 42,
+    paddingHorizontal: 14,
+    justifyContent: 'center',
+  },
+  scoreOptionSelected: {
+    backgroundColor: 'rgba(11, 123, 90, 0.08)',
+  },
+  scoreOptionText: {
+    fontSize: 16,
+    color: '#20283E',
+  },
+  scoreOptionTextSelected: {
+    fontWeight: '700',
     color: colors.primary,
-  },
-  chipTextHidden: {
-    opacity: 0,
-  },
-  resetText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.primary,
-    marginBottom: 8,
-  },
-  scrollHint: {
-    fontSize: 13,
-    color: 'rgba(32, 40, 62, 0.65)',
-    marginBottom: 8,
-  },
-  resetDisabled: {
-    opacity: 0.4,
   },
   noteSection: {
     marginTop: 8,

@@ -141,6 +141,7 @@ describe('task-feedback-note screen', () => {
     await waitFor(() => expect(screen.getByTestId('feedback.noteInput').props.value).toBe(''));
     expect(screen.getByTestId('feedback.selectedScore.none')).toBeTruthy();
 
+    fireEvent.press(screen.getByTestId('feedback.scoreInput'));
     fireEvent.press(screen.getByTestId('feedback.scoreOption.8'));
     fireEvent.changeText(screen.getByTestId('feedback.noteInput'), 'Midlertidig note');
     fireEvent.press(screen.getByText('X'));
