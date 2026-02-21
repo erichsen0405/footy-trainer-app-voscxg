@@ -223,4 +223,33 @@ describe('task-feedback-note screen', () => {
     );
     expect(screen.getByTestId('feedback.selectedScore.4')).toBeTruthy();
   });
+
+  it('hydrates persisted feedback for non-UUID task id stored as raw instance id', async () => {
+    mockCompletionByTaskId['task-local-raw'] = false;
+    mockFetchSelfFeedbackForTemplates.mockResolvedValue([
+      {
+        id: 'row-raw-instance',
+        userId: 'user-1',
+        taskTemplateId: 'template-1',
+        taskInstanceId: 'task-local-raw',
+        activityId: '2ac31159-22f6-42a2-a067-4fb3ab6dd2ab',
+        rating: 9,
+        note: 'Gemt via raw non-uuid instance',
+        createdAt: '2026-02-20T11:00:00.000Z',
+        updatedAt: '2026-02-20T11:00:00.000Z',
+      },
+    ]);
+
+    mockParams = {
+      ...mockParams,
+      taskInstanceId: 'task-local-raw',
+    };
+
+    const screen = render(<TaskFeedbackNoteScreen />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId('feedback.noteInput').props.value).toBe('Gemt via raw non-uuid instance'),
+    );
+    expect(screen.getByTestId('feedback.selectedScore.9')).toBeTruthy();
+  });
 });
