@@ -201,8 +201,13 @@ tags:
     timeout: 15000
 - assertVisible:
     id: '^tasks\.template\.feedbackToggle$'
-- tapOn:
-    id: '^tasks\.template\.feedbackToggle$'
+- runFlow:
+    when:
+      notVisible:
+        id: '^tasks\.template\.feedbackDelayOption\.15$'
+    commands:
+      - tapOn:
+          id: '^tasks\.template\.feedbackToggle$'
 - extendedWaitUntil:
     visible:
       id: '^tasks\.template\.feedbackDelayOption\.15$'
