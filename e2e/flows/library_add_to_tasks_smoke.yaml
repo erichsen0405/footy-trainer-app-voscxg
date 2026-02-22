@@ -215,6 +215,18 @@ tags:
     direction: DOWN
     timeout: 15000
 - assertVisible: '.*Fysisk træning.*'
+- swipe:
+    start: 50%, 80%
+    end: 50%, 20%
+- extendedWaitUntil:
+    visible:
+      id: '^tasks\.template\.saveButton$'
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      text: '.*Fysisk træning.*'
+    direction: UP
+    timeout: 8000
 - tapOn: '.*Fysisk træning.*'
 - tapOn:
     id: '^tasks\.template\.saveButton$'
