@@ -183,7 +183,7 @@ tags:
 - scrollUntilVisible:
     element:
       id: '^profile\.teamPlayersSection\.toggle$'
-    direction: DOWN
+    direction: UP
     timeout: 15000
 - assertVisible:
     id: '^profile\.teamPlayersSection\.toggle$'
