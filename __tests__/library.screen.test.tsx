@@ -474,6 +474,72 @@ describe('Library screen gating and card state', () => {
     });
   });
 
+  it('hydrates mapping from existing tasks and updates counters on feedback save', async () => {
+    mockUseFootball.mockReturnValue({
+      addTask: jest.fn(),
+      tasks: [
+        {
+          id: 'template-existing-1',
+          taskTemplateId: 'template-existing-1',
+          title: 'Focus Drill',
+          description: 'Focus description',
+          videoUrl: 'https://example.com/focus.mp4',
+          completed: false,
+          isTemplate: true,
+          categoryIds: [],
+          subtasks: [],
+        },
+      ],
+    });
+
+    setupSupabaseFixture({
+      personalExercises: [
+        {
+          id: 'ex-existing-1',
+          trainer_id: 'user-1',
+          title: 'Focus Drill',
+          description: 'Focus description',
+          video_url: 'https://example.com/focus.mp4',
+          is_system: false,
+          is_added_to_tasks: false,
+          last_score: null,
+          execution_count: 1,
+        },
+      ],
+    });
+
+    mockUseUserRole.mockReturnValue({ userRole: 'trainer', isTrainer: true, isAdmin: false });
+    mockUseSubscriptionFeatures.mockReturnValue({
+      featureAccess: { library: true, calendarSync: true, trainerLinking: true },
+      isLoading: false,
+      subscriptionTier: 'trainer_basic',
+    });
+
+    const { findByText, findByTestId } = render(<LibraryScreen />);
+
+    fireEvent.press(await findByText(/Personlige/i));
+
+    await waitFor(async () => {
+      const addButton = await findByTestId('library.addToTasksButton.ex-existing-1');
+      expect(addButton.props.accessibilityState?.disabled).toBe(true);
+    });
+
+    act(() => {
+      DeviceEventEmitter.emit('feedback:saved', {
+        activityId: 'activity-existing-1',
+        templateId: 'template-existing-1',
+        taskInstanceId: 'task-instance-existing-1',
+        rating: 9,
+        optimisticId: 'optimistic:existing-1',
+      });
+    });
+
+    await waitFor(async () => {
+      expect(await findByTestId('library.counter.lastScore.ex-existing-1')).toHaveTextContent('Senest: 9/10');
+      expect(await findByTestId('library.counter.executionCount.ex-existing-1')).toHaveTextContent('Udført: 2x');
+    });
+  });
+
   it('does not double increment counter on save_failed followed by corrected saved event', async () => {
     const addTask = jest.fn().mockResolvedValue({ id: 'template-corrected' });
     mockUseFootball.mockReturnValue({ addTask, tasks: [] });

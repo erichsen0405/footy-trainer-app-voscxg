@@ -137,6 +137,37 @@ const formatLatestScoreLine = (lastScore?: number | null) =>
 const formatExecutionCountLine = (executionCount?: number | null) =>
   typeof executionCount === 'number' && executionCount > 0 ? `Udført: ${executionCount}x` : 'Udført: –x';
 
+const normalizeSignatureText = (value: unknown): string =>
+  String(value ?? '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const normalizeSignatureVideo = (value: unknown): string => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  const key = extractVideoKey(raw);
+  return key ? key.toLowerCase() : raw.toLowerCase();
+};
+
+const buildExerciseSignature = (exercise: Pick<Exercise, 'title' | 'description' | 'video_key' | 'video_url'>): string => {
+  const title = normalizeSignatureText(exercise.title);
+  if (!title) return '';
+  const description = normalizeSignatureText(exercise.description ?? '');
+  const video = normalizeSignatureVideo(exercise.video_key || exercise.video_url);
+  return `${title}::${description}::${video}`;
+};
+
+const buildTaskSignature = (task: Pick<Task, 'title' | 'description' | 'videoUrl'>): string => {
+  const title = normalizeSignatureText(task.title);
+  if (!title) return '';
+  const description = normalizeSignatureText(task.description ?? '');
+  const video = normalizeSignatureVideo(task.videoUrl);
+  return `${title}::${description}::${video}`;
+};
+
 const CARD_SCENE_IMAGES = [
   'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?auto=format&fit=crop&w=1400&q=80',
   'https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?auto=format&fit=crop&w=1400&q=80',
@@ -774,6 +805,24 @@ export default function LibraryScreen() {
     });
   }, []);
 
+  const allKnownExercises = useMemo(() => {
+    const merged: Exercise[] = [];
+    const seen = new Set<string>();
+    const addUnique = (exercise: Exercise) => {
+      if (!exercise?.id || seen.has(exercise.id)) return;
+      seen.add(exercise.id);
+      merged.push(exercise);
+    };
+
+    personalExercises.forEach(addUnique);
+    footballCoachExercises.forEach(addUnique);
+    trainerFolders.forEach((folder) => {
+      (folder.exercises || []).forEach(addUnique);
+    });
+
+    return merged;
+  }, [personalExercises, footballCoachExercises, trainerFolders]);
+
   const loadLibraryData = useCallback(
     async (userId: string) => {
       try {
@@ -898,6 +947,68 @@ export default function LibraryScreen() {
       setReloadNonce(n => n + 1);
     }, [])
   );
+
+  useEffect(() => {
+    const tasks = (tasksFromContext || []) as Task[];
+    if (!tasks.length || !allKnownExercises.length) return;
+
+    const signatureToExerciseId = new Map<string, string>();
+    const duplicateSignatures = new Set<string>();
+    allKnownExercises.forEach((exercise) => {
+      const signature = buildExerciseSignature(exercise);
+      if (!signature || duplicateSignatures.has(signature)) return;
+      const existing = signatureToExerciseId.get(signature);
+      if (existing && existing !== exercise.id) {
+        duplicateSignatures.add(signature);
+        signatureToExerciseId.delete(signature);
+        return;
+      }
+      signatureToExerciseId.set(signature, exercise.id);
+    });
+
+    const inferredMap: Record<string, string> = {};
+    const inferredAdded = new Set<string>();
+
+    tasks.forEach((task) => {
+      const taskTemplateId = String(task?.taskTemplateId ?? task?.id ?? '').trim();
+      if (!taskTemplateId) return;
+
+      const signature = buildTaskSignature(task);
+      if (!signature || duplicateSignatures.has(signature)) return;
+
+      const exerciseId = signatureToExerciseId.get(signature);
+      if (!exerciseId) return;
+
+      inferredMap[exerciseId] = taskTemplateId;
+      inferredAdded.add(exerciseId);
+    });
+
+    if (!Object.keys(inferredMap).length) return;
+
+    setExerciseTaskMap((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      Object.entries(inferredMap).forEach(([exerciseId, taskTemplateId]) => {
+        if (next[exerciseId] !== taskTemplateId) {
+          next[exerciseId] = taskTemplateId;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+
+    setAddedToTasksIds((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      inferredAdded.forEach((exerciseId) => {
+        if (!next.has(exerciseId)) {
+          next.add(exerciseId);
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [tasksFromContext, allKnownExercises]);
 
   useEffect(() => {
     const findExerciseById = (exerciseId: string): Exercise | null => {
