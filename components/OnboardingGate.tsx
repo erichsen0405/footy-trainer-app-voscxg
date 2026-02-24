@@ -240,6 +240,14 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
       } catch (error) {
         if (error instanceof TimeoutError) {
           refreshCalledRef.current = false;
+          setStateIfCurrent(prev => ({
+            ...prev,
+            hydrating: false,
+            user,
+            needsSubscription: false,
+            initError: null,
+          }));
+          return;
         }
         console.warn('[OnboardingGate] Startup hydration failed', error);
         setStateIfCurrent(prev => ({
@@ -268,27 +276,26 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
     const bootstrap = async () => {
       try {
         const { data } = await withTimeout(
-          supabase.auth.getUser(),
+          supabase.auth.getSession(),
           STARTUP_TIMEOUT_MS,
-          'Onboarding auth lookup timed out'
+          'Onboarding session lookup timed out'
         );
         if (active) {
-          await refreshRoleAndSubscription(data.user ?? null);
+          await refreshRoleAndSubscription(data.session?.user ?? null);
         }
       } catch (error) {
         console.warn('[OnboardingGate] Startup bootstrap failed', error);
         if (!active || !isMountedRef.current || hydrationRunRef.current !== bootstrapRunId) return;
-        setState(prev => {
-          if (!prev.hydrating) {
-            return prev;
-          }
-          return {
-            ...prev,
-            hydrating: false,
-            needsSubscription: false,
-            initError: STARTUP_ERROR_MESSAGE,
-          };
-        });
+        if (error instanceof TimeoutError) {
+          setState(prev => ({ ...prev, hydrating: false, initError: null, needsSubscription: false }));
+          return;
+        }
+        setState(prev => ({
+          ...prev,
+          hydrating: false,
+          needsSubscription: false,
+          initError: STARTUP_ERROR_MESSAGE,
+        }));
       }
     };
 
@@ -312,26 +319,25 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
     setState(prev => ({ ...prev, hydrating: true, initError: null }));
     try {
       const { data } = await withTimeout(
-        supabase.auth.getUser(),
+        supabase.auth.getSession(),
         STARTUP_TIMEOUT_MS,
-        'Onboarding retry auth lookup timed out'
+        'Onboarding retry session lookup timed out'
       );
       if (!isMountedRef.current || hydrationRunRef.current !== retryRunId) return;
-      await refreshRoleAndSubscription(data.user ?? null);
+      await refreshRoleAndSubscription(data.session?.user ?? null);
     } catch (error) {
       console.warn('[OnboardingGate] Startup retry failed', error);
       if (!isMountedRef.current || hydrationRunRef.current !== retryRunId) return;
-      setState(prev => {
-        if (!prev.hydrating) {
-          return prev;
-        }
-        return {
-          ...prev,
-          hydrating: false,
-          needsSubscription: false,
-          initError: STARTUP_ERROR_MESSAGE,
-        };
-      });
+      if (error instanceof TimeoutError) {
+        setState(prev => ({ ...prev, hydrating: false, initError: null, needsSubscription: false }));
+        return;
+      }
+      setState(prev => ({
+        ...prev,
+        hydrating: false,
+        needsSubscription: false,
+        initError: STARTUP_ERROR_MESSAGE,
+      }));
     }
   }, [STARTUP_ERROR_MESSAGE, STARTUP_TIMEOUT_MS, refreshRoleAndSubscription]);
 

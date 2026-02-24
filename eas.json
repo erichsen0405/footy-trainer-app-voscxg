@@ -3,6 +3,7 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "channel": "development",
       "env": {
         "APP_VARIANT": "dev"
       },
@@ -16,9 +17,11 @@
     },
     "preview": {
       "distribution": "internal",
+      "channel": "preview",
       "autoIncrement": true
     },
     "production": {
+      "channel": "production",
       "autoIncrement": true
     }
   },

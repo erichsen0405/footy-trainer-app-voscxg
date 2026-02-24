@@ -2,6 +2,13 @@
 import { supabase } from '@/integrations/supabase/client';
 import { ExternalCalendar } from '@/types';
 
+function isMissingDeletedAtReasonColumn(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const code = (error as { code?: unknown }).code;
+  const message = String((error as { message?: unknown }).message ?? '');
+  return code === 'PGRST204' && message.includes("'deleted_at_reason'") && message.includes("'events_external'");
+}
+
 export const calendarService = {
   async addExternalCalendar(userId: string, name: string, icsUrl: string, enabled: boolean = true, signal: AbortSignal = new AbortController().signal): Promise<ExternalCalendar> {
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -46,17 +53,34 @@ export const calendarService = {
 
   async deleteExternalCalendar(calendarId: string, userId: string, signal: AbortSignal = new AbortController().signal): Promise<void> {
     const nowIso = new Date().toISOString();
-    const { error: eventsError } = await supabase
+    const payloadWithReason = {
+      deleted: true,
+      deleted_at: nowIso,
+      deleted_at_reason: 'user-delete',
+      updated_at: nowIso,
+      provider_calendar_id: null,
+    };
+
+    let { error: eventsError } = await supabase
       .from('events_external')
-      .update({
-        deleted: true,
-        deleted_at: nowIso,
-        deleted_at_reason: 'user-delete',
-        updated_at: nowIso,
-        provider_calendar_id: null,
-      })
+      .update(payloadWithReason)
       .eq('provider_calendar_id', calendarId)
       .abortSignal(signal);
+
+    if (isMissingDeletedAtReasonColumn(eventsError)) {
+      const payloadWithoutReason = {
+        deleted: true,
+        deleted_at: nowIso,
+        updated_at: nowIso,
+        provider_calendar_id: null,
+      };
+
+      ({ error: eventsError } = await supabase
+        .from('events_external')
+        .update(payloadWithoutReason)
+        .eq('provider_calendar_id', calendarId)
+        .abortSignal(signal));
+    }
 
     if (eventsError) throw eventsError;
 
@@ -96,4 +120,3 @@ export const calendarService = {
     return { eventCount: data?.eventCount || 0 };
   },
 };
-

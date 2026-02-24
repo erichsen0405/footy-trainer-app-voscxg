@@ -8,6 +8,9 @@ module.exports = ({ config }) => {
   const expoVersion = '1.0.4';
   const iosBuildNumber = '5';
   const androidVersionCode = 5;
+  const easProjectId =
+    config?.extra?.eas?.projectId || '56add269-43c8-4368-9edc-3913dac2f57c';
+  const updatesUrl = `https://u.expo.dev/${easProjectId}`;
 
   // Ensure plugins array exists and contains datetimepicker only once
   const plugins = Array.isArray(config.plugins) ? [...config.plugins] : [];
@@ -24,6 +27,16 @@ module.exports = ({ config }) => {
   return {
     ...config,
     version: expoVersion,
+    runtimeVersion: {
+      policy: 'appVersion',
+    },
+    updates: {
+      ...(config.updates ?? {}),
+      enabled: true,
+      url: updatesUrl,
+      checkAutomatically: 'ON_LOAD',
+      fallbackToCacheTimeout: 0,
+    },
     scheme,
     ios: {
       ...config.ios,
@@ -36,6 +49,10 @@ module.exports = ({ config }) => {
     plugins,
     extra: {
       ...(config.extra ?? {}),
+      eas: {
+        ...(config.extra?.eas ?? {}),
+        projectId: easProjectId,
+      },
       appVariant,
       authRedirectScheme: scheme,
     },

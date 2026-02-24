@@ -756,6 +756,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
       .from('events_external')
       .select('id,title,location,start_date,start_time,end_time,provider_calendar_id')
       .eq('id', activityId)
+      .is('deleted_at', null)
       .single();
 
     if (!externalOnlyError && externalOnly) {
