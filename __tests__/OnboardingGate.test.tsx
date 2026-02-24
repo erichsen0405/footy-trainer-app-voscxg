@@ -1,16 +1,22 @@
 import React from 'react';
 import { Text } from 'react-native';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
 import { OnboardingGate } from '@/components/OnboardingGate';
+import { TimeoutError } from '@/utils/withTimeout';
 
 const mockReplace = jest.fn();
 const mockPathname = jest.fn(() => '/(tabs)');
-const mockGetUser = jest.fn();
+const mockGetSession = jest.fn();
 const mockOnAuthStateChange = jest.fn();
 const mockUnsubscribe = jest.fn();
 const mockRefreshSubscription = jest.fn();
 const mockCreateSubscription = jest.fn();
 const mockRefreshSubscriptionStatus = jest.fn();
+const mockEntitlementSnapshot = {
+  resolving: false,
+  isEntitled: false,
+  hasActiveSubscription: false,
+};
 const mockMaybeSingle = jest.fn();
 const mockEq = jest.fn();
 const mockSelect = jest.fn();
@@ -42,11 +48,7 @@ jest.mock('@/contexts/AppleIAPContext', () => ({
   },
   TRAINER_PRODUCT_IDS: ['trainer_basic'],
   useAppleIAP: () => ({
-    entitlementSnapshot: {
-      resolving: false,
-      isEntitled: false,
-      hasActiveSubscription: false,
-    },
+    entitlementSnapshot: mockEntitlementSnapshot,
     refreshSubscriptionStatus: mockRefreshSubscriptionStatus,
   }),
 }));
@@ -54,7 +56,7 @@ jest.mock('@/contexts/AppleIAPContext', () => ({
 jest.mock('@/integrations/supabase/client', () => ({
   supabase: {
     auth: {
-      getUser: (...args: unknown[]) => mockGetUser(...args),
+      getSession: (...args: unknown[]) => mockGetSession(...args),
       onAuthStateChange: (...args: unknown[]) => mockOnAuthStateChange(...args),
     },
     from: (...args: unknown[]) => mockFrom(...args),
@@ -67,7 +69,7 @@ describe('OnboardingGate startup hydration', () => {
 
     mockReplace.mockReset();
     mockPathname.mockReset();
-    mockGetUser.mockReset();
+    mockGetSession.mockReset();
     mockOnAuthStateChange.mockReset();
     mockUnsubscribe.mockReset();
     mockRefreshSubscription.mockReset();
@@ -80,7 +82,7 @@ describe('OnboardingGate startup hydration', () => {
     mockFrom.mockReset();
 
     mockPathname.mockReturnValue('/(tabs)');
-    mockGetUser.mockResolvedValue({ data: { user: null } });
+    mockGetSession.mockResolvedValue({ data: { session: null } });
     mockRefreshSubscription.mockResolvedValue(null);
     mockCreateSubscription.mockResolvedValue({ success: true });
     mockRefreshSubscriptionStatus.mockResolvedValue(null);
@@ -110,8 +112,8 @@ describe('OnboardingGate startup hydration', () => {
     jest.useRealTimers();
   });
 
-  it('shows error + retry instead of permanent "Klargører konto" when init hangs', async () => {
-    mockGetUser.mockImplementation(() => new Promise(() => {}));
+  it('falls back to non-blocking state when startup session lookup times out', async () => {
+    mockGetSession.mockImplementation(() => new Promise(() => {}));
 
     render(
       <OnboardingGate>
@@ -126,15 +128,14 @@ describe('OnboardingGate startup hydration', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByText('Kunne ikke klargøre konto. Prøv igen.')).toBeTruthy();
-    expect(screen.getByTestId('onboarding.error.retryButton')).toBeTruthy();
+    expect(screen.getByText('App indhold')).toBeTruthy();
+    expect(screen.queryByText('Kunne ikke klargøre konto. Prøv igen.')).toBeNull();
+    expect(screen.queryByTestId('onboarding.error.retryButton')).toBeNull();
     expect(screen.queryByText('Klargører konto')).toBeNull();
-    fireEvent.press(screen.getByTestId('onboarding.error.retryButton'));
-    expect(mockGetUser.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
   it('does not overwrite newer hydrated state when bootstrap times out later', async () => {
-    mockGetUser.mockImplementation(() => new Promise(() => {}));
+    mockGetSession.mockImplementation(() => new Promise(() => {}));
 
     render(
       <OnboardingGate>
@@ -167,7 +168,7 @@ describe('OnboardingGate startup hydration', () => {
   });
 
   it('does not overwrite newer hydrated state when retry times out later', async () => {
-    mockGetUser.mockImplementation(() => new Promise(() => {}));
+    mockGetSession.mockImplementation(() => new Promise(() => {}));
 
     render(
       <OnboardingGate>
@@ -180,14 +181,8 @@ describe('OnboardingGate startup hydration', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByTestId('onboarding.error.retryButton')).toBeTruthy();
-
-    await act(async () => {
-      fireEvent.press(screen.getByTestId('onboarding.error.retryButton'));
-      await Promise.resolve();
-    });
-
-    expect(screen.getByText('Klargører konto')).toBeTruthy();
+    expect(screen.queryByTestId('onboarding.error.retryButton')).toBeNull();
+    expect(screen.queryByText('Klargører konto')).toBeNull();
 
     await act(async () => {
       authStateHandler?.('INITIAL_SESSION', { user: null });
@@ -204,5 +199,31 @@ describe('OnboardingGate startup hydration', () => {
 
     expect(screen.queryByText('Kunne ikke klargøre konto. Prøv igen.')).toBeNull();
     expect(screen.queryByTestId('onboarding.error.retryButton')).toBeNull();
+  });
+
+  it('falls back to non-blocking state when role lookup times out', async () => {
+    mockGetSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
+    mockMaybeSingle.mockRejectedValue(new TimeoutError('Onboarding role query timed out'));
+
+    render(
+      <OnboardingGate>
+        <Text>App indhold</Text>
+      </OnboardingGate>
+    );
+
+    expect(screen.getByText('Klargører konto')).toBeTruthy();
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('App indhold')).toBeTruthy();
+    expect(screen.queryByText('Kunne ikke klargøre konto. Prøv igen.')).toBeNull();
+    expect(screen.queryByTestId('onboarding.error.retryButton')).toBeNull();
+    expect(screen.queryByText('Klargører konto')).toBeNull();
   });
 });

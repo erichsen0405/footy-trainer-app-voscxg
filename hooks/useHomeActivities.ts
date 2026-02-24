@@ -601,7 +601,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           .from('events_external')
           .select('id, title, start_date, start_time, location, provider_calendar_id, provider_event_uid, raw_payload')
           .in('provider_calendar_id', calendarIdsNormalized)
-          .eq('deleted', false);
+          .eq('deleted', false)
+          .is('deleted_at', null);
 
         if (eventsError) {
           console.error('[useHomeActivities] Error fetching external events:', {

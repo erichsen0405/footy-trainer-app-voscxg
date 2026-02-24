@@ -1,6 +1,52 @@
 
 import { supabase } from '@/integrations/supabase/client';
 
+function isMissingDeletedAtReasonColumn(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const code = (error as { code?: unknown }).code;
+  const message = String((error as { message?: unknown }).message ?? '');
+  return code === 'PGRST204' && message.includes("'deleted_at_reason'") && message.includes("'events_external'");
+}
+
+async function softDeleteEventsExternal(
+  nowIso: string,
+  applyFilter: (query: any) => any,
+  withSelectIds: boolean,
+) {
+  const payloadWithReason = {
+    deleted: true,
+    deleted_at: nowIso,
+    deleted_at_reason: 'user-delete',
+    updated_at: nowIso,
+  };
+
+  let query = applyFilter(supabase.from('events_external').update(payloadWithReason));
+  if (withSelectIds) {
+    query = query.select('id');
+  }
+
+  let result = await query;
+  if (!isMissingDeletedAtReasonColumn(result?.error)) {
+    return result;
+  }
+
+  console.warn('⚠️ events_external.deleted_at_reason missing in schema; retrying soft delete without reason');
+
+  const payloadWithoutReason = {
+    deleted: true,
+    deleted_at: nowIso,
+    updated_at: nowIso,
+  };
+
+  query = applyFilter(supabase.from('events_external').update(payloadWithoutReason));
+  if (withSelectIds) {
+    query = query.select('id');
+  }
+
+  result = await query;
+  return result;
+}
+
 /**
  * Delete all external activities for the current user
  * @returns Object with success status and count of deleted activities
@@ -77,16 +123,11 @@ export async function deleteAllExternalActivities(): Promise<{
 
       if (externalEventIds.length > 0) {
         const nowIso = new Date().toISOString();
-        const { data: softDeletedEvents, error: eventsDeleteError } = await supabase
-          .from('events_external')
-          .update({
-            deleted: true,
-            deleted_at: nowIso,
-            deleted_at_reason: 'user-delete',
-            updated_at: nowIso,
-          })
-          .in('id', externalEventIds)
-          .select('id');
+        const { data: softDeletedEvents, error: eventsDeleteError } = await softDeleteEventsExternal(
+          nowIso,
+          (query) => query.in('id', externalEventIds),
+          true,
+        );
 
         if (eventsDeleteError) {
           console.error('❌ Error soft deleting events_external rows:', eventsDeleteError);
@@ -147,11 +188,12 @@ export async function deleteSingleExternalActivity(activityId: string): Promise<
 
     const nowIso = new Date().toISOString();
     let externalEventId: string | null = null;
+    let externalEventUid: string | null = null;
 
     // Try resolving by local meta ID first (most common on UI)
     const { data: metaRow, error: metaError } = await supabase
       .from('events_local_meta')
-      .select('id, external_event_id')
+      .select('id, external_event_id, external_event_uid')
       .eq('id', activityId)
       .eq('user_id', user.id)
       .maybeSingle();
@@ -163,12 +205,15 @@ export async function deleteSingleExternalActivity(activityId: string): Promise<
     if (metaRow?.external_event_id) {
       externalEventId = String(metaRow.external_event_id);
     }
+    if ((metaRow as any)?.external_event_uid) {
+      externalEventUid = String((metaRow as any).external_event_uid);
+    }
 
     // If not found, try resolving by external event row id
     if (!externalEventId) {
       const { data: metaByEventId, error: metaByEventError } = await supabase
         .from('events_local_meta')
-        .select('id')
+        .select('id, external_event_uid')
         .eq('external_event_id', activityId)
         .eq('user_id', user.id)
         .maybeSingle();
@@ -179,6 +224,9 @@ export async function deleteSingleExternalActivity(activityId: string): Promise<
 
       if (metaByEventId?.id) {
         externalEventId = String(activityId);
+        if ((metaByEventId as any)?.external_event_uid) {
+          externalEventUid = String((metaByEventId as any).external_event_uid);
+        }
       }
     }
 
@@ -186,7 +234,7 @@ export async function deleteSingleExternalActivity(activityId: string): Promise<
     if (!externalEventId) {
       const { data: eventRow, error: eventError } = await supabase
         .from('events_external')
-        .select('id, provider_calendar_id')
+        .select('id, provider_calendar_id, provider_event_uid')
         .eq('id', activityId)
         .single();
 
@@ -200,31 +248,117 @@ export async function deleteSingleExternalActivity(activityId: string): Promise<
 
         if (!calendarError && calendarRow?.id) {
           externalEventId = String(eventRow.id);
+          if ((eventRow as any)?.provider_event_uid) {
+            externalEventUid = String((eventRow as any).provider_event_uid);
+          }
         }
       }
     }
 
     if (externalEventId) {
-      const { error: softDeleteError } = await supabase
+      const { data: eventById, error: eventByIdError } = await supabase
         .from('events_external')
-        .update({
-          deleted: true,
-          deleted_at: nowIso,
-          deleted_at_reason: 'user-delete',
-          updated_at: nowIso,
-        })
-        .eq('id', externalEventId);
+        .select('id')
+        .eq('id', externalEventId)
+        .maybeSingle();
 
-      if (softDeleteError) {
-        console.error('❌ Error soft deleting external event:', softDeleteError);
+      if (eventByIdError) {
+        console.error('❌ Error resolving external event id before delete:', eventByIdError);
         return {
           success: false,
-          error: softDeleteError.message,
+          error: eventByIdError.message,
         };
       }
 
-      console.log(`✅ Soft deleted external event ${externalEventId}`);
-      return { success: true };
+      if (eventById?.id) {
+        const { data: softDeletedRowsById, error: softDeleteError } = await softDeleteEventsExternal(
+          nowIso,
+          (query) => query.eq('id', externalEventId),
+          true,
+        );
+
+        if (softDeleteError) {
+          console.error('❌ Error soft deleting external event:', softDeleteError);
+          return {
+            success: false,
+            error: softDeleteError.message,
+          };
+        }
+
+        if ((softDeletedRowsById?.length ?? 0) > 0) {
+          console.log(`✅ Soft deleted external event ${externalEventId}`);
+          return { success: true };
+        }
+
+        console.warn('⚠️ Soft delete by external event id updated 0 rows', {
+          externalEventId,
+        });
+      }
+    }
+
+    if (externalEventUid) {
+      const { data: ownedCalendars, error: ownedCalendarsError } = await supabase
+        .from('external_calendars')
+        .select('id')
+        .eq('user_id', user.id);
+
+      if (ownedCalendarsError) {
+        console.error('❌ Error loading owned calendars for UID fallback:', ownedCalendarsError);
+        return {
+          success: false,
+          error: ownedCalendarsError.message,
+        };
+      }
+
+      const ownedCalendarIds = (ownedCalendars || []).map((row: any) => String(row.id)).filter(Boolean);
+      if (ownedCalendarIds.length > 0) {
+        const { data: eventsByUid, error: eventsByUidError } = await supabase
+          .from('events_external')
+          .select('id')
+          .eq('provider_event_uid', externalEventUid)
+          .in('provider_calendar_id', ownedCalendarIds);
+
+        if (eventsByUidError) {
+          console.error('❌ Error resolving external event by UID fallback:', eventsByUidError);
+          return {
+            success: false,
+            error: eventsByUidError.message,
+          };
+        }
+
+        const idsByUid = (eventsByUid || []).map((row: any) => String(row.id)).filter(Boolean);
+        if (idsByUid.length > 0) {
+          const { data: softDeletedRowsByUid, error: softDeleteByUidError } = await softDeleteEventsExternal(
+            nowIso,
+            (query) => query.in('id', idsByUid),
+            true,
+          );
+
+          if (softDeleteByUidError) {
+            console.error('❌ Error soft deleting external event by UID fallback:', softDeleteByUidError);
+            return {
+              success: false,
+              error: softDeleteByUidError.message,
+            };
+          }
+
+          if ((softDeletedRowsByUid?.length ?? 0) > 0) {
+            console.log(`✅ Soft deleted external event(s) by UID ${externalEventUid}`);
+            return { success: true };
+          }
+        }
+      }
+    }
+
+    if (externalEventId || externalEventUid) {
+      console.error('❌ Resolved external event identity but soft delete updated 0 rows', {
+        externalEventId,
+        externalEventUid,
+      });
+      return {
+        success: false,
+        error: 'Kunne ikke soft-delete ekstern aktivitet (ingen rækker blev opdateret)',
+      };
     }
 
     // Legacy fallback for old external activities
@@ -343,16 +477,11 @@ export async function deleteExternalActivitiesForCalendar(calendarId: string): P
     }
 
     const nowIso = new Date().toISOString();
-    const { data: softDeletedEvents, error: deleteError } = await supabase
-      .from('events_external')
-      .update({
-        deleted: true,
-        deleted_at: nowIso,
-        deleted_at_reason: 'user-delete',
-        updated_at: nowIso,
-      })
-      .eq('provider_calendar_id', calendarId)
-      .select('id');
+    const { data: softDeletedEvents, error: deleteError } = await softDeleteEventsExternal(
+      nowIso,
+      (query) => query.eq('provider_calendar_id', calendarId),
+      true,
+    );
 
     if (deleteError) {
       console.error('❌ Error soft deleting calendar events:', deleteError);

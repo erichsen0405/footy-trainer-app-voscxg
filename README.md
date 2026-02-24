@@ -63,6 +63,38 @@ npm test -- --watch
   - `PR CI`
   - `E2E iOS` (kun hvis I vil gøre label-kørt E2E obligatorisk ved merge)
 
+## OTA Hotfix (EAS Update)
+
+Denne app er sat op til OTA hotfixes via EAS Update.
+
+Vigtigt:
+- Første gang kræver stadig en ny App Store release, så binary'en får OTA konfigurationen med.
+- Derefter kan JS/TS-only hotfixes pushes uden ny App Store review.
+
+Flow:
+
+1. Byg og udgiv ny production binary én gang (med OTA enabled):
+
+```bash
+eas build --platform ios --profile production
+```
+
+2. Når den version er live i App Store, udgiv hotfixes direkte:
+
+```bash
+npm run update:production -- --message "hotfix: <kort beskrivelse>"
+```
+
+3. Til intern QA/staging:
+
+```bash
+npm run update:preview -- --message "preview: <kort beskrivelse>"
+```
+
+Bemærk:
+- OTA gælder kun ændringer i JS/TS/assets.
+- Native ændringer (Info.plist, pods, permissions, nye native libs osv.) kræver stadig ny binary + review.
+
 ## Maestro Mac runbook (iOS smoke)
 
 Simulator-only setup (not physical iPhone).
