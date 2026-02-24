@@ -1,4 +1,9 @@
 # Release Notes
+## 1.0.5
+- #196 Slet eksterne aktivitet virker ikke: rettet, så sletning nu gennemføres korrekt.
+- #194 Animationer til øvelser: tilføjet/forbedret animationer på øvelser.
+- #199 App åbner ikke korrekt: rettet opstartsflow, så appen åbner stabilt.
+
 ## 1.0.4
 - Forbedret stabilitet og hurtigere opstart (fix af "uendelig loader").
 - Notifikationer åbner nu korrekt den relevante opgave (deep link fix).
