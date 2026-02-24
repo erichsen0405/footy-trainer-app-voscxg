@@ -3,6 +3,7 @@
 This app was built using [Natively.dev](https://natively.dev) - a platform for creating mobile apps.
 
 Made with ðŸ’™ for creativity.
+Se docs/hotfix.md.
 
 ## Password reset flow
 
