@@ -471,7 +471,7 @@ export const taskService = {
       console.error('[taskService.deleteTask] template lookup failed unexpectedly', templateLookupUnexpected);
     }
 
-    const runCleanup = async () => {
+    const runCleanup = async (): Promise<boolean> => {
       try {
         const { error } = await supabase.rpc('cleanup_tasks_for_template', {
           p_user_id: userId,
@@ -486,9 +486,12 @@ export const taskService = {
             userId,
             message: error.message,
           });
+          return false;
         }
+        return true;
       } catch (cleanupError) {
         console.error('[taskService.deleteTask] cleanup RPC failed unexpectedly', cleanupError);
+        return false;
       }
     };
 
@@ -602,8 +605,10 @@ export const taskService = {
       }
     };
 
-    await runCleanup();
-    await runFallbackCleanup();
+    const cleanupSucceeded = await runCleanup();
+    if (!cleanupSucceeded) {
+      await runFallbackCleanup();
+    }
 
     // Try hard delete for owned tasks
     const { data: deleted, error: deleteError } = await supabase
