@@ -32,6 +32,8 @@
     "build:web": "expo export -p web && npx workbox generateSW workbox-config.js",
     "build:android": "expo prebuild -p android",
     "lint": "eslint .",
+    "focus:export-xlsx": "tsx scripts/focus/exportFocusXlsx.ts",
+    "focus:import-xlsx": "tsx scripts/focus/importFocusXlsx.ts",
     "seed:holdtraening": "tsx scripts/holdtraening/importHoldtraening.ts",
     "seed:holdtraening:dry-run": "tsx scripts/holdtraening/importHoldtraening.ts --dry-run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
@@ -92,7 +94,8 @@
     "react-router-dom": "^7.1.3",
     "workbox-cli": "^7.4.0",
     "workbox-precaching": "^7.3.0",
-    "workbox-webpack-plugin": "^7.3.0"
+    "workbox-webpack-plugin": "^7.3.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",

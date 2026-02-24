@@ -93,7 +93,10 @@ const formatTimeHHMM = (date: Date): string => {
 const getDefaultStartEndTimes = (): { startTime: string; endTime: string } => {
   const now = new Date();
   const start = new Date(now.getTime() + 60 * 60 * 1000);
-  const end = new Date(start.getTime() + 60 * 60 * 1000);
+  const startMinutes = start.getHours() * 60 + start.getMinutes();
+  const safeEndMinutes = Math.min(startMinutes + 60, 23 * 60 + 59);
+  const end = new Date(start);
+  end.setHours(Math.floor(safeEndMinutes / 60), safeEndMinutes % 60, 0, 0);
   return {
     startTime: formatTimeHHMM(start),
     endTime: formatTimeHHMM(end),
@@ -242,7 +245,9 @@ export default function CreateActivityModal({
       return;
     }
 
-    if (!selectedCategory) {
+    const effectiveCategoryId = selectedCategory || safeCategories[0]?.id || '';
+
+    if (!effectiveCategoryId) {
       Alert.alert('Fejl', 'Vælg venligst en kategori');
       return;
     }
@@ -269,7 +274,7 @@ export default function CreateActivityModal({
       await onCreateActivity({
         title: title.trim(),
         location: location.trim() || 'Ingen lokation',
-        categoryId: selectedCategory,
+        categoryId: effectiveCategoryId,
         date,
         time,
         // gør sluttid valgfri – hvis tom/whitespace, send undefined
