@@ -31,6 +31,8 @@
     "e2e:android:all": "bash scripts/maestro-smoke-android.sh",
     "build:web": "expo export -p web && npx workbox generateSW workbox-config.js",
     "build:android": "expo prebuild -p android",
+    "update:preview": "eas update --channel preview --auto",
+    "update:production": "eas update --channel production --auto",
     "lint": "eslint .",
     "focus:export-xlsx": "tsx scripts/focus/exportFocusXlsx.ts",
     "focus:import-xlsx": "tsx scripts/focus/importFocusXlsx.ts",

@@ -13,7 +13,7 @@ import {
   refreshNotificationQueue,
   forceRefreshNotificationQueue,
 } from '@/utils/notificationScheduler';
-import { addDays, startOfWeek, endOfWeek } from 'date-fns';
+import { addDays, startOfWeek, endOfWeek, format } from 'date-fns';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import { taskService } from '@/services/taskService';
 import { activityService } from '@/services/activityService';
@@ -622,9 +622,9 @@ export const useFootballData = () => {
         userId = '';
         userEmail = '';
       }
-      const startIso = weekRange.start.toISOString().slice(0, 10);
-      const endIsoExclusive = addDays(weekRange.end, 1).toISOString().slice(0, 10);
-      const todayIso = new Date().toISOString().slice(0, 10);
+      const startIso = format(weekRange.start, 'yyyy-MM-dd');
+      const endIsoExclusive = format(addDays(weekRange.end, 1), 'yyyy-MM-dd');
+      const todayIso = format(new Date(), 'yyyy-MM-dd');
 
       const [internalRes, externalRes, internalIntensityRes, externalIntensityRes] = await Promise.all([
         supabase
@@ -1033,7 +1033,7 @@ export const useFootballData = () => {
   }, []);
 
   const todayActivities = useMemo(() => {
-    const todayIso = new Date().toISOString().slice(0, 10);
+    const todayIso = format(new Date(), 'yyyy-MM-dd');
     return activities.filter(a => (a as any).activity_date === todayIso) as Activity[];
   }, [activities]);
 

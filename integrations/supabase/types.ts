@@ -459,6 +459,8 @@ export type Database = {
       events_external: {
         Row: {
           created_at: string | null
+          deleted_at: string | null
+          deleted_at_reason: string | null
           deleted: boolean | null
           description: string | null
           end_date: string | null
@@ -481,6 +483,8 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          deleted_at?: string | null
+          deleted_at_reason?: string | null
           deleted?: boolean | null
           description?: string | null
           end_date?: string | null
@@ -503,6 +507,8 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          deleted_at?: string | null
+          deleted_at_reason?: string | null
           deleted?: boolean | null
           description?: string | null
           end_date?: string | null
