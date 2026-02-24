@@ -102,3 +102,28 @@ Useful flags:
 - `--batch-size <n>` controls how many rows are upserted per request (default 50).
 
 The script enforces `trainer_id` because `public.exercise_library.trainer_id` is `NOT NULL`. Pass the UUID for the system/trainer account that should own the seeded rows.
+
+## Focus metadata Excel import/export
+
+Commands:
+
+```bash
+npm run focus:export-xlsx
+npm run focus:import-xlsx -- data/focus_points_metadata.xlsx
+```
+
+Data contract for `focus:import-xlsx`:
+
+- `video_key` in app/DB remains a storage key (not a resolved URL).
+- `video_url` in DB is stored as resolved public URL (or raw `https` if the input is already a URL).
+- New DB rows are inserted as system exercises with `trainer_id = null` and `is_system = true`.
+
+DB sync scope for existing rows:
+
+- Only `video_key`, `video_url`, `filename`, `drejebog` are updated in `exercise_library`.
+- Other focus metadata fields are synced to `data/focus_points_metadata.json`.
+
+Storage key note:
+
+- If a key has no bucket prefix (example: `focus/run.mp4`), import defaults it to bucket `drill-videos`.
+- Prefer explicit bucket-prefixed keys (example: `drill-videos/focus/run.mp4`) to avoid silent bucket mismatch.

@@ -1,0 +1,2429 @@
+[
+  {
+    "id": "timing_late_run_8_demo",
+    "title": "Timing af sent løb i feltet",
+    "difficulty": 4,
+    "position": "Midtbane",
+    "how_to": [
+      "Scan før boldmodtagelse og tim dit løb efter den første aflevering.",
+      "Accelerér i andet tempo ind i halv-rummet for at komme fri af markering."
+    ],
+    "why_valuable": "Skaber gennembrud med timing i stedet for ren fart og forbedrer beslutninger under pres.",
+    "filename": null,
+    "drejebog": null,
+    "video_key": null
+  },
+  {
+    "id": "timing_late_run_8_demo 2",
+    "title": "Timing af tidligt løb i feltet",
+    "difficulty": 3,
+    "position": "Angriber",
+    "how_to": [
+      "Dette er en test note"
+    ],
+    "why_valuable": "Dette er en test",
+    "filename": null,
+    "drejebog": null,
+    "video_key": null
+  },
+  {
+    "id": "80dbfd79-87a5-45f0-be7b-1e8c9378dda9",
+    "title": "Afslutning på første touch",
+    "difficulty": 5,
+    "position": "Angriber",
+    "how_to": [
+      "Positionér kroppen før bolden kommer.",
+      "Afslut med inderside for kontrol.",
+      "Vælg hjørne, ikke power."
+    ],
+    "why_valuable": "Tidsrum i feltet er kort – første touch-afslutning scorer.",
+    "filename": "fokuspunkter/angriber/finishing_first_touch.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": "fokuspunkter/angriber/finishing_first_touch.mp4"
+  },
+  {
+    "id": "bb14ef37-0438-4496-b21d-b7ac5a3bb4b9",
+    "title": "Afstem løb med medspillere",
+    "difficulty": 5,
+    "position": "Angriber",
+    "how_to": [
+      "Undgå at løbe samme linje som kant.",
+      "Aftal “jeg går/du går”.",
+      "Kommunikér løb før det sker."
+    ],
+    "why_valuable": "Koordinerede løb skaber de største chancer.",
+    "filename": "fokuspunkter/angriber/afstem_loeb_med_medspillere.json",
+    "drejebog": "Opsætning: 3 medspillere, 3 modspillere\r\nPlacering: på en kant + ind i feltet\r\nBold: start hos A1 (kant) tæt på sidelinjen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 på kanten med bold. A2 i feltet (centralt). A3 ved bagerste stolpe. D1/D2 i feltet som markering.\r\n2) A1 dribler mod baglinjen for at true. Flyt bolden med A1.\r\n3) A2 og A3 laver to forskellige løb (forreste zone + bagerste zone) for at skabe valg.\r\n4) A1 slår indlæg til valgt løb. Flyt bolden fra A1 til A2 eller A3.\r\n5) Afslut på første touch eller kontrolleret afslut. Frys frame.",
+    "video_key": null
+  },
+  {
+    "id": "2a80fd3d-3b90-4b80-9d4c-465299000136",
+    "title": "Angrib andenstolpe (bageste zone)",
+    "difficulty": 4,
+    "position": "Angriber",
+    "how_to": [
+      "Når bolden er på modsatte side: snig dig mod bagerste stolpe.",
+      "Time “sen ankomst”.",
+      "Vær klar på afslutning/retur."
+    ],
+    "why_valuable": "Ofte fri zone – giver store chancer.",
+    "filename": "fokuspunkter/angriber/angrib_andenstolpe_bageste_zone.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "34a6160d-3efd-46d7-8cf4-df85d04af7de",
+    "title": "Bevæg dig i relation til boldholder",
+    "difficulty": 4,
+    "position": "Angriber",
+    "how_to": [
+      "Hvis han er presset: kom i støtte.",
+      "Hvis han har tid: løb i bagrum.",
+      "Skab altid en tydelig mulighed."
+    ],
+    "why_valuable": "Gør boldholderens valg nemt og skaber chancer.",
+    "filename": "fokuspunkter/angriber/bevaeg_dig_i_relation_til_boldholder.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "73ecb6a4-da4e-4270-96d5-d44f6615a0eb",
+    "title": "Drop ned i mellemrummet (falsk 9)",
+    "difficulty": 4,
+    "position": "Angriber",
+    "how_to": [
+      "Drop når stopper følger for meget.",
+      "Modtag i fødder og spil videre.",
+      "Vend kun hvis du har tid."
+    ],
+    "why_valuable": "Skaber rum bag dig til kanter/10’er.",
+    "filename": "fokuspunkter/angriber/drop_ned_i_mellemrummet_falsk_9.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: på en kant + ind i feltet\r\nBold: start hos A1 (kant) tæt på sidelinjen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 på kanten med bold. A2 i feltet (centralt). A3 ved bagerste stolpe. D1/D2 i feltet som markering.\r\n2) A1 dribler mod baglinjen for at true. Flyt bolden med A1.\r\n3) A2 og A3 laver to forskellige løb (forreste zone + bagerste zone) for at skabe valg.\r\n4) A1 slår indlæg til valgt løb. Flyt bolden fra A1 til A2 eller A3.\r\n5) Afslut på første touch eller kontrolleret afslut. Frys frame.",
+    "video_key": null
+  },
+  {
+    "id": "daecaca5-25b1-468c-a05a-03294513af54",
+    "title": "Hold bolden under pres (fasthold)",
+    "difficulty": 4,
+    "position": "Angriber",
+    "how_to": [
+      "Skærm med kroppen.",
+      "Brug et enkelt touch til at låse bolden væk.",
+      "Spil tilbage til støtte hurtigt."
+    ],
+    "why_valuable": "I beholder angreb og får holdet op.",
+    "filename": "fokuspunkter/angriber/hold_bolden_under_pres_fasthold.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "a099d83c-d2df-4761-98ae-7a23faa389e7",
+    "title": "Hold stopper i ryggen (skab kontakt)",
+    "difficulty": 4,
+    "position": "Angriber",
+    "how_to": [
+      "Stå så forsvareren mærker dig.",
+      "Skift retning pludseligt.",
+      "Brug kroppen til at skabe plads."
+    ],
+    "why_valuable": "Du vinder position i feltet.",
+    "filename": "fokuspunkter/angriber/hold_stopper_i_ryggen_skab_kontakt.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: i en tydelig forsvarszone (fx lige uden for feltet eller på midten)\r\nBold: start hos A1 (modstander) med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér A1 (modstander) med bold. D1 (forsvarer) i korrekt afstand. D2 som sikring bag D1. A2 som støttepasning til A1.\r\n2) A1 bevæger sig frem med bold. Flyt bolden med A1. D1 justerer side-/baglæns for at styre retning.\r\n3) D1 går i kontrolleret pres (støder) når A1 viser bolden. D2 holder sikring (2–3m bag).\r\n4) Tving A1 til støttepasning til A2. Flyt bolden fra A1 til A2.\r\n5) D1/D2 rykker samlet op (kompakt). Frys frame for korrekt afstand/linje.",
+    "video_key": null
+  },
+  {
+    "id": "5e5bbf1b-bd64-4978-b486-fd1354023c67",
+    "title": "Kommunikér dine løb",
+    "difficulty": 3,
+    "position": "Angriber",
+    "how_to": [
+      "Sig “dyb”, “i fødder”, “væg”, “igen”.",
+      "Kommunikér før boldholder beslutter.",
+      "Hold det kort."
+    ],
+    "why_valuable": "Bedre timing og flere gennembrud.",
+    "filename": "fokuspunkter/angriber/kommuniker_dine_loeb.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere\r\nPlacering: i halvrum/central zone med plads til vending/dribling\r\nBold: start hos A1 (boldfører) i halvrum\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 med bold. A2 og A3 som støttevinkler (en foran, en bag/side). D1 presser A1.\r\n2) A1 tager første touch væk fra pres og vender kroppen mod fri side. Flyt bolden med A1.\r\n3) A1 dribler 2–4 meter ind i rummet. D1 følger.\r\n4) A1 spiller til fri medspiller (A2 eller A3). Flyt bolden til modtager.\r\n5) Modtager tager første touch fremad. Frys frame ved 'god vending + næste aktion'.",
+    "video_key": null
+  },
+  {
+    "id": "b104bb6f-59f7-414d-81a5-fee473b95c8b",
+    "title": "Løb mod første stolpe ved indlæg",
+    "difficulty": 4,
+    "position": "Angriber",
+    "how_to": [
+      "Start løb lige når indlægssituationen opstår.",
+      "Løb aggressivt mod forreste zone.",
+      "Afslut på første touch."
+    ],
+    "why_valuable": "Du kommer foran forsvarer og scorer mange “klassiske” mål.",
+    "filename": "fokuspunkter/angriber/loeb_mod_foerste_stolpe_ved_indlaeg.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "54dbe50c-255d-4449-9fb5-c1b8aa7bc3bc",
+    "title": "Pres første pasning fra forsvaret",
+    "difficulty": 4,
+    "position": "Angriber",
+    "how_to": [
+      "Start pres på deres første opbygning.",
+      "Pres med vinkel og luk én side.",
+      "Tving lange bolde."
+    ],
+    "why_valuable": "Skaber fejl og høje boldvindinger.",
+    "filename": "fokuspunkter/angriber/pres_foerste_pasning_fra_forsvaret.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "60ebe90b-3981-43dd-ac84-47ce13afdc21",
+    "title": "Pres med vinkel mod målmand",
+    "difficulty": 4,
+    "position": "Angriber",
+    "how_to": [
+      "Start presset så du lukker pasning til den ene stopper.",
+      "Tving målmand til dårlig fod.",
+      "Hold sprint i 3–5 sek, så fald."
+    ],
+    "why_valuable": "Skaber fejl og lange clearinger.",
+    "filename": "fokuspunkter/angriber/pres_med_vinkel_mod_maalmand.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "bbade531-8759-4d0b-9610-64bb503f568d",
+    "title": "Skab plads til cutback",
+    "difficulty": 4,
+    "position": "Angriber",
+    "how_to": [
+      "Træk væk fra forreste stolpe og kom tilbage.",
+      "Find “cutback-zonen” omkring pletten.",
+      "Vær klar til 1-touch."
+    ],
+    "why_valuable": "Cutbacks giver meget høje scoringschancer.",
+    "filename": "fokuspunkter/angriber/skab_plads_til_cutback.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: på en kant + ind i feltet\r\nBold: start hos A1 (kant) tæt på sidelinjen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 på kanten med bold. A2 i feltet (centralt). A3 ved bagerste stolpe. D1/D2 i feltet som markering.\r\n2) A1 dribler mod baglinjen for at true. Flyt bolden med A1.\r\n3) A2 og A3 laver to forskellige løb (forreste zone + bagerste zone) for at skabe valg.\r\n4) A1 slår indlæg til valgt løb. Flyt bolden fra A1 til A2 eller A3.\r\n5) Afslut på første touch eller kontrolleret afslut. Frys frame.",
+    "video_key": null
+  },
+  {
+    "id": "c967dd33-965c-4f00-8074-915522cb3136",
+    "title": "Spil med ryg mod mål",
+    "difficulty": 4,
+    "position": "Angriber",
+    "how_to": [
+      "Brug kroppen til at skærme.",
+      "Spil 1-touch til støtte når pres er tæt.",
+      "Vend kun hvis du har tid."
+    ],
+    "why_valuable": "Du holder angreb i gang og skaber chancer for andre.",
+    "filename": "fokuspunkter/angriber/spil_med_ryg_mod_maal.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere\r\nPlacering: i halvrum/central zone med plads til vending/dribling\r\nBold: start hos A1 (boldfører) i halvrum\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 med bold. A2 og A3 som støttevinkler (en foran, en bag/side). D1 presser A1.\r\n2) A1 tager første touch væk fra pres og vender kroppen mod fri side. Flyt bolden med A1.\r\n3) A1 dribler 2–4 meter ind i rummet. D1 følger.\r\n4) A1 spiller til fri medspiller (A2 eller A3). Flyt bolden til modtager.\r\n5) Modtager tager første touch fremad. Frys frame ved 'god vending + næste aktion'.",
+    "video_key": null
+  },
+  {
+    "id": "4eb67ec5-fa05-4098-ac0a-89d087b3abab",
+    "title": "Timing af dybdeløb",
+    "difficulty": 4,
+    "position": "Angriber",
+    "how_to": [
+      "Vent til afleveringen kan slås.",
+      "Start løbet når boldholder løfter hovedet.",
+      "Tjek offside-linje."
+    ],
+    "why_valuable": "Bedre timing giver flere friløbere og afslutninger.",
+    "filename": "fokuspunkter/angriber/timing_af_dybdeloeb.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "82d0a5cc-9a0e-47a7-9f10-f1860ddf81cc",
+    "title": "Timing på indlæg (bevægelse før aflevering)",
+    "difficulty": 4,
+    "position": "Angriber",
+    "how_to": [
+      "Bevæg dig før indlægget slås.",
+      "Skift mellem forreste/bagerste zone.",
+      "“Snyd” forsvareren med små stop/start."
+    ],
+    "why_valuable": "Du får frie afslutninger i feltet.",
+    "filename": "fokuspunkter/angriber/timing_paa_indlaeg_bevaegelse_foer_aflevering.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "8150af14-a2f7-4fd5-9618-b12bb8b4ca2a",
+    "title": "Træk forsvarere væk fra zoner",
+    "difficulty": 4,
+    "position": "Angriber",
+    "how_to": [
+      "Løb væk fra bold for at trække stopper.",
+      "Skab rum til 10’er/kant.",
+      "Kommunikér hvem der udnytter rummet."
+    ],
+    "why_valuable": "Du skaber plads uden bold.",
+    "filename": "fokuspunkter/angriber/traek_forsvarere_vaek_fra_zoner.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: på en kant + ind i feltet\r\nBold: start hos A1 (kant) tæt på sidelinjen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 på kanten med bold. A2 i feltet (centralt). A3 ved bagerste stolpe. D1/D2 i feltet som markering.\r\n2) A1 dribler mod baglinjen for at true. Flyt bolden med A1.\r\n3) A2 og A3 laver to forskellige løb (forreste zone + bagerste zone) for at skabe valg.\r\n4) A1 slår indlæg til valgt løb. Flyt bolden fra A1 til A2 eller A3.\r\n5) Afslut på første touch eller kontrolleret afslut. Frys frame.",
+    "video_key": null
+  },
+  {
+    "id": "2589a976-2f36-4cc9-82a5-689f53bc7cbf",
+    "title": "Vægspil og dybdeløb (1-2)",
+    "difficulty": 5,
+    "position": "Angriber",
+    "how_to": [
+      "Spil væg med 10’er/8’er.",
+      "Sprint i bagrum efter aflevering.",
+      "Kræv bolden i dybden."
+    ],
+    "why_valuable": "Bryder kæder og skaber friløbere.",
+    "filename": "fokuspunkter/angriber/vaegspil_og_dybdeloeb_1_2.json",
+    "drejebog": "Opsætning: 4 medspillere, 2 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "5f34a797-975b-4329-856e-db890e07b27f",
+    "title": "Vælg afslutning frem for ekstra berøring",
+    "difficulty": 4,
+    "position": "Angriber",
+    "how_to": [
+      "Hvis du har vinkel: skyd.",
+      "Undgå at “læse” for længe.",
+      "Afslut hurtigt, især i feltet."
+    ],
+    "why_valuable": "Hurtige afslutninger scorer mere.",
+    "filename": "fokuspunkter/angriber/vaelg_afslutning_frem_for_ekstra_beroering.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "4bd9dac0-8ec3-403a-ada4-e8bdeb34c934",
+    "title": "Vær klar på returer i feltet",
+    "difficulty": 3,
+    "position": "Angriber",
+    "how_to": [
+      "Forvent retur efter skud/indlæg.",
+      "Positionér dig ved straffesparksplet/2. bølge.",
+      "Reagér først."
+    ],
+    "why_valuable": "Mange mål er returmål.",
+    "filename": "fokuspunkter/angriber/vaer_klar_paa_returer_i_feltet.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "2db429da-e6b3-4196-ab21-bb30d3a72df7",
+    "title": "Vær konstant spilbar",
+    "difficulty": 3,
+    "position": "Angriber",
+    "how_to": [
+      "Små re-positioneringer hele tiden.",
+      "Stå mellem to stoppere.",
+      "Vis dig for boldholder."
+    ],
+    "why_valuable": "Du får flere berøringer og afslutninger.",
+    "filename": "fokuspunkter/angriber/vaer_konstant_spilbar.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "62ec5b9d-5c10-484a-a986-978276a5a36c",
+    "title": "Afstem afstand til kantspilleren",
+    "difficulty": 3,
+    "position": "Back",
+    "how_to": [
+      "Hvis kant går ind, hold bredden.",
+      "Hvis kant er bred, kan du støtte indad.",
+      "Kommunikér løb/rolle."
+    ],
+    "why_valuable": "Bedre samarbejde giver både gennembrud og defensiv sikkerhed.",
+    "filename": "fokuspunkter/back/afstem_afstand_til_kantspilleren.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere\r\nPlacering: på en kant + ind i feltet\r\nBold: start hos A1 (kant) tæt på sidelinjen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 på kanten med bold. A2 i feltet (centralt). A3 ved bagerste stolpe. D1/D2 i feltet som markering.\r\n2) A1 dribler mod baglinjen for at true. Flyt bolden med A1.\r\n3) A2 og A3 laver to forskellige løb (forreste zone + bagerste zone) for at skabe valg.\r\n4) A1 slår indlæg til valgt løb. Flyt bolden fra A1 til A2 eller A3.\r\n5) Afslut på første touch eller kontrolleret afslut. Frys frame.",
+    "video_key": null
+  },
+  {
+    "id": "729921d3-7669-4cd9-9a65-c02ab48ced65",
+    "title": "Dæk indlægssiden i 1v1",
+    "difficulty": 3,
+    "position": "Back",
+    "how_to": [
+      "Positionér dig så du kan blokere indlæg.",
+      "Hold afstand så du kan reagere.",
+      "Tving tilbage/ud."
+    ],
+    "why_valuable": "Reducerer farlige indlæg.",
+    "filename": "fokuspunkter/back/daek_indlaegssiden_i_1v1.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere\r\nPlacering: på en kant + ind i feltet\r\nBold: start hos A1 (kant) tæt på sidelinjen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 på kanten med bold. A2 i feltet (centralt). A3 ved bagerste stolpe. D1/D2 i feltet som markering.\r\n2) A1 dribler mod baglinjen for at true. Flyt bolden med A1.\r\n3) A2 og A3 laver to forskellige løb (forreste zone + bagerste zone) for at skabe valg.\r\n4) A1 slår indlæg til valgt løb. Flyt bolden fra A1 til A2 eller A3.\r\n5) Afslut på første touch eller kontrolleret afslut. Frys frame.",
+    "video_key": null
+  },
+  {
+    "id": "1013c895-6b9e-4c2a-a03f-a23cc6e232eb",
+    "title": "Første touch fremad på kanten",
+    "difficulty": 3,
+    "position": "Back",
+    "how_to": [
+      "Modtag i fart og tag touch ud af fødder.",
+      "Skab plads til indlæg/pasning.",
+      "Undgå stopbold."
+    ],
+    "why_valuable": "Hurtigere handling på siden giver flere gennembrud.",
+    "filename": "fokuspunkter/back/foerste_touch_fremad_paa_kanten.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "3e0209fb-5eb7-4e0d-a73b-9f42e2aeb611",
+    "title": "Genkend hvornår du skal støde frem",
+    "difficulty": 4,
+    "position": "Back",
+    "how_to": [
+      "Stød når boldholder har dårlig kontrol/ryg mod mål.",
+      "Bliv hvis der er løb bag dig uden dækning.",
+      "Sig “jeg” til stopper."
+    ],
+    "why_valuable": "God timing kan vinde bolden højt.",
+    "filename": "fokuspunkter/back/genkend_hvornaar_du_skal_stoede_frem.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: omkring midtbanen (modtag/scan/spil videre)\r\nBold: start hos A1 (server) med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A2 står i midten og skal modtage. A1 (server) foran A2. A3/A4 som muligheder til højre/venstre. D1 presser bagfra/side.\r\n2) A2 'scanner' (vis det ved kort pause) før bolden kommer. A1 spiller til A2. Flyt bolden til A2.\r\n3) A2 tager første touch ud af pres (mod fri side). Flyt bolden med A2.\r\n4) A2 spiller videre til A3 eller A4 (den frie side). Flyt bolden.\r\n5) Frys frame: kropsstilling åben + næste pasning let.",
+    "video_key": null
+  },
+  {
+    "id": "e7feef48-6aac-4464-abfa-2232af419393",
+    "title": "Indlæg vs cutback valg",
+    "difficulty": 4,
+    "position": "Back",
+    "how_to": [
+      "Kig op før aflevering: er der folk i boks?",
+      "Ved lavt forsvar: cutback ofte bedst.",
+      "Ved løb i felt: indlæg mod zoner."
+    ],
+    "why_valuable": "Bedre slutprodukt = flere chancer.",
+    "filename": "fokuspunkter/back/indlaeg_vs_cutback_valg.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: på en kant + ind i feltet\r\nBold: start hos A1 (kant) tæt på sidelinjen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 på kanten med bold. A2 i feltet (centralt). A3 ved bagerste stolpe. D1/D2 i feltet som markering.\r\n2) A1 dribler mod baglinjen for at true. Flyt bolden med A1.\r\n3) A2 og A3 laver to forskellige løb (forreste zone + bagerste zone) for at skabe valg.\r\n4) A1 slår indlæg til valgt løb. Flyt bolden fra A1 til A2 eller A3.\r\n5) Afslut på første touch eller kontrolleret afslut. Frys frame.",
+    "video_key": null
+  },
+  {
+    "id": "78eb181f-cd9d-4a8c-bb6d-847bd2341381",
+    "title": "Kommunikér med 6’er om dækningsskift",
+    "difficulty": 3,
+    "position": "Back",
+    "how_to": [
+      "Sig “dæk mig” når du går frem.",
+      "Aftal hvem tager halvrum.",
+      "Gentag ved sideskift."
+    ],
+    "why_valuable": "Bedre balance når du går med frem.",
+    "filename": "fokuspunkter/back/kommuniker_med_6er_om_daekningsskift.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en tydelig træningszone (fx 20x20m) med fokus på bevægelse\r\nBold: start hos A1 med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér 4 angribere med god afstand. D1 presser boldholder. Bold hos A1.\r\n2) A2 bevæger sig i støtte (kort), A3 laver dybde (lang), A4 holder bredde. Vis tydelige pile.\r\n3) A1 spiller til den rigtige løsning (støtte eller dybde). Flyt bolden til modtager.\r\n4) Modtager sætter næste aktion (pas/dribling) mens de andre repositionerer.\r\n5) Frys frame: boldholder har mindst 2 tydelige muligheder.",
+    "video_key": null
+  },
+  {
+    "id": "2ece03ae-1642-4442-9811-6c5438ee2d2a",
+    "title": "Kommunikér overlap og indadløb",
+    "difficulty": 2,
+    "position": "Back",
+    "how_to": [
+      "Sig “overlap”, “indad”, “mand på”.",
+      "Peg hvor løbet kommer.",
+      "Kommunikér tidligt."
+    ],
+    "why_valuable": "Mindre misforståelser og bedre timing.",
+    "filename": "fokuspunkter/back/kommuniker_overlap_og_indadloeb.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: omkring midtbanen (modtag/scan/spil videre)\r\nBold: start hos A1 (server) med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A2 står i midten og skal modtage. A1 (server) foran A2. A3/A4 som muligheder til højre/venstre. D1 presser bagfra/side.\r\n2) A2 'scanner' (vis det ved kort pause) før bolden kommer. A1 spiller til A2. Flyt bolden til A2.\r\n3) A2 tager første touch ud af pres (mod fri side). Flyt bolden med A2.\r\n4) A2 spiller videre til A3 eller A4 (den frie side). Flyt bolden.\r\n5) Frys frame: kropsstilling åben + næste pasning let.",
+    "video_key": null
+  },
+  {
+    "id": "e2a3ce7c-b0ab-461d-b82d-153023f41edc",
+    "title": "Markér bagerste stolpe ved indlæg (defensivt)",
+    "difficulty": 3,
+    "position": "Back",
+    "how_to": [
+      "Drop ind bag stopperne.",
+      "Hold øje med kant fra modsatte side.",
+      "Clear med første touch."
+    ],
+    "why_valuable": "Forhindrer afslutninger ved bagerste stolpe.",
+    "filename": "fokuspunkter/back/marker_bagerste_stolpe_ved_indlaeg_defensivt.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "17affdca-1f3d-4573-bcef-8696c6c8cefb",
+    "title": "Positionér dig korrekt i defensiv omstilling",
+    "difficulty": 4,
+    "position": "Back",
+    "how_to": [
+      "Sprint hjem mod mål-siden først.",
+      "Luk indersiden og beskyt bagrum.",
+      "Pres først når I er organiseret."
+    ],
+    "why_valuable": "Du stopper farlige kontraangreb.",
+    "filename": "fokuspunkter/back/positioner_dig_korrekt_i_defensiv_omstilling.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: i en tydelig forsvarszone (fx lige uden for feltet eller på midten)\r\nBold: start hos A1 (modstander) med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér A1 (modstander) med bold. D1 (forsvarer) i korrekt afstand. D2 som sikring bag D1. A2 som støttepasning til A1.\r\n2) A1 bevæger sig frem med bold. Flyt bolden med A1. D1 justerer side-/baglæns for at styre retning.\r\n3) D1 går i kontrolleret pres (støder) når A1 viser bolden. D2 holder sikring (2–3m bag).\r\n4) Tving A1 til støttepasning til A2. Flyt bolden fra A1 til A2.\r\n5) D1/D2 rykker samlet op (kompakt). Frys frame for korrekt afstand/linje.",
+    "video_key": null
+  },
+  {
+    "id": "066859ae-ddca-496f-ad67-5c3bcf85c90e",
+    "title": "Pres med korrekt vinkel",
+    "difficulty": 4,
+    "position": "Back",
+    "how_to": [
+      "Pres så du lukker indersiden.",
+      "Styr mod sidelinjen.",
+      "Sænk tempo når du er tæt for balance."
+    ],
+    "why_valuable": "Du “styrer” modstanderen til ufarlige områder.",
+    "filename": "fokuspunkter/back/pres_med_korrekt_vinkel.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: i en tydelig forsvarszone (fx lige uden for feltet eller på midten)\r\nBold: start hos A1 (modstander) med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér A1 (modstander) med bold. D1 (forsvarer) i korrekt afstand. D2 som sikring bag D1. A2 som støttepasning til A1.\r\n2) A1 bevæger sig frem med bold. Flyt bolden med A1. D1 justerer side-/baglæns for at styre retning.\r\n3) D1 går i kontrolleret pres (støder) når A1 viser bolden. D2 holder sikring (2–3m bag).\r\n4) Tving A1 til støttepasning til A2. Flyt bolden fra A1 til A2.\r\n5) D1/D2 rykker samlet op (kompakt). Frys frame for korrekt afstand/linje.",
+    "video_key": null
+  },
+  {
+    "id": "5348683d-e88e-4874-906c-78187e1a3a63",
+    "title": "Pres når bold vender (trigger)",
+    "difficulty": 4,
+    "position": "Back",
+    "how_to": [
+      "Pres hårdt når modstanderen vender mod egen mål.",
+      "Luk afleveringslinje fremad.",
+      "Kommunikér så holdet støtter."
+    ],
+    "why_valuable": "Skaber fejl og høje boldvindinger.",
+    "filename": "fokuspunkter/back/pres_naar_bold_vender_trigger.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: i en tydelig forsvarszone (fx lige uden for feltet eller på midten)\r\nBold: start hos A1 (modstander) med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér A1 (modstander) med bold. D1 (forsvarer) i korrekt afstand. D2 som sikring bag D1. A2 som støttepasning til A1.\r\n2) A1 bevæger sig frem med bold. Flyt bolden med A1. D1 justerer side-/baglæns for at styre retning.\r\n3) D1 går i kontrolleret pres (støder) når A1 viser bolden. D2 holder sikring (2–3m bag).\r\n4) Tving A1 til støttepasning til A2. Flyt bolden fra A1 til A2.\r\n5) D1/D2 rykker samlet op (kompakt). Frys frame for korrekt afstand/linje.",
+    "video_key": null
+  },
+  {
+    "id": "3487ce83-8a22-4d4d-8a51-7cec30b9da05",
+    "title": "Spil diagonalt ind i banen når der er plads",
+    "difficulty": 4,
+    "position": "Back",
+    "how_to": [
+      "Scan om midten er fri.",
+      "Dribl 3–5 m ind før pasning.",
+      "Spil til 8/10 i mellemrum."
+    ],
+    "why_valuable": "I bryder pres og skaber bedre vinkler.",
+    "filename": "fokuspunkter/back/spil_diagonalt_ind_i_banen_naar_der_er_plads.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: i en tydelig forsvarszone (fx lige uden for feltet eller på midten)\r\nBold: start hos A1 (modstander) med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér A1 (modstander) med bold. D1 (forsvarer) i korrekt afstand. D2 som sikring bag D1. A2 som støttepasning til A1.\r\n2) A1 bevæger sig frem med bold. Flyt bolden med A1. D1 justerer side-/baglæns for at styre retning.\r\n3) D1 går i kontrolleret pres (støder) når A1 viser bolden. D2 holder sikring (2–3m bag).\r\n4) Tving A1 til støttepasning til A2. Flyt bolden fra A1 til A2.\r\n5) D1/D2 rykker samlet op (kompakt). Frys frame for korrekt afstand/linje.",
+    "video_key": null
+  },
+  {
+    "id": "116456b1-d9ff-4462-9339-d23d0a108f72",
+    "title": "Spil simpelt under pres",
+    "difficulty": 3,
+    "position": "Back",
+    "how_to": [
+      "1-touch til sikker løsning ved tæt pres.",
+      "Undgå driblinger i egen tredjedel uden støtte.",
+      "Brug målmand/stoppere som udvej."
+    ],
+    "why_valuable": "Færre farlige boldtab.",
+    "filename": "fokuspunkter/back/spil_simpelt_under_pres.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: i en tydelig forsvarszone (fx lige uden for feltet eller på midten)\r\nBold: start hos A1 (modstander) med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér A1 (modstander) med bold. D1 (forsvarer) i korrekt afstand. D2 som sikring bag D1. A2 som støttepasning til A1.\r\n2) A1 bevæger sig frem med bold. Flyt bolden med A1. D1 justerer side-/baglæns for at styre retning.\r\n3) D1 går i kontrolleret pres (støder) når A1 viser bolden. D2 holder sikring (2–3m bag).\r\n4) Tving A1 til støttepasning til A2. Flyt bolden fra A1 til A2.\r\n5) D1/D2 rykker samlet op (kompakt). Frys frame for korrekt afstand/linje.",
+    "video_key": null
+  },
+  {
+    "id": "ae55b896-f423-4efe-8f25-f50ddd1ff50a",
+    "title": "Sprint hjem efter overlap",
+    "difficulty": 3,
+    "position": "Back",
+    "how_to": [
+      "Når angrebet dør: sprint hjem direkte.",
+      "Find først egen zone, så pres.",
+      "Kig efter løb bag dig."
+    ],
+    "why_valuable": "Stopper kontraangreb.",
+    "filename": "fokuspunkter/back/sprint_hjem_efter_overlap.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: i en tydelig forsvarszone (fx lige uden for feltet eller på midten)\r\nBold: start hos A1 (modstander) med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér A1 (modstander) med bold. D1 (forsvarer) i korrekt afstand. D2 som sikring bag D1. A2 som støttepasning til A1.\r\n2) A1 bevæger sig frem med bold. Flyt bolden med A1. D1 justerer side-/baglæns for at styre retning.\r\n3) D1 går i kontrolleret pres (støder) når A1 viser bolden. D2 holder sikring (2–3m bag).\r\n4) Tving A1 til støttepasning til A2. Flyt bolden fra A1 til A2.\r\n5) D1/D2 rykker samlet op (kompakt). Frys frame for korrekt afstand/linje.",
+    "video_key": null
+  },
+  {
+    "id": "13acef4a-9f7e-4f64-b288-de8d5924710b",
+    "title": "Styr mod svag side i 1v1",
+    "difficulty": 4,
+    "position": "Back",
+    "how_to": [
+      "Luk indersiden med din position.",
+      "Tving modstanderen udad.",
+      "Vent på støtte før du går i tackling."
+    ],
+    "why_valuable": "Du reducerer gennembrud centralt og gør 1v1 lettere at vinde.",
+    "filename": "fokuspunkter/back/styr_mod_svag_side_i_1v1.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "0239356d-c4e6-4945-9b87-733baf9d96b5",
+    "title": "Timing i overlap",
+    "difficulty": 3,
+    "position": "Back",
+    "how_to": [
+      "Start løbet når kant har kontrol.",
+      "Løb i fart og kommunikér.",
+      "Vælg overlap eller underlap baseret på rum."
+    ],
+    "why_valuable": "Skaber overtal og farlige indlægssituationer.",
+    "filename": "fokuspunkter/back/timing_i_overlap.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere\r\nPlacering: på en kant + ind i feltet\r\nBold: start hos A1 (kant) tæt på sidelinjen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 på kanten med bold. A2 i feltet (centralt). A3 ved bagerste stolpe. D1/D2 i feltet som markering.\r\n2) A1 dribler mod baglinjen for at true. Flyt bolden med A1.\r\n3) A2 og A3 laver to forskellige løb (forreste zone + bagerste zone) for at skabe valg.\r\n4) A1 slår indlæg til valgt løb. Flyt bolden fra A1 til A2 eller A3.\r\n5) Afslut på første touch eller kontrolleret afslut. Frys frame.",
+    "video_key": null
+  },
+  {
+    "id": "1bebea73-f166-4b00-8b47-05e7887b3bdd",
+    "title": "Underlap timing",
+    "difficulty": 4,
+    "position": "Back",
+    "how_to": [
+      "Start underlap når kant trækker bredt og du ser rum inde.",
+      "Løb i fart ind i halvrum.",
+      "Forvent cutback."
+    ],
+    "why_valuable": "Skaber farlige cutbacks og gennembrud centralt.",
+    "filename": "fokuspunkter/back/underlap_timing.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: på en kant + ind i feltet\r\nBold: start hos A1 (kant) tæt på sidelinjen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 på kanten med bold. A2 i feltet (centralt). A3 ved bagerste stolpe. D1/D2 i feltet som markering.\r\n2) A1 dribler mod baglinjen for at true. Flyt bolden med A1.\r\n3) A2 og A3 laver to forskellige løb (forreste zone + bagerste zone) for at skabe valg.\r\n4) A1 slår indlæg til valgt løb. Flyt bolden fra A1 til A2 eller A3.\r\n5) Afslut på første touch eller kontrolleret afslut. Frys frame.",
+    "video_key": null
+  },
+  {
+    "id": "a8e63d38-88f8-4cde-ba5d-142a4119ae9a",
+    "title": "Vælg hvornår du går i duel",
+    "difficulty": 4,
+    "position": "Back",
+    "how_to": [
+      "Gå i duel når du har støtte bag dig.",
+      "Vent hvis du kan blive spillet forbi.",
+      "Styr først, tackl derefter."
+    ],
+    "why_valuable": "Færre gennembrud imod dig.",
+    "filename": "fokuspunkter/back/vaelg_hvornaar_du_gaar_i_duel.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: i en tydelig forsvarszone (fx lige uden for feltet eller på midten)\r\nBold: start hos A1 (modstander) med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér A1 (modstander) med bold. D1 (forsvarer) i korrekt afstand. D2 som sikring bag D1. A2 som støttepasning til A1.\r\n2) A1 bevæger sig frem med bold. Flyt bolden med A1. D1 justerer side-/baglæns for at styre retning.\r\n3) D1 går i kontrolleret pres (støder) når A1 viser bolden. D2 holder sikring (2–3m bag).\r\n4) Tving A1 til støttepasning til A2. Flyt bolden fra A1 til A2.\r\n5) D1/D2 rykker samlet op (kompakt). Frys frame for korrekt afstand/linje.",
+    "video_key": null
+  },
+  {
+    "id": "76151aa1-0748-403e-9afd-8340c0157f75",
+    "title": "Vær klar på bagerste stolpe defensivt",
+    "difficulty": 3,
+    "position": "Back",
+    "how_to": [
+      "Når bolden er modsat: drop ind mod bagerste stolpe.",
+      "Markér indløb bag dig.",
+      "Vær klar til clearance."
+    ],
+    "why_valuable": "Forhindrer mange “gratis” indlægsmål.",
+    "filename": "fokuspunkter/back/vaer_klar_paa_bagerste_stolpe_defensivt.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere\r\nPlacering: på en kant + ind i feltet\r\nBold: start hos A1 (kant) tæt på sidelinjen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 på kanten med bold. A2 i feltet (centralt). A3 ved bagerste stolpe. D1/D2 i feltet som markering.\r\n2) A1 dribler mod baglinjen for at true. Flyt bolden med A1.\r\n3) A2 og A3 laver to forskellige løb (forreste zone + bagerste zone) for at skabe valg.\r\n4) A1 slår indlæg til valgt løb. Flyt bolden fra A1 til A2 eller A3.\r\n5) Afslut på første touch eller kontrolleret afslut. Frys frame.",
+    "video_key": null
+  },
+  {
+    "id": "1252cc00-3024-4a9d-ba28-b6358347a8a5",
+    "title": "Vurdér hvornår du skal blive",
+    "difficulty": 4,
+    "position": "Back",
+    "how_to": [
+      "Tjek dækning bag dig før du går.",
+      "Bliv hvis I er i ubalance.",
+      "Gå når I har kontrol og støtte."
+    ],
+    "why_valuable": "Du undgår at efterlade bagrum og blive straffet i omstillinger.",
+    "filename": "fokuspunkter/back/vurder_hvornaar_du_skal_blive.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en tydelig træningszone (fx 20x20m) med fokus på bevægelse\r\nBold: start hos A1 med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér 4 angribere med god afstand. D1 presser boldholder. Bold hos A1.\r\n2) A2 bevæger sig i støtte (kort), A3 laver dybde (lang), A4 holder bredde. Vis tydelige pile.\r\n3) A1 spiller til den rigtige løsning (støtte eller dybde). Flyt bolden til modtager.\r\n4) Modtager sætter næste aktion (pas/dribling) mens de andre repositionerer.\r\n5) Frys frame: boldholder har mindst 2 tydelige muligheder.",
+    "video_key": null
+  },
+  {
+    "id": "4c8506aa-b53e-4554-97ba-a3caac326e62",
+    "title": "Genpres centralt",
+    "difficulty": 4,
+    "position": "Central midtbane",
+    "how_to": [
+      "Ved tab: pres nærmeste og luk centrum.",
+      "Styr modstander væk fra midten.",
+      "Kommunikér så holdet følger."
+    ],
+    "why_valuable": "Stopper farlige omstillinger.",
+    "filename": "fokuspunkter/central_midtbane/genpres_centralt.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: i en tydelig forsvarszone (fx lige uden for feltet eller på midten)\r\nBold: start hos A1 (modstander) med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér A1 (modstander) med bold. D1 (forsvarer) i korrekt afstand. D2 som sikring bag D1. A2 som støttepasning til A1.\r\n2) A1 bevæger sig frem med bold. Flyt bolden med A1. D1 justerer side-/baglæns for at styre retning.\r\n3) D1 går i kontrolleret pres (støder) når A1 viser bolden. D2 holder sikring (2–3m bag).\r\n4) Tving A1 til støttepasning til A2. Flyt bolden fra A1 til A2.\r\n5) D1/D2 rykker samlet op (kompakt). Frys frame for korrekt afstand/linje.",
+    "video_key": null
+  },
+  {
+    "id": "55e2b4c3-1de7-4fbc-a3c6-94e387d0ff7e",
+    "title": "Hurtig genpasning efter tab (1. løsning)",
+    "difficulty": 4,
+    "position": "Central midtbane",
+    "how_to": [
+      "Ved tab: pres eller luk pasning.",
+      "Vind den og spil første sikre pasning.",
+      "Genpositionér straks."
+    ],
+    "why_valuable": "I fastholder momentum og pres.",
+    "filename": "fokuspunkter/central_midtbane/hurtig_genpasning_efter_tab_1_loesning.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "f38b0655-8674-4ecc-927e-f8ad61ee7091",
+    "title": "Kommunikér tempo (“ro” vs “hurtigt”)",
+    "difficulty": 2,
+    "position": "Central midtbane",
+    "how_to": [
+      "Sig “ro” når holdet skal op.",
+      "Sig “hurtigt” når der er omstilling.",
+      "Understøt med din egen handling."
+    ],
+    "why_valuable": "Holdet bliver bedre koordineret.",
+    "filename": "fokuspunkter/central_midtbane/kommuniker_tempo_ro_vs_hurtigt.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en tydelig træningszone (fx 20x20m) med fokus på bevægelse\r\nBold: start hos A1 med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér 4 angribere med god afstand. D1 presser boldholder. Bold hos A1.\r\n2) A2 bevæger sig i støtte (kort), A3 laver dybde (lang), A4 holder bredde. Vis tydelige pile.\r\n3) A1 spiller til den rigtige løsning (støtte eller dybde). Flyt bolden til modtager.\r\n4) Modtager sætter næste aktion (pas/dribling) mens de andre repositionerer.\r\n5) Frys frame: boldholder har mindst 2 tydelige muligheder.",
+    "video_key": null
+  },
+  {
+    "id": "162dedb3-e61d-4fa5-90a8-9489ca8169ee",
+    "title": "Luk centrum uden bold",
+    "difficulty": 3,
+    "position": "Central midtbane",
+    "how_to": [
+      "Positionér dig mellem bold og mål.",
+      "Tving spil udad.",
+      "Scan løb i mellemrummet."
+    ],
+    "why_valuable": "Du gør modstanderen mindre farlig.",
+    "filename": "fokuspunkter/central_midtbane/luk_centrum_uden_bold.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "65d4d74c-2cb4-4671-ba78-93ce5316a909",
+    "title": "Modtag mellem linjer på halv vending",
+    "difficulty": 4,
+    "position": "Central midtbane",
+    "how_to": [
+      "Åbn kroppen før bolden kommer.",
+      "Modtag med første touch fremad/til side.",
+      "Spil hurtigt fremad hvis muligt."
+    ],
+    "why_valuable": "Du kan vende mod mål og skabe gennembrud.",
+    "filename": "fokuspunkter/central_midtbane/modtag_mellem_linjer_paa_halv_vending.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "4b978111-e31d-4d04-8d8e-5978d06681f4",
+    "title": "Orientér dig før du modtager i preszoner",
+    "difficulty": 4,
+    "position": "Central midtbane",
+    "how_to": [
+      "Scan 3+ gange før modtagelse.",
+      "Find fri mand og presretning.",
+      "Modtag i vinkel og spil hurtigt."
+    ],
+    "why_valuable": "Midten er farlig. Scanning gør dig sikker.",
+    "filename": "fokuspunkter/central_midtbane/orienter_dig_foer_du_modtager_i_preszoner.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "472bfbf1-100a-488c-bbda-483cb064a008",
+    "title": "Placér dig på den rigtige side af modstanderen",
+    "difficulty": 4,
+    "position": "Central midtbane",
+    "how_to": [
+      "Flyt dig ud af skygge bag markør.",
+      "Stå så du kan modtage og spille fremad.",
+      "Justér 1–2 m for pasningslinje."
+    ],
+    "why_valuable": "Du bliver mere spilbar og effektiv under pres.",
+    "filename": "fokuspunkter/central_midtbane/placer_dig_paa_den_rigtige_side_af_modstanderen.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "97baa3d9-a0af-4117-83ef-23538270109e",
+    "title": "Ryd op foran forsvaret (defensiv disciplin)",
+    "difficulty": 4,
+    "position": "Central midtbane",
+    "how_to": [
+      "Hold position når backs går frem.",
+      "Luk pasninger ind centralt.",
+      "Gå kun i duel når du har støtte."
+    ],
+    "why_valuable": "Beskytter bagkæden og stopper kontraløb.",
+    "filename": "fokuspunkter/central_midtbane/ryd_op_foran_forsvaret_defensiv_disciplin.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "362e4ca5-0d25-4e14-825c-5ffdd6060f49",
+    "title": "Skab plads for andre",
+    "difficulty": 3,
+    "position": "Central midtbane",
+    "how_to": [
+      "Træk din markør væk fra rum.",
+      "Lav løb der åbner pasningslinje.",
+      "Time bevægelsen med boldside."
+    ],
+    "why_valuable": "Du skaber chancer uden bold.",
+    "filename": "fokuspunkter/central_midtbane/skab_plads_for_andre.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "4a970ac9-fc98-4771-a760-efad822b3960",
+    "title": "Skab støttevinkel til stopper",
+    "difficulty": 3,
+    "position": "Central midtbane",
+    "how_to": [
+      "Stå 5–10 m foran stopper i vinkel.",
+      "Gør modtagelse nem.",
+      "Spil videre hurtigt."
+    ],
+    "why_valuable": "Opbygning bliver roligere og mere sikker.",
+    "filename": "fokuspunkter/central_midtbane/skab_stoettevinkel_til_stopper.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "42f8af02-fd46-4963-87b9-118c874b74fe",
+    "title": "Skift side med længere pasning",
+    "difficulty": 5,
+    "position": "Central midtbane",
+    "how_to": [
+      "Scan modsatte side før modtagelse.",
+      "Slå bolden fladt/højt afhængigt af pres.",
+      "Følg op med ny position."
+    ],
+    "why_valuable": "Flytter modstanderens pres og skaber 1v1.",
+    "filename": "fokuspunkter/central_midtbane/skift_side_med_laengere_pasning.json",
+    "drejebog": "Opsætning: 4 medspillere, 2 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "afc3dad8-5f21-4e58-807e-162f619118dc",
+    "title": "Skift tempo med bolden",
+    "difficulty": 4,
+    "position": "Central midtbane",
+    "how_to": [
+      "Rolig berøring → eksplosiv næste handling.",
+      "Brug tempo til at flytte pres.",
+      "Beslut efter scanning."
+    ],
+    "why_valuable": "Skaber ubalance og åbner rum.",
+    "filename": "fokuspunkter/central_midtbane/skift_tempo_med_bolden.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: i en tydelig forsvarszone (fx lige uden for feltet eller på midten)\r\nBold: start hos A1 (modstander) med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér A1 (modstander) med bold. D1 (forsvarer) i korrekt afstand. D2 som sikring bag D1. A2 som støttepasning til A1.\r\n2) A1 bevæger sig frem med bold. Flyt bolden med A1. D1 justerer side-/baglæns for at styre retning.\r\n3) D1 går i kontrolleret pres (støder) når A1 viser bolden. D2 holder sikring (2–3m bag).\r\n4) Tving A1 til støttepasning til A2. Flyt bolden fra A1 til A2.\r\n5) D1/D2 rykker samlet op (kompakt). Frys frame for korrekt afstand/linje.",
+    "video_key": null
+  },
+  {
+    "id": "6d1750e1-9163-4be3-820a-e916fd38a4e7",
+    "title": "Spil vendt af på én berøring (støttepas)",
+    "difficulty": 4,
+    "position": "Central midtbane",
+    "how_to": [
+      "Modtag med åben krop.",
+      "Vend bolden videre med én touch til fri side.",
+      "Gør det kun når du har scannet."
+    ],
+    "why_valuable": "Skaber tempo og bryder pres.",
+    "filename": "fokuspunkter/central_midtbane/spil_vendt_af_paa_en_beroering_stoettepas.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere\r\nPlacering: i halvrum/central zone med plads til vending/dribling\r\nBold: start hos A1 (boldfører) i halvrum\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 med bold. A2 og A3 som støttevinkler (en foran, en bag/side). D1 presser A1.\r\n2) A1 tager første touch væk fra pres og vender kroppen mod fri side. Flyt bolden med A1.\r\n3) A1 dribler 2–4 meter ind i rummet. D1 følger.\r\n4) A1 spiller til fri medspiller (A2 eller A3). Flyt bolden til modtager.\r\n5) Modtager tager første touch fremad. Frys frame ved 'god vending + næste aktion'.",
+    "video_key": null
+  },
+  {
+    "id": "03d27d0c-8d02-4f4a-9bba-d249b3ff550b",
+    "title": "Spilbarhed mellem kæder",
+    "difficulty": 4,
+    "position": "Central midtbane",
+    "how_to": [
+      "Find lommer mellem deres midtbane og forsvar.",
+      "Modtag på halv vending.",
+      "Scan før du viser dig."
+    ],
+    "why_valuable": "Du modtager i farlige rum og kan spille fremad.",
+    "filename": "fokuspunkter/central_midtbane/spilbarhed_mellem_kaeder.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere\r\nPlacering: i halvrum/central zone med plads til vending/dribling\r\nBold: start hos A1 (boldfører) i halvrum\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 med bold. A2 og A3 som støttevinkler (en foran, en bag/side). D1 presser A1.\r\n2) A1 tager første touch væk fra pres og vender kroppen mod fri side. Flyt bolden med A1.\r\n3) A1 dribler 2–4 meter ind i rummet. D1 følger.\r\n4) A1 spiller til fri medspiller (A2 eller A3). Flyt bolden til modtager.\r\n5) Modtager tager første touch fremad. Frys frame ved 'god vending + næste aktion'.",
+    "video_key": null
+  },
+  {
+    "id": "7e7e0c47-2604-4e2d-8a38-e2d8a78df732",
+    "title": "Tag ansvar i opbygningsfasen",
+    "difficulty": 4,
+    "position": "Central midtbane",
+    "how_to": [
+      "Vis dig mellem stoppere og midtbane.",
+      "Modtag roligt og vend spil.",
+      "Vær konstant tilgængelig."
+    ],
+    "why_valuable": "I spiller jer bedre ud og kontrollerer kampen.",
+    "filename": "fokuspunkter/central_midtbane/tag_ansvar_i_opbygningsfasen.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere\r\nPlacering: i halvrum/central zone med plads til vending/dribling\r\nBold: start hos A1 (boldfører) i halvrum\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 med bold. A2 og A3 som støttevinkler (en foran, en bag/side). D1 presser A1.\r\n2) A1 tager første touch væk fra pres og vender kroppen mod fri side. Flyt bolden med A1.\r\n3) A1 dribler 2–4 meter ind i rummet. D1 følger.\r\n4) A1 spiller til fri medspiller (A2 eller A3). Flyt bolden til modtager.\r\n5) Modtager tager første touch fremad. Frys frame ved 'god vending + næste aktion'.",
+    "video_key": null
+  },
+  {
+    "id": "f8862398-2eb1-4366-b129-1ca28b482bd6",
+    "title": "Tempo-kontrol",
+    "difficulty": 4,
+    "position": "Central midtbane",
+    "how_to": [
+      "Skift mellem 1-touch og hold i bolden.",
+      "Sænk tempo når holdet skal op.",
+      "Øg tempo når modstander er ubalance."
+    ],
+    "why_valuable": "Du styrer rytmen og gør holdet mere modent.",
+    "filename": "fokuspunkter/central_midtbane/tempo_kontrol.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en tydelig træningszone (fx 20x20m) med fokus på bevægelse\r\nBold: start hos A1 med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér 4 angribere med god afstand. D1 presser boldholder. Bold hos A1.\r\n2) A2 bevæger sig i støtte (kort), A3 laver dybde (lang), A4 holder bredde. Vis tydelige pile.\r\n3) A1 spiller til den rigtige løsning (støtte eller dybde). Flyt bolden til modtager.\r\n4) Modtager sætter næste aktion (pas/dribling) mens de andre repositionerer.\r\n5) Frys frame: boldholder har mindst 2 tydelige muligheder.",
+    "video_key": null
+  },
+  {
+    "id": "f3404fce-9a07-4001-8e18-dfc32f01b7f1",
+    "title": "Tilbyd støtte bag boldholder",
+    "difficulty": 3,
+    "position": "Central midtbane",
+    "how_to": [
+      "Placér dig som sikker løsning bag bold.",
+      "Stå i vinkel til næste pas.",
+      "Kommunikér “tilbage/ro”."
+    ],
+    "why_valuable": "Holdet kan bevare kontrol og rytme.",
+    "filename": "fokuspunkter/central_midtbane/tilbyd_stoette_bag_boldholder.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "8919e22b-5e64-4e24-b1c1-331feb1b8c82",
+    "title": "Timing i løb i felt (som 8’er)",
+    "difficulty": 4,
+    "position": "Central midtbane",
+    "how_to": [
+      "Kom sent ind i feltet.",
+      "Vær klar til cutback/retur.",
+      "Afslut på første/andet touch."
+    ],
+    "why_valuable": "“Sen ankomst” giver mange målchancer.",
+    "filename": "fokuspunkter/central_midtbane/timing_i_loeb_i_felt_som_8er.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "e24b2192-765f-415e-a519-86e0056a702a",
+    "title": "Vær spilbar i halvrum",
+    "difficulty": 4,
+    "position": "Central midtbane",
+    "how_to": [
+      "Find halvrummet mellem kant og centrum.",
+      "Modtag på halv vending.",
+      "Spil gennem/ud på kanten."
+    ],
+    "why_valuable": "Halvrum er ofte sværest at forsvare.",
+    "filename": "fokuspunkter/central_midtbane/vaer_spilbar_i_halvrum.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: på en kant + ind i feltet\r\nBold: start hos A1 (kant) tæt på sidelinjen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 på kanten med bold. A2 i feltet (centralt). A3 ved bagerste stolpe. D1/D2 i feltet som markering.\r\n2) A1 dribler mod baglinjen for at true. Flyt bolden med A1.\r\n3) A2 og A3 laver to forskellige løb (forreste zone + bagerste zone) for at skabe valg.\r\n4) A1 slår indlæg til valgt løb. Flyt bolden fra A1 til A2 eller A3.\r\n5) Afslut på første touch eller kontrolleret afslut. Frys frame.",
+    "video_key": null
+  },
+  {
+    "id": "14a29836-f7eb-4e83-a41c-cbc3d6f6baad",
+    "title": "Vurdér risiko i dine pasninger",
+    "difficulty": 4,
+    "position": "Central midtbane",
+    "how_to": [
+      "Tænk konsekvens: hvor farligt er boldtab her?",
+      "Vælg sikker løsning i farlige zoner.",
+      "Tag risiko når du har støtte og tid."
+    ],
+    "why_valuable": "Færre farlige boldtab centralt.",
+    "filename": "fokuspunkter/central_midtbane/vurder_risiko_i_dine_pasninger.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "711f3229-2fee-45fe-b46e-87dd1605af03",
+    "title": "Åben kropsstilling før modtagelse",
+    "difficulty": 3,
+    "position": "Fælles (alle positioner)",
+    "how_to": [
+      "Stå i 45° vinkel, så du kan se banen.",
+      "Modtag med “halv vending”.",
+      "Undgå at stå helt fladt mod bolden."
+    ],
+    "why_valuable": "Du kan spille fremad hurtigere og undgår at blive låst.",
+    "filename": "fokuspunkter/faelles_alle_positioner/aaben_kropsstilling_foer_modtagelse.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere\r\nPlacering: i halvrum/central zone med plads til vending/dribling\r\nBold: start hos A1 (boldfører) i halvrum\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 med bold. A2 og A3 som støttevinkler (en foran, en bag/side). D1 presser A1.\r\n2) A1 tager første touch væk fra pres og vender kroppen mod fri side. Flyt bolden med A1.\r\n3) A1 dribler 2–4 meter ind i rummet. D1 følger.\r\n4) A1 spiller til fri medspiller (A2 eller A3). Flyt bolden til modtager.\r\n5) Modtager tager første touch fremad. Frys frame ved 'god vending + næste aktion'.",
+    "video_key": null
+  },
+  {
+    "id": "2dc2244d-2bfe-438c-b097-b83ff1bbc9e5",
+    "title": "Arbejd aktivt i omstillinger",
+    "difficulty": 3,
+    "position": "Fælles (alle positioner)",
+    "how_to": [
+      "Ved vinding: gør dig spilbar fremad med det samme.",
+      "Ved tab: pres/luk midten straks.",
+      "Fokuser på første 5 meter."
+    ],
+    "why_valuable": "Omstillinger skaber flest chancer og farligste situationer.",
+    "filename": "fokuspunkter/faelles_alle_positioner/arbejd_aktivt_i_omstillinger.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "101bbed4-3380-4d73-84eb-66bd4a400495",
+    "title": "Første 5 meter efter aflevering (gen-position)",
+    "difficulty": 3,
+    "position": "Fælles (alle positioner)",
+    "how_to": [
+      "Efter pasning: sprint/accelerér de første 5 m til ny plads.",
+      "Kig om du kan få bolden tilbage.",
+      "Skab overtal omkring bolden."
+    ],
+    "why_valuable": "Du bliver konstant involveret og hjælper holdet med at dominere.",
+    "filename": "fokuspunkter/faelles_alle_positioner/foerste_5_meter_efter_aflevering_gen_position.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "29bbced4-5aa5-4309-b0f7-0cb47fdf3520",
+    "title": "Førsteberøring i spilretning",
+    "difficulty": 3,
+    "position": "Fælles (alle positioner)",
+    "how_to": [
+      "Modtag på halv vending med åben krop.",
+      "Første touch skal flytte bolden 0,5–1 m i retningen du vil spille.",
+      "Undgå at tage touch direkte mod pres."
+    ],
+    "why_valuable": "Du skaber tid, slår pres og kan spille fremad oftere.",
+    "filename": "fokuspunkter/faelles_alle_positioner/foersteberoering_i_spilretning.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "2d0587a4-f594-47b8-ad91-7978d7f58308",
+    "title": "Hav en plan før bolden kommer",
+    "difficulty": 4,
+    "position": "Fælles (alle positioner)",
+    "how_to": [
+      "Lav plan A (fremad) og plan B (sikker).",
+      "Tjek om plan A stadig er åben lige før modtagelse.",
+      "Modtag i vinkel så du kan udføre planen."
+    ],
+    "why_valuable": "Du spiller hurtigere og mere stabilt, især i trange rum.",
+    "filename": "fokuspunkter/faelles_alle_positioner/hav_en_plan_foer_bolden_kommer.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere\r\nPlacering: i halvrum/central zone med plads til vending/dribling\r\nBold: start hos A1 (boldfører) i halvrum\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 med bold. A2 og A3 som støttevinkler (en foran, en bag/side). D1 presser A1.\r\n2) A1 tager første touch væk fra pres og vender kroppen mod fri side. Flyt bolden med A1.\r\n3) A1 dribler 2–4 meter ind i rummet. D1 følger.\r\n4) A1 spiller til fri medspiller (A2 eller A3). Flyt bolden til modtager.\r\n5) Modtager tager første touch fremad. Frys frame ved 'god vending + næste aktion'.",
+    "video_key": null
+  },
+  {
+    "id": "882ef4d9-112c-468c-b10c-a2363c34045f",
+    "title": "Hold korrekt afstand til nærmeste medspiller",
+    "difficulty": 3,
+    "position": "Fælles (alle positioner)",
+    "how_to": [
+      "For tæt = trængsel, for langt = ingen støtte.",
+      "Justér 2–3 m baseret på pres.",
+      "Hold “trekanter” i spillet."
+    ],
+    "why_valuable": "God spacing gør pasningsspil og genpres markant bedre.",
+    "filename": "fokuspunkter/faelles_alle_positioner/hold_korrekt_afstand_til_naermeste_medspiller.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere\r\nPlacering: på en kant + ind i feltet\r\nBold: start hos A1 (kant) tæt på sidelinjen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 på kanten med bold. A2 i feltet (centralt). A3 ved bagerste stolpe. D1/D2 i feltet som markering.\r\n2) A1 dribler mod baglinjen for at true. Flyt bolden med A1.\r\n3) A2 og A3 laver to forskellige løb (forreste zone + bagerste zone) for at skabe valg.\r\n4) A1 slår indlæg til valgt løb. Flyt bolden fra A1 til A2 eller A3.\r\n5) Afslut på første touch eller kontrolleret afslut. Frys frame.",
+    "video_key": null
+  },
+  {
+    "id": "439a6bea-f542-4856-9be4-c6af6ccd1671",
+    "title": "Identificér pres og frie rum",
+    "difficulty": 3,
+    "position": "Fælles (alle positioner)",
+    "how_to": [
+      "Find nærmeste pres (hvem kan nå dig på 1–2 sek?).",
+      "Find et frit rum du kan tage første touch ind i.",
+      "Vælg hurtig aflevering ved tæt pres."
+    ],
+    "why_valuable": "Du undgår panikberøringer og spiller mere sikkert og fremadrettet.",
+    "filename": "fokuspunkter/faelles_alle_positioner/identificer_pres_og_frie_rum.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "a8027f2d-c7c1-4370-bbcd-92dcce141c87",
+    "title": "Kig minimum 2 gange før boldmodtagelse",
+    "difficulty": 3,
+    "position": "Fælles (alle positioner)",
+    "how_to": [
+      "Kig venstre skulder → tilbage i center → kig højre skulder → tilbage i center.",
+      "Kig efter pres (tæt på) og fri mand (sikker løsning).",
+      "Beslut handling før bolden når dig."
+    ],
+    "why_valuable": "Du får “mere tid” på bolden og træffer hurtigere beslutninger under pres.",
+    "filename": "fokuspunkter/faelles_alle_positioner/kig_minimum_2_gange_foer_boldmodtagelse.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere\r\nPlacering: i halvrum/central zone med plads til vending/dribling\r\nBold: start hos A1 (boldfører) i halvrum\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 med bold. A2 og A3 som støttevinkler (en foran, en bag/side). D1 presser A1.\r\n2) A1 tager første touch væk fra pres og vender kroppen mod fri side. Flyt bolden med A1.\r\n3) A1 dribler 2–4 meter ind i rummet. D1 følger.\r\n4) A1 spiller til fri medspiller (A2 eller A3). Flyt bolden til modtager.\r\n5) Modtager tager første touch fremad. Frys frame ved 'god vending + næste aktion'.",
+    "video_key": null
+  },
+  {
+    "id": "a82d28e4-b69f-4058-aecb-17f1a6f5e69b",
+    "title": "Kommunikér før du får bolden",
+    "difficulty": 2,
+    "position": "Fælles (alle positioner)",
+    "how_to": [
+      "Giv én klar besked: “tid”, “mand på”, “vend”, “én touch”.",
+      "Sig det tidligt (før modtagelse).",
+      "Hold det kort og gentag kun ved behov."
+    ],
+    "why_valuable": "Bedre beslutninger og færre fejl – især i højt tempo.",
+    "filename": "fokuspunkter/faelles_alle_positioner/kommuniker_foer_du_faar_bolden.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere\r\nPlacering: i halvrum/central zone med plads til vending/dribling\r\nBold: start hos A1 (boldfører) i halvrum\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 med bold. A2 og A3 som støttevinkler (en foran, en bag/side). D1 presser A1.\r\n2) A1 tager første touch væk fra pres og vender kroppen mod fri side. Flyt bolden med A1.\r\n3) A1 dribler 2–4 meter ind i rummet. D1 følger.\r\n4) A1 spiller til fri medspiller (A2 eller A3). Flyt bolden til modtager.\r\n5) Modtager tager første touch fremad. Frys frame ved 'god vending + næste aktion'.",
+    "video_key": null
+  },
+  {
+    "id": "8ca994e3-0d26-4063-aaeb-ba6b8bd9e6b5",
+    "title": "Orientér dig før du modtager – også uden bold",
+    "difficulty": 3,
+    "position": "Fælles (alle positioner)",
+    "how_to": [
+      "Scan hver 3.–5. sekund, også når du ikke forventer bold.",
+      "Kig efter fri mand, pres og næste rum.",
+      "Øg scanning når bolden nærmer sig din side."
+    ],
+    "why_valuable": "Du bliver hurtigere i hovedet og mere rolig på bolden.",
+    "filename": "fokuspunkter/faelles_alle_positioner/orienter_dig_foer_du_modtager_ogsaa_uden_bold.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: i en tydelig forsvarszone (fx lige uden for feltet eller på midten)\r\nBold: start hos A1 (modstander) med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér A1 (modstander) med bold. D1 (forsvarer) i korrekt afstand. D2 som sikring bag D1. A2 som støttepasning til A1.\r\n2) A1 bevæger sig frem med bold. Flyt bolden med A1. D1 justerer side-/baglæns for at styre retning.\r\n3) D1 går i kontrolleret pres (støder) når A1 viser bolden. D2 holder sikring (2–3m bag).\r\n4) Tving A1 til støttepasning til A2. Flyt bolden fra A1 til A2.\r\n5) D1/D2 rykker samlet op (kompakt). Frys frame for korrekt afstand/linje.",
+    "video_key": null
+  },
+  {
+    "id": "416badee-23cd-4725-a6bf-da510227d88f",
+    "title": "Positionér dig så du kan spille fremad",
+    "difficulty": 3,
+    "position": "Fælles (alle positioner)",
+    "how_to": [
+      "Stil dig “på siden” af modstanderen, ikke bag ham.",
+      "Åbn kroppen mod banen.",
+      "Flyt 1–2 m for at skabe pasningslinje fremad."
+    ],
+    "why_valuable": "Du hjælper holdet med at spille gennem kæder og skabe chancer.",
+    "filename": "fokuspunkter/faelles_alle_positioner/positioner_dig_saa_du_kan_spille_fremad.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "b2292d78-f486-4e0c-ae09-40512ceb12b9",
+    "title": "Reagér hurtigt ved boldtab",
+    "difficulty": 3,
+    "position": "Fælles (alle positioner)",
+    "how_to": [
+      "Reagér inden 2 sek: pres nærmeste eller luk pasning.",
+      "Sprint de første 5 meter (ikke jog).",
+      "Kommunikér “pres” så holdet følger med."
+    ],
+    "why_valuable": "I stopper omstillinger og vinder flere bolde højt.",
+    "filename": "fokuspunkter/faelles_alle_positioner/reager_hurtigt_ved_boldtab.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "f0899633-d3d9-477c-a81b-94fa1a250a68",
+    "title": "Skab en ny vinkel efter aflevering",
+    "difficulty": 3,
+    "position": "Fælles (alle positioner)",
+    "how_to": [
+      "Efter aflevering: flyt dig 2–5 m til ny vinkel.",
+      "Bliv spilbar igen (vis hænder/krop mod bold).",
+      "Kig efter næste rum du kan modtage i."
+    ],
+    "why_valuable": "Du holder spillet i gang og bliver en konstant løsning.",
+    "filename": "fokuspunkter/faelles_alle_positioner/skab_en_ny_vinkel_efter_aflevering.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "3b8f974c-7fd5-4346-88bd-d055591a408c",
+    "title": "Skift spil-side hurtigt når der er plads",
+    "difficulty": 4,
+    "position": "Fælles (alle positioner)",
+    "how_to": [
+      "Scan: hvor er modsatte side fri?",
+      "Spil hurtigt via 1–2 pasninger eller længere bold.",
+      "Flyt dig efterfølgende til ny støtteposition."
+    ],
+    "why_valuable": "I undgår pres og skaber 1v1/2v1 på modsatte side.",
+    "filename": "fokuspunkter/faelles_alle_positioner/skift_spil_side_hurtigt_naar_der_er_plads.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "e7e89dc4-5117-4e5c-b54e-6921a58b1d60",
+    "title": "Spil én berøring når situationen tillader det",
+    "difficulty": 4,
+    "position": "Fælles (alle positioner)",
+    "how_to": [
+      "Scan før bolden kommer: find modtager.",
+      "Stå i vinkel så bolden kan spilles videre med én touch.",
+      "Vælg 1-touch især ved tæt pres."
+    ],
+    "why_valuable": "Tempo stiger, pres brydes, og I bliver sværere at lukke ned.",
+    "filename": "fokuspunkter/faelles_alle_positioner/spil_en_beroering_naar_situationen_tillader_det.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere\r\nPlacering: i halvrum/central zone med plads til vending/dribling\r\nBold: start hos A1 (boldfører) i halvrum\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 med bold. A2 og A3 som støttevinkler (en foran, en bag/side). D1 presser A1.\r\n2) A1 tager første touch væk fra pres og vender kroppen mod fri side. Flyt bolden med A1.\r\n3) A1 dribler 2–4 meter ind i rummet. D1 følger.\r\n4) A1 spiller til fri medspiller (A2 eller A3). Flyt bolden til modtager.\r\n5) Modtager tager første touch fremad. Frys frame ved 'god vending + næste aktion'.",
+    "video_key": null
+  },
+  {
+    "id": "3356743f-4143-40e6-87b9-1c6b4b806586",
+    "title": "Spil igennem preslinjen når det er sikkert",
+    "difficulty": 5,
+    "position": "Fælles (alle positioner)",
+    "how_to": [
+      "Scan efter pasning “mellem kæder”.",
+      "Brug fast pasning langs jorden til fri mand.",
+      "Vælg sikker løsning hvis linjen lukker."
+    ],
+    "why_valuable": "At bryde preslinjer er en nøgle til at skabe chancer mod gode hold.",
+    "filename": "fokuspunkter/faelles_alle_positioner/spil_igennem_preslinjen_naar_det_er_sikkert.json",
+    "drejebog": "Opsætning: 4 medspillere, 2 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "bf60788e-3233-43f2-af62-ba086d3facfc",
+    "title": "Tænk næste aktion – ikke nuværende",
+    "difficulty": 4,
+    "position": "Fælles (alle positioner)",
+    "how_to": [
+      "Tænk: “hvis jeg får den nu, hvad gør jeg?”",
+      "Hav altid plan A/B.",
+      "Modtag med kroppen klar til næste aktion."
+    ],
+    "why_valuable": "Du bliver hurtigere, mere stabil og laver færre panikfejl.",
+    "filename": "fokuspunkter/faelles_alle_positioner/taenk_naeste_aktion_ikke_nuvaerende.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en tydelig træningszone (fx 20x20m) med fokus på bevægelse\r\nBold: start hos A1 med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér 4 angribere med god afstand. D1 presser boldholder. Bold hos A1.\r\n2) A2 bevæger sig i støtte (kort), A3 laver dybde (lang), A4 holder bredde. Vis tydelige pile.\r\n3) A1 spiller til den rigtige løsning (støtte eller dybde). Flyt bolden til modtager.\r\n4) Modtager sætter næste aktion (pas/dribling) mens de andre repositionerer.\r\n5) Frys frame: boldholder har mindst 2 tydelige muligheder.",
+    "video_key": null
+  },
+  {
+    "id": "630432ba-9a41-4c44-a7a4-5497883c5b35",
+    "title": "Undgå stopbold",
+    "difficulty": 3,
+    "position": "Fælles (alle positioner)",
+    "how_to": [
+      "Tag aldrig bolden “død” hvis der er pres i nærheden.",
+      "Brug et lille touch frem/til siden i stedet.",
+      "Hold kroppen over bolden og vær klar på næste aktion."
+    ],
+    "why_valuable": "Stopbold inviterer pres. Aktiv førsteberøring holder dig i kontrol.",
+    "filename": "fokuspunkter/faelles_alle_positioner/undgaa_stopbold.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: i en tydelig forsvarszone (fx lige uden for feltet eller på midten)\r\nBold: start hos A1 (modstander) med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér A1 (modstander) med bold. D1 (forsvarer) i korrekt afstand. D2 som sikring bag D1. A2 som støttepasning til A1.\r\n2) A1 bevæger sig frem med bold. Flyt bolden med A1. D1 justerer side-/baglæns for at styre retning.\r\n3) D1 går i kontrolleret pres (støder) når A1 viser bolden. D2 holder sikring (2–3m bag).\r\n4) Tving A1 til støttepasning til A2. Flyt bolden fra A1 til A2.\r\n5) D1/D2 rykker samlet op (kompakt). Frys frame for korrekt afstand/linje.",
+    "video_key": null
+  },
+  {
+    "id": "c481caed-f04e-4d19-bd2d-096c49e9d174",
+    "title": "Vælg sikker løsning i egen farlige zone",
+    "difficulty": 3,
+    "position": "Fælles (alle positioner)",
+    "how_to": [
+      "I egen tredjedel: undgå risikable afleveringer centralt.",
+      "Spil ud via sider/tilbage hvis du er presset.",
+      "Tag kun risiko når du har tid og støtte."
+    ],
+    "why_valuable": "Du reducerer de farligste boldtab, som ofte fører til mål imod.",
+    "filename": "fokuspunkter/faelles_alle_positioner/vaelg_sikker_loesning_i_egen_farlige_zone.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "0aa7b4a1-05e6-497f-b1b0-566c72c908bc",
+    "title": "Vær spilbar under pres",
+    "difficulty": 4,
+    "position": "Fælles (alle positioner)",
+    "how_to": [
+      "Lav små bevægelser ud af “skyggen”.",
+      "Stå i vinkel så du kan spille videre med 1–2 touches.",
+      "Kommunikér “i fødder” hvis du vil have bolden."
+    ],
+    "why_valuable": "Holdet kan spille ud af pres, og du udvikler elite-tryghed på bolden.",
+    "filename": "fokuspunkter/faelles_alle_positioner/vaer_spilbar_under_pres.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "f0092618-f13f-4dcd-a312-ba05c2c16059",
+    "title": "1v1-beslutninger",
+    "difficulty": 4,
+    "position": "Kant",
+    "how_to": [
+      "Scan: har du overtal/rum?",
+      "Udfordr når du kan slå din mand.",
+      "Spil simpelt hvis du er lukket."
+    ],
+    "why_valuable": "Korrekte 1v1-valg giver gennembrud og færre tab.",
+    "filename": "fokuspunkter/kant/1v1_beslutninger.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "e02da10f-b035-493e-bd8d-ddfd876f137e",
+    "title": "Afslut ved bagerste stolpe offensivt",
+    "difficulty": 4,
+    "position": "Kant",
+    "how_to": [
+      "Kom på bagerste stolpe ved indlæg fra modsatte side.",
+      "Time “sen ankomst”.",
+      "Afslut på første touch."
+    ],
+    "why_valuable": "Giver mange målchancer uden tæt markering.",
+    "filename": "fokuspunkter/kant/afslut_ved_bagerste_stolpe_offensivt.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "12797cba-afc2-4a53-9b9b-74ec9b0c74b2",
+    "title": "Back-post defensivt (hjælp din back)",
+    "difficulty": 3,
+    "position": "Kant",
+    "how_to": [
+      "Drop ind ved modsatte indlæg.",
+      "Markér bagerste stolpe/runner.",
+      "Clear første bold."
+    ],
+    "why_valuable": "Forhindrer “gratis” mål ved bagerste stolpe.",
+    "filename": "fokuspunkter/kant/back_post_defensivt_hjaelp_din_back.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere\r\nPlacering: på en kant + ind i feltet\r\nBold: start hos A1 (kant) tæt på sidelinjen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 på kanten med bold. A2 i feltet (centralt). A3 ved bagerste stolpe. D1/D2 i feltet som markering.\r\n2) A1 dribler mod baglinjen for at true. Flyt bolden med A1.\r\n3) A2 og A3 laver to forskellige løb (forreste zone + bagerste zone) for at skabe valg.\r\n4) A1 slår indlæg til valgt løb. Flyt bolden fra A1 til A2 eller A3.\r\n5) Afslut på første touch eller kontrolleret afslut. Frys frame.",
+    "video_key": null
+  },
+  {
+    "id": "d71aad5e-95f8-4f55-af82-250496a67bde",
+    "title": "Cut inside og afslut",
+    "difficulty": 4,
+    "position": "Kant",
+    "how_to": [
+      "Skift retning indad med bold tæt på fod.",
+      "Skab skudvinkel.",
+      "Afslut placeret."
+    ],
+    "why_valuable": "Giver flere skud fra farlige områder.",
+    "filename": "fokuspunkter/kant/cut_inside_og_afslut.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "82164fba-eac0-41eb-b3dd-3959a29edcd1",
+    "title": "Find rum mellem back og stopper",
+    "difficulty": 5,
+    "position": "Kant",
+    "how_to": [
+      "Scan hullet mellem dem.",
+      "Løb diagonalt ind bag back.",
+      "Tim løbet, undgå offside."
+    ],
+    "why_valuable": "Et af de farligste rum i moderne fodbold.",
+    "filename": "fokuspunkter/kant/find_rum_mellem_back_og_stopper.json",
+    "drejebog": "Opsætning: 4 medspillere, 2 modspillere\r\nPlacering: omkring midtbanen (modtag/scan/spil videre)\r\nBold: start hos A1 (server) med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A2 står i midten og skal modtage. A1 (server) foran A2. A3/A4 som muligheder til højre/venstre. D1 presser bagfra/side.\r\n2) A2 'scanner' (vis det ved kort pause) før bolden kommer. A1 spiller til A2. Flyt bolden til A2.\r\n3) A2 tager første touch ud af pres (mod fri side). Flyt bolden med A2.\r\n4) A2 spiller videre til A3 eller A4 (den frie side). Flyt bolden.\r\n5) Frys frame: kropsstilling åben + næste pasning let.",
+    "video_key": null
+  },
+  {
+    "id": "99774c6a-e36b-4d93-b677-2a52a9a93886",
+    "title": "Første touch i fart",
+    "difficulty": 3,
+    "position": "Kant",
+    "how_to": [
+      "Modtag og tag touch fremad.",
+      "Hold bold tæt nok til kontrol.",
+      "Undgå stopbold."
+    ],
+    "why_valuable": "Du bliver farligere i 1v1 og i omstilling.",
+    "filename": "fokuspunkter/kant/foerste_touch_i_fart.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "78832363-738a-4ee7-b4bd-0a904e1faa7d",
+    "title": "Genpres på backs",
+    "difficulty": 4,
+    "position": "Kant",
+    "how_to": [
+      "Ved tab: pres deres back straks.",
+      "Styr mod sidelinjen.",
+      "Få støtte fra din back."
+    ],
+    "why_valuable": "Hurtige boldvindinger tæt på mål.",
+    "filename": "fokuspunkter/kant/genpres_paa_backs.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: i en tydelig forsvarszone (fx lige uden for feltet eller på midten)\r\nBold: start hos A1 (modstander) med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér A1 (modstander) med bold. D1 (forsvarer) i korrekt afstand. D2 som sikring bag D1. A2 som støttepasning til A1.\r\n2) A1 bevæger sig frem med bold. Flyt bolden med A1. D1 justerer side-/baglæns for at styre retning.\r\n3) D1 går i kontrolleret pres (støder) når A1 viser bolden. D2 holder sikring (2–3m bag).\r\n4) Tving A1 til støttepasning til A2. Flyt bolden fra A1 til A2.\r\n5) D1/D2 rykker samlet op (kompakt). Frys frame for korrekt afstand/linje.",
+    "video_key": null
+  },
+  {
+    "id": "b5b7795c-55fb-41a3-8f93-6fe347360189",
+    "title": "Indlæg tidligt (før forsvar sætter sig)",
+    "difficulty": 4,
+    "position": "Kant",
+    "how_to": [
+      "Kig op og slå indlæg før blokering.",
+      "Slå ind bag forsvarslinje.",
+      "Variation: fladt/højt."
+    ],
+    "why_valuable": "Tidlige indlæg kan overraske og skabe kaos.",
+    "filename": "fokuspunkter/kant/indlaeg_tidligt_foer_forsvar_saetter_sig.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: på en kant + ind i feltet\r\nBold: start hos A1 (kant) tæt på sidelinjen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 på kanten med bold. A2 i feltet (centralt). A3 ved bagerste stolpe. D1/D2 i feltet som markering.\r\n2) A1 dribler mod baglinjen for at true. Flyt bolden med A1.\r\n3) A2 og A3 laver to forskellige løb (forreste zone + bagerste zone) for at skabe valg.\r\n4) A1 slår indlæg til valgt løb. Flyt bolden fra A1 til A2 eller A3.\r\n5) Afslut på første touch eller kontrolleret afslut. Frys frame.",
+    "video_key": null
+  },
+  {
+    "id": "0ab5893f-62fb-4e37-b793-d3549d5f9400",
+    "title": "Kropsfinter i modtagelse",
+    "difficulty": 4,
+    "position": "Kant",
+    "how_to": [
+      "Lav en lille kropsfinte før første touch.",
+      "Tag bolden væk fra pres.",
+      "Accelerér efter finten."
+    ],
+    "why_valuable": "Skaber plads og tid i 1v1.",
+    "filename": "fokuspunkter/kant/kropsfinter_i_modtagelse.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "aa4255b3-a8a5-42eb-988b-29d9f922255e",
+    "title": "Modtag i halvrum",
+    "difficulty": 4,
+    "position": "Kant",
+    "how_to": [
+      "Kom ind mellem kant og centrum.",
+      "Modtag på halv vending.",
+      "Spil hurtigt i dybden eller tilbage."
+    ],
+    "why_valuable": "Halvrum er svært at forsvare og giver gennembrud.",
+    "filename": "fokuspunkter/kant/modtag_i_halvrum.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: på en kant + ind i feltet\r\nBold: start hos A1 (kant) tæt på sidelinjen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 på kanten med bold. A2 i feltet (centralt). A3 ved bagerste stolpe. D1/D2 i feltet som markering.\r\n2) A1 dribler mod baglinjen for at true. Flyt bolden med A1.\r\n3) A2 og A3 laver to forskellige løb (forreste zone + bagerste zone) for at skabe valg.\r\n4) A1 slår indlæg til valgt løb. Flyt bolden fra A1 til A2 eller A3.\r\n5) Afslut på første touch eller kontrolleret afslut. Frys frame.",
+    "video_key": null
+  },
+  {
+    "id": "5a321a6f-2e0d-4f9c-a276-d2d654e1f0ec",
+    "title": "Positionér dig bredt for at strække spillet",
+    "difficulty": 3,
+    "position": "Kant",
+    "how_to": [
+      "Hold bredden i opbygning.",
+      "Skab 1v1 ved sidelinjen.",
+      "Gå ind i banen på rette tid."
+    ],
+    "why_valuable": "Åbner rum centralt og giver 1v1.",
+    "filename": "fokuspunkter/kant/positioner_dig_bredt_for_at_straekke_spillet.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "414a9d40-f197-461e-806e-7a33c92d2906",
+    "title": "Positionering i feltet",
+    "difficulty": 4,
+    "position": "Kant",
+    "how_to": [
+      "Kom på bagerste stolpe ved indlæg.",
+      "Time løbet “sent”.",
+      "Vær klar til retur."
+    ],
+    "why_valuable": "Flere afslutninger fra gode positioner.",
+    "filename": "fokuspunkter/kant/positionering_i_feltet.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "1e1b641e-eff8-4b00-b0db-24c316fff468",
+    "title": "Pres deres stopper udad",
+    "difficulty": 4,
+    "position": "Kant",
+    "how_to": [
+      "Pres med vinkel så han tvinges ud mod sidelinje.",
+      "Luk pasning ind centralt.",
+      "Trigger holdets pres."
+    ],
+    "why_valuable": "I vinder bolden højere og stopper opbygning.",
+    "filename": "fokuspunkter/kant/pres_deres_stopper_udad.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "c435bd98-4893-4649-961a-268856adbb8c",
+    "title": "Returløb til back (disciplin)",
+    "difficulty": 3,
+    "position": "Kant",
+    "how_to": [
+      "Ved boldtab: sprint hjem i din kanal.",
+      "Tag modstanderens back/wing.",
+      "Kommunikér med din back."
+    ],
+    "why_valuable": "Holdet bliver langt mere solidt defensivt.",
+    "filename": "fokuspunkter/kant/returloeb_til_back_disciplin.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en tydelig træningszone (fx 20x20m) med fokus på bevægelse\r\nBold: start hos A1 med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér 4 angribere med god afstand. D1 presser boldholder. Bold hos A1.\r\n2) A2 bevæger sig i støtte (kort), A3 laver dybde (lang), A4 holder bredde. Vis tydelige pile.\r\n3) A1 spiller til den rigtige løsning (støtte eller dybde). Flyt bolden til modtager.\r\n4) Modtager sætter næste aktion (pas/dribling) mens de andre repositionerer.\r\n5) Frys frame: boldholder har mindst 2 tydelige muligheder.",
+    "video_key": null
+  },
+  {
+    "id": "ba986c72-c5e1-422e-819f-d40e71964563",
+    "title": "Skab 2v1 med 10’er",
+    "difficulty": 4,
+    "position": "Kant",
+    "how_to": [
+      "Spil ind → løb ud / spil ud → løb ind.",
+      "Kommunikér “væg/igen”.",
+      "Hold tempo i kombination."
+    ],
+    "why_valuable": "Skaber gennembrud mod lavt forsvar.",
+    "filename": "fokuspunkter/kant/skab_2v1_med_10er.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "323cd67f-4441-4c27-9613-286f0944e8fb",
+    "title": "Skab overtal på siden",
+    "difficulty": 4,
+    "position": "Kant",
+    "how_to": [
+      "Kombinér med back (2v1).",
+      "Brug vægspil.",
+      "Kommunikér overlap/underlap."
+    ],
+    "why_valuable": "Opgør på siden skaber indlæg og chancer.",
+    "filename": "fokuspunkter/kant/skab_overtal_paa_siden.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: på en kant + ind i feltet\r\nBold: start hos A1 (kant) tæt på sidelinjen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 på kanten med bold. A2 i feltet (centralt). A3 ved bagerste stolpe. D1/D2 i feltet som markering.\r\n2) A1 dribler mod baglinjen for at true. Flyt bolden med A1.\r\n3) A2 og A3 laver to forskellige løb (forreste zone + bagerste zone) for at skabe valg.\r\n4) A1 slår indlæg til valgt løb. Flyt bolden fra A1 til A2 eller A3.\r\n5) Afslut på første touch eller kontrolleret afslut. Frys frame.",
+    "video_key": null
+  },
+  {
+    "id": "cdaf9ccf-3c0b-4aec-a526-b2f0a3e95b76",
+    "title": "Spil hurtigt efter gennembrud",
+    "difficulty": 4,
+    "position": "Kant",
+    "how_to": [
+      "Efter du slår din mand: kig op.",
+      "Vælg cutback/indlæg/pas med det samme.",
+      "Undgå ekstra driblinger."
+    ],
+    "why_valuable": "De bedste chancer kommer lige efter gennembrud.",
+    "filename": "fokuspunkter/kant/spil_hurtigt_efter_gennembrud.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: på en kant + ind i feltet\r\nBold: start hos A1 (kant) tæt på sidelinjen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 på kanten med bold. A2 i feltet (centralt). A3 ved bagerste stolpe. D1/D2 i feltet som markering.\r\n2) A1 dribler mod baglinjen for at true. Flyt bolden med A1.\r\n3) A2 og A3 laver to forskellige løb (forreste zone + bagerste zone) for at skabe valg.\r\n4) A1 slår indlæg til valgt løb. Flyt bolden fra A1 til A2 eller A3.\r\n5) Afslut på første touch eller kontrolleret afslut. Frys frame.",
+    "video_key": null
+  },
+  {
+    "id": "dd1c01c8-d24a-4212-a31f-c2c0f759d31f",
+    "title": "Timing i indadløb",
+    "difficulty": 4,
+    "position": "Kant",
+    "how_to": [
+      "Start løb når pasningen kan spilles.",
+      "Løb mellem back og stopper.",
+      "Scan offside-linje."
+    ],
+    "why_valuable": "Skaber store chancer bag kæden.",
+    "filename": "fokuspunkter/kant/timing_i_indadloeb.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "832525e9-3cae-435e-8a34-ed0651377547",
+    "title": "Vær klar på andenbolden i feltet",
+    "difficulty": 3,
+    "position": "Kant",
+    "how_to": [
+      "Positionér dig i retur-zone.",
+      "Vær på tæerne.",
+      "Afslut hurtigt på løs bold."
+    ],
+    "why_valuable": "Mange mål scores på returer.",
+    "filename": "fokuspunkter/kant/vaer_klar_paa_andenbolden_i_feltet.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "3162f706-3061-4ccf-8405-d282a4958356",
+    "title": "Vurdér hvornår du skal holde bredden",
+    "difficulty": 3,
+    "position": "Kant",
+    "how_to": [
+      "Hvis back overlapper: gå ind.",
+      "Hvis ingen bredde: bliv ude.",
+      "Læs spillets behov."
+    ],
+    "why_valuable": "Holdet får balance og bedre struktur.",
+    "filename": "fokuspunkter/kant/vurder_hvornaar_du_skal_holde_bredden.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "e52ed0e5-4740-4fe4-acad-a24244500330",
+    "title": "Footwork før skud",
+    "difficulty": 4,
+    "position": "Målmand",
+    "how_to": [
+      "Små “set-steps” (hurtige små skridt) før afslutning.",
+      "Hold vægt på forfod.",
+      "Hænder foran kroppen klar."
+    ],
+    "why_valuable": "Du bliver eksplosiv og reagerer hurtigere.",
+    "filename": "fokuspunkter/maalmand/footwork_foer_skud.json",
+    "drejebog": "Opsætning: 2 medspillere, 1 modspillere + 1 målmand\r\nPlacering: på og omkring målet (målmand på målstregen)\r\nBold: start hos A1 (server) 20–25m foran mål\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på målet. A1 står centralt 20–25m ude med bold. A2 er 'afslutter' i halvrum.\r\n2) A1 spiller en bold (rullet eller halvhøj) til A2. Flyt bold-ikonet fra A1 til A2.\r\n3) A2 afslutter mod et hjørne. Flyt bolden mod målet.\r\n4) GK udfører fokuspunktet (positionering/fodarbejde/redning). Vis tydeligt GK’s bevægelse før boldkontakt.\r\n5) Frys 1–2 sek. på slutposition (hvorfor det var rigtigt). Reset.",
+    "video_key": null
+  },
+  {
+    "id": "e5a0e975-cafb-4ec7-8ca6-606fa7174d1a",
+    "title": "Forudse spillet – ikke kun reagere",
+    "difficulty": 5,
+    "position": "Målmand",
+    "how_to": [
+      "Læs boldholderens kropsstilling.",
+      "Flyt dig 1–2 skridt før stikning/indlæg.",
+      "Hold fokus på farlige rum."
+    ],
+    "why_valuable": "Du bliver hurtigere og mere sikker i alle situationer.",
+    "filename": "fokuspunkter/maalmand/forudse_spillet_ikke_kun_reagere.json",
+    "drejebog": "Opsætning: 2 medspillere, 1 modspillere + 1 målmand\r\nPlacering: på og omkring målet (målmand på målstregen)\r\nBold: start hos A1 (server) 20–25m foran mål\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på målet. A1 står centralt 20–25m ude med bold. A2 er 'afslutter' i halvrum.\r\n2) A1 spiller en bold (rullet eller halvhøj) til A2. Flyt bold-ikonet fra A1 til A2.\r\n3) A2 afslutter mod et hjørne. Flyt bolden mod målet.\r\n4) GK udfører fokuspunktet (positionering/fodarbejde/redning). Vis tydeligt GK’s bevægelse før boldkontakt.\r\n5) Frys 1–2 sek. på slutposition (hvorfor det var rigtigt). Reset.",
+    "video_key": null
+  },
+  {
+    "id": "d71491b8-bdbe-423c-b057-414fb6879854",
+    "title": "Genopret organisation efter redning",
+    "difficulty": 3,
+    "position": "Målmand",
+    "how_to": [
+      "Råb “ud”, “op”, “pres”.",
+      "Saml bagkæden hurtigt.",
+      "Skab ro før I bygger op."
+    ],
+    "why_valuable": "I undgår, at én redning bliver til 2–3 farlige situationer.",
+    "filename": "fokuspunkter/maalmand/genopret_organisation_efter_redning.json",
+    "drejebog": "Opsætning: 2 medspillere, 1 modspillere + 1 målmand\r\nPlacering: på og omkring målet (målmand på målstregen)\r\nBold: start hos A1 (server) 20–25m foran mål\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på målet. A1 står centralt 20–25m ude med bold. A2 er 'afslutter' i halvrum.\r\n2) A1 spiller en bold (rullet eller halvhøj) til A2. Flyt bold-ikonet fra A1 til A2.\r\n3) A2 afslutter mod et hjørne. Flyt bolden mod målet.\r\n4) GK udfører fokuspunktet (positionering/fodarbejde/redning). Vis tydeligt GK’s bevægelse før boldkontakt.\r\n5) Frys 1–2 sek. på slutposition (hvorfor det var rigtigt). Reset.",
+    "video_key": null
+  },
+  {
+    "id": "c828c9b2-ac3a-4d25-a8c6-c7f2a7ab44cc",
+    "title": "Grebsteknik (sikre bolde)",
+    "difficulty": 3,
+    "position": "Målmand",
+    "how_to": [
+      "Mød bolden foran kroppen.",
+      "“W-hænder” ved høje bolde, skål ved lave.",
+      "Lås bolden ind til brystet."
+    ],
+    "why_valuable": "Sikre grib reducerer returer og kaos.",
+    "filename": "fokuspunkter/maalmand/grebsteknik_sikre_bolde.json",
+    "drejebog": "Opsætning: 2 medspillere, 1 modspillere + 1 målmand\r\nPlacering: på og omkring målet (målmand på målstregen)\r\nBold: start hos A1 (server) 20–25m foran mål\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på målet. A1 står centralt 20–25m ude med bold. A2 er 'afslutter' i halvrum.\r\n2) A1 spiller en bold (rullet eller halvhøj) til A2. Flyt bold-ikonet fra A1 til A2.\r\n3) A2 afslutter mod et hjørne. Flyt bolden mod målet.\r\n4) GK udfører fokuspunktet (positionering/fodarbejde/redning). Vis tydeligt GK’s bevægelse før boldkontakt.\r\n5) Frys 1–2 sek. på slutposition (hvorfor det var rigtigt). Reset.",
+    "video_key": null
+  },
+  {
+    "id": "79cc68b7-0d2c-4a03-bdd9-f24e608890de",
+    "title": "Hurtig igangsætning",
+    "difficulty": 3,
+    "position": "Målmand",
+    "how_to": [
+      "Kig frem før du får bolden i hænderne.",
+      "Vælg hurtig, enkel løsning.",
+      "Igangsæt mens modstanderen er i ubalance."
+    ],
+    "why_valuable": "I skaber omstillinger og fanger modstanderen uorganiseret.",
+    "filename": "fokuspunkter/maalmand/hurtig_igangsaetning.json",
+    "drejebog": "Opsætning: 2 medspillere, 1 modspillere + 1 målmand\r\nPlacering: på og omkring målet (målmand på målstregen)\r\nBold: start hos A1 (server) 20–25m foran mål\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på målet. A1 står centralt 20–25m ude med bold. A2 er 'afslutter' i halvrum.\r\n2) A1 spiller en bold (rullet eller halvhøj) til A2. Flyt bold-ikonet fra A1 til A2.\r\n3) A2 afslutter mod et hjørne. Flyt bolden mod målet.\r\n4) GK udfører fokuspunktet (positionering/fodarbejde/redning). Vis tydeligt GK’s bevægelse før boldkontakt.\r\n5) Frys 1–2 sek. på slutposition (hvorfor det var rigtigt). Reset.",
+    "video_key": null
+  },
+  {
+    "id": "2a8938c2-2989-470c-a4bf-3e89863ad0b4",
+    "title": "Kommunikation i spillet",
+    "difficulty": 3,
+    "position": "Målmand",
+    "how_to": [
+      "Giv korte kommandoer: “pres”, “fald”, “mand på”, “ud”.",
+      "Tal før situationen bliver farlig.",
+      "Gentag ved skift i boldside."
+    ],
+    "why_valuable": "Du organiserer holdet og forhindrer gratis chancer imod jer.",
+    "filename": "fokuspunkter/maalmand/kommunikation_i_spillet.json",
+    "drejebog": "Opsætning: 2 medspillere, 1 modspillere + 1 målmand\r\nPlacering: på og omkring målet (målmand på målstregen)\r\nBold: start hos A1 (server) 20–25m foran mål\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på målet. A1 står centralt 20–25m ude med bold. A2 er 'afslutter' i halvrum.\r\n2) A1 spiller en bold (rullet eller halvhøj) til A2. Flyt bold-ikonet fra A1 til A2.\r\n3) A2 afslutter mod et hjørne. Flyt bolden mod målet.\r\n4) GK udfører fokuspunktet (positionering/fodarbejde/redning). Vis tydeligt GK’s bevægelse før boldkontakt.\r\n5) Frys 1–2 sek. på slutposition (hvorfor det var rigtigt). Reset.",
+    "video_key": null
+  },
+  {
+    "id": "663b1b10-b649-4ffd-abb6-df025b7e7b17",
+    "title": "Kommunikér konstant med bagkæden",
+    "difficulty": 4,
+    "position": "Målmand",
+    "how_to": [
+      "Styr linjen: “op”, “hold”, “fald”.",
+      "Informér om løb bag ryggen.",
+      "Vær tydelig og konsekvent."
+    ],
+    "why_valuable": "Bagkæden bliver samlet og laver færre fejl.",
+    "filename": "fokuspunkter/maalmand/kommuniker_konstant_med_bagkaeden.json",
+    "drejebog": "Opsætning: 2 medspillere, 1 modspillere + 1 målmand\r\nPlacering: på og omkring målet (målmand på målstregen)\r\nBold: start hos A1 (server) 20–25m foran mål\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på målet. A1 står centralt 20–25m ude med bold. A2 er 'afslutter' i halvrum.\r\n2) A1 spiller en bold (rullet eller halvhøj) til A2. Flyt bold-ikonet fra A1 til A2.\r\n3) A2 afslutter mod et hjørne. Flyt bolden mod målet.\r\n4) GK udfører fokuspunktet (positionering/fodarbejde/redning). Vis tydeligt GK’s bevægelse før boldkontakt.\r\n5) Frys 1–2 sek. på slutposition (hvorfor det var rigtigt). Reset.",
+    "video_key": null
+  },
+  {
+    "id": "b47878b3-f974-4d3e-ba1d-9b4c0053d43b",
+    "title": "Kommunikér ved dødbolde",
+    "difficulty": 4,
+    "position": "Målmand",
+    "how_to": [
+      "Fordel zoner og markeringer.",
+      "Brug klare ord: “stolpe”, “ud”, “hold”.",
+      "Gentag lige før indlæg."
+    ],
+    "why_valuable": "Dødbolde afgør kampe – organisering reducerer farlige afslutninger.",
+    "filename": "fokuspunkter/maalmand/kommuniker_ved_doedbolde.json",
+    "drejebog": "Opsætning: 2 medspillere, 1 modspillere + 1 målmand\r\nPlacering: på og omkring målet (målmand på målstregen)\r\nBold: start hos A1 (server) 20–25m foran mål\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på målet. A1 står centralt 20–25m ude med bold. A2 er 'afslutter' i halvrum.\r\n2) A1 spiller en bold (rullet eller halvhøj) til A2. Flyt bold-ikonet fra A1 til A2.\r\n3) A2 afslutter mod et hjørne. Flyt bolden mod målet.\r\n4) GK udfører fokuspunktet (positionering/fodarbejde/redning). Vis tydeligt GK’s bevægelse før boldkontakt.\r\n5) Frys 1–2 sek. på slutposition (hvorfor det var rigtigt). Reset.",
+    "video_key": null
+  },
+  {
+    "id": "2b368d1b-bf0b-4ac8-9199-b3199b993b14",
+    "title": "Kommunikér ved indlæg (før bolden slås)",
+    "difficulty": 4,
+    "position": "Målmand",
+    "how_to": [
+      "Sig “stolpe”, “ud”, “hold linje”.",
+      "Fortæl hvem der tager duel og hvem der dækker rum.",
+      "Gentag lige inden indlæg."
+    ],
+    "why_valuable": "Mindre forvirring = færre frie headers imod jer.",
+    "filename": "fokuspunkter/maalmand/kommuniker_ved_indlaeg_foer_bolden_slaas.json",
+    "drejebog": "Opsætning: 2 medspillere, 1 modspillere + 1 målmand\r\nPlacering: på og omkring målet (målmand på målstregen)\r\nBold: start hos A1 (server) 20–25m foran mål\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på målet. A1 står centralt 20–25m ude med bold. A2 er 'afslutter' i halvrum.\r\n2) A1 spiller en bold (rullet eller halvhøj) til A2. Flyt bold-ikonet fra A1 til A2.\r\n3) A2 afslutter mod et hjørne. Flyt bolden mod målet.\r\n4) GK udfører fokuspunktet (positionering/fodarbejde/redning). Vis tydeligt GK’s bevægelse før boldkontakt.\r\n5) Frys 1–2 sek. på slutposition (hvorfor det var rigtigt). Reset.",
+    "video_key": null
+  },
+  {
+    "id": "a06c0e9c-6ca3-476b-bd0e-894824c313c3",
+    "title": "Læs gennemspil og stikninger",
+    "difficulty": 5,
+    "position": "Målmand",
+    "how_to": [
+      "Scan bagkædens dybde og modstanderens løb.",
+      "Forudse stikning når boldholder har tid.",
+      "Vælg tidligt: gå ud/hold."
+    ],
+    "why_valuable": "Du stopper de farligste chancer: friløbere og gennembrud.",
+    "filename": "fokuspunkter/maalmand/laes_gennemspil_og_stikninger.json",
+    "drejebog": "Opsætning: 2 medspillere, 1 modspillere + 1 målmand\r\nPlacering: på og omkring målet (målmand på målstregen)\r\nBold: start hos A1 (server) 20–25m foran mål\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på målet. A1 står centralt 20–25m ude med bold. A2 er 'afslutter' i halvrum.\r\n2) A1 spiller en bold (rullet eller halvhøj) til A2. Flyt bold-ikonet fra A1 til A2.\r\n3) A2 afslutter mod et hjørne. Flyt bolden mod målet.\r\n4) GK udfører fokuspunktet (positionering/fodarbejde/redning). Vis tydeligt GK’s bevægelse før boldkontakt.\r\n5) Frys 1–2 sek. på slutposition (hvorfor det var rigtigt). Reset.",
+    "video_key": null
+  },
+  {
+    "id": "ca73c61a-09f7-45bd-8716-526e61c9e252",
+    "title": "Placér dig som sweeper-keeper ved højt pres",
+    "difficulty": 5,
+    "position": "Målmand",
+    "how_to": [
+      "Stå 5–15 m ude når I står højt.",
+      "Vær klar til at cleare stikninger.",
+      "Hold kroppen lav og klar til sprint."
+    ],
+    "why_valuable": "I kan stå højere og presse mere aggressivt uden at blive straffet bagrum.",
+    "filename": "fokuspunkter/maalmand/placer_dig_som_sweeper_keeper_ved_hoejt_pres.json",
+    "drejebog": "Opsætning: 2 medspillere, 1 modspillere + 1 målmand\r\nPlacering: på og omkring målet (målmand på målstregen)\r\nBold: start hos A1 (server) 20–25m foran mål\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på målet. A1 står centralt 20–25m ude med bold. A2 er 'afslutter' i halvrum.\r\n2) A1 spiller en bold (rullet eller halvhøj) til A2. Flyt bold-ikonet fra A1 til A2.\r\n3) A2 afslutter mod et hjørne. Flyt bolden mod målet.\r\n4) GK udfører fokuspunktet (positionering/fodarbejde/redning). Vis tydeligt GK’s bevægelse før boldkontakt.\r\n5) Frys 1–2 sek. på slutposition (hvorfor det var rigtigt). Reset.",
+    "video_key": null
+  },
+  {
+    "id": "9c83c25c-e09c-432e-9865-64b9827d5d49",
+    "title": "Positionér dig aktivt i forhold til boldens placering",
+    "difficulty": 4,
+    "position": "Målmand",
+    "how_to": [
+      "Flyt dig i små skridt når bolden flytter sig.",
+      "Centrer dig ift. bolden (vinkel-lukning).",
+      "Hold balance på forfod."
+    ],
+    "why_valuable": "Du “redder” med positionering og gør målet mindre.",
+    "filename": "fokuspunkter/maalmand/positioner_dig_aktivt_i_forhold_til_boldens_placering.json",
+    "drejebog": "Opsætning: 2 medspillere, 1 modspillere + 1 målmand\r\nPlacering: på og omkring målet (målmand på målstregen)\r\nBold: start hos A1 (server) 20–25m foran mål\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på målet. A1 står centralt 20–25m ude med bold. A2 er 'afslutter' i halvrum.\r\n2) A1 spiller en bold (rullet eller halvhøj) til A2. Flyt bold-ikonet fra A1 til A2.\r\n3) A2 afslutter mod et hjørne. Flyt bolden mod målet.\r\n4) GK udfører fokuspunktet (positionering/fodarbejde/redning). Vis tydeligt GK’s bevægelse før boldkontakt.\r\n5) Frys 1–2 sek. på slutposition (hvorfor det var rigtigt). Reset.",
+    "video_key": null
+  },
+  {
+    "id": "04ea36c0-ed1e-47a7-8044-da1b6dd27cce",
+    "title": "Rollefordeling ved frispark (mur + dybde)",
+    "difficulty": 4,
+    "position": "Målmand",
+    "how_to": [
+      "Sæt mur korrekt (afstand + antal).",
+      "Aftal hvem dækker dybde/retur.",
+      "Tjek din position ift. stolpe."
+    ],
+    "why_valuable": "Reducerer direkte mål og returer efter frispark.",
+    "filename": "fokuspunkter/maalmand/rollefordeling_ved_frispark_mur_dybde.json",
+    "drejebog": "Opsætning: 2 medspillere, 1 modspillere + 1 målmand\r\nPlacering: på og omkring målet (målmand på målstregen)\r\nBold: start hos A1 (server) 20–25m foran mål\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på målet. A1 står centralt 20–25m ude med bold. A2 er 'afslutter' i halvrum.\r\n2) A1 spiller en bold (rullet eller halvhøj) til A2. Flyt bold-ikonet fra A1 til A2.\r\n3) A2 afslutter mod et hjørne. Flyt bolden mod målet.\r\n4) GK udfører fokuspunktet (positionering/fodarbejde/redning). Vis tydeligt GK’s bevægelse før boldkontakt.\r\n5) Frys 1–2 sek. på slutposition (hvorfor det var rigtigt). Reset.",
+    "video_key": null
+  },
+  {
+    "id": "eccf77ac-57d3-430a-991e-36977008bcd1",
+    "title": "Spil ud med begge fødder",
+    "difficulty": 4,
+    "position": "Målmand",
+    "how_to": [
+      "Modtag og spil med den frieste fod.",
+      "Vær rolig og hold pasning langs jorden.",
+      "Undgå at “låse” dig til én side."
+    ],
+    "why_valuable": "I bliver sværere at presse, og opbygningen bliver stabil.",
+    "filename": "fokuspunkter/maalmand/spil_ud_med_begge_foedder.json",
+    "drejebog": "Opsætning: 2 medspillere, 1 modspillere + 1 målmand\r\nPlacering: på og omkring målet (målmand på målstregen)\r\nBold: start hos A1 (server) 20–25m foran mål\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på målet. A1 står centralt 20–25m ude med bold. A2 er 'afslutter' i halvrum.\r\n2) A1 spiller en bold (rullet eller halvhøj) til A2. Flyt bold-ikonet fra A1 til A2.\r\n3) A2 afslutter mod et hjørne. Flyt bolden mod målet.\r\n4) GK udfører fokuspunktet (positionering/fodarbejde/redning). Vis tydeligt GK’s bevægelse før boldkontakt.\r\n5) Frys 1–2 sek. på slutposition (hvorfor det var rigtigt). Reset.",
+    "video_key": null
+  },
+  {
+    "id": "809f0029-91b3-4f25-a982-97c7dc7266cb",
+    "title": "Styr tempoet med bolden",
+    "difficulty": 3,
+    "position": "Målmand",
+    "how_to": [
+      "Hurtigt når I har overtal.",
+      "Langsommere når holdet skal op.",
+      "Brug samme teknik, kun beslutningen ændres."
+    ],
+    "why_valuable": "Du kontrollerer kampens rytme.",
+    "filename": "fokuspunkter/maalmand/styr_tempoet_med_bolden.json",
+    "drejebog": "Opsætning: 2 medspillere, 1 modspillere + 1 målmand\r\nPlacering: på og omkring målet (målmand på målstregen)\r\nBold: start hos A1 (server) 20–25m foran mål\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på målet. A1 står centralt 20–25m ude med bold. A2 er 'afslutter' i halvrum.\r\n2) A1 spiller en bold (rullet eller halvhøj) til A2. Flyt bold-ikonet fra A1 til A2.\r\n3) A2 afslutter mod et hjørne. Flyt bolden mod målet.\r\n4) GK udfører fokuspunktet (positionering/fodarbejde/redning). Vis tydeligt GK’s bevægelse før boldkontakt.\r\n5) Frys 1–2 sek. på slutposition (hvorfor det var rigtigt). Reset.",
+    "video_key": null
+  },
+  {
+    "id": "90daf541-7bd8-4d7e-a204-af3aed563169",
+    "title": "Træf tidlige beslutninger i feltet",
+    "difficulty": 5,
+    "position": "Målmand",
+    "how_to": [
+      "Læs indlæg tidligt: gå/bliv.",
+      "Hvis du går: gå 100% og råb “MIN”.",
+      "Hvis du bliver: sæt dig til skud/retur."
+    ],
+    "why_valuable": "Reducerer kaos og forhindrer billige mål.",
+    "filename": "fokuspunkter/maalmand/traef_tidlige_beslutninger_i_feltet.json",
+    "drejebog": "Opsætning: 2 medspillere, 1 modspillere + 1 målmand\r\nPlacering: på og omkring målet (målmand på målstregen)\r\nBold: start hos A1 (server) 20–25m foran mål\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på målet. A1 står centralt 20–25m ude med bold. A2 er 'afslutter' i halvrum.\r\n2) A1 spiller en bold (rullet eller halvhøj) til A2. Flyt bold-ikonet fra A1 til A2.\r\n3) A2 afslutter mod et hjørne. Flyt bolden mod målet.\r\n4) GK udfører fokuspunktet (positionering/fodarbejde/redning). Vis tydeligt GK’s bevægelse før boldkontakt.\r\n5) Frys 1–2 sek. på slutposition (hvorfor det var rigtigt). Reset.",
+    "video_key": null
+  },
+  {
+    "id": "75106d4a-4aa9-40de-b98c-bacda53f3172",
+    "title": "Trigger pres med igangsætning",
+    "difficulty": 3,
+    "position": "Målmand",
+    "how_to": [
+      "Igangsæt hurtigt til fri side for at undgå pres.",
+      "Brug korte pasninger for at lokke pres og spille forbi.",
+      "Kommunikér “vend”/“igen”."
+    ],
+    "why_valuable": "I kontrollerer, hvor preset kommer og spiller jer fri.",
+    "filename": "fokuspunkter/maalmand/trigger_pres_med_igangsaetning.json",
+    "drejebog": "Opsætning: 2 medspillere, 1 modspillere + 1 målmand\r\nPlacering: på og omkring målet (målmand på målstregen)\r\nBold: start hos A1 (server) 20–25m foran mål\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på målet. A1 står centralt 20–25m ude med bold. A2 er 'afslutter' i halvrum.\r\n2) A1 spiller en bold (rullet eller halvhøj) til A2. Flyt bold-ikonet fra A1 til A2.\r\n3) A2 afslutter mod et hjørne. Flyt bolden mod målet.\r\n4) GK udfører fokuspunktet (positionering/fodarbejde/redning). Vis tydeligt GK’s bevægelse før boldkontakt.\r\n5) Frys 1–2 sek. på slutposition (hvorfor det var rigtigt). Reset.",
+    "video_key": null
+  },
+  {
+    "id": "d82e6b5f-e36f-451b-90bd-aab45e9e046b",
+    "title": "Vælg hurtigt igangsætning",
+    "difficulty": 3,
+    "position": "Målmand",
+    "how_to": [
+      "Plan A: hurtig fremad. Plan B: sikker kort.",
+      "Beslut inden du samler bolden op.",
+      "Udfør med ro (ingen panik)."
+    ],
+    "why_valuable": "Tempo og kvalitet i jeres spil bliver bedre.",
+    "filename": "fokuspunkter/maalmand/vaelg_hurtigt_igangsaetning.json",
+    "drejebog": "Opsætning: 2 medspillere, 1 modspillere + 1 målmand\r\nPlacering: på og omkring målet (målmand på målstregen)\r\nBold: start hos A1 (server) 20–25m foran mål\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på målet. A1 står centralt 20–25m ude med bold. A2 er 'afslutter' i halvrum.\r\n2) A1 spiller en bold (rullet eller halvhøj) til A2. Flyt bold-ikonet fra A1 til A2.\r\n3) A2 afslutter mod et hjørne. Flyt bolden mod målet.\r\n4) GK udfører fokuspunktet (positionering/fodarbejde/redning). Vis tydeligt GK’s bevægelse før boldkontakt.\r\n5) Frys 1–2 sek. på slutposition (hvorfor det var rigtigt). Reset.",
+    "video_key": null
+  },
+  {
+    "id": "b315d32d-fae3-49cd-9e41-2195e18b5288",
+    "title": "Vær klar til returbold",
+    "difficulty": 4,
+    "position": "Målmand",
+    "how_to": [
+      "Efter redning: land i balance.",
+      "Forvent ny afslutning.",
+      "Kommunikér “clear”/“min”."
+    ],
+    "why_valuable": "Returer er en stor mål-kilde. Du lukker “anden chance”.",
+    "filename": "fokuspunkter/maalmand/vaer_klar_til_returbold.json",
+    "drejebog": "Opsætning: 2 medspillere, 1 modspillere + 1 målmand\r\nPlacering: på og omkring målet (målmand på målstregen)\r\nBold: start hos A1 (server) 20–25m foran mål\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på målet. A1 står centralt 20–25m ude med bold. A2 er 'afslutter' i halvrum.\r\n2) A1 spiller en bold (rullet eller halvhøj) til A2. Flyt bold-ikonet fra A1 til A2.\r\n3) A2 afslutter mod et hjørne. Flyt bolden mod målet.\r\n4) GK udfører fokuspunktet (positionering/fodarbejde/redning). Vis tydeligt GK’s bevægelse før boldkontakt.\r\n5) Frys 1–2 sek. på slutposition (hvorfor det var rigtigt). Reset.",
+    "video_key": null
+  },
+  {
+    "id": "3dacd85d-2c79-4a0d-95ee-fa51dd07fb02",
+    "title": "Vær spillbar i opbygningen",
+    "difficulty": 3,
+    "position": "Målmand",
+    "how_to": [
+      "Placér dig som ekstra pasningsmulighed.",
+      "Modtag i vinkel til næste pasning.",
+      "Kommunikér til stopper: “tilbage”."
+    ],
+    "why_valuable": "I kan spille ud af pres og holde bolden.",
+    "filename": "fokuspunkter/maalmand/vaer_spillbar_i_opbygningen.json",
+    "drejebog": "Opsætning: 2 medspillere, 1 modspillere + 1 målmand\r\nPlacering: på og omkring målet (målmand på målstregen)\r\nBold: start hos A1 (server) 20–25m foran mål\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på målet. A1 står centralt 20–25m ude med bold. A2 er 'afslutter' i halvrum.\r\n2) A1 spiller en bold (rullet eller halvhøj) til A2. Flyt bold-ikonet fra A1 til A2.\r\n3) A2 afslutter mod et hjørne. Flyt bolden mod målet.\r\n4) GK udfører fokuspunktet (positionering/fodarbejde/redning). Vis tydeligt GK’s bevægelse før boldkontakt.\r\n5) Frys 1–2 sek. på slutposition (hvorfor det var rigtigt). Reset.",
+    "video_key": null
+  },
+  {
+    "id": "b488f463-7d1a-4995-83dc-c6cb00d050a0",
+    "title": "“Dæk dybde først” ved usikkerhed",
+    "difficulty": 3,
+    "position": "Midterforsvarer",
+    "how_to": [
+      "Hvis du er i tvivl: drop et skridt.",
+      "Beskyt bagrum før duel.",
+      "Kommunikér “fald”."
+    ],
+    "why_valuable": "Forhindrer de mest afgørende fejl: bold bag kæden.",
+    "filename": "fokuspunkter/midterforsvarer/daek_dybde_foerst_ved_usikkerhed.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: i en tydelig forsvarszone (fx lige uden for feltet eller på midten)\r\nBold: start hos A1 (modstander) med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér A1 (modstander) med bold. D1 (forsvarer) i korrekt afstand. D2 som sikring bag D1. A2 som støttepasning til A1.\r\n2) A1 bevæger sig frem med bold. Flyt bolden med A1. D1 justerer side-/baglæns for at styre retning.\r\n3) D1 går i kontrolleret pres (støder) når A1 viser bolden. D2 holder sikring (2–3m bag).\r\n4) Tving A1 til støttepasning til A2. Flyt bolden fra A1 til A2.\r\n5) D1/D2 rykker samlet op (kompakt). Frys frame for korrekt afstand/linje.",
+    "video_key": null
+  },
+  {
+    "id": "e710f01a-3681-4059-a895-1f6d07658def",
+    "title": "Brug kropsskærm i stedet for tackling",
+    "difficulty": 4,
+    "position": "Midterforsvarer",
+    "how_to": [
+      "Placer kroppen mellem mand og bold.",
+      "Vent på støtte eller fejl.",
+      "Undgå unødige frispark."
+    ],
+    "why_valuable": "Sikrer kontrol og reducerer farlige frispark/kort.",
+    "filename": "fokuspunkter/midterforsvarer/brug_kropsskaerm_i_stedet_for_tackling.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: omkring midtbanen (modtag/scan/spil videre)\r\nBold: start hos A1 (server) med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A2 står i midten og skal modtage. A1 (server) foran A2. A3/A4 som muligheder til højre/venstre. D1 presser bagfra/side.\r\n2) A2 'scanner' (vis det ved kort pause) før bolden kommer. A1 spiller til A2. Flyt bolden til A2.\r\n3) A2 tager første touch ud af pres (mod fri side). Flyt bolden med A2.\r\n4) A2 spiller videre til A3 eller A4 (den frie side). Flyt bolden.\r\n5) Frys frame: kropsstilling åben + næste pasning let.",
+    "video_key": null
+  },
+  {
+    "id": "5daad8d7-c2b6-4835-a77d-2c8a2be04787",
+    "title": "Dæk rummet – ikke kun manden",
+    "difficulty": 4,
+    "position": "Midterforsvarer",
+    "how_to": [
+      "Prioritér rum mellem dig og mål.",
+      "Overlad mand til makker hvis muligt.",
+      "Se både bold og løb."
+    ],
+    "why_valuable": "Du stopper gennembrud og farlige pasninger.",
+    "filename": "fokuspunkter/midterforsvarer/daek_rummet_ikke_kun_manden.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "b479e645-f36a-4609-b69a-58602a2849f1",
+    "title": "Forbered dig på andenbolden",
+    "difficulty": 3,
+    "position": "Midterforsvarer",
+    "how_to": [
+      "Efter duel: tag 1–2 skridt klar.",
+      "Forvent hvor bolden falder.",
+      "Clear eller spil simpelt."
+    ],
+    "why_valuable": "Andenbolde afgør momentum.",
+    "filename": "fokuspunkter/midterforsvarer/forbered_dig_paa_andenbolden.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: i en tydelig forsvarszone (fx lige uden for feltet eller på midten)\r\nBold: start hos A1 (modstander) med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér A1 (modstander) med bold. D1 (forsvarer) i korrekt afstand. D2 som sikring bag D1. A2 som støttepasning til A1.\r\n2) A1 bevæger sig frem med bold. Flyt bolden med A1. D1 justerer side-/baglæns for at styre retning.\r\n3) D1 går i kontrolleret pres (støder) når A1 viser bolden. D2 holder sikring (2–3m bag).\r\n4) Tving A1 til støttepasning til A2. Flyt bolden fra A1 til A2.\r\n5) D1/D2 rykker samlet op (kompakt). Frys frame for korrekt afstand/linje.",
+    "video_key": null
+  },
+  {
+    "id": "6d53fccc-b8a2-4953-a4e8-386f1b328578",
+    "title": "Første pasning efter vinding (fremad hvis muligt)",
+    "difficulty": 3,
+    "position": "Midterforsvarer",
+    "how_to": [
+      "Scan straks efter vinding.",
+      "Spil fremad hvis sikker; ellers til makker.",
+      "Genpositionér til støtte."
+    ],
+    "why_valuable": "I kan vende forsvar til angreb hurtigt.",
+    "filename": "fokuspunkter/midterforsvarer/foerste_pasning_efter_vinding_fremad_hvis_muligt.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: i en tydelig forsvarszone (fx lige uden for feltet eller på midten)\r\nBold: start hos A1 (modstander) med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér A1 (modstander) med bold. D1 (forsvarer) i korrekt afstand. D2 som sikring bag D1. A2 som støttepasning til A1.\r\n2) A1 bevæger sig frem med bold. Flyt bolden med A1. D1 justerer side-/baglæns for at styre retning.\r\n3) D1 går i kontrolleret pres (støder) når A1 viser bolden. D2 holder sikring (2–3m bag).\r\n4) Tving A1 til støttepasning til A2. Flyt bolden fra A1 til A2.\r\n5) D1/D2 rykker samlet op (kompakt). Frys frame for korrekt afstand/linje.",
+    "video_key": null
+  },
+  {
+    "id": "39711516-3ef9-4a56-87da-52d4acbbdeb7",
+    "title": "Første touch væk fra pres",
+    "difficulty": 4,
+    "position": "Midterforsvarer",
+    "how_to": [
+      "Scan før modtagelse: hvor kommer pres fra?",
+      "Tag første touch væk fra pres, ikke ind i det.",
+      "Spil simpelt hvis du er låst."
+    ],
+    "why_valuable": "Du undgår farlige boldtab centralt.",
+    "filename": "fokuspunkter/midterforsvarer/foerste_touch_vaek_fra_pres.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "cd9c2f18-83ff-4a6a-858c-6e494123fa7f",
+    "title": "Håndtér lange bolde (første duel)",
+    "difficulty": 4,
+    "position": "Midterforsvarer",
+    "how_to": [
+      "Læs boldens bane og tag tidligt position.",
+      "Vælg header/afskærm afhængigt af pres.",
+      "Sørg for støtte under dig."
+    ],
+    "why_valuable": "I stopper direkte angreb og holder holdet højt.",
+    "filename": "fokuspunkter/midterforsvarer/haandter_lange_bolde_foerste_duel.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "13e83f67-f271-4d98-b656-af6512a075b4",
+    "title": "Hold linje ved offside (synkronisering)",
+    "difficulty": 5,
+    "position": "Midterforsvarer",
+    "how_to": [
+      "Kommunikér “op” og flyt samlet.",
+      "Kig på makkers position (ikke kun bold).",
+      "Vær konsekvent hele kampen."
+    ],
+    "why_valuable": "Offside-linje kan neutralisere dybdeløb.",
+    "filename": "fokuspunkter/midterforsvarer/hold_linje_ved_offside_synkronisering.json",
+    "drejebog": "Opsætning: 4 medspillere, 2 modspillere\r\nPlacering: omkring midtbanen (modtag/scan/spil videre)\r\nBold: start hos A1 (server) med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A2 står i midten og skal modtage. A1 (server) foran A2. A3/A4 som muligheder til højre/venstre. D1 presser bagfra/side.\r\n2) A2 'scanner' (vis det ved kort pause) før bolden kommer. A1 spiller til A2. Flyt bolden til A2.\r\n3) A2 tager første touch ud af pres (mod fri side). Flyt bolden med A2.\r\n4) A2 spiller videre til A3 eller A4 (den frie side). Flyt bolden.\r\n5) Frys frame: kropsstilling åben + næste pasning let.",
+    "video_key": null
+  },
+  {
+    "id": "211e967f-0cae-4ae9-b1bc-c012d3576baa",
+    "title": "Justér dybden i bagkæden",
+    "difficulty": 5,
+    "position": "Midterforsvarer",
+    "how_to": [
+      "Højt pres = høj kæde, men samlet.",
+      "Lavt pres = drop for at beskytte bagrum.",
+      "Kommunikér konstant."
+    ],
+    "why_valuable": "Stopper stikninger og løb bag ryggen.",
+    "filename": "fokuspunkter/midterforsvarer/juster_dybden_i_bagkaeden.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: i en tydelig forsvarszone (fx lige uden for feltet eller på midten)\r\nBold: start hos A1 (modstander) med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér A1 (modstander) med bold. D1 (forsvarer) i korrekt afstand. D2 som sikring bag D1. A2 som støttepasning til A1.\r\n2) A1 bevæger sig frem med bold. Flyt bolden med A1. D1 justerer side-/baglæns for at styre retning.\r\n3) D1 går i kontrolleret pres (støder) når A1 viser bolden. D2 holder sikring (2–3m bag).\r\n4) Tving A1 til støttepasning til A2. Flyt bolden fra A1 til A2.\r\n5) D1/D2 rykker samlet op (kompakt). Frys frame for korrekt afstand/linje.",
+    "video_key": null
+  },
+  {
+    "id": "0d189dd8-5554-44fa-95cf-9423cc7cecf4",
+    "title": "Kommunikér hvem der støder",
+    "difficulty": 3,
+    "position": "Midterforsvarer",
+    "how_to": [
+      "Aftal hvem presser, hvem sikrer.",
+      "Sig “jeg/ din/ bliv”.",
+      "Gentag ved skift."
+    ],
+    "why_valuable": "Færre misforståelser og huller.",
+    "filename": "fokuspunkter/midterforsvarer/kommuniker_hvem_der_stoeder.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: i en tydelig forsvarszone (fx lige uden for feltet eller på midten)\r\nBold: start hos A1 (modstander) med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér A1 (modstander) med bold. D1 (forsvarer) i korrekt afstand. D2 som sikring bag D1. A2 som støttepasning til A1.\r\n2) A1 bevæger sig frem med bold. Flyt bolden med A1. D1 justerer side-/baglæns for at styre retning.\r\n3) D1 går i kontrolleret pres (støder) når A1 viser bolden. D2 holder sikring (2–3m bag).\r\n4) Tving A1 til støttepasning til A2. Flyt bolden fra A1 til A2.\r\n5) D1/D2 rykker samlet op (kompakt). Frys frame for korrekt afstand/linje.",
+    "video_key": null
+  },
+  {
+    "id": "d5a5486c-25e8-4b3b-886c-1ab63de24f99",
+    "title": "Kommunikér på indlæg (zoner)",
+    "difficulty": 4,
+    "position": "Midterforsvarer",
+    "how_to": [
+      "Aftal hvem tager forreste/bagerste zone.",
+      "Råb “min” ved duel.",
+      "Hold linjen samlet."
+    ],
+    "why_valuable": "Mindre forvirring giver færre mål imod.",
+    "filename": "fokuspunkter/midterforsvarer/kommuniker_paa_indlaeg_zoner.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: på en kant + ind i feltet\r\nBold: start hos A1 (kant) tæt på sidelinjen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 på kanten med bold. A2 i feltet (centralt). A3 ved bagerste stolpe. D1/D2 i feltet som markering.\r\n2) A1 dribler mod baglinjen for at true. Flyt bolden med A1.\r\n3) A2 og A3 laver to forskellige løb (forreste zone + bagerste zone) for at skabe valg.\r\n4) A1 slår indlæg til valgt løb. Flyt bolden fra A1 til A2 eller A3.\r\n5) Afslut på første touch eller kontrolleret afslut. Frys frame.",
+    "video_key": null
+  },
+  {
+    "id": "584b5701-49b1-4c1f-9787-1efb7856e3b2",
+    "title": "Læs spillet før du går i duel",
+    "difficulty": 4,
+    "position": "Midterforsvarer",
+    "how_to": [
+      "Læs modtagers første touch.",
+      "Vent på trigger (dårlig kontrol/ryg mod mål).",
+      "Gå aggressivt når du går."
+    ],
+    "why_valuable": "Timing reducerer risiko for at blive spillet forbi.",
+    "filename": "fokuspunkter/midterforsvarer/laes_spillet_foer_du_gaar_i_duel.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "8104753d-4ef6-44a1-872d-359d68cff200",
+    "title": "Led pres-retning (styr mod fælde)",
+    "difficulty": 4,
+    "position": "Midterforsvarer",
+    "how_to": [
+      "Kommunikér hvor presset skal styre bolden.",
+      "Hold midten lukket.",
+      "Skub udad samlet."
+    ],
+    "why_valuable": "Gør jeres defensiv mere organiseret og effektiv.",
+    "filename": "fokuspunkter/midterforsvarer/led_pres_retning_styr_mod_faelde.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: i en tydelig forsvarszone (fx lige uden for feltet eller på midten)\r\nBold: start hos A1 (modstander) med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér A1 (modstander) med bold. D1 (forsvarer) i korrekt afstand. D2 som sikring bag D1. A2 som støttepasning til A1.\r\n2) A1 bevæger sig frem med bold. Flyt bolden med A1. D1 justerer side-/baglæns for at styre retning.\r\n3) D1 går i kontrolleret pres (støder) når A1 viser bolden. D2 holder sikring (2–3m bag).\r\n4) Tving A1 til støttepasning til A2. Flyt bolden fra A1 til A2.\r\n5) D1/D2 rykker samlet op (kompakt). Frys frame for korrekt afstand/linje.",
+    "video_key": null
+  },
+  {
+    "id": "899c4ecf-f179-475b-a725-f3281f47f047",
+    "title": "Sideforskydning med bold (spil ud)",
+    "difficulty": 3,
+    "position": "Midterforsvarer",
+    "how_to": [
+      "Dribl 2–5 m for at ændre vinkel.",
+      "Lok pres, spil forbi.",
+      "Stop hvis du mister kontrol."
+    ],
+    "why_valuable": "Skaber pasningslinjer og bryder pres.",
+    "filename": "fokuspunkter/midterforsvarer/sideforskydning_med_bold_spil_ud.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: i en tydelig forsvarszone (fx lige uden for feltet eller på midten)\r\nBold: start hos A1 (modstander) med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér A1 (modstander) med bold. D1 (forsvarer) i korrekt afstand. D2 som sikring bag D1. A2 som støttepasning til A1.\r\n2) A1 bevæger sig frem med bold. Flyt bolden med A1. D1 justerer side-/baglæns for at styre retning.\r\n3) D1 går i kontrolleret pres (støder) når A1 viser bolden. D2 holder sikring (2–3m bag).\r\n4) Tving A1 til støttepasning til A2. Flyt bolden fra A1 til A2.\r\n5) D1/D2 rykker samlet op (kompakt). Frys frame for korrekt afstand/linje.",
+    "video_key": null
+  },
+  {
+    "id": "097ab608-f4e3-43ab-8562-6443e36010da",
+    "title": "Skab ro efter boldvinding",
+    "difficulty": 3,
+    "position": "Midterforsvarer",
+    "how_to": [
+      "Første pasning: sikker.",
+      "Genpositionér efter pasning.",
+      "Undgå “panik-clears”."
+    ],
+    "why_valuable": "I beholder bolden og undgår ny bølge imod jer.",
+    "filename": "fokuspunkter/midterforsvarer/skab_ro_efter_boldvinding.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "2e166895-e736-44a1-9eac-c090930d1bfc",
+    "title": "Styr bagkæden samlet",
+    "difficulty": 4,
+    "position": "Midterforsvarer",
+    "how_to": [
+      "Kommunikér “op/fald/hold”.",
+      "Hold afstand til makker.",
+      "Flyt som en enhed ved sideskift."
+    ],
+    "why_valuable": "Kæden bliver stabil og svær at bryde.",
+    "filename": "fokuspunkter/midterforsvarer/styr_bagkaeden_samlet.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en tydelig træningszone (fx 20x20m) med fokus på bevægelse\r\nBold: start hos A1 med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér 4 angribere med god afstand. D1 presser boldholder. Bold hos A1.\r\n2) A2 bevæger sig i støtte (kort), A3 laver dybde (lang), A4 holder bredde. Vis tydelige pile.\r\n3) A1 spiller til den rigtige løsning (støtte eller dybde). Flyt bolden til modtager.\r\n4) Modtager sætter næste aktion (pas/dribling) mens de andre repositionerer.\r\n5) Frys frame: boldholder har mindst 2 tydelige muligheder.",
+    "video_key": null
+  },
+  {
+    "id": "ec4bc7a2-de1b-4f55-b08c-b01b1ef5bf02",
+    "title": "Styr dueller i feltet (indlæg)",
+    "difficulty": 4,
+    "position": "Midterforsvarer",
+    "how_to": [
+      "Tag position først, duel bagefter.",
+      "Hold øje med bold og mand.",
+      "Clear med retning ud."
+    ],
+    "why_valuable": "Forhindrer headers og afslutninger tæt på mål.",
+    "filename": "fokuspunkter/midterforsvarer/styr_dueller_i_feltet_indlaeg.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "fafbad53-1c2a-4631-a069-68b92aa49f3f",
+    "title": "Tjek skulder før clearing",
+    "difficulty": 3,
+    "position": "Midterforsvarer",
+    "how_to": [
+      "Kig hurtigt: er der tid? hvor er faren?",
+      "Clear ud mod siderne, ikke centralt.",
+      "Hvis tid: spil i fødder i stedet."
+    ],
+    "why_valuable": "Reducerer returer og farlige “anden chance”-situationer.",
+    "filename": "fokuspunkter/midterforsvarer/tjek_skulder_foer_clearing.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "d5a5cff5-1be7-467a-8c8e-b1c6726ae16e",
+    "title": "Vær modig i boldomgangen",
+    "difficulty": 4,
+    "position": "Midterforsvarer",
+    "how_to": [
+      "Se efter 6/8 i mellemrummet.",
+      "Spil fremad når det er sikkert.",
+      "Brug målmand/makker som sikkerhed."
+    ],
+    "why_valuable": "I bygger angreb i stedet for at cleare.",
+    "filename": "fokuspunkter/midterforsvarer/vaer_modig_i_boldomgangen.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "9613377f-56ee-47a6-b2f2-2ec386409a8d",
+    "title": "Vær opmærksom på løb bag ryggen",
+    "difficulty": 4,
+    "position": "Midterforsvarer",
+    "how_to": [
+      "Scan når boldholder har tid.",
+      "Stå halvvendt så du kan løbe.",
+      "Råb “løb” til kæden."
+    ],
+    "why_valuable": "Forhindrer friløbere, de farligste chancer.",
+    "filename": "fokuspunkter/midterforsvarer/vaer_opmaerksom_paa_loeb_bag_ryggen.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere\r\nPlacering: i halvrum/central zone med plads til vending/dribling\r\nBold: start hos A1 (boldfører) i halvrum\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 med bold. A2 og A3 som støttevinkler (en foran, en bag/side). D1 presser A1.\r\n2) A1 tager første touch væk fra pres og vender kroppen mod fri side. Flyt bolden med A1.\r\n3) A1 dribler 2–4 meter ind i rummet. D1 følger.\r\n4) A1 spiller til fri medspiller (A2 eller A3). Flyt bolden til modtager.\r\n5) Modtager tager første touch fremad. Frys frame ved 'god vending + næste aktion'.",
+    "video_key": null
+  },
+  {
+    "id": "282d62d6-7b60-4263-b900-729088b41117",
+    "title": "1-touch i zone 14",
+    "difficulty": 5,
+    "position": "Offensiv midtbane",
+    "how_to": [
+      "Scan før pasningen kommer.",
+      "Sæt den videre på 1 touch hvis pres.",
+      "Brug inderside for kontrol."
+    ],
+    "why_valuable": "Du kan spille i højeste tempo i farlig zone.",
+    "filename": "fokuspunkter/offensiv_midtbane/1_touch_i_zone_14.json",
+    "drejebog": "Opsætning: 4 medspillere, 2 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "16e13149-b4c7-4258-ba76-3c458620de73",
+    "title": "Beslutninger i sidste tredjedel",
+    "difficulty": 5,
+    "position": "Offensiv midtbane",
+    "how_to": [
+      "Vælg skud/pasning hurtigt.",
+      "Undgå ekstra touches ved pres.",
+      "Prioritér kvalitet."
+    ],
+    "why_valuable": "Sidste tredjedel afgør kampe—hurtige valg skaber mål.",
+    "filename": "fokuspunkter/offensiv_midtbane/beslutninger_i_sidste_tredjedel.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "dad6abf6-ddd2-48ba-bdc4-e411359e9fbc",
+    "title": "Find blindside (bag midtbanespiller)",
+    "difficulty": 4,
+    "position": "Offensiv midtbane",
+    "how_to": [
+      "Stå hvor markøren ikke kan see dig.",
+      "Flyt i sidste øjeblik ind i lommen.",
+      "Modtag retvendt."
+    ],
+    "why_valuable": "Du bliver fri i farlige rum.",
+    "filename": "fokuspunkter/offensiv_midtbane/find_blindside_bag_midtbanespiller.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere\r\nPlacering: i halvrum/central zone med plads til vending/dribling\r\nBold: start hos A1 (boldfører) i halvrum\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 med bold. A2 og A3 som støttevinkler (en foran, en bag/side). D1 presser A1.\r\n2) A1 tager første touch væk fra pres og vender kroppen mod fri side. Flyt bolden med A1.\r\n3) A1 dribler 2–4 meter ind i rummet. D1 følger.\r\n4) A1 spiller til fri medspiller (A2 eller A3). Flyt bolden til modtager.\r\n5) Modtager tager første touch fremad. Frys frame ved 'god vending + næste aktion'.",
+    "video_key": null
+  },
+  {
+    "id": "5321c9ae-6ee5-4ac6-a8c3-ff4b8f27ca16",
+    "title": "Genkend hvornår du skal holde i bolden",
+    "difficulty": 4,
+    "position": "Offensiv midtbane",
+    "how_to": [
+      "Hvis holdet er i ubalance: hold 1–2 sek.",
+      "Hvis gennembrud: spil hurtigt.",
+      "Læs medspillernes løb."
+    ],
+    "why_valuable": "Du styrer tempo og undgår dumme tab.",
+    "filename": "fokuspunkter/offensiv_midtbane/genkend_hvornaar_du_skal_holde_i_bolden.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "3be1e3e2-e563-4d42-9e30-0a712baecd53",
+    "title": "Kommunikér løb og intentioner",
+    "difficulty": 3,
+    "position": "Offensiv midtbane",
+    "how_to": [
+      "Sig “væg”, “igen”, “dyb”, “føl”.",
+      "Kommunikér før boldholder skal vælge.",
+      "Hold det kort."
+    ],
+    "why_valuable": "Bedre timing = flere gennembrud.",
+    "filename": "fokuspunkter/offensiv_midtbane/kommuniker_loeb_og_intentioner.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere\r\nPlacering: i halvrum/central zone med plads til vending/dribling\r\nBold: start hos A1 (boldfører) i halvrum\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 med bold. A2 og A3 som støttevinkler (en foran, en bag/side). D1 presser A1.\r\n2) A1 tager første touch væk fra pres og vender kroppen mod fri side. Flyt bolden med A1.\r\n3) A1 dribler 2–4 meter ind i rummet. D1 følger.\r\n4) A1 spiller til fri medspiller (A2 eller A3). Flyt bolden til modtager.\r\n5) Modtager tager første touch fremad. Frys frame ved 'god vending + næste aktion'.",
+    "video_key": null
+  },
+  {
+    "id": "1c8d78e3-d8a3-4d00-95bf-868ff5705245",
+    "title": "Løb på cutback",
+    "difficulty": 4,
+    "position": "Offensiv midtbane",
+    "how_to": [
+      "Når kant/back kommer til baglinje: find cutback-zonen.",
+      "Kom “sent” ind.",
+      "Vær klar til førsteberøringsafslutning."
+    ],
+    "why_valuable": "Cutbacks skaber høj xG-chancer.",
+    "filename": "fokuspunkter/offensiv_midtbane/loeb_paa_cutback.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "7c1aad27-21da-4af9-aa57-3d2ebc3197cc",
+    "title": "Modtag bolden mellem modstanderens kæder",
+    "difficulty": 4,
+    "position": "Offensiv midtbane",
+    "how_to": [
+      "Bevæg dig i rette øjeblik ind i lommen.",
+      "Modtag med åben krop.",
+      "Vær klar til at vende."
+    ],
+    "why_valuable": "Her skabes gennembrud og chancer.",
+    "filename": "fokuspunkter/offensiv_midtbane/modtag_bolden_mellem_modstanderens_kaeder.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere\r\nPlacering: i halvrum/central zone med plads til vending/dribling\r\nBold: start hos A1 (boldfører) i halvrum\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 med bold. A2 og A3 som støttevinkler (en foran, en bag/side). D1 presser A1.\r\n2) A1 tager første touch væk fra pres og vender kroppen mod fri side. Flyt bolden med A1.\r\n3) A1 dribler 2–4 meter ind i rummet. D1 følger.\r\n4) A1 spiller til fri medspiller (A2 eller A3). Flyt bolden til modtager.\r\n5) Modtager tager første touch fremad. Frys frame ved 'god vending + næste aktion'.",
+    "video_key": null
+  },
+  {
+    "id": "cb797fd1-472e-4ba6-a0a0-35577032fc17",
+    "title": "Pres på modstanderens 6’er",
+    "difficulty": 4,
+    "position": "Offensiv midtbane",
+    "how_to": [
+      "Luk hans modtagelse med vinkel.",
+      "Tving ham til siden.",
+      "Trigger holdets pres."
+    ],
+    "why_valuable": "Stopper deres opbygning centralt.",
+    "filename": "fokuspunkter/offensiv_midtbane/pres_paa_modstanderens_6er.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: i en tydelig forsvarszone (fx lige uden for feltet eller på midten)\r\nBold: start hos A1 (modstander) med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér A1 (modstander) med bold. D1 (forsvarer) i korrekt afstand. D2 som sikring bag D1. A2 som støttepasning til A1.\r\n2) A1 bevæger sig frem med bold. Flyt bolden med A1. D1 justerer side-/baglæns for at styre retning.\r\n3) D1 går i kontrolleret pres (støder) når A1 viser bolden. D2 holder sikring (2–3m bag).\r\n4) Tving A1 til støttepasning til A2. Flyt bolden fra A1 til A2.\r\n5) D1/D2 rykker samlet op (kompakt). Frys frame for korrekt afstand/linje.",
+    "video_key": null
+  },
+  {
+    "id": "1c2cd360-e6b7-4369-a021-ae9bf5109a44",
+    "title": "Sæt tempo i omstillinger",
+    "difficulty": 4,
+    "position": "Offensiv midtbane",
+    "how_to": [
+      "Ved vinding: orientér fremad straks.",
+      "Første handling fremad.",
+      "Peg/kommunikér løb."
+    ],
+    "why_valuable": "Omstillinger giver de største chancer.",
+    "filename": "fokuspunkter/offensiv_midtbane/saet_tempo_i_omstillinger.json",
+    "drejebog": "Opsætning: 4 medspillere, 1 modspillere\r\nPlacering: omkring midtbanen (modtag/scan/spil videre)\r\nBold: start hos A1 (server) med bold\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A2 står i midten og skal modtage. A1 (server) foran A2. A3/A4 som muligheder til højre/venstre. D1 presser bagfra/side.\r\n2) A2 'scanner' (vis det ved kort pause) før bolden kommer. A1 spiller til A2. Flyt bolden til A2.\r\n3) A2 tager første touch ud af pres (mod fri side). Flyt bolden med A2.\r\n4) A2 spiller videre til A3 eller A4 (den frie side). Flyt bolden.\r\n5) Frys frame: kropsstilling åben + næste pasning let.",
+    "video_key": null
+  },
+  {
+    "id": "d7fd5909-02c1-4256-b5f6-8a3eb5aa29ab",
+    "title": "Skab skudvinkel i zone 14",
+    "difficulty": 4,
+    "position": "Offensiv midtbane",
+    "how_to": [
+      "Træk bolden lidt til siden før skud.",
+      "Hold kroppen over bolden.",
+      "Skyd placeret, ikke hårdt."
+    ],
+    "why_valuable": "Flere skud med kvalitet fra farligt område.",
+    "filename": "fokuspunkter/offensiv_midtbane/skab_skudvinkel_i_zone_14.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "0341dbcf-ffc1-48ac-967e-b44befab2c63",
+    "title": "Skift mellem bred og central position",
+    "difficulty": 3,
+    "position": "Offensiv midtbane",
+    "how_to": [
+      "Træk ud i halvrum når centrum er lukket.",
+      "Kom ind centralt når der åbner sig.",
+      "Kommunikér med kant."
+    ],
+    "why_valuable": "Gør dig svær at markere.",
+    "filename": "fokuspunkter/offensiv_midtbane/skift_mellem_bred_og_central_position.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere\r\nPlacering: på en kant + ind i feltet\r\nBold: start hos A1 (kant) tæt på sidelinjen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 på kanten med bold. A2 i feltet (centralt). A3 ved bagerste stolpe. D1/D2 i feltet som markering.\r\n2) A1 dribler mod baglinjen for at true. Flyt bolden med A1.\r\n3) A2 og A3 laver to forskellige løb (forreste zone + bagerste zone) for at skabe valg.\r\n4) A1 slår indlæg til valgt løb. Flyt bolden fra A1 til A2 eller A3.\r\n5) Afslut på første touch eller kontrolleret afslut. Frys frame.",
+    "video_key": null
+  },
+  {
+    "id": "ae62d826-eeb7-405c-bc97-5d788d9565eb",
+    "title": "Spil i mellemrum",
+    "difficulty": 4,
+    "position": "Offensiv midtbane",
+    "how_to": [
+      "Find lommer mellem kæder.",
+      "Modtag retvendt.",
+      "Spil fremad hurtigt."
+    ],
+    "why_valuable": "Du bliver kreativ motor i farlige zoner.",
+    "filename": "fokuspunkter/offensiv_midtbane/spil_i_mellemrum.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere\r\nPlacering: i halvrum/central zone med plads til vending/dribling\r\nBold: start hos A1 (boldfører) i halvrum\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 med bold. A2 og A3 som støttevinkler (en foran, en bag/side). D1 presser A1.\r\n2) A1 tager første touch væk fra pres og vender kroppen mod fri side. Flyt bolden med A1.\r\n3) A1 dribler 2–4 meter ind i rummet. D1 følger.\r\n4) A1 spiller til fri medspiller (A2 eller A3). Flyt bolden til modtager.\r\n5) Modtager tager første touch fremad. Frys frame ved 'god vending + næste aktion'.",
+    "video_key": null
+  },
+  {
+    "id": "8519fb50-7d70-4f8b-938e-53ceed5f7b27",
+    "title": "Spil med få berøringer i trange rum",
+    "difficulty": 5,
+    "position": "Offensiv midtbane",
+    "how_to": [
+      "Scan før bolden kommer.",
+      "Brug 1–2 touches: modtag → spil.",
+      "Vælg sikker løsning hvis lukket."
+    ],
+    "why_valuable": "Gør dig effektiv hvor tiden er mindst.",
+    "filename": "fokuspunkter/offensiv_midtbane/spil_med_faa_beroeringer_i_trange_rum.json",
+    "drejebog": "Opsætning: 3 medspillere, 2 modspillere\r\nPlacering: i halvrum/central zone med plads til vending/dribling\r\nBold: start hos A1 (boldfører) i halvrum\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 med bold. A2 og A3 som støttevinkler (en foran, en bag/side). D1 presser A1.\r\n2) A1 tager første touch væk fra pres og vender kroppen mod fri side. Flyt bolden med A1.\r\n3) A1 dribler 2–4 meter ind i rummet. D1 følger.\r\n4) A1 spiller til fri medspiller (A2 eller A3). Flyt bolden til modtager.\r\n5) Modtager tager første touch fremad. Frys frame ved 'god vending + næste aktion'.",
+    "video_key": null
+  },
+  {
+    "id": "39bae5c3-6be8-4415-850e-ca94e7d14f8f",
+    "title": "Spil vægspil omkring feltet",
+    "difficulty": 4,
+    "position": "Offensiv midtbane",
+    "how_to": [
+      "Spil til 9’er, løb forbi, få den igen.",
+      "Løb i fart og i vinkel.",
+      "Afslut/pas hurtigt efter retur."
+    ],
+    "why_valuable": "Bryder kompakte forsvar.",
+    "filename": "fokuspunkter/offensiv_midtbane/spil_vaegspil_omkring_feltet.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "1216488d-3275-4b57-8e36-c9716db1aaeb",
+    "title": "Timing i tredje mand",
+    "difficulty": 5,
+    "position": "Offensiv midtbane",
+    "how_to": [
+      "Spil til A, løb i rum, få den fra B.",
+      "Kommunikér “tredje”.",
+      "Løb i rette øjeblik."
+    ],
+    "why_valuable": "Skaber gennembrud mod gode hold.",
+    "filename": "fokuspunkter/offensiv_midtbane/timing_i_tredje_mand.json",
+    "drejebog": "Opsætning: 4 medspillere, 2 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "1afdda37-f2ee-46fd-83de-bf89809e146a",
+    "title": "Træk fouls i farlige zoner",
+    "difficulty": 3,
+    "position": "Offensiv midtbane",
+    "how_to": [
+      "Vend ind i pres med bold tæt på fod.",
+      "Beskyt bolden med kroppen.",
+      "Stop/accelerér for at “fange” tacklingen."
+    ],
+    "why_valuable": "Farlige frispark og kort skifter kampe.",
+    "filename": "fokuspunkter/offensiv_midtbane/traek_fouls_i_farlige_zoner.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere\r\nPlacering: i halvrum/central zone med plads til vending/dribling\r\nBold: start hos A1 (boldfører) i halvrum\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 med bold. A2 og A3 som støttevinkler (en foran, en bag/side). D1 presser A1.\r\n2) A1 tager første touch væk fra pres og vender kroppen mod fri side. Flyt bolden med A1.\r\n3) A1 dribler 2–4 meter ind i rummet. D1 følger.\r\n4) A1 spiller til fri medspiller (A2 eller A3). Flyt bolden til modtager.\r\n5) Modtager tager første touch fremad. Frys frame ved 'god vending + næste aktion'.",
+    "video_key": null
+  },
+  {
+    "id": "0b8ec70f-5536-495e-accb-03c72dea5150",
+    "title": "Træk modstandere ud af position",
+    "difficulty": 3,
+    "position": "Offensiv midtbane",
+    "how_to": [
+      "Træk væk fra bold for at trække markør.",
+      "Skab rum for kant/9’er.",
+      "Kommunikér hvem der udnytter rummet."
+    ],
+    "why_valuable": "Du skaber plads uden bold.",
+    "filename": "fokuspunkter/offensiv_midtbane/traek_modstandere_ud_af_position.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere\r\nPlacering: på en kant + ind i feltet\r\nBold: start hos A1 (kant) tæt på sidelinjen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) A1 på kanten med bold. A2 i feltet (centralt). A3 ved bagerste stolpe. D1/D2 i feltet som markering.\r\n2) A1 dribler mod baglinjen for at true. Flyt bolden med A1.\r\n3) A2 og A3 laver to forskellige løb (forreste zone + bagerste zone) for at skabe valg.\r\n4) A1 slår indlæg til valgt løb. Flyt bolden fra A1 til A2 eller A3.\r\n5) Afslut på første touch eller kontrolleret afslut. Frys frame.",
+    "video_key": null
+  },
+  {
+    "id": "6b1ef75f-c1de-4732-9c0e-84cf354ae476",
+    "title": "Vælg gennembrudspasning (timing)",
+    "difficulty": 5,
+    "position": "Offensiv midtbane",
+    "how_to": [
+      "Vent på løbet, spil lige når han starter.",
+      "Spil gennem/over kæden afhængigt af rum.",
+      "Hvis ikke sikkert: hold bolden."
+    ],
+    "why_valuable": "Skaber direkte målchancer.",
+    "filename": "fokuspunkter/offensiv_midtbane/vaelg_gennembrudspasning_timing.json",
+    "drejebog": "Opsætning: 4 medspillere, 2 modspillere\r\nPlacering: i en trekant/firkant (kombinationsspil)\r\nBold: start hos A1 med bold i hjørnet af formen\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Sæt 4 angribere i en firkant/diamant. D1 presser boldholder. Bold hos A1.\r\n2) A1 spiller til A2 (åben vinkel). Flyt bolden fra A1 til A2.\r\n3) A2 spiller videre (1–2 touch) til A3, mens A1 løber for at tilbyde ny støtte.\r\n4) A3 spiller gennem/tilbage til A1 i bevægelse. Flyt bolden til A1.\r\n5) Frys frame: alle har en tydelig pasningsvinkel + korrekt afstand.",
+    "video_key": null
+  },
+  {
+    "id": "5910e2f7-b978-41fe-9ed8-58654f3dd380",
+    "title": "Vær afslutningsklar uden bold",
+    "difficulty": 4,
+    "position": "Offensiv midtbane",
+    "how_to": [
+      "Placér dig til cutback/retur.",
+      "Vær på tæerne og klar.",
+      "Afslut hurtigt."
+    ],
+    "why_valuable": "Flere mål/assists fra “anden bølge”.",
+    "filename": "fokuspunkter/offensiv_midtbane/vaer_afslutningsklar_uden_bold.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  },
+  {
+    "id": "7c18523b-99b3-4212-a398-d3e7f313459d",
+    "title": "Vend hurtigt mod mål",
+    "difficulty": 4,
+    "position": "Offensiv midtbane",
+    "how_to": [
+      "Scan pres før modtagelse.",
+      "Modtag på halv vending.",
+      "Hvis pres: spil 1-touch."
+    ],
+    "why_valuable": "Hurtig vending skaber ubalance og åbner skud/pas.",
+    "filename": "fokuspunkter/offensiv_midtbane/vend_hurtigt_mod_maal.json",
+    "drejebog": "Opsætning: 3 medspillere, 1 modspillere + 1 målmand\r\nPlacering: i og omkring straffesparksfeltet (målmand på mål)\r\nBold: start hos A1 (kant) ved kanten af feltet på en side\r\nAnimation: 5 steps (ca. 8–12 frames pr. step)\r\nTacticalPad: brug pile til løb, stiplet linje til pas, og flyt bolden i hvert step.\r\nSteps:\r\n1) Placér GK på mål. A1 på en kant lige uden for feltet med bold. A2 (angriber) ved straffesparkspletten. D1 markerer A2 (halvt).\r\n2) A1 dribler 2–3 meter frem for at skabe vinkel. Flyt bolden med A1.\r\n3) A2 timer sit løb (fx mod forreste eller bagerste zone) for at slippe fri. D1 følger.\r\n4) A1 afleverer/indlægger til A2. Flyt bold-ikonet fra A1 til A2.\r\n5) A2 afslutter på første touch. Flyt bolden mod mål. Frys frame ved afslutning.",
+    "video_key": null
+  }
+]

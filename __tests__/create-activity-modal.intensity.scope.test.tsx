@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert } from 'react-native';
+import { Alert, StyleSheet } from 'react-native';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 
 import CreateActivityModal from '../components/CreateActivityModal';
@@ -75,6 +75,11 @@ describe('CreateActivityModal intensity scope', () => {
     );
 
     fireEvent.changeText(getByTestId('activity.create.titleInput'), 'Ny aktivitet');
+    const categoryChip = getByTestId('activity.create.categoryChip.0');
+    const chipStyle = StyleSheet.flatten(categoryChip.props.style);
+    if (chipStyle?.backgroundColor !== '#123456') {
+      fireEvent.press(categoryChip);
+    }
     fireEvent(getByTestId('activity.create.intensityToggle'), 'valueChange', true);
     fireEvent.press(getByTestId('activity.create.intensityScopeModal.all'));
 

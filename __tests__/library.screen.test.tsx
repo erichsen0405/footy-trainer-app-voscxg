@@ -261,7 +261,7 @@ describe('Library screen gating and card state', () => {
 
     const addButton = await findByTestId('library.addToTasksButton.ex-2');
     expect(addButton.props.accessibilityState?.disabled).toBe(true);
-    expect(addButton.props.accessibilityLabel).toMatch(/Allerede tilføjet til opgaver/i);
+    expect(addButton.props.accessibilityLabel).toMatch(/Tilføjet/i);
   });
 
   it('opens add modal and confirms add task', async () => {
@@ -300,7 +300,46 @@ describe('Library screen gating and card state', () => {
 
     const addButton = await findByTestId('library.addToTasksButton.ex-3');
     expect(addButton.props.accessibilityState?.disabled).toBe(true);
-    expect(addButton.props.accessibilityLabel).toMatch(/Allerede tilføjet/i);
+    expect(addButton.props.accessibilityLabel).toMatch(/Tilføjet/i);
+  });
+
+  it('renders video preview when video is attached and fallback text when missing', async () => {
+    setupSupabaseFixture({
+      personalExercises: [
+        {
+          id: 'ex-anim-1',
+          trainer_id: 'user-1',
+          title: 'Anim Exercise',
+          is_system: false,
+          is_added_to_tasks: false,
+          thumbnail_url: 'https://example.com/video-thumb.jpg',
+          video_url: 'https://example.com/video.mp4',
+        },
+        {
+          id: 'ex-anim-2',
+          trainer_id: 'user-1',
+          title: 'No Anim Exercise',
+          is_system: false,
+          is_added_to_tasks: false,
+          video_url: null,
+        },
+      ],
+    });
+
+    mockUseUserRole.mockReturnValue({ userRole: 'trainer', isTrainer: true, isAdmin: false });
+    mockUseSubscriptionFeatures.mockReturnValue({
+      featureAccess: { library: true, calendarSync: true, trainerLinking: true },
+      isLoading: false,
+      subscriptionTier: 'trainer_basic',
+    });
+
+    const { findByText, findByTestId, queryByTestId } = render(<LibraryScreen />);
+
+    fireEvent.press(await findByText(/Personlige/i));
+
+    expect(await findByTestId('library.videoPreview.ex-anim-1')).toBeTruthy();
+    expect(await findByTestId('library.animationPending.ex-anim-2')).toBeTruthy();
+    expect(queryByTestId('library.animationPending.ex-anim-1')).toBeNull();
   });
 
   it('refreshes library counters after feedback:saved event', async () => {
@@ -354,6 +393,8 @@ describe('Library screen gating and card state', () => {
 
     expect(await findByTestId('library.counter.lastScore.ex-refresh-1')).toHaveTextContent('Senest: –/10');
     expect(await findByTestId('library.counter.executionCount.ex-refresh-1')).toHaveTextContent('Udført: –x');
+    expect(await findByTestId('library.badge.lastScore.ex-refresh-1')).toBeTruthy();
+    expect(await findByTestId('library.badge.executionCount.ex-refresh-1')).toBeTruthy();
 
     act(() => {
       DeviceEventEmitter.emit('feedback:saved', {
@@ -366,6 +407,8 @@ describe('Library screen gating and card state', () => {
     await waitFor(async () => {
       expect(await findByTestId('library.counter.lastScore.ex-refresh-1')).toHaveTextContent('Senest: 7/10');
       expect(await findByTestId('library.counter.executionCount.ex-refresh-1')).toHaveTextContent('Udført: 1x');
+      expect(await findByTestId('library.badge.lastScore.ex-refresh-1')).toBeTruthy();
+      expect(await findByTestId('library.badge.executionCount.ex-refresh-1')).toBeTruthy();
     });
   });
 
@@ -399,6 +442,8 @@ describe('Library screen gating and card state', () => {
     fireEvent.press(await findByText(/Personlige/i));
     expect(await findByTestId('library.counter.lastScore.ex-map-1')).toHaveTextContent('Senest: –/10');
     expect(await findByTestId('library.counter.executionCount.ex-map-1')).toHaveTextContent('Udført: –x');
+    expect(await findByTestId('library.badge.lastScore.ex-map-1')).toBeTruthy();
+    expect(await findByTestId('library.badge.executionCount.ex-map-1')).toBeTruthy();
 
     fireEvent.press(await findByTestId('library.addToTasksButton.ex-map-1'));
     fireEvent.press(await findByText(/^Tilf.*j$/i));
@@ -424,6 +469,8 @@ describe('Library screen gating and card state', () => {
     await waitFor(async () => {
       expect(await findByTestId('library.counter.lastScore.ex-map-1')).toHaveTextContent('Senest: 8/10');
       expect(await findByTestId('library.counter.executionCount.ex-map-1')).toHaveTextContent('Udført: 1x');
+      expect(await findByTestId('library.badge.lastScore.ex-map-1')).toBeTruthy();
+      expect(await findByTestId('library.badge.executionCount.ex-map-1')).toBeTruthy();
     });
   });
 
@@ -478,6 +525,7 @@ describe('Library screen gating and card state', () => {
 
     await waitFor(async () => {
       expect(await findByTestId('library.counter.executionCount.ex-map-2')).toHaveTextContent('Udført: 1x');
+      expect(await findByTestId('library.badge.executionCount.ex-map-2')).toBeTruthy();
     });
 
     act(() => {
@@ -496,6 +544,8 @@ describe('Library screen gating and card state', () => {
     await waitFor(async () => {
       expect(await findByTestId('library.counter.lastScore.ex-map-2')).toHaveTextContent('Senest: 6/10');
       expect(await findByTestId('library.counter.executionCount.ex-map-2')).toHaveTextContent('Udført: 1x');
+      expect(await findByTestId('library.badge.lastScore.ex-map-2')).toBeTruthy();
+      expect(await findByTestId('library.badge.executionCount.ex-map-2')).toBeTruthy();
     });
   });
 
@@ -550,6 +600,7 @@ describe('Library screen gating and card state', () => {
 
     await waitFor(async () => {
       expect(await findByTestId('library.counter.executionCount.ex-map-3')).toHaveTextContent('Udført: 1x');
+      expect(await findByTestId('library.badge.executionCount.ex-map-3')).toBeTruthy();
     });
 
     act(() => {
@@ -565,6 +616,8 @@ describe('Library screen gating and card state', () => {
     await waitFor(async () => {
       expect(await findByTestId('library.counter.lastScore.ex-map-3')).toHaveTextContent('Senest: 9/10');
       expect(await findByTestId('library.counter.executionCount.ex-map-3')).toHaveTextContent('Udført: 1x');
+      expect(await findByTestId('library.badge.lastScore.ex-map-3')).toBeTruthy();
+      expect(await findByTestId('library.badge.executionCount.ex-map-3')).toBeTruthy();
     });
   });
 });
