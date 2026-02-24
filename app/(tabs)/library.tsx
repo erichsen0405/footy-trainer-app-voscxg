@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { colors, getColors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -27,9 +28,9 @@ import { useSubscriptionFeatures } from '@/hooks/useSubscriptionFeatures';
 import { PremiumFeatureGate } from '@/components/PremiumFeatureGate';
 import { useFootball } from '@/contexts/FootballContext';
 import { Task } from '@/types';
+import { extractVideoKey, resolveVideoUrl } from '@/utils/videoKey';
 
 type RootFolderId = 'personal' | 'trainer' | 'footballcoach';
-type SortKey = 'recent' | 'difficulty';
 
 type NavigationState = {
   root: RootFolderId | null;
@@ -42,6 +43,7 @@ type Exercise = {
   trainer_id: string | null;
   title: string;
   description: string | null;
+  video_key: string | null;
   video_url: string | null;
   thumbnail_url: string | null;
   created_at: string | null;
@@ -135,6 +137,113 @@ const formatLatestScoreLine = (lastScore?: number | null) =>
 const formatExecutionCountLine = (executionCount?: number | null) =>
   typeof executionCount === 'number' && executionCount > 0 ? `Udført: ${executionCount}x` : 'Udført: –x';
 
+const CARD_SCENE_IMAGES = [
+  'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1551958219-acbc608c6377?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1517747614396-d21a78b850e8?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1587329310686-91414b8e3cb7?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1434648957308-5e6a859697e8?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1546608235-3310a2494cdf?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1560272564-c83b66b1ad12?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1486286701208-1d58e9338013?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1553778263-73a83bab9b0c?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1459865264687-595d652de67e?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1511886929837-354d827aae26?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1517466787929-bc90951d0974?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1739550635585-484633b21450?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1618073193718-23a66109f4e6?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1574772135913-d519461c3996?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1527950285759-4d9f1b69c461?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1652190416284-10debef71bfa?auto=format&fit=crop&w=1400&q=80',
+] as const;
+
+const SCENE_IMAGE_REPEAT_COOLDOWN = 5;
+
+const hashTextToIndex = (value: string, modulo: number): number => {
+  if (!value) return 0;
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
+  }
+  return hash % modulo;
+};
+
+const withAlpha = (color: string, alpha: number): string => {
+  const clamped = Math.max(0, Math.min(1, alpha));
+  const hex = color.trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(hex)) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${clamped})`;
+  }
+  if (/^#[0-9a-fA-F]{3}$/.test(hex)) {
+    const r = parseInt(`${hex[1]}${hex[1]}`, 16);
+    const g = parseInt(`${hex[2]}${hex[2]}`, 16);
+    const b = parseInt(`${hex[3]}${hex[3]}`, 16);
+    return `rgba(${r},${g},${b},${clamped})`;
+  }
+  return color;
+};
+
+const resolvePreferredSceneIndex = (exercise: Pick<Exercise, 'id' | 'title' | 'description'>): number => {
+  const text = `${exercise.title ?? ''} ${exercise.description ?? ''}`.toLowerCase();
+  if (/(første touch|modtag|kropsstilling|first touch|receive|orientering)/i.test(text)) return 0;
+  if (/(omstilling|genpres|transition|counter|recovery|tempo)/i.test(text)) return 1;
+  if (/(aflever|pasning|cutback|assist|third man|væg|wall pass)/i.test(text)) return 2;
+  if (/(afslut|finish|skud|mål|scoring)/i.test(text)) return 3;
+  if (/(1v1|drible|dribling|dribbling|kant)/i.test(text)) return 4;
+  if (/(duel|press|pres|vinklet pres|forsvar|defend)/i.test(text)) return 5;
+  if (/(løb|run in behind|dybde|sprint|hurtig)/i.test(text)) return 6;
+  if (/(position|placering|scan|overblik|perception)/i.test(text)) return 7;
+  if (/(kommunik|call|leder|coaching|signal)/i.test(text)) return 8;
+  if (/(målmand|keeper|goalkeeper)/i.test(text)) return 9;
+  if (/(first.?time|førsteberøring|one.?touch)/i.test(text)) return 10;
+  if (/(acceleration|eksplosiv|hurtighed)/i.test(text)) return 11;
+  if (/(cross|indlæg|wing)/i.test(text)) return 12;
+  if (/(balance|koordination|koordiner)/i.test(text)) return 13;
+  if (/(afskærm|shield|holde bolden)/i.test(text)) return 14;
+  if (/(returløb|recovery run|defensiv transition)/i.test(text)) return 15;
+  if (/(orienteret|scan før modtag|scan before receive)/i.test(text)) return 16;
+  if (/(frispark|set piece|dødbold)/i.test(text)) return 17;
+  if (/(split pass|gennembrud|through ball)/i.test(text)) return 18;
+  if (/(preslinje|compact|blok)/i.test(text)) return 19;
+  return hashTextToIndex(`${exercise.id ?? ''}|${exercise.title ?? ''}`, CARD_SCENE_IMAGES.length);
+};
+
+const buildExerciseSceneImageById = (exercises: Exercise[]): Record<string, string> => {
+  const sceneById: Record<string, string> = {};
+  const recent: number[] = [];
+
+  exercises.forEach((exercise) => {
+    const preferred = resolvePreferredSceneIndex(exercise);
+    const seed = hashTextToIndex(
+      `${exercise.id ?? ''}|${exercise.title ?? ''}|${exercise.description ?? ''}`,
+      CARD_SCENE_IMAGES.length
+    );
+
+    const candidates: number[] = [preferred];
+    for (let i = 0; i < CARD_SCENE_IMAGES.length; i += 1) {
+      const idx = (seed + i) % CARD_SCENE_IMAGES.length;
+      if (!candidates.includes(idx)) candidates.push(idx);
+    }
+
+    const recentSet = new Set(recent);
+    const chosen = candidates.find(idx => !recentSet.has(idx)) ?? candidates[0];
+    sceneById[exercise.id] = CARD_SCENE_IMAGES[chosen];
+
+    recent.push(chosen);
+    if (recent.length > SCENE_IMAGE_REPEAT_COOLDOWN) {
+      recent.shift();
+    }
+  });
+
+  return sceneById;
+};
+
 const buildIcon = (kind: FolderVM['kind']): FolderVM['icon'] => {
   switch (kind) {
     case 'personal':
@@ -213,12 +322,14 @@ const ExerciseCard = memo(function ExerciseCard({
   onPressCta,
   positionLabelOverride,
   isAddingToTasks,
+  previewImageUri,
 }: {
   exercise: Exercise;
   onPressCard: (exercise: Exercise) => void;
   onPressCta: (exercise: Exercise) => void;
   positionLabelOverride?: string | null;
   isAddingToTasks?: boolean;
+  previewImageUri: string;
 }) {
   const colorScheme = useColorScheme();
   const theme = getColors(colorScheme);
@@ -232,19 +343,21 @@ const ExerciseCard = memo(function ExerciseCard({
   const isAdded = !!exercise.is_added_to_tasks;
   const isAdding = !!isAddingToTasks;
   const ctaDisabled = isAdded || isAdding;
-  const ctaBgColor = isAdded ? theme.highlight : colors.success;
 
   const positionLabel = positionLabelOverride ?? exercise.position ?? null;
   const positionText = positionLabel ? positionLabel : 'Position: –';
   const positionIsPlaceholder = !positionLabel;
 
   const hasTrophy = typeof exercise.last_score === 'number' && Number.isFinite(exercise.last_score);
-  const hasVideo = !!exercise.video_url;
+  const resolvedVideoUrl = resolveVideoUrl(exercise.video_key || exercise.video_url);
+  const hasAnimation = !!resolvedVideoUrl;
+  const pendingStateTestId = `library.animationPending.${exercise.id}`;
+  const cardFadeColor = theme.card;
 
   return (
-    <View style={[styles.exerciseCard, { backgroundColor: theme.card }]}>
-      <Pressable onPress={handleCardPress} style={styles.exerciseTop} android_ripple={{ color: 'rgba(0,0,0,0.05)' }}>
-        <View style={styles.exerciseLeft}>
+    <View style={[styles.exerciseCard, styles.exerciseCardShadow, { backgroundColor: theme.card }]}>
+      <View style={styles.exerciseTop}>
+        <Pressable onPress={handleCardPress} style={styles.exerciseLeft} android_ripple={{ color: 'rgba(0,0,0,0.05)' }}>
           <View style={styles.trophyWrap}>
             <Text style={[styles.trophyEmoji, !hasTrophy ? { opacity: 0.25 } : null]}>🏆</Text>
           </View>
@@ -253,7 +366,7 @@ const ExerciseCard = memo(function ExerciseCard({
             {exercise.title}
           </Text>
 
-          <View style={styles.exerciseMetaRow}>
+          <View style={styles.exerciseRatingRow}>
             <View style={styles.starRow}>
               {Array.from({ length: 5 }).map((_, i) => (
                 <IconSymbol
@@ -265,78 +378,135 @@ const ExerciseCard = memo(function ExerciseCard({
                 />
               ))}
             </View>
-
-            <View
-              style={[styles.positionPill, { backgroundColor: theme.highlight }, positionIsPlaceholder ? { opacity: 0.55 } : null]}
+            <Text
+              pointerEvents="none"
+              style={[styles.difficultyValue, { color: theme.textSecondary }]}
+              numberOfLines={1}
+              ellipsizeMode="clip"
             >
-              <Text style={[styles.positionPillText, { color: theme.textSecondary }]} numberOfLines={1}>
-                {positionText}
+              Sværhedsgrad {difficulty}/5
+            </Text>
+          </View>
+
+          <View
+            style={[styles.positionPill, { backgroundColor: theme.highlight }, positionIsPlaceholder ? { opacity: 0.55 } : null]}
+          >
+            <Text style={[styles.positionPillText, { color: theme.textSecondary }]} numberOfLines={1}>
+              {positionText}
+            </Text>
+          </View>
+
+          <View style={styles.exerciseStatsRow}>
+            <View style={[styles.statPill, { backgroundColor: theme.highlight }]} testID={`library.badge.lastScore.${exercise.id}`}>
+              <Text
+                style={[styles.exerciseMetaLine, { color: theme.textSecondary }]}
+                testID={`library.counter.lastScore.${exercise.id}`}
+                numberOfLines={1}
+              >
+                {latestScoreLine}
+              </Text>
+            </View>
+            <View
+              style={[styles.statPill, { backgroundColor: theme.highlight }]}
+              testID={`library.badge.executionCount.${exercise.id}`}
+            >
+              <Text
+                style={[styles.exerciseMetaLine, { color: theme.textSecondary }]}
+                testID={`library.counter.executionCount.${exercise.id}`}
+                numberOfLines={1}
+              >
+                {executionCountLine}
               </Text>
             </View>
           </View>
+        </Pressable>
 
-          <View style={styles.exerciseMetaLineRow}>
-            <Text
-              style={[styles.exerciseMetaLine, { color: theme.textSecondary }]}
-              testID={`library.counter.lastScore.${exercise.id}`}
-            >
-              {latestScoreLine}
-            </Text>
-            <Text style={[styles.exerciseMetaLineSeparator, { color: theme.textSecondary }]}>|</Text>
-            <Text
-              style={[styles.exerciseMetaLine, { color: theme.textSecondary }]}
-              testID={`library.counter.executionCount.${exercise.id}`}
-            >
-              {executionCountLine}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.exerciseRight}>
-          <Image source={{ uri: exercise.thumbnail_url || 'https://placehold.co/160x120/e2e8f0/e2e8f0' }} style={styles.thumb} />
-          <View
-            style={[
-              styles.playOverlay,
-              { backgroundColor: hasVideo ? 'rgba(0,0,0,0.25)' : 'transparent' },
-              !hasVideo ? { opacity: 0.25 } : null,
-            ]}
-            pointerEvents="none"
-          >
-            <IconSymbol
-              ios_icon_name="play.circle.fill"
-              android_material_icon_name="play_circle_filled"
-              size={34}
-              color={hasVideo ? 'rgba(255,255,255,0.85)' : theme.textSecondary}
+        <View style={styles.exerciseRightColumn}>
+          <View style={styles.exerciseRight}>
+            <Pressable onPress={handleCardPress} style={styles.exerciseMediaPressable} android_ripple={{ color: 'rgba(0,0,0,0.05)' }}>
+            <Image
+              source={{ uri: previewImageUri }}
+              style={styles.thumb}
+              testID={hasAnimation ? `library.videoPreview.${exercise.id}` : undefined}
             />
+	            <LinearGradient
+	              pointerEvents="none"
+	              colors={['rgba(15,23,42,0.01)', 'rgba(15,23,42,0.08)']}
+	              start={{ x: 0.5, y: 0 }}
+	              end={{ x: 0.5, y: 1 }}
+	              style={styles.mediaShade}
+	            />
+	            <LinearGradient
+	              pointerEvents="none"
+	              // Shorter fade that reaches full white sooner (removes the visible seam).
+	              colors={[
+	                withAlpha(cardFadeColor, 1),
+	                withAlpha(cardFadeColor, 1),
+	                withAlpha(cardFadeColor, 0.95),
+	                withAlpha(cardFadeColor, 0.8),
+	                withAlpha(cardFadeColor, 0.55),
+	                withAlpha(cardFadeColor, 0.25),
+	                withAlpha(cardFadeColor, 0.1),
+	                withAlpha(cardFadeColor, 0),
+	                withAlpha(cardFadeColor, 0),
+	              ]}
+	              locations={[0, 0.16, 0.22, 0.28, 0.36, 0.44, 0.5, 0.57, 1]}
+	              start={{ x: 0, y: 0.5 }}
+	              end={{ x: 1, y: 0.5 }}
+	              style={styles.mediaEdgeFade}
+	            />
+            </Pressable>
           </View>
-        </View>
-      </Pressable>
 
-      <View style={styles.exerciseBottom}>
-        <TouchableOpacity
-          onPress={handleCtaPress}
-          activeOpacity={0.9}
-          style={[styles.ctaBadge, { backgroundColor: ctaBgColor }]}
-          disabled={ctaDisabled}
-          testID={`library.addToTasksButton.${exercise.id}`}
-          accessibilityLabel={isAdded ? 'Allerede tilføjet til opgaver' : 'Tilføj til opgaver'}
-        >
-          {isAdding ? (
-            <>
-              <ActivityIndicator size="small" color={isAdded ? theme.textSecondary : '#fff'} />
-              <Text style={[styles.ctaText, { color: isAdded ? theme.textSecondary : '#fff' }]}>Tilføjer...</Text>
-            </>
-          ) : (
-            <>
-              {isAdded ? (
-                <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={14} color={theme.textSecondary} />
-              ) : null}
-              <Text style={[styles.ctaText, { color: isAdded ? theme.textSecondary : '#fff' }]}>
-                {isAdded ? 'Allerede tilføjet til opgaver' : 'Tilføj til opgaver'}
-              </Text>
-            </>
-          )}
-        </TouchableOpacity>
+          {!hasAnimation ? (
+            <View style={styles.pendingThumb} testID={pendingStateTestId}>
+              <Text style={styles.pendingThumbText}>Animation kommer snart</Text>
+            </View>
+          ) : null}
+
+          <TouchableOpacity
+            onPress={handleCtaPress}
+            activeOpacity={0.9}
+            style={[
+              styles.ctaBadge,
+              styles.ctaBadgeOverlay,
+              styles.ctaBadgeShadow,
+              isAdded ? { backgroundColor: theme.highlight } : styles.ctaBadgeTransparent,
+            ]}
+            disabled={ctaDisabled}
+            testID={`library.addToTasksButton.${exercise.id}`}
+            accessibilityLabel={isAdded ? 'tilføjet' : 'Tilføj til opgaver'}
+          >
+            {isAdding ? (
+              <>
+                <ActivityIndicator size="small" color={isAdded ? theme.textSecondary : '#fff'} />
+                <Text style={[styles.ctaText, { color: isAdded ? theme.textSecondary : '#fff' }]}>Tilføjer...</Text>
+              </>
+            ) : (
+              <>
+                {!isAdded ? (
+                  <LinearGradient
+                    colors={['#53C761', '#2DA94A', '#0F7F34']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.ctaGradientFill}
+                  />
+                ) : null}
+                {isAdded ? (
+                  <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={9} color={theme.textSecondary} />
+                ) : null}
+                <Text style={[styles.ctaText, { color: isAdded ? theme.textSecondary : '#fff' }]}>
+                  {isAdded ? 'tilføjet' : 'Tilføj til opgaver'}
+                </Text>
+                {!isAdded ? (
+                  <View style={styles.ctaChevronWrap}>
+                    <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron_right" size={11} color="#fff" />
+                  </View>
+                ) : null}
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -379,12 +549,10 @@ const SkeletonExerciseCard = memo(function SkeletonExerciseCard() {
           </View>
           <View style={[styles.skeleton, { width: '60%', height: 14, borderRadius: 6, marginTop: 10 }]} />
         </View>
-        <View style={styles.exerciseRight}>
-          <View style={[styles.skeleton, { width: 150, height: 110, borderRadius: 14 }]} />
+        <View style={styles.exerciseRightColumn}>
+          <View style={[styles.skeleton, { width: '100%', height: 230, borderRadius: 30 }]} />
+          <View style={[styles.skeleton, { width: '92%', height: 40, borderRadius: 999, marginTop: -58, alignSelf: 'center' }]} />
         </View>
-      </View>
-      <View style={styles.exerciseBottom}>
-        <View style={[styles.skeleton, { width: 180, height: 34, borderRadius: 18 }]} />
       </View>
     </View>
   );
@@ -442,7 +610,6 @@ export default function LibraryScreen() {
   const [footballCoachExercises, setFootballCoachExercises] = useState<Exercise[]>([]);
 
   const [nav, setNav] = useState<NavigationState>({ root: null, level2Id: null, level3Id: null });
-  const [sortKey, setSortKey] = useState<SortKey>('recent');
 
   // Search (local only)
   const [searchOpen, setSearchOpen] = useState(false);
@@ -549,13 +716,30 @@ export default function LibraryScreen() {
   }, []);
 
   const normalizeExercise = useCallback((row: any): Exercise => {
+    const rawVideoKey = extractVideoKey(row?.video_key ?? row?.video_url) ?? null;
+    const rawVideoUrl = typeof row?.video_url === 'string' ? row.video_url.trim() : '';
+    const resolvedVideoUrl = rawVideoKey
+      ? resolveVideoUrl(rawVideoKey)
+      : /^https?:\/\//i.test(rawVideoUrl)
+      ? rawVideoUrl
+      : null;
+
+    const rawThumbValue = typeof row?.thumbnail_url === 'string' ? row.thumbnail_url.trim() : '';
+    const rawThumbKey = extractVideoKey(rawThumbValue) ?? null;
+    const resolvedThumbUrl = rawThumbKey
+      ? resolveVideoUrl(rawThumbKey)
+      : /^https?:\/\//i.test(rawThumbValue)
+      ? rawThumbValue
+      : null;
+
     return {
       id: String(row?.id ?? ''),
       trainer_id: row?.trainer_id ? String(row.trainer_id) : null,
       title: String(row?.title ?? ''),
       description: row?.description ?? null,
-      video_url: row?.video_url ?? null,
-      thumbnail_url: row?.thumbnail_url ?? null,
+      video_key: rawVideoKey,
+      video_url: resolvedVideoUrl,
+      thumbnail_url: resolvedThumbUrl,
       created_at: row?.created_at ?? null,
       updated_at: row?.updated_at ?? null,
       is_system: typeof row?.is_system === 'boolean' ? row.is_system : !!row?.is_system,
@@ -1055,15 +1239,12 @@ export default function LibraryScreen() {
         return hay.includes(q);
       });
     }
-    if (sortKey === 'difficulty') {
-      return [...list].sort((a, b) => clampDifficulty(b.difficulty) - clampDifficulty(a.difficulty));
-    }
     return [...list].sort((a, b) => {
       const au = a.updated_at || a.created_at || '';
       const bu = b.updated_at || b.created_at || '';
       return String(bu).localeCompare(String(au));
     });
-  }, [searchOpen, searchQuery, allExercisesForSearch, exercisesInCurrentView, sortKey]);
+  }, [searchOpen, searchQuery, allExercisesForSearch, exercisesInCurrentView]);
 
   const isAtExerciseLevel = useMemo(() => {
     if (nav.root === 'personal') return true;
@@ -1196,10 +1377,6 @@ export default function LibraryScreen() {
     setReloadNonce(n => n + 1);
   }, []);
 
-  const toggleSort = useCallback((key: SortKey) => {
-    setSortKey(key);
-  }, []);
-
   const handleToggleSearch = useCallback(() => {
     setSearchOpen(prev => {
       const next = !prev;
@@ -1307,6 +1484,11 @@ export default function LibraryScreen() {
     return [folderSection, exerciseSection];
   }, [visibleFolderStack, selectedExerciseHeaderTitle, displayedExercises]);
 
+  const exerciseSceneImageById = useMemo(
+    () => buildExerciseSceneImageById(displayedExercises),
+    [displayedExercises]
+  );
+
   const scrollToTop = useCallback(() => {
     const ref = listRef.current as any;
     try {
@@ -1349,31 +1531,15 @@ export default function LibraryScreen() {
       if (section.key !== 'exercises') return null;
       return (
         <View style={styles.exerciseHeaderRow}>
-          <Pressable onPress={scrollToTop} style={{ flex: 1 }}>
-            <Text style={[styles.exerciseHeaderTitle, { color: theme.text }]} numberOfLines={1}>
+          <Pressable onPress={scrollToTop} style={styles.exerciseHeaderTitlePressable}>
+            <Text style={[styles.exerciseHeaderTitle, { color: theme.text }]} numberOfLines={2}>
               {section.title || ''}
             </Text>
           </Pressable>
-          <View style={styles.sortRow}>
-            <TouchableOpacity
-              onPress={() => toggleSort('recent')}
-              activeOpacity={0.85}
-              style={[styles.sortPill, { backgroundColor: sortKey === 'recent' ? theme.card : 'transparent', borderColor: theme.highlight }]}
-            >
-              <Text style={[styles.sortPillText, { color: theme.textSecondary }]}>Senest brugt</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => toggleSort('difficulty')}
-              activeOpacity={0.85}
-              style={[styles.sortPill, { backgroundColor: sortKey === 'difficulty' ? theme.card : 'transparent', borderColor: theme.highlight }]}
-            >
-              <Text style={[styles.sortPillText, { color: theme.textSecondary }]}>Sværhedsgrad</Text>
-            </TouchableOpacity>
-          </View>
         </View>
       );
     },
-    [sortKey, theme, toggleSort, scrollToTop]
+    [theme, scrollToTop]
   );
 
   const renderItem = useCallback(
@@ -1401,6 +1567,7 @@ export default function LibraryScreen() {
           onPressCta={handlePressCta}
           positionLabelOverride={positionOverride}
           isAddingToTasks={addingTaskIds.has(ex.id)}
+          previewImageUri={exerciseSceneImageById[ex.id] ?? CARD_SCENE_IMAGES[0]}
         />
       );
     },
@@ -1414,6 +1581,7 @@ export default function LibraryScreen() {
       searchOpen,
       searchQuery,
       addingTaskIds,
+      exerciseSceneImageById,
     ]
   );
 
@@ -1753,60 +1921,123 @@ const styles = StyleSheet.create({
   exerciseHeaderRow: {
     marginTop: 6,
     marginBottom: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
+    gap: 10,
   },
-  exerciseHeaderTitle: { fontSize: 20, fontWeight: '800', flex: 1 },
-  sortRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
-  sortPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  sortPillText: { fontSize: 12, fontWeight: '600' },
+  exerciseHeaderTitlePressable: { width: '100%' },
+  exerciseHeaderTitle: { fontSize: 24, lineHeight: 30, fontWeight: '800', width: '100%' },
 
   exerciseCard: {
-    borderRadius: 18,
-    padding: 14,
-    marginBottom: 12,
+    borderRadius: 34,
+    paddingLeft: 14,
+    paddingTop: 0,
+    paddingBottom: 0,
+    paddingRight: 0,
+    marginBottom: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(148,163,184,0.28)',
   },
-  exerciseTop: { flexDirection: 'row', gap: 14 },
-  exerciseLeft: { flex: 1, paddingRight: 6 },
-  exerciseRight: { width: 150, height: 110 },
-  thumb: { width: '100%', height: '100%', borderRadius: 14 },
-  playOverlay: {
+  exerciseCardShadow: {
+    shadowColor: '#64748b',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    elevation: 9,
+  },
+  exerciseTop: { flexDirection: 'row', alignItems: 'stretch', gap: 0, minHeight: 190 },
+  // Keep left column above the hero image so the "Sværhedsgrad" text can sit on top of the fade.
+  exerciseLeft: { flex: 1, minWidth: 0, paddingTop: 14, paddingBottom: 14, paddingRight: 14, gap: 10, position: 'relative', zIndex: 2 },
+  exerciseRightColumn: { width: '50%', alignItems: 'stretch', position: 'relative', zIndex: 1 },
+  exerciseRight: {
+    flex: 1,
+    minHeight: 190,
+    position: 'relative',
+    overflow: 'hidden',
+    borderTopRightRadius: 34,
+    borderBottomRightRadius: 34,
+    // Make the hero image bleed further left under the fade (reference-like).
+    width: '135%',
+    alignSelf: 'flex-end',
+    backgroundColor: '#fff',
+  },
+  exerciseMediaPressable: { flex: 1, minHeight: 190 },
+  thumb: { width: '100%', height: '100%' },
+  mediaEdgeFade: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: '100%',
+  },
+  mediaShade: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: 14,
+  },
+  pendingThumb: {
+    position: 'absolute',
+    top: 12,
+    left: 14,
+    right: 14,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.25)',
+    backgroundColor: 'rgba(15,23,42,0.55)',
   },
-  trophyWrap: { height: 20, justifyContent: 'center' },
+  pendingThumbText: {
+    textAlign: 'center',
+    color: '#fff',
+    fontSize: 12,
+    lineHeight: 14,
+    fontWeight: '800',
+  },
+  trophyWrap: { height: 18, justifyContent: 'center' },
   trophyEmoji: { fontSize: 18, lineHeight: 20 },
   trophySpacer: { height: 20 },
 
-  exerciseTitle: { fontSize: 17, fontWeight: '800', marginTop: 8 },
-  exerciseMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 },
-  starRow: { flexDirection: 'row', gap: 2 },
-  positionPill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, maxWidth: 140 },
-  positionPillText: { fontSize: 12, fontWeight: '700' },
-  exerciseMetaLineRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 },
-  exerciseMetaLine: { fontSize: 13, fontWeight: '600' },
-  exerciseMetaLineSeparator: { fontSize: 13, fontWeight: '600' },
-
-  exerciseBottom: { marginTop: 12, flexDirection: 'row', justifyContent: 'flex-end' },
-  ctaBadge: {
+  exerciseTitle: { fontSize: 16, fontWeight: '900', lineHeight: 20, marginTop: 2 },
+  exerciseRatingRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-start',
     gap: 8,
-    paddingHorizontal: 14,
+    marginRight: -90,
+    position: 'relative',
+    zIndex: 4,
+  },
+  starRow: { flexDirection: 'row', gap: 1 },
+  difficultyValue: { fontSize: 12, fontWeight: '800', flexShrink: 0 },
+  positionPill: { width: '100%', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
+  positionPillText: { fontSize: 10, fontWeight: '800', lineHeight: 12 },
+  exerciseStatsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  statPill: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, maxWidth: '100%' },
+  exerciseMetaLine: { fontSize: 10, lineHeight: 12, fontWeight: '800' },
+
+  ctaBadge: {
+    position: 'relative',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+    paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 999,
   },
-  ctaText: { fontSize: 13, fontWeight: '800' },
+  ctaBadgeOverlay: { position: 'absolute', left: 14, right: 14, bottom: 14 },
+  ctaBadgeShadow: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.36,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+  ctaBadgeTransparent: { backgroundColor: '#2DA94A' },
+  ctaGradientFill: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 999,
+  },
+  ctaText: { fontSize: 11, fontWeight: '900', lineHeight: 13, flexShrink: 1, maxWidth: '100%', textAlign: 'center' },
+  ctaChevronWrap: { position: 'absolute', right: 12, top: 0, bottom: 0, justifyContent: 'center' },
   stateCard: {
     marginHorizontal: 18,
     marginTop: 18,

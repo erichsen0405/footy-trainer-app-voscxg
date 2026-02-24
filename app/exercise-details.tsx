@@ -9,21 +9,23 @@ import {
   ActivityIndicator,
   Platform,
   useColorScheme,
-  Linking,
   Alert,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { WebView } from 'react-native-webview';
 
 import { colors, getColors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { AssignExerciseModal } from '@/components/AssignExerciseModal';
 import { useUserRole } from '@/hooks/useUserRole';
 import { supabase } from '@/integrations/supabase/client';
+import { resolveVideoUrl } from '@/utils/videoKey';
 
 type Exercise = {
   id: string;
   title: string;
   description: string | null;
+  video_key: string | null;
   video_url: string | null;
   thumbnail_url: string | null;
   difficulty: number | null;
@@ -49,6 +51,145 @@ const formatMetaLine = (lastScore?: number | null, executionCount?: number | nul
   return `${scorePart}  |  ${countPart}`;
 };
 
+const YOUTUBE_PATTERNS = [
+  /(?:youtube\.com\/watch\?v=)([^&?/]+)/i,
+  /(?:youtu\.be\/)([^&?/]+)/i,
+  /(?:youtube\.com\/embed\/)([^&?/]+)/i,
+];
+
+const VIMEO_PATTERNS = [
+  /(?:player\.vimeo\.com\/video\/)(\d+)/i,
+  /(?:vimeo\.com\/)(\d+)/i,
+];
+
+function deriveThumbnailFromVideoUrl(videoUrl: string | null): string | null {
+  if (!videoUrl) return null;
+  for (const pattern of YOUTUBE_PATTERNS) {
+    const match = videoUrl.match(pattern);
+    if (match?.[1]) return `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`;
+  }
+  for (const pattern of VIMEO_PATTERNS) {
+    const match = videoUrl.match(pattern);
+    if (match?.[1]) return `https://vumbnail.com/${match[1]}.jpg`;
+  }
+  return null;
+}
+
+function extractYouTubeId(videoUrl: string | null): string | null {
+  if (!videoUrl) return null;
+  for (const pattern of YOUTUBE_PATTERNS) {
+    const match = videoUrl.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+  return null;
+}
+
+function extractVimeoId(videoUrl: string | null): string | null {
+  if (!videoUrl) return null;
+  for (const pattern of VIMEO_PATTERNS) {
+    const match = videoUrl.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+  return null;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function buildInlineVideoHtml(videoUrl: string, posterUrl?: string | null, autoPlay = false): string {
+  const youtubeId = extractYouTubeId(videoUrl);
+  const vimeoId = extractVimeoId(videoUrl);
+  const embedUrl = youtubeId
+    ? `https://www.youtube.com/embed/${youtubeId}?autoplay=${autoPlay ? 1 : 0}&playsinline=1&rel=0`
+    : vimeoId
+    ? `https://player.vimeo.com/video/${vimeoId}?autoplay=${autoPlay ? 1 : 0}&playsinline=1`
+    : null;
+
+  if (embedUrl) {
+    const safeEmbedUrl = escapeHtml(embedUrl);
+    return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background: #0b1220;
+      }
+      iframe {
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: #0b1220;
+      }
+    </style>
+  </head>
+  <body>
+    <iframe src="${safeEmbedUrl}" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>
+  </body>
+</html>`;
+  }
+
+  const safeVideoUrl = escapeHtml(videoUrl);
+  const posterAttr = posterUrl ? `poster="${escapeHtml(posterUrl)}"` : '';
+  const autoplayAttr = autoPlay ? 'autoplay' : '';
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background: #0b1220;
+      }
+      video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        background: #0b1220;
+      }
+    </style>
+  </head>
+  <body>
+    <video id="video" controls playsinline webkit-playsinline preload="auto" ${autoplayAttr} ${posterAttr}>
+      <source src="${safeVideoUrl}" />
+    </video>
+    <script>
+      (function () {
+        var v = document.getElementById('video');
+        if (!v) return;
+        if (${autoPlay ? 'true' : 'false'}) {
+          function ensurePlaying() {
+            try {
+              v.muted = false;
+              var p = v.play();
+              if (p && typeof p.catch === 'function') {
+                p.catch(function () {});
+              }
+            } catch (_) {}
+          }
+          v.addEventListener('loadeddata', ensurePlaying);
+          v.addEventListener('canplay', ensurePlaying);
+          ensurePlaying();
+        }
+      })();
+    </script>
+  </body>
+</html>`;
+}
+
 export default function ExerciseDetailsScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
@@ -71,6 +212,7 @@ export default function ExerciseDetailsScreen() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [assignModalVisible, setAssignModalVisible] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isInlineVideoPlaying, setIsInlineVideoPlaying] = useState(false);
 
   const load = useCallback(async (id: string) => {
     try {
@@ -91,6 +233,7 @@ export default function ExerciseDetailsScreen() {
         id: String((data as any)?.id ?? ''),
         title: String((data as any)?.title ?? ''),
         description: (data as any)?.description ?? null,
+        video_key: (data as any)?.video_key ? String((data as any).video_key) : null,
         video_url: (data as any)?.video_url ?? null,
         thumbnail_url: (data as any)?.thumbnail_url ?? null,
         difficulty:
@@ -133,6 +276,10 @@ export default function ExerciseDetailsScreen() {
   }, [exerciseId, load]);
 
   useEffect(() => {
+    setIsInlineVideoPlaying(false);
+  }, [exercise?.id]);
+
+  useEffect(() => {
     let cancelled = false;
     (async () => {
       const { data } = await supabase.auth.getUser();
@@ -148,32 +295,31 @@ export default function ExerciseDetailsScreen() {
     router.back();
   }, [router]);
 
-  const handleOpenVideo = useCallback(async () => {
-    const url = exercise?.video_url;
-    if (!url) {
-      Alert.alert('Ingen video', 'Ingen video til denne øvelse endnu.');
-      return;
-    }
-    try {
-      const can = await Linking.canOpenURL(url);
-      if (!can) {
-        Alert.alert('Kunne ikke åbne link', 'Linket kan ikke åbnes på denne enhed.');
-        return;
-      }
-      await Linking.openURL(url);
-    } catch {
-      Alert.alert('Kunne ikke åbne link', 'Prøv igen senere.');
-    }
-  }, [exercise?.video_url]);
+  const resolvedVideoUrl = useMemo(() => resolveVideoUrl(exercise?.video_key || exercise?.video_url), [exercise?.video_key, exercise?.video_url]);
+  const resolvedThumbnailUrl = useMemo(
+    () => resolveVideoUrl(exercise?.thumbnail_url) || deriveThumbnailFromVideoUrl(resolvedVideoUrl),
+    [exercise?.thumbnail_url, resolvedVideoUrl]
+  );
+  const handleStartVideo = useCallback(() => {
+    if (!resolvedVideoUrl) return;
+    setIsInlineVideoPlaying(true);
+  }, [resolvedVideoUrl]);
 
   const difficulty = useMemo(() => clampDifficulty(exercise?.difficulty), [exercise?.difficulty]);
-  const thumbUri = useMemo(() => exercise?.thumbnail_url || 'https://placehold.co/900x600/e2e8f0/e2e8f0', [exercise?.thumbnail_url]);
+  const thumbUri = useMemo(
+    () => resolvedThumbnailUrl || 'https://placehold.co/900x600/F1F5F9/0F172A?text=Video+preview',
+    [resolvedThumbnailUrl]
+  );
+  const videoPlayerHtml = useMemo(
+    () => (resolvedVideoUrl ? buildInlineVideoHtml(resolvedVideoUrl, resolvedThumbnailUrl, true) : null),
+    [resolvedThumbnailUrl, resolvedVideoUrl]
+  );
 
   const positionLabel = exercise?.position ?? 'Position: –';
   const positionIsPlaceholder = !exercise?.position;
 
   const hasTrophy = typeof exercise?.last_score === 'number' && Number.isFinite(exercise?.last_score);
-  const hasVideo = !!exercise?.video_url;
+  const hasVideo = !!resolvedVideoUrl;
   const assignModalExercise = useMemo(() => (exercise ? { id: exercise.id, title: exercise.title } : null), [exercise]);
   const canManageExercise = useMemo(() => {
     if (!exercise || !currentUserId) return false;
@@ -301,26 +447,34 @@ export default function ExerciseDetailsScreen() {
                     <Text style={[styles.trophyEmoji, !hasTrophy ? { opacity: 0.25 } : null]}>🏆</Text>
                   </View>
 
-                  <Image source={{ uri: thumbUri }} style={styles.thumb} />
-
-                  {/* Video pill button */}
-                  <TouchableOpacity
-                    onPress={handleOpenVideo}
-                    activeOpacity={hasVideo ? 0.9 : 1}
-                    style={[
-                      styles.videoPill,
-                      { backgroundColor: hasVideo ? theme.primary : theme.highlight },
-                      !hasVideo ? { opacity: 0.55 } : null,
-                    ]}
-                  >
-                    <IconSymbol
-                      ios_icon_name="play.fill"
-                      android_material_icon_name="play_arrow"
-                      size={16}
-                      color={hasVideo ? '#fff' : theme.textSecondary}
-                    />
-                    <Text style={[styles.videoPillText, { color: hasVideo ? '#fff' : theme.textSecondary }]}>Video</Text>
-                  </TouchableOpacity>
+                  <View style={styles.thumbContainer}>
+                    {hasVideo && isInlineVideoPlaying && videoPlayerHtml ? (
+                      <WebView
+                        source={{ html: videoPlayerHtml }}
+                        style={styles.thumb}
+                        allowsInlineMediaPlayback
+                        allowsFullscreenVideo
+                        javaScriptEnabled
+                        domStorageEnabled
+                        scrollEnabled={false}
+                        bounces={false}
+                        mediaPlaybackRequiresUserAction={false}
+                        testID="exerciseDetails.videoPlayer"
+                      />
+                    ) : (
+                      <Image source={{ uri: thumbUri }} style={styles.thumb} />
+                    )}
+                    {hasVideo && !isInlineVideoPlaying ? (
+                      <TouchableOpacity
+                        onPress={handleStartVideo}
+                        activeOpacity={0.9}
+                        style={styles.thumbPlayOverlay}
+                        testID="exerciseDetails.videoOverlayPlay"
+                      >
+                        <IconSymbol ios_icon_name="play.fill" android_material_icon_name="play_arrow" size={18} color="#fff" />
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
 
                   <Text style={[styles.title, { color: theme.text }]}>{exercise.title}</Text>
 
@@ -437,25 +591,29 @@ const styles = StyleSheet.create({
   trophyWrap: { height: 20, justifyContent: 'center', alignItems: 'flex-start', marginBottom: 2 },
   trophyEmoji: { fontSize: 18, lineHeight: 20 },
 
-  thumb: {
+  thumbContainer: {
     width: '100%',
     height: 210,
     borderRadius: 16,
+    overflow: 'hidden',
     backgroundColor: 'rgba(0,0,0,0.06)',
     marginBottom: 10,
   },
-
-  videoPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    borderRadius: 999,
-    paddingVertical: 7,
-    paddingHorizontal: 14,
-    marginBottom: 8,
-    gap: 8,
+  thumb: {
+    width: '100%',
+    height: '100%',
   },
-  videoPillText: { fontSize: 13, fontWeight: '900' },
+  thumbPlayOverlay: {
+    position: 'absolute',
+    right: 10,
+    bottom: 10,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   title: { marginTop: 2, fontSize: 22, fontWeight: '900' },
 
