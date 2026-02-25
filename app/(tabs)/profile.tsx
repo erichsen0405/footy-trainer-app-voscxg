@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   FlatList,
   Modal,
+  ScrollView,
   Switch,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -28,7 +29,6 @@ import CreatePlayerModal from '@/components/CreatePlayerModal';
 import PlayersList from '@/components/PlayersList';
 import TeamManagement from '@/components/TeamManagement';
 import { useSubscription } from '@/contexts/SubscriptionContext';
-import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import { useFootball } from '@/contexts/FootballContext';
 import { deleteAllExternalActivities } from '@/utils/deleteExternalActivities';
 import { useSubscriptionFeatures } from '@/hooks/useSubscriptionFeatures';
@@ -64,8 +64,6 @@ interface AdminInfo {
   request_id: string | null;
 }
 
-type SubscriptionStatusType = ReturnType<typeof useSubscription>['subscriptionStatus'];
-
 type UpgradeTarget = 'library' | 'calendarSync' | 'trainerLinking';
 
 type CollapsibleSectionProps = {
@@ -95,6 +93,7 @@ const extractFirstParamValue = (value?: string | string[]) => (Array.isArray(val
 
 const DELETE_ACCOUNT_CONFIRMATION_PHRASE = 'SLET';
 const ACCOUNT_DELETION_REVIEW_PATH = 'Profil -> Indstillinger -> Konto -> Slet konto';
+const PROFILE_EDIT_COLLAPSE_MESSAGE = 'Tryk på Annuller eller Gem, før du kan lukke sektionen.';
 
 const authRedirectUrl = 'footballcoach://auth/callback';
 
@@ -190,7 +189,10 @@ const styles = StyleSheet.create({
   },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
   sectionTitle: { fontSize: 18, fontWeight: '800' },
-  sectionHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sectionHeaderRight: { flexDirection: 'row', alignItems: 'center' },
+  sectionHeaderActions: { marginRight: 12 },
+  chevronContainer: { width: 28, alignItems: 'center', justifyContent: 'center' },
+  headerIconButton: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   editForm: { gap: 12 },
   label: { fontSize: 14, fontWeight: '600' },
   input: { borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16 },
@@ -341,13 +343,15 @@ const CollapsibleSection = ({
         <Text style={[styles.sectionTitle, { color: titleColor }]}>{title}</Text>
       </View>
       <View style={styles.sectionHeaderRight}>
-        {headerActions}
-        <IconSymbol
-          ios_icon_name={expanded ? 'chevron.up' : 'chevron.down'}
-          android_material_icon_name={expanded ? 'expand_less' : 'expand_more'}
-          size={24}
-          color={chevronColor}
-        />
+        {headerActions ? <View style={styles.sectionHeaderActions}>{headerActions}</View> : null}
+        <View style={styles.chevronContainer}>
+          <IconSymbol
+            ios_icon_name={expanded ? 'chevron.up' : 'chevron.down'}
+            android_material_icon_name={expanded ? 'expand_less' : 'expand_more'}
+            size={24}
+            color={chevronColor}
+          />
+        </View>
       </View>
     </Pressable>
     {expanded ? children : null}
@@ -418,6 +422,29 @@ export default function ProfileScreen() {
   const [playersRefreshTrigger, setPlayersRefreshTrigger] = useState(0);
   const [isAcceptingTrainerRequest, setIsAcceptingTrainerRequest] = useState(false);
   const loginNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const openSubscriptionScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleToggleProfileInfoSection = useCallback(() => {
+    if (isEditingProfile && isProfileInfoExpanded) {
+      Alert.alert('Afslut redigering', PROFILE_EDIT_COLLAPSE_MESSAGE);
+      return;
+    }
+    setIsProfileInfoExpanded(prev => !prev);
+  }, [isEditingProfile, isProfileInfoExpanded]);
+
+  const clearOpenSubscriptionScrollTimeout = useCallback(() => {
+    if (openSubscriptionScrollTimeoutRef.current) {
+      clearTimeout(openSubscriptionScrollTimeoutRef.current);
+      openSubscriptionScrollTimeoutRef.current = null;
+    }
+  }, []);
+
+  useEffect(
+    () => () => {
+      clearOpenSubscriptionScrollTimeout();
+    },
+    [clearOpenSubscriptionScrollTimeout]
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -518,7 +545,6 @@ export default function ProfileScreen() {
     subscriptionStatus,
     refreshSubscription,
     createSubscription,
-    subscriptionPlans,
     loading: subscriptionLoading,
   } = useSubscription();
   const { refreshAll } = useFootball();
@@ -605,11 +631,13 @@ export default function ProfileScreen() {
         setManualUpgradeTarget(target);
       }
       setIsSubscriptionExpanded(true);
-      setTimeout(() => {
+      clearOpenSubscriptionScrollTimeout();
+      openSubscriptionScrollTimeoutRef.current = setTimeout(() => {
         scrollToSubscription();
+        openSubscriptionScrollTimeoutRef.current = null;
       }, 200);
     },
-    [scrollToSubscription]
+    [clearOpenSubscriptionScrollTimeout, scrollToSubscription]
   );
 
   const closePaywallModal = useCallback(() => {
@@ -880,17 +908,22 @@ export default function ProfileScreen() {
       setPurchaseProcessing(true);
       try {
         await refreshSubscriptionStatus({ force: true, reason: 'profile_purchase' });
-        await refreshSubscription();
         if (user?.id) {
           await checkUserOnboarding(user.id);
         }
         forceUserRoleRefresh('ios-purchase');
-        await waitForPurchaseSettled();
+        const settled = await waitForPurchaseSettled();
+        if (!settled) {
+          Alert.alert(
+            'Abonnement opdateres stadig',
+            'Status kan være forsinket. Åbn profilen igen om et øjeblik, hvis den ikke opdaterer med det samme.'
+          );
+        }
       } finally {
         setPurchaseProcessing(false);
       }
     },
-    [checkUserOnboarding, refreshSubscription, refreshSubscriptionStatus, user?.id, waitForPurchaseSettled]
+    [checkUserOnboarding, refreshSubscriptionStatus, user?.id, waitForPurchaseSettled]
   );
 
   useEffect(() => {
@@ -903,8 +936,6 @@ export default function ProfileScreen() {
       setUser(user);
 
       if (user) {
-        // Refresh subscription status immediately when user is detected
-        await refreshSubscription();
         await checkUserOnboarding(user.id);
       }
     };
@@ -927,7 +958,6 @@ export default function ProfileScreen() {
           setIsEditingProfile(false);
         }
         // Refresh subscription status immediately on auth state change
-        await refreshSubscription();
         await checkUserOnboarding(session.user.id);
       } else {
         lastUserIdRef.current = null;
@@ -938,7 +968,7 @@ export default function ProfileScreen() {
     });
 
     return () => subscription.unsubscribe();
-  }, [checkUserOnboarding, refreshSubscription]);
+  }, [checkUserOnboarding]);
 
   useEffect(() => {
     if (shouldHighlightPremiumPlan) {
@@ -1422,6 +1452,8 @@ export default function ProfileScreen() {
   // Use a non-blurred wrapper for subscription card to avoid flicker while keeping a frame
   const SubscriptionCardWrapper = Platform.OS === 'ios' ? View : CardWrapper;
   const subscriptionCardProps = Platform.OS === 'ios' ? {} : cardWrapperProps;
+  const AuthCardWrapper = Platform.OS === 'ios' ? View : CardWrapper;
+  const authCardProps = Platform.OS === 'ios' ? {} : cardWrapperProps;
   const sectionCardStyle = Platform.OS === 'ios'
     ? (isDark ? styles.subscriptionCardFrameDark : styles.subscriptionCardFrame)
     : { backgroundColor: cardBgColor };
@@ -1490,7 +1522,7 @@ export default function ProfileScreen() {
     );
   }
 
-  // Logged-in main view now rendered via FlatList (see return)
+  // Logged-in main view now rendered via ScrollView (see return)
   const renderProfileContent = () => (
     <View>
       {showLoginNotice && (
@@ -1539,20 +1571,23 @@ export default function ProfileScreen() {
             <CollapsibleSection
               title="Profil Information"
               expanded={isProfileInfoExpanded}
-              onToggle={() => setIsProfileInfoExpanded(prev => !prev)}
+              onToggle={handleToggleProfileInfoSection}
               titleColor={textColor}
               chevronColor={textSecondaryColor}
               icon={<IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={24} color={colors.primary} />}
               headerActions={
                 !isEditingProfile ? (
                   <Pressable
+                    style={styles.headerIconButton}
                     onPress={(event) => {
                       event.stopPropagation?.();
                       setIsEditingProfile(true);
+                      setIsProfileInfoExpanded(true);
                       setOriginalName(profile?.full_name || '');
                       setOriginalPhone(profile?.phone_number || '');
                     }}
                     accessibilityRole="button"
+                    hitSlop={8}
                   >
                     <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={20} color={colors.primary} />
                   </Pressable>
@@ -1907,7 +1942,7 @@ export default function ProfileScreen() {
                     selectedRole={subscriptionSelectionRole ?? undefined}
                     transparentBackground
                     onPurchaseStarted={handleIOSSubscriptionStarted}
-                  onPurchaseFinished={handleIOSSubscriptionFinished}
+                    onPurchaseFinished={handleIOSSubscriptionFinished}
                   />
                 ) : (
                   <SubscriptionManager transparentBackground={false} />
@@ -2001,7 +2036,7 @@ export default function ProfileScreen() {
         </>
       ) : (
         // Login/Sign up view
-        <CardWrapper style={[styles.authCard, Platform.OS !== 'ios' && { backgroundColor: cardBgColor }]} {...cardWrapperProps}>
+        <AuthCardWrapper style={[styles.authCard, { backgroundColor: cardBgColor }]} {...authCardProps}>
           {showSuccessMessage && (
             <View style={[styles.successMessage, { backgroundColor: colors.primary }]}>
               <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name="check_circle" size={Platform.OS === 'ios' ? 64 : 48} color="#fff" />
@@ -2167,29 +2202,22 @@ export default function ProfileScreen() {
               </View>
             </>
           )}
-        </CardWrapper>
+        </AuthCardWrapper>
       )}
     </View>
   );
 
   return (
     <ContainerWrapper style={[styles.safeArea, { backgroundColor: bgColor }]} edges={containerEdges}>
-      <FlatList
+      <ScrollView
         ref={scrollViewRef}
-        data={[]}
-        keyExtractor={(_, index) => `profile-flatlist-${index}`}
-        renderItem={() => null}
         keyboardShouldPersistTaps="handled"
-        extraData={focusNonce}
-        ListHeaderComponent={
-          <React.Fragment>
-            {renderProfileContent()}
-          </React.Fragment>
-        }
-        ListFooterComponent={<View style={{ height: 120 }} />}
         contentContainerStyle={[styles.contentContainer, Platform.OS !== 'ios' && { paddingTop: 60 }]}
         showsVerticalScrollIndicator={false}
-      />
+      >
+        {renderProfileContent()}
+        <View style={{ height: 120 }} />
+      </ScrollView>
       <Modal
         animationType="fade"
         transparent
@@ -2318,7 +2346,7 @@ export default function ProfileScreen() {
                   onPurchaseFinished={handleIOSSubscriptionFinished}
                 />
               ) : (
-                <SubscriptionManager forceShowPlans={!subscriptionStatus?.hasSubscription} />
+                <SubscriptionManager forceShowPlans={!subscriptionGate.hasActiveSubscription} />
               )}
             </View>
           </View>
