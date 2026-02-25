@@ -35,18 +35,95 @@ describe('notification deeplink mapping', () => {
     });
   });
 
-  it('uses url query fallback and id fallback when explicit keys are missing', () => {
+  it('uses taskInstanceId and snake_case activity id keys', () => {
     const route = buildNotificationRouteFromData({
-      id: 'task-from-id',
-      url: '/activity-details?id=activity-from-url',
+      activity_id: 'activity-from-instance',
+      taskInstanceId: 'task-instance-1',
+      type: 'task-reminder',
     });
 
     expect(route).toEqual({
       pathname: '/activity-details',
       params: {
-        id: 'activity-from-url',
-        activityId: 'activity-from-url',
-        openTaskId: 'task-from-id',
+        id: 'activity-from-instance',
+        activityId: 'activity-from-instance',
+        openTaskId: 'task-instance-1',
+      },
+    });
+  });
+
+  it('parses stringified nested payload data and maps openTaskId', () => {
+    const route = buildNotificationRouteFromData({
+      data: JSON.stringify({
+        activity_id: 'activity-json-1',
+        task_instance_id: 'task-json-1',
+        type: 'task-reminder',
+      }),
+    });
+
+    expect(route).toEqual({
+      pathname: '/activity-details',
+      params: {
+        id: 'activity-json-1',
+        activityId: 'activity-json-1',
+        openTaskId: 'task-json-1',
+      },
+    });
+  });
+
+  it('parses deeply nested object payload data and maps openTaskId', () => {
+    const route = buildNotificationRouteFromData({
+      data: {
+        payload: {
+          activity_id: 'activity-deep-1',
+          task_instance_id: 'task-deep-1',
+          type: 'task-reminder',
+        },
+      },
+    });
+
+    expect(route).toEqual({
+      pathname: '/activity-details',
+      params: {
+        id: 'activity-deep-1',
+        activityId: 'activity-deep-1',
+        openTaskId: 'task-deep-1',
+      },
+    });
+  });
+
+  it('parses deeply nested stringified payload data and maps openTaskId', () => {
+    const route = buildNotificationRouteFromData({
+      data: JSON.stringify({
+        payload: {
+          activity_id: 'activity-deep-json-1',
+          task_instance_id: 'task-deep-json-1',
+          type: 'task-reminder',
+        },
+      }),
+    });
+
+    expect(route).toEqual({
+      pathname: '/activity-details',
+      params: {
+        id: 'activity-deep-json-1',
+        activityId: 'activity-deep-json-1',
+        openTaskId: 'task-deep-json-1',
+      },
+    });
+  });
+
+  it('falls back to activity task list when task id is missing', () => {
+    const route = buildNotificationRouteFromData({
+      activityId: 'activity-only',
+      type: 'task-reminder',
+    });
+
+    expect(route).toEqual({
+      pathname: '/activity-details',
+      params: {
+        id: 'activity-only',
+        activityId: 'activity-only',
       },
     });
   });
@@ -72,19 +149,5 @@ describe('notification deeplink mapping', () => {
         taskId: 'task-no-activity',
       }),
     ).toBeNull();
-  });
-
-  it('does not infer openTaskId from query id when only activity id is present in url', () => {
-    const route = buildNotificationRouteFromData({
-      url: '/activity-details?id=activity-only',
-    });
-
-    expect(route).toEqual({
-      pathname: '/activity-details',
-      params: {
-        id: 'activity-only',
-        activityId: 'activity-only',
-      },
-    });
   });
 });
