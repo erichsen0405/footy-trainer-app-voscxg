@@ -854,6 +854,9 @@ export default function LibraryScreen() {
         const libraryTaskLinksPromise = supabase
           .from('task_templates')
           .select('id, library_exercise_id')
+          .eq('user_id', userId)
+          .is('player_id', null)
+          .is('team_id', null)
           .not('library_exercise_id', 'is', null)
           .order('created_at', { ascending: true });
 

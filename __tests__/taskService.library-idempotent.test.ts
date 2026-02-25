@@ -33,53 +33,29 @@ jest.mock('@/integrations/supabase/client', () => {
       filters: [],
       action: null,
       payload: null,
-      upsertResult: null,
       insertResult: null,
+      insertError: null,
     };
 
     const builder: any = {
-      upsert: (payload: any, options?: { ignoreDuplicates?: boolean }) => {
-        state.action = 'upsert';
-        state.payload = payload;
-
-        const existing = db.taskTemplates.find((row) => (
-          row.user_id === payload.user_id
-          && row.player_id === (payload.player_id ?? null)
-          && row.team_id === (payload.team_id ?? null)
-          && row.library_exercise_id === (payload.library_exercise_id ?? null)
-        ));
-
-        if (existing) {
-          state.upsertResult = options?.ignoreDuplicates ? null : existing;
-        } else {
-          const created: TaskTemplateRow = {
-            id: `template-${db.taskTemplates.length + 1}`,
-            user_id: payload.user_id,
-            player_id: payload.player_id ?? null,
-            team_id: payload.team_id ?? null,
-            library_exercise_id: payload.library_exercise_id ?? null,
-            title: payload.title,
-            description: payload.description ?? '',
-            reminder_minutes: payload.reminder_minutes ?? null,
-            video_url: payload.video_url ?? null,
-            source_folder: payload.source_folder ?? null,
-            after_training_enabled: payload.after_training_enabled ?? false,
-            after_training_delay_minutes: payload.after_training_delay_minutes ?? null,
-            after_training_feedback_enable_score: payload.after_training_feedback_enable_score ?? true,
-            after_training_feedback_score_explanation: payload.after_training_feedback_score_explanation ?? null,
-            after_training_feedback_enable_intensity: payload.after_training_feedback_enable_intensity ?? true,
-            after_training_feedback_enable_note: payload.after_training_feedback_enable_note ?? true,
-            created_at: new Date().toISOString(),
-          };
-          db.taskTemplates.push(created);
-          state.upsertResult = created;
-        }
-
-        return builder;
-      },
       insert: (payload: any) => {
         state.action = 'insert';
         if (table === 'task_templates') {
+          const existing = db.taskTemplates.find((row) => (
+            row.user_id === payload.user_id
+            && row.player_id === (payload.player_id ?? null)
+            && row.team_id === (payload.team_id ?? null)
+            && row.library_exercise_id === (payload.library_exercise_id ?? null)
+          ));
+          if (existing) {
+            state.insertError = {
+              code: '23505',
+              message: 'duplicate key value violates unique constraint "task_templates_user_scope_library_exercise_uidx"',
+            };
+            state.insertResult = null;
+            return builder;
+          }
+
           const created: TaskTemplateRow = {
             id: `template-${db.taskTemplates.length + 1}`,
             user_id: payload.user_id,
@@ -117,10 +93,6 @@ jest.mock('@/integrations/supabase/client', () => {
       limit: () => builder,
       abortSignal: () => builder,
       maybeSingle: async () => {
-        if (state.table === 'task_templates' && state.action === 'upsert') {
-          return { data: state.upsertResult, error: null };
-        }
-
         if (state.table === 'task_templates') {
           const match = db.taskTemplates.find((row) => {
             return state.filters.every((filter: any) => {
@@ -143,7 +115,7 @@ jest.mock('@/integrations/supabase/client', () => {
       },
       single: async () => {
         if (state.table === 'task_templates') {
-          return { data: state.insertResult, error: null };
+          return { data: state.insertResult, error: state.insertError };
         }
         return { data: null, error: null };
       },
