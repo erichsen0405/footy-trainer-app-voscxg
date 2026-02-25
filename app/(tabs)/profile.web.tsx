@@ -9,10 +9,8 @@ import CreatePlayerModal from '@/components/CreatePlayerModal';
 import PlayersList from '@/components/PlayersList';
 import ExternalCalendarManager from '@/components/ExternalCalendarManager';
 import SubscriptionManager from '@/components/SubscriptionManager';
-import AppleSubscriptionManager from '@/components/AppleSubscriptionManager';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useSubscriptionFeatures } from '@/hooks/useSubscriptionFeatures';
-import { useAppleIAP, PRODUCT_IDS } from '@/contexts/AppleIAPContext';
 import { getSubscriptionGateState } from '@/utils/subscriptionGate';
 
 interface UserProfile {
@@ -52,6 +50,7 @@ const normalizeUpgradeTarget = (value: string | string[] | undefined): UpgradeTa
 
 const extractFirstParamValue = (value?: string | string[]) => (Array.isArray(value) ? value[0] : value);
 const AUTH_REDIRECT_URL = 'footballcoach://auth/callback';
+const PROFILE_EDIT_COLLAPSE_MESSAGE = 'Tryk på Annuller eller Gem, før du kan lukke sektionen.';
 
 const isTruthySearchParam = (value?: string | null) => {
   if (!value) {
@@ -90,13 +89,15 @@ const CollapsibleSection = ({
         <Text style={[styles.sectionTitle, { color: titleColor }]}>{title}</Text>
       </View>
       <View style={styles.sectionHeaderRight}>
-        {headerActions}
-        <IconSymbol
-          ios_icon_name={expanded ? 'chevron.up' : 'chevron.down'}
-          android_material_icon_name={expanded ? 'expand_less' : 'expand_more'}
-          size={24}
-          color={chevronColor}
-        />
+        {headerActions ? <View style={styles.sectionHeaderActions}>{headerActions}</View> : null}
+        <View style={styles.chevronContainer}>
+          <IconSymbol
+            ios_icon_name={expanded ? 'chevron.up' : 'chevron.down'}
+            android_material_icon_name={expanded ? 'expand_less' : 'expand_more'}
+            size={24}
+            color={chevronColor}
+          />
+        </View>
       </View>
     </Pressable>
     {expanded ? children : null}
@@ -145,6 +146,7 @@ export default function ProfileScreen() {
   const [forceShowPlansOnce, setForceShowPlansOnce] = useState(false);
   const forceShowPlansTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoOpenTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const openSubscriptionScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const updateOpenSubscriptionParam = useCallback(
     (value?: string) => {
       try {
@@ -170,6 +172,21 @@ export default function ProfileScreen() {
     }
   }, []);
 
+  const clearOpenSubscriptionScrollTimeout = useCallback(() => {
+    if (openSubscriptionScrollTimeoutRef.current) {
+      clearTimeout(openSubscriptionScrollTimeoutRef.current);
+      openSubscriptionScrollTimeoutRef.current = null;
+    }
+  }, []);
+
+  const handleToggleProfileInfoSection = useCallback(() => {
+    if (isEditingProfile && isProfileInfoExpanded) {
+      window.alert(PROFILE_EDIT_COLLAPSE_MESSAGE);
+      return;
+    }
+    setIsProfileInfoExpanded(prev => !prev);
+  }, [isEditingProfile, isProfileInfoExpanded]);
+
   const scheduleForceShowPlansReset = useCallback(
     (delay = 800) => {
       clearForceShowPlansTimeout();
@@ -183,6 +200,7 @@ export default function ProfileScreen() {
 
   useEffect(() => () => clearForceShowPlansTimeout(), [clearForceShowPlansTimeout]);
   useEffect(() => () => clearAutoOpenTimeout(), [clearAutoOpenTimeout]);
+  useEffect(() => () => clearOpenSubscriptionScrollTimeout(), [clearOpenSubscriptionScrollTimeout]);
 
   useEffect(() => {
     if (!routeEmail) return;
@@ -210,7 +228,6 @@ export default function ProfileScreen() {
 
   // Get subscription status
   const { subscriptionStatus, refreshSubscription } = useSubscription();
-  const { entitlementSnapshot } = useAppleIAP();
   const subscriptionStatusRef = useRef(subscriptionStatus);
   useEffect(() => {
     subscriptionStatusRef.current = subscriptionStatus;
@@ -218,7 +235,7 @@ export default function ProfileScreen() {
   const subscriptionGate = getSubscriptionGateState({
     user,
     subscriptionStatus,
-    entitlementSnapshot,
+    entitlementSnapshot: null,
   });
   const shouldShowChooseSubscription = subscriptionGate.shouldShowChooseSubscription;
 
@@ -232,9 +249,7 @@ export default function ProfileScreen() {
   const canUseCalendarSync = resolvedFeatureAccess.calendarSync;
   const canLinkTrainer = resolvedFeatureAccess.trainerLinking;
   const effectiveUpgradeTarget = manualUpgradeTarget ?? routeUpgradeTarget;
-  const highlightProductId =
-    userRole === 'player' && effectiveUpgradeTarget ? PRODUCT_IDS.PLAYER_PREMIUM : undefined;
-  const shouldHighlightPremiumPlan = Boolean(highlightProductId);
+  const shouldHighlightPremiumPlan = Boolean(userRole === 'player' && effectiveUpgradeTarget);
   const forcePlayerPlanListOpen =
     forceShowPlansOnce ||
     (userRole === 'player' && !subscriptionStatus?.hasSubscription);
@@ -261,10 +276,12 @@ export default function ProfileScreen() {
     setForceShowPlansOnce(true);
     scheduleForceShowPlansReset();
     setIsSubscriptionExpanded(true);
-    setTimeout(() => {
+    clearOpenSubscriptionScrollTimeout();
+    openSubscriptionScrollTimeoutRef.current = setTimeout(() => {
       scrollToSubscription();
+      openSubscriptionScrollTimeoutRef.current = null;
     }, 200);
-  }, [clearForceShowPlansTimeout, scheduleForceShowPlansReset, scrollToSubscription]);
+  }, [clearForceShowPlansTimeout, clearOpenSubscriptionScrollTimeout, scheduleForceShowPlansReset, scrollToSubscription]);
 
   const handleToggleSubscriptionSection = useCallback(() => {
     clearForceShowPlansTimeout();
@@ -309,7 +326,6 @@ export default function ProfileScreen() {
       setUser(user);
       lastKnownUserRef.current = user;
       if (user) {
-        await refreshSubscription();
         await checkUserOnboarding(user.id);
       }
     };
@@ -330,7 +346,6 @@ export default function ProfileScreen() {
         setAuthTransitioning(false);
         setUser(session.user);
         lastKnownUserRef.current = session.user;
-        await refreshSubscription();
         await checkUserOnboarding(session.user.id);
         return;
       }
@@ -343,7 +358,6 @@ export default function ProfileScreen() {
         setUser(stable);
         lastKnownUserRef.current = stable;
         if (stable) {
-          await refreshSubscription();
           await checkUserOnboarding(stable.id);
         }
         setAuthTransitioning(false);
@@ -354,7 +368,7 @@ export default function ProfileScreen() {
       subscription.unsubscribe();
       if (graceTimeoutRef.current) clearTimeout(graceTimeoutRef.current);
     };
-  }, [checkUserOnboarding, refreshSubscription, clearForceShowPlansTimeout]);
+  }, [checkUserOnboarding, clearForceShowPlansTimeout]);
 
   useEffect(() => {
     if (shouldHighlightPremiumPlan) {
@@ -839,18 +853,21 @@ export default function ProfileScreen() {
               <CollapsibleSection
                 title="Profil Information"
                 expanded={isProfileInfoExpanded}
-                onToggle={() => setIsProfileInfoExpanded(prev => !prev)}
+                onToggle={handleToggleProfileInfoSection}
                 titleColor={textColor}
                 chevronColor={textSecondaryColor}
                 icon={<IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={24} color={colors.primary} />}
                 headerActions={
                   !isEditingProfile ? (
                     <Pressable
+                      style={styles.headerIconButton}
                       onPress={(event) => {
                         event.stopPropagation?.();
                         setIsEditingProfile(true);
+                        setIsProfileInfoExpanded(true);
                       }}
                       accessibilityRole="button"
+                      hitSlop={8}
                     >
                       <IconSymbol
                         ios_icon_name="pencil"
@@ -1091,15 +1108,11 @@ export default function ProfileScreen() {
                       Klargør rolle...
                     </Text>
                   </View>
-                ) : userRole === 'player' ? (
-                  <AppleSubscriptionManager
-                    highlightProductId={highlightProductId}
-                    forceShowPlans={forcePlayerPlanListOpen}
-                  />
-                ) : Platform.OS === 'ios' ? (
-                  <AppleSubscriptionManager forceShowPlans={forceShowPlansOnce} />
                 ) : (
-                  <SubscriptionManager forceShowPlans={forceShowPlansOnce} />
+                  <SubscriptionManager
+                    forceShowPlans={userRole === 'player' ? forcePlayerPlanListOpen : forceShowPlansOnce}
+                    selectedRole={subscriptionSelectionRole ?? undefined}
+                  />
                 )}
               </CollapsibleSection>
             </View>
@@ -1197,7 +1210,10 @@ export default function ProfileScreen() {
                     placeholder="din@email.dk"
                     placeholderTextColor={textSecondaryColor}
                     autoCapitalize="none"
+                    autoComplete="email"
+                    textContentType="username"
                     autoCorrect={false}
+                    contextMenuHidden={false}
                     testID="auth.login.emailInput"
                     accessibilityLabel="Email"
                   />
@@ -1212,6 +1228,9 @@ export default function ProfileScreen() {
                     secureTextEntry
                     autoCorrect={false}
                     autoCapitalize="none"
+                    autoComplete="password"
+                    textContentType="password"
+                    contextMenuHidden={false}
                     testID="auth.login.passwordInput"
                     accessibilityLabel="Adgangskode"
                   />
@@ -1413,7 +1432,21 @@ const styles = StyleSheet.create({
   sectionHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+  },
+  sectionHeaderActions: {
+    marginRight: 12,
+  },
+  chevronContainer: {
+    width: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sectionDescription: {
     fontSize: 15,
