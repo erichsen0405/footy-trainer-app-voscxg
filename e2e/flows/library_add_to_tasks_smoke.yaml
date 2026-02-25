@@ -83,7 +83,47 @@ tags:
     timeout: 15000
 - assertVisible: 'tilføjet'
 
-# 15-22) Opret aktivitet
+# 15-20) Simuler ny session og verificer idempotent add
+- launchApp:
+    appId: ${MAESTRO_APP_ID}
+    clearState: false
+- openLink: "footballcoach:///(tabs)/library"
+- extendedWaitUntil:
+    visible:
+      id: '^library\.screen$'
+    timeout: 15000
+- tapOn:
+    id: '^library\.folder\.footballcoach$'
+- runFlow:
+    when:
+      notVisible:
+        id: '^library\.folder\.holdtraening$'
+    commands:
+      - tapOn:
+          id: '^library\.folder\.footballcoach$'
+- tapOn:
+    id: '^library\.folder\.holdtraening$'
+- runFlow:
+    when:
+      notVisible:
+        id: '^library\.folder\.holdtraening_faelles$'
+    commands:
+      - tapOn:
+          id: '^library\.folder\.holdtraening$'
+- tapOn:
+    id: '^library\.folder\.holdtraening_faelles$'
+- scrollUntilVisible:
+    element:
+      id: '^library\.addToTasksButton\.711f3229-2fee-45fe-b46e-87dd1605af03$'
+    direction: DOWN
+    timeout: 15000
+- assertVisible: 'tilføjet'
+- tapOn:
+    id: '^library\.addToTasksButton\.711f3229-2fee-45fe-b46e-87dd1605af03$'
+- assertNotVisible:
+    id: '^library\.addToTasksModal\.confirmButton$'
+
+# 21-28) Opret aktivitet
 - openLink: "footballcoach:///(tabs)/(home)"
 - extendedWaitUntil:
     visible:
@@ -144,7 +184,7 @@ tags:
           commands:
             - tapOn: '^Ok$'
 
-# 23-34) Opdater template i tasks
+# 29-40) Opdater template i tasks
 - openLink: "footballcoach:///(tabs)/tasks"
 - extendedWaitUntil:
     visible:

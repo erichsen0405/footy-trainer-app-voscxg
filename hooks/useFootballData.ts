@@ -1043,7 +1043,7 @@ export const useFootballData = () => {
     await forceRefreshNotificationQueue();
   }, [fetchAllData]);
 
-  type AddTaskOptions = { skipRefresh?: boolean; sourceFolder?: string | null };
+  type AddTaskOptions = { skipRefresh?: boolean; sourceFolder?: string | null; libraryExerciseId?: string | null };
 
   const addTask = useCallback(
     async (task: Omit<Task, 'id'>, options?: AddTaskOptions) => {
@@ -1077,6 +1077,7 @@ export const useFootballData = () => {
           playerId,
           teamId,
           sourceFolder: options?.sourceFolder ?? null,
+          libraryExerciseId: options?.libraryExerciseId ?? null,
         });
 
         if (!created?.id) {

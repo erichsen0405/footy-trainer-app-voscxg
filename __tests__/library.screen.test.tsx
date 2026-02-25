@@ -74,6 +74,7 @@ jest.mock('@/integrations/supabase/client', () => {
         state.inFilter = { column, values };
         return Promise.resolve(mockResolveQuery(state));
       },
+      not: () => builder,
       or: (expr: string) => {
         state.orExpr = expr;
         return Promise.resolve(mockResolveQuery(state));
@@ -114,10 +115,12 @@ function setupSupabaseFixture({
   userId = 'user-1',
   systemExercises = [],
   personalExercises = [],
+  libraryTaskLinks = [],
 }: {
   userId?: string;
   systemExercises?: ExerciseRow[];
   personalExercises?: ExerciseRow[];
+  libraryTaskLinks?: { id: string; library_exercise_id: string }[];
 }) {
   mockAuthGetUser.mockResolvedValue({ data: { user: { id: userId } } });
 
@@ -147,6 +150,10 @@ function setupSupabaseFixture({
 
     if (state.table === 'profiles') {
       return { data: [], error: null };
+    }
+
+    if (state.table === 'task_templates') {
+      return { data: libraryTaskLinks, error: null };
     }
 
     return { data: [], error: null };
@@ -297,10 +304,62 @@ describe('Library screen gating and card state', () => {
     await waitFor(() => {
       expect(addTask).toHaveBeenCalledTimes(1);
     });
+    expect(addTask.mock.calls[0]?.[1]).toMatchObject({
+      libraryExerciseId: 'ex-3',
+    });
 
     const addButton = await findByTestId('library.addToTasksButton.ex-3');
     expect(addButton.props.accessibilityState?.disabled).toBe(true);
     expect(addButton.props.accessibilityLabel).toMatch(/Tilføjet/i);
+  });
+
+  it('keeps add CTA disabled after remount when DB already has linked template', async () => {
+    const addTask = jest.fn().mockResolvedValue({ id: 'task-should-not-create' });
+    mockUseFootball.mockReturnValue({ addTask, tasks: [] });
+
+    setupSupabaseFixture({
+      personalExercises: [
+        {
+          id: 'ex-linked-1',
+          trainer_id: 'user-1',
+          title: 'Linked Drill',
+          is_system: false,
+          is_added_to_tasks: false,
+        },
+      ],
+      libraryTaskLinks: [
+        {
+          id: 'template-linked-1',
+          library_exercise_id: 'ex-linked-1',
+        },
+      ],
+    });
+
+    mockUseUserRole.mockReturnValue({ userRole: 'trainer', isTrainer: true, isAdmin: false });
+    mockUseSubscriptionFeatures.mockReturnValue({
+      featureAccess: { library: true, calendarSync: true, trainerLinking: true },
+      isLoading: false,
+      subscriptionTier: 'trainer_basic',
+    });
+
+    const firstRender = render(<LibraryScreen />);
+    fireEvent.press(await firstRender.findByText(/Personlige/i));
+    await waitFor(async () => {
+      const addButton = await firstRender.findByTestId('library.addToTasksButton.ex-linked-1');
+      expect(addButton.props.accessibilityState?.disabled).toBe(true);
+      expect(addButton.props.accessibilityLabel).toMatch(/Tilføjet/i);
+    });
+    firstRender.unmount();
+
+    const secondRender = render(<LibraryScreen />);
+    fireEvent.press(await secondRender.findByText(/Personlige/i));
+    await waitFor(async () => {
+      const addButton = await secondRender.findByTestId('library.addToTasksButton.ex-linked-1');
+      expect(addButton.props.accessibilityState?.disabled).toBe(true);
+      expect(addButton.props.accessibilityLabel).toMatch(/Tilføjet/i);
+    });
+
+    expect(addTask).not.toHaveBeenCalled();
   });
 
   it('renders video preview when video is attached and fallback text when missing', async () => {
