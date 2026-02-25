@@ -24,7 +24,7 @@ with normalized_library as (
 matched as (
   select
     t.id as task_template_id,
-    min(l.id) as library_exercise_id,
+    (array_agg(l.id order by l.id))[1] as library_exercise_id,
     count(*) as match_count
   from public.task_templates t
   join normalized_library l
