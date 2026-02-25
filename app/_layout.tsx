@@ -12,10 +12,13 @@ import { AdminProvider } from '@/contexts/AdminContext';
 import NotificationPermissionPrompt from '@/components/NotificationPermissionPrompt';
 import { supabase } from '@/integrations/supabase/client';
 import * as Notifications from 'expo-notifications';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { clearPushTokenCache, syncPushTokenForCurrentUser } from '@/utils/pushTokenService';
 import { buildNotificationRouteFromResponse } from '@/utils/notificationDeepLink';
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync().catch(() => {});
+
+const PENDING_NOTIFICATION_ROUTE_KEY = '@pending_notification_route_v1';
 
 const NO_PLAN_TIER_VALUES = new Set([
   'none',
@@ -51,8 +54,20 @@ export default function RootLayout() {
   const handledNotificationIdsRef = useRef<Set<string>>(new Set());
   const [authReady, setAuthReady] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [pendingRouteStorageLoaded, setPendingRouteStorageLoaded] = useState(false);
   const isNavigationReady = Boolean(rootNavigationState?.key);
   const canHandleNotificationNavigation = isNavigationReady && authReady && isAuthenticated;
+
+  const persistPendingRoute = useCallback(
+    (route: { pathname: string; params?: Record<string, string> } | null) => {
+      if (!route) {
+        AsyncStorage.removeItem(PENDING_NOTIFICATION_ROUTE_KEY).catch(() => {});
+        return;
+      }
+      AsyncStorage.setItem(PENDING_NOTIFICATION_ROUTE_KEY, JSON.stringify(route)).catch(() => {});
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!loaded || didHideSplashRef.current) return;
@@ -83,13 +98,28 @@ export default function RootLayout() {
       const responseId = response?.notification?.request?.identifier;
       if (responseId && handledNotificationIdsRef.current.has(responseId)) return;
 
-      const route = buildNotificationRouteFromResponse(response);
-      if (!route) return;
+      const route: { pathname: string; params?: Record<string, string> } =
+        buildNotificationRouteFromResponse(response) ?? {
+          pathname: '/(tabs)/(home)',
+          params: {},
+        };
 
       if (responseId) handledNotificationIdsRef.current.add(responseId);
+      if (route.pathname === '/(tabs)/(home)') {
+        console.warn('[NotificationDeepLink] Missing or invalid payload; falling back to home');
+      }
+      if (
+        route.pathname === '/activity-details' &&
+        !route.params?.openTaskId &&
+        !route.params?.openFeedbackTaskId
+      ) {
+        console.warn('[NotificationDeepLink] Missing task id; opening activity task list instead');
+      }
+
       pendingRouteRef.current = route;
       pendingTaskIdRef.current =
         route.params?.openTaskId ?? route.params?.openFeedbackTaskId ?? null;
+      persistPendingRoute(route);
 
       if (!canHandleNotificationNavigation) {
         Notifications.clearLastNotificationResponseAsync().catch(() => {});
@@ -98,11 +128,47 @@ export default function RootLayout() {
 
       pendingRouteRef.current = null;
       pendingTaskIdRef.current = null;
+      persistPendingRoute(null);
       router.push(route as any);
       Notifications.clearLastNotificationResponseAsync().catch(() => {});
     },
-    [canHandleNotificationNavigation, router],
+    [canHandleNotificationNavigation, persistPendingRoute, router],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.getItem(PENDING_NOTIFICATION_ROUTE_KEY)
+      .then((serialized) => {
+        if (cancelled) return;
+        if (!serialized) {
+          setPendingRouteStorageLoaded(true);
+          return;
+        }
+        try {
+          const parsed = JSON.parse(serialized) as { pathname?: string; params?: Record<string, string> };
+          if (typeof parsed?.pathname !== 'string' || !parsed.pathname.trim().length) return;
+          pendingRouteRef.current = {
+            pathname: parsed.pathname,
+            params: parsed.params && typeof parsed.params === 'object' ? parsed.params : undefined,
+          };
+          pendingTaskIdRef.current =
+            pendingRouteRef.current.params?.openTaskId ??
+            pendingRouteRef.current.params?.openFeedbackTaskId ??
+            null;
+        } catch {
+          AsyncStorage.removeItem(PENDING_NOTIFICATION_ROUTE_KEY).catch(() => {});
+        } finally {
+          setPendingRouteStorageLoaded(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setPendingRouteStorageLoaded(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
@@ -129,13 +195,15 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!canHandleNotificationNavigation) return;
+    if (!pendingRouteStorageLoaded) return;
     const pendingRoute = pendingRouteRef.current;
     if (!pendingRoute) return;
     pendingRouteRef.current = null;
     pendingTaskIdRef.current = null;
+    persistPendingRoute(null);
     router.push(pendingRoute as any);
     Notifications.clearLastNotificationResponseAsync().catch(() => {});
-  }, [canHandleNotificationNavigation, router]);
+  }, [canHandleNotificationNavigation, pendingRouteStorageLoaded, persistPendingRoute, router]);
 
   useEffect(() => {
     let isMounted = true;
