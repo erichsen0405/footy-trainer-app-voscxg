@@ -122,11 +122,13 @@ function setupSupabaseFixture({
   systemExercises = [],
   personalExercises = [],
   libraryTaskLinks = [],
+  enforceLibraryTaskLinkScope = true,
 }: {
   userId?: string;
   systemExercises?: ExerciseRow[];
   personalExercises?: ExerciseRow[];
   libraryTaskLinks?: { id: string; library_exercise_id: string }[];
+  enforceLibraryTaskLinkScope?: boolean;
 }) {
   mockAuthGetUser.mockResolvedValue({ data: { user: { id: userId } } });
 
@@ -159,6 +161,17 @@ function setupSupabaseFixture({
     }
 
     if (state.table === 'task_templates') {
+      if (enforceLibraryTaskLinkScope) {
+        const eqMap = new Map(state.eqFilters.map((entry: any) => [entry.column, entry.value]));
+        const isMap = new Map(state.isFilters.map((entry: any) => [entry.column, entry.value]));
+        const hasExpectedScope =
+          eqMap.get('user_id') === userId &&
+          isMap.get('player_id') === null &&
+          isMap.get('team_id') === null;
+        if (!hasExpectedScope) {
+          return { data: null, error: { message: 'Missing required task_templates self-scope filters' } };
+        }
+      }
       return { data: libraryTaskLinks, error: null };
     }
 
