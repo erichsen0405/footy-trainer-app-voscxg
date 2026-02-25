@@ -2,7 +2,7 @@ import React, { createContext, useContext, ReactNode, useMemo } from 'react';
 import { useFootballData } from '@/hooks/useFootballData';
 import { Activity, ActivityCategory, Task, Trophy, ExternalCalendar } from '@/types';
 
-type AddTaskOptions = { skipRefresh?: boolean; sourceFolder?: string | null };
+type AddTaskOptions = { skipRefresh?: boolean; sourceFolder?: string | null; libraryExerciseId?: string | null };
 
 interface FootballContextType {
   categories: ActivityCategory[];

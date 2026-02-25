@@ -19,6 +19,7 @@ export interface CreateTaskData {
   playerId?: string | null;
   teamId?: string | null;
   sourceFolder?: string | null;
+  libraryExerciseId?: string | null;
 }
 
 export interface UpdateTaskData {
@@ -120,6 +121,12 @@ export const taskService = {
         : ('sourceFolder' in sourceTask
             ? (sourceTask as any).sourceFolder
             : (rawData as CreateTaskData).sourceFolder)) ?? null;
+    const resolvedLibraryExerciseId =
+      ('library_exercise_id' in sourceTask
+        ? (sourceTask as any).library_exercise_id
+        : ('libraryExerciseId' in sourceTask
+            ? (sourceTask as any).libraryExerciseId
+            : (rawData as CreateTaskData).libraryExerciseId)) ?? null;
 
     let resolvedPlayerId: string | null =
       (rawData as CreateTaskData).playerId ?? null;
@@ -138,35 +145,96 @@ export const taskService = {
       }
     }
 
-    const { data: template, error: templateError } = await supabase
-      .from('task_templates')
-      .insert({
-        user_id: user.id,
-        title,
-        description: resolvedDescription,
-        reminder_minutes: resolvedReminder ?? null,
-        video_url: resolvedVideoUrl ?? null,
-        after_training_enabled: resolvedAfterTrainingEnabled,
-        after_training_delay_minutes: resolvedAfterTrainingDelay,
-        after_training_feedback_enable_score: resolvedAfterTrainingFeedbackEnableScore,
-        after_training_feedback_score_explanation: resolvedAfterTrainingFeedbackEnableScore
-          ? resolvedAfterTrainingFeedbackScoreExplanation || null
-          : null,
-        after_training_feedback_enable_intensity: true,
-        after_training_feedback_enable_note: resolvedAfterTrainingFeedbackEnableNote,
-        source_folder: resolvedSourceFolder,
-        player_id: resolvedPlayerId,
-        team_id: resolvedTeamId,
-      })
-      .select('id, title, description, reminder_minutes, video_url, source_folder, after_training_enabled, after_training_delay_minutes, after_training_feedback_enable_score, after_training_feedback_score_explanation, after_training_feedback_enable_intensity, after_training_feedback_enable_note')
-      .abortSignal(signal)
-      .single();
+    const taskTemplatePayload = {
+      user_id: user.id,
+      title,
+      description: resolvedDescription,
+      reminder_minutes: resolvedReminder ?? null,
+      video_url: resolvedVideoUrl ?? null,
+      after_training_enabled: resolvedAfterTrainingEnabled,
+      after_training_delay_minutes: resolvedAfterTrainingDelay,
+      after_training_feedback_enable_score: resolvedAfterTrainingFeedbackEnableScore,
+      after_training_feedback_score_explanation: resolvedAfterTrainingFeedbackEnableScore
+        ? resolvedAfterTrainingFeedbackScoreExplanation || null
+        : null,
+      after_training_feedback_enable_intensity: true,
+      after_training_feedback_enable_note: resolvedAfterTrainingFeedbackEnableNote,
+      source_folder: resolvedSourceFolder,
+      player_id: resolvedPlayerId,
+      team_id: resolvedTeamId,
+      library_exercise_id: resolvedLibraryExerciseId,
+    };
+    const templateSelect =
+      'id, title, description, reminder_minutes, video_url, source_folder, after_training_enabled, after_training_delay_minutes, after_training_feedback_enable_score, after_training_feedback_score_explanation, after_training_feedback_enable_intensity, after_training_feedback_enable_note';
 
-    if (templateError) {
-      throw templateError;
+    let template: any = null;
+    let templateCreated = false;
+
+    if (resolvedLibraryExerciseId) {
+      const { data: upsertedTemplate, error: upsertTemplateError } = await supabase
+        .from('task_templates')
+        .upsert(taskTemplatePayload, {
+          onConflict: 'user_id,player_id,team_id,library_exercise_id',
+          ignoreDuplicates: true,
+        })
+        .select(templateSelect)
+        .abortSignal(signal)
+        .maybeSingle();
+
+      if (upsertTemplateError) {
+        throw upsertTemplateError;
+      }
+
+      if (upsertedTemplate) {
+        template = upsertedTemplate;
+        templateCreated = true;
+      } else {
+        let existingQuery = supabase
+          .from('task_templates')
+          .select(templateSelect)
+          .eq('user_id', user.id)
+          .eq('library_exercise_id', resolvedLibraryExerciseId);
+
+        existingQuery =
+          resolvedPlayerId === null
+            ? existingQuery.is('player_id', null)
+            : existingQuery.eq('player_id', resolvedPlayerId);
+        existingQuery =
+          resolvedTeamId === null
+            ? existingQuery.is('team_id', null)
+            : existingQuery.eq('team_id', resolvedTeamId);
+
+        const { data: existingTemplate, error: existingTemplateError } = await existingQuery
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .abortSignal(signal)
+          .maybeSingle();
+
+        if (existingTemplateError) {
+          throw existingTemplateError;
+        }
+        if (!existingTemplate) {
+          throw new Error('Kunne ikke hente eksisterende opgave for biblioteksøvelse');
+        }
+        template = existingTemplate;
+      }
+    } else {
+      const { data: insertedTemplate, error: insertedTemplateError } = await supabase
+        .from('task_templates')
+        .insert(taskTemplatePayload)
+        .select(templateSelect)
+        .abortSignal(signal)
+        .single();
+
+      if (insertedTemplateError) {
+        throw insertedTemplateError;
+      }
+
+      template = insertedTemplate;
+      templateCreated = true;
     }
 
-    if (resolvedCategoryIds?.length) {
+    if (templateCreated && resolvedCategoryIds?.length) {
       const rows = resolvedCategoryIds.map(categoryId => ({
         task_template_id: template.id,
         category_id: categoryId,

@@ -1254,6 +1254,7 @@ export type Database = {
           created_at: string
           description: string | null
           id: string
+          library_exercise_id: string | null
           player_id: string | null
           reminder_minutes: number | null
           source_folder: string | null
@@ -1273,6 +1274,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          library_exercise_id?: string | null
           player_id?: string | null
           reminder_minutes?: number | null
           source_folder?: string | null
@@ -1292,6 +1294,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          library_exercise_id?: string | null
           player_id?: string | null
           reminder_minutes?: number | null
           source_folder?: string | null

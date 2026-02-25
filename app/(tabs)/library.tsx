@@ -851,18 +851,44 @@ export default function LibraryScreen() {
               .select('*')
               .or(teamIds.length ? `player_id.eq.${userId},team_id.in.(${teamIds.join(',')})` : `player_id.eq.${userId}`)
           : Promise.resolve({ data: [], error: null } as any);
+        const libraryTaskLinksPromise = supabase
+          .from('task_templates')
+          .select('id, library_exercise_id')
+          .not('library_exercise_id', 'is', null)
+          .order('created_at', { ascending: true });
 
-        const [systemRes, personalRes, assignmentsRes] = await Promise.all([systemPromise, personalPromise, assignmentsPromise]);
+        const [systemRes, personalRes, assignmentsRes, libraryTaskLinksRes] = await Promise.all([
+          systemPromise,
+          personalPromise,
+          assignmentsPromise,
+          libraryTaskLinksPromise,
+        ]);
 
         if (systemRes.error) throw systemRes.error;
         if (personalRes?.error) throw personalRes.error;
         if (assignmentsRes?.error) throw assignmentsRes.error;
+        if (libraryTaskLinksRes?.error) throw libraryTaskLinksRes.error;
 
         const system = (systemRes.data || []) as any[];
         const personal = (personalRes?.data || []) as any[];
         const assignments = (assignmentsRes?.data || []) as any[];
+        const libraryTaskLinks = (libraryTaskLinksRes?.data || []) as any[];
 
-        const systemExercises = applyCounterOverrides(applyAdded(system.map(normalizeExercise)));
+        const linkedExerciseIds = new Set<string>();
+        const linkedExerciseTaskMap: Record<string, string> = {};
+        libraryTaskLinks.forEach((row: any) => {
+          const exerciseId = String(row?.library_exercise_id ?? '').trim();
+          const taskTemplateId = String(row?.id ?? '').trim();
+          if (!exerciseId || !taskTemplateId) return;
+          if (linkedExerciseTaskMap[exerciseId]) return;
+          linkedExerciseTaskMap[exerciseId] = taskTemplateId;
+          linkedExerciseIds.add(exerciseId);
+        });
+
+        const applyLinkedAdded = (xs: Exercise[]) =>
+          xs.map(exercise => (linkedExerciseIds.has(exercise.id) ? { ...exercise, is_added_to_tasks: true } : exercise));
+
+        const systemExercises = applyCounterOverrides(applyLinkedAdded(applyAdded(system.map(normalizeExercise))));
 
         let trainerGrouped: { trainerId: string; trainerName: string; exercises: Exercise[] }[] = [];
         if (!isCreator) {
@@ -888,10 +914,14 @@ export default function LibraryScreen() {
             trainerProfiles.find(p => String(p.user_id) === String(trainerId))?.full_name || 'Ukendt træner';
 
           const grouped = new Map<string, Exercise[]>();
+          const seenTrainerExercisePairs = new Set<string>();
           assignments.forEach((a: any) => {
             const tid = String(a.trainer_id || '');
             const eid = String(a.exercise_id || '');
             if (!tid || !eid) return;
+            const pairKey = `${tid}::${eid}`;
+            if (seenTrainerExercisePairs.has(pairKey)) return;
+            seenTrainerExercisePairs.add(pairKey);
             const ex = assignedExercises.find(e => String(e.id) === eid);
             if (!ex) return;
 
@@ -907,13 +937,22 @@ export default function LibraryScreen() {
           }));
         }
 
-        const personalExercises = isCreator ? applyCounterOverrides(applyAdded(personal.map(normalizeExercise))) : [];
+        const personalExercises = isCreator
+          ? applyCounterOverrides(applyLinkedAdded(applyAdded(personal.map(normalizeExercise))))
+          : [];
 
         if (!isMountedRef.current) return;
 
         setFootballCoachExercises(systemExercises);
         setPersonalExercises(personalExercises);
         setTrainerFolders(trainerGrouped);
+        setExerciseTaskMap(prev => ({ ...prev, ...linkedExerciseTaskMap }));
+        setAddedToTasksIds(prev => {
+          if (!linkedExerciseIds.size) return prev;
+          const next = new Set(prev);
+          linkedExerciseIds.forEach(id => next.add(id));
+          return next;
+        });
 
         const hasAny =
           systemExercises.length > 0 ||
@@ -1452,6 +1491,7 @@ export default function LibraryScreen() {
       const created = await addTaskToContext(buildTaskPayload(targetExercise), {
         skipRefresh: true,
         sourceFolder: deriveSourceFolder(targetExercise),
+        libraryExerciseId: targetExercise.id,
       });
 
       setExerciseTaskMap(prev => ({
