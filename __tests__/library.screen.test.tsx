@@ -53,11 +53,13 @@ jest.mock('@/integrations/supabase/client', () => {
       table: string;
       selectArg?: string;
       eqFilters: { column: string; value: unknown }[];
+      isFilters: { column: string; value: unknown }[];
       inFilter?: { column: string; values: unknown[] };
       orExpr?: string;
     } = {
       table,
       eqFilters: [],
+      isFilters: [],
     };
 
     const builder: any = {
@@ -67,6 +69,10 @@ jest.mock('@/integrations/supabase/client', () => {
       },
       eq: (column: string, value: unknown) => {
         state.eqFilters.push({ column, value });
+        return builder;
+      },
+      is: (column: string, value: unknown) => {
+        state.isFilters.push({ column, value });
         return builder;
       },
       order: () => Promise.resolve(mockResolveQuery(state)),

@@ -169,54 +169,55 @@ export const taskService = {
 
     let template: any = null;
     let templateCreated = false;
-
-    if (resolvedLibraryExerciseId) {
-      const { data: upsertedTemplate, error: upsertTemplateError } = await supabase
+    const loadExistingTemplateForLibraryExercise = async () => {
+      let existingQuery = supabase
         .from('task_templates')
-        .upsert(taskTemplatePayload, {
-          onConflict: 'user_id,player_id,team_id,library_exercise_id',
-          ignoreDuplicates: true,
-        })
         .select(templateSelect)
+        .eq('user_id', user.id)
+        .eq('library_exercise_id', resolvedLibraryExerciseId);
+
+      existingQuery =
+        resolvedPlayerId === null
+          ? existingQuery.is('player_id', null)
+          : existingQuery.eq('player_id', resolvedPlayerId);
+      existingQuery =
+        resolvedTeamId === null
+          ? existingQuery.is('team_id', null)
+          : existingQuery.eq('team_id', resolvedTeamId);
+
+      const { data: existingTemplate, error: existingTemplateError } = await existingQuery
+        .order('created_at', { ascending: true })
+        .limit(1)
         .abortSignal(signal)
         .maybeSingle();
 
-      if (upsertTemplateError) {
-        throw upsertTemplateError;
+      if (existingTemplateError) {
+        throw existingTemplateError;
+      }
+      if (!existingTemplate) {
+        throw new Error('Kunne ikke hente eksisterende opgave for biblioteksøvelse');
       }
 
-      if (upsertedTemplate) {
-        template = upsertedTemplate;
-        templateCreated = true;
+      return existingTemplate;
+    };
+
+    if (resolvedLibraryExerciseId) {
+      const { data: insertedTemplate, error: insertedTemplateError } = await supabase
+        .from('task_templates')
+        .insert(taskTemplatePayload)
+        .select(templateSelect)
+        .abortSignal(signal)
+        .single();
+
+      if (insertedTemplateError) {
+        const isLibraryUniqueViolation = insertedTemplateError?.code === '23505';
+        if (!isLibraryUniqueViolation) {
+          throw insertedTemplateError;
+        }
+        template = await loadExistingTemplateForLibraryExercise();
       } else {
-        let existingQuery = supabase
-          .from('task_templates')
-          .select(templateSelect)
-          .eq('user_id', user.id)
-          .eq('library_exercise_id', resolvedLibraryExerciseId);
-
-        existingQuery =
-          resolvedPlayerId === null
-            ? existingQuery.is('player_id', null)
-            : existingQuery.eq('player_id', resolvedPlayerId);
-        existingQuery =
-          resolvedTeamId === null
-            ? existingQuery.is('team_id', null)
-            : existingQuery.eq('team_id', resolvedTeamId);
-
-        const { data: existingTemplate, error: existingTemplateError } = await existingQuery
-          .order('created_at', { ascending: true })
-          .limit(1)
-          .abortSignal(signal)
-          .maybeSingle();
-
-        if (existingTemplateError) {
-          throw existingTemplateError;
-        }
-        if (!existingTemplate) {
-          throw new Error('Kunne ikke hente eksisterende opgave for biblioteksøvelse');
-        }
-        template = existingTemplate;
+        template = insertedTemplate;
+        templateCreated = true;
       }
     } else {
       const { data: insertedTemplate, error: insertedTemplateError } = await supabase
