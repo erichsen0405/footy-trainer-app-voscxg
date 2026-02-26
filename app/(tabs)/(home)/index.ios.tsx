@@ -1331,7 +1331,7 @@ export default function HomeScreen() {
       contextName={selectedContext?.name ?? undefined}
       contextType={adminTargetType || 'player'}
     >
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="dark-content" />
 
       {loading ? (
         <HomeSkeleton />
