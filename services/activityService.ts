@@ -668,16 +668,7 @@ export const activityService = {
   async duplicateActivity(activityId: string, userId: string, playerId?: string | null, teamId?: string | null, signal: AbortSignal = new AbortController().signal): Promise<void> {
     const { data: activity, error: fetchError } = await supabase
       .from('activities')
-      .select(`
-        *,
-        activity_tasks(
-          id,
-          title,
-          description,
-          completed,
-          reminder_minutes
-        )
-      `)
+      .select('*')
       .eq('id', activityId)
       .abortSignal(signal)
       .single();
@@ -711,31 +702,5 @@ export const activityService = {
       .single();
 
     if (activityError) throw activityError;
-
-    const sourceTasks = Array.isArray((activity as any)?.activity_tasks)
-      ? ((activity as any).activity_tasks as any[])
-      : [];
-
-    if (!sourceTasks.length) {
-      return;
-    }
-
-    const taskRows = sourceTasks.map((task: any) => ({
-      activity_id: newActivity.id,
-      title: task?.title ?? '',
-      description: task?.description ?? '',
-      completed: !!task?.completed,
-      reminder_minutes:
-        typeof task?.reminder_minutes === 'number'
-          ? task.reminder_minutes
-          : null,
-    }));
-
-    const { error: taskInsertError } = await supabase
-      .from('activity_tasks')
-      .insert(taskRows)
-      .abortSignal(signal);
-
-    if (taskInsertError) throw taskInsertError;
   },
 };

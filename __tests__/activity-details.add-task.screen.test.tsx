@@ -393,6 +393,71 @@ describe('ActivityDetails add-task flow', () => {
     expect(onBack).toHaveBeenCalled();
   });
 
+  it('keeps edit inputs stable while typing continuous text', () => {
+    const baseActivity = {
+      id: 'activity-edit-typing-1',
+      title: 'Session',
+      date: new Date('2026-02-10T10:00:00.000Z'),
+      time: '10:00',
+      location: 'Pitch',
+      category: {
+        id: 'cat-1',
+        name: 'Training',
+        color: '#123456',
+        emoji: '⚽️',
+      },
+      tasks: [],
+      isExternal: false,
+      intensityEnabled: false,
+      intensity: null,
+    };
+
+    const onActivityUpdated = jest.fn();
+    const { getByTestId, rerender } = render(
+      <ActivityDetailsModule.ActivityDetailsContent
+        activity={baseActivity as any}
+        categories={[baseActivity.category as any]}
+        isAdmin
+        isDark={false}
+        onBack={jest.fn()}
+        onActivityUpdated={onActivityUpdated}
+      />,
+    );
+
+    fireEvent.press(getByTestId('activity.details.editButton'));
+
+    const titleInput = getByTestId('activity.details.edit.titleInput');
+    fireEvent.changeText(titleInput, 'a');
+    rerender(
+      <ActivityDetailsModule.ActivityDetailsContent
+        activity={{ ...baseActivity } as any}
+        categories={[baseActivity.category as any]}
+        isAdmin
+        isDark={false}
+        onBack={jest.fn()}
+        onActivityUpdated={onActivityUpdated}
+      />,
+    );
+
+    fireEvent.changeText(getByTestId('activity.details.edit.titleInput'), 'ab');
+    rerender(
+      <ActivityDetailsModule.ActivityDetailsContent
+        activity={{ ...baseActivity } as any}
+        categories={[baseActivity.category as any]}
+        isAdmin
+        isDark={false}
+        onBack={jest.fn()}
+        onActivityUpdated={onActivityUpdated}
+      />,
+    );
+
+    fireEvent.changeText(getByTestId('activity.details.edit.titleInput'), 'abc');
+    expect(getByTestId('activity.details.edit.titleInput').props.value).toBe('abc');
+
+    fireEvent.changeText(getByTestId('activity.details.edit.locationInput'), 'abc');
+    expect(getByTestId('activity.details.edit.locationInput').props.value).toBe('abc');
+  });
+
   it('reverts intensity toggle on cancel from category modal', async () => {
     const sampleActivity = {
       id: 'activity-plain-1',

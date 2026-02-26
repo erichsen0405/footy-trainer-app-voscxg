@@ -82,7 +82,7 @@ describe('API mocking harness (offline deterministic)', () => {
     expect(deleteRequests).toHaveLength(1);
   });
 
-  it('duplicates deterministic activity with tasks without real backend access', async () => {
+  it('duplicates deterministic activity without copying existing task instances', async () => {
     await activityService.duplicateActivity(
       fixtureActivityWithTasks.id,
       fixtureUsers.entitled.id,
@@ -94,19 +94,6 @@ describe('API mocking harness (offline deterministic)', () => {
     expect(log.map(entry => `${entry.method}:${entry.table}`)).toEqual([
       'GET:activities',
       'POST:activities',
-      'POST:activity_tasks',
     ]);
-
-    const taskInsertBody = (log[2]?.body ?? []) as { title?: string; activity_id?: string }[];
-    expect(Array.isArray(taskInsertBody)).toBe(true);
-    expect(taskInsertBody).toHaveLength(2);
-    expect(taskInsertBody[0]).toMatchObject({
-      title: fixtureActivityWithTasks.activity_tasks[0].title,
-      activity_id: 'activity-duplicate-001',
-    });
-    expect(taskInsertBody[1]).toMatchObject({
-      title: fixtureActivityWithTasks.activity_tasks[1].title,
-      activity_id: 'activity-duplicate-001',
-    });
   });
 });
