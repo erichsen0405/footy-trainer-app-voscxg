@@ -1802,6 +1802,8 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
 
   useEffect(() => {
+    if (isEditing) return;
+
     setEditTitle(activity.title);
     setEditLocation(activity.location);
     setEditDate(activity.date);
@@ -1818,7 +1820,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
     setEditIntensityEnabled(hasExplicitFlag ? resolvedFlag : resolvedFlag || resolvedValue !== null);
     setEditIntensity(resolvedValue);
-  }, [activity]);
+  }, [activity, isEditing]);
 
   useEffect(() => {
     setEditScope('single');
@@ -3287,6 +3289,8 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     shouldShowActivityIntensityField,
   ]);
 
+  const listHeaderComponent = useMemo(() => renderListHeader(), [renderListHeader]);
+
   const handleDeleteClick = useCallback(() => {
     if (activity?.isExternal) {
       Alert.alert(
@@ -4166,7 +4170,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           keyExtractor={taskKeyExtractor}
           renderItem={renderTaskItem}
           keyboardShouldPersistTaps="handled"
-          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             styles.scrollContent,
@@ -4175,7 +4179,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             },
           ]}
           ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
-          ListHeaderComponent={renderListHeader}
+          ListHeaderComponent={listHeaderComponent}
         />
       </View>
 
