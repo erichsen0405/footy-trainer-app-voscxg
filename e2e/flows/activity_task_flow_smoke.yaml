@@ -414,11 +414,23 @@ tags:
             visible: '^Fortsæt$'
           commands:
             - tapOn: '^Fortsæt$'
-      - tapOn:
-          id: '^tasks\.template\.deleteModal\.input$'
-      - inputText: 'SLET'
-      - tapOn:
-          id: '^tasks\.template\.deleteModal\.confirmButton$'
+      - runFlow:
+          when:
+            visible:
+              id: '^tasks\.template\.deleteModal\.input$'
+          commands:
+            - tapOn:
+                id: '^tasks\.template\.deleteModal\.input$'
+            - inputText: 'SLET'
+            - pressKey: Enter
+            - runFlow: _platform_keyboard_commit_input.yaml
+      - runFlow:
+          when:
+            visible:
+              id: '^tasks\.template\.deleteModal\.confirmButton$'
+          commands:
+            - tapOn:
+                id: '^tasks\.template\.deleteModal\.confirmButton$'
       - runFlow:
           when:
             visible: '^(OK|Ok)$'
