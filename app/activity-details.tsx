@@ -1691,7 +1691,17 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     if (!pendingNormalTaskId) return;
     const task = tasksState.find((t) => String(t.id) === String(pendingNormalTaskId));
     if (!task) return;
-    if (resolveFeedbackTemplateId(task)) return;
+    const feedbackTemplateId = resolveFeedbackTemplateId(task);
+    if (feedbackTemplateId) {
+      const taskInstanceId =
+        normalizeId(task.id ?? (task as any)?.task_id) ??
+        String(task.id ?? feedbackTemplateId);
+      setFeedbackModalTask({ task, templateId: feedbackTemplateId, taskInstanceId });
+      setFeedbackModalError(null);
+      setPendingNormalTaskId(null);
+      setDeepLinkTaskLookupState('idle');
+      return;
+    }
     setSelectedNormalTask(task);
     setIsNormalTaskModalVisible(true);
     setPendingNormalTaskId(null);
