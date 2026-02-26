@@ -58,7 +58,7 @@
  */
 
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform, useColorScheme, DeviceEventEmitter } from 'react-native';
+import { FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform, useColorScheme, DeviceEventEmitter, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -1229,9 +1229,13 @@ export default function HomeScreen() {
         {/* Header */}
         <View style={[styles.header, { paddingTop: headerPaddingTop, paddingBottom: headerPaddingBottom }]}>
           <View style={styles.logoContainer}>
-            <View style={styles.logo}>
-              <Text style={styles.logoIcon}>⚽</Text>
-            </View>
+            <Image
+              source={require('../../../assets/images/fc_logo_blue.png')}
+              style={styles.headerLogo}
+              resizeMode="contain"
+              accessibilityLabel="Football Coach logo"
+              testID="home-header-logo"
+            />
           </View>
           <View style={styles.headerTextContainer}>
             <Text style={styles.headerTitle}>Football Coach</Text>
@@ -1327,7 +1331,7 @@ export default function HomeScreen() {
       contextName={selectedContext?.name ?? undefined}
       contextType={adminTargetType || 'player'}
     >
-      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
+      <StatusBar barStyle="light-content" />
 
       {loading ? (
         <HomeSkeleton />
@@ -1376,7 +1380,7 @@ const styles = StyleSheet.create({
 
   // Header
   header: {
-    backgroundColor: '#2C3E50',
+    backgroundColor: '#162634',
     paddingHorizontal: 20,
     paddingTop: Platform.OS === 'android' ? 48 : 16,
     flexDirection: 'row',
@@ -1384,25 +1388,20 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     marginRight: 16,
-  },
-  logo: {
     width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    height: 41,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
-  logoIcon: {
-    fontSize: 32,
+  headerLogo: {
+    width: 60,
+    height: 41,
   },
   headerTextContainer: {
     flex: 1,
   },
   headerTitle: {
-    fontSize: 36,
+    fontSize: 32.4,
     fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: 0.5,
