@@ -16,6 +16,8 @@ export interface CreateTaskData {
   afterTrainingFeedbackScoreExplanation?: string | null;
   afterTrainingFeedbackEnableIntensity?: boolean;
   afterTrainingFeedbackEnableNote?: boolean;
+  taskDurationEnabled?: boolean;
+  taskDurationMinutes?: number | null;
   playerId?: string | null;
   teamId?: string | null;
   sourceFolder?: string | null;
@@ -34,6 +36,8 @@ export interface UpdateTaskData {
   afterTrainingFeedbackScoreExplanation?: string | null;
   afterTrainingFeedbackEnableIntensity?: boolean;
   afterTrainingFeedbackEnableNote?: boolean;
+  taskDurationEnabled?: boolean;
+  taskDurationMinutes?: number | null;
 }
 
 type SeriesFeedbackSummary = {
@@ -58,6 +62,14 @@ export interface P8CreateTaskArgs {
 
 const isP8CreateTaskArgs = (value: unknown): value is P8CreateTaskArgs =>
   !!value && typeof value === 'object' && 'task' in value;
+
+const normalizeTaskDurationMinutes = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  const rounded = Math.round(parsed);
+  return rounded >= 0 ? rounded : null;
+};
 
 export const taskService = {
   /* ======================================================
@@ -115,6 +127,17 @@ export const taskService = {
       ('afterTrainingFeedbackEnableNote' in sourceTask
         ? (sourceTask as any).afterTrainingFeedbackEnableNote
         : (rawData as CreateTaskData).afterTrainingFeedbackEnableNote) ?? true;
+    const resolvedTaskDurationEnabled =
+      ('taskDurationEnabled' in sourceTask
+        ? (sourceTask as any).taskDurationEnabled
+        : (rawData as CreateTaskData).taskDurationEnabled) ?? false;
+    const resolvedTaskDurationMinutes = resolvedTaskDurationEnabled
+      ? normalizeTaskDurationMinutes(
+          'taskDurationMinutes' in sourceTask
+            ? (sourceTask as any).taskDurationMinutes
+            : (rawData as CreateTaskData).taskDurationMinutes
+        )
+      : null;
     const resolvedSourceFolder =
       ('source_folder' in sourceTask
         ? (sourceTask as any).source_folder
@@ -159,13 +182,15 @@ export const taskService = {
         : null,
       after_training_feedback_enable_intensity: true,
       after_training_feedback_enable_note: resolvedAfterTrainingFeedbackEnableNote,
+      task_duration_enabled: resolvedTaskDurationEnabled,
+      task_duration_minutes: resolvedTaskDurationMinutes,
       source_folder: resolvedSourceFolder,
       player_id: resolvedPlayerId,
       team_id: resolvedTeamId,
       library_exercise_id: resolvedLibraryExerciseId,
     };
     const templateSelect =
-      'id, title, description, reminder_minutes, video_url, source_folder, after_training_enabled, after_training_delay_minutes, after_training_feedback_enable_score, after_training_feedback_score_explanation, after_training_feedback_enable_intensity, after_training_feedback_enable_note';
+      'id, title, description, reminder_minutes, video_url, source_folder, after_training_enabled, after_training_delay_minutes, after_training_feedback_enable_score, after_training_feedback_score_explanation, after_training_feedback_enable_intensity, after_training_feedback_enable_note, task_duration_enabled, task_duration_minutes';
 
     let template: any = null;
     let templateCreated = false;
@@ -293,6 +318,8 @@ export const taskService = {
       // Always return true so UI/clients see a consistent state
       afterTrainingFeedbackEnableIntensity: true,
       afterTrainingFeedbackEnableNote: template.after_training_feedback_enable_note ?? true,
+      taskDurationEnabled: template.task_duration_enabled ?? false,
+      taskDurationMinutes: template.task_duration_minutes ?? null,
     };
   },
 
@@ -355,6 +382,17 @@ export const taskService = {
 
     if (updates.afterTrainingFeedbackEnableNote !== undefined) {
       updateData.after_training_feedback_enable_note = updates.afterTrainingFeedbackEnableNote;
+    }
+
+    if (updates.taskDurationEnabled !== undefined) {
+      updateData.task_duration_enabled = updates.taskDurationEnabled;
+      if (!updates.taskDurationEnabled) {
+        updateData.task_duration_minutes = null;
+      }
+    }
+
+    if (updates.taskDurationMinutes !== undefined) {
+      updateData.task_duration_minutes = normalizeTaskDurationMinutes(updates.taskDurationMinutes);
     }
 
     updateData.updated_at = new Date().toISOString();

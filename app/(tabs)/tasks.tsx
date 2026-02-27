@@ -27,6 +27,7 @@ import { AdminContextWrapper } from '@/components/AdminContextWrapper';
 import { supabase } from '@/integrations/supabase/client';
 import { taskService } from '@/services/taskService';
 import { forceRefreshNotificationQueue } from '@/utils/notificationScheduler';
+import { emitActivitiesRefreshRequested } from '@/utils/activityEvents';
 
 // ✅ Robust import: undgå Hermes-crash hvis named export "colors" ikke findes
 import * as CommonStyles from '@/styles/commonStyles';
@@ -57,6 +58,14 @@ const normalizeReminderValue = (value: unknown): number | null => {
   if (value === null || value === undefined || value === '') return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+};
+
+const normalizeTaskDurationValue = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  const rounded = Math.round(parsed);
+  return rounded >= 0 ? rounded : null;
 };
 
 // Local helper function to validate video URLs
@@ -307,6 +316,15 @@ export const TaskCard = React.memo(
           </View>
         )}
 
+        {!!(task as any)?.taskDurationEnabled && (
+          <View style={styles.reminderBadge}>
+            <IconSymbol ios_icon_name="clock.fill" android_material_icon_name="schedule" size={14} color={colors.primary} />
+            <Text style={[styles.reminderText, { color: colors.primary }]}>
+              {String((task as any)?.taskDurationMinutes ?? 0)} min opgavetid
+            </Text>
+          </View>
+        )}
+
         <View style={styles.categoriesRow}>
           <IconSymbol ios_icon_name="tag.fill" android_material_icon_name="label" size={14} color={isDark ? '#999' : colors.textSecondary} />
           <Text style={[styles.categoriesText, { color: isDark ? '#999' : colors.textSecondary }]}>
@@ -492,7 +510,12 @@ export default function TasksScreen() {
 
   const openTaskModal = useCallback(async (task: Task | null, creating: boolean = false) => {
     const normalizedTask = task
-      ? ({ ...(task as any), reminder: normalizeReminderValue((task as any).reminder) } as Task)
+      ? ({
+          ...(task as any),
+          reminder: normalizeReminderValue((task as any).reminder),
+          taskDurationEnabled: !!(task as any).taskDurationEnabled,
+          taskDurationMinutes: normalizeTaskDurationValue((task as any).taskDurationMinutes),
+        } as Task)
       : task;
 
     setSelectedTask(normalizedTask);
@@ -552,6 +575,8 @@ export default function TasksScreen() {
         afterTrainingFeedbackEnableScore: selectedTask.afterTrainingFeedbackEnableScore ?? true,
         afterTrainingFeedbackScoreExplanation: selectedTask.afterTrainingFeedbackScoreExplanation ?? null,
         afterTrainingFeedbackEnableNote: selectedTask.afterTrainingFeedbackEnableNote ?? true,
+        taskDurationEnabled: selectedTask.taskDurationEnabled ?? false,
+        taskDurationMinutes: selectedTask.taskDurationEnabled ? (selectedTask.taskDurationMinutes ?? 0) : null,
         // Always enable intensity when persisting feedback settings
         afterTrainingFeedbackEnableIntensity: true,
       } as Task;
@@ -574,6 +599,8 @@ export default function TasksScreen() {
           categoryIds,
           afterTrainingEnabled: selectedTask.afterTrainingEnabled ?? false,
           afterTrainingDelayMinutes: selectedTask.afterTrainingEnabled ? (selectedTask.afterTrainingDelayMinutes ?? 0) : null,
+          taskDurationEnabled: selectedTask.taskDurationEnabled ?? false,
+          taskDurationMinutes: selectedTask.taskDurationEnabled ? (selectedTask.taskDurationMinutes ?? 0) : null,
           // Force intensity to remain enabled on updates
           afterTrainingFeedbackEnableIntensity: true,
         };
@@ -600,6 +627,7 @@ export default function TasksScreen() {
       }
 
       await refreshAll();
+      emitActivitiesRefreshRequested({ reason: 'task_template_saved_from_tasks_screen' });
       Alert.alert('Succes', successMessage);
     } catch (error: any) {
       Alert.alert('Fejl', 'Kunne ikke gemme opgave: ' + (error?.message || 'Ukendt fejl'));
@@ -805,8 +833,21 @@ export default function TasksScreen() {
     });
   }, []);
 
+  const handleTaskDurationToggle = useCallback((value: boolean) => {
+    setSelectedTask(prev => {
+      if (!prev) return prev;
+      const current = normalizeTaskDurationValue((prev as any).taskDurationMinutes);
+      return {
+        ...(prev as any),
+        taskDurationEnabled: value,
+        taskDurationMinutes: value ? (current ?? 0) : null,
+      } as Task;
+    });
+  }, []);
+
   const reminderEnabled =
     !!selectedTask && (selectedTask as any).reminder !== null && (selectedTask as any).reminder !== undefined;
+  const taskDurationEnabled = !!selectedTask?.taskDurationEnabled;
 
   const afterTrainingScoreEnabled = selectedTask?.afterTrainingFeedbackEnableScore ?? true;
   const afterTrainingNoteEnabled = selectedTask?.afterTrainingFeedbackEnableNote ?? true;
@@ -918,6 +959,8 @@ export default function TasksScreen() {
                     afterTrainingFeedbackEnableScore: true,
                     afterTrainingFeedbackScoreExplanation: '',
                     afterTrainingFeedbackEnableNote: true,
+                    taskDurationEnabled: false,
+                    taskDurationMinutes: null,
                   } as any,
                   true,
                 )
@@ -1274,6 +1317,59 @@ export default function TasksScreen() {
                         <Text style={[styles.helperText, { color: textSecondaryColor, marginTop: 6 }]}>
                           Vises efter aktivitetens sluttidspunkt + valgt delay.
                         </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <View style={styles.reminderSectionSpacing} />
+
+                  <View
+                    style={[
+                      styles.reminderSectionCard,
+                      {
+                        backgroundColor: bgColor,
+                        borderColor: isDark ? '#333' : '#dfe5f2',
+                      },
+                    ]}
+                  >
+                    <View style={styles.reminderSectionHeader}>
+                      <View style={styles.toggleTextWrapper}>
+                        <Text style={[styles.toggleLabel, { color: textColor }]}>Tid på opgave</Text>
+                        <Text style={[styles.toggleHelperText, { color: textSecondaryColor }]}>
+                          Når slået til tæller opgavetiden i performance-kortet i stedet for aktivitetstiden.
+                        </Text>
+                      </View>
+                      <Switch
+                        value={taskDurationEnabled}
+                        onValueChange={handleTaskDurationToggle}
+                        trackColor={{ false: isDark ? '#555' : '#d0d7e3', true: colors.primary }}
+                        thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
+                        ios_backgroundColor={isDark ? '#555' : '#d0d7e3'}
+                        disabled={isSaving}
+                        testID="tasks.template.durationToggle"
+                      />
+                    </View>
+
+                    {taskDurationEnabled && (
+                      <View style={styles.reminderSectionBody}>
+                        <Text style={[styles.label, { color: textColor }]}>Varighed (minutter)</Text>
+                        <TextInput
+                          style={[styles.input, { backgroundColor: bgColor, color: textColor, marginBottom: 0 }]}
+                          value={String(selectedTask?.taskDurationMinutes ?? 0)}
+                          onChangeText={(text) =>
+                            setSelectedTask(prev =>
+                              prev
+                                ? ({
+                                    ...prev,
+                                    taskDurationMinutes: normalizeTaskDurationValue(text) ?? 0,
+                                  } as Task)
+                                : prev
+                            )
+                          }
+                          keyboardType="number-pad"
+                          editable={!isSaving}
+                          testID="tasks.template.durationMinutesInput"
+                        />
                       </View>
                     )}
                   </View>

@@ -1305,6 +1305,8 @@ export type Database = {
           library_exercise_id: string | null
           player_id: string | null
           reminder_minutes: number | null
+          task_duration_enabled: boolean
+          task_duration_minutes: number | null
           source_folder: string | null
           team_id: string | null
           title: string
@@ -1325,6 +1327,8 @@ export type Database = {
           library_exercise_id?: string | null
           player_id?: string | null
           reminder_minutes?: number | null
+          task_duration_enabled?: boolean
+          task_duration_minutes?: number | null
           source_folder?: string | null
           team_id?: string | null
           title: string
@@ -1345,6 +1349,8 @@ export type Database = {
           library_exercise_id?: string | null
           player_id?: string | null
           reminder_minutes?: number | null
+          task_duration_enabled?: boolean
+          task_duration_minutes?: number | null
           source_folder?: string | null
           team_id?: string | null
           title?: string

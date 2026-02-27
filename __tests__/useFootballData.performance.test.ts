@@ -3,7 +3,12 @@ import {
   shouldIncludeExternalIntensityInPerformance,
   shouldIncludeExternalTaskInPerformance,
 } from '@/hooks/useFootballData';
-import { formatHoursDa, getActivityDurationMinutes } from '@/utils/activityDuration';
+import {
+  formatHoursDa,
+  getActivityDurationMinutes,
+  getActivityEffectiveDurationMinutes,
+  getTaskDurationMinutes,
+} from '@/utils/activityDuration';
 
 describe('shouldIncludeExternalTaskInPerformance', () => {
   it('excludes pending tasks for soft-deleted external events', () => {
@@ -150,9 +155,124 @@ describe('getActivityDurationMinutes', () => {
     expect(minutes).toBe(75);
   });
 
+  it('ignores all-day external events to avoid 24h inflation', () => {
+    const minutes = getActivityDurationMinutes({
+      start_date: '2026-02-24',
+      start_time: '00:00:00',
+      end_date: '2026-02-25',
+      end_time: '00:00:00',
+    });
+
+    expect(minutes).toBe(0);
+  });
+
   it('returns 0 when duration data is missing', () => {
     expect(getActivityDurationMinutes({ title: 'No duration' })).toBe(0);
     expect(getActivityDurationMinutes(null)).toBe(0);
+  });
+});
+
+describe('getTaskDurationMinutes', () => {
+  it('returns task minutes when task duration is enabled', () => {
+    expect(getTaskDurationMinutes({ task_duration_enabled: true, task_duration_minutes: 30 })).toBe(30);
+    expect(getTaskDurationMinutes({ taskDurationEnabled: true, taskDurationMinutes: '45' })).toBe(45);
+  });
+
+  it('returns 0 when task duration is disabled or missing', () => {
+    expect(getTaskDurationMinutes({ task_duration_enabled: false, task_duration_minutes: 30 })).toBe(0);
+    expect(getTaskDurationMinutes({ title: 'Task without duration' })).toBe(0);
+  });
+
+  it('returns 0 for feedback tasks even when duration is enabled', () => {
+    expect(
+      getTaskDurationMinutes({
+        title: 'Feedback på: Pasning',
+        task_duration_enabled: true,
+        task_duration_minutes: 30,
+      })
+    ).toBe(0);
+    expect(
+      getTaskDurationMinutes({
+        feedback_template_id: 'template-1',
+        task_duration_enabled: true,
+        task_duration_minutes: 45,
+      })
+    ).toBe(0);
+  });
+});
+
+describe('getActivityEffectiveDurationMinutes', () => {
+  it('uses sum of task durations when at least one task has duration enabled', () => {
+    const activity = {
+      activity_date: '2026-02-24',
+      activity_time: '10:00:00',
+      activity_end_time: '12:00:00',
+      tasks: [
+        { task_duration_enabled: true, task_duration_minutes: 30 },
+        { task_duration_enabled: true, task_duration_minutes: 45 },
+      ],
+    };
+
+    expect(getActivityEffectiveDurationMinutes(activity)).toBe(75);
+  });
+
+  it('falls back to activity duration when no task durations are enabled', () => {
+    const activity = {
+      activity_date: '2026-02-24',
+      activity_time: '10:00:00',
+      activity_end_time: '12:00:00',
+      tasks: [{ task_duration_enabled: false, task_duration_minutes: 30 }],
+    };
+
+    expect(getActivityEffectiveDurationMinutes(activity)).toBe(120);
+  });
+
+  it('keeps task precedence even when enabled task duration is zero', () => {
+    const activity = {
+      activity_date: '2026-02-24',
+      activity_time: '10:00:00',
+      activity_end_time: '12:00:00',
+      tasks: [{ task_duration_enabled: true, task_duration_minutes: 0 }],
+    };
+
+    expect(getActivityEffectiveDurationMinutes(activity)).toBe(0);
+  });
+
+  it('ignores feedback task durations in task sum', () => {
+    const activity = {
+      activity_date: '2026-02-24',
+      activity_time: '10:00:00',
+      activity_end_time: '12:00:00',
+      tasks: [
+        { title: 'Normal opgave', task_duration_enabled: true, task_duration_minutes: 30 },
+        {
+          title: 'Feedback på: Normal opgave',
+          task_duration_enabled: true,
+          task_duration_minutes: 30,
+          feedback_template_id: 'fb-1',
+        },
+      ],
+    };
+
+    expect(getActivityEffectiveDurationMinutes(activity)).toBe(30);
+  });
+
+  it('falls back to activity duration when only feedback task has duration enabled', () => {
+    const activity = {
+      activity_date: '2026-02-24',
+      activity_time: '10:00:00',
+      activity_end_time: '12:00:00',
+      tasks: [
+        {
+          title: 'Feedback på: Teknik',
+          task_duration_enabled: true,
+          task_duration_minutes: 30,
+          feedback_template_id: 'fb-2',
+        },
+      ],
+    };
+
+    expect(getActivityEffectiveDurationMinutes(activity)).toBe(120);
   });
 });
 

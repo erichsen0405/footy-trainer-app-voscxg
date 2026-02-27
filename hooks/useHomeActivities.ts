@@ -22,6 +22,8 @@ interface ActivityTask {
   completed: boolean;
   reminder_minutes?: number | null;
   after_training_delay_minutes?: number | null;
+  task_duration_enabled?: boolean | null;
+  task_duration_minutes?: number | null;
   video_url?: string;
   feedback_template_id?: string | null;
   task_template_id?: string | null;
@@ -466,7 +468,9 @@ export function useHomeActivities(): UseHomeActivitiesResult {
               title,
               description,
               completed,
-              reminder_minutes
+              reminder_minutes,
+              feedback_template_id,
+              task_template_id
             )
           `)
           .eq('user_id', userId)
@@ -564,6 +568,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           description: task.description || '',
           completed: task.completed,
           reminder_minutes: task.reminder_minutes,
+          feedback_template_id: task.feedback_template_id ?? null,
+          task_template_id: task.task_template_id ?? null,
         }));
         
         return {
@@ -823,20 +829,20 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       const [internalTasksRes, externalEventTasksRes, externalActivityTasksRes] = await Promise.all([
         internalIds.length
           ? supabase
-              .from('activity_tasks')
-              .select('id, activity_id, title, description, completed, reminder_minutes, feedback_template_id, task_template_id, video_url, task_templates(after_training_delay_minutes)')
+            .from('activity_tasks')
+              .select('id, activity_id, title, description, completed, reminder_minutes, feedback_template_id, task_template_id, video_url, task_templates(after_training_delay_minutes, task_duration_enabled, task_duration_minutes)')
               .in('activity_id', internalIds)
           : Promise.resolve({ data: [], error: null }),
         externalMetaIds.length
           ? supabase
               .from('external_event_tasks')
-              .select('*')
+              .select('*, task_templates(after_training_delay_minutes, task_duration_enabled, task_duration_minutes)')
               .in('local_meta_id', externalMetaIds)
           : Promise.resolve({ data: [], error: null }),
         externalEventRowIds.length
           ? supabase
-              .from('activity_tasks')
-              .select('id, activity_id, title, description, completed, reminder_minutes, feedback_template_id, task_template_id, video_url, task_templates(after_training_delay_minutes)')
+            .from('activity_tasks')
+              .select('id, activity_id, title, description, completed, reminder_minutes, feedback_template_id, task_template_id, video_url, task_templates(after_training_delay_minutes, task_duration_enabled, task_duration_minutes)')
               .in('activity_id', externalEventRowIds)
           : Promise.resolve({ data: [], error: null }),
       ]);
@@ -863,17 +869,21 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       );
 
       let templateDelayById: Record<string, number | null> = {};
+      let templateDurationEnabledById: Record<string, boolean> = {};
+      let templateDurationMinutesById: Record<string, number | null> = {};
       let templateArchivedAtById: Record<string, string | null> = {};
       if (templateIdCandidates.size) {
         const { data: templateRows } = await supabase
           .from('task_templates')
-          .select('id, after_training_delay_minutes, archived_at')
+          .select('id, after_training_delay_minutes, task_duration_enabled, task_duration_minutes, archived_at')
           .in('id', Array.from(templateIdCandidates));
         if (Array.isArray(templateRows)) {
           templateRows.forEach((row: any) => {
             const tid = normalizeId(row?.id);
             if (!tid) return;
             templateDelayById[tid] = coerceReminderMinutes(row.after_training_delay_minutes);
+            templateDurationEnabledById[tid] = row?.task_duration_enabled === true;
+            templateDurationMinutesById[tid] = coerceReminderMinutes(row?.task_duration_minutes);
             templateArchivedAtById[tid] =
               typeof row?.archived_at === 'string' ? row.archived_at : null;
           });
@@ -888,6 +898,12 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         const templateDelay =
           coerceReminderMinutes(task?.task_templates?.after_training_delay_minutes) ??
           (templateId ? templateDelayById[templateId] ?? null : null);
+        const taskDurationEnabled =
+          task?.task_templates?.task_duration_enabled === true ||
+          (templateId ? templateDurationEnabledById[templateId] === true : false);
+        const taskDurationMinutes =
+          coerceReminderMinutes(task?.task_templates?.task_duration_minutes) ??
+          (templateId ? templateDurationMinutesById[templateId] ?? null : null);
         const reminderMinutes = coerceReminderMinutes(task.reminder_minutes) ?? templateDelay ?? null;
         list.push({
           id: task.id,
@@ -896,6 +912,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           completed: !!task.completed,
           reminder_minutes: reminderMinutes,
           after_training_delay_minutes: templateDelay ?? null,
+          task_duration_enabled: taskDurationEnabled,
+          task_duration_minutes: taskDurationEnabled ? (taskDurationMinutes ?? 0) : null,
           video_url: task.video_url ?? undefined,
           feedback_template_id: task.feedback_template_id ?? null,
           task_template_id: task.task_template_id ?? null,
@@ -911,6 +929,12 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         const templateDelay =
           coerceReminderMinutes(task?.task_templates?.after_training_delay_minutes) ??
           (templateId ? templateDelayById[templateId] ?? null : null);
+        const taskDurationEnabled =
+          task?.task_templates?.task_duration_enabled === true ||
+          (templateId ? templateDurationEnabledById[templateId] === true : false);
+        const taskDurationMinutes =
+          coerceReminderMinutes(task?.task_templates?.task_duration_minutes) ??
+          (templateId ? templateDurationMinutesById[templateId] ?? null : null);
         const reminderMinutes = coerceReminderMinutes(task.reminder_minutes) ?? templateDelay ?? null;
         list.push({
           id: task.id,
@@ -919,6 +943,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           completed: !!task.completed,
           reminder_minutes: reminderMinutes,
           after_training_delay_minutes: templateDelay ?? null,
+          task_duration_enabled: taskDurationEnabled,
+          task_duration_minutes: taskDurationEnabled ? (taskDurationMinutes ?? 0) : null,
           video_url: task.video_url ?? undefined,
           feedback_template_id: task.feedback_template_id ?? null,
           task_template_id: task.task_template_id ?? null,
@@ -934,6 +960,12 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         const templateDelay =
           coerceReminderMinutes(task?.task_templates?.after_training_delay_minutes) ??
           (templateId ? templateDelayById[templateId] ?? null : null);
+        const taskDurationEnabled =
+          task?.task_templates?.task_duration_enabled === true ||
+          (templateId ? templateDurationEnabledById[templateId] === true : false);
+        const taskDurationMinutes =
+          coerceReminderMinutes(task?.task_templates?.task_duration_minutes) ??
+          (templateId ? templateDurationMinutesById[templateId] ?? null : null);
         const reminderMinutes = coerceReminderMinutes(task.reminder_minutes) ?? templateDelay ?? null;
         list.push({
           id: task.id,
@@ -942,6 +974,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           completed: !!task.completed,
           reminder_minutes: reminderMinutes,
           after_training_delay_minutes: templateDelay ?? null,
+          task_duration_enabled: taskDurationEnabled,
+          task_duration_minutes: taskDurationEnabled ? (taskDurationMinutes ?? 0) : null,
           video_url: task.video_url ?? undefined,
           feedback_template_id: task.feedback_template_id ?? null,
           task_template_id: task.task_template_id ?? null,
@@ -1003,6 +1037,22 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           title: decodeUtf8Garble(task.title),
           description: decodeUtf8Garble(task.description),
         }));
+
+        // Ensure template-based task duration is available even when a specific task query misses joins.
+        tasks = tasks.map((task) => {
+          const templateId = resolveTaskTemplateId(task);
+          const explicitEnabled = (task as any)?.task_duration_enabled === true;
+          const mappedEnabled = templateId ? templateDurationEnabledById[templateId] === true : false;
+          const taskDurationEnabled = explicitEnabled || mappedEnabled;
+          const explicitMinutes = coerceReminderMinutes((task as any)?.task_duration_minutes);
+          const mappedMinutes = templateId ? templateDurationMinutesById[templateId] ?? null : null;
+          const taskDurationMinutes = taskDurationEnabled ? (explicitMinutes ?? mappedMinutes ?? 0) : null;
+          return {
+            ...task,
+            task_duration_enabled: taskDurationEnabled,
+            task_duration_minutes: taskDurationMinutes,
+          };
+        });
 
         // Enrich feedback tasks with reminder from their base template (via marker/templateId)
         const templateReminderById = new Map<string, number | null>();

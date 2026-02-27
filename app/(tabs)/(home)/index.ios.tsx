@@ -79,7 +79,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { canTrainerManageActivity } from '@/utils/permissions';
 import { fetchSelfFeedbackForActivities } from '@/services/feedbackService';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
-import { formatHoursDa, getActivityDurationMinutes } from '@/utils/activityDuration';
+import { formatHoursDa, getActivityEffectiveDurationMinutes } from '@/utils/activityDuration';
 import type { TaskTemplateSelfFeedback } from '@/types';
 
 const FALLBACK_COLORS = {
@@ -323,6 +323,7 @@ export default function HomeScreen() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showPreviousWeeks, setShowPreviousWeeks] = useState(0);
   const [isPreviousExpanded, setIsPreviousExpanded] = useState(false);
+  const [expandedUpcomingWeeks, setExpandedUpcomingWeeks] = useState<Record<string, boolean>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [currentTrainerId, setCurrentTrainerId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -853,7 +854,7 @@ export default function HomeScreen() {
       const date = activity?.__resolvedDateTime;
       if (!(date instanceof Date) || Number.isNaN(date.getTime())) return;
 
-      const minutes = getActivityDurationMinutes(activity);
+      const minutes = getActivityEffectiveDurationMinutes(activity);
       if (date >= weekStart && date <= weekEnd) {
         weekMinutes += minutes;
       }
@@ -913,6 +914,41 @@ export default function HomeScreen() {
     setIsPreviousExpanded(prev => !prev);
   }, []);
 
+  const toggleUpcomingWeekExpanded = useCallback((weekKey: string) => {
+    setExpandedUpcomingWeeks((prev) => ({
+      ...prev,
+      [weekKey]: !prev[weekKey],
+    }));
+  }, []);
+
+  const upcomingWeekSummaries = useMemo(() => {
+    const safeUpcomingByWeek = Array.isArray(upcomingByWeek) ? upcomingByWeek : [];
+    return safeUpcomingByWeek.map((weekGroup, index) => {
+      const weekStart =
+        weekGroup?.weekStart instanceof Date && !isNaN(weekGroup.weekStart.getTime())
+          ? weekGroup.weekStart
+          : null;
+      const weekKey = weekStart ? weekStart.toISOString() : `upcoming-week-${index}`;
+      const weekActivities = Array.isArray(weekGroup?.activities) ? weekGroup.activities : [];
+      let totalTasks = 0;
+      let totalMinutes = 0;
+
+      weekActivities.forEach((activity: any) => {
+        if (!activity) return;
+        totalTasks += getActivityTasks(activity).length;
+        totalMinutes += getActivityEffectiveDurationMinutes(activity);
+      });
+
+      return {
+        weekGroup,
+        weekKey,
+        activityCount: weekActivities.length,
+        totalTasks,
+        totalMinutes,
+      };
+    });
+  }, [upcomingByWeek]);
+
   // P4 FIX: Pull-to-refresh handler with deterministic stop
   const onRefresh = useCallback(async () => {
     // Guard against double-trigger
@@ -950,7 +986,7 @@ export default function HomeScreen() {
     // STEP H: Guard against non-array previousByWeek
     const safePreviousByWeek = Array.isArray(previousByWeek) ? previousByWeek : [];
     const safeTodayActivities = Array.isArray(todayActivities) ? todayActivities : [];
-    const safeUpcomingByWeek = Array.isArray(upcomingByWeek) ? upcomingByWeek : [];
+    const safeUpcomingWeekSummaries = Array.isArray(upcomingWeekSummaries) ? upcomingWeekSummaries : [];
     const safeVisiblePreviousWeeks = Array.isArray(visiblePreviousWeeks) ? visiblePreviousWeeks : [];
 
     // Add TIDLIGERE section
@@ -992,16 +1028,23 @@ export default function HomeScreen() {
     }
 
     // Add KOMMENDE section
-    if (safeUpcomingByWeek.length > 0) {
+    if (safeUpcomingWeekSummaries.length > 0) {
       data.push({ type: 'upcomingHeader' });
-      safeUpcomingByWeek.forEach((weekGroup, weekIndex) => {
-        // STEP H: Guard against null weekGroup
-        if (!weekGroup) return;
+      safeUpcomingWeekSummaries.forEach((summary) => {
+        if (!summary?.weekGroup) return;
+        data.push({
+          type: 'upcomingWeekSummary',
+          weekGroup: summary.weekGroup,
+          section: 'upcoming',
+          weekKey: summary.weekKey,
+          activityCount: summary.activityCount,
+          totalTasks: summary.totalTasks,
+          totalMinutes: summary.totalMinutes,
+        });
 
-        data.push({ type: 'weekHeader', weekGroup, section: 'upcoming' });
+        if (!expandedUpcomingWeeks[summary.weekKey]) return;
 
-        // STEP H: Guard against non-array activities
-        const weekActivities = Array.isArray(weekGroup.activities) ? weekGroup.activities : [];
+        const weekActivities = Array.isArray(summary.weekGroup.activities) ? summary.weekGroup.activities : [];
         weekActivities.forEach((activity: any) => {
           // STEP H: Guard against null activity
           if (!activity) return;
@@ -1011,7 +1054,7 @@ export default function HomeScreen() {
     }
 
     return data;
-  }, [previousByWeek, isPreviousExpanded, visiblePreviousWeeks, showPreviousWeeks, todayActivities, upcomingByWeek]);
+  }, [previousByWeek, isPreviousExpanded, visiblePreviousWeeks, showPreviousWeeks, todayActivities, upcomingWeekSummaries, expandedUpcomingWeeks]);
 
   const handleOpenPerformance = useCallback(() => {
     if (!router) {
@@ -1070,6 +1113,149 @@ export default function HomeScreen() {
               <View style={styles.greenMarker} />
               <Text style={[styles.sectionTitle, { color: isDark ? '#e3e3e3' : colors.text }]}>KOMMENDE</Text>
             </View>
+          </View>
+        );
+
+      case 'upcomingWeekSummary':
+        if (!item.weekGroup || !item.weekGroup.weekStart || !item.weekKey) return null;
+
+        return (
+          <View style={styles.upcomingSummaryWrapper}>
+            <Pressable
+              onPress={() => toggleUpcomingWeekExpanded(item.weekKey)}
+              style={({ pressed }) => [styles.upcomingSummaryPressable, pressed && styles.upcomingSummaryCardPressed]}
+            >
+              <View style={styles.upcomingSummaryShadow}>
+                <LinearGradient
+                  colors={
+                    isDark
+                      ? ['rgba(43, 76, 92, 0.62)', 'rgba(29, 52, 69, 0.62)', 'rgba(25, 43, 56, 0.62)']
+                      : ['rgba(255, 255, 255, 0.62)', 'rgba(234, 243, 238, 0.62)', 'rgba(221, 239, 227, 0.62)']
+                  }
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[styles.upcomingSummaryCard, { borderColor: isDark ? 'rgba(191, 220, 203, 0.20)' : 'rgba(76, 175, 80, 0.22)' }]}
+                >
+                  <LinearGradient
+                    colors={
+                      isDark
+                        ? ['rgba(255, 255, 255, 0.10)', 'rgba(255, 255, 255, 0.00)']
+                        : ['rgba(255, 255, 255, 0.55)', 'rgba(255, 255, 255, 0.00)']
+                    }
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 0.8, y: 0.8 }}
+                    style={styles.upcomingSummarySheen}
+                  />
+
+                  <View style={styles.upcomingSummaryHeader}>
+                    <View>
+                      <Text style={[styles.upcomingSummaryEyebrow, { color: isDark ? '#BFDCCB' : '#3B6A4D' }]}>
+                        KOMMENDE UGE
+                      </Text>
+                      <Text style={[styles.upcomingSummaryTitle, { color: isDark ? '#E6F5EC' : '#1D3A2A' }]}>
+                        Uge {getWeek(item.weekGroup.weekStart, { weekStartsOn: 1, locale: da })}
+                      </Text>
+                    </View>
+
+                    <View style={styles.upcomingChevronShadow}>
+                      <LinearGradient
+                        colors={isDark ? ['#3CC06A', '#1F8A43'] : ['#4CC46E', '#279B4A']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.upcomingChevronButton}
+                      >
+                        <IconSymbol
+                          ios_icon_name="chevron.down"
+                          android_material_icon_name="keyboard-arrow-down"
+                          size={18}
+                          color="#FFFFFF"
+                          style={[
+                            styles.upcomingChevronIcon,
+                            expandedUpcomingWeeks[item.weekKey] && styles.upcomingChevronIconExpanded,
+                          ]}
+                        />
+                        <LinearGradient
+                          colors={['rgba(255,255,255,0.35)', 'rgba(255,255,255,0.00)']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 1 }}
+                          style={styles.upcomingChevronSheen}
+                        />
+                      </LinearGradient>
+                    </View>
+                  </View>
+
+                  <Text style={[styles.upcomingSummaryRange, { color: isDark ? '#B5D8C2' : '#2C5A40' }]}>
+                    {getWeekLabel(item.weekGroup.weekStart)}
+                  </Text>
+
+                  <View style={styles.upcomingSummaryBadgesRow}>
+                  <View
+                      style={[
+                        styles.upcomingSummaryChip,
+                        { backgroundColor: isDark ? 'rgba(19, 42, 53, 0.62)' : 'rgba(255, 255, 255, 0.72)' },
+                      ]}
+                    >
+                      <IconSymbol
+                        ios_icon_name="calendar"
+                        android_material_icon_name="calendar_today"
+                        size={14}
+                        color={isDark ? 'rgba(216, 239, 225, 0.95)' : 'rgba(29, 58, 42, 0.9)'}
+                      />
+                      <Text
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                        style={[styles.upcomingSummaryChipText, { color: isDark ? '#D8EFE1' : '#1D3A2A' }]}
+                      >
+                        Aktiviteter · {item.activityCount}
+                      </Text>
+                    </View>
+
+                    <View
+                      style={[
+                        styles.upcomingSummaryChip,
+                        { backgroundColor: isDark ? 'rgba(19, 42, 53, 0.62)' : 'rgba(255, 255, 255, 0.72)' },
+                      ]}
+                    >
+                      <IconSymbol
+                        ios_icon_name="checkmark.circle"
+                        android_material_icon_name="check_circle"
+                        size={14}
+                        color={isDark ? 'rgba(216, 239, 225, 0.95)' : 'rgba(29, 58, 42, 0.9)'}
+                      />
+                      <Text
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                        style={[styles.upcomingSummaryChipText, { color: isDark ? '#D8EFE1' : '#1D3A2A' }]}
+                      >
+                        Opgaver · {item.totalTasks}
+                      </Text>
+                    </View>
+
+                    <View
+                      style={[
+                        styles.upcomingSummaryChip,
+                        styles.upcomingSummaryChipPrimary,
+                        { backgroundColor: isDark ? 'rgba(201, 235, 214, 0.14)' : 'rgba(76, 175, 80, 0.16)' },
+                      ]}
+                    >
+                      <IconSymbol
+                        ios_icon_name="clock"
+                        android_material_icon_name="schedule"
+                        size={14}
+                        color={isDark ? 'rgba(216, 239, 225, 0.98)' : 'rgba(29, 58, 42, 0.92)'}
+                      />
+                      <Text
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                        style={[styles.upcomingSummaryChipText, { color: isDark ? '#D8EFE1' : '#1D3A2A' }]}
+                      >
+                        Planlagt: {formatHoursDa(item.totalMinutes)}
+                      </Text>
+                    </View>
+                  </View>
+                </LinearGradient>
+              </View>
+            </Pressable>
           </View>
         );
 
@@ -1224,6 +1410,8 @@ export default function HomeScreen() {
     isDark,
     isPreviousExpanded,
     togglePreviousExpanded,
+    toggleUpcomingWeekExpanded,
+    expandedUpcomingWeeks,
     isAdminMode,
     currentTrainerId,
     adminMode,
@@ -1249,6 +1437,9 @@ export default function HomeScreen() {
       // STEP H: Guard against null weekGroup or weekStart
       const weekKey = item.weekGroup?.weekStart ? item.weekGroup.weekStart.toISOString() : index;
       return `week-${item.section}-${weekKey}`;
+    }
+    if (item.type === 'upcomingWeekSummary') {
+      return `upcoming-summary-${item.weekKey ?? index}`;
     }
     return `${item.type}-${index}`;
   }, []);
@@ -1654,6 +1845,120 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginBottom: 18,
     letterSpacing: 0.2,
+  },
+  upcomingSummaryWrapper: {
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  upcomingSummaryPressable: {
+    borderRadius: 24,
+  },
+  upcomingSummaryShadow: {
+    borderRadius: 24,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  upcomingSummaryCard: {
+    borderRadius: 24,
+    padding: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  upcomingSummaryCardPressed: {
+    opacity: 0.92,
+    transform: [{ scale: 0.99 }],
+  },
+  upcomingSummarySheen: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+  },
+  upcomingSummaryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  upcomingSummaryEyebrow: {
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 2,
+  },
+  upcomingSummaryTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  upcomingSummaryRange: {
+    marginTop: 10,
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  upcomingSummaryBadgesRow: {
+    marginTop: 14,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    rowGap: 10,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  upcomingSummaryChip: {
+    height: 32,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(76, 175, 80, 0.18)',
+    flexGrow: 0,
+    flexBasis: '48%',
+    width: '48%',
+    maxWidth: '48%',
+  },
+  upcomingSummaryChipPrimary: {
+    borderColor: 'rgba(76, 175, 80, 0.26)',
+  },
+  upcomingSummaryChipText: {
+    fontSize: 13,
+    fontWeight: '700',
+    flexShrink: 1,
+  },
+  upcomingChevronShadow: {
+    borderRadius: 18,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  upcomingChevronButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  upcomingChevronIcon: {
+    transform: [{ rotate: '0deg' }],
+  },
+  upcomingChevronIconExpanded: {
+    transform: [{ rotate: '180deg' }],
+  },
+  upcomingChevronSheen: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
   },
 
   // Activity Wrapper

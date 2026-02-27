@@ -9,6 +9,7 @@ import { useFootball } from '@/contexts/FootballContext';
 import TaskDetailsModal from '@/components/TaskDetailsModal';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { resolveActivityIntensityEnabled } from '@/utils/activityIntensity';
+import { getTaskDurationMinutes } from '@/utils/activityDuration';
 
 interface ActivityCardProps {
   activity: any;
@@ -896,6 +897,9 @@ export default function ActivityCard({
                       : feedbackTask
                         ? reminderMinutesValue
                         : null;
+                const taskDurationEnabled =
+                  task?.task_duration_enabled === true || task?.taskDurationEnabled === true;
+                const taskDurationMinutes = getTaskDurationMinutes(task);
 
                 return (
                   <React.Fragment key={item.key}>
@@ -968,6 +972,20 @@ export default function ActivityCard({
                             />
                             <Text style={styles.reminderText}>
                               {formatReminderTime(effectiveReminder!)}
+                            </Text>
+                          </View>
+                        )}
+
+                        {taskDurationEnabled && !feedbackTask && (
+                          <View style={styles.reminderBadge}>
+                            <IconSymbol
+                              ios_icon_name="clock.fill"
+                              android_material_icon_name="schedule"
+                              size={10}
+                              color="rgba(255, 255, 255, 0.8)"
+                            />
+                            <Text style={styles.reminderText}>
+                              Varighed: {taskDurationMinutes} min
                             </Text>
                           </View>
                         )}
