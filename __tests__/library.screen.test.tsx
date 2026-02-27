@@ -168,6 +168,10 @@ function setupSupabaseFixture({
         return { data: personalExercises, error: null };
       }
 
+      if (eqMap.get('is_system') === false && !eqMap.has('trainer_id') && !state.inFilter) {
+        return { data: personalExercises, error: null };
+      }
+
       if (eqMap.get('is_system') === false && state.inFilter?.column === 'trainer_id') {
         const trainerIds = new Set((state.inFilter.values ?? []).map((value: unknown) => String(value)));
         return {
@@ -515,7 +519,24 @@ describe('Library screen gating and card state', () => {
             data: [
               {
                 id: 'ex-refresh-1',
-                trainer_id: 'user-1',
+                trainer_id: 'trainer-1',
+                title: 'Refresh Drill',
+                is_system: false,
+                is_added_to_tasks: false,
+                last_score: personalFetchCount >= 2 ? 7 : null,
+                execution_count: personalFetchCount >= 2 ? 1 : 0,
+              },
+            ],
+            error: null,
+          };
+        }
+        if (eqMap.get('is_system') === false && !eqMap.has('trainer_id')) {
+          personalFetchCount += 1;
+          return {
+            data: [
+              {
+                id: 'ex-refresh-1',
+                trainer_id: 'trainer-1',
                 title: 'Refresh Drill',
                 is_system: false,
                 is_added_to_tasks: false,
@@ -532,21 +553,22 @@ describe('Library screen gating and card state', () => {
         return { data: [], error: null };
       }
       if (state.table === 'profiles') {
-        return { data: [], error: null };
+        return { data: [{ user_id: 'trainer-1', full_name: 'Coach One' }], error: null };
       }
       return { data: [], error: null };
     });
 
-    mockUseUserRole.mockReturnValue({ userRole: 'trainer', isTrainer: true, isAdmin: false });
+    mockUseUserRole.mockReturnValue({ userRole: 'player', isTrainer: false, isAdmin: false });
     mockUseSubscriptionFeatures.mockReturnValue({
       featureAccess: { library: true, calendarSync: true, trainerLinking: true },
       isLoading: false,
-      subscriptionTier: 'trainer_basic',
+      subscriptionTier: 'player_premium',
     });
 
     const { findByText, findByTestId } = render(<LibraryScreen />);
 
-    fireEvent.press(await findByText(/Personlige/i));
+    fireEvent.press(await findByText(/Øvelser fra træner/i));
+    fireEvent.press(await findByText(/Coach One/i));
 
     expect(await findByTestId('library.counter.lastScore.ex-refresh-1')).toHaveTextContent('Senest: –/10');
     expect(await findByTestId('library.counter.executionCount.ex-refresh-1')).toHaveTextContent('Udført: –x');
@@ -576,7 +598,7 @@ describe('Library screen gating and card state', () => {
       personalExercises: [
         {
           id: 'ex-map-1',
-          trainer_id: 'user-1',
+          trainer_id: 'trainer-1',
           title: 'Mapped Drill',
           is_system: false,
           is_added_to_tasks: false,
@@ -584,19 +606,21 @@ describe('Library screen gating and card state', () => {
           execution_count: 0,
         },
       ],
+      trainerProfiles: [{ user_id: 'trainer-1', full_name: 'Coach One' }],
       libraryTaskLinks: [{ id: 'template-xyz', library_exercise_id: 'ex-map-1' }],
     });
 
-    mockUseUserRole.mockReturnValue({ userRole: 'trainer', isTrainer: true, isAdmin: false });
+    mockUseUserRole.mockReturnValue({ userRole: 'player', isTrainer: false, isAdmin: false });
     mockUseSubscriptionFeatures.mockReturnValue({
       featureAccess: { library: true, calendarSync: true, trainerLinking: true },
       isLoading: false,
-      subscriptionTier: 'trainer_basic',
+      subscriptionTier: 'player_premium',
     });
 
     const { findByText, findByTestId } = render(<LibraryScreen />);
 
-    fireEvent.press(await findByText(/Personlige/i));
+    fireEvent.press(await findByText(/Øvelser fra træner/i));
+    fireEvent.press(await findByText(/Coach One/i));
     expect(await findByTestId('library.counter.lastScore.ex-map-1')).toHaveTextContent('Senest: –/10');
     expect(await findByTestId('library.counter.executionCount.ex-map-1')).toHaveTextContent('Udført: –x');
     expect(await findByTestId('library.badge.lastScore.ex-map-1')).toBeTruthy();
@@ -642,7 +666,7 @@ describe('Library screen gating and card state', () => {
       personalExercises: [
         {
           id: 'ex-existing-1',
-          trainer_id: 'user-1',
+          trainer_id: 'trainer-1',
           title: 'Focus Drill',
           description: 'Focus description',
           video_url: 'https://example.com/focus.mp4',
@@ -652,23 +676,25 @@ describe('Library screen gating and card state', () => {
           execution_count: 1,
         },
       ],
+      trainerProfiles: [{ user_id: 'trainer-1', full_name: 'Coach One' }],
     });
 
-    mockUseUserRole.mockReturnValue({ userRole: 'trainer', isTrainer: true, isAdmin: false });
+    mockUseUserRole.mockReturnValue({ userRole: 'player', isTrainer: false, isAdmin: false });
     mockUseSubscriptionFeatures.mockReturnValue({
       featureAccess: { library: true, calendarSync: true, trainerLinking: true },
       isLoading: false,
-      subscriptionTier: 'trainer_basic',
+      subscriptionTier: 'player_premium',
     });
 
     const { findByText, findByTestId } = render(<LibraryScreen />);
 
-    fireEvent.press(await findByText(/Personlige/i));
+    fireEvent.press(await findByText(/Øvelser fra træner/i));
+    fireEvent.press(await findByText(/Coach One/i));
 
     await waitFor(async () => {
       const addButton = await findByTestId('library.addToTasksButton.ex-existing-1');
-      expect(addButton.props.accessibilityState?.disabled).toBe(false);
-      expect(addButton.props.accessibilityLabel).toMatch(/Tildel/i);
+      expect(addButton.props.accessibilityState?.disabled).toBe(true);
+      expect(addButton.props.accessibilityLabel).toMatch(/tilføjet/i);
     });
 
     act(() => {
@@ -694,7 +720,7 @@ describe('Library screen gating and card state', () => {
       personalExercises: [
         {
           id: 'ex-map-2',
-          trainer_id: 'user-1',
+          trainer_id: 'trainer-1',
           title: 'Corrected Drill',
           is_system: false,
           is_added_to_tasks: false,
@@ -702,19 +728,21 @@ describe('Library screen gating and card state', () => {
           execution_count: 0,
         },
       ],
+      trainerProfiles: [{ user_id: 'trainer-1', full_name: 'Coach One' }],
       libraryTaskLinks: [{ id: 'template-corrected', library_exercise_id: 'ex-map-2' }],
     });
 
-    mockUseUserRole.mockReturnValue({ userRole: 'trainer', isTrainer: true, isAdmin: false });
+    mockUseUserRole.mockReturnValue({ userRole: 'player', isTrainer: false, isAdmin: false });
     mockUseSubscriptionFeatures.mockReturnValue({
       featureAccess: { library: true, calendarSync: true, trainerLinking: true },
       isLoading: false,
-      subscriptionTier: 'trainer_basic',
+      subscriptionTier: 'player_premium',
     });
 
     const { findByText, findByTestId } = render(<LibraryScreen />);
 
-    fireEvent.press(await findByText(/Personlige/i));
+    fireEvent.press(await findByText(/Øvelser fra træner/i));
+    fireEvent.press(await findByText(/Coach One/i));
 
     act(() => {
       DeviceEventEmitter.emit('feedback:saved', {
@@ -759,7 +787,7 @@ describe('Library screen gating and card state', () => {
       personalExercises: [
         {
           id: 'ex-map-3',
-          trainer_id: 'user-1',
+          trainer_id: 'trainer-1',
           title: 'Edit Drill',
           is_system: false,
           is_added_to_tasks: false,
@@ -767,19 +795,21 @@ describe('Library screen gating and card state', () => {
           execution_count: 0,
         },
       ],
+      trainerProfiles: [{ user_id: 'trainer-1', full_name: 'Coach One' }],
       libraryTaskLinks: [{ id: 'template-edit', library_exercise_id: 'ex-map-3' }],
     });
 
-    mockUseUserRole.mockReturnValue({ userRole: 'trainer', isTrainer: true, isAdmin: false });
+    mockUseUserRole.mockReturnValue({ userRole: 'player', isTrainer: false, isAdmin: false });
     mockUseSubscriptionFeatures.mockReturnValue({
       featureAccess: { library: true, calendarSync: true, trainerLinking: true },
       isLoading: false,
-      subscriptionTier: 'trainer_basic',
+      subscriptionTier: 'player_premium',
     });
 
     const { findByText, findByTestId } = render(<LibraryScreen />);
 
-    fireEvent.press(await findByText(/Personlige/i));
+    fireEvent.press(await findByText(/Øvelser fra træner/i));
+    fireEvent.press(await findByText(/Coach One/i));
 
     act(() => {
       DeviceEventEmitter.emit('feedback:saved', {
