@@ -259,6 +259,64 @@ export const exerciseAssignmentsService = {
     if (templateDeleteError) {
       throw templateDeleteError;
     }
+
+    // Legacy fallback:
+    // Older assigned task_templates may have library_exercise_id = null.
+    // Match those by exercise content + recipient scope and remove through
+    // the actor RPC so cleanup stays consistent with shared-state semantics.
+    const { data: exerciseRow, error: exerciseLookupError } = await supabase
+      .from('exercise_library')
+      .select('title, description, video_url')
+      .eq('id', exerciseId)
+      .maybeSingle();
+
+    if (exerciseLookupError) {
+      throw exerciseLookupError;
+    }
+
+    if (!exerciseRow) {
+      return;
+    }
+
+    let legacyTemplateQuery = supabase
+      .from('task_templates')
+      .select('id')
+      .eq('user_id', trainerId)
+      .is('library_exercise_id', null)
+      .eq('source_folder', 'Fra træner')
+      .eq('title', String(exerciseRow.title ?? ''))
+      .eq('description', String(exerciseRow.description ?? ''));
+
+    legacyTemplateQuery =
+      exerciseRow.video_url === null
+        ? legacyTemplateQuery.is('video_url', null)
+        : legacyTemplateQuery.eq('video_url', String(exerciseRow.video_url));
+
+    legacyTemplateQuery = playerId
+      ? legacyTemplateQuery.eq('player_id', playerId).is('team_id', null)
+      : legacyTemplateQuery.eq('team_id', teamId).is('player_id', null);
+
+    const { data: legacyTemplates, error: legacyTemplateLookupError } = await legacyTemplateQuery;
+    if (legacyTemplateLookupError) {
+      throw legacyTemplateLookupError;
+    }
+
+    const legacyTemplateIds = (legacyTemplates || [])
+      .map((row: any) => String(row?.id ?? '').trim())
+      .filter(Boolean);
+
+    for (const legacyTemplateId of legacyTemplateIds) {
+      const { data: removed, error: removeError } = await (supabase as any).rpc(
+        'remove_task_template_for_actor',
+        { p_task_id: legacyTemplateId },
+      );
+      if (removeError) {
+        throw removeError;
+      }
+      if (removed !== true) {
+        throw new Error('Kunne ikke fjerne legacy opgaveskabelon for modtageren.');
+      }
+    }
   },
 
   async fetchAssignmentTemplateStates(
