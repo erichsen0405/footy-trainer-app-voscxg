@@ -233,6 +233,17 @@ export default function TaskScoreNoteScreen() {
       clearLabel="Markér som ikke udført"
       missingScoreTitle="Manglende intensitet"
       missingScoreMessage="Vælg en intensitet før du kan markere som udført."
+      infoButtonAccessibilityLabel="Vis info om intensitet"
+      infoModalTitle="Sådan bruger du Intensitet"
+      infoModalLines={[
+        'Intensitet viser hvor frisk din krop er i dag.',
+        'Din træner kan se, om du måske har brug for mere hvile.',
+        '10 = en dag hvor du er tæt på helt frisk og kan præstere som dit bedste.',
+        'Lavere tal = en dag hvor du føler dig tung, selv om du prøver lige så hårdt.',
+        'Eksempel: Hvis du på en frisk dag kan løbe ca. 9 km, er det 10.',
+        'Hvis du en anden dag kun kan løbe ca. 5 km, selv om du giver alt, kan det være omkring 6.',
+        'Vigtigt: Giv altid alt hvad du kan til alle dine holdtræninger. Det flytter dit niveau hurtigere og det er en vigtig del af at spille på et højt niveau',
+      ]}
       onClose={handleClose}
     />
   );

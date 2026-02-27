@@ -7,6 +7,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -48,6 +49,9 @@ interface TaskScoreNoteModalProps {
   onClear?: () => void | Promise<void>;
   onClose: () => void;
   showLabels?: boolean; // default true
+  infoModalTitle?: string;
+  infoModalLines?: string[];
+  infoButtonAccessibilityLabel?: string;
 }
 
 function TaskScoreNoteModalComponent({
@@ -71,10 +75,14 @@ function TaskScoreNoteModalComponent({
   onSave,
   onClear,
   onClose,
+  infoModalTitle,
+  infoModalLines,
+  infoButtonAccessibilityLabel = 'Vis info',
 }: TaskScoreNoteModalProps) {
   const [score, setScore] = useState<number | null>(initialScore ?? null);
   const [note, setNote] = useState(initialNote ?? '');
   const [isScoreDropdownOpen, setIsScoreDropdownOpen] = useState(false);
+  const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
   const scoreWheelRef = useRef<FlatList<number> | null>(null);
   const hasMountedRef = useRef(false);
 
@@ -83,11 +91,13 @@ function TaskScoreNoteModalComponent({
       setScore(initialScore ?? null);
       setNote(initialNote ?? '');
       setIsScoreDropdownOpen(false);
+      setIsInfoModalOpen(false);
       hasMountedRef.current = true;
     }
   }, [initialNote, initialScore, visible]);
 
   const disableInteractions = isSaving || readonly;
+  const hasInfoContent = typeof infoModalTitle === 'string' && infoModalTitle.trim().length > 0 && Array.isArray(infoModalLines) && infoModalLines.length > 0;
   const hasClearAction = typeof onClear === 'function';
   const normalizedInitialNote = useMemo(() => (initialNote ?? '').trim(), [initialNote]);
   const normalizedNote = note.trim();
@@ -301,93 +311,146 @@ function TaskScoreNoteModalComponent({
   }
 
   return (
-    <Modal visible={visible} animationType="fade" transparent statusBarTranslucent onRequestClose={confirmClose}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.modalRoot}
-      >
-        <View style={styles.backdropContainer}>
-          <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
-          <Pressable style={StyleSheet.absoluteFill} onPress={confirmClose} disabled={disableInteractions} />
-          <View style={styles.cardWrapper}>
-            <View style={styles.card}>
-              <View style={styles.header}>
-                <Text style={styles.title} numberOfLines={2} ellipsizeMode="tail">
-                  {title}
-                </Text>
-                <Pressable
-                  onPress={confirmClose}
-                  hitSlop={12}
-                  disabled={disableInteractions}
-                  style={styles.closeButton}
-                >
-                  <Text style={styles.closeText}>X</Text>
-                </Pressable>
-              </View>
-
-              <View style={styles.section}>
-                <Text style={styles.intro}>{introText}</Text>
-                {helperText ? <Text style={styles.helper}>{helperText}</Text> : null}
-              </View>
-
-              {renderScoreDropdown()}
-              {enableScore ? (
-                <View testID={score === null ? 'feedback.selectedScore.none' : `feedback.selectedScore.${score}`} style={styles.testProbe} />
-              ) : null}
-
-              {enableNote ? (
-                <View style={styles.noteSection}>
-                  <Text style={styles.noteLabel}>{noteLabel}</Text>
-                  <TextInput
-                    multiline
-                    editable={!disableInteractions}
-                    value={note}
-                    onChangeText={setNote}
-                    placeholder={notePlaceholder}
-                    placeholderTextColor="rgba(53, 65, 98, 0.5)"
-                    style={[styles.noteInput, disableInteractions && styles.noteInputDisabled]}
-                    textAlignVertical="top"
-                    testID="feedback.noteInput"
-                    accessibilityLabel={noteLabel}
-                  />
-                </View>
-              ) : null}
-              {isInitiallyCompleted && !hasChanges ? (
-                <View testID="feedback.persistedState.loaded" style={styles.testProbe} />
-              ) : null}
-
-              <View style={styles.footer}>
-                <Pressable
-                  onPress={handlePrimaryAction}
-                  disabled={disableInteractions}
-                  style={[
-                    styles.primaryButtonShadow,
-                    (disableInteractions || scoreRequired) && styles.primaryButtonDisabled,
-                  ]}
-                  testID="feedback.saveButton"
-                  accessibilityLabel={primaryButtonLabelResolved}
-                >
-                  <LinearGradient
-                    colors={[colors.primary, '#6DDC5F']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={[styles.primaryButton, (disableInteractions || scoreRequired) && styles.primaryButtonDisabled]}
+    <>
+      <Modal visible={visible} animationType="fade" transparent statusBarTranslucent onRequestClose={confirmClose}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalRoot}
+        >
+          <View style={styles.backdropContainer}>
+            <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
+            <Pressable style={StyleSheet.absoluteFill} onPress={confirmClose} disabled={disableInteractions} />
+            <View style={styles.cardWrapper}>
+              <View style={styles.card}>
+                <View style={styles.header}>
+                  <View style={styles.titleWrap}>
+                    <Text style={styles.title} numberOfLines={2} ellipsizeMode="tail">
+                      {title}
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={confirmClose}
+                    hitSlop={12}
+                    disabled={disableInteractions}
+                    style={styles.closeButton}
                   >
-                    {isSaving ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <Text style={styles.primaryButtonText}>{primaryButtonLabelResolved}</Text>
-                    )}
-                  </LinearGradient>
-                </Pressable>
-              </View>
+                    <Text style={styles.closeText}>X</Text>
+                  </Pressable>
+                </View>
 
-              {error ? <Text style={styles.errorText}>{error}</Text> : null}
+                <View style={styles.section}>
+                  <View style={styles.introRow}>
+                    <Text style={styles.intro}>{introText}</Text>
+                    {hasInfoContent ? (
+                      <Pressable
+                        onPress={() => setIsInfoModalOpen(true)}
+                        hitSlop={14}
+                        accessibilityRole="button"
+                        accessibilityLabel={infoButtonAccessibilityLabel}
+                        testID="feedback.infoButton"
+                        style={styles.infoButton}
+                      >
+                        <Text style={styles.infoButtonText}>ⓘ</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                  {helperText ? <Text style={styles.helper}>{helperText}</Text> : null}
+                </View>
+
+                {renderScoreDropdown()}
+                {enableScore ? (
+                  <View testID={score === null ? 'feedback.selectedScore.none' : `feedback.selectedScore.${score}`} style={styles.testProbe} />
+                ) : null}
+
+                {enableNote ? (
+                  <View style={styles.noteSection}>
+                    <Text style={styles.noteLabel}>{noteLabel}</Text>
+                    <TextInput
+                      multiline
+                      editable={!disableInteractions}
+                      value={note}
+                      onChangeText={setNote}
+                      placeholder={notePlaceholder}
+                      placeholderTextColor="rgba(53, 65, 98, 0.5)"
+                      style={[styles.noteInput, disableInteractions && styles.noteInputDisabled]}
+                      textAlignVertical="top"
+                      testID="feedback.noteInput"
+                      accessibilityLabel={noteLabel}
+                    />
+                  </View>
+                ) : null}
+                {isInitiallyCompleted && !hasChanges ? (
+                  <View testID="feedback.persistedState.loaded" style={styles.testProbe} />
+                ) : null}
+
+                <View style={styles.footer}>
+                  <Pressable
+                    onPress={handlePrimaryAction}
+                    disabled={disableInteractions}
+                    style={[
+                      styles.primaryButtonShadow,
+                      (disableInteractions || scoreRequired) && styles.primaryButtonDisabled,
+                    ]}
+                    testID="feedback.saveButton"
+                    accessibilityLabel={primaryButtonLabelResolved}
+                  >
+                    <LinearGradient
+                      colors={[colors.primary, '#6DDC5F']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={[styles.primaryButton, (disableInteractions || scoreRequired) && styles.primaryButtonDisabled]}
+                    >
+                      {isSaving ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <Text style={styles.primaryButtonText}>{primaryButtonLabelResolved}</Text>
+                      )}
+                    </LinearGradient>
+                  </Pressable>
+                </View>
+
+                {error ? <Text style={styles.errorText}>{error}</Text> : null}
+              </View>
             </View>
+            {hasInfoContent && isInfoModalOpen ? (
+              <View style={styles.infoModalBackdrop}>
+                <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsInfoModalOpen(false)} />
+                <View style={styles.infoModalSheet}>
+                  <View style={styles.infoModalHeader}>
+                    <Text style={styles.infoModalTitle} testID="feedback.infoModal.title">
+                      {infoModalTitle}
+                    </Text>
+                    <Pressable
+                      onPress={() => setIsInfoModalOpen(false)}
+                      style={styles.infoModalCloseButton}
+                      accessibilityRole="button"
+                      accessibilityLabel="Luk info"
+                    >
+                      <Text style={styles.infoModalCloseButtonText}>X</Text>
+                    </Pressable>
+                  </View>
+                  <ScrollView style={styles.infoModalScroll}>
+                    {infoModalLines.map((line, idx) => (
+                      <Text key={`${line}-${idx}`} style={styles.infoModalLine}>
+                        {line}
+                      </Text>
+                    ))}
+                  </ScrollView>
+                  <Pressable
+                    onPress={() => setIsInfoModalOpen(false)}
+                    style={styles.infoModalFooterButton}
+                    accessibilityRole="button"
+                    accessibilityLabel="Luk"
+                  >
+                    <Text style={styles.infoModalFooterButtonText}>Luk</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : null}
           </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+        </KeyboardAvoidingView>
+      </Modal>
+    </>
   );
 }
 
@@ -429,12 +492,33 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: 12,
   },
-  title: {
+  titleWrap: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  title: {
     fontSize: 22,
     fontWeight: '800',
     color: colors.primary,
-    marginRight: 16,
+    flexShrink: 1,
+  },
+  infoButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0B7B5A',
+    borderWidth: 1,
+    borderColor: '#0B7B5A',
+    marginLeft: 0,
+  },
+  infoButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   closeButton: {
     width: 36,
@@ -452,10 +536,16 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: 12,
   },
+  introRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   intro: {
     fontSize: 17,
     fontWeight: '600',
     color: '#20283E',
+    flex: 1,
   },
   helper: {
     fontSize: 14,
@@ -600,5 +690,70 @@ const styles = StyleSheet.create({
   testProbe: {
     width: 2,
     height: 2,
+  },
+  infoModalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(7, 16, 35, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  infoModalSheet: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    maxHeight: '72%',
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 18,
+  },
+  infoModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  infoModalTitle: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#20283E',
+    marginRight: 12,
+  },
+  infoModalCloseButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(239, 241, 245, 0.9)',
+  },
+  infoModalCloseButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#3B4256',
+  },
+  infoModalScroll: {
+    marginBottom: 12,
+  },
+  infoModalLine: {
+    fontSize: 15,
+    color: '#20283E',
+    lineHeight: 22,
+    marginBottom: 8,
+  },
+  infoModalFooterButton: {
+    alignSelf: 'flex-end',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: 'rgba(11, 123, 90, 0.12)',
+  },
+  infoModalFooterButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.primary,
   },
 });
