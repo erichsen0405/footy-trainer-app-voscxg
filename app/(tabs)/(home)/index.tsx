@@ -81,6 +81,7 @@ import { canTrainerManageActivity } from '@/utils/permissions';
 import { TaskScoreNoteModal, TaskScoreNoteModalPayload } from '@/components/TaskScoreNoteModal';
 import { fetchSelfFeedbackForActivities } from '@/services/feedbackService';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
+import { formatHoursDa, getActivityDurationMinutes } from '@/utils/activityDuration';
 import type { TaskTemplateSelfFeedback } from '@/types';
 
 function resolveActivityDateTime(activity: any): Date | null {
@@ -478,7 +479,7 @@ export default function HomeScreen() {
     }
   }, [loading]);
 
-  const { todayActivities, upcomingByWeek, previousByWeek } = useMemo(() => {
+  const { todayActivities, upcomingByWeek, previousByWeek, resolvedActivities } = useMemo(() => {
     // STEP H: Guard against non-array activities
     const safeActivities = Array.isArray(activities) ? activities : [];
 
@@ -591,7 +592,7 @@ export default function HomeScreen() {
       }))
       .sort((a, b) => b.weekStart.getTime() - a.weekStart.getTime());
 
-    return { todayActivities, upcomingByWeek, previousByWeek };
+    return { todayActivities, upcomingByWeek, previousByWeek, resolvedActivities: resolved };
   }, [activities, intensityNoteOverrides, intensityOverrides]);
 
   const feedbackActivityIds = useMemo(() => {
@@ -841,6 +842,40 @@ export default function HomeScreen() {
       gradientColors,
     };
   }, [currentWeekStats]);
+
+  const timeMetrics = useMemo(() => {
+    const now = new Date();
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(todayStart);
+    todayEnd.setHours(23, 59, 59, 999);
+
+    const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+    const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
+
+    const source = Array.isArray(resolvedActivities) ? resolvedActivities : [];
+
+    let todayMinutes = 0;
+    let weekMinutes = 0;
+
+    source.forEach((activity: any) => {
+      const date = activity?.__resolvedDateTime;
+      if (!(date instanceof Date) || Number.isNaN(date.getTime())) return;
+
+      const minutes = getActivityDurationMinutes(activity);
+      if (date >= weekStart && date <= weekEnd) {
+        weekMinutes += minutes;
+      }
+      if (date >= todayStart && date <= todayEnd) {
+        todayMinutes += minutes;
+      }
+    });
+
+    return {
+      todayHoursLabel: formatHoursDa(todayMinutes),
+      weekHoursLabel: formatHoursDa(weekMinutes),
+    };
+  }, [resolvedActivities]);
 
   const performanceGradientColors = useMemo(() => {
     const [first, second = first, third = second] = performanceMetrics.gradientColors;
@@ -1585,6 +1620,13 @@ export default function HomeScreen() {
           Hele ugen: {performanceMetrics.completedTasksWeek} / {performanceMetrics.totalTasksWeek} opgaver
         </Text>
 
+        <Text style={styles.progressDetail} testID="home.performance.hoursToday">
+          Timer i dag: {timeMetrics.todayHoursLabel}
+        </Text>
+        <Text style={styles.progressDetail} testID="home.performance.hoursWeek">
+          Timer denne uge: {timeMetrics.weekHoursLabel}
+        </Text>
+
         <Text style={styles.motivationText}>
           {performanceMetrics.motivationText}
         </Text>
@@ -1633,7 +1675,7 @@ export default function HomeScreen() {
         <Text style={styles.createButtonText}>+  Opret Aktivitet</Text>
       </Pressable>
     </>
-  ), [isDark, currentWeekNumber, currentWeekLabel, performanceMetrics, adminMode, router, performanceGradientColors]);
+  ), [isDark, currentWeekNumber, currentWeekLabel, performanceMetrics, adminMode, router, performanceGradientColors, timeMetrics]);
 
   // List footer component
   const ListFooterComponent = useCallback(() => (

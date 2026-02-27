@@ -3,6 +3,7 @@ import {
   shouldIncludeExternalIntensityInPerformance,
   shouldIncludeExternalTaskInPerformance,
 } from '@/hooks/useFootballData';
+import { formatHoursDa, getActivityDurationMinutes } from '@/utils/activityDuration';
 
 describe('shouldIncludeExternalTaskInPerformance', () => {
   it('excludes pending tasks for soft-deleted external events', () => {
@@ -118,5 +119,51 @@ describe('calculateIntensityPerformanceTotals', () => {
     expect(totals.completedToday).toBe(2);
     expect(totals.totalWeek).toBe(5);
     expect(totals.completedWeek).toBe(2);
+  });
+});
+
+describe('getActivityDurationMinutes', () => {
+  it('uses explicit duration field when present', () => {
+    expect(getActivityDurationMinutes({ durationMinutes: 90 })).toBe(90);
+    expect(getActivityDurationMinutes({ duration_minutes: '75' })).toBe(75);
+    expect(getActivityDurationMinutes({ duration: 45 })).toBe(45);
+  });
+
+  it('falls back to internal start/end time calculation', () => {
+    const minutes = getActivityDurationMinutes({
+      activity_date: '2026-02-23',
+      activity_time: '10:00:00',
+      activity_end_time: '12:30:00',
+    });
+
+    expect(minutes).toBe(150);
+  });
+
+  it('falls back to external start/end date-time calculation', () => {
+    const minutes = getActivityDurationMinutes({
+      start_date: '2026-02-24',
+      start_time: '09:00:00',
+      end_date: '2026-02-24',
+      end_time: '10:15:00',
+    });
+
+    expect(minutes).toBe(75);
+  });
+
+  it('returns 0 when duration data is missing', () => {
+    expect(getActivityDurationMinutes({ title: 'No duration' })).toBe(0);
+    expect(getActivityDurationMinutes(null)).toBe(0);
+  });
+});
+
+describe('formatHoursDa', () => {
+  it('formats with max one decimal and da-DK decimal separator', () => {
+    expect(formatHoursDa(150)).toBe('2,5 t');
+    expect(formatHoursDa(120)).toBe('2 t');
+  });
+
+  it('formats zero and invalid values as 0 t', () => {
+    expect(formatHoursDa(0)).toBe('0 t');
+    expect(formatHoursDa(-10)).toBe('0 t');
   });
 });
