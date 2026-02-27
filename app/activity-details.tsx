@@ -1382,6 +1382,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   >({});
   const [latestCategoryFeedback, setLatestCategoryFeedback] = useState<LatestCategoryFeedbackEntry[]>([]);
   const [isLatestCategoryFeedbackLoading, setIsLatestCategoryFeedbackLoading] = useState(true);
+  const [latestFeedbackRefreshKey, setLatestFeedbackRefreshKey] = useState(0);
   const [isLatestFeedbackExpanded, setIsLatestFeedbackExpanded] = useState(true);
 
   const [feedbackModalTask, setFeedbackModalTask] = useState<FeedbackModalTaskState | null>(null);
@@ -1756,7 +1757,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     return () => {
       cancelled = true;
     };
-  }, [activity?.category?.id, currentUserId, isCurrentUserResolved]);
+  }, [activity?.category?.id, currentUserId, isCurrentUserResolved, latestFeedbackRefreshKey]);
 
   useEffect(() => {
     if (!pendingFeedbackTaskId) return;
@@ -3912,6 +3913,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           source: 'activity-details',
         });
 
+        setLatestFeedbackRefreshKey((prev) => prev + 1);
         Promise.resolve(refreshData()).catch(() => {});
       } catch (e) {
         console.error('[ActivityDetails] feedback save failed:', e);
@@ -4146,6 +4148,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         source: 'activity-details',
       });
 
+      setLatestFeedbackRefreshKey((prev) => prev + 1);
       Promise.resolve(refreshData()).catch(() => {});
     } catch (e) {
       console.error('[ActivityDetails] feedback clear failed:', e);
