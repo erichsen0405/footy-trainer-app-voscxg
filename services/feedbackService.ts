@@ -114,6 +114,83 @@ export async function fetchSelfFeedbackForActivities(
   return mapped;
 }
 
+type FetchLatestCategoryFeedbackArgs = {
+  userId: string;
+  categoryId: string;
+  limit?: number;
+};
+
+export type LatestCategoryFeedback = TaskTemplateSelfFeedback & {
+  focusPointTitle?: string | null;
+};
+
+function normalizeFeedbackTemplateTitle(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  return value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function isFeedbackTemplateTitle(value: unknown): boolean {
+  const normalized = normalizeFeedbackTemplateTitle(value);
+  return normalized.startsWith('feedback pa');
+}
+
+export async function fetchLatestCategoryFeedback(
+  args: FetchLatestCategoryFeedbackArgs
+): Promise<LatestCategoryFeedback[]> {
+  const trimmedUserId = String(args?.userId ?? '').trim();
+  const trimmedCategoryId = String(args?.categoryId ?? '').trim();
+  const safeLimit =
+    typeof args?.limit === 'number' && Number.isFinite(args.limit) && args.limit > 0
+      ? Math.floor(args.limit)
+      : 3;
+  const rawLimit = Math.max(10, safeLimit * 10);
+
+  if (!trimmedUserId || !trimmedCategoryId) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from('task_template_self_feedback')
+    .select(`
+      *,
+      task_templates!inner(
+        title,
+        task_template_categories!inner(
+          category_id
+        )
+      )
+    `)
+    .eq('user_id', trimmedUserId)
+    .eq('task_templates.task_template_categories.category_id', trimmedCategoryId)
+    .order('created_at', { ascending: false })
+    .limit(rawLimit);
+
+  if (error) {
+    throw error;
+  }
+
+  const filtered = (data || []).filter((row: any) => {
+    const hasScore = typeof row?.rating === 'number';
+    const hasNote = String(row?.note ?? '').trim().length > 0;
+    const isFeedbackTitle = isFeedbackTemplateTitle(row?.task_templates?.title);
+    return (hasScore || hasNote) && isFeedbackTitle;
+  });
+  return filtered
+    .slice(0, safeLimit)
+    .map((row: any) => ({
+      ...mapFeedbackRow(row),
+      focusPointTitle:
+        typeof row?.task_templates?.title === 'string'
+          ? row.task_templates.title
+          : null,
+    }));
+}
+
 type UpsertSelfFeedbackArgs = {
   templateId: string;
   userId: string;

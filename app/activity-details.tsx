@@ -32,7 +32,12 @@ import { deleteSingleExternalActivity } from '@/utils/deleteExternalActivities';
 import { TaskDescriptionRenderer } from '@/components/TaskDescriptionRenderer';
 import { supabase } from '@/integrations/supabase/client';
 import { TaskScoreNoteModal, TaskScoreNoteModalPayload } from '@/components/TaskScoreNoteModal';
-import { fetchSelfFeedbackForActivities, fetchSelfFeedbackForTemplates, upsertSelfFeedback } from '@/services/feedbackService';
+import {
+  fetchLatestCategoryFeedback,
+  fetchSelfFeedbackForActivities,
+  fetchSelfFeedbackForTemplates,
+  upsertSelfFeedback,
+} from '@/services/feedbackService';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { filterVisibleTasksForActivity } from '@/utils/taskTemplateVisibility';
 import { resolveActivityIntensityEnabled } from '@/utils/activityIntensity';
@@ -240,6 +245,16 @@ function formatDate(date: Date): string {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
+    year: 'numeric',
+  });
+}
+
+function formatShortDate(value: string): string {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  return date.toLocaleDateString('da-DK', {
+    day: '2-digit',
+    month: 'short',
     year: 'numeric',
   });
 }
@@ -961,6 +976,15 @@ interface PreviousFeedbackEntry {
   feedback?: TaskTemplateSelfFeedback;
 }
 
+type LatestCategoryFeedbackEntry = {
+  id: string;
+  taskTemplateId: string;
+  focusPointTitle: string;
+  createdAt: string;
+  rating?: number | null;
+  note?: string | null;
+};
+
 function normalizeId(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   const trimmed = String(value).trim();
@@ -1356,6 +1380,9 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const [selfFeedbackHistoryByTemplate, setSelfFeedbackHistoryByTemplate] = useState<
     Record<string, TaskTemplateSelfFeedback[]>
   >({});
+  const [latestCategoryFeedback, setLatestCategoryFeedback] = useState<LatestCategoryFeedbackEntry[]>([]);
+  const [isLatestCategoryFeedbackLoading, setIsLatestCategoryFeedbackLoading] = useState(true);
+  const [isLatestFeedbackExpanded, setIsLatestFeedbackExpanded] = useState(true);
 
   const [feedbackModalTask, setFeedbackModalTask] = useState<FeedbackModalTaskState | null>(null);
 
@@ -1414,6 +1441,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const [isFeedbackSaving, setIsFeedbackSaving] = useState(false);
   const [feedbackModalError, setFeedbackModalError] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [isCurrentUserResolved, setIsCurrentUserResolved] = useState(false);
 
   const [pendingFeedbackTaskId, setPendingFeedbackTaskId] = useState<string | null>(initialFeedbackTaskId ?? null);
   const [pendingNormalTaskId, setPendingNormalTaskId] = useState<string | null>(initialOpenTaskId ?? null);
@@ -1500,11 +1528,16 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         if (cancelled) return;
         if (error) {
           setCurrentUserId(null);
+          setIsCurrentUserResolved(true);
           return;
         }
         setCurrentUserId(data.session?.user?.id ?? null);
+        setIsCurrentUserResolved(true);
       } catch {
-        if (!cancelled) setCurrentUserId(null);
+        if (!cancelled) {
+          setCurrentUserId(null);
+          setIsCurrentUserResolved(true);
+        }
       }
     })();
     return () => {
@@ -1668,6 +1701,62 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       cancelled = true;
     };
   }, [currentUserId, feedbackActivityCandidates, feedbackActivityCandidatesKey, feedbackTemplateIds]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      if (!isCurrentUserResolved) {
+        if (!cancelled) {
+          setIsLatestCategoryFeedbackLoading(true);
+        }
+        return;
+      }
+
+      const categoryId = normalizeId(activity?.category?.id);
+      if (!currentUserId || !categoryId) {
+        if (!cancelled) {
+          setLatestCategoryFeedback([]);
+          setIsLatestCategoryFeedbackLoading(false);
+        }
+        return;
+      }
+
+      setIsLatestCategoryFeedbackLoading(true);
+      try {
+        const rows = await fetchLatestCategoryFeedback({
+          userId: currentUserId,
+          categoryId,
+          limit: 3,
+        });
+        if (cancelled) return;
+        setLatestCategoryFeedback(
+          rows.map((row) => ({
+            id: String(row.id),
+            taskTemplateId: String(row.taskTemplateId ?? ''),
+            focusPointTitle: stripLeadingFeedbackPrefix(
+              String((row as any).focusPointTitle ?? '').trim() || 'Ukendt fokuspunkt',
+            ),
+            createdAt: String(row.createdAt ?? ''),
+            rating: row.rating ?? null,
+            note: row.note ?? null,
+          })),
+        );
+      } catch {
+        if (!cancelled) {
+          setLatestCategoryFeedback([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLatestCategoryFeedbackLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activity?.category?.id, currentUserId, isCurrentUserResolved]);
 
   useEffect(() => {
     if (!pendingFeedbackTaskId) return;
@@ -3224,6 +3313,108 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             />
           </View>
         ) : null}
+
+        {!isEditing ? (
+          <View style={[styles.v2CardWrap, { marginTop: 12 }]} testID="activity.details.latestFeedback.section">
+            <View
+              style={[
+                styles.latestFeedbackCard,
+                { backgroundColor: isDark ? '#ffffff0f' : '#ffffff' },
+              ]}
+            >
+              <View style={styles.latestFeedbackHeaderRow}>
+                <Text style={[styles.latestFeedbackTitle, { color: textColor }]}>Seneste feedback</Text>
+                <TouchableOpacity
+                  onPress={() => setIsLatestFeedbackExpanded((prev) => !prev)}
+                  activeOpacity={0.7}
+                  style={styles.latestFeedbackToggleButton}
+                  testID="activity.details.latestFeedback.toggle"
+                >
+                  <IconSymbol
+                    ios_icon_name={isLatestFeedbackExpanded ? 'chevron.up' : 'chevron.down'}
+                    android_material_icon_name={isLatestFeedbackExpanded ? 'expand_less' : 'expand_more'}
+                    size={18}
+                    color={textSecondaryColor}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              {!isLatestFeedbackExpanded ? null : isLatestCategoryFeedbackLoading ? (
+                <View testID="activity.details.latestFeedback.loading">
+                  {[1, 2, 3].map((item) => (
+                    <View key={`latest-feedback-loading-${item}`} style={styles.latestFeedbackLoadingRow}>
+                      <View
+                        style={[
+                          styles.latestFeedbackLoadingDate,
+                          { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : '#e2e8f0' },
+                        ]}
+                      />
+                      <View
+                        style={[
+                          styles.latestFeedbackLoadingNote,
+                          { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : '#e2e8f0' },
+                        ]}
+                      />
+                    </View>
+                  ))}
+                </View>
+              ) : latestCategoryFeedback.length === 0 ? (
+                <Text
+                  style={[styles.latestFeedbackEmpty, { color: textSecondaryColor }]}
+                  testID="activity.details.latestFeedback.empty"
+                >
+                  Ingen feedback endnu i denne kategori.
+                </Text>
+              ) : (
+                <FlatList
+                  data={latestCategoryFeedback}
+                  scrollEnabled={false}
+                  keyExtractor={(item) => item.id}
+                  contentContainerStyle={styles.latestFeedbackList}
+                  renderItem={({ item }) => {
+                    const hasScore = typeof item.rating === 'number';
+                    const note = String(item.note ?? '').trim();
+                    const hasNote = note.length > 0;
+                    const dateLabel = formatShortDate(item.createdAt);
+
+                    return (
+                      <View style={styles.latestFeedbackRow} testID={`activity.details.latestFeedback.item.${item.id}`}>
+                        <Text
+                          style={[styles.latestFeedbackFocusPoint, { color: textColor }]}
+                          numberOfLines={1}
+                          ellipsizeMode="tail"
+                        >
+                          {item.focusPointTitle}
+                        </Text>
+                        <View style={styles.latestFeedbackRowTop}>
+                          <Text style={[styles.latestFeedbackDate, { color: textSecondaryColor }]}>
+                            {dateLabel || '-'}
+                          </Text>
+                          {hasScore ? (
+                            <View style={[styles.latestFeedbackScoreChip, { backgroundColor: infoBackgroundColor }]}>
+                              <Text style={[styles.latestFeedbackScoreChipText, { color: textColor }]}>
+                                Score {item.rating}/10
+                              </Text>
+                            </View>
+                          ) : null}
+                        </View>
+                        {hasNote ? (
+                          <Text
+                            style={[styles.latestFeedbackNote, { color: textColor }]}
+                            numberOfLines={3}
+                            ellipsizeMode="tail"
+                          >
+                            {note}
+                          </Text>
+                        ) : null}
+                      </View>
+                    );
+                  }}
+                />
+              )}
+            </View>
+          </View>
+        ) : null}
       </View>
     );
 
@@ -3283,6 +3474,9 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     showTimePicker,
     startTimeDate,
     endTimeDate,
+    latestCategoryFeedback,
+    isLatestCategoryFeedbackLoading,
+    isLatestFeedbackExpanded,
     textColor,
     textSecondaryColor,
     toggleDay,
@@ -4611,6 +4805,90 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
     color: colors.text,
+  },
+  latestFeedbackCard: {
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    elevation: 6,
+  },
+  latestFeedbackHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  latestFeedbackTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  latestFeedbackToggleButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  latestFeedbackList: {
+    paddingBottom: 2,
+  },
+  latestFeedbackRow: {
+    borderRadius: 12,
+    padding: 10,
+    backgroundColor: 'rgba(148, 163, 184, 0.12)',
+    marginBottom: 10,
+  },
+  latestFeedbackRowTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  latestFeedbackDate: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  latestFeedbackFocusPoint: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  latestFeedbackScoreChip: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  latestFeedbackScoreChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  latestFeedbackNote: {
+    fontSize: 14,
+    lineHeight: 19,
+  },
+  latestFeedbackEmpty: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  latestFeedbackLoadingRow: {
+    borderRadius: 12,
+    padding: 10,
+    backgroundColor: 'rgba(148, 163, 184, 0.12)',
+    marginBottom: 8,
+  },
+  latestFeedbackLoadingDate: {
+    width: 88,
+    height: 14,
+    borderRadius: 7,
+    marginBottom: 8,
+  },
+  latestFeedbackLoadingNote: {
+    width: '100%',
+    height: 14,
+    borderRadius: 7,
   },
   v2StickyCtaWrap: {
     position: 'absolute',
