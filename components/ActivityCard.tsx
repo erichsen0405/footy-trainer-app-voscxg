@@ -189,6 +189,8 @@ const isFeedbackTitle = (title?: string | null): boolean => {
   return normalized.startsWith('feedback pa');
 };
 
+const feedbackTitlePrefixRegex = /^\s*feedback\s+p(?:å|a\u030a|a)\s*[:\s-]*/i;
+
 const splitFeedbackLabelAndName = (title?: string | null): { label: string; name: string } => {
   const decodedTitle = decodeUtf8Garble(title ?? '');
   const trimmedTitle = decodedTitle.trim();
@@ -196,13 +198,10 @@ const splitFeedbackLabelAndName = (title?: string | null): { label: string; name
     return { label: 'Feedback på:', name: '' };
   }
 
-  const normalizedTitle = normalizeFeedbackTitle(trimmedTitle);
-  const marker = 'feedback pa';
-  if (!normalizedTitle.startsWith(marker)) {
+  const remainder = trimmedTitle.replace(feedbackTitlePrefixRegex, '').trim();
+  if (remainder === trimmedTitle) {
     return { label: 'Feedback på:', name: trimmedTitle };
   }
-
-  const remainder = trimmedTitle.slice(marker.length).replace(/^[:\s-]+/, '').trim();
   if (!remainder) {
     return { label: 'Feedback på:', name: '' };
   }

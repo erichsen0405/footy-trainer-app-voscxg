@@ -149,4 +149,26 @@ describe('ActivityCard completion UI', () => {
 
     expect(getByText('Feedback på: teknik')).not.toHaveStyle({ textDecorationLine: 'line-through' });
   });
+
+  it('renders NFD encoded feedback prefix without corrupting the task name', () => {
+    const { getByText } = render(
+      <ActivityCard
+        activity={{
+          ...baseActivity,
+          tasks: [
+            {
+              id: 'feedback-task-3',
+              title: 'Feedback pa\u030a: fokus',
+              completed: false,
+              feedback_template_id: 'template-3',
+            },
+          ],
+        }}
+        resolvedDate={new Date('2026-01-01T10:00:00Z')}
+        showTasks
+      />
+    );
+
+    expect(getByText('Feedback på: fokus')).toBeTruthy();
+  });
 });
