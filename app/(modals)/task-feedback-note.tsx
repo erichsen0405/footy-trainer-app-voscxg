@@ -703,6 +703,16 @@ export default function TaskFeedbackNoteScreen() {
       onSave={handleSave}
       onClear={handleClear}
       clearLabel="Markér som ikke udført"
+      infoButtonAccessibilityLabel="Vis info om feedback-score"
+      infoModalTitle="Sådan giver du din Feedback-score"
+      infoModalLines={[
+        'Vælg et fokuspunkt i biblioteket, som du gerne vil blive bedre til.',
+        'Efter træning giver du dig selv en score for, hvor godt du gjorde det på fokuspunktet.',
+        'Vær ærlig. Det hjælper dig mest.',
+        'Det er ikke en konkurrence med andre. Det er din egen udvikling.',
+        'Hvis du sætter scoren for højt, skifter du måske fokuspunkt for tidligt.',
+        'Bliv ved med det samme fokuspunkt, indtil du virkelig mestrer det.',
+      ]}
       onClose={handleClose}
     />
   );

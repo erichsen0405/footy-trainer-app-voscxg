@@ -141,4 +141,14 @@ describe('task-score-note screen', () => {
     await waitFor(() => expect(screen.getByTestId('feedback.noteInput').props.value).toBe('Gemt intensitet note'));
     await waitFor(() => expect(screen.getByTestId('feedback.selectedScore.9')).toBeTruthy());
   });
+
+  it('shows intensity info modal when pressing info button', async () => {
+    const screen = render(<TaskScoreNoteScreen />);
+
+    await waitFor(() => expect(screen.getByTestId('feedback.infoButton')).toBeTruthy());
+    fireEvent.press(screen.getByTestId('feedback.infoButton'));
+
+    expect(screen.getByText('Sådan bruger du Intensitet')).toBeTruthy();
+    expect(screen.getByText('Intensitet viser hvor frisk din krop er i dag.')).toBeTruthy();
+  });
 });

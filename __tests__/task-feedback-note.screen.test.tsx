@@ -256,4 +256,16 @@ describe('task-feedback-note screen', () => {
     );
     expect(screen.getByTestId('feedback.selectedScore.9')).toBeTruthy();
   });
+
+  it('shows feedback-score info modal when pressing info button', async () => {
+    const screen = render(<TaskFeedbackNoteScreen />);
+
+    await waitFor(() => expect(screen.getByTestId('feedback.infoButton')).toBeTruthy());
+    fireEvent.press(screen.getByTestId('feedback.infoButton'));
+
+    expect(screen.getByText('Sådan giver du din Feedback-score')).toBeTruthy();
+    expect(
+      screen.getByText('Vælg et fokuspunkt i biblioteket, som du gerne vil blive bedre til.'),
+    ).toBeTruthy();
+  });
 });
