@@ -17,6 +17,8 @@ type TaskTemplateRow = {
   after_training_feedback_score_explanation: string | null;
   after_training_feedback_enable_intensity: boolean;
   after_training_feedback_enable_note: boolean;
+  task_duration_enabled: boolean;
+  task_duration_minutes: number | null;
   created_at: string;
 };
 
@@ -73,6 +75,8 @@ jest.mock('@/integrations/supabase/client', () => {
             after_training_feedback_score_explanation: payload.after_training_feedback_score_explanation ?? null,
             after_training_feedback_enable_intensity: payload.after_training_feedback_enable_intensity ?? true,
             after_training_feedback_enable_note: payload.after_training_feedback_enable_note ?? true,
+            task_duration_enabled: payload.task_duration_enabled ?? false,
+            task_duration_minutes: payload.task_duration_minutes ?? null,
             created_at: new Date().toISOString(),
           };
           db.taskTemplates.push(created);
@@ -171,5 +175,23 @@ describe('taskService.createTask library idempotency', () => {
     expect(db.taskTemplates).toHaveLength(1);
     expect(first.id).toBe(second.id);
     expect(db.taskTemplates[0].library_exercise_id).toBe('711f3229-2fee-45fe-b46e-87dd1605af03');
+  });
+
+  it('clamps task duration minutes to 600 before save', async () => {
+    const payload = {
+      title: 'Duration clamp',
+      description: 'Too large duration',
+      categoryIds: [],
+      taskDurationEnabled: true,
+      taskDurationMinutes: 601,
+      sourceFolder: 'FootballCoach inspiration',
+      libraryExerciseId: '7b2ee3db-8f60-4f7f-8df1-7451a2d2ce8c',
+    };
+
+    await taskService.createTask(payload as any);
+
+    expect(db.taskTemplates).toHaveLength(1);
+    expect(db.taskTemplates[0].task_duration_enabled).toBe(true);
+    expect(db.taskTemplates[0].task_duration_minutes).toBe(600);
   });
 });
