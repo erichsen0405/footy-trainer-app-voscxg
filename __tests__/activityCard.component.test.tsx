@@ -171,4 +171,51 @@ describe('ActivityCard completion UI', () => {
 
     expect(getByText('Feedback på: fokus')).toBeTruthy();
   });
+
+  it('renders task duration badge when task duration is enabled', () => {
+    const { getByText } = render(
+      <ActivityCard
+        activity={{
+          ...baseActivity,
+          tasks: [
+            {
+              id: 'task-with-duration-1',
+              title: 'Pasningsøvelse',
+              completed: false,
+              task_duration_enabled: true,
+              task_duration_minutes: 25,
+            },
+          ],
+        }}
+        resolvedDate={new Date('2026-01-01T10:00:00Z')}
+        showTasks
+      />
+    );
+
+    expect(getByText('Varighed: 25 min')).toBeTruthy();
+  });
+
+  it('does not render task duration badge for feedback tasks', () => {
+    const { queryByText } = render(
+      <ActivityCard
+        activity={{
+          ...baseActivity,
+          tasks: [
+            {
+              id: 'feedback-with-duration-1',
+              title: 'Feedback på: Pasningsøvelse',
+              completed: false,
+              feedback_template_id: 'feedback-template-1',
+              task_duration_enabled: true,
+              task_duration_minutes: 25,
+            },
+          ],
+        }}
+        resolvedDate={new Date('2026-01-01T10:00:00Z')}
+        showTasks
+      />
+    );
+
+    expect(queryByText('Varighed: 25 min')).toBeNull();
+  });
 });

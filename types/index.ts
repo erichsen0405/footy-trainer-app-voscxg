@@ -60,6 +60,10 @@ export interface Task {
   afterTrainingFeedbackScoreExplanation?: string | null;
   afterTrainingFeedbackEnableIntensity?: boolean;
   afterTrainingFeedbackEnableNote?: boolean;
+  taskDurationEnabled?: boolean;
+  taskDurationMinutes?: number | null;
+  task_duration_enabled?: boolean;
+  task_duration_minutes?: number | null;
   taskTemplateId?: string | null;
   feedbackTemplateId?: string | null;
   isFeedbackTask?: boolean;

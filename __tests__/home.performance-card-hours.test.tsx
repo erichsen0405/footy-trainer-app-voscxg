@@ -1,5 +1,5 @@
 import React from 'react';
-import { render } from '@testing-library/react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 import { addDays, endOfWeek, format, startOfWeek } from 'date-fns';
 
 import HomeScreen from '../app/(tabs)/(home)/index';
@@ -144,7 +144,18 @@ describe('Home performance card hour sums', () => {
           activity_date: todayIso,
           activity_time: '08:00:00',
           duration_minutes: 150,
-          tasks: [],
+          tasks: [
+            {
+              id: 'task-1',
+              task_duration_enabled: true,
+              task_duration_minutes: 20,
+            },
+            {
+              id: 'task-2',
+              task_duration_enabled: true,
+              task_duration_minutes: 40,
+            },
+          ],
         },
         {
           id: 'a-week',
@@ -193,10 +204,23 @@ describe('Home performance card hour sums', () => {
   it('renders Timer i dag and Timer denne uge with expected totals', () => {
     const { getByText, getByTestId } = render(<HomeScreen />);
 
-    expect(getByText('Timer i dag: 2,5 t')).toBeTruthy();
-    expect(getByText('Timer denne uge: 3,5 t')).toBeTruthy();
+    expect(getByText('Timer i dag: 1 t')).toBeTruthy();
+    expect(getByText('Timer denne uge: 2 t')).toBeTruthy();
     expect(getByTestId('home.performance.hoursToday')).toBeTruthy();
     expect(getByTestId('home.performance.hoursWeek')).toBeTruthy();
     expect(mockPush).toHaveBeenCalledTimes(0);
+  });
+
+  it('renders upcoming week summary collapsed and expands to show upcoming activities', () => {
+    const { getByText, queryAllByTestId } = render(<HomeScreen />);
+
+    expect(getByText('KOMMENDE UGE')).toBeTruthy();
+    expect(getByText('Aktiviteter · 1')).toBeTruthy();
+    expect(getByText('Opgaver · 0')).toBeTruthy();
+    expect(getByText('Planlagt: 1 t')).toBeTruthy();
+    expect(queryAllByTestId('mock.activityCard')).toHaveLength(2);
+
+    fireEvent.press(getByText('KOMMENDE UGE'));
+    expect(queryAllByTestId('mock.activityCard')).toHaveLength(3);
   });
 });

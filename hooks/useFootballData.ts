@@ -469,6 +469,8 @@ export const useFootballData = () => {
           after_training_feedback_score_explanation,
           after_training_feedback_enable_intensity,
           after_training_feedback_enable_note,
+          task_duration_enabled,
+          task_duration_minutes,
           archived_at,
           task_template_categories (
             category_id
@@ -496,6 +498,8 @@ export const useFootballData = () => {
         afterTrainingFeedbackScoreExplanation: t.after_training_feedback_score_explanation ?? null,
         afterTrainingFeedbackEnableIntensity: t.after_training_feedback_enable_intensity ?? false,
         afterTrainingFeedbackEnableNote: t.after_training_feedback_enable_note ?? true,
+        taskDurationEnabled: t.task_duration_enabled ?? false,
+        taskDurationMinutes: t.task_duration_minutes ?? null,
         archivedAt: t.archived_at ?? null,
       }));
 
@@ -1074,6 +1078,8 @@ export const useFootballData = () => {
           afterTrainingFeedbackScoreExplanation: task.afterTrainingFeedbackScoreExplanation ?? null,
           afterTrainingFeedbackEnableIntensity: task.afterTrainingFeedbackEnableIntensity ?? false,
           afterTrainingFeedbackEnableNote: task.afterTrainingFeedbackEnableNote ?? true,
+          taskDurationEnabled: task.taskDurationEnabled ?? false,
+          taskDurationMinutes: task.taskDurationEnabled ? (task.taskDurationMinutes ?? 0) : null,
           playerId,
           teamId,
           sourceFolder: options?.sourceFolder ?? null,
@@ -1096,6 +1102,7 @@ export const useFootballData = () => {
           console.log('[addTask] Refreshing tasks for consistency');
           await fetchTasks();
         }
+        emitActivitiesRefreshRequested({ reason: 'task_template_created' });
         return created;
       } catch (error) {
         console.error('[addTask] Error adding task:', error);
@@ -1235,10 +1242,13 @@ export const useFootballData = () => {
         afterTrainingFeedbackScoreExplanation: updates.afterTrainingFeedbackScoreExplanation,
         afterTrainingFeedbackEnableIntensity: updates.afterTrainingFeedbackEnableIntensity,
         afterTrainingFeedbackEnableNote: updates.afterTrainingFeedbackEnableNote,
+        taskDurationEnabled: updates.taskDurationEnabled,
+        taskDurationMinutes: updates.taskDurationEnabled ? (updates.taskDurationMinutes ?? 0) : null,
       });
 
       console.log('[updateTask] Task updated successfully, refreshing tasks...');
       await fetchTasks();
+      emitActivitiesRefreshRequested({ reason: 'task_template_updated' });
     } catch (error) {
       console.error('[updateTask] Error updating task:', error);
       throw error;
@@ -1293,6 +1303,8 @@ export const useFootballData = () => {
           afterTrainingFeedbackScoreExplanation: taskToDuplicate.afterTrainingFeedbackScoreExplanation ?? null,
           afterTrainingFeedbackEnableIntensity: taskToDuplicate.afterTrainingFeedbackEnableIntensity ?? false,
           afterTrainingFeedbackEnableNote: taskToDuplicate.afterTrainingFeedbackEnableNote ?? true,
+          taskDurationEnabled: taskToDuplicate.taskDurationEnabled ?? false,
+          taskDurationMinutes: taskToDuplicate.taskDurationEnabled ? (taskToDuplicate.taskDurationMinutes ?? 0) : null,
         } as any;
 
         const created = await addTask(copyPayload);
