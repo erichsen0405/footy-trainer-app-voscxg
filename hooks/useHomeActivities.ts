@@ -33,6 +33,11 @@ interface ActivityWithCategory {
   title: string;
   activity_date: string;
   activity_time: string;
+  activity_end_time?: string | null;
+  start_date?: string;
+  start_time?: string;
+  end_date?: string | null;
+  end_time?: string | null;
   location?: string;
   category_id?: string | null;
   category?: DatabaseActivityCategory | null;
@@ -448,6 +453,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
             title,
             activity_date,
             activity_time,
+            activity_end_time,
             location,
             category_id,
             intensity,
@@ -566,6 +572,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           title: activity.title,
           activity_date: activity.activity_date,
           activity_time: activity.activity_time,
+          activity_end_time: activity.activity_end_time ?? null,
           location: activity.location || '',
           category_id: activity.category_id,
           category: resolvedCategory,
@@ -599,7 +606,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       if (calendarIdsNormalized.length > 0) {
         const { data: eventsData, error: eventsError } = await supabase
           .from('events_external')
-          .select('id, title, start_date, start_time, location, provider_calendar_id, provider_event_uid, raw_payload')
+          .select('id, title, start_date, start_time, end_date, end_time, location, provider_calendar_id, provider_event_uid, raw_payload')
           .in('provider_calendar_id', calendarIdsNormalized)
           .eq('deleted', false)
           .is('deleted_at', null);
@@ -719,6 +726,10 @@ export function useHomeActivities(): UseHomeActivitiesResult {
               title: meta?.local_title_override || event.title,
               activity_date: event.start_date,
               activity_time: event.start_time || '12:00:00',
+              start_date: event.start_date,
+              start_time: event.start_time || '12:00:00',
+              end_date: event.end_date ?? null,
+              end_time: event.end_time ?? null,
               location: event.location || '',
               category_id: categoryId,
               category: resolvedCategory,
