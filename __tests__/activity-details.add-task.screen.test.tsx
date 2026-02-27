@@ -3,12 +3,17 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 
 import * as ActivityDetailsModule from '../app/activity-details';
+import type { TaskTemplateSelfFeedback } from '@/types';
 
 const mockRefreshData = jest.fn().mockResolvedValue(undefined);
 const mockSupabaseFrom = jest.fn();
 const mockUpdateActivitySingle = jest.fn().mockResolvedValue(undefined);
 const mockUpdateIntensityByCategory = jest.fn().mockResolvedValue(undefined);
 const mockUpdateActivitySeries = jest.fn().mockResolvedValue(undefined);
+const mockFetchSelfFeedbackForActivities = jest.fn().mockResolvedValue([]);
+const mockFetchSelfFeedbackForTemplates = jest.fn().mockResolvedValue([]);
+const mockFetchLatestCategoryFeedback = jest.fn().mockResolvedValue([]);
+const mockUpsertSelfFeedback = jest.fn();
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({
@@ -48,6 +53,13 @@ jest.mock('@/integrations/supabase/client', () => ({
       }),
     },
   },
+}));
+
+jest.mock('@/services/feedbackService', () => ({
+  fetchSelfFeedbackForActivities: (...args: any[]) => mockFetchSelfFeedbackForActivities(...args),
+  fetchSelfFeedbackForTemplates: (...args: any[]) => mockFetchSelfFeedbackForTemplates(...args),
+  fetchLatestCategoryFeedback: (...args: any[]) => mockFetchLatestCategoryFeedback(...args),
+  upsertSelfFeedback: (...args: any[]) => mockUpsertSelfFeedback(...args),
 }));
 
 jest.mock('expo-linear-gradient', () => {
@@ -117,6 +129,9 @@ jest.mock('react-native-safe-area-context', () => ({
 describe('ActivityDetails add-task flow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockFetchSelfFeedbackForActivities.mockResolvedValue([]);
+    mockFetchSelfFeedbackForTemplates.mockResolvedValue([]);
+    mockFetchLatestCategoryFeedback.mockResolvedValue([]);
     mockSupabaseFrom.mockImplementation((table: string) => {
       if (table !== 'activities') {
         return {
@@ -207,6 +222,169 @@ describe('ActivityDetails add-task flow', () => {
     fireEvent.press(getByTestId('mock.createActivityTaskModal.complete'));
     await waitFor(() => expect(mockSupabaseFrom).toHaveBeenCalledWith('activities'));
     expect(await findByTestId('activity.taskRow.task-1')).toBeTruthy();
+  });
+
+  it('shows latest feedback loading placeholder while data is being fetched', async () => {
+    let resolveLatestFeedback: ((rows: TaskTemplateSelfFeedback[]) => void) | null = null;
+    const latestFeedbackPromise = new Promise<TaskTemplateSelfFeedback[]>((resolve) => {
+      resolveLatestFeedback = resolve;
+    });
+    mockFetchLatestCategoryFeedback.mockReturnValueOnce(latestFeedbackPromise);
+
+    const activity = {
+      id: 'activity-feedback-loading-1',
+      title: 'Session',
+      date: new Date('2026-02-10T10:00:00.000Z'),
+      time: '10:00',
+      location: 'Pitch',
+      category: { id: 'cat-1', name: 'Training', color: '#123456', emoji: '⚽️' },
+      tasks: [],
+      isExternal: false,
+      intensityEnabled: false,
+      intensity: null,
+    };
+
+    const { getByTestId, queryByTestId } = render(
+      <ActivityDetailsModule.ActivityDetailsContent
+        activity={activity as any}
+        categories={[activity.category as any]}
+        isAdmin
+        isDark={false}
+        onBack={jest.fn()}
+        onActivityUpdated={jest.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(getByTestId('activity.details.latestFeedback.loading')).toBeTruthy());
+
+    await act(async () => {
+      resolveLatestFeedback?.([]);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(queryByTestId('activity.details.latestFeedback.loading')).toBeNull());
+  });
+
+  it('shows latest feedback empty state when category has no feedback', async () => {
+    mockFetchLatestCategoryFeedback.mockResolvedValueOnce([]);
+
+    const activity = {
+      id: 'activity-feedback-empty-1',
+      title: 'Session',
+      date: new Date('2026-02-10T10:00:00.000Z'),
+      time: '10:00',
+      location: 'Pitch',
+      category: { id: 'cat-1', name: 'Training', color: '#123456', emoji: '⚽️' },
+      tasks: [],
+      isExternal: false,
+      intensityEnabled: false,
+      intensity: null,
+    };
+
+    const { findByTestId, findByText } = render(
+      <ActivityDetailsModule.ActivityDetailsContent
+        activity={activity as any}
+        categories={[activity.category as any]}
+        isAdmin
+        isDark={false}
+        onBack={jest.fn()}
+        onActivityUpdated={jest.fn()}
+      />,
+    );
+
+    expect(await findByTestId('activity.details.latestFeedback.empty')).toBeTruthy();
+    expect(await findByText('Ingen feedback endnu i denne kategori.')).toBeTruthy();
+  });
+
+  it('shows latest feedback item with both score and note when data is loaded', async () => {
+    mockFetchLatestCategoryFeedback.mockResolvedValueOnce([
+      {
+        id: 'feedback-1',
+        userId: 'user-1',
+        taskTemplateId: 'tpl-1',
+        taskInstanceId: 'task-1',
+        activityId: 'activity-old-1',
+        rating: 8,
+        note: 'Hold fokus pa forste beroring.',
+        focusPointTitle: 'Forste beroring',
+        createdAt: '2026-02-20T09:00:00.000Z',
+        updatedAt: '2026-02-20T09:00:00.000Z',
+      },
+    ]);
+
+    const activity = {
+      id: 'activity-feedback-loaded-1',
+      title: 'Session',
+      date: new Date('2026-02-10T10:00:00.000Z'),
+      time: '10:00',
+      location: 'Pitch',
+      category: { id: 'cat-1', name: 'Training', color: '#123456', emoji: '⚽️' },
+      tasks: [],
+      isExternal: false,
+      intensityEnabled: false,
+      intensity: null,
+    };
+
+    const { findByText } = render(
+      <ActivityDetailsModule.ActivityDetailsContent
+        activity={activity as any}
+        categories={[activity.category as any]}
+        isAdmin
+        isDark={false}
+        onBack={jest.fn()}
+        onActivityUpdated={jest.fn()}
+      />,
+    );
+
+    expect(await findByText('Seneste feedback')).toBeTruthy();
+    expect(await findByText('Forste beroring')).toBeTruthy();
+    expect(await findByText('Score 8/10')).toBeTruthy();
+    expect(await findByText('Hold fokus pa forste beroring.')).toBeTruthy();
+  });
+
+  it('can collapse latest feedback section', async () => {
+    mockFetchLatestCategoryFeedback.mockResolvedValueOnce([
+      {
+        id: 'feedback-collapse-1',
+        userId: 'user-1',
+        taskTemplateId: 'tpl-1',
+        taskInstanceId: 'task-1',
+        activityId: 'activity-old-1',
+        rating: 6,
+        note: 'Skub bolden frem i lobet.',
+        focusPointTitle: 'Boldkontrol',
+        createdAt: '2026-02-20T09:00:00.000Z',
+        updatedAt: '2026-02-20T09:00:00.000Z',
+      },
+    ]);
+
+    const activity = {
+      id: 'activity-feedback-collapse-1',
+      title: 'Session',
+      date: new Date('2026-02-10T10:00:00.000Z'),
+      time: '10:00',
+      location: 'Pitch',
+      category: { id: 'cat-1', name: 'Training', color: '#123456', emoji: '⚽️' },
+      tasks: [],
+      isExternal: false,
+      intensityEnabled: false,
+      intensity: null,
+    };
+
+    const { findByText, getByTestId, queryByText } = render(
+      <ActivityDetailsModule.ActivityDetailsContent
+        activity={activity as any}
+        categories={[activity.category as any]}
+        isAdmin
+        isDark={false}
+        onBack={jest.fn()}
+        onActivityUpdated={jest.fn()}
+      />,
+    );
+
+    expect(await findByText('Skub bolden frem i lobet.')).toBeTruthy();
+    fireEvent.press(getByTestId('activity.details.latestFeedback.toggle'));
+    await waitFor(() => expect(queryByText('Skub bolden frem i lobet.')).toBeNull());
   });
 
   it('shows deep-link loader and fetches tasks after render when task is missing at mount', async () => {
