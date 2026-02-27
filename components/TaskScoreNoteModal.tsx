@@ -224,6 +224,14 @@ function TaskScoreNoteModalComponent({
     ]);
   }, [disableInteractions, hasChanges, onClose, visible]);
 
+  const handleRequestClose = useCallback(() => {
+    if (isInfoModalOpen) {
+      setIsInfoModalOpen(false);
+      return;
+    }
+    confirmClose();
+  }, [confirmClose, isInfoModalOpen]);
+
   const renderScoreDropdown = () => {
     if (!enableScore) return null;
     const selectedLabel = typeof score === 'number' ? String(score) : 'Vælg score';
@@ -312,7 +320,7 @@ function TaskScoreNoteModalComponent({
 
   return (
     <>
-      <Modal visible={visible} animationType="fade" transparent statusBarTranslucent onRequestClose={confirmClose}>
+      <Modal visible={visible} animationType="fade" transparent statusBarTranslucent onRequestClose={handleRequestClose}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.modalRoot}
