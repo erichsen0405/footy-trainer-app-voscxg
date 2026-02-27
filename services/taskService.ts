@@ -63,12 +63,15 @@ export interface P8CreateTaskArgs {
 const isP8CreateTaskArgs = (value: unknown): value is P8CreateTaskArgs =>
   !!value && typeof value === 'object' && 'task' in value;
 
+const MAX_TASK_DURATION_MINUTES = 600;
+
 const normalizeTaskDurationMinutes = (value: unknown): number | null => {
   if (value === null || value === undefined || value === '') return null;
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return null;
   const rounded = Math.round(parsed);
-  return rounded >= 0 ? rounded : null;
+  if (rounded < 0) return null;
+  return Math.min(rounded, MAX_TASK_DURATION_MINUTES);
 };
 
 export const taskService = {
