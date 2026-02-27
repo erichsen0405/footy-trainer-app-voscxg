@@ -108,7 +108,7 @@ describe('ActivityCard completion UI', () => {
           tasks: [
             {
               id: 'feedback-task-1',
-              title: 'Feedback på fokus',
+              title: 'Feedback på: fokus',
               completed: false,
               feedback_template_id: 'template-1',
             },
@@ -120,7 +120,9 @@ describe('ActivityCard completion UI', () => {
       />
     );
 
-    expect(getByText('Feedback på fokus')).toHaveStyle({ textDecorationLine: 'line-through' });
+    expect(getByText('Feedback på:')).toBeTruthy();
+    expect(getByText(/Feedback på:\s*fokus/)).toBeTruthy();
+    expect(getByText('Feedback på: fokus')).toHaveStyle({ textDecorationLine: 'line-through' });
   });
 
   it('keeps feedback task not completed without completion signals', () => {
@@ -145,6 +147,6 @@ describe('ActivityCard completion UI', () => {
       />
     );
 
-    expect(getByText('Feedback på teknik')).not.toHaveStyle({ textDecorationLine: 'line-through' });
+    expect(getByText('Feedback på: teknik')).not.toHaveStyle({ textDecorationLine: 'line-through' });
   });
 });

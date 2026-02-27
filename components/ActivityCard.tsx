@@ -189,6 +189,27 @@ const isFeedbackTitle = (title?: string | null): boolean => {
   return normalized.startsWith('feedback pa');
 };
 
+const splitFeedbackLabelAndName = (title?: string | null): { label: string; name: string } => {
+  const decodedTitle = decodeUtf8Garble(title ?? '');
+  const trimmedTitle = decodedTitle.trim();
+  if (!trimmedTitle) {
+    return { label: 'Feedback på:', name: '' };
+  }
+
+  const normalizedTitle = normalizeFeedbackTitle(trimmedTitle);
+  const marker = 'feedback pa';
+  if (!normalizedTitle.startsWith(marker)) {
+    return { label: 'Feedback på:', name: trimmedTitle };
+  }
+
+  const remainder = trimmedTitle.slice(marker.length).replace(/^[:\s-]+/, '').trim();
+  if (!remainder) {
+    return { label: 'Feedback på:', name: '' };
+  }
+
+  return { label: 'Feedback på:', name: remainder };
+};
+
 const getMarkerTemplateId = (task: any): string | null => {
   if (!task) return null;
   const fromMarker =
@@ -916,6 +937,19 @@ export default function ActivityCard({
                             : (taskCompleted ? 'home.activityTaskButton.completed' : 'home.activityTaskButton.incomplete')
                         }
                       >
+                        {feedbackTask
+                          ? (() => {
+                              const { label, name } = splitFeedbackLabelAndName(task.title);
+                              return (
+                                <View style={styles.taskTitleRow}>
+                                  <Text style={[styles.taskTitle, taskCompleted && styles.taskTitleCompleted]}>
+                                    <Text style={styles.feedbackTaskLabel}>{label}</Text>
+                                    {name ? ` ${name}` : ''}
+                                  </Text>
+                                </View>
+                              );
+                            })()
+                          : (
                         <View style={styles.taskTitleRow}>
                           <Text
                             style={[styles.taskTitle, taskCompleted && styles.taskTitleCompleted]}
@@ -923,6 +957,7 @@ export default function ActivityCard({
                             {decodeUtf8Garble(task.title)}
                           </Text>
                         </View>
+                            )}
 
                         {effectiveReminder !== null && (
                           <View style={styles.reminderBadge}>
@@ -1102,6 +1137,9 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: 'rgba(255, 255, 255, 0.95)',
     flexShrink: 1,
+  },
+  feedbackTaskLabel: {
+    fontWeight: '700',
   },
   taskTitleCompleted: {
     textDecorationLine: 'line-through',
