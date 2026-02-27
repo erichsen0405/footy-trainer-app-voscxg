@@ -186,6 +186,11 @@ tags:
     visible:
       id: '^activity\.details\.editButton$'
     timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: '^activity\.details\.(taskButton\.incomplete|feedbackTaskButton\.incomplete)$'
+    direction: DOWN
+    timeout: 15000
 
 # Fuldfør intensitet-opgave (hvis synlig)
 - runFlow:
