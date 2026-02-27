@@ -29,6 +29,8 @@ import { PremiumFeatureGate } from '@/components/PremiumFeatureGate';
 import { useFootball } from '@/contexts/FootballContext';
 import { Task } from '@/types';
 import { extractVideoKey, resolveVideoUrl } from '@/utils/videoKey';
+import { HOLDTRAINING_POSITIONS } from '@/utils/exercisePositions';
+import { AssignExerciseModal } from '@/components/AssignExerciseModal';
 
 type RootFolderId = 'personal' | 'trainer' | 'footballcoach';
 
@@ -78,17 +80,6 @@ type FolderVM = {
 type LibrarySection =
   | { key: 'folders'; title?: string; data: FolderVM[] }
   | { key: 'exercises'; title?: string; data: Exercise[] };
-
-const HOLDTRAINING_POSITIONS = [
-  { id: 'holdtraening_faelles', name: 'Fælles (alle positioner)', icon: { ios: 'star.fill', android: 'star' } },
-  { id: 'holdtraening_maalmand', name: 'Målmand', icon: { ios: 'hand.raised.fill', android: 'sports_soccer' } },
-  { id: 'holdtraening_back', name: 'Back', icon: { ios: 'arrow.left.and.right.circle', android: 'swap_horiz' } },
-  { id: 'holdtraening_midterforsvarer', name: 'Midterforsvarer', icon: { ios: 'shield.fill', android: 'shield' } },
-  { id: 'holdtraening_central_midtbane', name: 'Central midtbane (6/8)', icon: { ios: 'circle.grid.cross.fill', android: 'grid_on' } },
-  { id: 'holdtraening_offensiv_midtbane', name: 'Offensiv midtbane (10)', icon: { ios: 'sparkles', android: 'flare' } },
-  { id: 'holdtraening_kant', name: 'Kant', icon: { ios: 'arrow.triangle.turn.up.right.circle.fill', android: 'open_with' } },
-  { id: 'holdtraening_angriber', name: 'Angriber', icon: { ios: 'flame.fill', android: 'whatshot' } },
-];
 
 const FOOTBALLCOACH_STRUCTURE = [
   {
@@ -354,6 +345,9 @@ const ExerciseCard = memo(function ExerciseCard({
   positionLabelOverride,
   isAddingToTasks,
   previewImageUri,
+  hidePendingAnimation,
+  ctaMode,
+  isAssignedToRecipients,
 }: {
   exercise: Exercise;
   onPressCard: (exercise: Exercise) => void;
@@ -361,6 +355,9 @@ const ExerciseCard = memo(function ExerciseCard({
   positionLabelOverride?: string | null;
   isAddingToTasks?: boolean;
   previewImageUri: string;
+  hidePendingAnimation?: boolean;
+  ctaMode: 'add' | 'assign';
+  isAssignedToRecipients?: boolean;
 }) {
   const colorScheme = useColorScheme();
   const theme = getColors(colorScheme);
@@ -373,7 +370,10 @@ const ExerciseCard = memo(function ExerciseCard({
   const executionCountLine = formatExecutionCountLine(exercise.execution_count ?? null);
   const isAdded = !!exercise.is_added_to_tasks;
   const isAdding = !!isAddingToTasks;
-  const ctaDisabled = isAdded || isAdding;
+  const isAssignMode = ctaMode === 'assign';
+  const isAssignedInTrainerMode = isAssignMode && !!isAssignedToRecipients;
+  const ctaDisabled = isAssignMode ? false : isAdded || isAdding;
+  const ctaLabel = isAssignMode ? (isAssignedInTrainerMode ? 'Tildelt' : 'Tildel') : isAdded ? 'tilføjet' : 'Tilføj til opgaver';
 
   const positionLabel = positionLabelOverride ?? exercise.position ?? null;
   const positionText = positionLabel ? positionLabel : 'Position: –';
@@ -386,9 +386,13 @@ const ExerciseCard = memo(function ExerciseCard({
   const cardFadeColor = theme.card;
 
   return (
-    <View style={[styles.exerciseCard, styles.exerciseCardShadow, { backgroundColor: theme.card }]}>
-      <View style={styles.exerciseTop}>
-        <Pressable onPress={handleCardPress} style={styles.exerciseLeft} android_ripple={{ color: 'rgba(0,0,0,0.05)' }}>
+    <View style={[styles.exerciseCard, styles.exerciseCardShadow, { backgroundColor: theme.card }, isAssignMode ? styles.exerciseCardCompact : null]}>
+      <View style={[styles.exerciseTop, isAssignMode ? styles.exerciseTopCompact : null]}>
+        <Pressable
+          onPress={handleCardPress}
+          style={[styles.exerciseLeft, isAssignMode ? styles.exerciseLeftCompact : null]}
+          android_ripple={{ color: 'rgba(0,0,0,0.05)' }}
+        >
           <View style={styles.trophyWrap}>
             <Text style={[styles.trophyEmoji, !hasTrophy ? { opacity: 0.25 } : null]}>🏆</Text>
           </View>
@@ -427,34 +431,40 @@ const ExerciseCard = memo(function ExerciseCard({
             </Text>
           </View>
 
-          <View style={styles.exerciseStatsRow}>
-            <View style={[styles.statPill, { backgroundColor: theme.highlight }]} testID={`library.badge.lastScore.${exercise.id}`}>
-              <Text
-                style={[styles.exerciseMetaLine, { color: theme.textSecondary }]}
-                testID={`library.counter.lastScore.${exercise.id}`}
-                numberOfLines={1}
+          {!isAssignMode ? (
+            <View style={styles.exerciseStatsRow}>
+              <View style={[styles.statPill, { backgroundColor: theme.highlight }]} testID={`library.badge.lastScore.${exercise.id}`}>
+                <Text
+                  style={[styles.exerciseMetaLine, { color: theme.textSecondary }]}
+                  testID={`library.counter.lastScore.${exercise.id}`}
+                  numberOfLines={1}
+                >
+                  {latestScoreLine}
+                </Text>
+              </View>
+              <View
+                style={[styles.statPill, { backgroundColor: theme.highlight }]}
+                testID={`library.badge.executionCount.${exercise.id}`}
               >
-                {latestScoreLine}
-              </Text>
+                <Text
+                  style={[styles.exerciseMetaLine, { color: theme.textSecondary }]}
+                  testID={`library.counter.executionCount.${exercise.id}`}
+                  numberOfLines={1}
+                >
+                  {executionCountLine}
+                </Text>
+              </View>
             </View>
-            <View
-              style={[styles.statPill, { backgroundColor: theme.highlight }]}
-              testID={`library.badge.executionCount.${exercise.id}`}
-            >
-              <Text
-                style={[styles.exerciseMetaLine, { color: theme.textSecondary }]}
-                testID={`library.counter.executionCount.${exercise.id}`}
-                numberOfLines={1}
-              >
-                {executionCountLine}
-              </Text>
-            </View>
-          </View>
+          ) : null}
         </Pressable>
 
         <View style={styles.exerciseRightColumn}>
-          <View style={styles.exerciseRight}>
-            <Pressable onPress={handleCardPress} style={styles.exerciseMediaPressable} android_ripple={{ color: 'rgba(0,0,0,0.05)' }}>
+          <View style={[styles.exerciseRight, isAssignMode ? styles.exerciseRightCompact : null]}>
+            <Pressable
+              onPress={handleCardPress}
+              style={[styles.exerciseMediaPressable, isAssignMode ? styles.exerciseMediaPressableCompact : null]}
+              android_ripple={{ color: 'rgba(0,0,0,0.05)' }}
+            >
             <Image
               source={{ uri: previewImageUri }}
               style={styles.thumb}
@@ -489,7 +499,7 @@ const ExerciseCard = memo(function ExerciseCard({
             </Pressable>
           </View>
 
-          {!hasAnimation ? (
+          {!hasAnimation && !hidePendingAnimation ? (
             <View style={styles.pendingThumb} testID={pendingStateTestId}>
               <Text style={styles.pendingThumbText}>Animation kommer snart</Text>
             </View>
@@ -501,21 +511,24 @@ const ExerciseCard = memo(function ExerciseCard({
             style={[
               styles.ctaBadge,
               styles.ctaBadgeOverlay,
+              isAssignMode ? styles.ctaBadgeOverlayCompact : null,
               styles.ctaBadgeShadow,
-              isAdded ? { backgroundColor: theme.highlight } : styles.ctaBadgeTransparent,
+              (isAdded && !isAssignMode) || isAssignedInTrainerMode
+                ? { backgroundColor: theme.highlight }
+                : styles.ctaBadgeTransparent,
             ]}
             disabled={ctaDisabled}
             testID={`library.addToTasksButton.${exercise.id}`}
-            accessibilityLabel={isAdded ? 'tilføjet' : 'Tilføj til opgaver'}
+            accessibilityLabel={ctaLabel}
           >
-            {isAdding ? (
+            {isAdding && !isAssignMode ? (
               <>
                 <ActivityIndicator size="small" color={isAdded ? theme.textSecondary : '#fff'} />
                 <Text style={[styles.ctaText, { color: isAdded ? theme.textSecondary : '#fff' }]}>Tilføjer...</Text>
               </>
             ) : (
               <>
-                {!isAdded ? (
+                {(!isAdded || isAssignMode) && !isAssignedInTrainerMode ? (
                   <LinearGradient
                     colors={['#53C761', '#2DA94A', '#0F7F34']}
                     start={{ x: 0, y: 0 }}
@@ -523,13 +536,18 @@ const ExerciseCard = memo(function ExerciseCard({
                     style={styles.ctaGradientFill}
                   />
                 ) : null}
-                {isAdded ? (
+                {(isAdded && !isAssignMode) || isAssignedInTrainerMode ? (
                   <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={9} color={theme.textSecondary} />
                 ) : null}
-                <Text style={[styles.ctaText, { color: isAdded ? theme.textSecondary : '#fff' }]}>
-                  {isAdded ? 'tilføjet' : 'Tilføj til opgaver'}
+                <Text
+                  style={[
+                    styles.ctaText,
+                    { color: (isAdded && !isAssignMode) || isAssignedInTrainerMode ? theme.textSecondary : '#fff' },
+                  ]}
+                >
+                  {ctaLabel}
                 </Text>
-                {!isAdded ? (
+                {(!isAdded || isAssignMode) && !isAssignedInTrainerMode ? (
                   <View style={styles.ctaChevronWrap}>
                     <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron_right" size={11} color="#fff" />
                   </View>
@@ -648,6 +666,7 @@ export default function LibraryScreen() {
 
   // CTA state: local optimistic only (no fetch in onPress)
   const [addedToTasksIds, setAddedToTasksIds] = useState<Set<string>>(() => new Set());
+  const [trainerAssignedExerciseIds, setTrainerAssignedExerciseIds] = useState<Set<string>>(() => new Set());
   const addedToTasksIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     addedToTasksIdsRef.current = addedToTasksIds;
@@ -682,6 +701,8 @@ export default function LibraryScreen() {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addModalExercise, setAddModalExercise] = useState<Exercise | null>(null);
   const [isAddModalSaving, setIsAddModalSaving] = useState(false);
+  const [assignModalVisible, setAssignModalVisible] = useState(false);
+  const [assignModalExercise, setAssignModalExercise] = useState<Exercise | null>(null);
   const [addingTaskIds, setAddingTaskIds] = useState<Set<string>>(() => new Set());
   const addingTaskIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
@@ -844,48 +865,57 @@ export default function LibraryScreen() {
               .order('created_at', { ascending: false })
           : Promise.resolve({ data: [], error: null } as any);
 
-        const teamIds = (teams || []).map(t => t.id).filter(Boolean);
-        const assignmentsPromise = !isCreator
+        const trainerExercisesPromise = !isCreator
           ? supabase
-              .from('exercise_assignments')
+              .from('exercise_library')
               .select('*')
-              .or(teamIds.length ? `player_id.eq.${userId},team_id.in.(${teamIds.join(',')})` : `player_id.eq.${userId}`)
+              .eq('is_system', false)
+              .order('created_at', { ascending: false })
           : Promise.resolve({ data: [], error: null } as any);
+        // RLS decides visibility. We intentionally include all visible scopes
+        // (self/player/team) so assigned library exercises are marked as already added.
         const libraryTaskLinksPromise = supabase
           .from('task_templates')
-          .select('id, library_exercise_id')
-          .eq('user_id', userId)
-          .is('player_id', null)
-          .is('team_id', null)
+          .select('id, user_id, player_id, team_id, library_exercise_id')
           .not('library_exercise_id', 'is', null)
           .order('created_at', { ascending: true });
 
-        const [systemRes, personalRes, assignmentsRes, libraryTaskLinksRes] = await Promise.all([
+        const [systemRes, personalRes, trainerExercisesRes, libraryTaskLinksRes] = await Promise.all([
           systemPromise,
           personalPromise,
-          assignmentsPromise,
+          trainerExercisesPromise,
           libraryTaskLinksPromise,
         ]);
 
         if (systemRes.error) throw systemRes.error;
         if (personalRes?.error) throw personalRes.error;
-        if (assignmentsRes?.error) throw assignmentsRes.error;
+        if (trainerExercisesRes?.error) throw trainerExercisesRes.error;
         if (libraryTaskLinksRes?.error) throw libraryTaskLinksRes.error;
 
         const system = (systemRes.data || []) as any[];
         const personal = (personalRes?.data || []) as any[];
-        const assignments = (assignmentsRes?.data || []) as any[];
+        const trainerExerciseRows = (trainerExercisesRes?.data || []) as any[];
         const libraryTaskLinks = (libraryTaskLinksRes?.data || []) as any[];
 
         const linkedExerciseIds = new Set<string>();
+        const trainerAssignedIds = new Set<string>();
         const linkedExerciseTaskMap: Record<string, string> = {};
         libraryTaskLinks.forEach((row: any) => {
           const exerciseId = String(row?.library_exercise_id ?? '').trim();
           const taskTemplateId = String(row?.id ?? '').trim();
           if (!exerciseId || !taskTemplateId) return;
-          if (linkedExerciseTaskMap[exerciseId]) return;
-          linkedExerciseTaskMap[exerciseId] = taskTemplateId;
-          linkedExerciseIds.add(exerciseId);
+
+          const rowUserId = String(row?.user_id ?? '').trim();
+          const hasPlayerScope = String(row?.player_id ?? '').trim().length > 0;
+          const hasTeamScope = String(row?.team_id ?? '').trim().length > 0;
+          if (isTrainerUser && rowUserId === userId && (hasPlayerScope || hasTeamScope)) {
+            trainerAssignedIds.add(exerciseId);
+          }
+
+          if (!linkedExerciseTaskMap[exerciseId]) {
+            linkedExerciseTaskMap[exerciseId] = taskTemplateId;
+            linkedExerciseIds.add(exerciseId);
+          }
         });
 
         const applyLinkedAdded = (xs: Exercise[]) =>
@@ -895,17 +925,11 @@ export default function LibraryScreen() {
 
         let trainerGrouped: { trainerId: string; trainerName: string; exercises: Exercise[] }[] = [];
         if (!isCreator) {
-          const exerciseIds = Array.from(new Set(assignments.map((a: any) => String(a.exercise_id)).filter(Boolean)));
-          let assignedExercises: Exercise[] = [];
-
-          if (exerciseIds.length) {
-            const { data: exerciseRows, error: exErr } = await supabase.from('exercise_library').select('*').in('id', exerciseIds);
-            if (exErr) throw exErr;
-            assignedExercises = applyCounterOverrides(applyAdded((exerciseRows || []).map(normalizeExercise)));
-          }
-
-          const trainerIds = Array.from(new Set(assignments.map((a: any) => String(a.trainer_id)).filter(Boolean)));
+          const trainerIds = Array.from(new Set(trainerExerciseRows.map((row: any) => String(row?.trainer_id || '')).filter(Boolean)));
           let trainerProfiles: { user_id: string; full_name: string | null }[] = [];
+          const trainerExercises = applyCounterOverrides(
+            applyLinkedAdded(applyAdded(trainerExerciseRows.map(normalizeExercise)))
+          );
 
           if (trainerIds.length) {
             const { data: profRows, error: profErr } = await supabase.from('profiles').select('user_id, full_name').in('user_id', trainerIds);
@@ -917,19 +941,11 @@ export default function LibraryScreen() {
             trainerProfiles.find(p => String(p.user_id) === String(trainerId))?.full_name || 'Ukendt træner';
 
           const grouped = new Map<string, Exercise[]>();
-          const seenTrainerExercisePairs = new Set<string>();
-          assignments.forEach((a: any) => {
-            const tid = String(a.trainer_id || '');
-            const eid = String(a.exercise_id || '');
-            if (!tid || !eid) return;
-            const pairKey = `${tid}::${eid}`;
-            if (seenTrainerExercisePairs.has(pairKey)) return;
-            seenTrainerExercisePairs.add(pairKey);
-            const ex = assignedExercises.find(e => String(e.id) === eid);
-            if (!ex) return;
-
+          trainerExercises.forEach((exercise) => {
+            const tid = String(exercise.trainer_id || '');
+            if (!tid) return;
             const next = grouped.get(tid) || [];
-            next.push({ ...ex, trainer_name: profileName(tid) });
+            next.push({ ...exercise, trainer_name: profileName(tid) });
             grouped.set(tid, next);
           });
 
@@ -950,6 +966,7 @@ export default function LibraryScreen() {
         setPersonalExercises(personalExercises);
         setTrainerFolders(trainerGrouped);
         setExerciseTaskMap(prev => ({ ...prev, ...linkedExerciseTaskMap }));
+        setTrainerAssignedExerciseIds(trainerAssignedIds);
         setAddedToTasksIds(prev => {
           if (!linkedExerciseIds.size) return prev;
           const next = new Set(prev);
@@ -969,7 +986,7 @@ export default function LibraryScreen() {
         setErrorMessage(e?.message || 'Kunne ikke hente bibliotek');
       }
     },
-    [isCreator, teams, normalizeExercise, applyAdded, applyCounterOverrides]
+    [isCreator, isTrainerUser, normalizeExercise, applyAdded, applyCounterOverrides]
   );
 
   useEffect(() => {
@@ -1452,6 +1469,15 @@ export default function LibraryScreen() {
   const handlePressCta = useCallback(
     (exercise: Exercise) => {
       if (!exercise) return;
+      if (isTrainerUser) {
+        if (!currentUserId) {
+          Alert.alert('Vent et øjeblik', 'Brugeroplysninger indlæses stadig. Prøv igen om et øjeblik.');
+          return;
+        }
+        setAssignModalExercise(exercise);
+        setAssignModalVisible(true);
+        return;
+      }
       if (!addTaskToContext) {
         Alert.alert('Ikke tilgængelig', 'Kan ikke tilføje opgaver lige nu. Prøv igen om lidt.');
         return;
@@ -1466,13 +1492,27 @@ export default function LibraryScreen() {
       setAddModalExercise(exercise);
       setAddModalOpen(true);
     },
-    [addTaskToContext, isExerciseAddInFlight, isExerciseAlreadyAdded]
+    [addTaskToContext, currentUserId, isExerciseAddInFlight, isExerciseAlreadyAdded, isTrainerUser]
   );
 
   const handleCloseAddModal = useCallback(() => {
     setAddModalOpen(false);
     setAddModalExercise(null);
   }, []);
+  const handleCloseAssignModal = useCallback(() => {
+    setAssignModalVisible(false);
+    setAssignModalExercise(null);
+    setReloadNonce(n => n + 1);
+  }, []);
+
+  const handleAssignSuccess = useCallback(() => {
+    if (!assignModalExercise?.id) return;
+    setTrainerAssignedExerciseIds(prev => {
+      const next = new Set(prev);
+      next.add(assignModalExercise.id);
+      return next;
+    });
+  }, [assignModalExercise?.id]);
 
   const handleConfirmAddToTasks = useCallback(async () => {
     if (!addModalExercise) return;
@@ -1678,7 +1718,7 @@ export default function LibraryScreen() {
     return () => clearTimeout(t);
   }, [nav.root, nav.level2Id, nav.level3Id, displayedExercises.length, scrollToExercises]);
 
-  const showAddModal = addModalOpen && !!addModalExercise;
+  const showAddModal = !isTrainerUser && addModalOpen && !!addModalExercise;
 
   const renderSectionHeader = useCallback(
     ({ section }: { section: LibrarySection }) => {
@@ -1706,6 +1746,10 @@ export default function LibraryScreen() {
       const ex = item as Exercise;
       let positionOverride: string | null = null;
       const isSearching = searchOpen && searchQuery.trim().length > 0;
+      const isPersonalCreatedExercise =
+        !ex.is_system &&
+        !!currentUserId &&
+        String(ex.trainer_id ?? '') === String(currentUserId);
       if (nav.root === 'footballcoach') {
         if (isSearching) {
           const posId = resolveFootballCoachPosId(ex.category_path);
@@ -1722,6 +1766,9 @@ export default function LibraryScreen() {
           positionLabelOverride={positionOverride}
           isAddingToTasks={addingTaskIds.has(ex.id)}
           previewImageUri={exerciseSceneImageById[ex.id] ?? CARD_SCENE_IMAGES[0]}
+          hidePendingAnimation={isPersonalCreatedExercise}
+          ctaMode={isTrainerUser ? 'assign' : 'add'}
+          isAssignedToRecipients={isTrainerUser ? trainerAssignedExerciseIds.has(ex.id) : false}
         />
       );
     },
@@ -1734,7 +1781,10 @@ export default function LibraryScreen() {
       nav.level3Id,
       searchOpen,
       searchQuery,
+      currentUserId,
+      isTrainerUser,
       addingTaskIds,
+      trainerAssignedExerciseIds,
       exerciseSceneImageById,
     ]
   );
@@ -1997,6 +2047,13 @@ export default function LibraryScreen() {
           </View>
         </Pressable>
       </Modal>
+      <AssignExerciseModal
+        visible={assignModalVisible && !!assignModalExercise && !!currentUserId}
+        exercise={assignModalExercise ? { id: assignModalExercise.id, title: assignModalExercise.title } : null}
+        trainerId={currentUserId}
+        onClose={handleCloseAssignModal}
+        onSuccess={handleAssignSuccess}
+      />
     </View>
   );
 }
@@ -2091,6 +2148,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(148,163,184,0.28)',
   },
+  exerciseCardCompact: {
+    borderRadius: 28,
+  },
   exerciseCardShadow: {
     shadowColor: '#64748b',
     shadowOffset: { width: 0, height: 12 },
@@ -2099,8 +2159,10 @@ const styles = StyleSheet.create({
     elevation: 9,
   },
   exerciseTop: { flexDirection: 'row', alignItems: 'stretch', gap: 0, minHeight: 190 },
+  exerciseTopCompact: { minHeight: 156 },
   // Keep left column above the hero image so the "Sværhedsgrad" text can sit on top of the fade.
   exerciseLeft: { flex: 1, minWidth: 0, paddingTop: 14, paddingBottom: 14, paddingRight: 14, gap: 10, position: 'relative', zIndex: 2 },
+  exerciseLeftCompact: { paddingTop: 12, paddingBottom: 12, gap: 8 },
   exerciseRightColumn: { width: '50%', alignItems: 'stretch', position: 'relative', zIndex: 1 },
   exerciseRight: {
     flex: 1,
@@ -2114,7 +2176,13 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
     backgroundColor: '#fff',
   },
+  exerciseRightCompact: {
+    minHeight: 156,
+    borderTopRightRadius: 28,
+    borderBottomRightRadius: 28,
+  },
   exerciseMediaPressable: { flex: 1, minHeight: 190 },
+  exerciseMediaPressableCompact: { minHeight: 156 },
   thumb: { width: '100%', height: '100%' },
   mediaEdgeFade: {
     position: 'absolute',
@@ -2161,7 +2229,7 @@ const styles = StyleSheet.create({
   },
   starRow: { flexDirection: 'row', gap: 1 },
   difficultyValue: { fontSize: 12, fontWeight: '800', flexShrink: 0 },
-  positionPill: { width: '100%', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
+  positionPill: { alignSelf: 'flex-start', maxWidth: '100%', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
   positionPillText: { fontSize: 10, fontWeight: '800', lineHeight: 12 },
   exerciseStatsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   statPill: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, maxWidth: '100%' },
@@ -2178,6 +2246,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   ctaBadgeOverlay: { position: 'absolute', left: 14, right: 14, bottom: 14 },
+  ctaBadgeOverlayCompact: { bottom: 10 },
   ctaBadgeShadow: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },

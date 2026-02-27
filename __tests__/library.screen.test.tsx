@@ -47,6 +47,19 @@ jest.mock('@/components/IconSymbol', () => {
   };
 });
 
+jest.mock('@/components/AssignExerciseModal', () => {
+  const React = jest.requireActual('react');
+  const { View, Text } = jest.requireActual('react-native');
+  return {
+    AssignExerciseModal: ({ visible, exercise }: { visible: boolean; exercise?: { title?: string } | null }) =>
+      visible ? (
+        <View testID="library.assignExerciseModal">
+          <Text>{exercise?.title ?? ''}</Text>
+        </View>
+      ) : null,
+  };
+});
+
 jest.mock('@/integrations/supabase/client', () => {
   const from = (table: string) => {
     const state: {
@@ -122,19 +135,25 @@ function setupSupabaseFixture({
   systemExercises = [],
   personalExercises = [],
   libraryTaskLinks = [],
+  exerciseAssignments = [],
+  trainerRelationships = [],
+  trainerProfiles = [],
   enforceLibraryTaskLinkScope = true,
 }: {
   userId?: string;
   systemExercises?: ExerciseRow[];
   personalExercises?: ExerciseRow[];
   libraryTaskLinks?: { id: string; library_exercise_id: string }[];
+  exerciseAssignments?: any[];
+  trainerRelationships?: any[];
+  trainerProfiles?: any[];
   enforceLibraryTaskLinkScope?: boolean;
 }) {
   mockAuthGetUser.mockResolvedValue({ data: { user: { id: userId } } });
 
   mockResolveQuery.mockImplementation((state: any) => {
     if (state.table === 'exercise_library') {
-      if (state.inFilter) {
+      if (state.inFilter?.column === 'id') {
         const values = new Set((state.inFilter.values ?? []).map((v: unknown) => String(v)));
         const allRows = [...systemExercises, ...personalExercises];
         return { data: allRows.filter(row => values.has(String(row.id))), error: null };
@@ -149,25 +168,50 @@ function setupSupabaseFixture({
         return { data: personalExercises, error: null };
       }
 
+      if (eqMap.get('is_system') === false && state.inFilter?.column === 'trainer_id') {
+        const trainerIds = new Set((state.inFilter.values ?? []).map((value: unknown) => String(value)));
+        return {
+          data: personalExercises.filter(row => trainerIds.has(String(row.trainer_id ?? ''))),
+          error: null,
+        };
+      }
+
       return { data: [], error: null };
     }
 
     if (state.table === 'exercise_assignments') {
-      return { data: [], error: null };
+      return { data: exerciseAssignments, error: null };
+    }
+
+    if (state.table === 'admin_player_relationships') {
+      if (trainerRelationships.length) {
+        return { data: trainerRelationships, error: null };
+      }
+      const derived = Array.from(
+        new Set((exerciseAssignments || []).map((row: any) => String(row?.trainer_id ?? '')).filter(Boolean))
+      ).map(adminId => ({ admin_id: adminId }));
+      return { data: derived, error: null };
     }
 
     if (state.table === 'profiles') {
-      return { data: [], error: null };
+      return { data: trainerProfiles, error: null };
     }
 
     if (state.table === 'task_templates') {
       if (enforceLibraryTaskLinkScope) {
         const eqMap = new Map(state.eqFilters.map((entry: any) => [entry.column, entry.value]));
         const isMap = new Map(state.isFilters.map((entry: any) => [entry.column, entry.value]));
+        const hasNoScopeFilters =
+          !eqMap.has('user_id') &&
+          !eqMap.has('player_id') &&
+          !eqMap.has('team_id') &&
+          !isMap.has('player_id') &&
+          !isMap.has('team_id');
         const hasExpectedScope =
-          eqMap.get('user_id') === userId &&
-          isMap.get('player_id') === null &&
-          isMap.get('team_id') === null;
+          hasNoScopeFilters ||
+          (eqMap.get('user_id') === userId &&
+            isMap.get('player_id') === null &&
+            isMap.get('team_id') === null);
         if (!hasExpectedScope) {
           return { data: null, error: { message: 'Missing required task_templates self-scope filters' } };
         }
@@ -183,7 +227,12 @@ describe('Library screen gating and card state', () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
-    mockUseTeamPlayer.mockReturnValue({ teams: [] });
+    mockUseTeamPlayer.mockReturnValue({
+      players: [],
+      teams: [],
+      refreshPlayers: jest.fn().mockResolvedValue(undefined),
+      refreshTeams: jest.fn().mockResolvedValue(undefined),
+    });
     mockUseFootball.mockReturnValue({
       addTask: jest.fn().mockResolvedValue({ id: 'task-1' }),
       tasks: [],
@@ -232,7 +281,47 @@ describe('Library screen gating and card state', () => {
     expect(queryByText(/kræver Premium/i)).toBeNull();
   });
 
-  it('renders add CTA enabled for non-added exercise', async () => {
+  it('shows trainer personal exercise under Øvelser fra træner as already added for player', async () => {
+    setupSupabaseFixture({
+      personalExercises: [
+        {
+          id: 'trainer-personal-1',
+          trainer_id: 'trainer-1',
+          title: 'Trainer Personal Drill',
+          is_system: false,
+        },
+      ],
+      exerciseAssignments: [
+        {
+          exercise_id: 'trainer-personal-1',
+          trainer_id: 'trainer-1',
+          player_id: 'user-1',
+          team_id: null,
+        },
+      ],
+      trainerRelationships: [{ admin_id: 'trainer-1' }],
+      trainerProfiles: [{ user_id: 'trainer-1', full_name: 'Coach One' }],
+      libraryTaskLinks: [{ id: 'tt-trainer-1', library_exercise_id: 'trainer-personal-1' }],
+    });
+
+    mockUseUserRole.mockReturnValue({ userRole: 'player', isTrainer: false, isAdmin: false });
+    mockUseSubscriptionFeatures.mockReturnValue({
+      featureAccess: { library: true, calendarSync: true, trainerLinking: true },
+      isLoading: false,
+      subscriptionTier: 'player_premium',
+    });
+
+    const { findByText, findByTestId } = render(<LibraryScreen />);
+
+    fireEvent.press(await findByText(/Øvelser fra træner/i));
+    fireEvent.press(await findByText(/Coach One/i));
+
+    const ctaButton = await findByTestId('library.addToTasksButton.trainer-personal-1');
+    expect(ctaButton.props.accessibilityState?.disabled).toBe(true);
+    expect(ctaButton.props.accessibilityLabel).toMatch(/tilføjet/i);
+  });
+
+  it('renders assign CTA for trainer profile', async () => {
     setupSupabaseFixture({
       personalExercises: [
         {
@@ -258,10 +347,10 @@ describe('Library screen gating and card state', () => {
 
     const addButton = await findByTestId('library.addToTasksButton.ex-1');
     expect(addButton.props.accessibilityState?.disabled).toBe(false);
-    expect(addButton.props.accessibilityLabel).toMatch(/Tilføj til opgaver/i);
+    expect(addButton.props.accessibilityLabel).toMatch(/Tildel/i);
   });
 
-  it('renders added CTA disabled with correct label when already added', async () => {
+  it('keeps assign CTA enabled even when exercise is already added for trainer profile', async () => {
     setupSupabaseFixture({
       personalExercises: [
         {
@@ -286,11 +375,11 @@ describe('Library screen gating and card state', () => {
     fireEvent.press(await findByText(/Personlige/i));
 
     const addButton = await findByTestId('library.addToTasksButton.ex-2');
-    expect(addButton.props.accessibilityState?.disabled).toBe(true);
-    expect(addButton.props.accessibilityLabel).toMatch(/Tilføjet/i);
+    expect(addButton.props.accessibilityState?.disabled).toBe(false);
+    expect(addButton.props.accessibilityLabel).toMatch(/Tildel/i);
   });
 
-  it('opens add modal and confirms add task', async () => {
+  it('opens assign modal from card CTA for trainer profile', async () => {
     const addTask = jest.fn().mockResolvedValue({ id: 'task-42' });
     mockUseFootball.mockReturnValue({ addTask, tasks: [] });
 
@@ -318,21 +407,11 @@ describe('Library screen gating and card state', () => {
     fireEvent.press(await findByText(/Personlige/i));
     fireEvent.press(await findByTestId('library.addToTasksButton.ex-3'));
 
-    fireEvent.press(await findByText(/^Tilf.*j$/i));
-
-    await waitFor(() => {
-      expect(addTask).toHaveBeenCalledTimes(1);
-    });
-    expect(addTask.mock.calls[0]?.[1]).toMatchObject({
-      libraryExerciseId: 'ex-3',
-    });
-
-    const addButton = await findByTestId('library.addToTasksButton.ex-3');
-    expect(addButton.props.accessibilityState?.disabled).toBe(true);
-    expect(addButton.props.accessibilityLabel).toMatch(/Tilføjet/i);
+    expect(await findByTestId('library.assignExerciseModal')).toBeTruthy();
+    expect(addTask).not.toHaveBeenCalled();
   });
 
-  it('keeps add CTA disabled after remount when DB already has linked template', async () => {
+  it('keeps assign CTA enabled after remount for trainer profile', async () => {
     const addTask = jest.fn().mockResolvedValue({ id: 'task-should-not-create' });
     mockUseFootball.mockReturnValue({ addTask, tasks: [] });
 
@@ -365,8 +444,8 @@ describe('Library screen gating and card state', () => {
     fireEvent.press(await firstRender.findByText(/Personlige/i));
     await waitFor(async () => {
       const addButton = await firstRender.findByTestId('library.addToTasksButton.ex-linked-1');
-      expect(addButton.props.accessibilityState?.disabled).toBe(true);
-      expect(addButton.props.accessibilityLabel).toMatch(/Tilføjet/i);
+      expect(addButton.props.accessibilityState?.disabled).toBe(false);
+      expect(addButton.props.accessibilityLabel).toMatch(/Tildel/i);
     });
     firstRender.unmount();
 
@@ -374,14 +453,14 @@ describe('Library screen gating and card state', () => {
     fireEvent.press(await secondRender.findByText(/Personlige/i));
     await waitFor(async () => {
       const addButton = await secondRender.findByTestId('library.addToTasksButton.ex-linked-1');
-      expect(addButton.props.accessibilityState?.disabled).toBe(true);
-      expect(addButton.props.accessibilityLabel).toMatch(/Tilføjet/i);
+      expect(addButton.props.accessibilityState?.disabled).toBe(false);
+      expect(addButton.props.accessibilityLabel).toMatch(/Tildel/i);
     });
 
     expect(addTask).not.toHaveBeenCalled();
   });
 
-  it('renders video preview when video is attached and fallback text when missing', async () => {
+  it('renders video preview when video is attached and hides pending banner for personal exercises', async () => {
     setupSupabaseFixture({
       personalExercises: [
         {
@@ -416,7 +495,7 @@ describe('Library screen gating and card state', () => {
     fireEvent.press(await findByText(/Personlige/i));
 
     expect(await findByTestId('library.videoPreview.ex-anim-1')).toBeTruthy();
-    expect(await findByTestId('library.animationPending.ex-anim-2')).toBeTruthy();
+    expect(queryByTestId('library.animationPending.ex-anim-2')).toBeNull();
     expect(queryByTestId('library.animationPending.ex-anim-1')).toBeNull();
   });
 
@@ -491,8 +570,7 @@ describe('Library screen gating and card state', () => {
   });
 
   it('updates counters in-session for exercise mapped to saved feedback template', async () => {
-    const addTask = jest.fn().mockResolvedValue({ id: 'template-xyz' });
-    mockUseFootball.mockReturnValue({ addTask, tasks: [] });
+    mockUseFootball.mockReturnValue({ addTask: jest.fn(), tasks: [] });
 
     setupSupabaseFixture({
       personalExercises: [
@@ -506,6 +584,7 @@ describe('Library screen gating and card state', () => {
           execution_count: 0,
         },
       ],
+      libraryTaskLinks: [{ id: 'template-xyz', library_exercise_id: 'ex-map-1' }],
     });
 
     mockUseUserRole.mockReturnValue({ userRole: 'trainer', isTrainer: true, isAdmin: false });
@@ -522,17 +601,6 @@ describe('Library screen gating and card state', () => {
     expect(await findByTestId('library.counter.executionCount.ex-map-1')).toHaveTextContent('Udført: –x');
     expect(await findByTestId('library.badge.lastScore.ex-map-1')).toBeTruthy();
     expect(await findByTestId('library.badge.executionCount.ex-map-1')).toBeTruthy();
-
-    fireEvent.press(await findByTestId('library.addToTasksButton.ex-map-1'));
-    fireEvent.press(await findByText(/^Tilf.*j$/i));
-
-    await waitFor(() => {
-      expect(addTask).toHaveBeenCalledTimes(1);
-    });
-    await waitFor(async () => {
-      const addButton = await findByTestId('library.addToTasksButton.ex-map-1');
-      expect(addButton.props.accessibilityState?.disabled).toBe(true);
-    });
 
     act(() => {
       DeviceEventEmitter.emit('feedback:saved', {
@@ -599,7 +667,8 @@ describe('Library screen gating and card state', () => {
 
     await waitFor(async () => {
       const addButton = await findByTestId('library.addToTasksButton.ex-existing-1');
-      expect(addButton.props.accessibilityState?.disabled).toBe(true);
+      expect(addButton.props.accessibilityState?.disabled).toBe(false);
+      expect(addButton.props.accessibilityLabel).toMatch(/Tildel/i);
     });
 
     act(() => {
@@ -619,8 +688,7 @@ describe('Library screen gating and card state', () => {
   });
 
   it('does not double increment counter on save_failed followed by corrected saved event', async () => {
-    const addTask = jest.fn().mockResolvedValue({ id: 'template-corrected' });
-    mockUseFootball.mockReturnValue({ addTask, tasks: [] });
+    mockUseFootball.mockReturnValue({ addTask: jest.fn(), tasks: [] });
 
     setupSupabaseFixture({
       personalExercises: [
@@ -634,6 +702,7 @@ describe('Library screen gating and card state', () => {
           execution_count: 0,
         },
       ],
+      libraryTaskLinks: [{ id: 'template-corrected', library_exercise_id: 'ex-map-2' }],
     });
 
     mockUseUserRole.mockReturnValue({ userRole: 'trainer', isTrainer: true, isAdmin: false });
@@ -646,16 +715,6 @@ describe('Library screen gating and card state', () => {
     const { findByText, findByTestId } = render(<LibraryScreen />);
 
     fireEvent.press(await findByText(/Personlige/i));
-    fireEvent.press(await findByTestId('library.addToTasksButton.ex-map-2'));
-    fireEvent.press(await findByText(/^Tilf.*j$/i));
-
-    await waitFor(() => {
-      expect(addTask).toHaveBeenCalledTimes(1);
-    });
-    await waitFor(async () => {
-      const addButton = await findByTestId('library.addToTasksButton.ex-map-2');
-      expect(addButton.props.accessibilityState?.disabled).toBe(true);
-    });
 
     act(() => {
       DeviceEventEmitter.emit('feedback:saved', {
@@ -694,8 +753,7 @@ describe('Library screen gating and card state', () => {
   });
 
   it('does not increment execution count when feedback is edited for same activity/task instance', async () => {
-    const addTask = jest.fn().mockResolvedValue({ id: 'template-edit' });
-    mockUseFootball.mockReturnValue({ addTask, tasks: [] });
+    mockUseFootball.mockReturnValue({ addTask: jest.fn(), tasks: [] });
 
     setupSupabaseFixture({
       personalExercises: [
@@ -709,6 +767,7 @@ describe('Library screen gating and card state', () => {
           execution_count: 0,
         },
       ],
+      libraryTaskLinks: [{ id: 'template-edit', library_exercise_id: 'ex-map-3' }],
     });
 
     mockUseUserRole.mockReturnValue({ userRole: 'trainer', isTrainer: true, isAdmin: false });
@@ -721,16 +780,6 @@ describe('Library screen gating and card state', () => {
     const { findByText, findByTestId } = render(<LibraryScreen />);
 
     fireEvent.press(await findByText(/Personlige/i));
-    fireEvent.press(await findByTestId('library.addToTasksButton.ex-map-3'));
-    fireEvent.press(await findByText(/^Tilf.*j$/i));
-
-    await waitFor(() => {
-      expect(addTask).toHaveBeenCalledTimes(1);
-    });
-    await waitFor(async () => {
-      const addButton = await findByTestId('library.addToTasksButton.ex-map-3');
-      expect(addButton.props.accessibilityState?.disabled).toBe(true);
-    });
 
     act(() => {
       DeviceEventEmitter.emit('feedback:saved', {
