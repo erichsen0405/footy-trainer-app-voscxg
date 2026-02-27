@@ -8,10 +8,12 @@ import { exerciseAssignmentsService } from '@/services/exerciseAssignments';
 jest.mock('@/integrations/supabase/client', () => ({
   supabase: {
     from: jest.fn(),
+    rpc: jest.fn(),
   },
 }));
 
 const supabaseFromMock = supabase.from as jest.Mock;
+const supabaseRpcMock = (supabase as any).rpc as jest.Mock;
 
 describe('supabase row transforms', () => {
   beforeEach(() => {
@@ -117,5 +119,69 @@ describe('supabase row transforms', () => {
       exerciseAssignmentsService.fetchAssignments('exercise-1', '')
     ).resolves.toEqual({ playerIds: [], teamIds: [] });
     expect(supabaseFromMock).not.toHaveBeenCalled();
+  });
+
+  it('removes legacy null-linked assignment templates during unassign', async () => {
+    const assignmentDeleteExec = jest.fn().mockResolvedValue({ error: null });
+    const assignmentDeleteIs = jest.fn().mockImplementation(() => assignmentDeleteExec());
+    const assignmentDeleteEqPlayer = jest.fn().mockReturnValue({ is: assignmentDeleteIs });
+    const assignmentDeleteEqTrainer = jest.fn().mockReturnValue({ eq: assignmentDeleteEqPlayer });
+    const assignmentDeleteEqExercise = jest.fn().mockReturnValue({ eq: assignmentDeleteEqTrainer });
+    const assignmentDelete = jest.fn().mockReturnValue({ eq: assignmentDeleteEqExercise });
+
+    const templateDeleteExec = jest.fn().mockResolvedValue({ error: null });
+    const templateDeleteIs = jest.fn().mockImplementation(() => templateDeleteExec());
+    const templateDeleteEqPlayer = jest.fn().mockReturnValue({ is: templateDeleteIs });
+    const templateDeleteEqLibrary = jest.fn().mockReturnValue({ eq: templateDeleteEqPlayer });
+    const templateDeleteEqUser = jest.fn().mockReturnValue({ eq: templateDeleteEqLibrary });
+    const templateDelete = jest.fn().mockReturnValue({ eq: templateDeleteEqUser });
+
+    const exerciseMaybeSingle = jest.fn().mockResolvedValue({
+      data: { title: 'Legacy Drill', description: 'Legacy Description', video_url: null },
+      error: null,
+    });
+    const exerciseEq = jest.fn().mockReturnValue({ maybeSingle: exerciseMaybeSingle });
+    const exerciseSelect = jest.fn().mockReturnValue({ eq: exerciseEq });
+
+    const legacyLookupIsTeam = jest.fn().mockResolvedValue({ data: [{ id: 'legacy-template-1' }], error: null });
+    const legacyLookupEqPlayer = jest.fn().mockReturnValue({ is: legacyLookupIsTeam });
+    const legacyLookupIsVideo = jest.fn().mockReturnValue({ eq: legacyLookupEqPlayer });
+    const legacyLookupEqDescription = jest.fn().mockReturnValue({ is: legacyLookupIsVideo });
+    const legacyLookupEqTitle = jest.fn().mockReturnValue({ eq: legacyLookupEqDescription });
+    const legacyLookupEqSource = jest.fn().mockReturnValue({ eq: legacyLookupEqTitle });
+    const legacyLookupIsLibrary = jest.fn().mockReturnValue({ eq: legacyLookupEqSource });
+    const legacyLookupEqUser = jest.fn().mockReturnValue({ is: legacyLookupIsLibrary });
+    const legacyLookupSelect = jest.fn().mockReturnValue({ eq: legacyLookupEqUser });
+
+    supabaseFromMock
+      .mockImplementationOnce((table: string) => {
+        expect(table).toBe('exercise_assignments');
+        return { delete: assignmentDelete };
+      })
+      .mockImplementationOnce((table: string) => {
+        expect(table).toBe('task_templates');
+        return { delete: templateDelete };
+      })
+      .mockImplementationOnce((table: string) => {
+        expect(table).toBe('exercise_library');
+        return { select: exerciseSelect };
+      })
+      .mockImplementationOnce((table: string) => {
+        expect(table).toBe('task_templates');
+        return { select: legacyLookupSelect };
+      });
+
+    supabaseRpcMock.mockResolvedValue({ data: true, error: null });
+
+    await exerciseAssignmentsService.unassignExercise({
+      exerciseId: 'exercise-1',
+      trainerId: 'trainer-1',
+      playerId: 'player-1',
+      teamId: null,
+    });
+
+    expect(supabaseRpcMock).toHaveBeenCalledWith('remove_task_template_for_actor', {
+      p_task_id: 'legacy-template-1',
+    });
   });
 });
