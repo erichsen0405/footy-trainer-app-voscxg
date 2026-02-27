@@ -160,6 +160,7 @@ export async function fetchLatestCategoryFeedback(
       *,
       task_templates!inner(
         title,
+        after_training_enabled,
         task_template_categories!inner(
           category_id
         )
@@ -178,9 +179,18 @@ export async function fetchLatestCategoryFeedback(
     const hasScore = typeof row?.rating === 'number';
     const hasNote = String(row?.note ?? '').trim().length > 0;
     const isFeedbackTitle = isFeedbackTemplateTitle(row?.task_templates?.title);
-    return (hasScore || hasNote) && isFeedbackTitle;
+    const isAfterTrainingTemplate = row?.task_templates?.after_training_enabled === true;
+    return (hasScore || hasNote) && (isAfterTrainingTemplate || isFeedbackTitle);
   });
-  return filtered
+
+  const latestPerFeedbackType = new Map<string, any>();
+  for (const row of filtered) {
+    const feedbackTypeId = String(row?.task_template_id ?? '').trim();
+    if (!feedbackTypeId || latestPerFeedbackType.has(feedbackTypeId)) continue;
+    latestPerFeedbackType.set(feedbackTypeId, row);
+  }
+
+  return Array.from(latestPerFeedbackType.values())
     .slice(0, safeLimit)
     .map((row: any) => ({
       ...mapFeedbackRow(row),
