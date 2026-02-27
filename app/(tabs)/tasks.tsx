@@ -141,7 +141,7 @@ function getIconsForFolderName(name: string): { icon: string; androidIcon: strin
 // Pure function to organize tasks into folders
 function organizeFolders(allTasks: Task[]): FolderItem[] {
   const personalTasks: Task[] = [];
-  const trainerFolders = new Map<string, FolderItem>();
+  const trainerTasks: Task[] = [];
   const footballCoachTasks: Task[] = [];
   const otherSourceFolders = new Map<string, FolderItem>();
 
@@ -154,23 +154,8 @@ function organizeFolders(allTasks: Task[]): FolderItem[] {
       return;
     }
 
-    if (sf.startsWith('fra træner:')) {
-      const trainerName = sfRaw.replace(/^Fra træner:/i, '').trim();
-      const trainerId = `trainer_${trainerName || 'unknown'}`;
-
-      if (!trainerFolders.has(trainerId)) {
-        const icons = getIconsForFolderName('Fra træner:');
-        trainerFolders.set(trainerId, {
-          id: trainerId,
-          name: `Fra træner: ${trainerName || 'Ukendt'}`,
-          type: 'trainer',
-          icon: icons.icon,
-          androidIcon: icons.androidIcon,
-          tasks: [],
-        });
-      }
-
-      trainerFolders.get(trainerId)!.tasks.push(task);
+    if (sf === 'trainer' || sf === 'fra træner' || sf.startsWith('fra træner:')) {
+      trainerTasks.push(task);
       return;
     }
 
@@ -208,7 +193,17 @@ function organizeFolders(allTasks: Task[]): FolderItem[] {
     });
   }
 
-  folders.push(...Array.from(trainerFolders.values()).sort((a, b) => a.name.localeCompare(b.name)));
+  if (trainerTasks.length) {
+    const icons = getIconsForFolderName('Fra træner:');
+    folders.push({
+      id: 'trainer_assigned',
+      name: 'Opgaver fra træner',
+      type: 'trainer',
+      icon: icons.icon,
+      androidIcon: icons.androidIcon,
+      tasks: trainerTasks,
+    });
+  }
 
   if (footballCoachTasks.length) {
     const icons = getIconsForFolderName('FootballCoach Inspiration');

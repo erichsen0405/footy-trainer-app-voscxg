@@ -11,6 +11,9 @@ import {
   KeyboardAvoidingView,
   ActivityIndicator,
   Alert,
+  Modal,
+  Pressable,
+  FlatList,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 
@@ -19,8 +22,14 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useSubscriptionFeatures } from '@/hooks/useSubscriptionFeatures';
+import { buildExercisePositionOptions } from '@/utils/exercisePositions';
 
 const clampDifficulty = (value: number) => Math.max(0, Math.min(5, Math.round(value)));
+const toOptionTestToken = (value: string | null) =>
+  String(value ?? 'none')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
 
 export default function CreateExerciseScreen() {
   const router = useRouter();
@@ -67,6 +76,8 @@ export default function CreateExerciseScreen() {
   const [videoUrl, setVideoUrl] = useState('');
   const [categoryPath, setCategoryPath] = useState('');
   const [difficulty, setDifficulty] = useState(3);
+  const [position, setPosition] = useState<string | null>(null);
+  const [positionModalVisible, setPositionModalVisible] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -133,6 +144,7 @@ export default function CreateExerciseScreen() {
         setDescription((data as any)?.description ?? '');
         setVideoUrl((data as any)?.video_url ?? '');
         setCategoryPath((data as any)?.category_path ?? '');
+        setPosition((data as any)?.position ?? (data as any)?.player_position ?? null);
         const rawDifficulty = typeof (data as any)?.difficulty === 'number' ? (data as any).difficulty : Number((data as any)?.difficulty);
         const normalizedDifficulty = Number.isFinite(rawDifficulty) ? Number(rawDifficulty) : 3;
         setDifficulty(clampDifficulty(normalizedDifficulty));
@@ -188,26 +200,28 @@ export default function CreateExerciseScreen() {
 
     const normalizedDescription = description.trim();
     const normalizedVideo = videoUrl.trim();
+    const normalizedPosition = typeof position === 'string' && position.trim().length ? position.trim() : null;
     const payload = {
       title: trimmedTitle,
       description: normalizedDescription ? normalizedDescription : null,
       video_url: normalizedVideo ? normalizedVideo : null,
       category_path: isEditMode ? (categoryPath.trim() ? categoryPath.trim() : null) : null,
       difficulty,
+      position: normalizedPosition,
     };
 
     try {
       if (isEditMode && exerciseId) {
         const { error } = await supabase
           .from('exercise_library')
-          .update(payload)
+          .update(payload as any)
           .eq('id', exerciseId)
           .eq('trainer_id', userId);
         if (error) throw error;
         router.replace({ pathname: '/exercise-details', params: { exerciseId } } as any);
       } else {
         const insertPayload = { ...payload, trainer_id: userId, is_system: false };
-        const { data, error } = await supabase.from('exercise_library').insert(insertPayload).select('id').single();
+        const { data, error } = await supabase.from('exercise_library').insert(insertPayload as any).select('id').single();
         if (error) throw error;
         const newId = data?.id ? String(data.id) : null;
         if (newId) {
@@ -235,7 +249,16 @@ export default function CreateExerciseScreen() {
     trimmedTitle,
     userId,
     videoUrl,
+    position,
   ]);
+
+  const positionOptions = useMemo(() => buildExercisePositionOptions(), []);
+  const selectedPositionLabel = useMemo(() => {
+    const fromOptions = positionOptions.find((option) => option.value === position)?.label;
+    if (fromOptions) return fromOptions;
+    if (position && position.trim().length) return position;
+    return 'Ingen';
+  }, [position, positionOptions]);
 
   const renderStars = useMemo(
     () => (
@@ -299,6 +322,19 @@ export default function CreateExerciseScreen() {
       </View>
 
       <View style={styles.fieldGroup}>
+        <Text style={[styles.label, { color: theme.text }]}>Position</Text>
+        <TouchableOpacity
+          testID="exercise-position-select"
+          onPress={() => setPositionModalVisible(true)}
+          activeOpacity={0.85}
+          style={[styles.input, styles.selectInput, { backgroundColor: theme.card, borderColor: theme.highlight }]}
+        >
+          <Text style={[styles.selectValueText, { color: theme.text }]}>{selectedPositionLabel}</Text>
+          <IconSymbol ios_icon_name="chevron.down" android_material_icon_name="arrow_drop_down" size={20} color={theme.textSecondary} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.fieldGroup}>
         <Text style={[styles.label, { color: theme.text }]}>Sværhedsgrad</Text>
         <View style={[styles.difficultyCard, { backgroundColor: theme.card }]}> 
           <View style={styles.difficultyHeader}>
@@ -327,6 +363,67 @@ export default function CreateExerciseScreen() {
       </View>
 
       <View style={{ height: 80 }} />
+
+      <Modal
+        animationType="slide"
+        transparent
+        visible={positionModalVisible}
+        onRequestClose={() => setPositionModalVisible(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setPositionModalVisible(false)}>
+          <Pressable style={[styles.modalCard, { backgroundColor: theme.background }]} onPress={(event) => event.stopPropagation()}>
+            <View style={[styles.modalHandle, { backgroundColor: theme.highlight }]} />
+            <View style={styles.modalHeader}>
+              <View style={styles.modalHeaderTextWrap}>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>Vælg position</Text>
+                <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>Bruges til at kategorisere øvelsen i biblioteket.</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setPositionModalVisible(false)}
+                activeOpacity={0.85}
+                style={[styles.modalCloseButton, { backgroundColor: theme.card, borderColor: theme.highlight }]}
+              >
+                <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={16} color={theme.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={positionOptions}
+              keyExtractor={(item) => String(item.value ?? 'none')}
+              contentContainerStyle={styles.modalListContent}
+              renderItem={({ item }) => {
+                const isSelected = item.value === position;
+                return (
+                  <TouchableOpacity
+                    testID={`exercise-position-option-${toOptionTestToken(item.value)}`}
+                    onPress={() => {
+                      setPosition(item.value);
+                      setPositionModalVisible(false);
+                    }}
+                    style={[
+                      styles.optionRow,
+                      {
+                        borderColor: isSelected ? theme.primary : theme.highlight,
+                        backgroundColor: isSelected ? theme.highlight : theme.card,
+                      },
+                    ]}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.optionLeft}>
+                      <Text style={[styles.optionText, { color: theme.text }]}>{item.label}</Text>
+                    </View>
+                    {isSelected ? (
+                      <View style={[styles.optionCheckWrap, { backgroundColor: theme.primary }]}>
+                        <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={14} color="#fff" />
+                      </View>
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              }}
+              ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ScrollView>
   );
 
@@ -443,6 +540,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     minHeight: 140,
   },
+  selectInput: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  selectValueText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
   helperText: { fontSize: 12, marginTop: 6 },
   difficultyCard: {
     borderRadius: 16,
@@ -514,5 +621,85 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 16,
+    paddingBottom: 24,
+    maxHeight: '70%',
+    shadowColor: '#000',
+    shadowOpacity: 0.22,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: -8 },
+    elevation: 18,
+  },
+  modalHandle: {
+    width: 44,
+    height: 5,
+    borderRadius: 999,
+    alignSelf: 'center',
+    marginBottom: 14,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 10,
+  },
+  modalHeaderTextWrap: {
+    flex: 1,
+  },
+  modalCloseButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTitle: {
+    fontSize: 19,
+    fontWeight: '900',
+  },
+  modalSubtitle: {
+    marginTop: 4,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '500',
+  },
+  modalListContent: {
+    paddingTop: 6,
+    paddingBottom: 4,
+  },
+  optionRow: {
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  optionLeft: {
+    flex: 1,
+    paddingRight: 8,
+  },
+  optionText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  optionCheckWrap: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

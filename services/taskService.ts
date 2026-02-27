@@ -483,8 +483,24 @@ export const taskService = {
       throw error;
     }
 
-    if (!Array.isArray(data) || data.length === 0) {
-      throw new Error('Du kan kun arkivere dine egne opgaveskabeloner');
+    if (Array.isArray(data) && data.length > 0) {
+      return;
+    }
+
+    // Fallback for assigned templates where actor is player/team member (non-owner).
+    const { data: toggled, error: rpcError } = await (supabase as any)
+      .rpc('set_task_template_archived_for_actor', {
+        p_task_id: taskId,
+        p_archived: archived,
+      })
+      .abortSignal(signal);
+
+    if (rpcError) {
+      throw rpcError;
+    }
+
+    if (toggled !== true) {
+      throw new Error('Du kan kun arkivere eller gendanne opgaver, du har adgang til');
     }
   },
 
@@ -696,14 +712,18 @@ export const taskService = {
       return;
     }
 
-    // Not owned, perform soft delete
-    const { error: insertError } = await supabase
-      .from('hidden_task_templates')
-      .upsert({ user_id: userId, task_template_id: taskId }, { onConflict: 'user_id,task_template_id' })
+    // Not owned: execute a global remove for shared-assignment templates so all parties
+    // (trainer/player) see the same truth.
+    const { data: removedByActor, error: removeByActorError } = await (supabase as any)
+      .rpc('remove_task_template_for_actor', { p_task_id: taskId })
       .abortSignal(signal);
 
-    if (insertError) {
-      throw insertError;
+    if (removeByActorError) {
+      throw removeByActorError;
+    }
+
+    if (removedByActor !== true) {
+      throw new Error('Du har ikke adgang til at slette denne opgaveskabelon');
     }
 
   },
