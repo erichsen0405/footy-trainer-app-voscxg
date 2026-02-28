@@ -711,6 +711,7 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   activityWrapper: {
+    paddingHorizontal: 16,
     marginBottom: 16,
   },
   historyList: {
