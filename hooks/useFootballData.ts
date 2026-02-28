@@ -65,6 +65,79 @@ type ExternalIntensityForPerformance = {
     | null;
 };
 
+type TrophyAggregationInput = Pick<Trophy, 'type'> & {
+  completedTasks?: unknown;
+  completed_tasks?: unknown;
+};
+
+type TrophyRowInput = {
+  week?: unknown;
+  week_number?: unknown;
+  year?: unknown;
+  type?: unknown;
+  trophy_type?: unknown;
+  percentage?: unknown;
+  completedTasks?: unknown;
+  completed_tasks?: unknown;
+  totalTasks?: unknown;
+  total_tasks?: unknown;
+};
+
+const toNumberOrZero = (value: unknown): number => {
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const toTrophyType = (value: unknown): Trophy['type'] | null => {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'gold' || normalized === 'silver' || normalized === 'bronze') {
+    return normalized;
+  }
+  return null;
+};
+
+export const normalizePerformanceRowsToTrophies = (rows: TrophyRowInput[]): Trophy[] => {
+  return rows
+    .map((row) => {
+      const type = toTrophyType(row.trophy_type ?? row.type);
+      if (!type) return null;
+
+      return {
+        week: Math.trunc(toNumberOrZero(row.week_number ?? row.week)),
+        year: Math.trunc(toNumberOrZero(row.year)),
+        type,
+        percentage: Math.trunc(toNumberOrZero(row.percentage)),
+        completedTasks: Math.trunc(toNumberOrZero(row.completed_tasks ?? row.completedTasks)),
+        totalTasks: Math.trunc(toNumberOrZero(row.total_tasks ?? row.totalTasks)),
+      } satisfies Trophy;
+    })
+    .filter((row): row is Trophy => row !== null);
+};
+
+const getCompletedTasksFromTrophy = (trophy: TrophyAggregationInput): number => {
+  const rawValue =
+    typeof trophy.completedTasks === 'number'
+      ? trophy.completedTasks
+      : typeof trophy.completed_tasks === 'number'
+        ? trophy.completed_tasks
+        : 0;
+  return Number.isFinite(rawValue) && rawValue > 0 ? rawValue : 0;
+};
+
+export const sumCompletedTasksByTrophyType = (trophies: TrophyAggregationInput[]) => {
+  return trophies.reduce(
+    (acc, trophy) => {
+      const completedTasks = getCompletedTasksFromTrophy(trophy);
+      if (trophy.type === 'gold') acc.gold += completedTasks;
+      if (trophy.type === 'silver') acc.silver += completedTasks;
+      if (trophy.type === 'bronze') acc.bronze += completedTasks;
+      return acc;
+    },
+    { gold: 0, silver: 0, bronze: 0 }
+  );
+};
+
 export const shouldIncludeExternalTaskInPerformance = (
   task: ExternalTaskForPerformance | null | undefined
 ): boolean => {
@@ -540,13 +613,25 @@ export const useFootballData = () => {
   }, []);
 
   const fetchTrophies = useCallback(async () => {
-    const { data, error } = await supabase
+    const { data: weeklyData, error: weeklyError } = await supabase
+      .from('weekly_performance')
+      .select('week_number, year, trophy_type, percentage, completed_tasks, total_tasks, created_at')
+      .order('year', { ascending: true })
+      .order('week_number', { ascending: true });
+
+    if (weeklyError) throw weeklyError;
+    if ((weeklyData || []).length > 0) {
+      setTrophies(normalizePerformanceRowsToTrophies((weeklyData || []) as TrophyRowInput[]));
+      return;
+    }
+
+    const { data: legacyData, error: legacyError } = await supabase
       .from('trophies')
       .select('*')
       .order('created_at', { ascending: true });
 
-    if (error) throw error;
-    setTrophies((data || []) as unknown as Trophy[]);
+    if (legacyError) throw legacyError;
+    setTrophies(normalizePerformanceRowsToTrophies((legacyData || []) as TrophyRowInput[]));
   }, []);
 
   const fetchExternalCalendars = useCallback(async () => {
