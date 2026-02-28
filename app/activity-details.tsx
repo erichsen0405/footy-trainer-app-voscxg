@@ -503,6 +503,41 @@ const EXTERNAL_META_SELECT_MINIMAL = `
   )
 `;
 
+const EXTERNAL_META_SELECT_LEGACY = `
+  id,
+  external_event_id,
+  category_id,
+  intensity,
+  intensity_enabled,
+  intensity_note,
+  local_title_override,
+  activity_categories (
+    id,
+    name,
+    color,
+    emoji
+  ),
+  events_external (
+    id,
+    title,
+    location,
+    start_date,
+    start_time,
+    end_time,
+    provider_calendar_id,
+    raw_payload
+  ),
+  external_event_tasks (
+    id,
+    task_template_id,
+    feedback_template_id,
+    title,
+    description,
+    completed,
+    reminder_minutes
+  )
+`;
+
 const ACTIVITY_TASKS_SELECT_WITH_LOCAL_OPTIONS = `
   id,
   title,
@@ -734,6 +769,16 @@ async function fetchArchivedAtByTemplateIds(tasks: any[]): Promise<Record<string
 
 export async function fetchActivityFromDatabase(activityId: string): Promise<Activity | null> {
   try {
+    let currentUserId: string | null = null;
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      currentUserId = normalizeId(session?.user?.id);
+    } catch {
+      currentUserId = null;
+    }
+
     const { data: internalActivity, error: internalError } = await selectSingleWithOptionalColumn<any>({
       table: 'activities',
       selectWith: INTERNAL_SELECT_WITH_VIDEO,
@@ -834,32 +879,87 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
       };
     }
 
-    const selectExternalMetaBy = async (column: 'id' | 'external_event_id') => {
-      const withVideo = await selectSingleWithOptionalColumn<any>({
-        table: 'events_local_meta',
-        selectWith: EXTERNAL_META_SELECT_WITH_VIDEO,
-        selectWithout: EXTERNAL_META_SELECT_NO_VIDEO,
-        eqColumn: column,
-        eqValue: activityId,
-        optionalColumnName: 'video_url',
-        context: `events_local_meta.${column}=${activityId}`,
-      });
-
-      if (!withVideo.error || withVideo.data) {
-        return withVideo;
+    const fetchExternalMetaFirst = async (
+      column: 'id' | 'external_event_id' | 'external_event_uid',
+      value: string,
+      select: string,
+    ) => {
+      let query = (supabase as any)
+        .from('events_local_meta')
+        .select(select)
+        .eq(column, value)
+        .limit(1);
+      if (currentUserId) {
+        query = query.eq('user_id', currentUserId);
       }
 
-      const minimal = await (supabase as any)
-        .from('events_local_meta')
-        .select(EXTERNAL_META_SELECT_MINIMAL)
-        .eq(column, activityId)
-        .single();
+      const { data, error } = await query;
+      const first = Array.isArray(data) ? data[0] ?? null : null;
+      return { data: first, error };
+    };
 
+    const selectExternalMetaBy = async (
+      column: 'id' | 'external_event_id' | 'external_event_uid',
+      value: string = activityId,
+    ) => {
+      const withVideo = await fetchExternalMetaFirst(column, value, EXTERNAL_META_SELECT_WITH_VIDEO);
+      if (!withVideo.error) {
+        return { data: withVideo.data ?? null, error: null, usedFallback: false };
+      }
+
+      const isMissingVideo = isMissingColumn(withVideo.error, 'video_url');
+      const isMissingLocalOption =
+        isMissingColumn(withVideo.error, 'after_training_enabled') ||
+        isMissingColumn(withVideo.error, 'after_training_delay_minutes') ||
+        isMissingColumn(withVideo.error, 'task_duration_enabled') ||
+        isMissingColumn(withVideo.error, 'task_duration_minutes') ||
+        isMissingColumn(withVideo.error, 'is_feedback_task');
+
+      if (!(isMissingVideo || isMissingLocalOption)) {
+        return { data: null, error: withVideo.error, usedFallback: false };
+      }
+
+      const noVideo = await fetchExternalMetaFirst(column, value, EXTERNAL_META_SELECT_NO_VIDEO);
+      if (!noVideo.error) {
+        return { data: noVideo.data ?? null, error: null, usedFallback: true };
+      }
+
+      const minimal = await fetchExternalMetaFirst(column, value, EXTERNAL_META_SELECT_MINIMAL);
       if (!minimal.error) {
         return { data: minimal.data ?? null, error: null, usedFallback: true };
       }
 
-      return withVideo;
+      const legacy = await fetchExternalMetaFirst(column, value, EXTERNAL_META_SELECT_LEGACY);
+      if (!legacy.error) {
+        return { data: legacy.data ?? null, error: null, usedFallback: true };
+      }
+
+      return {
+        data: null,
+        error: legacy.error ?? minimal.error ?? noVideo.error ?? withVideo.error,
+        usedFallback: true,
+      };
+    };
+
+    let externalOnlyLookupAttempted = false;
+    let externalOnlyData: any = null;
+    let externalOnlyError: any = null;
+    const ensureExternalOnlyLoaded = async () => {
+      if (externalOnlyLookupAttempted) {
+        return { data: externalOnlyData, error: externalOnlyError };
+      }
+      externalOnlyLookupAttempted = true;
+
+      const { data, error } = await (supabase as any)
+        .from('events_external')
+        .select('id,title,location,start_date,start_time,end_time,provider_calendar_id,provider_event_uid')
+        .eq('id', activityId)
+        .is('deleted_at', null)
+        .single();
+
+      externalOnlyData = data ?? null;
+      externalOnlyError = error ?? null;
+      return { data: externalOnlyData, error: externalOnlyError };
     };
 
     let { data: localMeta, error: metaError } = await selectExternalMetaBy('id');
@@ -867,6 +967,19 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
       const fallback = await selectExternalMetaBy('external_event_id');
       localMeta = fallback.data ?? null;
       metaError = fallback.error ?? metaError;
+    }
+    if (metaError || !localMeta) {
+      const { data: externalOnlyForUid } = await ensureExternalOnlyLoaded();
+      const providerEventUid = normalizeId(externalOnlyForUid?.provider_event_uid);
+      if (providerEventUid) {
+        const fallbackByUid = await selectExternalMetaBy('external_event_uid', providerEventUid);
+        if (fallbackByUid.data) {
+          localMeta = fallbackByUid.data;
+          metaError = null;
+        } else {
+          metaError = fallbackByUid.error ?? metaError;
+        }
+      }
     }
 
     if (!metaError && localMeta && (localMeta as any).events_external) {
@@ -937,9 +1050,17 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
 
       const externalMetaTasks = (localMetaAny.external_event_tasks || []).map(mapExternalTaskRow);
       const externalEventRowId = normalizeId(localMetaAny.external_event_row_id ?? externalEvent.id);
-      const linkedActivityTaskRows = externalEventRowId
-        ? await fetchActivityTasksByActivityId(externalEventRowId)
-        : [];
+      const linkedActivityIds = new Set<string>();
+      const localMetaId = normalizeId(localMetaAny.id);
+      if (localMetaId) linkedActivityIds.add(localMetaId);
+      if (externalEventRowId) linkedActivityIds.add(externalEventRowId);
+      const directActivityId = normalizeId(activityId);
+      if (directActivityId) linkedActivityIds.add(directActivityId);
+
+      const linkedActivityTaskRowsByActivity = await Promise.all(
+        Array.from(linkedActivityIds).map((id) => fetchActivityTasksByActivityId(id)),
+      );
+      const linkedActivityTaskRows = linkedActivityTaskRowsByActivity.flat();
       const linkedActivityTasks = linkedActivityTaskRows.map(mapExternalTaskRow);
 
       const seenTaskIds = new Set<string>();
@@ -994,15 +1115,64 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
       });
     }
 
-    const { data: externalOnly, error: externalOnlyError } = await (supabase as any)
-      .from('events_external')
-      .select('id,title,location,start_date,start_time,end_time,provider_calendar_id')
-      .eq('id', activityId)
-      .is('deleted_at', null)
-      .single();
+    const { data: externalOnly, error: externalOnlyLookupError } = await ensureExternalOnlyLoaded();
 
-    if (!externalOnlyError && externalOnly) {
+    if (!externalOnlyLookupError && externalOnly) {
       const externalOnlyAny = externalOnly as any;
+      const mapExternalFallbackTaskRow = (task: any): FeedbackTask => {
+        const directFeedbackTemplateId = normalizeId(task.feedback_template_id ?? task.feedbackTemplateId);
+        const markerTemplateId = getMarkerTemplateId({ description: task.description, title: task.title });
+        const feedbackTemplateId = directFeedbackTemplateId ?? markerTemplateId ?? null;
+        const isFeedbackTask = Boolean(feedbackTemplateId) || isFeedbackTitle(task.title);
+        const resolvedVideo = getTaskVideoUrl(task);
+        const mapped: any = {
+          id: task.id,
+          title: task.title,
+          description: task.description || '',
+          completed: task.completed,
+          isTemplate: false,
+          categoryIds: [],
+          reminder_minutes: task.reminder_minutes ?? null,
+          reminder: task.reminder_minutes ?? null,
+          afterTrainingEnabled: task.after_training_enabled === true,
+          afterTrainingDelayMinutes:
+            typeof task.after_training_delay_minutes === 'number'
+              ? task.after_training_delay_minutes
+              : null,
+          taskDurationEnabled: task.task_duration_enabled === true,
+          taskDurationMinutes:
+            typeof task.task_duration_minutes === 'number'
+              ? task.task_duration_minutes
+              : null,
+          task_duration_enabled: task.task_duration_enabled === true,
+          task_duration_minutes:
+            typeof task.task_duration_minutes === 'number'
+              ? task.task_duration_minutes
+              : null,
+          subtasks: [],
+          videoUrl: resolvedVideo ?? undefined,
+          video_url: resolvedVideo,
+          taskTemplateId: task.task_template_id,
+          feedback_template_id: task.feedback_template_id,
+          feedbackTemplateId,
+          isFeedbackTask: task.is_feedback_task === true || isFeedbackTask,
+        };
+        return mapped as FeedbackTask;
+      };
+
+      const externalOnlyRowId = normalizeId(externalOnlyAny.id) ?? normalizeId(activityId);
+      const externalOnlyTaskRows = externalOnlyRowId
+        ? await fetchActivityTasksByActivityId(externalOnlyRowId)
+        : [];
+      const externalOnlyTasks = externalOnlyTaskRows.map(mapExternalFallbackTaskRow);
+      const archivedAtByTemplateId = await fetchArchivedAtByTemplateIds(externalOnlyTasks as any[]);
+      const visibleExternalOnlyTasks = filterVisibleTasksForActivity<FeedbackTask>(
+        externalOnlyTasks,
+        externalOnlyAny.start_date,
+        externalOnlyAny.start_time,
+        archivedAtByTemplateId,
+      );
+
       return {
         id: String(externalOnlyAny.id),
         title: externalOnlyAny.title ?? 'Ekstern aktivitet',
@@ -1016,7 +1186,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
           color: '#999999',
           emoji: '⚽️',
         },
-        tasks: [],
+        tasks: visibleExternalOnlyTasks,
         isExternal: true,
         externalCalendarId: externalOnlyAny.provider_calendar_id ?? undefined,
         externalEventId: String(externalOnlyAny.id),
@@ -1030,12 +1200,12 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
     if (__DEV__) {
       console.log('[ActivityDetails] Activity not found after fallbacks', {
         activityId,
-        externalOnlyError: externalOnlyError
+        externalOnlyError: externalOnlyLookupError
           ? {
-              message: externalOnlyError.message,
-              details: externalOnlyError.details,
-              hint: externalOnlyError.hint,
-              code: externalOnlyError.code,
+              message: externalOnlyLookupError.message,
+              details: externalOnlyLookupError.details,
+              hint: externalOnlyLookupError.hint,
+              code: externalOnlyLookupError.code,
             }
           : null,
       });
