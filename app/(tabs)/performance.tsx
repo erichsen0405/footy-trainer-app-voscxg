@@ -1,18 +1,70 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, useColorScheme, RefreshControl, Pressable, FlatList } from 'react-native';
-import { useFootball } from '@/contexts/FootballContext';
-import * as CommonStyles from '@/styles/commonStyles';
-import { ProgressionSection } from '@/components/ProgressionSection';
+import React, { useCallback, useMemo, useState } from 'react';
+import {
+  FlatList,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useColorScheme,
+  View,
+} from 'react-native';
 import { getWeek } from 'date-fns';
+import { LinearGradient } from 'expo-linear-gradient';
+
+import ActivityCard from '@/components/ActivityCard';
+import { IconSymbol } from '@/components/IconSymbol';
+import { ProgressionSection } from '@/components/ProgressionSection';
+import { WeeklySummaryCard } from '@/components/WeeklySummaryCard';
+import { useFootball } from '@/contexts/FootballContext';
+import { useHomeActivities } from '@/hooks/useHomeActivities';
+import * as CommonStyles from '@/styles/commonStyles';
+import {
+  buildPerformanceHistoryWeeks,
+  type PerformanceHistoryWeek,
+} from '@/utils/performanceHistory';
+
+type HistoryListItem =
+  | { type: 'weekCard'; key: string; week: PerformanceHistoryWeek }
+  | { type: 'activity'; key: string; weekKey: string; activity: any };
+
+function buildHistoryActivityKey(activity: any, weekKey: string, index: number): string {
+  const rawId = activity?.id ?? activity?.activity_id ?? activity?.activityId;
+  const normalizedId = rawId !== null && rawId !== undefined ? String(rawId).trim() : '';
+  if (normalizedId.length > 0) {
+    return `history:activity:${weekKey}:${normalizedId}`;
+  }
+
+  const dateKey =
+    activity?.__resolvedDateTime instanceof Date && !Number.isNaN(activity.__resolvedDateTime.getTime())
+      ? activity.__resolvedDateTime.toISOString()
+      : 'unknown-date';
+
+  return `history:activity:fallback:${weekKey}:${dateKey}:${index}`;
+}
 
 export default function PerformanceScreen() {
-  const { trophies, currentWeekStats, externalCalendars, fetchExternalCalendarEvents, categories } = useFootball();
-  const [expandedTrophy, setExpandedTrophy] = useState<'gold' | 'silver' | 'bronze' | null>(null);
-  const currentWeek = getWeek(new Date(), { weekStartsOn: 1, firstWeekContainsDate: 4 });
-  const currentYear = new Date().getFullYear();
+  const {
+    trophies,
+    currentWeekStats,
+    externalCalendars,
+    fetchExternalCalendarEvents,
+    categories,
+  } = useFootball();
+  const { activities, loading: homeActivitiesLoading } = useHomeActivities();
+
   const colorScheme = useColorScheme();
+  const [refreshing, setRefreshing] = useState(false);
+  const [expandedTrophy, setExpandedTrophy] = useState<'gold' | 'silver' | 'bronze' | null>(null);
+  const [expandedHistoryWeeks, setExpandedHistoryWeeks] = useState<Record<string, boolean>>({});
+  const [isHistorySectionExpanded, setIsHistorySectionExpanded] = useState(true);
+
   const palette = useMemo(() => {
-    const fromHelper = typeof CommonStyles.getColors === 'function' ? CommonStyles.getColors(colorScheme as any) : undefined;
+    const fromHelper =
+      typeof CommonStyles.getColors === 'function'
+        ? CommonStyles.getColors(colorScheme as any)
+        : undefined;
     const base = (fromHelper || (CommonStyles as any).colors || {}) as Record<string, string>;
     return {
       primary: base.primary ?? '#4CAF50',
@@ -27,68 +79,86 @@ export default function PerformanceScreen() {
       bronze: base.bronze ?? '#CD7F32',
     };
   }, [colorScheme]);
-  const isDark = colorScheme === 'dark';
-  const [refreshing, setRefreshing] = useState(false);
 
-  const onRefresh = async () => {
-    console.log('Pull to refresh triggered on performance screen');
+  const isDark = colorScheme === 'dark';
+  const bgColor = isDark ? '#1a1a1a' : palette.background;
+  const textColor = isDark ? '#e3e3e3' : palette.text;
+  const textSecondaryColor = isDark ? '#999' : palette.textSecondary;
+
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    
+
     try {
-      // Sync all enabled external calendars
-      const enabledCalendars = externalCalendars.filter(cal => cal.enabled);
-      console.log(`Syncing ${enabledCalendars.length} enabled calendars`);
-      
+      const enabledCalendars = externalCalendars.filter((cal) => cal.enabled);
       for (const calendar of enabledCalendars) {
         try {
           await fetchExternalCalendarEvents(calendar);
-          console.log(`Successfully synced calendar: ${calendar.name}`);
         } catch (error) {
           console.error(`Failed to sync calendar ${calendar.name}:`, error);
         }
       }
-      
-      console.log('Refresh completed');
     } catch (error) {
       console.error('Error during refresh:', error);
     } finally {
       setRefreshing(false);
     }
+  }, [externalCalendars, fetchExternalCalendarEvents]);
+
+  const toggleHistoryWeekExpanded = useCallback((weekKey: string) => {
+    setExpandedHistoryWeeks((prev) => ({
+      ...prev,
+      [weekKey]: !prev[weekKey],
+    }));
+  }, []);
+
+  const historyWeeks = useMemo(() => buildPerformanceHistoryWeeks(activities), [activities]);
+
+  const historyListData = useMemo(() => {
+    const items: HistoryListItem[] = [];
+
+    historyWeeks.forEach((week) => {
+      items.push({
+        type: 'weekCard',
+        key: `history:week:${week.weekKey}`,
+        week,
+      });
+
+      if (!expandedHistoryWeeks[week.weekKey]) return;
+
+      week.activities.forEach((activity, index) => {
+        items.push({
+          type: 'activity',
+          key: buildHistoryActivityKey(activity, week.weekKey, index),
+          weekKey: week.weekKey,
+          activity,
+        });
+      });
+    });
+
+    return items;
+  }, [expandedHistoryWeeks, historyWeeks]);
+
+  const safeWeekStats = currentWeekStats ?? {
+    totalTasksForWeek: 0,
+    completedTasksForWeek: 0,
   };
 
-  const getTrophyColor = (type: 'gold' | 'silver' | 'bronze') => {
-    switch (type) {
-      case 'gold':
-        return palette.gold;
-      case 'silver':
-        return palette.silver;
-      case 'bronze':
-        return palette.bronze;
-    }
-  };
+  const totalTasksForWeek = safeWeekStats.totalTasksForWeek;
+  const completedTasksForWeek = safeWeekStats.completedTasksForWeek;
+  const weekPercentage =
+    totalTasksForWeek > 0 ? Math.round((completedTasksForWeek / totalTasksForWeek) * 100) : 0;
 
-  const getTrophyEmoji = (type: 'gold' | 'silver' | 'bronze') => {
-    switch (type) {
-      case 'gold':
-        return '🥇';
-      case 'silver':
-        return '🥈';
-      case 'bronze':
-        return '🥉';
-    }
-  };
+  const currentPercentage =
+    currentWeekStats && currentWeekStats.percentage !== undefined ? currentWeekStats.percentage : 0;
+  const completedTasks =
+    currentWeekStats && currentWeekStats.completedTasks !== undefined
+      ? currentWeekStats.completedTasks
+      : 0;
+  const totalTasks =
+    currentWeekStats && currentWeekStats.totalTasks !== undefined ? currentWeekStats.totalTasks : 0;
 
-  const getCoachingMessage = (percentage: number) => {
-    if (percentage >= 80) {
-      return 'Fantastisk! Du er helt på toppen indtil nu! Fortsæt det gode arbejde! 🌟';
-    } else if (percentage >= 60) {
-      return 'Rigtig godt! Du klarer dig godt indtil nu. Bliv ved! 💪';
-    } else if (percentage >= 40) {
-      return 'Du er på vej! Der er stadig tid til at forbedre dig. 🔥';
-    } else {
-      return 'Kom igen! Fokuser på dine opgaver for at komme tilbage på sporet. ⚽';
-    }
-  };
+  const currentWeek = getWeek(new Date());
+  const currentYear = new Date().getFullYear();
 
   const trophyWeeksByType = useMemo(() => {
     const grouped = {
@@ -119,65 +189,78 @@ export default function PerformanceScreen() {
 
     return grouped;
   }, [trophies, currentWeek, currentYear]);
+
+  const getTrophyEmoji = (type: 'gold' | 'silver' | 'bronze') => {
+    switch (type) {
+      case 'gold':
+        return '🥇';
+      case 'silver':
+        return '🥈';
+      case 'bronze':
+        return '🥉';
+    }
+  };
+
+  const getCoachingMessage = (percentage: number) => {
+    if (percentage >= 80) {
+      return 'Fantastisk! Du er helt på toppen indtil nu! Fortsæt det gode arbejde! 🌟';
+    }
+    if (percentage >= 60) {
+      return 'Rigtig godt! Du klarer dig godt indtil nu. Bliv ved! 💪';
+    }
+    if (percentage >= 40) {
+      return 'Du er på vej! Der er stadig tid til at forbedre dig. 🔥';
+    }
+    return 'Kom igen! Fokuser på dine opgaver for at komme tilbage på sporet. ⚽';
+  };
+
   const goldTrophies = trophyWeeksByType.gold.length;
   const silverTrophies = trophyWeeksByType.silver.length;
   const bronzeTrophies = trophyWeeksByType.bronze.length;
 
-  const bgColor = isDark ? '#1a1a1a' : palette.background;
-  const cardBgColor = isDark ? '#2a2a2a' : palette.card;
-  const textColor = isDark ? '#e3e3e3' : palette.text;
-  const textSecondaryColor = isDark ? '#999' : palette.textSecondary;
-
-  const safeWeekStats = currentWeekStats ?? {
-    totalTasksForWeek: 0,
-    completedTasksForWeek: 0,
-  };
-
-  const totalTasksForWeek = safeWeekStats.totalTasksForWeek;
-  const completedTasksForWeek = safeWeekStats.completedTasksForWeek;
-  const weekPercentage = totalTasksForWeek > 0 
-    ? Math.round((completedTasksForWeek / totalTasksForWeek) * 100) 
-    : 0;
-
-  const currentPercentage = currentWeekStats && currentWeekStats.percentage !== undefined ? currentWeekStats.percentage : 0;
-  const completedTasks = currentWeekStats && currentWeekStats.completedTasks !== undefined ? currentWeekStats.completedTasks : 0;
-  const totalTasks = currentWeekStats && currentWeekStats.totalTasks !== undefined ? currentWeekStats.totalTasks : 0;
-  const toggleExpandedTrophy = (type: 'gold' | 'silver' | 'bronze') => {
+  const toggleExpandedTrophy = useCallback((type: 'gold' | 'silver' | 'bronze') => {
     setExpandedTrophy((prev) => (prev === type ? null : type));
-  };
+  }, []);
 
   return (
-    <ScrollView 
+    <ScrollView
       testID="performance.screen"
-      style={[styles.container, { backgroundColor: bgColor }]} 
+      style={[styles.container, { backgroundColor: bgColor }]}
       contentContainerStyle={styles.contentContainer}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
           onRefresh={onRefresh}
-            tintColor={palette.primary}
-            colors={[palette.primary]}
+          tintColor={palette.primary}
+          colors={[palette.primary]}
         />
       }
     >
       <View style={styles.header}>
         <Text style={[styles.headerTitle, { color: textColor }]}>🏆 Din Performance</Text>
-        <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
-          Se hvordan du klarer dig over tid
-        </Text>
+        <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>Se hvordan du klarer dig over tid</Text>
       </View>
 
-      <View style={[styles.currentWeekCard, { backgroundColor: palette.accent }]} testID="performance.currentWeekCard"> 
+      <View
+        style={[styles.currentWeekCard, { backgroundColor: palette.accent }]}
+        testID="performance.currentWeekCard"
+      >
         <View style={styles.currentWeekHeader}>
           <Text style={styles.currentWeekTitle}>Denne uge</Text>
-          <Text style={styles.trophyBadge}>{getTrophyEmoji(currentPercentage >= 80 ? 'gold' : currentPercentage >= 60 ? 'silver' : 'bronze')}</Text>
+          <Text style={styles.trophyBadge}>
+            {getTrophyEmoji(currentPercentage >= 80 ? 'gold' : currentPercentage >= 60 ? 'silver' : 'bronze')}
+          </Text>
         </View>
-        <Text style={styles.currentWeekSubtitle}>Uge {currentWeek}, {currentYear}</Text>
-        
+        <Text style={styles.currentWeekSubtitle}>
+          Uge {currentWeek}, {currentYear}
+        </Text>
+
         <View style={styles.statsRow}>
           <View style={styles.statBox} testID="performance.statBox.today">
             <Text style={styles.statLabel}>Indtil i dag</Text>
-            <Text style={styles.statPercentage} testID="performance.statPercentage.today">{currentPercentage}%</Text>
+            <Text style={styles.statPercentage} testID="performance.statPercentage.today">
+              {currentPercentage}%
+            </Text>
             <Text style={styles.statTasks} testID="performance.statTasks.today">
               {completedTasks} / {totalTasks}
             </Text>
@@ -185,7 +268,7 @@ export default function PerformanceScreen() {
               <View style={[styles.progressBar, { width: `${currentPercentage}%` }]} />
             </View>
           </View>
-          
+
           <View style={styles.statBox}>
             <Text style={styles.statLabel}>Hele ugen</Text>
             <Text style={styles.statPercentage}>{weekPercentage}%</Text>
@@ -197,7 +280,7 @@ export default function PerformanceScreen() {
             </View>
           </View>
         </View>
-        
+
         <View style={styles.coachingBox}>
           <Text style={styles.coachingTitle}>💬 Coaching</Text>
           <Text style={styles.coachingText}>{getCoachingMessage(currentPercentage)}</Text>
@@ -298,6 +381,119 @@ export default function PerformanceScreen() {
       </Pressable>
 
       <ProgressionSection categories={categories} />
+
+      <View style={styles.historySection}>
+        <Pressable
+          style={({ pressed }) => [styles.historyHeaderPressable, pressed && styles.historyHeaderPressed]}
+          onPress={() => setIsHistorySectionExpanded((prev) => !prev)}
+          testID="performance.history.toggle"
+        >
+          <View style={styles.historyHeaderShadow}>
+            <LinearGradient
+              colors={
+                isDark
+                  ? ['rgba(43, 76, 92, 0.62)', 'rgba(29, 52, 69, 0.62)', 'rgba(25, 43, 56, 0.62)']
+                  : ['rgba(255, 255, 255, 0.62)', 'rgba(234, 243, 238, 0.62)', 'rgba(221, 239, 227, 0.62)']
+              }
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[styles.historyHeaderCard, { borderColor: isDark ? 'rgba(191, 220, 203, 0.20)' : 'rgba(76, 175, 80, 0.22)' }]}
+            >
+              <LinearGradient
+                colors={
+                  isDark
+                    ? ['rgba(255, 255, 255, 0.10)', 'rgba(255, 255, 255, 0.00)']
+                    : ['rgba(255, 255, 255, 0.55)', 'rgba(255, 255, 255, 0.00)']
+                }
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0.8, y: 0.8 }}
+                style={styles.historyHeaderSheen}
+              />
+
+              <View style={styles.historyHeader}>
+                <View style={styles.historyTitleBlock}>
+                  <Text style={[styles.historyTitle, { color: isDark ? '#E6F5EC' : '#1D3A2A' }]}>Historik</Text>
+                  <Text style={[styles.historySubtitle, { color: isDark ? '#B5D8C2' : '#2C5A40' }]}>
+                    Overståede uger og udført arbejde
+                  </Text>
+                </View>
+                <View style={styles.historyChevronShadow}>
+                  <LinearGradient
+                    colors={isDark ? ['#3CC06A', '#1F8A43'] : ['#4CC46E', '#279B4A']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.historyChevronButton}
+                  >
+                    <IconSymbol
+                      ios_icon_name={isHistorySectionExpanded ? 'chevron.up' : 'chevron.down'}
+                      android_material_icon_name={isHistorySectionExpanded ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
+                      size={20}
+                      color="#FFFFFF"
+                    />
+                    <LinearGradient
+                      colors={['rgba(255,255,255,0.35)', 'rgba(255,255,255,0.00)']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.historyChevronSheen}
+                    />
+                  </LinearGradient>
+                </View>
+              </View>
+            </LinearGradient>
+          </View>
+        </Pressable>
+      </View>
+
+      {isHistorySectionExpanded ? (
+        homeActivitiesLoading ? (
+          <View style={styles.historyPlaceholder}>
+            <Text style={[styles.historyPlaceholderText, { color: textSecondaryColor }]}>Indlæser historik...</Text>
+          </View>
+        ) : historyWeeks.length === 0 ? (
+          <View style={styles.historyPlaceholder}>
+            <Text style={[styles.historyPlaceholderText, { color: textSecondaryColor }]}>Ingen historik endnu</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={historyListData}
+            style={styles.historyList}
+            renderItem={({ item }) => {
+              if (item.type === 'weekCard') {
+                return (
+                  <WeeklySummaryCard
+                    weekStart={item.week.weekStart}
+                    isDark={isDark}
+                    isExpanded={expandedHistoryWeeks[item.week.weekKey] === true}
+                    onPress={() => toggleHistoryWeekExpanded(item.week.weekKey)}
+                    activityCount={item.week.activityCount}
+                    totalTasks={item.week.totalCompletedTasks}
+                    totalMinutes={item.week.totalMinutes}
+                    eyebrowText="HISTORIK UGE"
+                    timeLabelPrefix="Udført"
+                  />
+                );
+              }
+
+              return (
+                <View style={styles.activityWrapper}>
+                  <ActivityCard
+                    activity={item.activity}
+                    resolvedDate={item.activity.__resolvedDateTime}
+                    showTasks
+                  />
+                </View>
+              );
+            }}
+            keyExtractor={(item) => item.key}
+            scrollEnabled={false}
+            removeClippedSubviews={Platform.OS !== 'web'}
+            initialNumToRender={6}
+            maxToRenderPerBatch={8}
+            windowSize={5}
+            testID="performance.history.list"
+          />
+        )
+      ) : null}
 
       <View style={{ height: 100 }} />
     </ScrollView>
@@ -431,6 +627,94 @@ const styles = StyleSheet.create({
   },
   trophiesEmoji: {
     fontSize: 48,
+  },
+  historySection: {
+    marginTop: 24,
+    marginBottom: 12,
+  },
+  historyHeaderPressable: {
+    borderRadius: 24,
+  },
+  historyHeaderPressed: {
+    opacity: 0.92,
+    transform: [{ scale: 0.99 }],
+  },
+  historyHeaderShadow: {
+    borderRadius: 24,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  historyHeaderCard: {
+    borderRadius: 24,
+    padding: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  historyHeaderSheen: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    columnGap: 12,
+  },
+  historyTitleBlock: {
+    flex: 1,
+  },
+  historyTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  historySubtitle: {
+    marginTop: 4,
+    fontSize: 15,
+    fontWeight: '500',
+    lineHeight: 21,
+  },
+  historyChevronShadow: {
+    borderRadius: 18,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  historyChevronButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  historyChevronSheen: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+  },
+  historyPlaceholder: {
+    paddingVertical: 8,
+  },
+  historyPlaceholderText: {
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  activityWrapper: {
+    marginBottom: 16,
+  },
+  historyList: {
+    marginHorizontal: -16,
   },
   trophiesMeta: {
     alignItems: 'center',

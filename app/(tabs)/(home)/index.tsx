@@ -73,6 +73,7 @@ import CreateActivityModal from '@/components/CreateActivityModal';
 import HomeSkeleton from '@/components/HomeSkeleton';
 import { IconSymbol } from '@/components/IconSymbol';
 import { AdminContextWrapper } from '@/components/AdminContextWrapper';
+import { WeeklySummaryCard } from '@/components/WeeklySummaryCard';
 import { colors, getColors } from '@/styles/commonStyles';
 import { format, startOfWeek, endOfWeek, getWeek } from 'date-fns';
 import { da } from 'date-fns/locale';
@@ -82,29 +83,8 @@ import { TaskScoreNoteModal, TaskScoreNoteModalPayload } from '@/components/Task
 import { fetchSelfFeedbackForActivities } from '@/services/feedbackService';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { formatHoursDa, getActivityEffectiveDurationMinutes } from '@/utils/activityDuration';
+import { resolveActivityDateTime } from '@/utils/performanceHistory';
 import type { TaskTemplateSelfFeedback } from '@/types';
-
-function resolveActivityDateTime(activity: any): Date | null {
-  // STEP H: Guard against null/undefined activity
-  if (!activity) return null;
-
-  // Internal DB activities
-  if (activity.activity_date) {
-    const date = activity.activity_date;
-    const time = activity.activity_time ?? '12:00';
-    const iso = `${date}T${time}`;
-    const d = new Date(iso);
-    return isNaN(d.getTime()) ? null : d;
-  }
-
-  // External calendar events
-  if (activity.start_time) {
-    const d = new Date(activity.start_time);
-    return isNaN(d.getTime()) ? null : d;
-  }
-
-  return null;
-}
 
 function getWeekLabel(date: Date): string {
   // STEP H: Guard against invalid date
@@ -1585,143 +1565,17 @@ export default function HomeScreen() {
         if (!item.weekGroup || !item.weekGroup.weekStart || !item.weekKey) return null;
 
         return (
-          <View style={styles.upcomingSummaryWrapper}>
-            <Pressable
-              onPress={() => toggleUpcomingWeekExpanded(item.weekKey)}
-              style={({ pressed }) => [styles.upcomingSummaryPressable, pressed && styles.upcomingSummaryCardPressed]}
-            >
-              <View style={styles.upcomingSummaryShadow}>
-                <LinearGradient
-                  colors={
-                    isDark
-                      ? ['rgba(43, 76, 92, 0.62)', 'rgba(29, 52, 69, 0.62)', 'rgba(25, 43, 56, 0.62)']
-                      : ['rgba(255, 255, 255, 0.62)', 'rgba(234, 243, 238, 0.62)', 'rgba(221, 239, 227, 0.62)']
-                  }
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={[styles.upcomingSummaryCard, { borderColor: isDark ? 'rgba(191, 220, 203, 0.20)' : 'rgba(76, 175, 80, 0.22)' }]}
-                >
-                  <LinearGradient
-                    colors={
-                      isDark
-                        ? ['rgba(255, 255, 255, 0.10)', 'rgba(255, 255, 255, 0.00)']
-                        : ['rgba(255, 255, 255, 0.55)', 'rgba(255, 255, 255, 0.00)']
-                    }
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 0.8, y: 0.8 }}
-                    style={styles.upcomingSummarySheen}
-                  />
-
-                  <View style={styles.upcomingSummaryHeader}>
-                    <View>
-                      <Text style={[styles.upcomingSummaryEyebrow, { color: isDark ? '#BFDCCB' : '#3B6A4D' }]}>
-                        KOMMENDE UGE
-                      </Text>
-                      <Text style={[styles.upcomingSummaryTitle, { color: isDark ? '#E6F5EC' : '#1D3A2A' }]}>
-                        Uge {getWeek(item.weekGroup.weekStart, { weekStartsOn: 1, locale: da })}
-                      </Text>
-                    </View>
-
-                    <View style={styles.upcomingChevronShadow}>
-                      <LinearGradient
-                        colors={isDark ? ['#3CC06A', '#1F8A43'] : ['#4CC46E', '#279B4A']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={styles.upcomingChevronButton}
-                      >
-                        <IconSymbol
-                          ios_icon_name="chevron.down"
-                          android_material_icon_name="keyboard-arrow-down"
-                          size={18}
-                          color="#FFFFFF"
-                          style={[
-                            styles.upcomingChevronIcon,
-                            expandedUpcomingWeeks[item.weekKey] && styles.upcomingChevronIconExpanded,
-                          ]}
-                        />
-                        <LinearGradient
-                          colors={['rgba(255,255,255,0.35)', 'rgba(255,255,255,0.00)']}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 1 }}
-                          style={styles.upcomingChevronSheen}
-                        />
-                      </LinearGradient>
-                    </View>
-                  </View>
-
-                  <Text style={[styles.upcomingSummaryRange, { color: isDark ? '#B5D8C2' : '#2C5A40' }]}>
-                    {getWeekLabel(item.weekGroup.weekStart)}
-                  </Text>
-
-                  <View style={styles.upcomingSummaryBadgesRow}>
-                  <View
-                      style={[
-                        styles.upcomingSummaryChip,
-                        { backgroundColor: isDark ? 'rgba(19, 42, 53, 0.62)' : 'rgba(255, 255, 255, 0.72)' },
-                      ]}
-                    >
-                      <IconSymbol
-                        ios_icon_name="calendar"
-                        android_material_icon_name="calendar_today"
-                        size={14}
-                        color={isDark ? 'rgba(216, 239, 225, 0.95)' : 'rgba(29, 58, 42, 0.9)'}
-                      />
-                      <Text
-                        numberOfLines={1}
-                        ellipsizeMode="tail"
-                        style={[styles.upcomingSummaryChipText, { color: isDark ? '#D8EFE1' : '#1D3A2A' }]}
-                      >
-                        Aktiviteter · {item.activityCount}
-                      </Text>
-                    </View>
-
-                    <View
-                      style={[
-                        styles.upcomingSummaryChip,
-                        { backgroundColor: isDark ? 'rgba(19, 42, 53, 0.62)' : 'rgba(255, 255, 255, 0.72)' },
-                      ]}
-                    >
-                      <IconSymbol
-                        ios_icon_name="checkmark.circle"
-                        android_material_icon_name="check_circle"
-                        size={14}
-                        color={isDark ? 'rgba(216, 239, 225, 0.95)' : 'rgba(29, 58, 42, 0.9)'}
-                      />
-                      <Text
-                        numberOfLines={1}
-                        ellipsizeMode="tail"
-                        style={[styles.upcomingSummaryChipText, { color: isDark ? '#D8EFE1' : '#1D3A2A' }]}
-                      >
-                        Opgaver · {item.totalTasks}
-                      </Text>
-                    </View>
-
-                    <View
-                      style={[
-                        styles.upcomingSummaryChip,
-                        styles.upcomingSummaryChipPrimary,
-                        { backgroundColor: isDark ? 'rgba(201, 235, 214, 0.14)' : 'rgba(76, 175, 80, 0.16)' },
-                      ]}
-                    >
-                      <IconSymbol
-                        ios_icon_name="clock"
-                        android_material_icon_name="schedule"
-                        size={14}
-                        color={isDark ? 'rgba(216, 239, 225, 0.98)' : 'rgba(29, 58, 42, 0.92)'}
-                      />
-                      <Text
-                        numberOfLines={1}
-                        ellipsizeMode="tail"
-                        style={[styles.upcomingSummaryChipText, { color: isDark ? '#D8EFE1' : '#1D3A2A' }]}
-                      >
-                        Planlagt: {formatHoursDa(item.totalMinutes)}
-                      </Text>
-                    </View>
-                  </View>
-                </LinearGradient>
-              </View>
-            </Pressable>
-          </View>
+          <WeeklySummaryCard
+            weekStart={item.weekGroup.weekStart}
+            isDark={isDark}
+            isExpanded={expandedUpcomingWeeks[item.weekKey] === true}
+            onPress={() => toggleUpcomingWeekExpanded(item.weekKey)}
+            activityCount={item.activityCount}
+            totalTasks={item.totalTasks}
+            totalMinutes={item.totalMinutes}
+            eyebrowText="KOMMENDE UGE"
+            timeLabelPrefix="Planlagt"
+          />
         );
 
       case 'upcomingDayDivider': {
