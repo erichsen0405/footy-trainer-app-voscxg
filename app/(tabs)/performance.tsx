@@ -8,7 +8,7 @@ import { getWeek } from 'date-fns';
 export default function PerformanceScreen() {
   const { trophies, currentWeekStats, externalCalendars, fetchExternalCalendarEvents, categories } = useFootball();
   const [expandedTrophy, setExpandedTrophy] = useState<'gold' | 'silver' | 'bronze' | null>(null);
-  const currentWeek = getWeek(new Date());
+  const currentWeek = getWeek(new Date(), { weekStartsOn: 1, firstWeekContainsDate: 4 });
   const currentYear = new Date().getFullYear();
   const colorScheme = useColorScheme();
   const palette = useMemo(() => {
