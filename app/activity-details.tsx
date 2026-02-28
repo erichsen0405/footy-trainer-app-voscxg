@@ -467,6 +467,42 @@ const EXTERNAL_META_SELECT_NO_VIDEO = `
   )
 `;
 
+const EXTERNAL_META_SELECT_MINIMAL = `
+  id,
+  external_event_id,
+  category_id,
+  intensity,
+  intensity_enabled,
+  intensity_note,
+  local_title_override,
+  activity_categories (
+    id,
+    name,
+    color,
+    emoji
+  ),
+  events_external (
+    id,
+    title,
+    location,
+    start_date,
+    start_time,
+    end_time,
+    provider_calendar_id,
+    raw_payload
+  ),
+  external_event_tasks (
+    id,
+    task_template_id,
+    feedback_template_id,
+    is_feedback_task,
+    title,
+    description,
+    completed,
+    reminder_minutes
+  )
+`;
+
 // --- Task template selects (fix for refactor missing constants) ---
 const TEMPLATE_SELECT_FULL = `
   id,
@@ -694,8 +730,8 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
       };
     }
 
-    const selectExternalMetaBy = async (column: 'id' | 'external_event_id') =>
-      selectSingleWithOptionalColumn<any>({
+    const selectExternalMetaBy = async (column: 'id' | 'external_event_id') => {
+      const withVideo = await selectSingleWithOptionalColumn<any>({
         table: 'events_local_meta',
         selectWith: EXTERNAL_META_SELECT_WITH_VIDEO,
         selectWithout: EXTERNAL_META_SELECT_NO_VIDEO,
@@ -704,6 +740,23 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         optionalColumnName: 'video_url',
         context: `events_local_meta.${column}=${activityId}`,
       });
+
+      if (!withVideo.error || withVideo.data) {
+        return withVideo;
+      }
+
+      const minimal = await (supabase as any)
+        .from('events_local_meta')
+        .select(EXTERNAL_META_SELECT_MINIMAL)
+        .eq(column, activityId)
+        .single();
+
+      if (!minimal.error) {
+        return { data: minimal.data ?? null, error: null, usedFallback: true };
+      }
+
+      return withVideo;
+    };
 
     let { data: localMeta, error: metaError } = await selectExternalMetaBy('id');
     if (metaError || !localMeta) {
@@ -4255,6 +4308,10 @@ export default function ActivityDetailsScreen() {
     id?: string | string[];
     activityId?: string | string[];
     activity_id?: string | string[];
+    categoryId?: string | string[];
+    categoryName?: string | string[];
+    categoryColor?: string | string[];
+    categoryEmoji?: string | string[];
     openFeedbackTaskId?: string | string[];
     openTaskId?: string | string[];
     openIntensity?: string | string[];
@@ -4280,6 +4337,10 @@ export default function ActivityDetailsScreen() {
   }, []);
 
   const activityId = normalizeParam(params.id ?? params.activityId ?? params.activity_id);
+  const fallbackCategoryId = normalizeParam(params.categoryId);
+  const fallbackCategoryName = normalizeParam(params.categoryName);
+  const fallbackCategoryColor = normalizeParam(params.categoryColor);
+  const fallbackCategoryEmoji = normalizeParam(params.categoryEmoji);
   const initialFeedbackTaskId = normalizeParam(params.openFeedbackTaskId);
   const initialOpenTaskId = normalizeParam(params.openTaskId);
   const openIntensityParam = normalizeParam(params.openIntensity);
@@ -4304,6 +4365,29 @@ export default function ActivityDetailsScreen() {
         setActivity(null);
         setFetchError('not-found');
       } else {
+        if (result.isExternal) {
+          const currentCategoryName = String(result.category?.name ?? '').trim().toLowerCase();
+          const isUnknownCategory =
+            !result.category?.id ||
+            !result.category?.name ||
+            currentCategoryName === 'unknown' ||
+            currentCategoryName === 'ukendt kategori';
+
+          if (isUnknownCategory && fallbackCategoryName) {
+            setActivity({
+              ...result,
+              category: {
+                id: fallbackCategoryId ?? '',
+                name: fallbackCategoryName,
+                color: fallbackCategoryColor ?? '#999999',
+                emoji: fallbackCategoryEmoji ?? '⚽️',
+              },
+            });
+            setFetchError(null);
+            return;
+          }
+        }
+
         setActivity(result);
         setFetchError(null);
       }
@@ -4313,7 +4397,7 @@ export default function ActivityDetailsScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [activityId]);
+  }, [activityId, fallbackCategoryColor, fallbackCategoryEmoji, fallbackCategoryId, fallbackCategoryName]);
 
   useEffect(() => {
     (async () => {

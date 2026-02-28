@@ -247,6 +247,21 @@ export default function ActivityCard({
     return trimmed;
   }, [activity?.activityId, activity?.activity_id, activity?.id]);
 
+  const routeActivityId = useMemo(() => {
+    const isExternal = Boolean(activity?.is_external ?? activity?.isExternal);
+    if (isExternal) {
+      const externalRowIdRaw = activity?.external_event_row_id ?? activity?.externalEventRowId;
+      if (externalRowIdRaw !== null && externalRowIdRaw !== undefined) {
+        const externalRowId = String(externalRowIdRaw).trim();
+        const lowered = externalRowId.toLowerCase();
+        if (externalRowId.length && lowered !== 'undefined' && lowered !== 'null') {
+          return externalRowId;
+        }
+      }
+    }
+    return activityId;
+  }, [activity?.externalEventRowId, activity?.external_event_row_id, activity?.isExternal, activity?.is_external, activityId]);
+
   const extractTasksFromActivity = useCallback((source: any): any[] => {
     if (!source) return [];
     const primaryTasks = Array.isArray(source?.tasks) ? source.tasks : [];
@@ -415,13 +430,30 @@ export default function ActivityCard({
       suppressCardPressRef.current = false;
       return;
     }
-    if (!activityId) {
+    if (!routeActivityId) {
       console.warn('[ActivityCard] Missing activity id for navigation');
       return;
     }
-    const encodedId = encodeURIComponent(activityId);
-    router.push(`/activity-details?id=${encodedId}&activityId=${encodedId}`);
-  }, [activityId, router]);
+    router.push({
+      pathname: '/activity-details',
+      params: {
+        id: routeActivityId,
+        activityId: activityId ?? routeActivityId,
+        categoryId: activity?.category?.id ? String(activity.category.id) : undefined,
+        categoryName: activity?.category?.name ? String(activity.category.name) : undefined,
+        categoryColor: activity?.category?.color ? String(activity.category.color) : undefined,
+        categoryEmoji: activity?.category?.emoji ? String(activity.category.emoji) : undefined,
+      },
+    });
+  }, [
+    activity?.category?.color,
+    activity?.category?.emoji,
+    activity?.category?.id,
+    activity?.category?.name,
+    activityId,
+    routeActivityId,
+    router,
+  ]);
 
   const handleIntensityRowPress = useCallback(
     (event?: any) => {
