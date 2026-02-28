@@ -58,7 +58,7 @@
  */
 
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform, useColorScheme, DeviceEventEmitter, Image } from 'react-native';
+import { FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform, useColorScheme, DeviceEventEmitter, Image, LayoutChangeEvent, NativeSyntheticEvent, TextLayoutEventData } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -325,6 +325,9 @@ export default function HomeScreen() {
   const [isPreviousExpanded, setIsPreviousExpanded] = useState(false);
   const [expandedUpcomingWeeks, setExpandedUpcomingWeeks] = useState<Record<string, boolean>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isPerformanceCardCollapsed, setIsPerformanceCardCollapsed] = useState(true);
+  const [progressPercentageBoxHeight, setProgressPercentageBoxHeight] = useState(72);
+  const [progressPercentageSymbolHeight, setProgressPercentageSymbolHeight] = useState(56);
   const [currentTrainerId, setCurrentTrainerId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [feedbackConfigByTemplate, setFeedbackConfigByTemplate] = useState<Record<string, AfterTrainingFeedbackConfig>>({});
@@ -637,6 +640,21 @@ export default function HomeScreen() {
     }, [currentUserId, feedbackActivityIds.length, triggerFeedbackRefresh])
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      const refreshPromises: Promise<unknown>[] = [];
+      if (typeof refreshActivities === 'function') {
+        refreshPromises.push(refreshActivities());
+      }
+      if (typeof refreshData === 'function') {
+        refreshPromises.push(refreshData());
+      }
+      if (refreshPromises.length) {
+        void Promise.allSettled(refreshPromises);
+      }
+    }, [refreshActivities, refreshData])
+  );
+
   useEffect(() => {
     if (Array.isArray(activities) && activities.length > 0) {
       setFeedbackRefreshKey((prev) => prev + 1);
@@ -921,6 +939,50 @@ export default function HomeScreen() {
     }));
   }, []);
 
+  const togglePerformanceCardCollapsed = useCallback(() => {
+    setIsPerformanceCardCollapsed((prev) => !prev);
+  }, []);
+
+  const handleProgressPercentageLayout = useCallback((event: LayoutChangeEvent) => {
+    const measuredHeight = Math.round(event.nativeEvent.layout.height);
+    const nextHeight = measuredHeight > 0 ? measuredHeight : 72;
+    setProgressPercentageBoxHeight((prev) => (prev === nextHeight ? prev : nextHeight));
+  }, []);
+
+  const handleProgressPercentageTextLayout = useCallback(
+    (event: NativeSyntheticEvent<TextLayoutEventData>) => {
+      const line = event.nativeEvent.lines?.[0];
+      if (!line) return;
+
+      const ascender = typeof line.ascender === 'number' ? line.ascender : null;
+      const descender = typeof line.descender === 'number' ? line.descender : null;
+      const capHeight = typeof line.capHeight === 'number' ? line.capHeight : null;
+      const lineHeight = typeof line.height === 'number' ? line.height : null;
+
+      const derivedHeight =
+        capHeight && capHeight > 0
+          ? capHeight
+          : ascender !== null && descender !== null && ascender + descender > 0
+            ? ascender + descender
+            : lineHeight && lineHeight > 0
+              ? lineHeight
+              : null;
+
+      if (!derivedHeight) return;
+      const nextHeight = Math.max(40, Math.round(derivedHeight));
+      setProgressPercentageSymbolHeight((prev) => (prev === nextHeight ? prev : nextHeight));
+    },
+    [],
+  );
+
+  const progressMedalSizing = useMemo(() => {
+    const badgeSize = Math.max(40, Math.round(progressPercentageSymbolHeight));
+    const iconSize = Math.max(24, Math.round(badgeSize * 0.73));
+    const boxHeight = Math.max(badgeSize, Math.round(progressPercentageBoxHeight));
+    const verticalInset = Math.max(0, Math.round((boxHeight - badgeSize) / 2));
+    return { badgeSize, iconSize, verticalInset };
+  }, [progressPercentageBoxHeight, progressPercentageSymbolHeight]);
+
   const upcomingWeekSummaries = useMemo(() => {
     const safeUpcomingByWeek = Array.isArray(upcomingByWeek) ? upcomingByWeek : [];
     return safeUpcomingByWeek.map((weekGroup, index) => {
@@ -961,13 +1023,25 @@ export default function HomeScreen() {
     setIsRefreshing(true);
 
     try {
+      const refreshPromises: Promise<unknown>[] = [];
+
       // STEP H: Guard against null/undefined refreshActivities
       if (typeof refreshActivities === 'function') {
-        await refreshActivities();
-        console.log('[Home] Pull-to-refresh completed successfully');
+        refreshPromises.push(refreshActivities());
       } else {
         console.error('[Home] refreshActivities is not a function');
       }
+
+      if (typeof refreshData === 'function') {
+        refreshPromises.push(refreshData());
+      } else {
+        console.error('[Home] refreshData is not a function');
+      }
+
+      if (refreshPromises.length) {
+        await Promise.allSettled(refreshPromises);
+      }
+      console.log('[Home] Pull-to-refresh completed successfully');
     } catch (error) {
       console.error('[Home] Pull-to-refresh error:', error);
       // STEP H: Safe fallback - no throw
@@ -976,7 +1050,7 @@ export default function HomeScreen() {
       setIsRefreshing(false);
       console.log('[Home] Pull-to-refresh spinner stopped');
     }
-  }, [isRefreshing, refreshActivities]);
+  }, [isRefreshing, refreshActivities, refreshData]);
 
   // Flatten all data into a single list for FlatList
   // Each item has a type to determine how to render it
@@ -1484,12 +1558,57 @@ export default function HomeScreen() {
         >
           <View style={styles.progressHeader}>
             <Text style={styles.progressLabel}>DENNE UGE</Text>
-            <View style={styles.medalBadge}>
-              <Text style={styles.medalIcon}>{performanceMetrics.trophyEmoji}</Text>
-            </View>
+            <Pressable
+              style={styles.performanceCollapseButton}
+              onPress={togglePerformanceCardCollapsed}
+              accessibilityRole="button"
+              accessibilityLabel={isPerformanceCardCollapsed ? 'Udvid performance-kort' : 'Kollaps performance-kort'}
+            >
+              <IconSymbol
+                ios_icon_name="chevron.down"
+                android_material_icon_name="keyboard-arrow-down"
+                size={18}
+                color="#FFFFFF"
+                style={[
+                  styles.performanceCollapseIcon,
+                  !isPerformanceCardCollapsed && styles.performanceCollapseIconExpanded,
+                ]}
+              />
+            </Pressable>
           </View>
 
-          <Text style={styles.progressPercentage}>{performanceMetrics.percentageUpToToday}%</Text>
+          <View style={styles.progressPercentageRow}>
+            <Text
+              style={styles.progressPercentage}
+              onLayout={handleProgressPercentageLayout}
+              onTextLayout={handleProgressPercentageTextLayout}
+            >
+              {performanceMetrics.percentageUpToToday}%
+            </Text>
+            <View
+              style={[
+                styles.medalBadge,
+                {
+                  width: progressMedalSizing.badgeSize,
+                  height: progressMedalSizing.badgeSize,
+                  borderRadius: progressMedalSizing.badgeSize / 2,
+                  marginTop: progressMedalSizing.verticalInset,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.medalIcon,
+                  {
+                    fontSize: progressMedalSizing.iconSize,
+                    lineHeight: progressMedalSizing.iconSize,
+                  },
+                ]}
+              >
+                {performanceMetrics.trophyEmoji}
+              </Text>
+            </View>
+          </View>
 
           <View style={styles.progressBar}>
             <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
@@ -1498,32 +1617,36 @@ export default function HomeScreen() {
           <Text style={styles.progressDetail}>
             Opgaver indtil i dag: {performanceMetrics.completedTasksToday} / {performanceMetrics.totalTasksToday}
           </Text>
-          <View style={styles.progressBar}>
-            <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
-          </View>
+          {!isPerformanceCardCollapsed && (
+            <>
+              <View style={styles.progressBar}>
+                <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
+              </View>
 
-          <Text style={styles.progressDetail}>
-            Hele ugen: {performanceMetrics.completedTasksWeek} / {performanceMetrics.totalTasksWeek} opgaver
-          </Text>
+              <Text style={styles.progressDetail}>
+                Hele ugen: {performanceMetrics.completedTasksWeek} / {performanceMetrics.totalTasksWeek} opgaver
+              </Text>
 
-          <Text style={styles.progressDetail} testID="home.performance.hoursToday">
-            Timer i dag: {timeMetrics.todayHoursLabel}
-          </Text>
-          <Text style={styles.progressDetail} testID="home.performance.hoursWeek">
-            Timer denne uge: {timeMetrics.weekHoursLabel}
-          </Text>
+              <Text style={styles.progressDetail} testID="home.performance.hoursToday">
+                Timer i dag: {timeMetrics.todayHoursLabel}
+              </Text>
+              <Text style={styles.progressDetail} testID="home.performance.hoursWeek">
+                Timer denne uge: {timeMetrics.weekHoursLabel}
+              </Text>
 
-          <Text style={styles.motivationText}>
-            {performanceMetrics.motivationText}
-          </Text>
+              <Text style={styles.motivationText}>
+                {performanceMetrics.motivationText}
+              </Text>
 
-          {/* Se Performance Button - Inside Performance Card */}
-          <Pressable
-            style={styles.performanceButton}
-            onPress={handleOpenPerformance}
-          >
-            <Text style={styles.performanceButtonText}>Se performance</Text>
-          </Pressable>
+              {/* Se Performance Button - Inside Performance Card */}
+              <Pressable
+                style={styles.performanceButton}
+                onPress={handleOpenPerformance}
+              >
+                <Text style={styles.performanceButtonText}>Se performance</Text>
+              </Pressable>
+            </>
+          )}
         </LinearGradient>
 
         {/* STEP E: Static inline info-box when adminMode !== 'self' */}
@@ -1551,7 +1674,7 @@ export default function HomeScreen() {
         </Pressable>
       </>
     );
-  }, [adminMode, currentWeekLabel, currentWeekNumber, handleOpenCreateModal, handleOpenPerformance, isDark, performanceMetrics, timeMetrics]);
+  }, [adminMode, currentWeekLabel, currentWeekNumber, handleOpenCreateModal, handleOpenPerformance, isDark, performanceMetrics, timeMetrics, isPerformanceCardCollapsed, togglePerformanceCardCollapsed, handleProgressPercentageLayout, handleProgressPercentageTextLayout, progressMedalSizing]);
 
   // List footer component
   const ListFooterComponent = useCallback(() => (
@@ -1687,20 +1810,42 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
   },
   medalBadge: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   medalIcon: {
-    fontSize: 28,
+    fontSize: 44,
+    lineHeight: 44,
+  },
+  performanceCollapseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+  },
+  performanceCollapseIcon: {
+    transform: [{ rotate: '0deg' }],
+  },
+  performanceCollapseIconExpanded: {
+    transform: [{ rotate: '180deg' }],
   },
   progressPercentage: {
     fontSize: 72,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+  progressPercentageRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
     marginBottom: 12,
   },
   progressBar: {

@@ -14,10 +14,11 @@ const mockFetchSelfFeedbackForActivities = jest.fn().mockResolvedValue([]);
 const mockFetchSelfFeedbackForTemplates = jest.fn().mockResolvedValue([]);
 const mockFetchLatestCategoryFeedback = jest.fn().mockResolvedValue([]);
 const mockUpsertSelfFeedback = jest.fn();
+const mockRouterPush = jest.fn();
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({
-    push: jest.fn(),
+    push: mockRouterPush,
     back: jest.fn(),
     replace: jest.fn(),
     canGoBack: jest.fn(() => true),
@@ -189,6 +190,13 @@ describe('ActivityDetails add-task flow', () => {
   });
 
   it('shows add CTA and updates task list after task-created refetch', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
+      const manualButton = Array.isArray(buttons)
+        ? (buttons as any[]).find((button) => button?.text === 'Opret manuelt')
+        : null;
+      manualButton?.onPress?.();
+    });
+
     const baseActivity = {
       id: 'activity-1',
       title: 'Session',
@@ -222,6 +230,7 @@ describe('ActivityDetails add-task flow', () => {
     fireEvent.press(getByTestId('mock.createActivityTaskModal.complete'));
     await waitFor(() => expect(mockSupabaseFrom).toHaveBeenCalledWith('activities'));
     expect(await findByTestId('activity.taskRow.task-1')).toBeTruthy();
+    alertSpy.mockRestore();
   });
 
   it('shows latest feedback loading placeholder while data is being fetched', async () => {
@@ -834,5 +843,89 @@ describe('ActivityDetails add-task flow', () => {
     );
 
     alertSpy.mockRestore();
+  });
+
+  it('opens canonical feedback modal route from Activity Details', async () => {
+    const feedbackTemplateId = '11111111-1111-1111-1111-111111111111';
+    const activity = {
+      id: 'activity-feedback-route-1',
+      title: 'Session',
+      date: new Date('2026-02-10T10:00:00.000Z'),
+      time: '10:00',
+      location: 'Pitch',
+      category: { id: 'cat-1', name: 'Training', color: '#123456', emoji: '⚽️' },
+      tasks: [
+        {
+          id: 'feedback-task-details-1',
+          title: 'Feedback på Demo',
+          completed: false,
+          feedback_template_id: feedbackTemplateId,
+        },
+      ],
+      isExternal: false,
+      intensityEnabled: false,
+      intensity: null,
+    };
+
+    const { getByTestId } = render(
+      <ActivityDetailsModule.ActivityDetailsContent
+        activity={activity as any}
+        categories={[activity.category as any]}
+        isAdmin
+        isDark={false}
+        onBack={jest.fn()}
+        onActivityUpdated={jest.fn()}
+      />,
+    );
+
+    fireEvent.press(getByTestId('activity.details.feedbackTaskButton.incomplete'));
+
+    expect(mockRouterPush).toHaveBeenCalledWith({
+      pathname: '/(modals)/task-feedback-note',
+      params: {
+        activityId: 'activity-feedback-route-1',
+        templateId: feedbackTemplateId,
+        title: 'Feedback på Demo',
+        taskInstanceId: 'feedback-task-details-1',
+      },
+    });
+  });
+
+  it('opens canonical intensity modal route from Activity Details', async () => {
+    const activity = {
+      id: 'activity-intensity-route-1',
+      title: 'Session',
+      date: new Date('2026-02-10T10:00:00.000Z'),
+      time: '10:00',
+      location: 'Pitch',
+      category: { id: 'cat-1', name: 'Training', color: '#123456', emoji: '⚽️' },
+      tasks: [],
+      isExternal: false,
+      intensityEnabled: true,
+      intensity: null,
+    };
+
+    const { getByTestId } = render(
+      <ActivityDetailsModule.ActivityDetailsContent
+        activity={activity as any}
+        categories={[activity.category as any]}
+        isAdmin
+        isDark={false}
+        onBack={jest.fn()}
+        onActivityUpdated={jest.fn()}
+      />,
+    );
+
+    fireEvent(getByTestId('activity.details.intensityTaskButton'), 'press', {
+      stopPropagation: jest.fn(),
+    });
+
+    expect(mockRouterPush).toHaveBeenCalledWith({
+      pathname: '/(modals)/task-score-note',
+      params: {
+        activityId: 'activity-intensity-route-1',
+        initialScore: '',
+      },
+    });
   });
 });

@@ -481,6 +481,8 @@ export default function TasksScreen() {
     () =>
       filteredTasks.filter((t: any) => {
         if (!t?.isTemplate) return false;
+        const sourceFolder = getTaskSourceFolder(t).toLowerCase();
+        if (sourceFolder === 'activity_local_task') return false;
         const isArchived = typeof t?.archivedAt === 'string' && t.archivedAt.trim().length > 0;
         return templateView === 'active' ? !isArchived : isArchived;
       }),

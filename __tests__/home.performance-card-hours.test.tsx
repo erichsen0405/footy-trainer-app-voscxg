@@ -202,7 +202,8 @@ describe('Home performance card hour sums', () => {
   });
 
   it('renders Timer i dag and Timer denne uge with expected totals', () => {
-    const { getByText, getByTestId } = render(<HomeScreen />);
+    const { getByText, getByTestId, getByLabelText } = render(<HomeScreen />);
+    fireEvent.press(getByLabelText('Udvid performance-kort'));
 
     expect(getByText('Timer i dag: 1 t')).toBeTruthy();
     expect(getByText('Timer denne uge: 2 t')).toBeTruthy();

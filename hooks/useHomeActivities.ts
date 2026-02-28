@@ -7,7 +7,6 @@ import { resolveActivityCategory, type CategoryMappingRecord } from '@/shared/ac
 import { subscribeToTaskCompletion } from '@/utils/taskEvents';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { filterVisibleTasksForActivity } from '@/utils/taskTemplateVisibility';
-import { useUserRole } from '@/hooks/useUserRole';
 import {
   subscribeToActivityPatch,
   subscribeToActivitiesRefreshRequested,
@@ -21,6 +20,7 @@ interface ActivityTask {
   description?: string;
   completed: boolean;
   reminder_minutes?: number | null;
+  after_training_enabled?: boolean | null;
   after_training_delay_minutes?: number | null;
   task_duration_enabled?: boolean | null;
   task_duration_minutes?: number | null;
@@ -112,6 +112,16 @@ const normalizeId = (value: unknown): string | null => {
   if (value === null || value === undefined) return null;
   const trimmed = String(value).trim();
   return trimmed.length ? trimmed : null;
+};
+
+const isMissingColumnError = (error: any, columnName: string): boolean => {
+  const needle = String(columnName ?? '').toLowerCase();
+  if (!needle) return false;
+  const haystack = [error?.message, error?.details, error?.hint, error?.code]
+    .filter(Boolean)
+    .map((part) => String(part).toLowerCase())
+    .join(' | ');
+  return haystack.includes(needle);
 };
 
 const normalizeTitle = (value?: string | null): string => {
@@ -242,6 +252,11 @@ const extractExternalEventTasks = (
 };
 
 let loggedExternalMetaSample = false;
+const devLog = (...args: unknown[]) => {
+  if (__DEV__) {
+    console.log(...args);
+  }
+};
 
 interface UseHomeActivitiesResult {
   activities: ActivityWithCategory[];
@@ -250,7 +265,6 @@ interface UseHomeActivitiesResult {
 }
 
 export function useHomeActivities(): UseHomeActivitiesResult {
-  const { isAdmin } = useUserRole();
   const [userId, setUserId] = useState<string | null>(null);
   const [activities, setActivities] = useState<ActivityWithCategory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -438,18 +452,39 @@ export function useHomeActivities(): UseHomeActivitiesResult {
     }
 
     try {
-      console.log('[useHomeActivities] Fetching activities for user:', userId);
-      
+      devLog('[useHomeActivities] Fetching activities for user:', userId);
+
       // ✅ PARALLEL FETCH GROUP 1: Categories + Internal Activities + External Calendars + Category Mappings
       // These are independent and can run in parallel
-      const [categoriesData, internalData, calendarsData, categoryMappingsData] = await Promise.all([
-        // 1. Fetch categories (user + system)
-        getCategories(userId),
-        
-        // 2. Fetch internal activities WITH TASKS
-        supabase
-          .from('activities')
-          .select(`
+      const internalSelectWithLocalOptions = `
+            id,
+            user_id,
+            title,
+            activity_date,
+            activity_time,
+            activity_end_time,
+            location,
+            category_id,
+            intensity,
+            intensity_note,
+            intensity_enabled,
+            created_at,
+            updated_at,
+            activity_tasks (
+              id,
+              title,
+              description,
+              completed,
+              reminder_minutes,
+              after_training_enabled,
+              after_training_delay_minutes,
+              task_duration_enabled,
+              task_duration_minutes,
+              feedback_template_id,
+              task_template_id
+            )
+          `;
+      const internalSelectLegacy = `
             id,
             user_id,
             title,
@@ -472,16 +507,43 @@ export function useHomeActivities(): UseHomeActivitiesResult {
               feedback_template_id,
               task_template_id
             )
-          `)
-          .eq('user_id', userId)
-          .then(({ data, error }) => {
-            if (error) {
-              console.error('[useHomeActivities] Error fetching internal activities:', error);
-              return null;
-            }
-            return data;
-          }),
-        
+          `;
+
+      const fetchInternalActivities = async () => {
+        const withLocal = await supabase
+          .from('activities')
+          .select(internalSelectWithLocalOptions)
+          .eq('user_id', userId);
+
+        if (!withLocal.error) {
+          return withLocal.data;
+        }
+
+        if (!isMissingColumnError(withLocal.error, 'after_training_enabled')) {
+          console.error('[useHomeActivities] Error fetching internal activities:', withLocal.error);
+          return null;
+        }
+
+        const legacy = await supabase
+          .from('activities')
+          .select(internalSelectLegacy)
+          .eq('user_id', userId);
+
+        if (legacy.error) {
+          console.error('[useHomeActivities] Error fetching internal activities (legacy fallback):', legacy.error);
+          return null;
+        }
+
+        return legacy.data;
+      };
+
+      const [categoriesData, internalData, calendarsData, categoryMappingsData] = await Promise.all([
+        // 1. Fetch categories (user + system)
+        getCategories(userId),
+
+        // 2. Fetch internal activities WITH TASKS
+        fetchInternalActivities(),
+
         // 3. Fetch external calendars
         supabase
           .from('external_calendars')
@@ -509,11 +571,11 @@ export function useHomeActivities(): UseHomeActivitiesResult {
             return data;
           }),
       ]);
-      
-      console.log('[useHomeActivities] Categories fetched:', categoriesData?.length ?? 0);
-      console.log('[useHomeActivities] Internal activities:', internalData?.length ?? 0);
-      console.log('[useHomeActivities] Category mappings:', categoryMappingsData?.length ?? 0);
-      
+
+      devLog('[useHomeActivities] Categories fetched:', categoriesData?.length ?? 0);
+      devLog('[useHomeActivities] Internal activities:', internalData?.length ?? 0);
+      devLog('[useHomeActivities] Category mappings:', categoryMappingsData?.length ?? 0);
+
       // Create a map for quick category lookup
       const categoryMap = new Map<string, DatabaseActivityCategory>();
       (categoriesData || []).forEach(cat => {
@@ -548,8 +610,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
 
         return null;
       };
-      
-      console.log('[useHomeActivities] Category map size:', categoryMap.size);
+
+      devLog('[useHomeActivities] Category map size:', categoryMap.size);
       
       // Map internal activities with tasks and resolved category
       const internalActivities: ActivityWithCategory[] = (internalData || []).map(activity => {
@@ -560,7 +622,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         const intensityEnabled = typeof activity.intensity_enabled === 'boolean'
           ? activity.intensity_enabled
           : intensityValue !== null;
-        
+
         // Map tasks to the expected format
         const tasks: ActivityTask[] = (activity.activity_tasks || []).map((task: any) => ({
           id: task.id,
@@ -568,6 +630,10 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           description: task.description || '',
           completed: task.completed,
           reminder_minutes: task.reminder_minutes,
+          after_training_enabled: task.after_training_enabled === true,
+          after_training_delay_minutes: coerceReminderMinutes(task.after_training_delay_minutes),
+          task_duration_enabled: task.task_duration_enabled === true,
+          task_duration_minutes: coerceReminderMinutes(task.task_duration_minutes),
           feedback_template_id: task.feedback_template_id ?? null,
           task_template_id: task.task_template_id ?? null,
         }));
@@ -593,14 +659,14 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           tasks,
         };
       });
-      
+
       const calendarIdsNormalized = (calendarsData || [])
         .map(c => c?.id)
         .filter(Boolean)
         .map(v => String(v));
 
       if (__DEV__) {
-        console.log('[useHomeActivities] Normalized calendars', {
+        devLog('[useHomeActivities] Normalized calendars', {
           length: calendarIdsNormalized.length,
           sample: calendarIdsNormalized.slice(0, 3),
         });
@@ -625,7 +691,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
             hint: eventsError?.hint,
           });
         } else if (eventsData) {
-          console.log('[useHomeActivities] External events found:', eventsData.length);
+          devLog('[useHomeActivities] External events found:', eventsData.length);
 
           const eventRowIds = eventsData.map(e => String(e.id)).filter(Boolean);
           const providerUids = eventsData.map(e => String(e.provider_event_uid)).filter(Boolean);
@@ -708,7 +774,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
 
             if (__DEV__ && !loggedExternalMetaSample && meta) {
               loggedExternalMetaSample = true;
-              console.log('[useHomeActivities] External meta task sample', {
+              devLog('[useHomeActivities] External meta task sample', {
                 metaId: meta?.id ?? null,
                 matchedTaskKeys,
                 taskCount: Array.isArray(rawExternalTasks) ? rawExternalTasks.length : 0,
@@ -721,6 +787,10 @@ export function useHomeActivities(): UseHomeActivitiesResult {
               description: task.description || '',
               completed: task.completed,
               reminder_minutes: coerceReminderMinutes(task.reminder_minutes),
+              after_training_enabled: task.after_training_enabled === true,
+              after_training_delay_minutes: coerceReminderMinutes(task.after_training_delay_minutes),
+              task_duration_enabled: task.task_duration_enabled === true,
+              task_duration_minutes: coerceReminderMinutes(task.task_duration_minutes),
               video_url: task.video_url ?? undefined,
               feedback_template_id: task.feedback_template_id ?? null,
               task_template_id: task.task_template_id ?? null,
@@ -755,49 +825,49 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           });
 
           if (__DEV__) {
-            console.log('[useHomeActivities] meta matched', { events: eventsData.length, matched: matchedCount });
+            devLog('[useHomeActivities] meta matched', { events: eventsData.length, matched: matchedCount });
           }
         }
       }
-      
-      console.log('[useHomeActivities] External activities:', externalActivities.length);
-      
+
+      devLog('[useHomeActivities] External activities:', externalActivities.length);
+
       // 4. Merge internal and external activities
       const preHydratedActivities = [...internalActivities, ...externalActivities];
-      console.log('[useHomeActivities] Total merged activities:', preHydratedActivities.length);
-      console.log('[useHomeActivities] Activities with resolved category:', preHydratedActivities.filter(a => a.category).length);
-      console.log('[useHomeActivities] Activities WITHOUT resolved category:', preHydratedActivities.filter(a => !a.category).length);
-      
+      devLog('[useHomeActivities] Total merged activities:', preHydratedActivities.length);
+      devLog('[useHomeActivities] Activities with resolved category:', preHydratedActivities.filter(a => a.category).length);
+      devLog('[useHomeActivities] Activities WITHOUT resolved category:', preHydratedActivities.filter(a => !a.category).length);
+
       // 🔍 DEBUG: Log activities with tasks
       const activitiesWithTasks = preHydratedActivities.filter(a => a.tasks && a.tasks.length > 0);
-      console.log('[useHomeActivities] Activities with tasks:', activitiesWithTasks.length);
+      devLog('[useHomeActivities] Activities with tasks:', activitiesWithTasks.length);
       if (activitiesWithTasks.length > 0) {
-        console.log('═══════════════════════════════════════════════════════');
-        console.log('✅ ACTIVITIES WITH TASKS:');
+        devLog('═══════════════════════════════════════════════════════');
+        devLog('✅ ACTIVITIES WITH TASKS:');
         activitiesWithTasks.forEach(activity => {
-          console.log(`  - Title: ${activity.title}`);
-          console.log(`    ID: ${activity.id}`);
-          console.log(`    Tasks: ${activity.tasks?.length || 0}`);
-          console.log(`    Is External: ${activity.is_external}`);
-          console.log('  ---');
+          devLog(`  - Title: ${activity.title}`);
+          devLog(`    ID: ${activity.id}`);
+          devLog(`    Tasks: ${activity.tasks?.length || 0}`);
+          devLog(`    Is External: ${activity.is_external}`);
+          devLog('  ---');
         });
-        console.log('═══════════════════════════════════════════════════════');
+        devLog('═══════════════════════════════════════════════════════');
       }
       
       // 🔍 DEBUG: Log all activities without resolved categories
       const activitiesWithoutCategory = preHydratedActivities.filter(a => !a.category);
       if (activitiesWithoutCategory.length > 0) {
-        console.log('═══════════════════════════════════════════════════════');
-        console.log('⚠️ ACTIVITIES WITHOUT RESOLVED CATEGORY:');
+        devLog('═══════════════════════════════════════════════════════');
+        devLog('⚠️ ACTIVITIES WITHOUT RESOLVED CATEGORY:');
         activitiesWithoutCategory.forEach(activity => {
-          console.log(`  - Title: ${activity.title}`);
-          console.log(`    ID: ${activity.id}`);
-          console.log(`    Category ID: ${activity.category_id || 'NULL'}`);
-          console.log(`    Is External: ${activity.is_external}`);
-          console.log(`    Category exists in map: ${activity.category_id ? categoryMap.has(activity.category_id) : 'N/A'}`);
-          console.log('  ---');
+          devLog(`  - Title: ${activity.title}`);
+          devLog(`    ID: ${activity.id}`);
+          devLog(`    Category ID: ${activity.category_id || 'NULL'}`);
+          devLog(`    Is External: ${activity.is_external}`);
+          devLog(`    Category exists in map: ${activity.category_id ? categoryMap.has(activity.category_id) : 'N/A'}`);
+          devLog('  ---');
         });
-        console.log('═══════════════════════════════════════════════════════');
+        devLog('═══════════════════════════════════════════════════════');
       }
       
       // 🔍 DEBUG: Warn if "I DAG" activities have 0 tasks
@@ -826,25 +896,41 @@ export function useHomeActivities(): UseHomeActivitiesResult {
             .filter(id => typeof id === 'string' && id.trim().length > 0)
         : [];
 
+      const activityTasksSelectWithLocalOptions =
+        'id, activity_id, title, description, completed, reminder_minutes, after_training_enabled, after_training_delay_minutes, task_duration_enabled, task_duration_minutes, feedback_template_id, task_template_id, video_url, task_templates(after_training_delay_minutes, task_duration_enabled, task_duration_minutes)';
+      const activityTasksSelectLegacy =
+        'id, activity_id, title, description, completed, reminder_minutes, feedback_template_id, task_template_id, video_url, task_templates(after_training_delay_minutes, task_duration_enabled, task_duration_minutes)';
+
+      const fetchActivityTasksWithFallback = async (activityIds: string[]) => {
+        if (!activityIds.length) return { data: [], error: null };
+
+        const withLocal = await supabase
+          .from('activity_tasks')
+          .select(activityTasksSelectWithLocalOptions)
+          .in('activity_id', activityIds);
+
+        if (!withLocal.error) return withLocal;
+
+        if (!isMissingColumnError(withLocal.error, 'after_training_enabled')) {
+          return withLocal;
+        }
+
+        const legacy = await supabase
+          .from('activity_tasks')
+          .select(activityTasksSelectLegacy)
+          .in('activity_id', activityIds);
+        return legacy;
+      };
+
       const [internalTasksRes, externalEventTasksRes, externalActivityTasksRes] = await Promise.all([
-        internalIds.length
-          ? supabase
-            .from('activity_tasks')
-              .select('id, activity_id, title, description, completed, reminder_minutes, feedback_template_id, task_template_id, video_url, task_templates(after_training_delay_minutes, task_duration_enabled, task_duration_minutes)')
-              .in('activity_id', internalIds)
-          : Promise.resolve({ data: [], error: null }),
+        fetchActivityTasksWithFallback(internalIds),
         externalMetaIds.length
           ? supabase
               .from('external_event_tasks')
               .select('*, task_templates(after_training_delay_minutes, task_duration_enabled, task_duration_minutes)')
               .in('local_meta_id', externalMetaIds)
           : Promise.resolve({ data: [], error: null }),
-        externalEventRowIds.length
-          ? supabase
-            .from('activity_tasks')
-              .select('id, activity_id, title, description, completed, reminder_minutes, feedback_template_id, task_template_id, video_url, task_templates(after_training_delay_minutes, task_duration_enabled, task_duration_minutes)')
-              .in('activity_id', externalEventRowIds)
-          : Promise.resolve({ data: [], error: null }),
+        fetchActivityTasksWithFallback(externalEventRowIds),
       ]);
 
       // Preload after_training_delay_minutes for any task templates referenced directly or via markers
@@ -898,20 +984,26 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         const templateDelay =
           coerceReminderMinutes(task?.task_templates?.after_training_delay_minutes) ??
           (templateId ? templateDelayById[templateId] ?? null : null);
+        const localTaskDurationEnabled = task?.task_duration_enabled === true;
+        const localTaskDurationMinutes = coerceReminderMinutes(task?.task_duration_minutes);
         const taskDurationEnabled =
+          localTaskDurationEnabled ||
           task?.task_templates?.task_duration_enabled === true ||
           (templateId ? templateDurationEnabledById[templateId] === true : false);
         const taskDurationMinutes =
+          localTaskDurationMinutes ??
           coerceReminderMinutes(task?.task_templates?.task_duration_minutes) ??
           (templateId ? templateDurationMinutesById[templateId] ?? null : null);
-        const reminderMinutes = coerceReminderMinutes(task.reminder_minutes) ?? templateDelay ?? null;
+        const localFeedbackDelay = coerceReminderMinutes(task.after_training_delay_minutes);
+        const reminderMinutes = coerceReminderMinutes(task.reminder_minutes) ?? localFeedbackDelay ?? templateDelay ?? null;
         list.push({
           id: task.id,
           title: decodeUtf8Garble(task.title),
           description: decodeUtf8Garble(task.description || ''),
           completed: !!task.completed,
           reminder_minutes: reminderMinutes,
-          after_training_delay_minutes: templateDelay ?? null,
+          after_training_enabled: task?.after_training_enabled === true,
+          after_training_delay_minutes: localFeedbackDelay ?? templateDelay ?? null,
           task_duration_enabled: taskDurationEnabled,
           task_duration_minutes: taskDurationEnabled ? (taskDurationMinutes ?? 0) : null,
           video_url: task.video_url ?? undefined,
@@ -929,20 +1021,26 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         const templateDelay =
           coerceReminderMinutes(task?.task_templates?.after_training_delay_minutes) ??
           (templateId ? templateDelayById[templateId] ?? null : null);
+        const localTaskDurationEnabled = task?.task_duration_enabled === true;
+        const localTaskDurationMinutes = coerceReminderMinutes(task?.task_duration_minutes);
         const taskDurationEnabled =
+          localTaskDurationEnabled ||
           task?.task_templates?.task_duration_enabled === true ||
           (templateId ? templateDurationEnabledById[templateId] === true : false);
         const taskDurationMinutes =
+          localTaskDurationMinutes ??
           coerceReminderMinutes(task?.task_templates?.task_duration_minutes) ??
           (templateId ? templateDurationMinutesById[templateId] ?? null : null);
-        const reminderMinutes = coerceReminderMinutes(task.reminder_minutes) ?? templateDelay ?? null;
+        const localFeedbackDelay = coerceReminderMinutes(task.after_training_delay_minutes);
+        const reminderMinutes = coerceReminderMinutes(task.reminder_minutes) ?? localFeedbackDelay ?? templateDelay ?? null;
         list.push({
           id: task.id,
           title: decodeUtf8Garble(task.title),
           description: decodeUtf8Garble(task.description || ''),
           completed: !!task.completed,
           reminder_minutes: reminderMinutes,
-          after_training_delay_minutes: templateDelay ?? null,
+          after_training_enabled: task?.after_training_enabled === true,
+          after_training_delay_minutes: localFeedbackDelay ?? templateDelay ?? null,
           task_duration_enabled: taskDurationEnabled,
           task_duration_minutes: taskDurationEnabled ? (taskDurationMinutes ?? 0) : null,
           video_url: task.video_url ?? undefined,
@@ -960,20 +1058,26 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         const templateDelay =
           coerceReminderMinutes(task?.task_templates?.after_training_delay_minutes) ??
           (templateId ? templateDelayById[templateId] ?? null : null);
+        const localTaskDurationEnabled = task?.task_duration_enabled === true;
+        const localTaskDurationMinutes = coerceReminderMinutes(task?.task_duration_minutes);
         const taskDurationEnabled =
+          localTaskDurationEnabled ||
           task?.task_templates?.task_duration_enabled === true ||
           (templateId ? templateDurationEnabledById[templateId] === true : false);
         const taskDurationMinutes =
+          localTaskDurationMinutes ??
           coerceReminderMinutes(task?.task_templates?.task_duration_minutes) ??
           (templateId ? templateDurationMinutesById[templateId] ?? null : null);
-        const reminderMinutes = coerceReminderMinutes(task.reminder_minutes) ?? templateDelay ?? null;
+        const localFeedbackDelay = coerceReminderMinutes(task.after_training_delay_minutes);
+        const reminderMinutes = coerceReminderMinutes(task.reminder_minutes) ?? localFeedbackDelay ?? templateDelay ?? null;
         list.push({
           id: task.id,
           title: decodeUtf8Garble(task.title),
           description: decodeUtf8Garble(task.description || ''),
           completed: !!task.completed,
           reminder_minutes: reminderMinutes,
-          after_training_delay_minutes: templateDelay ?? null,
+          after_training_enabled: task?.after_training_enabled === true,
+          after_training_delay_minutes: localFeedbackDelay ?? templateDelay ?? null,
           task_duration_enabled: taskDurationEnabled,
           task_duration_minutes: taskDurationEnabled ? (taskDurationMinutes ?? 0) : null,
           video_url: task.video_url ?? undefined,
@@ -1119,17 +1223,17 @@ export function useHomeActivities(): UseHomeActivitiesResult {
                 }
               : null,
           };
-          console.log('[useHomeActivities][internal-sample]', payload);
+          devLog('[useHomeActivities][internal-sample]', payload);
           // Easy-to-copy JSON in Metro/VS Code terminal
           try {
-            console.log('[useHomeActivities][internal-sample][json]', JSON.stringify(payload));
+            devLog('[useHomeActivities][internal-sample][json]', JSON.stringify(payload));
           } catch {}
 
           // Write to a debug file for easy sharing
           const debugPath = `${(FileSystem as any).cacheDirectory ?? ''}feedback-badge-sample.json`;
           if (debugPath) {
             FileSystem.writeAsStringAsync(debugPath, JSON.stringify(payload, null, 2)).catch(() => {});
-            console.log('[useHomeActivities][internal-sample][file]', debugPath);
+            devLog('[useHomeActivities][internal-sample][file]', debugPath);
           }
         }
       }
@@ -1138,7 +1242,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
 
       if (orphanCleanupResults.length && __DEV__) {
         orphanCleanupResults.forEach(result => {
-          console.log('[OrphanFeedbackCleanup]', {
+          devLog('[OrphanFeedbackCleanup]', {
             activityId: result.activityId,
             externalEventRowId: result.externalEventRowId,
             orphanCount: result.orphanIds.length,
@@ -1147,29 +1251,10 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         });
       }
 
-      if (orphanCleanupResults.length && isAdmin) {
-        const allOrphanIds = Array.from(
-          new Set(orphanCleanupResults.flatMap(result => result.orphanIds.map(id => String(id))))
-        );
-        if (allOrphanIds.length) {
-          try {
-            const { error } = await supabase.from('external_event_tasks').delete().in('id', allOrphanIds);
-            if (error) throw error;
-          } catch (error) {
-            if (__DEV__) {
-              console.log('[OrphanFeedbackCleanup] failed to delete orphan feedback tasks (home)', {
-                orphanCount: allOrphanIds.length,
-                error,
-              });
-            }
-          }
-        }
-      }
-
       if (__DEV__) {
         const ext = finalActivities.find(a => a.is_external && Array.isArray(a.tasks) && a.tasks.length > 0);
         if (ext) {
-          console.log('[useHomeActivities] External sample post-set', {
+          devLog('[useHomeActivities] External sample post-set', {
             title: ext.title,
             id: ext.id,
             external_event_row_id: (ext as any).external_event_row_id ?? null,
@@ -1182,7 +1267,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       console.error('Failed to fetch activities:', err);
       setActivities([]);
     }
-  }, [userId, isAdmin]);
+  }, [userId]);
 
   const triggerRefetch = useCallback(
     async (reason: string = 'unspecified') => {
@@ -1197,7 +1282,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
 
       refetchInFlightRef.current = true;
       try {
-        console.log(`[useHomeActivities] Refetch triggered (${reason})`);
+        devLog(`[useHomeActivities] Refetch triggered (${reason})`);
         await refetchActivities();
       } catch (error) {
         console.error(`[useHomeActivities] Refetch failed (${reason}):`, error);
@@ -1214,7 +1299,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
   );
 
   const refresh = useCallback(async () => {
-    console.log('[useHomeActivities] Manual refresh triggered');
+    devLog('[useHomeActivities] Manual refresh triggered');
     await triggerRefetch('manual_refresh');
   }, [triggerRefetch]);
 

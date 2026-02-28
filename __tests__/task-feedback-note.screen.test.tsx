@@ -3,6 +3,7 @@ import { Alert } from 'react-native';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 
 import TaskFeedbackNoteScreen from '../app/(modals)/task-feedback-note';
+import { sortFeedbackTaskCandidates } from '../components/CreateActivityTaskModal';
 
 const mockDismiss = jest.fn();
 const mockBack = jest.fn();
@@ -106,6 +107,25 @@ jest.mock('expo-linear-gradient', () => {
   return {
     LinearGradient: ({ children }: { children?: React.ReactNode }) => <View>{children}</View>,
   };
+});
+
+describe('feedback task dedupe ordering', () => {
+  it('prioritizes completed feedback task as canonical row', () => {
+    const sorted = sortFeedbackTaskCandidates([
+      { id: 'b', completed: false, created_at: '2026-02-27T12:00:00.000Z' },
+      { id: 'a', completed: true, created_at: '2026-02-28T12:00:00.000Z' },
+    ]);
+    expect(sorted[0].id).toBe('a');
+  });
+
+  it('falls back to created_at then id ascending when completion is equal', () => {
+    const sorted = sortFeedbackTaskCandidates([
+      { id: 'c', completed: false, created_at: '2026-02-27T13:00:00.000Z' },
+      { id: 'b', completed: false, created_at: '2026-02-27T12:00:00.000Z' },
+      { id: 'a', completed: false, created_at: '2026-02-27T12:00:00.000Z' },
+    ]);
+    expect(sorted.map(row => row.id)).toEqual(['a', 'b', 'c']);
+  });
 });
 
 describe('task-feedback-note screen', () => {

@@ -219,9 +219,6 @@ tags:
 - tapOn:
     id: '^tasks\.template\.descriptionInput$'
 - runFlow: _platform_keyboard_commit_input.yaml
-- swipe:
-    start: 50%, 80%
-    end: 50%, 30%
 - scrollUntilVisible:
     element:
       id: '^tasks\.template\.reminderToggle$'

@@ -25,9 +25,12 @@ export default function TaskScoreNoteScreen() {
   const params = useLocalSearchParams();
   const { refreshData, updateActivitySingle } = useFootball();
 
+  const activityIdParam = (params as any).activityId ?? (params as any).id ?? (params as any).activity_id;
+  const initialScoreParam = decodeParam((params as any).initialScore);
+
   const activityId = useMemo(
-    () => decodeParam((params as any).activityId ?? (params as any).id ?? (params as any).activity_id),
-    [params]
+    () => decodeParam(activityIdParam),
+    [activityIdParam],
   );
 
   const safeDismiss = useCallback(() => {
@@ -80,9 +83,8 @@ export default function TaskScoreNoteScreen() {
         setErrorSafe(null);
       }
 
-      const paramScore = decodeParam((params as any).initialScore);
-      if (paramScore && !cancelled) {
-        const n = Number(paramScore);
+      if (initialScoreParam && !cancelled) {
+        const n = Number(initialScoreParam);
         if (Number.isFinite(n)) setInitialScore(n);
       }
 
@@ -144,7 +146,7 @@ export default function TaskScoreNoteScreen() {
     return () => {
       cancelled = true;
     };
-  }, [activityId, params, resetDraftState, safeDismiss, setErrorSafe]);
+  }, [activityId, initialScoreParam, resetDraftState, safeDismiss, setErrorSafe]);
 
   const handleClose = useCallback(() => {
     if (isSaving) return;

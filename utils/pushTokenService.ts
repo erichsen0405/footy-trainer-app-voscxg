@@ -6,11 +6,34 @@ import { Platform } from 'react-native';
 import { supabase } from '@/integrations/supabase/client';
 
 const PUSH_TOKEN_CACHE_KEY = '@push_token_registration_v1';
+const PUSH_TOKEN_TRANSIENT_MAX_ATTEMPTS = 3;
+const PUSH_TOKEN_TRANSIENT_BASE_DELAY_MS = 750;
 
 const readProjectId = () => {
   const easProjectId = (Constants as any)?.easConfig?.projectId;
   const extraProjectId = (Constants as any)?.expoConfig?.extra?.eas?.projectId;
   return easProjectId || extraProjectId || undefined;
+};
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isAndroidFcmConfigIssue = (message: string) =>
+  Platform.OS === 'android' &&
+  (message.includes('Default FirebaseApp is not initialized') ||
+    message.includes('fcm-credentials') ||
+    message.includes('FCM'));
+
+const isTransientExpoTokenError = (error: unknown) => {
+  const message = String((error as any)?.message || '').toLowerCase();
+  const code = String((error as any)?.code || '').toUpperCase();
+
+  return (
+    code === 'SERVICE_UNAVAILABLE' ||
+    message.includes('service_unavailable') ||
+    message.includes('temporarily unavailable') ||
+    message.includes('istransient') ||
+    /\breceived:\s*(429|500|502|503|504)\b/i.test(message)
+  );
 };
 
 export async function syncPushTokenForCurrentUser(force = false): Promise<boolean> {
@@ -32,26 +55,37 @@ export async function syncPushTokenForCurrentUser(force = false): Promise<boolea
 
     const projectId = readProjectId();
     let tokenResponse: Notifications.ExpoPushToken | null = null;
-    try {
-      tokenResponse = await Notifications.getExpoPushTokenAsync(
-        projectId ? { projectId } : undefined,
-      );
-    } catch (tokenError: any) {
-      const message = String(tokenError?.message || '');
-      const isAndroidFcmConfigIssue =
-        Platform.OS === 'android' &&
-        (message.includes('Default FirebaseApp is not initialized') ||
-          message.includes('fcm-credentials') ||
-          message.includes('FCM'));
+    for (let attempt = 1; attempt <= PUSH_TOKEN_TRANSIENT_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        tokenResponse = await Notifications.getExpoPushTokenAsync(
+          projectId ? { projectId } : undefined,
+        );
+        break;
+      } catch (tokenError: any) {
+        const message = String(tokenError?.message || '');
 
-      if (isAndroidFcmConfigIssue) {
+        if (isAndroidFcmConfigIssue(message)) {
+          console.log(
+            '[pushTokenService] Android FCM is not configured for this build, skipping push token sync',
+          );
+          return false;
+        }
+
+        if (!isTransientExpoTokenError(tokenError)) {
+          throw tokenError;
+        }
+
+        if (attempt < PUSH_TOKEN_TRANSIENT_MAX_ATTEMPTS) {
+          const delayMs = PUSH_TOKEN_TRANSIENT_BASE_DELAY_MS * attempt;
+          await wait(delayMs);
+          continue;
+        }
+
         console.log(
-          '[pushTokenService] Android FCM is not configured for this build, skipping push token sync',
+          '[pushTokenService] Expo push token service is temporarily unavailable, skipping sync for now',
         );
         return false;
       }
-
-      throw tokenError;
     }
 
     const expoPushToken = tokenResponse?.data;
@@ -61,7 +95,14 @@ export async function syncPushTokenForCurrentUser(force = false): Promise<boolea
     }
 
     const cachedRaw = await AsyncStorage.getItem(PUSH_TOKEN_CACHE_KEY);
-    const cached = cachedRaw ? JSON.parse(cachedRaw) : null;
+    let cached: { userId?: string; expoPushToken?: string } | null = null;
+    if (cachedRaw) {
+      try {
+        cached = JSON.parse(cachedRaw);
+      } catch {
+        cached = null;
+      }
+    }
     if (!force && cached?.userId === user.id && cached?.expoPushToken === expoPushToken) {
       console.log('[pushTokenService] Push token already synced for current user');
       return true;
@@ -95,6 +136,12 @@ export async function syncPushTokenForCurrentUser(force = false): Promise<boolea
 
     return true;
   } catch (error) {
+    if (isTransientExpoTokenError(error)) {
+      console.log(
+        '[pushTokenService] Expo push token service is temporarily unavailable, skipping sync for now',
+      );
+      return false;
+    }
     console.error('[pushTokenService] Unexpected push token sync error:', error);
     return false;
   }

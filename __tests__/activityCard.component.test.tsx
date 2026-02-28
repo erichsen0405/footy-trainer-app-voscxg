@@ -1,5 +1,5 @@
 import React from 'react';
-import { render } from '@testing-library/react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 
 import ActivityCard from '@/components/ActivityCard';
 
@@ -217,5 +217,62 @@ describe('ActivityCard completion UI', () => {
     );
 
     expect(queryByText('Varighed: 25 min')).toBeNull();
+  });
+
+  it('opens canonical feedback modal route from Home card', () => {
+    const { getByTestId } = render(
+      <ActivityCard
+        activity={{
+          ...baseActivity,
+          tasks: [
+            {
+              id: 'feedback-task-route-1',
+              title: 'Feedback på teknik',
+              completed: false,
+              feedback_template_id: 'feedback-template-route-1',
+            },
+          ],
+        }}
+        resolvedDate={new Date('2026-01-01T10:00:00Z')}
+        showTasks
+      />
+    );
+
+    fireEvent.press(getByTestId('home.feedbackTaskButton.incomplete'));
+
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/(modals)/task-feedback-note',
+      params: {
+        activityId: 'activity-1',
+        templateId: 'feedback-template-route-1',
+        title: 'Feedback på teknik',
+        taskInstanceId: 'feedback-task-route-1',
+      },
+    });
+  });
+
+  it('opens canonical intensity modal route from Home card', () => {
+    const { getByTestId } = render(
+      <ActivityCard
+        activity={{
+          ...baseActivity,
+          intensity_enabled: true,
+          intensity: null,
+          tasks: [],
+        }}
+        resolvedDate={new Date('2026-01-01T10:00:00Z')}
+        showTasks
+      />
+    );
+
+    fireEvent.press(getByTestId('home.intensityTaskButton.incomplete'));
+
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/(modals)/task-score-note',
+      params: {
+        activityId: 'activity-1',
+        initialScore: '',
+      },
+    });
   });
 });

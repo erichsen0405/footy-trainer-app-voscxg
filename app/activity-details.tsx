@@ -29,9 +29,7 @@ import { Activity, ActivityCategory, Task, TaskTemplateSelfFeedback } from '@/ty
 import { useUserRole } from '@/hooks/useUserRole';
 import { CreateActivityTaskModal } from '@/components/CreateActivityTaskModal';
 import { deleteSingleExternalActivity } from '@/utils/deleteExternalActivities';
-import { TaskDescriptionRenderer } from '@/components/TaskDescriptionRenderer';
 import { supabase } from '@/integrations/supabase/client';
-import { TaskScoreNoteModal, TaskScoreNoteModalPayload } from '@/components/TaskScoreNoteModal';
 import {
   fetchLatestCategoryFeedback,
   fetchSelfFeedbackForActivities,
@@ -195,7 +193,13 @@ function DetailsCard(props: {
 type FeedbackTask = Task & {
   feedbackTemplateId?: string | null;
   isFeedbackTask?: boolean;
+  afterTrainingEnabled?: boolean;
+  afterTrainingDelayMinutes?: number | null;
   taskTemplateId?: string | null;
+  task_duration_enabled?: boolean;
+  task_duration_minutes?: number | null;
+  taskDurationEnabled?: boolean;
+  taskDurationMinutes?: number | null;
   reminder_minutes?: number | null;
   reminder?: number | null;
 };
@@ -220,6 +224,7 @@ const RECURRENCE_OPTIONS: {
   { label: 'Hver tredje uge', value: 'triweekly' },
   { label: 'Månedligt', value: 'monthly' },
 ];
+const FEEDBACK_PARENT_MARKER = '[[feedback_parent_task_id:';
 
 const normalizeOptionalTime = (value?: string | null): string | undefined => {
   if (typeof value !== 'string') return undefined;
@@ -332,6 +337,11 @@ const INTERNAL_SELECT_WITH_VIDEO = `
     description,
     completed,
     reminder_minutes,
+    after_training_enabled,
+    after_training_delay_minutes,
+    task_duration_enabled,
+    task_duration_minutes,
+    is_feedback_task,
     task_template_id,
     feedback_template_id,
     video_url
@@ -366,6 +376,11 @@ const INTERNAL_SELECT_NO_VIDEO = `
     description,
     completed,
     reminder_minutes,
+    after_training_enabled,
+    after_training_delay_minutes,
+    task_duration_enabled,
+    task_duration_minutes,
+    is_feedback_task,
     task_template_id,
     feedback_template_id
   )
@@ -399,10 +414,15 @@ const EXTERNAL_META_SELECT_WITH_VIDEO = `
     id,
     task_template_id,
     feedback_template_id,
+    is_feedback_task,
     title,
     description,
     completed,
     reminder_minutes,
+    after_training_enabled,
+    after_training_delay_minutes,
+    task_duration_enabled,
+    task_duration_minutes,
     video_url
   )
 `;
@@ -435,10 +455,15 @@ const EXTERNAL_META_SELECT_NO_VIDEO = `
     id,
     task_template_id,
     feedback_template_id,
+    is_feedback_task,
     title,
     description,
     completed,
-    reminder_minutes
+    reminder_minutes,
+    after_training_enabled,
+    after_training_delay_minutes,
+    task_duration_enabled,
+    task_duration_minutes
   )
 `;
 
@@ -603,13 +628,28 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
           categoryIds: [],
           reminder_minutes: task.reminder_minutes ?? null,
           reminder: task.reminder_minutes ?? null,
+          afterTrainingEnabled: task.after_training_enabled === true,
+          afterTrainingDelayMinutes:
+            typeof task.after_training_delay_minutes === 'number'
+              ? task.after_training_delay_minutes
+              : null,
+          taskDurationEnabled: task.task_duration_enabled === true,
+          taskDurationMinutes:
+            typeof task.task_duration_minutes === 'number'
+              ? task.task_duration_minutes
+              : null,
+          task_duration_enabled: task.task_duration_enabled === true,
+          task_duration_minutes:
+            typeof task.task_duration_minutes === 'number'
+              ? task.task_duration_minutes
+              : null,
           subtasks: [],
           videoUrl: resolvedVideo ?? undefined,
           video_url: resolvedVideo,
           taskTemplateId: task.task_template_id,
           feedback_template_id: task.feedback_template_id,
           feedbackTemplateId,
-          isFeedbackTask,
+          isFeedbackTask: task.is_feedback_task === true || isFeedbackTask,
         };
         return mapped as FeedbackTask;
       });
@@ -712,13 +752,28 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
           categoryIds: [],
           reminder_minutes: task.reminder_minutes ?? null,
           reminder: task.reminder_minutes ?? null,
+          afterTrainingEnabled: task.after_training_enabled === true,
+          afterTrainingDelayMinutes:
+            typeof task.after_training_delay_minutes === 'number'
+              ? task.after_training_delay_minutes
+              : null,
+          taskDurationEnabled: task.task_duration_enabled === true,
+          taskDurationMinutes:
+            typeof task.task_duration_minutes === 'number'
+              ? task.task_duration_minutes
+              : null,
+          task_duration_enabled: task.task_duration_enabled === true,
+          task_duration_minutes:
+            typeof task.task_duration_minutes === 'number'
+              ? task.task_duration_minutes
+              : null,
           subtasks: [],
           videoUrl: resolvedVideo ?? undefined,
           video_url: resolvedVideo,
           taskTemplateId: task.task_template_id,
           feedback_template_id: task.feedback_template_id,
           feedbackTemplateId,
-          isFeedbackTask,
+          isFeedbackTask: task.is_feedback_task === true || isFeedbackTask,
         };
         return mapped as FeedbackTask;
       });
@@ -953,12 +1008,6 @@ interface ActivityDetailsContentProps {
 interface TemplateFeedbackSummary {
   current?: TaskTemplateSelfFeedback;
   previous?: TaskTemplateSelfFeedback;
-}
-
-interface FeedbackModalTaskState {
-  task: FeedbackTask;
-  templateId: string;
-  taskInstanceId: string;
 }
 
 interface AfterTrainingFeedbackConfig {
@@ -1354,6 +1403,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     refreshData,
     createActivity,
     duplicateActivity,
+    tasks: taskTemplates,
   } = useFootball();
 
   const listRef = useRef<FlatList<TaskListItem>>(null);
@@ -1362,6 +1412,10 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
   const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
+  const [editingActivityTask, setEditingActivityTask] = useState<FeedbackTask | null>(null);
+  const [showTemplateTaskModal, setShowTemplateTaskModal] = useState(false);
+  const [isTemplateTaskSaving, setIsTemplateTaskSaving] = useState(false);
+  const [templateTaskSearch, setTemplateTaskSearch] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [tasksState, setTasksState] = useState<FeedbackTask[]>((activity.tasks as FeedbackTask[]) || []);
@@ -1384,8 +1438,6 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const [isLatestCategoryFeedbackLoading, setIsLatestCategoryFeedbackLoading] = useState(true);
   const [latestFeedbackRefreshKey, setLatestFeedbackRefreshKey] = useState(0);
   const [isLatestFeedbackExpanded, setIsLatestFeedbackExpanded] = useState(true);
-
-  const [feedbackModalTask, setFeedbackModalTask] = useState<FeedbackModalTaskState | null>(null);
 
   const [selectedNormalTask, setSelectedNormalTask] = useState<FeedbackTask | null>(null);
   const [isNormalTaskModalVisible, setIsNormalTaskModalVisible] = useState(false);
@@ -1439,8 +1491,6 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     return [darkenHex(base, 0.22), lightenHex(base, 0.12)] as [string, string];
   }, [activity?.category?.color]);
 
-  const [isFeedbackSaving, setIsFeedbackSaving] = useState(false);
-  const [feedbackModalError, setFeedbackModalError] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isCurrentUserResolved, setIsCurrentUserResolved] = useState(false);
 
@@ -1448,19 +1498,6 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const [pendingNormalTaskId, setPendingNormalTaskId] = useState<string | null>(initialOpenTaskId ?? null);
   const [deepLinkTaskLookupState, setDeepLinkTaskLookupState] = useState<'idle' | 'loading' | 'error'>('idle');
   const deepLinkTaskLookupAttemptedRef = useRef<string | null>(null);
-
-  const [isIntensityModalVisible, setIsIntensityModalVisible] = useState(false);
-  const [intensityModalDraft, setIntensityModalDraft] = useState<number | null>(parseIntensityValue(activity.intensity));
-  const [intensityModalNoteDraft, setIntensityModalNoteDraft] = useState<string>(() => {
-    const raw =
-      (activity as any)?.intensityNote ??
-      (activity as any)?.intensity_note ??
-      (activity as any)?.activity_intensity_note ??
-      null;
-    return typeof raw === 'string' ? raw : '';
-  });
-  const [isIntensityModalSaving, setIsIntensityModalSaving] = useState(false);
-  const [intensityModalError, setIntensityModalError] = useState<string | null>(null);
 
   const [pendingOpenIntensity, setPendingOpenIntensity] = useState<boolean>(initialOpenIntensity ?? false);
 
@@ -1498,6 +1535,45 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const feedbackActivityCandidatesKey = useMemo(
     () => feedbackActivityCandidates.join('|'),
     [feedbackActivityCandidates],
+  );
+
+  const openCanonicalIntensityModal = useCallback(() => {
+    if (!activityId) return;
+    router.push({
+      pathname: '/(modals)/task-score-note',
+      params: {
+        activityId: String(activity.id ?? activityId),
+        initialScore:
+          activity?.intensity !== null && activity?.intensity !== undefined
+            ? String(activity.intensity)
+            : '',
+      },
+    });
+  }, [activity?.intensity, activity.id, activityId, router]);
+
+  const openCanonicalFeedbackModal = useCallback(
+    (task: FeedbackTask, templateId: string) => {
+      const rawTaskInstanceId = task?.id ?? (task as any)?.task_id;
+      const taskInstanceId = normalizeId(rawTaskInstanceId);
+      const routeActivityId =
+        feedbackActivityCandidates[0] ??
+        ((activity as any)?.activity_id ?? (activity as any)?.activityId) ??
+        activity?.id ??
+        activityId;
+
+      if (!routeActivityId) return;
+
+      router.push({
+        pathname: '/(modals)/task-feedback-note',
+        params: {
+          activityId: String(routeActivityId),
+          templateId: String(templateId),
+          title: String(task.title ?? 'opgave'),
+          taskInstanceId: taskInstanceId ?? undefined,
+        },
+      });
+    },
+    [activity, activityId, feedbackActivityCandidates, router],
   );
 
   const resolveFeedbackTemplateId = useCallback((task: FeedbackTask | null | undefined): string | null => {
@@ -1768,14 +1844,10 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     const templateId = resolveFeedbackTemplateId(task);
     if (!templateId) return;
 
-    const taskInstanceId =
-      normalizeId(task.id ?? (task as any)?.task_id) ??
-      String(task.id ?? templateId);
-    setFeedbackModalTask({ task, templateId, taskInstanceId });
-    setFeedbackModalError(null);
+    openCanonicalFeedbackModal(task, templateId);
     setPendingFeedbackTaskId(null);
     setDeepLinkTaskLookupState('idle');
-  }, [pendingFeedbackTaskId, resolveFeedbackTemplateId, tasksState]);
+  }, [openCanonicalFeedbackModal, pendingFeedbackTaskId, resolveFeedbackTemplateId, tasksState]);
 
   useEffect(() => {
     if (!pendingNormalTaskId) return;
@@ -1783,11 +1855,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     if (!task) return;
     const feedbackTemplateId = resolveFeedbackTemplateId(task);
     if (feedbackTemplateId) {
-      const taskInstanceId =
-        normalizeId(task.id ?? (task as any)?.task_id) ??
-        String(task.id ?? feedbackTemplateId);
-      setFeedbackModalTask({ task, templateId: feedbackTemplateId, taskInstanceId });
-      setFeedbackModalError(null);
+      openCanonicalFeedbackModal(task, feedbackTemplateId);
       setPendingNormalTaskId(null);
       setDeepLinkTaskLookupState('idle');
       return;
@@ -1796,7 +1864,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     setIsNormalTaskModalVisible(true);
     setPendingNormalTaskId(null);
     setDeepLinkTaskLookupState('idle');
-  }, [pendingNormalTaskId, resolveFeedbackTemplateId, tasksState]);
+  }, [openCanonicalFeedbackModal, pendingNormalTaskId, resolveFeedbackTemplateId, tasksState]);
 
   const [editTitle, setEditTitle] = useState(activity.title);
   const [editLocation, setEditLocation] = useState(activity.location);
@@ -1821,6 +1889,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       null;
     return typeof raw === 'string' ? raw : '';
   }, [activity]);
+  const [liveActivityIntensity, setLiveActivityIntensity] = useState<number | null>(activityIntensityValue);
 
   const activityIntensityEnabled = useMemo(() => {
     const flag = resolveActivityIntensityEnabled(activity);
@@ -1845,10 +1914,10 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   });
   const isInternalActivity = !activity.isExternal;
 
-  const currentActivityIntensity = activityIntensityValue;
+  const currentActivityIntensity = liveActivityIntensity;
   const shouldShowActivityIntensityField = !!activityIntensityEnabled;
   const showIntensityTaskRow = activityIntensityEnabled;
-  const intensityTaskCompleted = showIntensityTaskRow && typeof activity.intensity === 'number';
+  const intensityTaskCompleted = showIntensityTaskRow && currentActivityIntensity !== null;
 
   const startTimeDate = useMemo(() => parseTimeToDate(editDate, editTime), [editDate, editTime]);
   const endTimeDate = useMemo(
@@ -1857,14 +1926,27 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   );
 
   useEffect(() => {
-    if (isIntensityModalVisible) return;
-    setIntensityModalDraft(currentActivityIntensity);
-    setIntensityModalNoteDraft(activityIntensityNote);
-  }, [activityIntensityNote, currentActivityIntensity, isIntensityModalVisible]);
-
-  useEffect(() => {
     setPendingOpenIntensity(initialOpenIntensity ?? false);
   }, [activity.id, initialOpenIntensity]);
+
+  useEffect(() => {
+    setLiveActivityIntensity(activityIntensityValue);
+  }, [activity.id, activityIntensityValue]);
+
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener('progression:refresh', (payload?: any) => {
+      if (payload?.source !== 'task-score-note') return;
+      const payloadActivityId = String(payload?.activityId ?? '').trim();
+      if (!payloadActivityId || payloadActivityId !== String(activityId)) return;
+
+      const nextIntensity = parseIntensityValue(payload?.intensity);
+      setLiveActivityIntensity(nextIntensity);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [activityId]);
 
   useEffect(() => {
     if (!pendingOpenIntensity) {
@@ -1878,11 +1960,8 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       return;
     }
 
-    setIntensityModalDraft(currentActivityIntensity);
-    setIntensityModalNoteDraft(activityIntensityNote);
-    setIntensityModalError(null);
-    setIsIntensityModalVisible(true);
-  }, [activityIntensityNote, currentActivityIntensity, pendingOpenIntensity, showIntensityTaskRow]);
+    openCanonicalIntensityModal();
+  }, [openCanonicalIntensityModal, pendingOpenIntensity, showIntensityTaskRow]);
 
   const [convertToRecurring, setConvertToRecurring] = useState(false);
   const [recurrenceType, setRecurrenceType] = useState<'daily' | 'weekly' | 'biweekly' | 'triweekly' | 'monthly'>('weekly');
@@ -2053,109 +2132,10 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     externalIntensityModal.previousScope,
   ]);
 
-  const closeIntensityModal = useCallback(() => {
-    if (isIntensityModalSaving) return;
-    setIsIntensityModalVisible(false);
-    setIntensityModalError(null);
-  }, [isIntensityModalSaving]);
-
-  const persistActivityIntensity = useCallback(
-    async (value: number | null, note: string) => {
-      if (!showIntensityTaskRow) return;
-      setIsIntensityModalSaving(true);
-      const previousIntensity = typeof activity.intensity === 'number' ? activity.intensity : null;
-      const previousIntensityNote = activityIntensityNote.length ? activityIntensityNote : null;
-      const normalizedNote = typeof note === 'string' ? note.trim() : '';
-      const notePayload = normalizedNote.length ? normalizedNote : null;
-
-      setIntensityModalError(null);
-      applyActivityUpdates({ intensity: value, intensityNote: notePayload });
-
-      try {
-        await updateActivitySingle(activity.id, { intensity: value, intensityNote: notePayload });
-        DeviceEventEmitter.emit('progression:refresh', {
-          activityId: activity.id,
-          intensity: value,
-          note: notePayload,
-          source: 'activity-details',
-        });
-        setIsIntensityModalSaving(false);
-        setIsIntensityModalVisible(false);
-        setIntensityModalError(null);
-        refreshData();
-      } catch (error) {
-        console.error('[Details] Error saving intensity:', error);
-        applyActivityUpdates({ intensity: previousIntensity, intensityNote: previousIntensityNote });
-        setIsIntensityModalSaving(false);
-        setIntensityModalError('Kunne ikke gemme intensitet. Prøv igen.');
-      }
-    },
-    [
-      activity.id,
-      activity.intensity,
-      activityIntensityNote,
-      applyActivityUpdates,
-      refreshData,
-      showIntensityTaskRow,
-      updateActivitySingle,
-    ],
-  );
-  const handleIntensityModalSave = useCallback(
-    ({ score, note }: TaskScoreNoteModalPayload) => {
-      persistActivityIntensity(typeof score === 'number' ? score : null, note);
-    },
-    [persistActivityIntensity],
-  );
-
-  const handleIntensityClear = useCallback(async () => {
-    if (!showIntensityTaskRow) return;
-    if (isIntensityModalSaving) return;
-    setIsIntensityModalSaving(true);
-    const previousIntensity = typeof activity.intensity === 'number' ? activity.intensity : null;
-    const previousIntensityNote = activityIntensityNote.length ? activityIntensityNote : null;
-
-    setIntensityModalError(null);
-    applyActivityUpdates({ intensity: null, intensityEnabled: true, intensityNote: null });
-
-    try {
-      await updateActivitySingle(activity.id, { intensity: null, intensityEnabled: true, intensityNote: null });
-      DeviceEventEmitter.emit('progression:refresh', {
-        activityId: activity.id,
-        intensity: null,
-        note: null,
-        source: 'activity-details',
-      });
-      setIntensityModalDraft(null);
-      setIntensityModalNoteDraft('');
-      setIsIntensityModalSaving(false);
-      setIsIntensityModalVisible(false);
-      setIntensityModalError(null);
-      refreshData();
-    } catch (error) {
-      console.error('[Details] Error clearing intensity:', error);
-      applyActivityUpdates({ intensity: previousIntensity, intensityNote: previousIntensityNote });
-      setIsIntensityModalSaving(false);
-      setIntensityModalError('Kunne ikke fjerne intensitet. Prøv igen.');
-    }
-  }, [
-    activity.id,
-    activity.intensity,
-    activityIntensityNote,
-    applyActivityUpdates,
-    isIntensityModalSaving,
-    refreshData,
-    showIntensityTaskRow,
-    updateActivitySingle,
-  ]);
-
   const handleIntensityRowPress = useCallback(() => {
     if (!showIntensityTaskRow) return;
-    if (isIntensityModalSaving) return;
-    setIntensityModalDraft(typeof activity.intensity === 'number' ? activity.intensity : null);
-    setIntensityModalNoteDraft(activityIntensityNote);
-    setIntensityModalError(null);
-    setIsIntensityModalVisible(true);
-  }, [activity.intensity, activityIntensityNote, isIntensityModalSaving, showIntensityTaskRow]);
+    openCanonicalIntensityModal();
+  }, [openCanonicalIntensityModal, showIntensityTaskRow]);
 
   const renderPicker = useCallback(
     ({
@@ -2483,26 +2463,35 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     setSelectedDays((prev) => (prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort()));
   }, []);
 
+  const openTemplateFeedbackModal = useCallback(
+    (task: FeedbackTask, templateId: string) => {
+      openCanonicalFeedbackModal(task, templateId);
+    },
+    [openCanonicalFeedbackModal],
+  );
+
   const handleTaskRowPress = useCallback(
     (task: FeedbackTask) => {
       const templateId = resolveFeedbackTemplateId(task);
       const hasFeedbackTemplateId = !!normalizeId(task.feedbackTemplateId ?? (task as any)?.feedback_template_id);
+      const hasLocalFeedbackMarker =
+        typeof task.description === 'string' && task.description.includes(FEEDBACK_PARENT_MARKER);
       const isFeedbackTaskLocal =
-        !!templateId && (hasFeedbackTemplateId || task.isFeedbackTask === true || isFeedbackTitle(task.title) || isFeedbackTask(task));
+        task.isFeedbackTask === true ||
+        isFeedbackTitle(task.title) ||
+        isFeedbackTask(task) ||
+        hasLocalFeedbackMarker ||
+        (!!templateId && hasFeedbackTemplateId);
 
       if (isFeedbackTaskLocal && templateId) {
-        const taskInstanceId =
-          normalizeId(task.id ?? (task as any)?.task_id) ??
-          String(task.id ?? templateId);
-        setFeedbackModalTask({ task, templateId, taskInstanceId });
-        setPendingFeedbackTaskId(String(task.id));
+        openTemplateFeedbackModal(task, templateId);
         return;
       }
 
       setSelectedNormalTask(task);
       setIsNormalTaskModalVisible(true);
     },
-    [resolveFeedbackTemplateId],
+    [openTemplateFeedbackModal, resolveFeedbackTemplateId],
   );
 
   const handleNormalTaskModalClose = useCallback(() => {
@@ -2513,8 +2502,8 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   }, [isNormalTaskCompleting]);
 
   const handleDeleteTask = useCallback(
-    (taskId: string, allowForNonAdmin: boolean = false) => {
-      if (!activity || (!isAdmin && !allowForNonAdmin)) return;
+    (taskId: string) => {
+      if (!activity) return;
 
       Alert.alert(
         'Slet opgave',
@@ -2525,8 +2514,25 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         ],
       );
     },
-    [activity, isAdmin],
+    [activity],
   );
+
+  const handleEditTask = useCallback((task: FeedbackTask) => {
+    Alert.alert(
+      'Redigering af opgave',
+      'Denne opgave kan redigeres lokalt på aktiviteten uden at ændre opgaveskabelonen.',
+      [
+        { text: 'Annuller', style: 'cancel' },
+        {
+          text: 'Fortsæt',
+          onPress: () => {
+            setEditingActivityTask(task);
+            setShowCreateTaskModal(true);
+          },
+        },
+      ],
+    );
+  }, []);
 
   const refreshActivityTasks = useCallback(async () => {
     try {
@@ -2590,13 +2596,149 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   }, [activity.id, pendingFeedbackTaskId, pendingNormalTaskId, refreshData, tasksState]);
 
   const handleAddTask = useCallback(() => {
-    setShowCreateTaskModal(true);
+    Alert.alert('Tilføj opgave', 'Vælg hvordan du vil oprette opgaven.', [
+      { text: 'Annuller', style: 'cancel' },
+      {
+        text: 'Opret manuelt',
+        onPress: () => {
+          setEditingActivityTask(null);
+          setShowCreateTaskModal(true);
+        },
+      },
+      {
+        text: 'Opret fra skabelon',
+        onPress: () => {
+          setTemplateTaskSearch('');
+          setShowTemplateTaskModal(true);
+        },
+      },
+    ]);
   }, []);
 
   const handleTaskCreated = useCallback(async () => {
     setShowCreateTaskModal(false);
+    setEditingActivityTask(null);
     await refreshActivityTasks();
   }, [refreshActivityTasks]);
+
+  const handleTaskUpdated = useCallback(async () => {
+    setShowCreateTaskModal(false);
+    setEditingActivityTask(null);
+    await refreshActivityTasks();
+  }, [refreshActivityTasks]);
+
+  const handleTaskModalClose = useCallback(() => {
+    setShowCreateTaskModal(false);
+    setEditingActivityTask(null);
+  }, []);
+
+  const filteredTemplateTasks = useMemo(() => {
+    const query = templateTaskSearch.trim().toLowerCase();
+    const allTemplates = Array.isArray(taskTemplates) ? taskTemplates : [];
+    const activeTemplates = allTemplates.filter((task) => !task?.archivedAt);
+    const sortedTemplates = [...activeTemplates].sort((a, b) =>
+      String(a?.title ?? '').localeCompare(String(b?.title ?? ''), 'da-DK', { sensitivity: 'base' })
+    );
+
+    if (!query.length) return sortedTemplates;
+
+    return sortedTemplates.filter((task) => {
+      const title = String(task?.title ?? '').toLowerCase();
+      const description = String(task?.description ?? '').toLowerCase();
+      return title.includes(query) || description.includes(query);
+    });
+  }, [taskTemplates, templateTaskSearch]);
+
+  const handleTemplateTaskModalClose = useCallback(() => {
+    if (isTemplateTaskSaving) return;
+    setShowTemplateTaskModal(false);
+    setTemplateTaskSearch('');
+  }, [isTemplateTaskSaving]);
+
+  const handleCreateTaskFromTemplate = useCallback(
+    async (template: Task) => {
+      if (isTemplateTaskSaving) return;
+      const templateId = String(template?.id ?? '').trim();
+      if (!templateId) {
+        Alert.alert('Fejl', 'Skabelonen mangler et gyldigt ID.');
+        return;
+      }
+
+      setIsTemplateTaskSaving(true);
+      try {
+        const clampMinutes = (value: unknown): number => {
+          const parsed = Number(value);
+          if (!Number.isFinite(parsed)) return 0;
+          const rounded = Math.round(parsed);
+          if (rounded < 0) return 0;
+          if (rounded > 600) return 600;
+          return rounded;
+        };
+        const reminderValue =
+          typeof template.reminder === 'number' && Number.isFinite(template.reminder)
+            ? clampMinutes(template.reminder)
+            : null;
+
+        const payload = {
+          activity_id: activity.id,
+          title: String(template.title ?? '').trim() || 'Opgave',
+          description: String(template.description ?? ''),
+          completed: false,
+          reminder_minutes: reminderValue,
+          task_template_id: templateId,
+          after_training_enabled: template.afterTrainingEnabled === true,
+          after_training_delay_minutes:
+            template.afterTrainingEnabled === true
+              ? clampMinutes(template.afterTrainingDelayMinutes ?? 0)
+              : null,
+          task_duration_enabled:
+            template.taskDurationEnabled === true || template.task_duration_enabled === true,
+          task_duration_minutes:
+            template.taskDurationEnabled === true || template.task_duration_enabled === true
+              ? clampMinutes(template.taskDurationMinutes ?? template.task_duration_minutes ?? 0)
+              : null,
+        };
+
+        const { error } = await supabase.from('activity_tasks').insert(payload);
+        if (error) {
+          if (error.code === '23505') {
+            Alert.alert('Findes allerede', 'Denne opgave er allerede tilføjet til aktiviteten.');
+            return;
+          }
+          throw error;
+        }
+
+        setShowTemplateTaskModal(false);
+        setTemplateTaskSearch('');
+        await refreshActivityTasks();
+      } catch (error: any) {
+        Alert.alert('Fejl', error?.message || 'Kunne ikke oprette opgave fra skabelon.');
+      } finally {
+        setIsTemplateTaskSaving(false);
+      }
+    },
+    [activity.id, isTemplateTaskSaving, refreshActivityTasks],
+  );
+
+  const formatTemplateTaskMeta = useCallback((template: Task): string => {
+    const parts: string[] = [];
+    if (typeof template?.reminder === 'number' && Number.isFinite(template.reminder)) {
+      parts.push(`Påmindelse: ${Math.max(0, Math.round(template.reminder))} min`);
+    }
+
+    if (template?.afterTrainingEnabled === true) {
+      parts.push('Feedback: Ja');
+    }
+
+    const durationEnabled =
+      template?.taskDurationEnabled === true || template?.task_duration_enabled === true;
+    const rawDuration = template?.taskDurationMinutes ?? template?.task_duration_minutes;
+    if (durationEnabled && typeof rawDuration === 'number' && Number.isFinite(rawDuration)) {
+      parts.push(`Varighed: ${Math.max(0, Math.round(rawDuration))} min`);
+    }
+
+    return parts.join(' · ');
+  }, []);
 
   const previousFeedbackEntries = useMemo<PreviousFeedbackEntry[]>(() => {
     const seen = new Set<string>();
@@ -2790,7 +2932,6 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               handleIntensityRowPress();
             }}
             activeOpacity={0.7}
-            disabled={isIntensityModalSaving}
             testID="activity.details.intensityTaskButton"
           >
             <View style={styles.taskLeftSlot}>
@@ -2810,7 +2951,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               <View style={styles.taskTitleRow}>
                 <Text style={[styles.taskTitle, { color: textColor }]}>Intensitet</Text>
                 {intensityTaskCompleted && (
-                  <Text style={[styles.intensityTaskValue, { color: textSecondaryColor }]}>{`${activity.intensity}/10`}</Text>
+                  <Text style={[styles.intensityTaskValue, { color: textSecondaryColor }]}>{`${currentActivityIntensity}/10`}</Text>
                 )}
               </View>
               {!intensityTaskCompleted && (
@@ -2836,13 +2977,17 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         instanceFeedback ??
         (!hasDuplicateTemplate && templateId ? selfFeedbackByTemplate[templateId]?.current : undefined);
 
-      const taskTemplateId = normalizeId(task.taskTemplateId ?? (task as any)?.task_template_id);
       const feedbackTemplateId = normalizeId(task.feedbackTemplateId ?? (task as any)?.feedback_template_id);
       const hasFeedbackTemplateId = !!feedbackTemplateId;
+      const hasLocalFeedbackMarker =
+        typeof task.description === 'string' && task.description.includes(FEEDBACK_PARENT_MARKER);
       const isFeedbackTaskLocal =
-        !!templateId && (hasFeedbackTemplateId || task.isFeedbackTask === true || isFeedbackTitle(task.title) || isFeedbackTask(task));
-      const isManualOneOffTask = !isFeedbackTaskLocal && !taskTemplateId && !feedbackTemplateId;
-      const canDeleteTask = isAdmin || isManualOneOffTask;
+        task.isFeedbackTask === true ||
+        isFeedbackTitle(task.title) ||
+        isFeedbackTask(task) ||
+        hasLocalFeedbackMarker ||
+        (!!templateId && hasFeedbackTemplateId);
+      const canManageTask = !isFeedbackTaskLocal;
 
       const isFeedbackCompleted = isFeedbackTaskLocal ? isFeedbackAnswered(feedback, config) : false;
 
@@ -2911,10 +3056,6 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               {task.title}
             </Text>
 
-            {!isFeedbackTaskLocal && task.description ? (
-              <TaskDescriptionRenderer description={task.description} textColor={textSecondaryColor} />
-            ) : null}
-
             {isFeedbackTaskLocal && (
               <>
                 {scoreExplanation ? (
@@ -2927,37 +3068,50 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
           <View style={styles.taskRightActions}>
             <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron_right" size={20} color={textSecondaryColor} />
-            {canDeleteTask && !isFeedbackTaskLocal && (
-              <TouchableOpacity
-                style={[styles.taskDeleteButton, { backgroundColor: isDark ? '#3a1a1a' : '#ffe5e5' }]}
-                onPress={(e) => {
-                  e?.stopPropagation?.();
-                  handleDeleteTask(String(task.id), isManualOneOffTask);
-                }}
-                activeOpacity={0.7}
-                disabled={deletingTaskId === String(task.id)}
-              >
-                {deletingTaskId === String(task.id) ? (
-                  <ActivityIndicator size="small" color={colors.error} />
-                ) : (
-                  <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={22} color={colors.error} />
-                )}
-              </TouchableOpacity>
+            {canManageTask && (
+              <>
+                <TouchableOpacity
+                  style={[styles.taskDeleteButton, { backgroundColor: isDark ? '#e8f1ff' : '#eaf2ff' }]}
+                  onPress={(e) => {
+                    e?.stopPropagation?.();
+                    handleEditTask(task);
+                  }}
+                  activeOpacity={0.7}
+                  testID={`activity.details.task.edit.${String(task.id)}`}
+                >
+                  <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={20} color={colors.primary} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.taskDeleteButton, { backgroundColor: isDark ? '#3a1a1a' : '#ffe5e5' }]}
+                  onPress={(e) => {
+                    e?.stopPropagation?.();
+                    handleDeleteTask(String(task.id));
+                  }}
+                  activeOpacity={0.7}
+                  disabled={deletingTaskId === String(task.id)}
+                  testID={`activity.details.task.delete.${String(task.id)}`}
+                >
+                  {deletingTaskId === String(task.id) ? (
+                    <ActivityIndicator size="small" color={colors.error} />
+                  ) : (
+                    <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={22} color={colors.error} />
+                  )}
+                </TouchableOpacity>
+              </>
             )}
           </View>
         </TouchableOpacity>
       );
     },
     [
-      activity.intensity,
+      currentActivityIntensity,
       deletingTaskId,
       getFeedbackConfigForTemplate,
       handleDeleteTask,
+      handleEditTask,
       handleIntensityRowPress,
       handleTaskRowPress,
-      isAdmin,
       isDark,
-      isIntensityModalSaving,
       intensityTaskCompleted,
       resolveFeedbackTemplateId,
       feedbackTemplateCounts,
@@ -3304,7 +3458,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           <View style={[styles.v2CardWrap, { marginTop: 12 }]}>
             <DetailsCard
               label="Intensitet"
-              value={typeof activity.intensity === 'number' ? `${activity.intensity}/10` : 'Ikke angivet'}
+              value={currentActivityIntensity !== null ? `${currentActivityIntensity}/10` : 'Ikke angivet'}
               backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
               textColor={textColor}
               secondaryTextColor={textSecondaryColor}
@@ -3482,6 +3636,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     textSecondaryColor,
     toggleDay,
     shouldShowActivityIntensityField,
+    currentActivityIntensity,
   ]);
 
   const listHeaderComponent = useMemo(() => renderListHeader(), [renderListHeader]);
@@ -3560,9 +3715,6 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                 ? normalizeId(deletedTask?.feedbackTemplateId ?? (deletedTask as any)?.feedback_template_id)
                 : null;
               const deletedIsManualOneOff = !!deletedTask && !deletedTaskTemplateId && !deletedFeedbackTemplateId;
-              if (!isAdmin && !deletedIsManualOneOff) {
-                break;
-              }
               const deletedIsFeedback = deletedTask ? isFeedbackTask(deletedTask) : false;
               const rawParentTemplateId = deletedTaskTemplateId;
               const allowFeedbackCleanup = !deletedIsFeedback && !!rawParentTemplateId;
@@ -3713,514 +3865,11 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     deleteActivitySingle,
     deleteActivityTask,
     duplicateActivity,
-    isAdmin,
     pendingAction,
     refreshData,
     router,
     tasksState,
   ]);
-
-  const handleFeedbackClose = useCallback(() => {
-    setFeedbackModalTask(null);
-    setPendingFeedbackTaskId(null);
-    setFeedbackModalError(null);
-  }, []);
-
-  const handleFeedbackSave = useCallback(
-    async ({ score, note }: TaskScoreNoteModalPayload) => {
-      if (!feedbackModalTask) return;
-
-      setFeedbackModalError(null);
-      setIsFeedbackSaving(true);
-
-      const candidateActivityIds = feedbackActivityCandidates.length ? feedbackActivityCandidates : [];
-
-      if (!candidateActivityIds.length) {
-        console.error('[ActivityDetails] Feedback save failed: missing activity_id', {
-          feedbackActivityCandidates,
-          feedbackModalTask,
-          activity,
-        });
-        Alert.alert('Kunne ikke gemme', 'Aktiviteten mangler et ID. Prøv at lukke og åbne aktiviteten igen.');
-        setIsFeedbackSaving(false);
-        return;
-      }
-
-      if (!currentUserId) {
-        console.error('[ActivityDetails] Feedback save failed: missing currentUserId', {
-          currentUserId,
-          feedbackModalTask,
-          activity,
-        });
-        Alert.alert('Kunne ikke gemme', 'Bruger-ID mangler. Prøv at logge ind igen.');
-        setIsFeedbackSaving(false);
-        return;
-      }
-
-      const templateId = feedbackModalTask.templateId;
-      const feedbackTaskId = feedbackModalTask.task.id;
-      const taskInstanceId = feedbackModalTask.taskInstanceId;
-      const optimisticActivityId = candidateActivityIds[0];
-      const nowIso = new Date().toISOString();
-      const optimisticId = `optimistic:${optimisticActivityId}:${templateId}:${taskInstanceId}:${nowIso}`;
-      const previousEntry = selfFeedbackByTemplate[templateId];
-      const previousTaskEntry = selfFeedbackByTaskId[taskInstanceId];
-      const previousTaskCompleted = tasksState.find((t) => t.id === feedbackTaskId)?.completed ?? false;
-
-      const optimisticFeedback: TaskTemplateSelfFeedback = {
-        id: optimisticId,
-        userId: currentUserId,
-        taskTemplateId: templateId,
-        taskInstanceId,
-        activityId: optimisticActivityId,
-        rating: typeof score === 'number' ? score : null,
-        note: typeof note === 'string' ? note : null,
-        createdAt: nowIso,
-        updatedAt: nowIso,
-      };
-
-      setSelfFeedbackByTemplate((prev) => ({
-        ...prev,
-        [templateId]: {
-          previous: previousEntry?.previous,
-          current: optimisticFeedback,
-        },
-      }));
-      setSelfFeedbackByTaskId((prev) => ({
-        ...prev,
-        [taskInstanceId]: optimisticFeedback,
-      }));
-      setTasksState((prev) => prev.map((t) => (t.id === feedbackTaskId ? { ...t, completed: true } : t)));
-      handleFeedbackClose();
-      DeviceEventEmitter.emit('feedback:saved', {
-        activityId: optimisticActivityId,
-        templateId,
-        taskInstanceId,
-        rating: optimisticFeedback.rating,
-        note: optimisticFeedback.note,
-        createdAt: nowIso,
-        optimisticId,
-        source: 'activity-details',
-      });
-
-      try {
-        const tryUpsert = async (candidateActivityId: string) =>
-          upsertSelfFeedback({
-            templateId,
-            taskInstanceId,
-            userId: currentUserId,
-            rating: score,
-            note,
-            activity_id: String(candidateActivityId).trim(),
-            activityId: String(candidateActivityId).trim(),
-          });
-
-        let savedFeedback: TaskTemplateSelfFeedback | null = null;
-        let savedActivityId: string | null = null;
-        let lastError: any = null;
-        let lastTriedId: string | null = null;
-
-        for (const candidateId of candidateActivityIds) {
-          lastTriedId = candidateId;
-          try {
-            savedFeedback = await tryUpsert(candidateId);
-            savedActivityId = candidateId;
-            lastError = null;
-            break;
-          } catch (e) {
-            lastError = e;
-          }
-        }
-
-        if (!savedFeedback && lastError) {
-          if (__DEV__) {
-            console.log('[ActivityDetails] feedback save failed', {
-              activityId: lastTriedId,
-              message: (lastError as any)?.message,
-              details: (lastError as any)?.details,
-              hint: (lastError as any)?.hint,
-              code: (lastError as any)?.code,
-              status: (lastError as any)?.status,
-            });
-          }
-          throw lastError;
-        }
-        if (!savedFeedback) {
-          throw new Error('Feedback save failed');
-        }
-
-        const finalActivityId = savedFeedback.activityId ?? savedActivityId ?? optimisticActivityId;
-
-        if (finalActivityId !== optimisticActivityId) {
-          DeviceEventEmitter.emit('feedback:save_failed', {
-            activityId: optimisticActivityId,
-            templateId,
-            taskInstanceId,
-            optimisticId,
-            source: 'activity-details',
-          });
-
-          const correctedCreatedAt = savedFeedback.createdAt ?? nowIso;
-          const correctedOptimisticId = `optimistic:${finalActivityId}:${templateId}:${taskInstanceId}:${correctedCreatedAt}`;
-
-          DeviceEventEmitter.emit('feedback:saved', {
-            activityId: finalActivityId,
-            templateId,
-            taskInstanceId,
-            rating:
-              typeof savedFeedback.rating === 'number'
-                ? savedFeedback.rating
-                : typeof score === 'number'
-                ? score
-                : null,
-            note:
-              typeof savedFeedback.note === 'string'
-                ? savedFeedback.note
-                : typeof note === 'string'
-                ? note
-                : null,
-            createdAt: correctedCreatedAt,
-            optimisticId: correctedOptimisticId,
-            source: 'activity-details',
-          });
-        }
-
-        setSelfFeedbackByTemplate((prev) => {
-          const prevEntry = prev[templateId] ?? {};
-          return {
-            ...prev,
-            [templateId]: {
-              previous: prevEntry.previous,
-              current: savedFeedback,
-            },
-          };
-        });
-        setSelfFeedbackByTaskId((prev) => ({
-          ...prev,
-          [taskInstanceId]: savedFeedback,
-        }));
-
-        try {
-          await toggleTaskCompletion(activity.id, feedbackTaskId, true);
-        } catch (e) {
-          if (__DEV__) console.log('[ActivityDetails] feedback completion update failed', e);
-        }
-
-        DeviceEventEmitter.emit('progression:refresh', {
-          activityId: finalActivityId,
-          templateId,
-          taskInstanceId,
-          source: 'activity-details',
-        });
-
-        setLatestFeedbackRefreshKey((prev) => prev + 1);
-        Promise.resolve(refreshData()).catch(() => {});
-      } catch (e) {
-        console.error('[ActivityDetails] feedback save failed:', e);
-        setSelfFeedbackByTemplate((prev) => {
-          if (previousEntry) {
-            return { ...prev, [templateId]: previousEntry };
-          }
-          const { [templateId]: _removed, ...rest } = prev;
-          return rest;
-        });
-        setSelfFeedbackByTaskId((prev) => {
-          if (previousTaskEntry) {
-            return { ...prev, [taskInstanceId]: previousTaskEntry };
-          }
-          const { [taskInstanceId]: _removed, ...rest } = prev;
-          return rest;
-        });
-        setTasksState((prev) =>
-          prev.map((t) => (t.id === feedbackTaskId ? { ...t, completed: previousTaskCompleted } : t)),
-        );
-        DeviceEventEmitter.emit('feedback:save_failed', {
-          activityId: optimisticActivityId,
-          templateId,
-          taskInstanceId,
-          optimisticId,
-          source: 'activity-details',
-        });
-        Alert.alert('Kunne ikke gemme', 'Feedback kunne ikke gemmes. Prøv igen.');
-        if (__DEV__) {
-          console.log('[ActivityDetails] feedback save error details', {
-            message: (e as any)?.message,
-            details: (e as any)?.details,
-            hint: (e as any)?.hint,
-            code: (e as any)?.code,
-            status: (e as any)?.status,
-          });
-        }
-      } finally {
-        setIsFeedbackSaving(false);
-      }
-    },
-    [
-      activity,
-      currentUserId,
-      feedbackActivityCandidates,
-      feedbackModalTask,
-      handleFeedbackClose,
-      refreshData,
-      selfFeedbackByTaskId,
-      selfFeedbackByTemplate,
-      tasksState,
-      toggleTaskCompletion,
-    ],
-  );
-
-  const handleFeedbackClear = useCallback(async () => {
-    if (!feedbackModalTask) return;
-
-    setFeedbackModalError(null);
-    setIsFeedbackSaving(true);
-
-    const candidateActivityIds = feedbackActivityCandidates.length ? feedbackActivityCandidates : [];
-
-    if (!candidateActivityIds.length) {
-      console.error('[ActivityDetails] Feedback clear failed: missing activity_id', {
-        feedbackActivityCandidates,
-        feedbackModalTask,
-        activity,
-      });
-      Alert.alert('Kunne ikke fjerne', 'Aktiviteten mangler et ID. Prøv at lukke og åbne aktiviteten igen.');
-      setIsFeedbackSaving(false);
-      return;
-    }
-
-    if (!currentUserId) {
-      console.error('[ActivityDetails] Feedback clear failed: missing currentUserId', {
-        currentUserId,
-        feedbackModalTask,
-        activity,
-      });
-      Alert.alert('Kunne ikke fjerne', 'Bruger-ID mangler. Prøv at logge ind igen.');
-      setIsFeedbackSaving(false);
-      return;
-    }
-
-    const templateId = feedbackModalTask.templateId;
-    const feedbackTaskId = feedbackModalTask.task.id;
-    const taskInstanceId = feedbackModalTask.taskInstanceId;
-    const optimisticActivityId = candidateActivityIds[0];
-    const nowIso = new Date().toISOString();
-    const optimisticId = `optimistic:${optimisticActivityId}:${templateId}:${taskInstanceId}:${nowIso}`;
-    const previousEntry = selfFeedbackByTemplate[templateId];
-    const previousTaskEntry = selfFeedbackByTaskId[taskInstanceId];
-    const previousTaskCompleted = tasksState.find((t) => t.id === feedbackTaskId)?.completed ?? false;
-
-    const clearedFeedback: TaskTemplateSelfFeedback = {
-      id: optimisticId,
-      userId: currentUserId,
-      taskTemplateId: templateId,
-      taskInstanceId,
-      activityId: optimisticActivityId,
-      rating: null,
-      note: null,
-      createdAt: nowIso,
-      updatedAt: nowIso,
-    };
-
-    setSelfFeedbackByTemplate((prev) => ({
-      ...prev,
-      [templateId]: {
-        previous: previousEntry?.previous,
-        current: clearedFeedback,
-      },
-    }));
-    setSelfFeedbackByTaskId((prev) => ({
-      ...prev,
-      [taskInstanceId]: clearedFeedback,
-    }));
-    setTasksState((prev) =>
-      prev.map((t) => (t.id === feedbackTaskId ? { ...t, completed: false } : t)),
-    );
-    handleFeedbackClose();
-    DeviceEventEmitter.emit('feedback:saved', {
-      activityId: optimisticActivityId,
-      templateId,
-      taskInstanceId,
-      rating: null,
-      note: null,
-      createdAt: nowIso,
-      optimisticId,
-      source: 'activity-details',
-    });
-
-    try {
-      const tryUpsert = async (candidateActivityId: string) =>
-        upsertSelfFeedback({
-          templateId,
-          taskInstanceId,
-          userId: currentUserId,
-          rating: null,
-          note: null,
-          activity_id: String(candidateActivityId).trim(),
-          activityId: String(candidateActivityId).trim(),
-        });
-
-      let savedFeedback: TaskTemplateSelfFeedback | null = null;
-      let savedActivityId: string | null = null;
-      let lastError: any = null;
-      let lastTriedId: string | null = null;
-
-      for (const candidateId of candidateActivityIds) {
-        lastTriedId = candidateId;
-        try {
-          savedFeedback = await tryUpsert(candidateId);
-          savedActivityId = candidateId;
-          lastError = null;
-          break;
-        } catch (e) {
-          lastError = e;
-        }
-      }
-
-      if (!savedFeedback && lastError) {
-        if (__DEV__) {
-          console.log('[ActivityDetails] feedback clear failed', {
-            activityId: lastTriedId,
-            message: (lastError as any)?.message,
-            details: (lastError as any)?.details,
-            hint: (lastError as any)?.hint,
-            code: (lastError as any)?.code,
-            status: (lastError as any)?.status,
-          });
-        }
-        throw lastError;
-      }
-
-      if (!savedFeedback) {
-        throw new Error('Feedback clear failed');
-      }
-
-      const finalActivityId = savedFeedback.activityId ?? savedActivityId ?? optimisticActivityId;
-
-      if (finalActivityId !== optimisticActivityId) {
-        DeviceEventEmitter.emit('feedback:save_failed', {
-          activityId: optimisticActivityId,
-          templateId,
-          taskInstanceId,
-          optimisticId,
-          source: 'activity-details',
-        });
-
-        const correctedCreatedAt = savedFeedback.createdAt ?? nowIso;
-        const correctedOptimisticId = `optimistic:${finalActivityId}:${templateId}:${taskInstanceId}:${correctedCreatedAt}`;
-
-        DeviceEventEmitter.emit('feedback:saved', {
-          activityId: finalActivityId,
-          templateId,
-          taskInstanceId,
-          rating: null,
-          note: null,
-          createdAt: correctedCreatedAt,
-          optimisticId: correctedOptimisticId,
-          source: 'activity-details',
-        });
-      }
-
-      setSelfFeedbackByTemplate((prev) => {
-        const prevEntry = prev[templateId] ?? {};
-        return {
-          ...prev,
-          [templateId]: {
-            previous: prevEntry.previous,
-            current: savedFeedback ?? clearedFeedback,
-          },
-        };
-      });
-      setSelfFeedbackByTaskId((prev) => ({
-        ...prev,
-        [taskInstanceId]: savedFeedback ?? clearedFeedback,
-      }));
-
-      try {
-        await toggleTaskCompletion(activity.id, feedbackTaskId, false);
-      } catch (e) {
-        if (__DEV__) console.log('[ActivityDetails] feedback clear completion update failed', e);
-      }
-
-      DeviceEventEmitter.emit('progression:refresh', {
-        activityId: finalActivityId,
-        templateId,
-        taskInstanceId,
-        source: 'activity-details',
-      });
-
-      setLatestFeedbackRefreshKey((prev) => prev + 1);
-      Promise.resolve(refreshData()).catch(() => {});
-    } catch (e) {
-      console.error('[ActivityDetails] feedback clear failed:', e);
-      setSelfFeedbackByTemplate((prev) => {
-        if (previousEntry) {
-          return { ...prev, [templateId]: previousEntry };
-        }
-        const { [templateId]: _removed, ...rest } = prev;
-        return rest;
-      });
-      setSelfFeedbackByTaskId((prev) => {
-        if (previousTaskEntry) {
-          return { ...prev, [taskInstanceId]: previousTaskEntry };
-        }
-        const { [taskInstanceId]: _removed, ...rest } = prev;
-        return rest;
-      });
-      setTasksState((prev) =>
-        prev.map((t) => (t.id === feedbackTaskId ? { ...t, completed: previousTaskCompleted } : t)),
-      );
-      DeviceEventEmitter.emit('feedback:save_failed', {
-        activityId: optimisticActivityId,
-        templateId,
-        taskInstanceId,
-        optimisticId,
-        source: 'activity-details',
-      });
-      Alert.alert('Kunne ikke fjerne', 'Feedback kunne ikke fjernes. Prøv igen.');
-      if (__DEV__) {
-        console.log('[ActivityDetails] feedback clear error details', {
-          message: (e as any)?.message,
-          details: (e as any)?.details,
-          hint: (e as any)?.hint,
-          code: (e as any)?.code,
-          status: (e as any)?.status,
-        });
-      }
-    } finally {
-      setIsFeedbackSaving(false);
-    }
-  }, [
-    activity,
-    currentUserId,
-    feedbackActivityCandidates,
-    feedbackModalTask,
-    handleFeedbackClose,
-    refreshData,
-    selfFeedbackByTaskId,
-    selfFeedbackByTemplate,
-    tasksState,
-    toggleTaskCompletion,
-  ]);
-
-  const feedbackModalConfig = useMemo(() => {
-    if (!feedbackModalTask) return undefined;
-    return getFeedbackConfigForTemplate(feedbackModalTask.templateId);
-  }, [feedbackModalTask, getFeedbackConfigForTemplate]);
-
-  const feedbackModalDefaults = useMemo(() => {
-    if (!feedbackModalTask) return { rating: null as number | null, note: '' };
-    const templateId = feedbackModalTask.templateId;
-    const taskInstanceId = feedbackModalTask.taskInstanceId;
-    const instanceFeedback = taskInstanceId ? selfFeedbackByTaskId[taskInstanceId] : undefined;
-    const hasDuplicateTemplate = templateId ? (feedbackTemplateCounts[templateId] ?? 0) > 1 : false;
-    const cur =
-      instanceFeedback ??
-      (!hasDuplicateTemplate ? selfFeedbackByTemplate[templateId]?.current : undefined);
-    return {
-      rating: typeof cur?.rating === 'number' ? cur.rating : null,
-      note: cur?.note ?? '',
-    };
-  }, [feedbackModalTask, feedbackTemplateCounts, selfFeedbackByTaskId, selfFeedbackByTemplate]);
 
   const handleBackPress = useCallback(() => {
     if (isEditing) {
@@ -4445,47 +4094,105 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         </View>
       </Modal>
 
-      <TaskScoreNoteModal
-        visible={Boolean(feedbackModalTask)}
-        title={feedbackModalTask ? stripLeadingFeedbackPrefix(feedbackModalTask.task.title ?? 'Feedback') : 'Feedback'}
-        introText={feedbackModalConfig?.scoreExplanation ?? 'Hvordan gik træningen?'}
-        helperText="1 = let – 10 = maks"
-        initialScore={feedbackModalDefaults.rating}
-        initialNote={feedbackModalDefaults.note ?? ''}
-        enableScore={feedbackModalConfig?.enableScore !== false}
-        enableNote={feedbackModalConfig?.enableNote !== false}
-        isSaving={isFeedbackSaving}
-        error={feedbackModalError}
-        onSave={handleFeedbackSave}
-        onClear={handleFeedbackClear}
-        clearLabel="Markér som ikke udført"
-        onClose={handleFeedbackClose}
-      />
+      <Modal
+        visible={showTemplateTaskModal}
+        transparent
+        animationType="fade"
+        onRequestClose={handleTemplateTaskModalClose}
+      >
+        <View style={styles.intensityScopeModalBackdrop}>
+          <View style={[styles.templateTaskModalCard, { backgroundColor: cardBgColor }]}>
+            <Text style={[styles.templateTaskModalTitle, { color: textColor }]}>Vælg opgaveskabelon</Text>
+            <Text style={[styles.templateTaskModalSubtitle, { color: textSecondaryColor }]}>
+              Opretter én opgave på denne aktivitet.
+            </Text>
 
-      <TaskScoreNoteModal
-        visible={isIntensityModalVisible}
-        title="Intensitet"
-        introText="Hvordan gik træningen?"
-        helperText="1 = let – 10 = maks"
-        initialScore={intensityModalDraft}
-        initialNote={intensityModalNoteDraft}
-        enableScore
-        enableNote
-        showLabels={!isEditing}
-        isSaving={isIntensityModalSaving}
-        error={intensityModalError}
-        onSave={handleIntensityModalSave}
-        onClear={handleIntensityClear}
-        clearLabel="Markér som ikke udført"
-        onClose={closeIntensityModal}
-        missingScoreTitle="Manglende intensitet"
-        missingScoreMessage="Vælg en intensitet før du kan markere som udført."
-      />
+            <TextInput
+              style={[
+                styles.templateTaskSearchInput,
+                { backgroundColor: fieldBackgroundColor, borderColor: fieldBorderColor, color: textColor },
+              ]}
+              value={templateTaskSearch}
+              onChangeText={setTemplateTaskSearch}
+              placeholder="Søg i opgaver..."
+              placeholderTextColor={textSecondaryColor}
+              editable={!isTemplateTaskSaving}
+            />
+
+            {filteredTemplateTasks.length === 0 ? (
+              <Text style={[styles.templateTaskEmptyText, { color: textSecondaryColor }]}>
+                Ingen opgaver fundet.
+              </Text>
+            ) : (
+              <FlatList
+                data={filteredTemplateTasks}
+                keyExtractor={(item) => String(item.id)}
+                style={styles.templateTaskList}
+                keyboardShouldPersistTaps="handled"
+                renderItem={({ item }) => {
+                  const meta = formatTemplateTaskMeta(item);
+                  return (
+                    <TouchableOpacity
+                      style={[styles.templateTaskRow, { borderColor: fieldBorderColor }]}
+                      onPress={() => handleCreateTaskFromTemplate(item)}
+                      activeOpacity={0.75}
+                      disabled={isTemplateTaskSaving}
+                    >
+                      <Text style={[styles.templateTaskRowTitle, { color: textColor }]} numberOfLines={1}>
+                        {item.title}
+                      </Text>
+                      {!!meta && (
+                        <Text style={[styles.templateTaskRowMeta, { color: textSecondaryColor }]} numberOfLines={1}>
+                          {meta}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+            )}
+
+            <TouchableOpacity
+              style={styles.intensityScopeModalCancelButton}
+              onPress={handleTemplateTaskModalClose}
+              activeOpacity={0.85}
+              disabled={isTemplateTaskSaving}
+            >
+              <Text style={[styles.intensityScopeModalCancelText, { color: textSecondaryColor }]}>
+                {isTemplateTaskSaving ? 'Opretter...' : 'Luk'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
       {showCreateTaskModal && (
         <CreateActivityTaskModal
           visible={showCreateTaskModal}
-          onClose={() => setShowCreateTaskModal(false)}
+          onClose={handleTaskModalClose}
           onTaskCreated={handleTaskCreated}
+          onTaskUpdated={handleTaskUpdated}
+          editingTask={
+            editingActivityTask
+              ? {
+                  ...editingActivityTask,
+                  id: String(editingActivityTask.id),
+                  reminder_minutes:
+                    editingActivityTask.reminder_minutes ?? editingActivityTask.reminder ?? null,
+                  after_training_enabled: editingActivityTask.afterTrainingEnabled === true,
+                  after_training_delay_minutes:
+                    typeof editingActivityTask.afterTrainingDelayMinutes === 'number'
+                      ? editingActivityTask.afterTrainingDelayMinutes
+                      : (editingActivityTask as any).after_training_delay_minutes ?? null,
+                  task_duration_enabled:
+                    editingActivityTask.taskDurationEnabled === true ||
+                    (editingActivityTask as any).task_duration_enabled === true,
+                  task_duration_minutes:
+                    typeof editingActivityTask.taskDurationMinutes === 'number'
+                      ? editingActivityTask.taskDurationMinutes
+                      : (editingActivityTask as any).task_duration_minutes ?? null,
+                }
+              : undefined
+          }
           activityId={activity.id}
           activityTitle={activity.title}
           activityDate={activity.date}
@@ -5131,7 +4838,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   taskDeleteButton: {
-    marginLeft: 12,
+    marginLeft: 8,
     padding: 8,
     borderRadius: 10,
   },
@@ -5221,6 +4928,54 @@ const styles = StyleSheet.create({
   intensityScopeModalCancelText: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  templateTaskModalCard: {
+    width: '100%',
+    maxHeight: '78%',
+    borderRadius: 16,
+    padding: 16,
+  },
+  templateTaskModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  templateTaskModalSubtitle: {
+    marginTop: 4,
+    marginBottom: 12,
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  templateTaskSearchInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    marginBottom: 10,
+  },
+  templateTaskList: {
+    flexGrow: 0,
+  },
+  templateTaskRow: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+  },
+  templateTaskRowTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  templateTaskRowMeta: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  templateTaskEmptyText: {
+    fontSize: 14,
+    fontWeight: '500',
+    paddingVertical: 12,
   },
   headerChevronWrap: {
     position: 'absolute',
