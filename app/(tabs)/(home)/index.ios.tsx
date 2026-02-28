@@ -333,6 +333,7 @@ export default function HomeScreen() {
   const [showPreviousWeeks, setShowPreviousWeeks] = useState(0);
   const [isPreviousExpanded, setIsPreviousExpanded] = useState(false);
   const [expandedUpcomingWeeks, setExpandedUpcomingWeeks] = useState<Record<string, boolean>>({});
+  const [expandedUpcomingDays, setExpandedUpcomingDays] = useState<Record<string, boolean>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isPerformanceCardCollapsed, setIsPerformanceCardCollapsed] = useState(true);
   const [progressPercentageBoxHeight, setProgressPercentageBoxHeight] = useState(72);
@@ -941,12 +942,45 @@ export default function HomeScreen() {
     setIsPreviousExpanded(prev => !prev);
   }, []);
 
-  const toggleUpcomingWeekExpanded = useCallback((weekKey: string) => {
-    setExpandedUpcomingWeeks((prev) => ({
-      ...prev,
-      [weekKey]: !prev[weekKey],
-    }));
+  const buildUpcomingDayToggleKey = useCallback((weekKey: string, dayKey: string) => {
+    return `${weekKey}::${dayKey}`;
   }, []);
+
+  const toggleUpcomingWeekExpanded = useCallback((weekKey: string) => {
+    setExpandedUpcomingWeeks((prev) => {
+      const nextExpanded = !prev[weekKey];
+
+      // Requirement: when opening a week, all day groups start collapsed.
+      if (nextExpanded) {
+        setExpandedUpcomingDays((dayPrev) => {
+          const next = { ...dayPrev };
+          const prefix = `${weekKey}::`;
+          Object.keys(next).forEach((key) => {
+            if (key.startsWith(prefix)) {
+              delete next[key];
+            }
+          });
+          return next;
+        });
+      }
+
+      return {
+        ...prev,
+        [weekKey]: nextExpanded,
+      };
+    });
+  }, []);
+
+  const toggleUpcomingDayExpanded = useCallback(
+    (weekKey: string, dayKey: string) => {
+      const toggleKey = buildUpcomingDayToggleKey(weekKey, dayKey);
+      setExpandedUpcomingDays((prev) => ({
+        ...prev,
+        [toggleKey]: !prev[toggleKey],
+      }));
+    },
+    [buildUpcomingDayToggleKey],
+  );
 
   const togglePerformanceCardCollapsed = useCallback(() => {
     setIsPerformanceCardCollapsed((prev) => !prev);
@@ -1128,6 +1162,26 @@ export default function HomeScreen() {
         if (!expandedUpcomingWeeks[summary.weekKey]) return;
 
         const weekActivities = Array.isArray(summary.weekGroup.activities) ? summary.weekGroup.activities : [];
+        const dayStatsByKey: Record<
+          string,
+          { activityCount: number; totalTasks: number; totalMinutes: number }
+        > = {};
+        weekActivities.forEach((activity: any) => {
+          if (!activity) return;
+          const resolvedDate =
+            activity.__resolvedDateTime instanceof Date && !isNaN(activity.__resolvedDateTime.getTime())
+              ? activity.__resolvedDateTime
+              : null;
+          const dayKey = resolvedDate ? format(resolvedDate, 'yyyy-MM-dd') : null;
+          if (!dayKey) return;
+          if (!dayStatsByKey[dayKey]) {
+            dayStatsByKey[dayKey] = { activityCount: 0, totalTasks: 0, totalMinutes: 0 };
+          }
+          dayStatsByKey[dayKey].activityCount += 1;
+          dayStatsByKey[dayKey].totalTasks += getActivityTasks(activity).length;
+          dayStatsByKey[dayKey].totalMinutes += getActivityEffectiveDurationMinutes(activity);
+        });
+
         let previousDayKey: string | null = null;
         weekActivities.forEach((activity: any) => {
           // STEP H: Guard against null activity
@@ -1139,23 +1193,41 @@ export default function HomeScreen() {
           const dayKey = resolvedDate ? format(resolvedDate, 'yyyy-MM-dd') : null;
 
           if (dayKey && dayKey !== previousDayKey) {
+            const dayToggleKey = buildUpcomingDayToggleKey(summary.weekKey, dayKey);
+            const dayStats = dayStatsByKey[dayKey] ?? {
+              activityCount: 0,
+              totalTasks: 0,
+              totalMinutes: 0,
+            };
             data.push({
               type: 'upcomingDayDivider',
               section: 'upcoming',
               weekKey: summary.weekKey,
               dayKey,
+              dayToggleKey,
               date: resolvedDate,
+              activityCount: dayStats.activityCount,
+              totalTasks: dayStats.totalTasks,
+              totalMinutes: dayStats.totalMinutes,
               key: `divider:upcoming:${summary.weekKey}:${dayKey}`,
             });
             previousDayKey = dayKey;
           }
+
+          if (dayKey) {
+            const dayToggleKey = buildUpcomingDayToggleKey(summary.weekKey, dayKey);
+            if (!expandedUpcomingDays[dayToggleKey]) {
+              return;
+            }
+          }
+
           data.push({ type: 'activity', activity, section: 'upcoming' });
         });
       });
     }
 
     return data;
-  }, [previousByWeek, isPreviousExpanded, visiblePreviousWeeks, showPreviousWeeks, todayActivities, upcomingWeekSummaries, expandedUpcomingWeeks]);
+  }, [previousByWeek, isPreviousExpanded, visiblePreviousWeeks, showPreviousWeeks, todayActivities, upcomingWeekSummaries, buildUpcomingDayToggleKey, expandedUpcomingDays, expandedUpcomingWeeks]);
 
   const handleOpenPerformance = useCallback(() => {
     if (!router) {
@@ -1365,10 +1437,103 @@ export default function HomeScreen() {
         if (!date) return null;
         const label = getUpcomingDayLabel(date);
         if (!label) return null;
+        const dayToggleKey =
+          typeof item.dayToggleKey === 'string' && item.dayToggleKey.length > 0
+            ? item.dayToggleKey
+            : item.weekKey && item.dayKey
+              ? buildUpcomingDayToggleKey(String(item.weekKey), String(item.dayKey))
+              : null;
+        const isExpanded = dayToggleKey ? expandedUpcomingDays[dayToggleKey] === true : false;
+        const activityCount = Math.max(0, Number(item.activityCount) || 0);
+        const totalTasks = Math.max(0, Number(item.totalTasks) || 0);
+        const totalMinutes = Math.max(0, Number(item.totalMinutes) || 0);
         return (
           <View style={styles.upcomingDayDivider}>
-            <View style={[styles.upcomingDayDividerLine, { backgroundColor: isDark ? 'rgba(191,220,203,0.28)' : 'rgba(76,175,80,0.28)' }]} />
-            <Text style={[styles.upcomingDayDividerText, { color: isDark ? '#B5D8C2' : '#2C5A40' }]}>{label}</Text>
+            <View style={styles.upcomingDayCardShadow}>
+              <LinearGradient
+                colors={
+                  isDark
+                    ? ['rgba(43, 76, 92, 0.46)', 'rgba(29, 52, 69, 0.46)', 'rgba(25, 43, 56, 0.46)']
+                    : ['rgba(255, 255, 255, 0.56)', 'rgba(234, 243, 238, 0.56)', 'rgba(221, 239, 227, 0.56)']
+                }
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={[
+                  styles.upcomingDayCard,
+                  { borderColor: isDark ? 'rgba(191,220,203,0.18)' : 'rgba(76,175,80,0.2)' },
+                ]}
+              >
+                <Pressable
+                  style={styles.upcomingDayDividerPressable}
+                  onPress={() => {
+                    if (!item.weekKey || !item.dayKey) return;
+                    toggleUpcomingDayExpanded(String(item.weekKey), String(item.dayKey));
+                  }}
+                >
+                  <Text style={[styles.upcomingDayDividerText, { color: isDark ? '#B5D8C2' : '#2C5A40' }]}>{label}</Text>
+                  <View style={styles.upcomingDayHeaderRight}>
+                    <View style={styles.upcomingDayBadgesRow}>
+                      <View
+                        style={[
+                          styles.upcomingDayBadge,
+                          { backgroundColor: isDark ? 'rgba(19, 42, 53, 0.62)' : 'rgba(255, 255, 255, 0.72)' },
+                        ]}
+                      >
+                        <IconSymbol
+                          ios_icon_name="calendar"
+                          android_material_icon_name="calendar_today"
+                          size={12}
+                          color={isDark ? 'rgba(216, 239, 225, 0.95)' : 'rgba(29, 58, 42, 0.9)'}
+                        />
+                        <Text numberOfLines={1} style={[styles.upcomingDayBadgeText, { color: isDark ? '#D8EFE1' : '#1D3A2A' }]}>
+                          {activityCount}
+                        </Text>
+                      </View>
+
+                      <View
+                        style={[
+                          styles.upcomingDayBadge,
+                          { backgroundColor: isDark ? 'rgba(19, 42, 53, 0.62)' : 'rgba(255, 255, 255, 0.72)' },
+                        ]}
+                      >
+                        <IconSymbol
+                          ios_icon_name="checkmark.circle"
+                          android_material_icon_name="check_circle"
+                          size={12}
+                          color={isDark ? 'rgba(216, 239, 225, 0.95)' : 'rgba(29, 58, 42, 0.9)'}
+                        />
+                        <Text numberOfLines={1} style={[styles.upcomingDayBadgeText, { color: isDark ? '#D8EFE1' : '#1D3A2A' }]}>
+                          {totalTasks}
+                        </Text>
+                      </View>
+
+                      <View
+                        style={[
+                          styles.upcomingDayBadge,
+                          { backgroundColor: isDark ? 'rgba(201, 235, 214, 0.14)' : 'rgba(76, 175, 80, 0.16)' },
+                        ]}
+                      >
+                        <IconSymbol
+                          ios_icon_name="clock"
+                          android_material_icon_name="schedule"
+                          size={12}
+                          color={isDark ? 'rgba(216, 239, 225, 0.98)' : 'rgba(29, 58, 42, 0.92)'}
+                        />
+                        <Text numberOfLines={1} style={[styles.upcomingDayBadgeText, { color: isDark ? '#D8EFE1' : '#1D3A2A' }]}>
+                          {formatHoursDa(totalMinutes)}
+                        </Text>
+                      </View>
+                    </View>
+                    <IconSymbol
+                      ios_icon_name={isExpanded ? 'chevron.down' : 'chevron.right'}
+                      android_material_icon_name={isExpanded ? 'keyboard-arrow-down' : 'keyboard-arrow-right'}
+                      size={16}
+                      color={isDark ? '#B5D8C2' : '#2C5A40'}
+                    />
+                  </View>
+                </Pressable>
+              </LinearGradient>
+            </View>
           </View>
         );
       }
@@ -1525,6 +1690,9 @@ export default function HomeScreen() {
     isPreviousExpanded,
     togglePreviousExpanded,
     toggleUpcomingWeekExpanded,
+    toggleUpcomingDayExpanded,
+    buildUpcomingDayToggleKey,
+    expandedUpcomingDays,
     expandedUpcomingWeeks,
     isAdminMode,
     currentTrainerId,
@@ -2036,16 +2204,62 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 8,
   },
+  upcomingDayCardShadow: {
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  upcomingDayCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  upcomingDayDividerPressable: {
+    minHeight: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    columnGap: 8,
+  },
+  upcomingDayHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 8,
+  },
+  upcomingDayBadgesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 6,
+  },
+  upcomingDayBadge: {
+    width: 64,
+    height: 28,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    columnGap: 4,
+  },
+  upcomingDayBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
   upcomingDayDividerLine: {
     height: 1,
     width: '100%',
-    marginBottom: 6,
   },
   upcomingDayDividerText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
+    flexShrink: 1,
   },
   upcomingSummaryWrapper: {
     paddingHorizontal: 16,
