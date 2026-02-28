@@ -503,6 +503,60 @@ const EXTERNAL_META_SELECT_MINIMAL = `
   )
 `;
 
+const ACTIVITY_TASKS_SELECT_WITH_LOCAL_OPTIONS = `
+  id,
+  title,
+  description,
+  completed,
+  reminder_minutes,
+  after_training_enabled,
+  after_training_delay_minutes,
+  task_duration_enabled,
+  task_duration_minutes,
+  is_feedback_task,
+  task_template_id,
+  feedback_template_id,
+  video_url
+`;
+
+const ACTIVITY_TASKS_SELECT_NO_VIDEO = `
+  id,
+  title,
+  description,
+  completed,
+  reminder_minutes,
+  after_training_enabled,
+  after_training_delay_minutes,
+  task_duration_enabled,
+  task_duration_minutes,
+  is_feedback_task,
+  task_template_id,
+  feedback_template_id
+`;
+
+const ACTIVITY_TASKS_SELECT_LEGACY_WITH_VIDEO = `
+  id,
+  title,
+  description,
+  completed,
+  reminder_minutes,
+  is_feedback_task,
+  task_template_id,
+  feedback_template_id,
+  video_url
+`;
+
+const ACTIVITY_TASKS_SELECT_LEGACY_NO_VIDEO = `
+  id,
+  title,
+  description,
+  completed,
+  reminder_minutes,
+  is_feedback_task,
+  task_template_id,
+  feedback_template_id
+`;
+
 // --- Task template selects (fix for refactor missing constants) ---
 const TEMPLATE_SELECT_FULL = `
   id,
@@ -578,6 +632,56 @@ async function selectSingleWithOptionalColumn<T>(opts: {
   }
 
   return { data: (second.data as T) ?? null, error: second.error ?? null, usedFallback: true };
+}
+
+async function fetchActivityTasksByActivityId(activityId: string): Promise<any[]> {
+  const normalizedActivityId = String(activityId ?? '').trim();
+  if (!normalizedActivityId) return [];
+
+  const variants = [
+    ACTIVITY_TASKS_SELECT_WITH_LOCAL_OPTIONS,
+    ACTIVITY_TASKS_SELECT_NO_VIDEO,
+    ACTIVITY_TASKS_SELECT_LEGACY_WITH_VIDEO,
+    ACTIVITY_TASKS_SELECT_LEGACY_NO_VIDEO,
+  ];
+
+  let lastError: any = null;
+
+  for (let index = 0; index < variants.length; index += 1) {
+    const select = variants[index];
+    const { data, error } = await (supabase as any)
+      .from('activity_tasks')
+      .select(select)
+      .eq('activity_id', normalizedActivityId);
+
+    if (!error) {
+      return Array.isArray(data) ? data : [];
+    }
+
+    lastError = error;
+    const isMissingLocalOption =
+      isMissingColumn(error, 'after_training_enabled') ||
+      isMissingColumn(error, 'after_training_delay_minutes') ||
+      isMissingColumn(error, 'task_duration_enabled') ||
+      isMissingColumn(error, 'task_duration_minutes');
+    const isMissingVideo = isMissingColumn(error, 'video_url');
+    const shouldRetry = isMissingLocalOption || isMissingVideo;
+    if (!shouldRetry) {
+      break;
+    }
+  }
+
+  if (__DEV__ && lastError) {
+    console.log('[ActivityDetails] fetchActivityTasksByActivityId failed', {
+      activityId: normalizedActivityId,
+      message: lastError?.message,
+      details: lastError?.details,
+      hint: lastError?.hint,
+      code: lastError?.code,
+    });
+  }
+
+  return [];
 }
 
 async function fetchArchivedAtByTemplateIds(tasks: any[]): Promise<Record<string, string | null>> {
@@ -790,7 +894,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
           ? localMetaAny.intensity_note
           : null;
 
-      const externalTasks = (localMetaAny.external_event_tasks || []).map((task: any) => {
+      const mapExternalTaskRow = (task: any): FeedbackTask => {
         const directFeedbackTemplateId = normalizeId(task.feedback_template_id ?? task.feedbackTemplateId);
         const markerTemplateId = getMarkerTemplateId({ description: task.description, title: task.title });
         const feedbackTemplateId = directFeedbackTemplateId ?? markerTemplateId ?? null;
@@ -829,11 +933,27 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
           isFeedbackTask: task.is_feedback_task === true || isFeedbackTask,
         };
         return mapped as FeedbackTask;
+      };
+
+      const externalMetaTasks = (localMetaAny.external_event_tasks || []).map(mapExternalTaskRow);
+      const externalEventRowId = normalizeId(localMetaAny.external_event_row_id ?? externalEvent.id);
+      const linkedActivityTaskRows = externalEventRowId
+        ? await fetchActivityTasksByActivityId(externalEventRowId)
+        : [];
+      const linkedActivityTasks = linkedActivityTaskRows.map(mapExternalTaskRow);
+
+      const seenTaskIds = new Set<string>();
+      const mergedExternalTasks = [...externalMetaTasks, ...linkedActivityTasks].filter((task) => {
+        const normalizedTaskId = normalizeId(task?.id);
+        if (!normalizedTaskId) return true;
+        if (seenTaskIds.has(normalizedTaskId)) return false;
+        seenTaskIds.add(normalizedTaskId);
+        return true;
       });
 
-      const archivedAtByTemplateId = await fetchArchivedAtByTemplateIds(externalTasks as any[]);
+      const archivedAtByTemplateId = await fetchArchivedAtByTemplateIds(mergedExternalTasks as any[]);
       const visibleExternalTasks = filterVisibleTasksForActivity<FeedbackTask>(
-        externalTasks,
+        mergedExternalTasks,
         externalEvent.start_date,
         externalEvent.start_time,
         archivedAtByTemplateId,
@@ -857,8 +977,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         isExternal: true,
         externalCalendarId: externalEvent.provider_calendar_id,
         externalEventId: localMetaAny.external_event_id,
-        externalEventRowId:
-          normalizeId(localMetaAny.external_event_row_id ?? externalEvent.id) ?? undefined,
+        externalEventRowId: externalEventRowId ?? undefined,
         intensity: metaIntensity,
         intensityEnabled: metaIntensityEnabled,
         intensityNote: metaIntensityNote,

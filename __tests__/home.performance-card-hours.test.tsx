@@ -1,6 +1,7 @@
 import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import { addDays, endOfWeek, format, startOfWeek } from 'date-fns';
+import { da } from 'date-fns/locale';
 
 import HomeScreen from '../app/(tabs)/(home)/index';
 
@@ -10,6 +11,7 @@ const mockUseFootball = jest.fn();
 const mockUseUserRole = jest.fn();
 const mockUseAdmin = jest.fn();
 const mockUseTeamPlayer = jest.fn();
+let upcomingDayLabel = '';
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush }),
@@ -133,6 +135,7 @@ describe('Home performance card hour sums', () => {
 
     const todayIso = format(today, 'yyyy-MM-dd');
     const weekOnlyIso = format(weekOnlyDate, 'yyyy-MM-dd');
+    upcomingDayLabel = format(weekOnlyDate, 'EEE d. MMM', { locale: da });
 
     mockUseHomeActivities.mockReturnValue({
       loading: false,
@@ -222,6 +225,7 @@ describe('Home performance card hour sums', () => {
     expect(queryAllByTestId('mock.activityCard')).toHaveLength(2);
 
     fireEvent.press(getByText('KOMMENDE UGE'));
+    fireEvent.press(getByText(upcomingDayLabel));
     expect(queryAllByTestId('mock.activityCard')).toHaveLength(3);
   });
 });
