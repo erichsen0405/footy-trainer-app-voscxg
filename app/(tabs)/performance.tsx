@@ -257,16 +257,44 @@ export default function PerformanceScreen() {
           <Text style={styles.trophiesTitle}>Guld pokaler</Text>
           <Text style={styles.trophiesCount}>{goldTrophies}</Text>
         </View>
-        <Text style={styles.trophiesEmoji}>🥇</Text>
-      </View>
+        {expandedTrophy === 'gold' && (
+          <FlatList
+            data={trophyWeeksByType.gold}
+            scrollEnabled={false}
+            keyExtractor={(item, index) => `gold-${item.year}-${item.week}-${index}`}
+            contentContainerStyle={styles.expandedList}
+            ListEmptyComponent={<Text style={styles.emptyWeekText}>Ingen guld-uger endnu</Text>}
+            renderItem={({ item }) => (
+              <View style={styles.weekRow}>
+                <Text style={styles.weekLabel}>Uge {item.week}, {item.year}</Text>
+                <Text style={styles.weekValue}>{item.completedTasks} / {item.totalTasks}</Text>
+              </View>
+            )}
+          />
+        )}
+      </Pressable>
 
       <View style={[styles.trophiesCard, { backgroundColor: palette.silver }]}>
         <View style={styles.trophiesContent}>
           <Text style={styles.trophiesTitle}>Sølv pokaler</Text>
           <Text style={styles.trophiesCount}>{silverTrophies}</Text>
         </View>
-        <Text style={styles.trophiesEmoji}>🥈</Text>
-      </View>
+        {expandedTrophy === 'silver' && (
+          <FlatList
+            data={trophyWeeksByType.silver}
+            scrollEnabled={false}
+            keyExtractor={(item, index) => `silver-${item.year}-${item.week}-${index}`}
+            contentContainerStyle={styles.expandedList}
+            ListEmptyComponent={<Text style={styles.emptyWeekText}>Ingen sølv-uger endnu</Text>}
+            renderItem={({ item }) => (
+              <View style={styles.weekRow}>
+                <Text style={styles.weekLabel}>Uge {item.week}, {item.year}</Text>
+                <Text style={styles.weekValue}>{item.completedTasks} / {item.totalTasks}</Text>
+              </View>
+            )}
+          />
+        )}
+      </Pressable>
 
       <View style={[styles.trophiesCard, { backgroundColor: palette.bronze }]}>
         <View style={styles.trophiesContent}>
@@ -501,6 +529,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 20,
     marginBottom: 12,
+  },
+  trophiesHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -610,5 +640,44 @@ const styles = StyleSheet.create({
   },
   historyList: {
     marginHorizontal: -16,
+  },
+  trophiesMeta: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  expandHint: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#fff',
+    opacity: 0.95,
+  },
+  expandedList: {
+    marginTop: 12,
+    gap: 8,
+  },
+  weekRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  weekLabel: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  weekValue: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  emptyWeekText: {
+    color: '#fff',
+    fontSize: 14,
+    opacity: 0.95,
   },
 });
