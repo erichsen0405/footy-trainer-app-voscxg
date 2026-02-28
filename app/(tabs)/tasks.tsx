@@ -50,10 +50,6 @@ const colors: any =
   (CommonStyles as any).default ??
   FALLBACK_COLORS;
 
-// Helper function to create unique local IDs
-const createLocalId = () =>
-  `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-
 const normalizeReminderValue = (value: unknown): number | null => {
   if (value === null || value === undefined || value === '') return null;
   const parsed = Number(value);
@@ -102,11 +98,6 @@ function getYouTubeThumbnail(url: string): string | null {
   }
 }
 
-interface Subtask {
-  id: string;
-  title: string;
-}
-
 type FolderType = 'personal' | 'trainer' | 'footballcoach' | 'source';
 
 interface FolderItem {
@@ -119,7 +110,7 @@ interface FolderItem {
 }
 
 type PendingAction =
-  | { type: 'create' | 'edit'; data: { task: Task; videoUrl: string; subtasks: Subtask[]; isCreating: boolean } }
+  | { type: 'create' | 'edit'; data: { task: Task; videoUrl: string; isCreating: boolean } }
   | { type: 'delete'; data: { taskId: string } };
 
 const DELETE_TEMPLATE_CONFIRM_TEXT = 'SLET';
@@ -453,7 +444,6 @@ export default function TasksScreen() {
   const [isSaving, setIsSaving] = useState(false);
 
   const [videoUrl, setVideoUrl] = useState('');
-  const [subtasks, setSubtasks] = useState<Subtask[]>([{ id: createLocalId(), title: '' }]);
 
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
@@ -524,29 +514,7 @@ export default function TasksScreen() {
     setIsCreating(creating);
     setIsSaving(false);
     setVideoUrl(String((task as any)?.videoUrl ?? ''));
-    setSubtasks([{ id: createLocalId(), title: '' }]);
     setIsModalVisible(true);
-
-    if (task && !creating) {
-      try {
-        const { data: subtasksData, error } = await supabase
-          .from('task_template_subtasks')
-          .select('*')
-          .eq('task_template_id', String((task as any).id))
-          .order('sort_order', { ascending: true });
-
-        if (error) {
-          console.error('Error loading subtasks:', error);
-          return;
-        }
-
-        if (subtasksData && subtasksData.length > 0) {
-          setSubtasks(subtasksData.map((s: any) => ({ id: String(s.id ?? createLocalId()), title: String(s.title ?? '') })));
-        }
-      } catch (e) {
-        console.error('Error loading subtasks:', e);
-      }
-    }
   }, []);
 
   const closeTaskModal = useCallback(() => {
@@ -554,7 +522,6 @@ export default function TasksScreen() {
     setIsCreating(false);
     setIsModalVisible(false);
     setVideoUrl('');
-    setSubtasks([{ id: createLocalId(), title: '' }]);
     setIsSaving(false);
   }, []);
 
@@ -586,7 +553,6 @@ export default function TasksScreen() {
       if (isCreating) {
         await taskService.createTask({
           task: taskToSave,
-          subtasks,
           adminMode,
           adminTargetType,
           adminTargetId,
@@ -608,19 +574,6 @@ export default function TasksScreen() {
         };
 
         await updateTask(String((selectedTask as any).id), taskToSave);
-
-        await supabase.from('task_template_subtasks').delete().eq('task_template_id', String((selectedTask as any).id));
-
-        const validSubtasks = subtasks.filter((s) => s.title.trim());
-        if (validSubtasks.length > 0) {
-          const subtasksToInsert = validSubtasks.map((subtask, index) => ({
-            task_template_id: String((selectedTask as any).id),
-            title: subtask.title,
-            sort_order: index,
-          }));
-
-          await supabase.from('task_template_subtasks').insert(subtasksToInsert);
-        }
       }
       closeTaskModal();
 
@@ -636,7 +589,7 @@ export default function TasksScreen() {
     } finally {
       setIsSaving(false);
     }
-  }, [selectedTask, isCreating, adminMode, adminTargetId, adminTargetType, videoUrl, subtasks, updateTask, refreshAll, closeTaskModal]);
+  }, [selectedTask, isCreating, adminMode, adminTargetId, adminTargetType, videoUrl, updateTask, refreshAll, closeTaskModal]);
 
   const handleSaveTask = useCallback(async () => {
     if (!selectedTask) return;
@@ -644,14 +597,14 @@ export default function TasksScreen() {
     if (adminMode !== 'self' && selectedContext?.type) {
       setPendingAction({
         type: isCreating ? 'create' : 'edit',
-        data: { task: selectedTask, videoUrl, subtasks, isCreating },
+        data: { task: selectedTask, videoUrl, isCreating },
       });
       setShowConfirmDialog(true);
       return;
     }
 
     await executeSaveTask();
-  }, [selectedTask, adminMode, selectedContext, isCreating, videoUrl, subtasks, executeSaveTask]);
+  }, [selectedTask, adminMode, selectedContext, isCreating, videoUrl, executeSaveTask]);
 
   const handleArchiveTask = useCallback(
     async (task: Task) => {
@@ -854,21 +807,6 @@ export default function TasksScreen() {
   const afterTrainingScoreEnabled = selectedTask?.afterTrainingFeedbackEnableScore ?? true;
   const afterTrainingNoteEnabled = selectedTask?.afterTrainingFeedbackEnableNote ?? true;
   const afterTrainingScoreExplanation = selectedTask?.afterTrainingFeedbackScoreExplanation ?? '';
-
-  const addSubtask = useCallback(() => setSubtasks((prev) => [...prev, { id: createLocalId(), title: '' }]), []);
-  const updateSubtask = useCallback((index: number, value: string) => {
-    setSubtasks((prev) => {
-      const next = [...prev];
-      next[index] = { ...next[index], title: value };
-      return next;
-    });
-  }, []);
-  const removeSubtask = useCallback((index: number) => {
-    setSubtasks((prev) => {
-      if (prev.length <= 1) return prev;
-      return prev.filter((_, i) => i !== index);
-    });
-  }, []);
 
   // Memoized render functions for FlatList
   const renderTaskCard = useCallback(
@@ -1153,35 +1091,6 @@ export default function TasksScreen() {
                     {videoUrl.trim() && !isValidVideoUrl(videoUrl) && (
                       <Text style={[styles.helperText, { color: colors.error }]}>⚠ Ugyldig video URL. Kun YouTube og Vimeo understøttes.</Text>
                     )}
-                  </View>
-
-                  <View style={styles.subtasksSection}>
-                    <View style={styles.subtasksHeader}>
-                      <Text style={[styles.label, { color: textColor }]}>Delopgaver</Text>
-                      <TouchableOpacity style={[styles.addSubtaskButton, { backgroundColor: colors.primary }]} onPress={addSubtask} disabled={isSaving}>
-                        <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color="#fff" />
-                        <Text style={styles.addSubtaskText}>Tilføj</Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    {subtasks.map((subtask, index) => (
-                      <View key={subtask.id} style={styles.subtaskInputRow}>
-                        <TextInput
-                          style={[styles.subtaskInput, { backgroundColor: bgColor, color: textColor }]}
-                          value={subtask.title}
-                          onChangeText={(value) => updateSubtask(index, value)}
-                          placeholder={`Delopgave ${index + 1}`}
-                          placeholderTextColor={textSecondaryColor}
-                          editable={!isSaving}
-                          testID={`tasks.template.subtaskInput.${index}`}
-                        />
-                        {subtasks.length > 1 && (
-                          <TouchableOpacity style={styles.removeSubtaskButton} onPress={() => removeSubtask(index)} disabled={isSaving}>
-                            <IconSymbol ios_icon_name="minus.circle" android_material_icon_name="remove_circle" size={24} color={colors.error} />
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    ))}
                   </View>
 
                   <View
@@ -1595,13 +1504,6 @@ const styles = StyleSheet.create({
   input: { borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 16 },
   textArea: { height: 100, textAlignVertical: 'top' },
 
-  subtasksSection: { marginBottom: 16 },
-  subtasksHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  addSubtaskButton: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-  addSubtaskText: { fontSize: 14, fontWeight: '600', color: '#fff' },
-  subtaskInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  subtaskInput: { flex: 1, borderRadius: 8, padding: 12, fontSize: 15 },
-  removeSubtaskButton: { padding: 4 },
 
   categoriesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   categoryChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 },

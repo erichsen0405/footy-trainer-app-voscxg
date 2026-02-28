@@ -24,6 +24,7 @@ type TaskTemplateRow = {
 
 const db = {
   taskTemplates: [] as TaskTemplateRow[],
+  taskTemplateSubtasks: [] as { task_template_id: string; title: string; sort_order: number }[],
 };
 
 const mockGetSession = jest.fn();
@@ -81,6 +82,16 @@ jest.mock('@/integrations/supabase/client', () => {
           };
           db.taskTemplates.push(created);
           state.insertResult = created;
+        } else if (table === 'task_template_subtasks') {
+          const rows = Array.isArray(payload) ? payload : [payload];
+          rows.forEach((row: any) => {
+            db.taskTemplateSubtasks.push({
+              task_template_id: String(row.task_template_id),
+              title: String(row.title ?? ''),
+              sort_order: Number(row.sort_order ?? 0),
+            });
+          });
+          state.insertResult = rows;
         }
         return builder;
       },
@@ -141,6 +152,7 @@ jest.mock('@/integrations/supabase/client', () => {
 describe('taskService.createTask library idempotency', () => {
   beforeEach(() => {
     db.taskTemplates = [];
+    db.taskTemplateSubtasks = [];
     jest.clearAllMocks();
     mockGetSession.mockResolvedValue({
       data: {
@@ -193,5 +205,31 @@ describe('taskService.createTask library idempotency', () => {
     expect(db.taskTemplates).toHaveLength(1);
     expect(db.taskTemplates[0].task_duration_enabled).toBe(true);
     expect(db.taskTemplates[0].task_duration_minutes).toBe(600);
+  });
+
+  it('ignores subtasks when creating via P8 payload', async () => {
+    const payload = {
+      task: {
+        id: '',
+        title: 'Template without subtasks',
+        description: 'Should not persist subtasks',
+        completed: false,
+        isTemplate: true,
+        categoryIds: [],
+        subtasks: [],
+      },
+      subtasks: [
+        { title: 'Delopgave A' },
+        { title: 'Delopgave B' },
+      ],
+      adminMode: 'self',
+      adminTargetType: null,
+      adminTargetId: null,
+    };
+
+    await taskService.createTask(payload as any);
+
+    expect(db.taskTemplates).toHaveLength(1);
+    expect(db.taskTemplateSubtasks).toHaveLength(0);
   });
 });
