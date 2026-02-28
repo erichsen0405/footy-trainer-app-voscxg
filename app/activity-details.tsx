@@ -2635,7 +2635,12 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const filteredTemplateTasks = useMemo(() => {
     const query = templateTaskSearch.trim().toLowerCase();
     const allTemplates = Array.isArray(taskTemplates) ? taskTemplates : [];
-    const activeTemplates = allTemplates.filter((task) => !task?.archivedAt);
+    const activeTemplates = allTemplates.filter((task) => {
+      if (task?.archivedAt) return false;
+      const sourceFolder = String(task?.source_folder ?? task?.sourceFolder ?? '').trim();
+      if (sourceFolder === 'activity_local_task') return false;
+      return true;
+    });
     const sortedTemplates = [...activeTemplates].sort((a, b) =>
       String(a?.title ?? '').localeCompare(String(b?.title ?? ''), 'da-DK', { sensitivity: 'base' })
     );
