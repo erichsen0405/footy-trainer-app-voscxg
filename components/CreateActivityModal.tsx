@@ -621,12 +621,12 @@ export default function CreateActivityModal({
                   <DateTimePicker
                     value={date}
                     mode="date"
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    display={Platform.OS === 'ios' ? 'inline' : 'default'}
                     onChange={handleDateChange}
                     minimumDate={new Date()}
                     themeVariant={isDark ? 'dark' : 'light'}
                     textColor={Platform.OS === 'ios' ? (isDark ? '#FFFFFF' : '#000000') : undefined}
-                    style={Platform.OS === 'ios' ? styles.iosPicker : undefined}
+                    style={undefined}
                   />
                 </View>
               ) : null}
@@ -859,12 +859,12 @@ export default function CreateActivityModal({
                           <DateTimePicker
                             value={endDate}
                             mode="date"
-                            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                            display={Platform.OS === 'ios' ? 'inline' : 'default'}
                             onChange={handleEndDateChange}
                             minimumDate={date}
                             themeVariant={isDark ? 'dark' : 'light'}
                             textColor={Platform.OS === 'ios' ? (isDark ? '#FFFFFF' : '#000000') : undefined}
-                            style={Platform.OS === 'ios' ? styles.iosPicker : undefined}
+                            style={undefined}
                           />
                         </View>
                       ) : null}

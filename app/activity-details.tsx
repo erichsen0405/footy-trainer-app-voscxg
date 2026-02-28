@@ -2158,7 +2158,13 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       if (Platform.OS === 'ios') {
         return (
           <View style={[styles.pickerContainer, { backgroundColor: cardBgColor, borderColor: fieldBorderColor, borderWidth: 1 }]}>
-            <DateTimePicker value={value} mode={mode} display="spinner" onChange={onChange} style={styles.iosPicker} />
+            <DateTimePicker
+              value={value}
+              mode={mode}
+              display={mode === 'date' ? 'inline' : 'spinner'}
+              onChange={onChange}
+              style={styles.iosPicker}
+            />
             <TouchableOpacity
               style={[
                 styles.pickerDoneButton,
