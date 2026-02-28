@@ -122,6 +122,15 @@ function getWeekLabel(date: Date): string {
   }
 }
 
+function getUpcomingDayLabel(date: Date): string {
+  if (!date || isNaN(date.getTime())) return '';
+  try {
+    return format(date, 'EEE d. MMM', { locale: da });
+  } catch {
+    return '';
+  }
+}
+
 // Helper function to get gradient colors based on performance percentage
 // Matches the trophy thresholds from performance screen: ≥80% gold, ≥60% silver, <60% bronze
 function getPerformanceGradient(percentage: number): readonly [string, string, string] {
@@ -1409,9 +1418,27 @@ export default function HomeScreen() {
         if (!expandedUpcomingWeeks[summary.weekKey]) return;
 
         const weekActivities = Array.isArray(summary.weekGroup.activities) ? summary.weekGroup.activities : [];
+        let previousDayKey: string | null = null;
         weekActivities.forEach((activity: any) => {
           // STEP H: Guard against null activity
           if (!activity) return;
+          const resolvedDate =
+            activity.__resolvedDateTime instanceof Date && !isNaN(activity.__resolvedDateTime.getTime())
+              ? activity.__resolvedDateTime
+              : null;
+          const dayKey = resolvedDate ? format(resolvedDate, 'yyyy-MM-dd') : null;
+
+          if (dayKey && dayKey !== previousDayKey) {
+            data.push({
+              type: 'upcomingDayDivider',
+              section: 'upcoming',
+              weekKey: summary.weekKey,
+              dayKey,
+              date: resolvedDate,
+              key: `divider:upcoming:${summary.weekKey}:${dayKey}`,
+            });
+            previousDayKey = dayKey;
+          }
           data.push({
             type: 'activity',
             activity,
@@ -1622,6 +1649,19 @@ export default function HomeScreen() {
             </Pressable>
           </View>
         );
+
+      case 'upcomingDayDivider': {
+        const date = item.date instanceof Date && !isNaN(item.date.getTime()) ? item.date : null;
+        if (!date) return null;
+        const label = getUpcomingDayLabel(date);
+        if (!label) return null;
+        return (
+          <View style={styles.upcomingDayDivider}>
+            <View style={[styles.upcomingDayDividerLine, { backgroundColor: isDark ? 'rgba(191,220,203,0.28)' : 'rgba(76,175,80,0.28)' }]} />
+            <Text style={[styles.upcomingDayDividerText, { color: isDark ? '#B5D8C2' : '#2C5A40' }]}>{label}</Text>
+          </View>
+        );
+      }
 
       case 'weekHeader':
         // STEP H: Guard against null weekGroup
@@ -2318,6 +2358,21 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginBottom: 18,
     letterSpacing: 0.2,
+  },
+  upcomingDayDivider: {
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  upcomingDayDividerLine: {
+    height: 1,
+    width: '100%',
+    marginBottom: 6,
+  },
+  upcomingDayDividerText: {
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
   },
   upcomingSummaryWrapper: {
     paddingHorizontal: 16,
