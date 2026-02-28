@@ -54,7 +54,7 @@ type TaskSubtaskInput = { id?: string; title: string };
 
 export interface P8CreateTaskArgs {
   task: Task;
-  subtasks: TaskSubtaskInput[];
+  subtasks?: TaskSubtaskInput[];
   adminMode?: string;
   adminTargetType?: string | null;
   adminTargetId?: string | null;
@@ -279,28 +279,7 @@ export const taskService = {
       }
     }
 
-    if (isP8Payload) {
-      const validSubtasks = (rawData.subtasks ?? [])
-        .map(s => ({ ...s, title: String(s.title ?? '').trim() }))
-        .filter(s => s.title.length > 0);
-
-      if (validSubtasks.length) {
-        const subtaskRows = validSubtasks.map((subtask, index) => ({
-          task_template_id: template.id,
-          title: subtask.title,
-          sort_order: index,
-        }));
-
-        const { error: subtaskError } = await supabase
-          .from('task_template_subtasks')
-          .insert(subtaskRows)
-          .abortSignal(signal);
-
-        if (subtaskError) {
-          throw subtaskError;
-        }
-      }
-    }
+    // Hotfix #215: template subtasks are deprecated and intentionally ignored.
 
     // Return the created task in the expected format
     return {

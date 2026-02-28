@@ -1309,32 +1309,6 @@ export const useFootballData = () => {
 
         const created = await addTask(copyPayload);
 
-        const { data: subtasks, error: subtaskError } = await supabase
-          .from('task_template_subtasks')
-          .select('title, sort_order')
-          .eq('task_template_id', id)
-          .order('sort_order', { ascending: true });
-
-        if (subtaskError) {
-          throw subtaskError;
-        }
-
-        if (subtasks?.length) {
-          const newSubtasks = subtasks.map(subtask => ({
-            task_template_id: created.id,
-            title: subtask.title,
-            sort_order: subtask.sort_order,
-          }));
-
-          const { error: insertError } = await supabase
-            .from('task_template_subtasks')
-            .insert(newSubtasks);
-
-          if (insertError) {
-            throw insertError;
-          }
-        }
-
         return created;
       } catch (error) {
         console.error('[duplicateTask] Error duplicating task:', error);

@@ -207,17 +207,10 @@ tags:
     timeout: 15000
 - assertVisible:
     id: '^tasks\.template\.formBody$'
-- scrollUntilVisible:
-    element:
-      id: '^tasks\.template\.subtaskInput\.0$'
-    direction: DOWN
-    timeout: 15000
-- tapOn:
-    id: '^tasks\.template\.subtaskInput\.0$'
-- eraseText
-- inputText: "demo"
 - tapOn:
     id: '^tasks\.template\.descriptionInput$'
+- eraseText
+- inputText: "Opdateret via smoke flow"
 - runFlow: _platform_keyboard_commit_input.yaml
 - scrollUntilVisible:
     element:
