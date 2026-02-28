@@ -1,5 +1,7 @@
 import {
   calculateIntensityPerformanceTotals,
+  normalizePerformanceRowsToTrophies,
+  sumCompletedTasksByTrophyType,
   shouldIncludeExternalIntensityInPerformance,
   shouldIncludeExternalTaskInPerformance,
 } from '@/hooks/useFootballData';
@@ -124,6 +126,97 @@ describe('calculateIntensityPerformanceTotals', () => {
     expect(totals.completedToday).toBe(2);
     expect(totals.totalWeek).toBe(5);
     expect(totals.completedWeek).toBe(2);
+  });
+});
+
+describe('sumCompletedTasksByTrophyType', () => {
+  it('sums completed tasks per trophy type across weeks', () => {
+    const totals = sumCompletedTasksByTrophyType([
+      { type: 'gold', completed_tasks: 5 },
+      { type: 'gold', completed_tasks: 3 },
+      { type: 'silver', completed_tasks: 4 },
+      { type: 'bronze', completed_tasks: 2 },
+    ]);
+
+    expect(totals).toEqual({
+      gold: 8,
+      silver: 4,
+      bronze: 2,
+    });
+  });
+
+  it('supports camelCase fallback and ignores invalid values', () => {
+    const totals = sumCompletedTasksByTrophyType([
+      { type: 'gold', completedTasks: 6 },
+      { type: 'silver', completed_tasks: -2 },
+      { type: 'bronze' },
+      { type: 'silver', completed_tasks: Number.NaN },
+      { type: 'bronze', completedTasks: 1 },
+    ] as any);
+
+    expect(totals).toEqual({
+      gold: 6,
+      silver: 0,
+      bronze: 1,
+    });
+  });
+});
+
+describe('normalizePerformanceRowsToTrophies', () => {
+  it('maps weekly_performance rows to trophy shape', () => {
+    const trophies = normalizePerformanceRowsToTrophies([
+      {
+        week_number: 8,
+        year: 2026,
+        trophy_type: 'gold',
+        percentage: 83,
+        completed_tasks: 10,
+        total_tasks: 12,
+      },
+    ]);
+
+    expect(trophies).toEqual([
+      {
+        week: 8,
+        year: 2026,
+        type: 'gold',
+        percentage: 83,
+        completedTasks: 10,
+        totalTasks: 12,
+      },
+    ]);
+  });
+
+  it('supports legacy rows and drops invalid trophy types', () => {
+    const trophies = normalizePerformanceRowsToTrophies([
+      {
+        week: 7,
+        year: 2026,
+        type: 'silver',
+        percentage: 66,
+        completed_tasks: '4',
+        total_tasks: '6',
+      },
+      {
+        week_number: 6,
+        year: 2026,
+        trophy_type: 'invalid',
+        percentage: 30,
+        completed_tasks: 1,
+        total_tasks: 8,
+      },
+    ]);
+
+    expect(trophies).toEqual([
+      {
+        week: 7,
+        year: 2026,
+        type: 'silver',
+        percentage: 66,
+        completedTasks: 4,
+        totalTasks: 6,
+      },
+    ]);
   });
 });
 
