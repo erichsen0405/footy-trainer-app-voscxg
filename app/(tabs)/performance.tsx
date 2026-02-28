@@ -56,6 +56,7 @@ export default function PerformanceScreen() {
 
   const colorScheme = useColorScheme();
   const [refreshing, setRefreshing] = useState(false);
+  const [expandedTrophy, setExpandedTrophy] = useState<'gold' | 'silver' | 'bronze' | null>(null);
   const [expandedHistoryWeeks, setExpandedHistoryWeeks] = useState<Record<string, boolean>>({});
   const [isHistorySectionExpanded, setIsHistorySectionExpanded] = useState(true);
 
@@ -159,6 +160,36 @@ export default function PerformanceScreen() {
   const currentWeek = getWeek(new Date());
   const currentYear = new Date().getFullYear();
 
+  const trophyWeeksByType = useMemo(() => {
+    const grouped = {
+      gold: [] as typeof trophies,
+      silver: [] as typeof trophies,
+      bronze: [] as typeof trophies,
+    };
+
+    trophies.forEach((trophy) => {
+      const isPastWeek =
+        trophy.year < currentYear ||
+        (trophy.year === currentYear && trophy.week < currentWeek);
+      if (!isPastWeek) return;
+
+      if (trophy.type === 'gold' || trophy.type === 'silver' || trophy.type === 'bronze') {
+        grouped[trophy.type].push(trophy);
+      }
+    });
+
+    const sortByLatestWeek = (a: { year: number; week: number }, b: { year: number; week: number }) => {
+      if (a.year !== b.year) return b.year - a.year;
+      return b.week - a.week;
+    };
+
+    grouped.gold.sort(sortByLatestWeek);
+    grouped.silver.sort(sortByLatestWeek);
+    grouped.bronze.sort(sortByLatestWeek);
+
+    return grouped;
+  }, [trophies, currentWeek, currentYear]);
+
   const getTrophyEmoji = (type: 'gold' | 'silver' | 'bronze') => {
     switch (type) {
       case 'gold':
@@ -183,9 +214,13 @@ export default function PerformanceScreen() {
     return 'Kom igen! Fokuser på dine opgaver for at komme tilbage på sporet. ⚽';
   };
 
-  const goldTrophies = trophies.filter((t) => t.type === 'gold').length;
-  const silverTrophies = trophies.filter((t) => t.type === 'silver').length;
-  const bronzeTrophies = trophies.filter((t) => t.type === 'bronze').length;
+  const goldTrophies = trophyWeeksByType.gold.length;
+  const silverTrophies = trophyWeeksByType.silver.length;
+  const bronzeTrophies = trophyWeeksByType.bronze.length;
+
+  const toggleExpandedTrophy = useCallback((type: 'gold' | 'silver' | 'bronze') => {
+    setExpandedTrophy((prev) => (prev === type ? null : type));
+  }, []);
 
   return (
     <ScrollView
@@ -252,10 +287,19 @@ export default function PerformanceScreen() {
         </View>
       </View>
 
-      <View style={[styles.trophiesCard, { backgroundColor: palette.gold }]}>
-        <View style={styles.trophiesContent}>
-          <Text style={styles.trophiesTitle}>Guld pokaler</Text>
-          <Text style={styles.trophiesCount}>{goldTrophies}</Text>
+      <Pressable
+        onPress={() => toggleExpandedTrophy('gold')}
+        style={[styles.trophiesCard, { backgroundColor: palette.gold }]}
+      >
+        <View style={styles.trophiesHeader}>
+          <View style={styles.trophiesContent}>
+            <Text style={styles.trophiesTitle}>Guld pokaler</Text>
+            <Text style={styles.trophiesCount}>{goldTrophies}</Text>
+          </View>
+          <View style={styles.trophiesMeta}>
+            <Text style={styles.trophiesEmoji}>🥇</Text>
+            <Text style={styles.expandHint}>{expandedTrophy === 'gold' ? 'Skjul' : 'Vis uger'}</Text>
+          </View>
         </View>
         {expandedTrophy === 'gold' && (
           <FlatList
@@ -274,10 +318,19 @@ export default function PerformanceScreen() {
         )}
       </Pressable>
 
-      <View style={[styles.trophiesCard, { backgroundColor: palette.silver }]}>
-        <View style={styles.trophiesContent}>
-          <Text style={styles.trophiesTitle}>Sølv pokaler</Text>
-          <Text style={styles.trophiesCount}>{silverTrophies}</Text>
+      <Pressable
+        onPress={() => toggleExpandedTrophy('silver')}
+        style={[styles.trophiesCard, { backgroundColor: palette.silver }]}
+      >
+        <View style={styles.trophiesHeader}>
+          <View style={styles.trophiesContent}>
+            <Text style={styles.trophiesTitle}>Sølv pokaler</Text>
+            <Text style={styles.trophiesCount}>{silverTrophies}</Text>
+          </View>
+          <View style={styles.trophiesMeta}>
+            <Text style={styles.trophiesEmoji}>🥈</Text>
+            <Text style={styles.expandHint}>{expandedTrophy === 'silver' ? 'Skjul' : 'Vis uger'}</Text>
+          </View>
         </View>
         {expandedTrophy === 'silver' && (
           <FlatList
@@ -296,13 +349,36 @@ export default function PerformanceScreen() {
         )}
       </Pressable>
 
-      <View style={[styles.trophiesCard, { backgroundColor: palette.bronze }]}>
-        <View style={styles.trophiesContent}>
-          <Text style={styles.trophiesTitle}>Bronze pokaler</Text>
-          <Text style={styles.trophiesCount}>{bronzeTrophies}</Text>
+      <Pressable
+        onPress={() => toggleExpandedTrophy('bronze')}
+        style={[styles.trophiesCard, { backgroundColor: palette.bronze }]}
+      >
+        <View style={styles.trophiesHeader}>
+          <View style={styles.trophiesContent}>
+            <Text style={styles.trophiesTitle}>Bronze pokaler</Text>
+            <Text style={styles.trophiesCount}>{bronzeTrophies}</Text>
+          </View>
+          <View style={styles.trophiesMeta}>
+            <Text style={styles.trophiesEmoji}>🥉</Text>
+            <Text style={styles.expandHint}>{expandedTrophy === 'bronze' ? 'Skjul' : 'Vis uger'}</Text>
+          </View>
         </View>
-        <Text style={styles.trophiesEmoji}>🥉</Text>
-      </View>
+        {expandedTrophy === 'bronze' && (
+          <FlatList
+            data={trophyWeeksByType.bronze}
+            scrollEnabled={false}
+            keyExtractor={(item, index) => `bronze-${item.year}-${item.week}-${index}`}
+            contentContainerStyle={styles.expandedList}
+            ListEmptyComponent={<Text style={styles.emptyWeekText}>Ingen bronze-uger endnu</Text>}
+            renderItem={({ item }) => (
+              <View style={styles.weekRow}>
+                <Text style={styles.weekLabel}>Uge {item.week}, {item.year}</Text>
+                <Text style={styles.weekValue}>{item.completedTasks} / {item.totalTasks}</Text>
+              </View>
+            )}
+          />
+        )}
+      </Pressable>
 
       <ProgressionSection categories={categories} />
 
@@ -539,19 +615,18 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   trophiesTitle: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: 'bold',
     color: '#fff',
-    marginBottom: 4,
+    marginBottom: 8,
   },
   trophiesCount: {
-    fontSize: 32,
+    fontSize: 40,
     fontWeight: 'bold',
     color: '#fff',
   },
   trophiesEmoji: {
-    fontSize: 40,
-    marginLeft: 12,
+    fontSize: 48,
   },
   historySection: {
     marginTop: 24,
