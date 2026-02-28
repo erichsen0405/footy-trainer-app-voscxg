@@ -436,6 +436,30 @@ export const taskService = {
       }
     }
 
+    if (updates.categoryIds !== undefined) {
+      try {
+        const { error: categorySyncError } = await supabase.rpc(
+          'update_all_tasks_from_template',
+          {
+            p_template_id: taskId,
+            p_dry_run: false,
+          }
+        );
+
+        if (categorySyncError) {
+          console.error('[TEMPLATE_CATEGORY_SYNC] update_all_tasks_from_template failed', {
+            templateId: taskId,
+            error: categorySyncError.message,
+          });
+        }
+      } catch (categorySyncUnexpectedError) {
+        console.error(
+          '[TEMPLATE_CATEGORY_SYNC] Unexpected update_all_tasks_from_template failure',
+          categorySyncUnexpectedError
+        );
+      }
+    }
+
     if (shouldSyncSeriesFeedback) {
       try {
         const { data: syncSummary, error: syncError } = await supabase.rpc(

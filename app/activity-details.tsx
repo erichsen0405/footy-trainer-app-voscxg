@@ -2658,9 +2658,8 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const handleCreateTaskFromTemplate = useCallback(
     async (template: Task) => {
       if (isTemplateTaskSaving) return;
-      const templateId = String(template?.id ?? '').trim();
-      if (!templateId) {
-        Alert.alert('Fejl', 'Skabelonen mangler et gyldigt ID.');
+      if (!currentUserId) {
+        Alert.alert('Fejl', 'Bruger ikke autentificeret.');
         return;
       }
 
@@ -2678,6 +2677,40 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           typeof template.reminder === 'number' && Number.isFinite(template.reminder)
             ? clampMinutes(template.reminder)
             : null;
+        const afterTrainingEnabled = template.afterTrainingEnabled === true;
+        const taskDurationEnabled =
+          template.taskDurationEnabled === true || template.task_duration_enabled === true;
+
+        const { data: localTemplateData, error: localTemplateError } = await supabase
+          .from('task_templates')
+          .insert({
+            user_id: currentUserId,
+            title: String(template.title ?? '').trim() || 'Opgave',
+            description: String(template.description ?? ''),
+            reminder_minutes: reminderValue,
+            after_training_enabled: afterTrainingEnabled,
+            after_training_delay_minutes: afterTrainingEnabled
+              ? clampMinutes(template.afterTrainingDelayMinutes ?? 0)
+              : null,
+            after_training_feedback_enable_score:
+              template.afterTrainingFeedbackEnableScore !== false,
+            after_training_feedback_score_explanation:
+              template.afterTrainingFeedbackScoreExplanation ?? null,
+            after_training_feedback_enable_note:
+              template.afterTrainingFeedbackEnableNote !== false,
+            after_training_feedback_enable_intensity: true,
+            task_duration_enabled: taskDurationEnabled,
+            task_duration_minutes: taskDurationEnabled
+              ? clampMinutes(template.taskDurationMinutes ?? template.task_duration_minutes ?? 0)
+              : null,
+            source_folder: 'activity_local_task',
+          })
+          .select('id')
+          .single();
+
+        if (localTemplateError || !localTemplateData?.id) {
+          throw new Error(localTemplateError?.message || 'Kunne ikke oprette lokal skabelon.');
+        }
 
         const payload = {
           activity_id: activity.id,
@@ -2685,16 +2718,15 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           description: String(template.description ?? ''),
           completed: false,
           reminder_minutes: reminderValue,
-          task_template_id: templateId,
-          after_training_enabled: template.afterTrainingEnabled === true,
+          task_template_id: String(localTemplateData.id),
+          after_training_enabled: afterTrainingEnabled,
           after_training_delay_minutes:
-            template.afterTrainingEnabled === true
+            afterTrainingEnabled
               ? clampMinutes(template.afterTrainingDelayMinutes ?? 0)
               : null,
-          task_duration_enabled:
-            template.taskDurationEnabled === true || template.task_duration_enabled === true,
+          task_duration_enabled: taskDurationEnabled,
           task_duration_minutes:
-            template.taskDurationEnabled === true || template.task_duration_enabled === true
+            taskDurationEnabled
               ? clampMinutes(template.taskDurationMinutes ?? template.task_duration_minutes ?? 0)
               : null,
         };
@@ -2717,7 +2749,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         setIsTemplateTaskSaving(false);
       }
     },
-    [activity.id, isTemplateTaskSaving, refreshActivityTasks],
+    [activity.id, currentUserId, isTemplateTaskSaving, refreshActivityTasks],
   );
 
   const formatTemplateTaskMeta = useCallback((template: Task): string => {
