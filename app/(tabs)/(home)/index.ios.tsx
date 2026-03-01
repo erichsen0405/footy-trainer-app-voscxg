@@ -331,9 +331,10 @@ export default function HomeScreen() {
   const { selectedContext } = useTeamPlayer();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showPreviousWeeks, setShowPreviousWeeks] = useState(0);
-  const [isPreviousExpanded, setIsPreviousExpanded] = useState(false);
+  const [isPreviousWeeksVisible, setIsPreviousWeeksVisible] = useState(false);
   const [expandedUpcomingWeeks, setExpandedUpcomingWeeks] = useState<Record<string, boolean>>({});
   const [expandedUpcomingDays, setExpandedUpcomingDays] = useState<Record<string, boolean>>({});
+  const [isCurrentWeekTodayOnly, setIsCurrentWeekTodayOnly] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isPerformanceCardCollapsed, setIsPerformanceCardCollapsed] = useState(true);
   const [progressPercentageBoxHeight, setProgressPercentageBoxHeight] = useState(72);
@@ -459,24 +460,21 @@ export default function HomeScreen() {
     fetchCurrentTrainerId();
   }, []);
 
-  // Reset "TIDLIGERE" section when loading starts (pull-to-refresh or navigation back)
+  // Reset previously loaded week count when loading starts (pull-to-refresh or navigation back)
   useEffect(() => {
     if (loading) {
-      setIsPreviousExpanded(false);
+      setIsPreviousWeeksVisible(false);
       setShowPreviousWeeks(0);
     }
   }, [loading]);
 
-  const { todayActivities, upcomingByWeek, previousByWeek, resolvedActivities } = useMemo(() => {
+  const { currentWeekGroup, upcomingByWeek, previousByWeek, resolvedActivities } = useMemo(() => {
     // STEP H: Guard against non-array activities
     const safeActivities = Array.isArray(activities) ? activities : [];
 
     const now = new Date();
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
-
-    const todayEnd = new Date(todayStart);
-    todayEnd.setHours(23, 59, 59, 999);
+    const currentWeekStart = startOfWeek(now, { weekStartsOn: 1 });
+    const currentWeekEnd = endOfWeek(now, { weekStartsOn: 1 });
 
     const resolved = safeActivities
       .map((activity: any) => {
@@ -525,11 +523,11 @@ export default function HomeScreen() {
       })
       .filter(Boolean) as any[];
 
-    const todayActivities = resolved
+    const currentWeekActivities = resolved
       .filter(
         a =>
-          a.__resolvedDateTime >= todayStart &&
-          a.__resolvedDateTime <= todayEnd
+          a.__resolvedDateTime >= currentWeekStart &&
+          a.__resolvedDateTime <= currentWeekEnd
       )
       .sort(
         (a, b) =>
@@ -538,7 +536,7 @@ export default function HomeScreen() {
       );
 
     const upcomingActivities = resolved
-      .filter(a => a.__resolvedDateTime > todayEnd)
+      .filter(a => a.__resolvedDateTime > currentWeekEnd)
       .sort(
         (a, b) =>
           a.__resolvedDateTime.getTime() -
@@ -546,12 +544,17 @@ export default function HomeScreen() {
       );
 
     const previousActivities = resolved
-      .filter(a => a.__resolvedDateTime < todayStart)
+      .filter(a => a.__resolvedDateTime < currentWeekStart)
       .sort(
         (a, b) =>
-          b.__resolvedDateTime.getTime() -
-          a.__resolvedDateTime.getTime()
+          a.__resolvedDateTime.getTime() -
+          b.__resolvedDateTime.getTime()
       );
+
+    const currentWeekGroup = {
+      weekStart: currentWeekStart,
+      activities: currentWeekActivities,
+    };
 
     // Group upcoming activities by week
     const upcomingWeekGroups: { [key: string]: any[] } = {};
@@ -597,7 +600,7 @@ export default function HomeScreen() {
       }))
       .sort((a, b) => b.weekStart.getTime() - a.weekStart.getTime());
 
-    return { todayActivities, upcomingByWeek, previousByWeek, resolvedActivities: resolved };
+    return { currentWeekGroup, upcomingByWeek, previousByWeek, resolvedActivities: resolved };
   }, [activities, categoriesById]);
 
   const feedbackActivityIds = useMemo(() => {
@@ -788,6 +791,49 @@ export default function HomeScreen() {
     return doneMap;
   }, [feedbackCompletionByActivityId, feedbackCompletionByActivityTaskId]);
 
+  const buildWeekSummary = useCallback((weekGroup: any, index: number, prefix: string) => {
+    const weekStart =
+      weekGroup?.weekStart instanceof Date && !isNaN(weekGroup.weekStart.getTime())
+        ? weekGroup.weekStart
+        : null;
+    const weekKey = weekStart ? weekStart.toISOString() : `${prefix}-week-${index}`;
+    const weekActivities = Array.isArray(weekGroup?.activities) ? weekGroup.activities : [];
+    let totalTasks = 0;
+    let totalMinutes = 0;
+
+    weekActivities.forEach((activity: any) => {
+      if (!activity) return;
+      totalTasks += getActivityTasks(activity).length;
+      totalMinutes += getActivityEffectiveDurationMinutes(activity);
+    });
+
+    return {
+      weekGroup: {
+        weekStart: weekStart ?? new Date(),
+        activities: weekActivities,
+      },
+      weekKey,
+      activityCount: weekActivities.length,
+      totalTasks,
+      totalMinutes,
+    };
+  }, []);
+
+  const currentWeekSummary = useMemo(
+    () => buildWeekSummary(currentWeekGroup, 0, 'current-week'),
+    [buildWeekSummary, currentWeekGroup]
+  );
+
+  const upcomingWeekSummaries = useMemo(() => {
+    const safeUpcomingByWeek = Array.isArray(upcomingByWeek) ? upcomingByWeek : [];
+    return safeUpcomingByWeek.map((weekGroup, index) => buildWeekSummary(weekGroup, index, 'upcoming'));
+  }, [buildWeekSummary, upcomingByWeek]);
+
+  const previousWeekSummaries = useMemo(() => {
+    const safePreviousByWeek = Array.isArray(previousByWeek) ? previousByWeek : [];
+    return safePreviousByWeek.map((weekGroup, index) => buildWeekSummary(weekGroup, index, 'previous'));
+  }, [buildWeekSummary, previousByWeek]);
+
   // Calculate how many previous weeks to display
   const visiblePreviousWeeks = useMemo(() => {
     // STEP H: Guard against invalid showPreviousWeeks
@@ -795,11 +841,9 @@ export default function HomeScreen() {
 
     if (safeShowPreviousWeeks === 0) return [];
 
-    // STEP H: Guard against non-array previousByWeek
-    const safePreviousByWeek = Array.isArray(previousByWeek) ? previousByWeek : [];
-
-    return safePreviousByWeek.slice(0, safeShowPreviousWeeks);
-  }, [previousByWeek, showPreviousWeeks]);
+    const safePreviousWeekSummaries = Array.isArray(previousWeekSummaries) ? previousWeekSummaries : [];
+    return safePreviousWeekSummaries.slice(-safeShowPreviousWeeks).reverse();
+  }, [previousWeekSummaries, showPreviousWeeks]);
 
   // LINT FIX: Include currentWeekStats in dependency array
   const performanceMetrics = useMemo(() => {
@@ -934,34 +978,127 @@ export default function HomeScreen() {
     setShowPreviousWeeks(prev => {
       // STEP H: Guard against invalid prev value
       const safePrev = typeof prev === 'number' && prev >= 0 ? prev : 0;
-      return safePrev + 1;
+      const maxWeeks = Array.isArray(previousWeekSummaries) ? previousWeekSummaries.length : 0;
+      return Math.min(safePrev + 1, maxWeeks);
     });
-  }, []);
+  }, [previousWeekSummaries]);
 
-  const togglePreviousExpanded = useCallback(() => {
-    setIsPreviousExpanded(prev => !prev);
-  }, []);
+  const togglePreviousWeeksVisibility = useCallback(() => {
+    setIsPreviousWeeksVisible((prev) => {
+      const next = !prev;
+      if (next) {
+        setShowPreviousWeeks((currentCount) => {
+          const safeCount = typeof currentCount === 'number' && currentCount >= 0 ? currentCount : 0;
+          if (safeCount > 0) return safeCount;
+          const maxWeeks = Array.isArray(previousWeekSummaries) ? previousWeekSummaries.length : 0;
+          return Math.min(1, maxWeeks);
+        });
+      }
+      return next;
+    });
+  }, [previousWeekSummaries]);
 
   const buildUpcomingDayToggleKey = useCallback((weekKey: string, dayKey: string) => {
     return `${weekKey}::${dayKey}`;
   }, []);
 
-  const toggleUpcomingWeekExpanded = useCallback((weekKey: string) => {
+  const getCurrentWeekIdentity = useCallback(() => {
+    const now = new Date();
+    return {
+      currentWeekKey: startOfWeek(now, { weekStartsOn: 1 }).toISOString(),
+      todayDayKey: format(now, 'yyyy-MM-dd'),
+    };
+  }, []);
+
+  const getCurrentWeekDayToggleKeys = useCallback(
+    (todayOnly: boolean) => {
+      const { currentWeekKey, todayDayKey } = getCurrentWeekIdentity();
+      if (!todayOnly) {
+        return [];
+      }
+      return [buildUpcomingDayToggleKey(currentWeekKey, todayDayKey)];
+    },
+    [buildUpcomingDayToggleKey, getCurrentWeekIdentity]
+  );
+
+  const applyCurrentWeekViewMode = useCallback((todayOnly: boolean) => {
+    const { currentWeekKey } = getCurrentWeekIdentity();
+    const targetDayKeys = getCurrentWeekDayToggleKeys(todayOnly);
+
+    setExpandedUpcomingWeeks((prev) =>
+      prev[currentWeekKey]
+        ? prev
+        : {
+            ...prev,
+            [currentWeekKey]: true,
+          }
+    );
+
+    setExpandedUpcomingDays((prev) => {
+      const prefix = `${currentWeekKey}::`;
+      const next: Record<string, boolean> = {};
+      let changed = false;
+
+      Object.entries(prev).forEach(([key, value]) => {
+        if (key.startsWith(prefix)) {
+          changed = true;
+          return;
+        }
+        next[key] = value;
+      });
+
+      targetDayKeys.forEach((key) => {
+        if (next[key] !== true) {
+          changed = true;
+        }
+        next[key] = true;
+      });
+
+      return changed ? next : prev;
+    });
+  }, [getCurrentWeekDayToggleKeys, getCurrentWeekIdentity]);
+
+  const toggleCurrentWeekViewMode = useCallback(() => {
+    setIsCurrentWeekTodayOnly((prev) => {
+      const next = !prev;
+      applyCurrentWeekViewMode(next);
+      return next;
+    });
+  }, [applyCurrentWeekViewMode]);
+
+  const toggleUpcomingWeekExpanded = useCallback((weekKey: string, section?: string) => {
     setExpandedUpcomingWeeks((prev) => {
       const nextExpanded = !prev[weekKey];
 
       // Requirement: when opening a week, all day groups start collapsed.
       if (nextExpanded) {
-        setExpandedUpcomingDays((dayPrev) => {
-          const next = { ...dayPrev };
-          const prefix = `${weekKey}::`;
-          Object.keys(next).forEach((key) => {
-            if (key.startsWith(prefix)) {
-              delete next[key];
-            }
+        if (section === 'currentWeek') {
+          const targetDayKeys = getCurrentWeekDayToggleKeys(isCurrentWeekTodayOnly);
+          setExpandedUpcomingDays((dayPrev) => {
+            const next = { ...dayPrev };
+            const prefix = `${weekKey}::`;
+            Object.keys(next).forEach((key) => {
+              if (key.startsWith(prefix)) {
+                delete next[key];
+              }
+            });
+            targetDayKeys.forEach((key) => {
+              next[key] = true;
+            });
+            return next;
           });
-          return next;
-        });
+        } else {
+          setExpandedUpcomingDays((dayPrev) => {
+            const next = { ...dayPrev };
+            const prefix = `${weekKey}::`;
+            Object.keys(next).forEach((key) => {
+              if (key.startsWith(prefix)) {
+                delete next[key];
+              }
+            });
+            return next;
+          });
+        }
       }
 
       return {
@@ -969,7 +1106,7 @@ export default function HomeScreen() {
         [weekKey]: nextExpanded,
       };
     });
-  }, []);
+  }, [getCurrentWeekDayToggleKeys, isCurrentWeekTodayOnly]);
 
   const toggleUpcomingDayExpanded = useCallback(
     (weekKey: string, dayKey: string) => {
@@ -980,6 +1117,16 @@ export default function HomeScreen() {
       }));
     },
     [buildUpcomingDayToggleKey],
+  );
+
+  useEffect(() => {
+    applyCurrentWeekViewMode(isCurrentWeekTodayOnly);
+  }, [applyCurrentWeekViewMode, isCurrentWeekTodayOnly]);
+
+  useFocusEffect(
+    useCallback(() => {
+      applyCurrentWeekViewMode(isCurrentWeekTodayOnly);
+    }, [applyCurrentWeekViewMode, isCurrentWeekTodayOnly])
   );
 
   const togglePerformanceCardCollapsed = useCallback(() => {
@@ -1025,34 +1172,6 @@ export default function HomeScreen() {
     const verticalInset = Math.max(0, Math.round((boxHeight - badgeSize) / 2));
     return { badgeSize, iconSize, verticalInset };
   }, [progressPercentageBoxHeight, progressPercentageSymbolHeight]);
-
-  const upcomingWeekSummaries = useMemo(() => {
-    const safeUpcomingByWeek = Array.isArray(upcomingByWeek) ? upcomingByWeek : [];
-    return safeUpcomingByWeek.map((weekGroup, index) => {
-      const weekStart =
-        weekGroup?.weekStart instanceof Date && !isNaN(weekGroup.weekStart.getTime())
-          ? weekGroup.weekStart
-          : null;
-      const weekKey = weekStart ? weekStart.toISOString() : `upcoming-week-${index}`;
-      const weekActivities = Array.isArray(weekGroup?.activities) ? weekGroup.activities : [];
-      let totalTasks = 0;
-      let totalMinutes = 0;
-
-      weekActivities.forEach((activity: any) => {
-        if (!activity) return;
-        totalTasks += getActivityTasks(activity).length;
-        totalMinutes += getActivityEffectiveDurationMinutes(activity);
-      });
-
-      return {
-        weekGroup,
-        weekKey,
-        activityCount: weekActivities.length,
-        totalTasks,
-        totalMinutes,
-      };
-    });
-  }, [upcomingByWeek]);
 
   // P4 FIX: Pull-to-refresh handler with deterministic stop
   const onRefresh = useCallback(async () => {
@@ -1100,134 +1219,158 @@ export default function HomeScreen() {
   const flattenedData = useMemo(() => {
     const data: any[] = [];
 
-    // STEP H: Guard against non-array previousByWeek
-    const safePreviousByWeek = Array.isArray(previousByWeek) ? previousByWeek : [];
-    const safeTodayActivities = Array.isArray(todayActivities) ? todayActivities : [];
+    const safeCurrentWeekSummary = currentWeekSummary?.weekGroup ? currentWeekSummary : null;
     const safeUpcomingWeekSummaries = Array.isArray(upcomingWeekSummaries) ? upcomingWeekSummaries : [];
+    const safePreviousWeekSummaries = Array.isArray(previousWeekSummaries) ? previousWeekSummaries : [];
     const safeVisiblePreviousWeeks = Array.isArray(visiblePreviousWeeks) ? visiblePreviousWeeks : [];
 
-    // Add TIDLIGERE section
-    if (safePreviousByWeek.length > 0) {
-      data.push({ type: 'previousHeader' });
+    const appendWeekAccordionRows = (summary: any, section: string) => {
+      if (!summary?.weekGroup || !summary?.weekKey) return;
 
-      if (isPreviousExpanded) {
-        safeVisiblePreviousWeeks.forEach((weekGroup, weekIndex) => {
-          // STEP H: Guard against null weekGroup
-          if (!weekGroup) return;
+      data.push({
+        type: 'upcomingWeekSummary',
+        weekGroup: summary.weekGroup,
+        section,
+        weekKey: summary.weekKey,
+        activityCount: summary.activityCount,
+        totalTasks: summary.totalTasks,
+        totalMinutes: summary.totalMinutes,
+        key: `summary:${section}:${summary.weekKey}`,
+      });
 
-          data.push({ type: 'weekHeader', weekGroup, section: 'previous' });
+      if (!expandedUpcomingWeeks[summary.weekKey]) return;
 
-          // STEP H: Guard against non-array activities
-          const weekActivities = Array.isArray(weekGroup.activities) ? weekGroup.activities : [];
-          weekActivities.forEach((activity: any) => {
-            // STEP H: Guard against null activity
-            if (!activity) return;
-            data.push({ type: 'activity', activity, section: 'previous' });
-          });
-        });
-
-        if (showPreviousWeeks < safePreviousByWeek.length) {
-          data.push({ type: 'loadMore' });
-        }
-      }
-    }
-
-    // Add I DAG section
-    data.push({ type: 'todayHeader' });
-    if (safeTodayActivities.length === 0) {
-      data.push({ type: 'emptyToday' });
-    } else {
-      safeTodayActivities.forEach((activity) => {
-        // STEP H: Guard against null activity
+      const rawWeekActivities = Array.isArray(summary.weekGroup.activities) ? summary.weekGroup.activities : [];
+      const currentDayKey = format(new Date(), 'yyyy-MM-dd');
+      const weekActivities =
+        section === 'currentWeek' && isCurrentWeekTodayOnly
+          ? rawWeekActivities.filter((activity: any) => {
+              const resolvedDate =
+                activity?.__resolvedDateTime instanceof Date && !isNaN(activity.__resolvedDateTime.getTime())
+                  ? activity.__resolvedDateTime
+                  : null;
+              const dayKey = resolvedDate ? format(resolvedDate, 'yyyy-MM-dd') : null;
+              return dayKey === currentDayKey;
+            })
+          : rawWeekActivities;
+      const dayStatsByKey: Record<
+        string,
+        { activityCount: number; totalTasks: number; totalMinutes: number }
+      > = {};
+      weekActivities.forEach((activity: any) => {
         if (!activity) return;
-        data.push({ type: 'activity', activity, section: 'today' });
+        const resolvedDate =
+          activity.__resolvedDateTime instanceof Date && !isNaN(activity.__resolvedDateTime.getTime())
+            ? activity.__resolvedDateTime
+            : null;
+        const dayKey = resolvedDate ? format(resolvedDate, 'yyyy-MM-dd') : null;
+        if (!dayKey) return;
+        if (!dayStatsByKey[dayKey]) {
+          dayStatsByKey[dayKey] = { activityCount: 0, totalTasks: 0, totalMinutes: 0 };
+        }
+        dayStatsByKey[dayKey].activityCount += 1;
+        dayStatsByKey[dayKey].totalTasks += getActivityTasks(activity).length;
+        dayStatsByKey[dayKey].totalMinutes += getActivityEffectiveDurationMinutes(activity);
+      });
+
+      let previousDayKey: string | null = null;
+      weekActivities.forEach((activity: any) => {
+        if (!activity) return;
+        const resolvedDate =
+          activity.__resolvedDateTime instanceof Date && !isNaN(activity.__resolvedDateTime.getTime())
+            ? activity.__resolvedDateTime
+            : null;
+        const dayKey = resolvedDate ? format(resolvedDate, 'yyyy-MM-dd') : null;
+
+        if (dayKey && dayKey !== previousDayKey) {
+          const dayToggleKey = buildUpcomingDayToggleKey(summary.weekKey, dayKey);
+          const dayStats = dayStatsByKey[dayKey] ?? {
+            activityCount: 0,
+            totalTasks: 0,
+            totalMinutes: 0,
+          };
+          data.push({
+            type: 'upcomingDayDivider',
+            section,
+            weekKey: summary.weekKey,
+            dayKey,
+            dayToggleKey,
+            date: resolvedDate,
+            activityCount: dayStats.activityCount,
+            totalTasks: dayStats.totalTasks,
+            totalMinutes: dayStats.totalMinutes,
+            key: `divider:${section}:${summary.weekKey}:${dayKey}`,
+          });
+          previousDayKey = dayKey;
+        }
+
+        if (dayKey) {
+          const dayToggleKey = buildUpcomingDayToggleKey(summary.weekKey, dayKey);
+          if (!expandedUpcomingDays[dayToggleKey]) {
+            return;
+          }
+        }
+
+        const rawId = activity?.id ?? activity?.activity_id ?? activity?.activityId;
+        const normalizedId = rawId !== null && rawId !== undefined ? String(rawId).trim() : '';
+        const fallbackDateKey =
+          activity?.__resolvedDateTime instanceof Date && !isNaN(activity.__resolvedDateTime.getTime())
+            ? activity.__resolvedDateTime.toISOString()
+            : '';
+        const fallbackTitleKey = typeof activity?.title === 'string' ? activity.title.trim() : '';
+        const activityKey = normalizedId
+          ? `activity:${normalizedId}`
+          : `fallback:activity:${section}:${fallbackDateKey}:${fallbackTitleKey}`;
+
+        data.push({
+          type: 'activity',
+          activity,
+          section,
+          key: activityKey,
+        });
+      });
+    };
+
+    // Add previously loaded weeks
+    if (safePreviousWeekSummaries.length > 0) {
+      if (isPreviousWeeksVisible) {
+        safeVisiblePreviousWeeks.forEach((summary) => {
+          appendWeekAccordionRows(summary, 'previous');
+        });
+      }
+      data.push({
+        type: 'loadMore',
+        key: 'loadMore:previous',
+        previousVisible: isPreviousWeeksVisible,
+        canLoadMore: showPreviousWeeks < safePreviousWeekSummaries.length,
       });
     }
 
-    // Add KOMMENDE section
+    // Add DENNE UGE card
+    if (safeCurrentWeekSummary) {
+      appendWeekAccordionRows(safeCurrentWeekSummary, 'currentWeek');
+    }
+
+    // Add KOMMENDE cards
     if (safeUpcomingWeekSummaries.length > 0) {
-      data.push({ type: 'upcomingHeader' });
       safeUpcomingWeekSummaries.forEach((summary) => {
-        if (!summary?.weekGroup) return;
-        data.push({
-          type: 'upcomingWeekSummary',
-          weekGroup: summary.weekGroup,
-          section: 'upcoming',
-          weekKey: summary.weekKey,
-          activityCount: summary.activityCount,
-          totalTasks: summary.totalTasks,
-          totalMinutes: summary.totalMinutes,
-        });
-
-        if (!expandedUpcomingWeeks[summary.weekKey]) return;
-
-        const weekActivities = Array.isArray(summary.weekGroup.activities) ? summary.weekGroup.activities : [];
-        const dayStatsByKey: Record<
-          string,
-          { activityCount: number; totalTasks: number; totalMinutes: number }
-        > = {};
-        weekActivities.forEach((activity: any) => {
-          if (!activity) return;
-          const resolvedDate =
-            activity.__resolvedDateTime instanceof Date && !isNaN(activity.__resolvedDateTime.getTime())
-              ? activity.__resolvedDateTime
-              : null;
-          const dayKey = resolvedDate ? format(resolvedDate, 'yyyy-MM-dd') : null;
-          if (!dayKey) return;
-          if (!dayStatsByKey[dayKey]) {
-            dayStatsByKey[dayKey] = { activityCount: 0, totalTasks: 0, totalMinutes: 0 };
-          }
-          dayStatsByKey[dayKey].activityCount += 1;
-          dayStatsByKey[dayKey].totalTasks += getActivityTasks(activity).length;
-          dayStatsByKey[dayKey].totalMinutes += getActivityEffectiveDurationMinutes(activity);
-        });
-
-        let previousDayKey: string | null = null;
-        weekActivities.forEach((activity: any) => {
-          // STEP H: Guard against null activity
-          if (!activity) return;
-          const resolvedDate =
-            activity.__resolvedDateTime instanceof Date && !isNaN(activity.__resolvedDateTime.getTime())
-              ? activity.__resolvedDateTime
-              : null;
-          const dayKey = resolvedDate ? format(resolvedDate, 'yyyy-MM-dd') : null;
-
-          if (dayKey && dayKey !== previousDayKey) {
-            const dayToggleKey = buildUpcomingDayToggleKey(summary.weekKey, dayKey);
-            const dayStats = dayStatsByKey[dayKey] ?? {
-              activityCount: 0,
-              totalTasks: 0,
-              totalMinutes: 0,
-            };
-            data.push({
-              type: 'upcomingDayDivider',
-              section: 'upcoming',
-              weekKey: summary.weekKey,
-              dayKey,
-              dayToggleKey,
-              date: resolvedDate,
-              activityCount: dayStats.activityCount,
-              totalTasks: dayStats.totalTasks,
-              totalMinutes: dayStats.totalMinutes,
-              key: `divider:upcoming:${summary.weekKey}:${dayKey}`,
-            });
-            previousDayKey = dayKey;
-          }
-
-          if (dayKey) {
-            const dayToggleKey = buildUpcomingDayToggleKey(summary.weekKey, dayKey);
-            if (!expandedUpcomingDays[dayToggleKey]) {
-              return;
-            }
-          }
-
-          data.push({ type: 'activity', activity, section: 'upcoming' });
-        });
+        appendWeekAccordionRows(summary, 'upcoming');
       });
     }
 
     return data;
-  }, [previousByWeek, isPreviousExpanded, visiblePreviousWeeks, showPreviousWeeks, todayActivities, upcomingWeekSummaries, buildUpcomingDayToggleKey, expandedUpcomingDays, expandedUpcomingWeeks]);
+  }, [
+    currentWeekSummary,
+    isCurrentWeekTodayOnly,
+    isPreviousWeeksVisible,
+    previousWeekSummaries,
+    visiblePreviousWeeks,
+    showPreviousWeeks,
+    upcomingWeekSummaries,
+    buildUpcomingDayToggleKey,
+    expandedUpcomingDays,
+    expandedUpcomingWeeks,
+  ]);
 
   const handleOpenPerformance = useCallback(() => {
     if (!router) {
@@ -1250,52 +1393,24 @@ export default function HomeScreen() {
     if (!item || !item.type) return null;
 
     switch (item.type) {
-      case 'previousHeader':
-        return (
-          <View style={styles.section}>
-            <Pressable onPress={togglePreviousExpanded}>
-              <View style={styles.sectionTitleContainer}>
-                <View style={styles.greenMarker} />
-                <Text style={[styles.sectionTitle, { color: isDark ? '#e3e3e3' : colors.text }]}>TIDLIGERE</Text>
-                <IconSymbol
-                  ios_icon_name={isPreviousExpanded ? "chevron.up" : "chevron.down"}
-                  android_material_icon_name={isPreviousExpanded ? "keyboard-arrow-up" : "keyboard-arrow-down"}
-                  size={18}
-                  color={isDark ? '#e3e3e3' : colors.text}
-                  style={styles.chevronIcon}
-                />
-              </View>
-            </Pressable>
-          </View>
-        );
-
-      case 'todayHeader':
-        return (
-          <View style={styles.section}>
-            <View style={styles.sectionTitleContainer}>
-              <View style={styles.greenMarker} />
-              <Text style={[styles.sectionTitle, { color: isDark ? '#e3e3e3' : colors.text }]}>I DAG</Text>
-            </View>
-          </View>
-        );
-
-      case 'upcomingHeader':
-        return (
-          <View style={styles.section}>
-            <View style={styles.sectionTitleContainer}>
-              <View style={styles.greenMarker} />
-              <Text style={[styles.sectionTitle, { color: isDark ? '#e3e3e3' : colors.text }]}>KOMMENDE</Text>
-            </View>
-          </View>
-        );
-
       case 'upcomingWeekSummary':
         if (!item.weekGroup || !item.weekGroup.weekStart || !item.weekKey) return null;
 
+        const summaryEyebrowText =
+          item.section === 'previous'
+            ? 'TIDLIGERE UGE'
+            : item.section === 'currentWeek'
+              ? 'DENNE UGE'
+              : 'KOMMENDE UGE';
+        const summaryTimeLabelPrefix = item.section === 'previous' ? 'Planlagt' : 'Planlagt';
+
         return (
-          <View style={styles.upcomingSummaryWrapper}>
+          <View
+            style={styles.upcomingSummaryWrapper}
+            testID={`home.weekSummary.${item.section ?? 'unknown'}`}
+          >
             <Pressable
-              onPress={() => toggleUpcomingWeekExpanded(item.weekKey)}
+              onPress={() => toggleUpcomingWeekExpanded(item.weekKey, item.section)}
               style={({ pressed }) => [styles.upcomingSummaryPressable, pressed && styles.upcomingSummaryCardPressed]}
             >
               <View style={styles.upcomingSummaryShadow}>
@@ -1323,7 +1438,7 @@ export default function HomeScreen() {
                   <View style={styles.upcomingSummaryHeader}>
                     <View>
                       <Text style={[styles.upcomingSummaryEyebrow, { color: isDark ? '#BFDCCB' : '#3B6A4D' }]}>
-                        KOMMENDE UGE
+                        {summaryEyebrowText}
                       </Text>
                       <Text style={[styles.upcomingSummaryTitle, { color: isDark ? '#E6F5EC' : '#1D3A2A' }]}>
                         Uge {getWeek(item.weekGroup.weekStart, { weekStartsOn: 1, locale: da })}
@@ -1422,20 +1537,50 @@ export default function HomeScreen() {
                         ellipsizeMode="tail"
                         style={[styles.upcomingSummaryChipText, { color: isDark ? '#D8EFE1' : '#1D3A2A' }]}
                       >
-                        Planlagt: {formatHoursDa(item.totalMinutes)}
+                        {summaryTimeLabelPrefix}: {formatHoursDa(item.totalMinutes)}
                       </Text>
                     </View>
                   </View>
                 </LinearGradient>
               </View>
             </Pressable>
+            {item.section === 'currentWeek' && (
+              <Pressable
+                style={[
+                  styles.currentWeekModeToggle,
+                  {
+                    backgroundColor: isDark ? 'rgba(22, 33, 41, 0.9)' : 'rgba(255, 255, 255, 0.94)',
+                    borderColor: isDark ? 'rgba(191, 220, 203, 0.25)' : 'rgba(44, 90, 64, 0.2)',
+                  },
+                ]}
+                onPress={toggleCurrentWeekViewMode}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: isCurrentWeekTodayOnly }}
+                accessibilityLabel={isCurrentWeekTodayOnly ? 'Vis kun i dag' : 'Vis hele ugen'}
+                testID="home.currentWeek.modeToggle"
+              >
+                <IconSymbol
+                  ios_icon_name={isCurrentWeekTodayOnly ? 'sun.max' : 'calendar'}
+                  android_material_icon_name={isCurrentWeekTodayOnly ? 'wb_sunny' : 'date_range'}
+                  size={13}
+                  color={isDark ? '#D8EFE1' : '#1D3A2A'}
+                />
+                <Text style={[styles.currentWeekModeToggleText, { color: isDark ? '#D8EFE1' : '#1D3A2A' }]}>
+                  {isCurrentWeekTodayOnly ? 'I dag' : 'Uge'}
+                </Text>
+              </Pressable>
+            )}
           </View>
         );
 
       case 'upcomingDayDivider': {
         const date = item.date instanceof Date && !isNaN(item.date.getTime()) ? item.date : null;
         if (!date) return null;
-        const label = getUpcomingDayLabel(date);
+        const isCurrentWeekSection = item.section === 'currentWeek';
+        const todayDayKey = format(new Date(), 'yyyy-MM-dd');
+        const isCurrentWeekTodayLabel =
+          isCurrentWeekSection && String(item.dayKey) === todayDayKey;
+        const label = isCurrentWeekTodayLabel ? 'I dag' : getUpcomingDayLabel(date);
         if (!label) return null;
         const dayToggleKey =
           typeof item.dayToggleKey === 'string' && item.dayToggleKey.length > 0
@@ -1466,11 +1611,20 @@ export default function HomeScreen() {
                 <Pressable
                   style={styles.upcomingDayDividerPressable}
                   onPress={() => {
+                    if (isCurrentWeekSection && isCurrentWeekTodayOnly) return;
                     if (!item.weekKey || !item.dayKey) return;
                     toggleUpcomingDayExpanded(String(item.weekKey), String(item.dayKey));
                   }}
                 >
-                  <Text style={[styles.upcomingDayDividerText, { color: isDark ? '#B5D8C2' : '#2C5A40' }]}>{label}</Text>
+                  <Text
+                    style={[
+                      styles.upcomingDayDividerText,
+                      { color: isDark ? '#B5D8C2' : '#2C5A40' },
+                      isCurrentWeekTodayLabel && styles.todayDayDividerText,
+                    ]}
+                  >
+                    {label}
+                  </Text>
                   <View style={styles.upcomingDayHeaderRight}>
                     <View style={styles.upcomingDayBadgesRow}>
                       <View
@@ -1524,12 +1678,14 @@ export default function HomeScreen() {
                         </Text>
                       </View>
                     </View>
-                    <IconSymbol
-                      ios_icon_name={isExpanded ? 'chevron.down' : 'chevron.right'}
-                      android_material_icon_name={isExpanded ? 'keyboard-arrow-down' : 'keyboard-arrow-right'}
-                      size={16}
-                      color={isDark ? '#B5D8C2' : '#2C5A40'}
-                    />
+                    {(!isCurrentWeekSection || !isCurrentWeekTodayOnly) && (
+                      <IconSymbol
+                        ios_icon_name={isExpanded ? 'chevron.down' : 'chevron.right'}
+                        android_material_icon_name={isExpanded ? 'keyboard-arrow-down' : 'keyboard-arrow-right'}
+                        size={16}
+                        color={isDark ? '#B5D8C2' : '#2C5A40'}
+                      />
+                    )}
                   </View>
                 </Pressable>
               </LinearGradient>
@@ -1663,22 +1819,55 @@ export default function HomeScreen() {
         );
 
       case 'loadMore':
+        const isPreviousVisible = item.previousVisible === true;
+        const canLoadMore = item.canLoadMore === true;
         return (
           <View style={styles.loadMoreContainer}>
-            <Pressable
-              style={[
-                styles.loadMoreButton,
-                {
-                  backgroundColor: isDark ? '#2a2a2a' : colors.card,
-                  borderColor: isDark ? '#444' : colors.highlight,
-                },
-              ]}
-              onPress={handleLoadMorePrevious}
-            >
-              <Text style={[styles.loadMoreButtonText, { color: isDark ? '#e3e3e3' : colors.text }]}>
-                {showPreviousWeeks === 0 ? 'Hent tidligere uger' : 'Hent en uge mere'}
-              </Text>
-            </Pressable>
+            <View style={styles.loadMoreButtonRow}>
+              {isPreviousVisible && canLoadMore && (
+                <Pressable
+                  style={[
+                    styles.loadMoreButton,
+                    styles.loadMoreButtonSecondary,
+                    {
+                      backgroundColor: isDark ? '#2a2a2a' : colors.card,
+                      borderColor: isDark ? '#444' : colors.highlight,
+                    },
+                  ]}
+                  onPress={handleLoadMorePrevious}
+                  accessibilityRole="button"
+                  accessibilityLabel="Hent en tidligere uge mere"
+                  testID="home.previousWeeks.loadOne"
+                >
+                  <Text style={[styles.loadMoreButtonText, styles.loadMoreSecondaryText, { color: isDark ? '#e3e3e3' : colors.text }]}>
+                    +1
+                  </Text>
+                  <IconSymbol
+                    ios_icon_name="arrow.up"
+                    android_material_icon_name="north"
+                    size={12}
+                    color={isDark ? '#e3e3e3' : colors.text}
+                  />
+                </Pressable>
+              )}
+              <Pressable
+                style={[
+                  styles.loadMoreButton,
+                  {
+                    backgroundColor: isDark ? '#2a2a2a' : colors.card,
+                    borderColor: isDark ? '#444' : colors.highlight,
+                  },
+                ]}
+                onPress={togglePreviousWeeksVisibility}
+                accessibilityRole="button"
+                accessibilityLabel={isPreviousVisible ? 'Skjul tidligere uger' : 'Vis tidligere uger'}
+                testID="home.previousWeeks.toggle"
+              >
+                <Text style={[styles.loadMoreButtonText, { color: isDark ? '#e3e3e3' : colors.text }]}>
+                  {isPreviousVisible ? 'Skjul tidligere uger' : 'Vis tidligere uger'}
+                </Text>
+              </Pressable>
+            </View>
           </View>
         );
 
@@ -1687,19 +1876,19 @@ export default function HomeScreen() {
     }
   }, [
     isDark,
-    isPreviousExpanded,
-    togglePreviousExpanded,
     toggleUpcomingWeekExpanded,
+    toggleCurrentWeekViewMode,
     toggleUpcomingDayExpanded,
     buildUpcomingDayToggleKey,
     expandedUpcomingDays,
     expandedUpcomingWeeks,
+    isCurrentWeekTodayOnly,
     isAdminMode,
     currentTrainerId,
     adminMode,
     router,
     handleLoadMorePrevious,
-    showPreviousWeeks,
+    togglePreviousWeeksVisibility,
     feedbackCompletionByActivityId,
     feedbackCompletionByActivityTaskId,
     feedbackDoneByActivityId,
@@ -1722,7 +1911,7 @@ export default function HomeScreen() {
       return `week-${item.section}-${weekKey}`;
     }
     if (item.type === 'upcomingWeekSummary') {
-      return `upcoming-summary-${item.weekKey ?? index}`;
+      return `summary-${item.section ?? 'unknown'}-${item.weekKey ?? index}`;
     }
     return `${item.type}-${index}`;
   }, []);
@@ -2160,19 +2349,35 @@ const styles = StyleSheet.create({
   },
   loadMoreContainer: {
     paddingHorizontal: 16,
-    marginTop: 12,
+    marginBottom: 8,
+    alignItems: 'flex-end',
+  },
+  loadMoreButtonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 8,
   },
   loadMoreButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
     borderWidth: 1,
     alignItems: 'center',
+    flexDirection: 'row',
+    columnGap: 6,
+  },
+  loadMoreButtonSecondary: {
+    minWidth: 58,
+    justifyContent: 'center',
   },
   loadMoreButtonText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '700',
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
+  },
+  loadMoreSecondaryText: {
+    fontSize: 11,
+    letterSpacing: 0.1,
   },
   emptyContainer: {
     paddingHorizontal: 16,
@@ -2261,9 +2466,30 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     flexShrink: 1,
   },
+  todayDayDividerText: {
+    textTransform: 'none',
+  },
   upcomingSummaryWrapper: {
     paddingHorizontal: 16,
     marginBottom: 12,
+  },
+  currentWeekModeToggle: {
+    position: 'absolute',
+    right: 32,
+    bottom: 16,
+    minHeight: 28,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 6,
+  },
+  currentWeekModeToggleText: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
   upcomingSummaryPressable: {
     borderRadius: 24,
