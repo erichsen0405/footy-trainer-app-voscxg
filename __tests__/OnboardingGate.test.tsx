@@ -3,6 +3,7 @@ import { Text } from 'react-native';
 import { act, render, screen } from '@testing-library/react-native';
 import { OnboardingGate } from '@/components/OnboardingGate';
 import { TimeoutError } from '@/utils/withTimeout';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const mockReplace = jest.fn();
 const mockPathname = jest.fn(() => '/(tabs)');
@@ -24,6 +25,12 @@ const mockUpsert = jest.fn();
 const mockFrom = jest.fn();
 let consoleWarnSpy: jest.SpyInstance;
 let authStateHandler: ((event: string, session: { user: any } | null) => void) | null = null;
+
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  getItem: jest.fn(),
+  setItem: jest.fn(),
+  removeItem: jest.fn(),
+}));
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ replace: mockReplace }),
@@ -80,9 +87,15 @@ describe('OnboardingGate startup hydration', () => {
     mockSelect.mockReset();
     mockUpsert.mockReset();
     mockFrom.mockReset();
+    (AsyncStorage.getItem as jest.Mock).mockReset();
+    (AsyncStorage.setItem as jest.Mock).mockReset();
+    (AsyncStorage.removeItem as jest.Mock).mockReset();
 
     mockPathname.mockReturnValue('/(tabs)');
     mockGetSession.mockResolvedValue({ data: { session: null } });
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
+    (AsyncStorage.setItem as jest.Mock).mockResolvedValue(null);
+    (AsyncStorage.removeItem as jest.Mock).mockResolvedValue(null);
     mockRefreshSubscription.mockResolvedValue(null);
     mockCreateSubscription.mockResolvedValue({ success: true });
     mockRefreshSubscriptionStatus.mockResolvedValue(null);
@@ -132,6 +145,33 @@ describe('OnboardingGate startup hydration', () => {
     expect(screen.queryByText('Kunne ikke klargøre konto. Prøv igen.')).toBeNull();
     expect(screen.queryByTestId('onboarding.error.retryButton')).toBeNull();
     expect(screen.queryByText('Klargører konto')).toBeNull();
+  });
+
+  it('uses cached approved access when startup session lookup times out', async () => {
+    mockGetSession.mockImplementation(() => new Promise(() => {}));
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+      JSON.stringify({
+        userId: 'cached-user-1',
+        role: 'player',
+        hasApprovedAccess: true,
+        updatedAt: '2026-03-01T00:00:00.000Z',
+      })
+    );
+
+    render(
+      <OnboardingGate>
+        <Text>App indhold</Text>
+      </OnboardingGate>
+    );
+
+    await act(async () => {
+      jest.advanceTimersByTime(12000);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('App indhold')).toBeTruthy();
+    expect(screen.queryByText('Kunne ikke klargøre konto. Prøv igen.')).toBeNull();
+    expect(AsyncStorage.getItem).toHaveBeenCalled();
   });
 
   it('does not overwrite newer hydrated state when bootstrap times out later', async () => {

@@ -102,6 +102,12 @@ describe('Tasks template editor without subtasks', () => {
     });
   });
 
+  it('shows empty state when there are 0 task templates', () => {
+    const { getByText } = render(<TasksScreen />);
+
+    expect(getByText('Ingen aktive opgaveskabeloner')).toBeTruthy();
+  });
+
   it('hides subtask UI and saves template without subtasks payload', async () => {
     const { getByTestId, queryByText, queryByTestId } = render(<TasksScreen />);
 
@@ -122,4 +128,3 @@ describe('Tasks template editor without subtasks', () => {
     expect(createArg.subtasks).toBeUndefined();
   });
 });
-
