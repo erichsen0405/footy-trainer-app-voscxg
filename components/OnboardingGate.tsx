@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors } from '@/styles/commonStyles';
 import { supabase } from '@/integrations/supabase/client';
 import AppleSubscriptionManager from '@/components/AppleSubscriptionManager';
@@ -33,6 +34,15 @@ interface OnboardingGateProps {
   children: React.ReactNode;
   renderInlinePaywall?: boolean;
 }
+
+const ONBOARDING_ACCESS_CACHE_KEY = 'onboarding_gate_last_known_access_v1';
+
+type CachedOnboardingAccess = {
+  userId: string | null;
+  role: Role | null;
+  hasApprovedAccess: boolean;
+  updatedAt: string;
+};
 
 const FullScreenLoader = ({ message }: { message: string }) => (
   <View style={styles.loaderContainer}>
@@ -66,6 +76,7 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
   const lastNavRef = useRef<number>(0);
   const lastGateUserIdRef = useRef<string | null>(null);
   const lastNonPaywallPathRef = useRef<string | null>(null);
+  const backgroundRecoveryInFlightRef = useRef(false);
   const isMountedRef = useRef(true);
   const hydrationRunRef = useRef(0);
 
@@ -116,6 +127,60 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
   }, [resolving]);
   const subscriptionStatusRef = useRef(subscriptionStatus);
   const refreshCalledRef = useRef(false);
+
+  const loadCachedAccess = useCallback(async (): Promise<CachedOnboardingAccess | null> => {
+    try {
+      const raw = await AsyncStorage.getItem(ONBOARDING_ACCESS_CACHE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as Partial<CachedOnboardingAccess>;
+      return {
+        userId: typeof parsed.userId === 'string' ? parsed.userId : null,
+        role: parsed.role === 'admin' || parsed.role === 'trainer' || parsed.role === 'player' ? parsed.role : null,
+        hasApprovedAccess: parsed.hasApprovedAccess === true,
+        updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : new Date(0).toISOString(),
+      };
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const persistCachedAccess = useCallback(async (payload: CachedOnboardingAccess | null) => {
+    try {
+      if (!payload) {
+        await AsyncStorage.removeItem(ONBOARDING_ACCESS_CACHE_KEY);
+        return;
+      }
+      await AsyncStorage.setItem(ONBOARDING_ACCESS_CACHE_KEY, JSON.stringify(payload));
+    } catch {
+      // Non-blocking cache persistence
+    }
+  }, []);
+
+  const applyCachedApprovedAccess = useCallback(
+    async (user: any | null, runId: number, setStateIfCurrent?: (next: React.SetStateAction<GateState>) => void) => {
+      const cached = await loadCachedAccess();
+      if (!cached?.hasApprovedAccess) return false;
+      if (user?.id && cached.userId && cached.userId !== user.id) return false;
+
+      const nextUser = user ?? (cached.userId ? { id: cached.userId } : null);
+      const apply = setStateIfCurrent ?? ((next: React.SetStateAction<GateState>) => {
+        if (!isMountedRef.current || hydrationRunRef.current !== runId) return;
+        setState(next);
+      });
+
+      apply(prev => ({
+        ...prev,
+        hydrating: false,
+        user: nextUser,
+        role: cached.role ?? prev.role,
+        needsSubscription: false,
+        initError: null,
+      }));
+      return true;
+    },
+    [loadCachedAccess]
+  );
+
   const ensureSubscriptionStatus = useCallback(async () => {
     if (subscriptionStatusRef.current || refreshCalledRef.current) {
       return subscriptionStatusRef.current;
@@ -185,6 +250,7 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
       setStateIfCurrent(prev => ({ ...prev, hydrating: true, user, initError: null }));
 
       if (!user) {
+        await persistCachedAccess(null);
         setStateIfCurrent({
           hydrating: false,
           user: null,
@@ -237,9 +303,17 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
           needsSubscription: gateState.shouldShowChooseSubscription,
           initError: null,
         });
+        await persistCachedAccess({
+          userId: user.id ?? null,
+          role: derivedRole ?? roleFromDb,
+          hasApprovedAccess: !gateState.shouldShowChooseSubscription,
+          updatedAt: new Date().toISOString(),
+        });
       } catch (error) {
         if (error instanceof TimeoutError) {
           refreshCalledRef.current = false;
+          const usedCache = await applyCachedApprovedAccess(user, runId, setStateIfCurrent);
+          if (usedCache) return;
           setStateIfCurrent(prev => ({
             ...prev,
             hydrating: false,
@@ -262,11 +336,32 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
     [
       STARTUP_ERROR_MESSAGE,
       STARTUP_TIMEOUT_MS,
+      applyCachedApprovedAccess,
       deriveRoleFromSubscription,
       ensureSubscriptionStatus,
       entitlementSnapshot,
+      persistCachedAccess,
       upsertRole,
     ]
+  );
+
+  const recoverSessionInBackground = useCallback(
+    async (source: 'startup' | 'retry') => {
+      if (backgroundRecoveryInFlightRef.current) return;
+      backgroundRecoveryInFlightRef.current = true;
+
+      const recoveryRunId = hydrationRunRef.current;
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (!isMountedRef.current || hydrationRunRef.current !== recoveryRunId) return;
+        await refreshRoleAndSubscription(data.session?.user ?? null);
+      } catch (error) {
+        console.warn(`[OnboardingGate] Background ${source} recovery failed`, error);
+      } finally {
+        backgroundRecoveryInFlightRef.current = false;
+      }
+    },
+    [refreshRoleAndSubscription]
   );
 
   useEffect(() => {
@@ -284,12 +379,18 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
           await refreshRoleAndSubscription(data.session?.user ?? null);
         }
       } catch (error) {
-        console.warn('[OnboardingGate] Startup bootstrap failed', error);
         if (!active || !isMountedRef.current || hydrationRunRef.current !== bootstrapRunId) return;
         if (error instanceof TimeoutError) {
+          const usedCache = await applyCachedApprovedAccess(null, bootstrapRunId);
+          if (usedCache) {
+            void recoverSessionInBackground('startup');
+            return;
+          }
           setState(prev => ({ ...prev, hydrating: false, initError: null, needsSubscription: false }));
+          void recoverSessionInBackground('startup');
           return;
         }
+        console.warn('[OnboardingGate] Startup bootstrap failed', error);
         setState(prev => ({
           ...prev,
           hydrating: false,
@@ -310,7 +411,7 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
       active = false;
       listener.subscription.unsubscribe();
     };
-  }, [refreshRoleAndSubscription]);
+  }, [applyCachedApprovedAccess, recoverSessionInBackground, refreshRoleAndSubscription]);
 
   const handleRetryStartup = useCallback(async () => {
     if (!isMountedRef.current) return;
@@ -326,12 +427,18 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
       if (!isMountedRef.current || hydrationRunRef.current !== retryRunId) return;
       await refreshRoleAndSubscription(data.session?.user ?? null);
     } catch (error) {
-      console.warn('[OnboardingGate] Startup retry failed', error);
       if (!isMountedRef.current || hydrationRunRef.current !== retryRunId) return;
       if (error instanceof TimeoutError) {
+        const usedCache = await applyCachedApprovedAccess(state.user ?? null, retryRunId);
+        if (usedCache) {
+          void recoverSessionInBackground('retry');
+          return;
+        }
         setState(prev => ({ ...prev, hydrating: false, initError: null, needsSubscription: false }));
+        void recoverSessionInBackground('retry');
         return;
       }
+      console.warn('[OnboardingGate] Startup retry failed', error);
       setState(prev => ({
         ...prev,
         hydrating: false,
@@ -339,7 +446,7 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
         initError: STARTUP_ERROR_MESSAGE,
       }));
     }
-  }, [STARTUP_ERROR_MESSAGE, STARTUP_TIMEOUT_MS, refreshRoleAndSubscription]);
+  }, [STARTUP_ERROR_MESSAGE, STARTUP_TIMEOUT_MS, applyCachedApprovedAccess, recoverSessionInBackground, refreshRoleAndSubscription, state.user]);
 
   const handleCreateSubscription = useCallback(async (planId: string) => {
     if (!state.user) return;
