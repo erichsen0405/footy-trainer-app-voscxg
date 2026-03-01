@@ -143,6 +143,20 @@ describe('notification deeplink mapping', () => {
     });
   });
 
+  it('maps overdue reminder payload to home with overdue filter', () => {
+    const route = buildNotificationRouteFromData({
+      target: 'tasks_overdue_overview',
+      url: '/(tabs)/(home)?taskFilter=overdue',
+    });
+
+    expect(route).toEqual({
+      pathname: '/(tabs)/(home)',
+      params: {
+        taskFilter: 'overdue',
+      },
+    });
+  });
+
   it('returns null when activity context is missing for task navigation', () => {
     expect(
       buildNotificationRouteFromData({

@@ -1,7 +1,7 @@
 import type * as Notifications from 'expo-notifications';
 
 export type NotificationRoute = {
-  pathname: '/activity-details' | '/(tabs)/profile';
+  pathname: '/activity-details' | '/(tabs)/profile' | '/(tabs)/(home)';
   params: Record<string, string>;
 };
 
@@ -143,6 +143,9 @@ export function buildNotificationRouteFromData(rawData: Record<string, unknown>)
   const sources = collectDataSources(rawData);
   const target = getFirstString(sources, ['target'])?.toLowerCase() ?? '';
   const requestId = getFirstString(sources, ['requestId', 'request_id']);
+  const queryParams = parseQueryFromUrl(
+    getFirstString(sources, ['url', 'deepLink', 'deep_link', 'link']),
+  );
 
   if (target === 'profile_trainer_requests') {
     const params: Record<string, string> = { openTrainerRequests: '1' };
@@ -156,9 +159,14 @@ export function buildNotificationRouteFromData(rawData: Record<string, unknown>)
     return { pathname: '/(tabs)/profile', params };
   }
 
-  const queryParams = parseQueryFromUrl(
-    getFirstString(sources, ['url', 'deepLink', 'deep_link', 'link']),
-  );
+  const taskFilter = getFirstString([queryParams], ['taskFilter', 'task_filter', 'filter']);
+  if (target === 'tasks_overdue_overview' || taskFilter === 'overdue') {
+    return {
+      pathname: '/(tabs)/(home)',
+      params: { taskFilter: 'overdue' },
+    };
+  }
+
   const activityId = normalizeActivityId(sources, queryParams);
   if (!activityId) return null;
 
