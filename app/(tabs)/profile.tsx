@@ -15,6 +15,7 @@ import {
   ScrollView,
   Switch,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -37,6 +38,17 @@ import { useAppleIAP, PRODUCT_IDS } from '@/contexts/AppleIAPContext';
 import { getSubscriptionGateState } from '@/utils/subscriptionGate';
 import { checkNotificationPermissions, openNotificationSettings, requestNotificationPermissions } from '@/utils/notificationService';
 import { syncPushTokenForCurrentUser } from '@/utils/pushTokenService';
+import { DropdownSelect } from '@/components/ui/DropdownSelect';
+import {
+  DEFAULT_OVERDUE_REMINDER_SETTINGS,
+  buildHalfHourTimeOptions,
+  cancelOverdueReminderNotifications,
+  formatTimeFromMinutes,
+  loadOverdueReminderSettings,
+  persistOverdueReminderSettings,
+  rescheduleOverdueReminderNotifications,
+  type OverdueReminderSettings,
+} from '@/utils/overdueReminderScheduler';
 
 // Conditionally import GlassView only on native platforms
 let GlassView: any = View;
@@ -96,6 +108,16 @@ const ACCOUNT_DELETION_REVIEW_PATH = 'Profil -> Indstillinger -> Konto -> Slet k
 const PROFILE_EDIT_COLLAPSE_MESSAGE = 'Tryk på Annuller eller Gem, før du kan lukke sektionen.';
 
 const authRedirectUrl = 'footballcoach://auth/callback';
+const OVERDUE_TIME_OPTIONS = buildHalfHourTimeOptions();
+const OVERDUE_INTERVAL_OPTIONS = Array.from({ length: 24 }, (_, index) => {
+  const hour = index + 1;
+  return {
+    label: `${hour}t`,
+    value: hour * 60,
+  };
+});
+const OVERDUE_INTERVAL_HOURS = Array.from({ length: 24 }, (_, index) => index + 1);
+const OVERDUE_INTERVAL_WHEEL_ITEM_HEIGHT = 44;
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
@@ -224,6 +246,24 @@ const styles = StyleSheet.create({
   settingsRowContent: { flex: 1 },
   settingsRowTitle: { fontSize: 16, fontWeight: '700' },
   settingsRowSubtitle: { fontSize: 13, lineHeight: 18 },
+  overdueSettingsSection: { marginTop: 8, gap: 10 },
+  deniedBanner: { borderRadius: 12, padding: 12, gap: 8 },
+  deniedBannerTitle: { fontSize: 14, fontWeight: '700' },
+  deniedBannerText: { fontSize: 13, lineHeight: 18 },
+  deniedBannerButton: { alignSelf: 'flex-start', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
+  deniedBannerButtonText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+  pickerButton: { borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' },
+  pickerButtonText: { fontSize: 15, fontWeight: '600' },
+  iosPickerContainer: { borderRadius: 12, marginBottom: 12, overflow: 'hidden', alignItems: 'center' },
+  iosPicker: { height: 200, width: 320, alignSelf: 'center' },
+  intervalWheelContainer: { borderRadius: 12, overflow: 'hidden' },
+  intervalWheel: { height: OVERDUE_INTERVAL_WHEEL_ITEM_HEIGHT * 5 },
+  intervalWheelContent: { paddingVertical: OVERDUE_INTERVAL_WHEEL_ITEM_HEIGHT * 2 },
+  intervalWheelItem: { height: OVERDUE_INTERVAL_WHEEL_ITEM_HEIGHT, alignItems: 'center', justifyContent: 'center' },
+  intervalWheelItemText: { fontSize: 24, lineHeight: 28, fontWeight: '400', letterSpacing: -0.2 },
+  intervalWheelItemTextSelected: { fontWeight: '400' },
+  doneButton: { borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
+  doneButtonText: { color: '#fff', fontWeight: '700' },
   addPlayerButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -407,6 +447,7 @@ export default function ProfileScreen() {
   const routeAuthMode = extractFirstParamValue(params.authMode);
   const routeOpenTrainerRequests = extractFirstParamValue(params.openTrainerRequests);
   const routeOpenTeamPlayers = extractFirstParamValue(params.openTeamPlayers);
+  const { refreshAll, activities } = useFootball();
   const [manualUpgradeTarget, setManualUpgradeTarget] = useState<UpgradeTarget | null>(null);
   const hasAutoOpenedUpgradeTargetRef = useRef<UpgradeTarget | null>(null);
 
@@ -418,6 +459,15 @@ export default function ProfileScreen() {
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(false);
   const [notificationsUpdating, setNotificationsUpdating] = useState(false);
+  const [overdueReminderSettings, setOverdueReminderSettings] = useState<OverdueReminderSettings>(
+    DEFAULT_OVERDUE_REMINDER_SETTINGS
+  );
+  const [showOverdueStartTimePicker, setShowOverdueStartTimePicker] = useState(false);
+  const [showOverdueIntervalPicker, setShowOverdueIntervalPicker] = useState(false);
+  const overdueIntervalListRef = useRef<ScrollView | null>(null);
+  const overdueScheduledIdsRef = useRef<string[]>(DEFAULT_OVERDUE_REMINDER_SETTINGS.scheduledNotificationIds);
+  const [overdueSettingsLoaded, setOverdueSettingsLoaded] = useState(false);
+  const [overduePermissionDenied, setOverduePermissionDenied] = useState(false);
   const [showCreatePlayerModal, setShowCreatePlayerModal] = useState(false);
   const [playersRefreshTrigger, setPlayersRefreshTrigger] = useState(0);
   const [isAcceptingTrainerRequest, setIsAcceptingTrainerRequest] = useState(false);
@@ -503,6 +553,109 @@ export default function ProfileScreen() {
     refreshNotificationPermission();
   }, [user, focusNonce, refreshNotificationPermission]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSettings = async () => {
+      const persisted = await loadOverdueReminderSettings();
+      if (cancelled) return;
+      overdueScheduledIdsRef.current = persisted.scheduledNotificationIds;
+      setOverdueReminderSettings(persisted);
+      setOverdueSettingsLoaded(true);
+    };
+
+    void loadSettings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!overdueSettingsLoaded) return;
+    void persistOverdueReminderSettings(overdueReminderSettings);
+  }, [overdueReminderSettings, overdueSettingsLoaded]);
+
+  useEffect(() => {
+    overdueScheduledIdsRef.current = overdueReminderSettings.scheduledNotificationIds;
+  }, [overdueReminderSettings.scheduledNotificationIds]);
+
+  useEffect(() => {
+    if (!overdueSettingsLoaded) return;
+    let cancelled = false;
+
+    const run = async () => {
+      const previousIds = overdueScheduledIdsRef.current;
+      const settingsForSchedule: OverdueReminderSettings = {
+        enabled: overdueReminderSettings.enabled,
+        startTimeMinutes: overdueReminderSettings.startTimeMinutes,
+        intervalMinutes: overdueReminderSettings.intervalMinutes,
+        scheduledNotificationIds: previousIds,
+      };
+
+      if (!settingsForSchedule.enabled) {
+        await cancelOverdueReminderNotifications(previousIds);
+        if (cancelled) return;
+        if (previousIds.length > 0) {
+          overdueScheduledIdsRef.current = [];
+          setOverdueReminderSettings(prev => ({ ...prev, scheduledNotificationIds: [] }));
+        }
+        return;
+      }
+
+      const currentPermission = await checkNotificationPermissions();
+      const granted = currentPermission ? true : await requestNotificationPermissions();
+
+      if (!granted) {
+        await cancelOverdueReminderNotifications(previousIds);
+        if (cancelled) return;
+        setOverduePermissionDenied(true);
+        overdueScheduledIdsRef.current = [];
+        setOverdueReminderSettings(prev => ({
+          ...prev,
+          enabled: false,
+          scheduledNotificationIds: [],
+        }));
+        return;
+      }
+
+      if (cancelled) return;
+      setOverduePermissionDenied(false);
+
+      const scheduledIds = await rescheduleOverdueReminderNotifications({
+        previousNotificationIds: previousIds,
+        settings: settingsForSchedule,
+        activities: Array.isArray(activities) ? activities : [],
+      });
+
+      if (cancelled) return;
+
+      const hasChanged =
+        scheduledIds.length !== previousIds.length ||
+        scheduledIds.some((id, index) => id !== previousIds[index]);
+
+      if (hasChanged) {
+        overdueScheduledIdsRef.current = scheduledIds;
+        setOverdueReminderSettings(prev => ({
+          ...prev,
+          scheduledNotificationIds: scheduledIds,
+        }));
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    overdueReminderSettings.enabled,
+    overdueReminderSettings.startTimeMinutes,
+    overdueReminderSettings.intervalMinutes,
+    overdueSettingsLoaded,
+    activities,
+  ]);
+
   const handleNotificationsToggle = useCallback(
     async (nextValue: boolean) => {
       if (notificationsUpdating) return;
@@ -537,6 +690,65 @@ export default function ProfileScreen() {
     [notificationsUpdating]
   );
 
+  const handleOverdueReminderToggle = useCallback((nextValue: boolean) => {
+    setOverduePermissionDenied(false);
+    setOverdueReminderSettings(prev => ({
+      ...prev,
+      enabled: nextValue,
+    }));
+  }, []);
+
+  const handleOverdueStartTimeChange = useCallback((startTimeMinutes: number) => {
+    setOverdueReminderSettings(prev => ({
+      ...prev,
+      startTimeMinutes,
+    }));
+  }, []);
+
+  const handleOverdueIntervalChange = useCallback((intervalMinutes: number) => {
+    setOverdueReminderSettings(prev => ({
+      ...prev,
+      intervalMinutes,
+    }));
+  }, []);
+
+  const selectedOverdueIntervalHours = Math.max(1, Math.min(24, Math.round(overdueReminderSettings.intervalMinutes / 60)));
+
+  const getOverdueStartTimeAsDate = useCallback(() => {
+    const date = new Date();
+    const hours = Math.floor(overdueReminderSettings.startTimeMinutes / 60);
+    const minutes = overdueReminderSettings.startTimeMinutes % 60;
+    date.setHours(hours, minutes, 0, 0);
+    return date;
+  }, [overdueReminderSettings.startTimeMinutes]);
+
+  const handleOverdueStartTimePickerChange = useCallback(
+    (_event: any, selectedDate?: Date) => {
+      if (Platform.OS !== 'ios') {
+        setShowOverdueStartTimePicker(false);
+      }
+      if (!selectedDate) return;
+
+      const nextMinutes = selectedDate.getHours() * 60 + selectedDate.getMinutes();
+      handleOverdueStartTimeChange(nextMinutes);
+    },
+    [handleOverdueStartTimeChange]
+  );
+
+  useEffect(() => {
+    if (!showOverdueIntervalPicker || Platform.OS !== 'ios') return;
+
+    const targetIndex = selectedOverdueIntervalHours - 1;
+    const timer = setTimeout(() => {
+      overdueIntervalListRef.current?.scrollTo({
+        y: targetIndex * OVERDUE_INTERVAL_WHEEL_ITEM_HEIGHT,
+        animated: false,
+      });
+    }, 0);
+
+    return () => clearTimeout(timer);
+  }, [showOverdueIntervalPicker, selectedOverdueIntervalHours]);
+
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
@@ -547,7 +759,6 @@ export default function ProfileScreen() {
     createSubscription,
     loading: subscriptionLoading,
   } = useSubscription();
-  const { refreshAll } = useFootball();
   const {
     entitlementSnapshot,
     refreshSubscriptionStatus,
@@ -1992,6 +2203,205 @@ export default function ProfileScreen() {
                     disabled={notificationsUpdating}
                     trackColor={{ false: '#c7c7cc', true: colors.primary }}
                   />
+                </View>
+                <View
+                  style={[styles.settingsRow, { backgroundColor: nestedCardBgColor, alignItems: 'flex-start' }]}
+                  testID="profile.overdueReminders.section"
+                >
+                  <IconSymbol
+                    ios_icon_name="clock.badge.exclamationmark.fill"
+                    android_material_icon_name="schedule"
+                    size={22}
+                    color={colors.primary}
+                  />
+                  <View style={styles.settingsRowContent}>
+                    <Text style={[styles.settingsRowTitle, { color: textColor }]}>Påmindelser om forfaldne opgaver</Text>
+                    <Text style={[styles.settingsRowSubtitle, { color: textSecondaryColor }]}>
+                      Modtag påmindelser om forfaldne opgaver efter valgt starttid og interval.
+                    </Text>
+                    <View style={styles.overdueSettingsSection}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                        <Text style={[styles.settingsRowSubtitle, { color: textSecondaryColor, flex: 1 }]}>
+                          Aktivér påmindelser
+                        </Text>
+                        <Switch
+                          testID="profile.overdueReminders.toggle"
+                          value={overdueReminderSettings.enabled}
+                          onValueChange={handleOverdueReminderToggle}
+                          trackColor={{ false: '#c7c7cc', true: colors.primary }}
+                        />
+                      </View>
+                      {overdueReminderSettings.enabled && (
+                        <View style={{ gap: 10 }}>
+                          <View testID="profile.overdueReminders.timeRow">
+                            {Platform.OS === 'ios' ? (
+                              <View style={{ gap: 8 }}>
+                                <TouchableOpacity
+                                  style={[styles.pickerButton, { backgroundColor: nestedCardBgColor }]}
+                                  onPress={() => setShowOverdueStartTimePicker(true)}
+                                  activeOpacity={0.7}
+                                  testID="profile.overdueReminders.timeButton"
+                                >
+                                  <Text style={[styles.settingsRowSubtitle, { color: textSecondaryColor, marginBottom: 2 }]}>
+                                    Starttidspunkt
+                                  </Text>
+                                  <Text style={[styles.pickerButtonText, { color: textColor }]}>
+                                    {formatTimeFromMinutes(overdueReminderSettings.startTimeMinutes)}
+                                  </Text>
+                                </TouchableOpacity>
+
+                                {showOverdueStartTimePicker ? (
+                                  <View
+                                    style={[
+                                      styles.iosPickerContainer,
+                                      { backgroundColor: isDark ? '#2a2a2a' : '#FFFFFF' },
+                                    ]}
+                                  >
+                                    <DateTimePicker
+                                      value={getOverdueStartTimeAsDate()}
+                                      mode="time"
+                                      display="spinner"
+                                      onChange={handleOverdueStartTimePickerChange}
+                                      is24Hour={true}
+                                      themeVariant={isDark ? 'dark' : 'light'}
+                                      textColor={isDark ? '#FFFFFF' : '#000000'}
+                                      style={styles.iosPicker}
+                                    />
+                                  </View>
+                                ) : null}
+
+                                {showOverdueStartTimePicker ? (
+                                  <TouchableOpacity
+                                    style={[styles.doneButton, { backgroundColor: colors.primary }]}
+                                    onPress={() => setShowOverdueStartTimePicker(false)}
+                                    activeOpacity={0.7}
+                                    testID="profile.overdueReminders.timeDone"
+                                  >
+                                    <Text style={styles.doneButtonText}>Færdig</Text>
+                                  </TouchableOpacity>
+                                ) : null}
+                              </View>
+                            ) : (
+                              <DropdownSelect
+                                testIDPrefix="profile.overdueReminders.time"
+                                options={OVERDUE_TIME_OPTIONS}
+                                selectedValue={overdueReminderSettings.startTimeMinutes}
+                                onSelect={(value) => {
+                                  handleOverdueStartTimeChange(Number(value));
+                                }}
+                                label="Starttidspunkt"
+                              />
+                            )}
+                          </View>
+                          <View testID="profile.overdueReminders.intervalRow">
+                            {Platform.OS === 'ios' ? (
+                              <View style={{ gap: 8 }}>
+                                <TouchableOpacity
+                                  style={[styles.pickerButton, { backgroundColor: nestedCardBgColor }]}
+                                  onPress={() => setShowOverdueIntervalPicker(true)}
+                                  activeOpacity={0.7}
+                                  testID="profile.overdueReminders.intervalButton"
+                                >
+                                  <Text style={[styles.settingsRowSubtitle, { color: textSecondaryColor, marginBottom: 2 }]}>
+                                    Interval
+                                  </Text>
+                                  <Text style={[styles.pickerButtonText, { color: textColor }]}>
+                                    {selectedOverdueIntervalHours}t
+                                  </Text>
+                                </TouchableOpacity>
+
+                                {showOverdueIntervalPicker ? (
+                                  <View
+                                    style={[
+                                      styles.intervalWheelContainer,
+                                      { backgroundColor: isDark ? '#2a2a2a' : '#FFFFFF' },
+                                    ]}
+                                  >
+                                    <ScrollView
+                                      ref={overdueIntervalListRef}
+                                      style={styles.intervalWheel}
+                                      contentContainerStyle={styles.intervalWheelContent}
+                                      showsVerticalScrollIndicator={false}
+                                      snapToInterval={OVERDUE_INTERVAL_WHEEL_ITEM_HEIGHT}
+                                      decelerationRate="fast"
+                                      onMomentumScrollEnd={(event) => {
+                                        const offsetY = event.nativeEvent.contentOffset.y;
+                                        const index = Math.round(offsetY / OVERDUE_INTERVAL_WHEEL_ITEM_HEIGHT);
+                                        const clampedIndex = Math.max(0, Math.min(OVERDUE_INTERVAL_HOURS.length - 1, index));
+                                        const intervalHours = OVERDUE_INTERVAL_HOURS[clampedIndex];
+                                        handleOverdueIntervalChange(intervalHours * 60);
+                                      }}
+                                    >
+                                      {OVERDUE_INTERVAL_HOURS.map((item) => {
+                                        const isSelected = item === selectedOverdueIntervalHours;
+                                        return (
+                                          <View key={`interval-hour-${item}`} style={styles.intervalWheelItem}>
+                                            <Text
+                                              allowFontScaling={false}
+                                              style={[
+                                                styles.intervalWheelItemText,
+                                                { color: isSelected ? textColor : textSecondaryColor },
+                                                isSelected ? styles.intervalWheelItemTextSelected : null,
+                                              ]}
+                                            >
+                                              {item}
+                                            </Text>
+                                          </View>
+                                        );
+                                      })}
+                                    </ScrollView>
+                                  </View>
+                                ) : null}
+
+                                {showOverdueIntervalPicker ? (
+                                  <TouchableOpacity
+                                    style={[styles.doneButton, { backgroundColor: colors.primary }]}
+                                    onPress={() => setShowOverdueIntervalPicker(false)}
+                                    activeOpacity={0.7}
+                                    testID="profile.overdueReminders.intervalDone"
+                                  >
+                                    <Text style={styles.doneButtonText}>Færdig</Text>
+                                  </TouchableOpacity>
+                                ) : null}
+                              </View>
+                            ) : (
+                              <DropdownSelect
+                                testIDPrefix="profile.overdueReminders.interval"
+                                options={OVERDUE_INTERVAL_OPTIONS}
+                                selectedValue={overdueReminderSettings.intervalMinutes}
+                                onSelect={(value) => {
+                                  handleOverdueIntervalChange(Number(value));
+                                }}
+                                label="Interval"
+                              />
+                            )}
+                          </View>
+                        </View>
+                      )}
+                      {overduePermissionDenied && (
+                        <View
+                          style={[styles.deniedBanner, { backgroundColor: isDark ? '#3b2626' : '#fdecec' }]}
+                          testID="profile.overdueReminders.deniedBanner"
+                        >
+                          <Text style={[styles.deniedBannerTitle, { color: isDark ? '#ffb3b3' : '#a12020' }]}>
+                            Notifikationstilladelse mangler
+                          </Text>
+                          <Text style={[styles.deniedBannerText, { color: textSecondaryColor }]}>
+                            Aktivér notifikationer i systemindstillinger for at bruge påmindelser om forfaldne opgaver.
+                          </Text>
+                          <TouchableOpacity
+                            style={[styles.deniedBannerButton, { backgroundColor: colors.primary }]}
+                            onPress={() => {
+                              void openNotificationSettings();
+                            }}
+                            testID="profile.overdueReminders.openSettingsCta"
+                          >
+                            <Text style={styles.deniedBannerButtonText}>Åbn indstillinger</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                  </View>
                 </View>
                 {/* Review note (App Store): Indstillinger -> Konto -> Slet konto */}
                 <TouchableOpacity

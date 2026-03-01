@@ -53,6 +53,19 @@ tags:
     timeout: 15000
 - assertVisible:
     id: '^profile\.notificationsToggle$'
+- assertVisible:
+    id: '^profile\.overdueReminders\.section$'
+- assertVisible:
+    id: '^profile\.overdueReminders\.toggle$'
+- tapOn:
+    id: '^profile\.overdueReminders\.toggle$'
+- runFlow:
+    when:
+      visible:
+        id: '^profile\.overdueReminders\.deniedBanner$'
+    commands:
+      - assertVisible:
+          id: '^profile\.overdueReminders\.openSettingsCta$'
 - extendedWaitUntil:
     visible: '^(Deaktiveret|Disabled)$'
     timeout: 15000
@@ -125,6 +138,10 @@ tags:
     timeout: 15000
 - assertVisible:
     id: '^profile\.notificationsToggle$'
+- assertVisible:
+    id: '^profile\.overdueReminders\.section$'
+- assertVisible:
+    id: '^profile\.overdueReminders\.toggle$'
 - extendedWaitUntil:
     visible: '^(Aktiveret|Enabled)$'
     timeout: 15000
