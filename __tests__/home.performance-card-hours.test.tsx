@@ -1,7 +1,6 @@
 import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import { addDays, endOfWeek, format, startOfWeek } from 'date-fns';
-import { da } from 'date-fns/locale';
 
 import HomeScreen from '../app/(tabs)/(home)/index';
 
@@ -11,7 +10,6 @@ const mockUseFootball = jest.fn();
 const mockUseUserRole = jest.fn();
 const mockUseAdmin = jest.fn();
 const mockUseTeamPlayer = jest.fn();
-let upcomingDayLabel = '';
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush }),
@@ -103,6 +101,10 @@ jest.mock('@/components/TaskScoreNoteModal', () => {
 jest.mock('@/integrations/supabase/client', () => ({
   supabase: {
     auth: {
+      getUser: jest.fn().mockResolvedValue({
+        data: { user: { id: 'user-1' } },
+        error: null,
+      }),
       getSession: jest.fn().mockResolvedValue({
         data: { session: { user: { id: 'user-1' } } },
         error: null,
@@ -135,7 +137,9 @@ describe('Home performance card hour sums', () => {
 
     const todayIso = format(today, 'yyyy-MM-dd');
     const weekOnlyIso = format(weekOnlyDate, 'yyyy-MM-dd');
-    upcomingDayLabel = format(weekOnlyDate, 'EEE d. MMM', { locale: da });
+    const previousWeekDate = addDays(weekStart, -1);
+    const nextWeekStart = addDays(weekEnd, 1);
+    const nextWeekDate = addDays(nextWeekStart, 1);
 
     mockUseHomeActivities.mockReturnValue({
       loading: false,
@@ -173,6 +177,20 @@ describe('Home performance card hour sums', () => {
           title: 'Missing duration',
           activity_date: todayIso,
           activity_time: '14:00:00',
+          tasks: [],
+        },
+        {
+          id: 'a-previous-week',
+          title: 'Previous week activity',
+          activity_date: format(previousWeekDate, 'yyyy-MM-dd'),
+          activity_time: '09:00:00',
+          tasks: [],
+        },
+        {
+          id: 'a-upcoming-week',
+          title: 'Upcoming week activity',
+          activity_date: format(nextWeekDate, 'yyyy-MM-dd'),
+          activity_time: '11:00:00',
           tasks: [],
         },
       ],
@@ -216,19 +234,92 @@ describe('Home performance card hour sums', () => {
   });
 
   it('renders upcoming week summary collapsed and expands to show upcoming activities', () => {
-    const { getByText, queryByText, queryAllByTestId } = render(<HomeScreen />);
-    const weekHeader = getByText(/(KOMMENDE|DENNE) UGE/);
-
-    expect(weekHeader).toBeTruthy();
-    expect(queryAllByTestId('mock.activityCard')).toHaveLength(2);
-
-    fireEvent.press(weekHeader);
-    const upcomingDay = queryByText(upcomingDayLabel);
-    if (upcomingDay) {
-      fireEvent.press(upcomingDay);
-      expect(queryAllByTestId('mock.activityCard')).toHaveLength(3);
-    } else {
-      expect(queryAllByTestId('mock.activityCard')).toHaveLength(2);
+    const now = new Date();
+    const today = new Date(now);
+    today.setHours(0, 0, 0, 0);
+    const weekStart = startOfWeek(today, { weekStartsOn: 1 });
+    const weekEnd = endOfWeek(today, { weekStartsOn: 1 });
+    const todayIso = format(today, 'yyyy-MM-dd');
+    let currentWeekOtherDate = addDays(today, 1);
+    if (currentWeekOtherDate > weekEnd) {
+      currentWeekOtherDate = addDays(today, -1);
     }
+    if (currentWeekOtherDate < weekStart) {
+      currentWeekOtherDate = weekStart;
+    }
+    const nextWeekDate = addDays(weekEnd, 2);
+    const previousWeekDate = addDays(weekStart, -1);
+    const previousWeekOlderDate = addDays(weekStart, -8);
+
+    mockUseHomeActivities.mockReturnValue({
+      loading: false,
+      refresh: jest.fn(),
+      activities: [
+        {
+          id: 'case2-today',
+          title: 'Today',
+          activity_date: todayIso,
+          activity_time: '08:00:00',
+          tasks: [],
+        },
+        {
+          id: 'case2-current-week',
+          title: 'Current week other day',
+          activity_date: format(currentWeekOtherDate, 'yyyy-MM-dd'),
+          activity_time: '10:00:00',
+          tasks: [],
+        },
+        {
+          id: 'case2-previous',
+          title: 'Previous week',
+          activity_date: format(previousWeekDate, 'yyyy-MM-dd'),
+          activity_time: '09:00:00',
+          tasks: [],
+        },
+        {
+          id: 'case2-previous-older',
+          title: 'Previous week older',
+          activity_date: format(previousWeekOlderDate, 'yyyy-MM-dd'),
+          activity_time: '09:30:00',
+          tasks: [],
+        },
+        {
+          id: 'case2-upcoming',
+          title: 'Upcoming week',
+          activity_date: format(nextWeekDate, 'yyyy-MM-dd'),
+          activity_time: '11:00:00',
+          tasks: [],
+        },
+      ],
+    });
+
+    const {
+      getAllByText,
+      getByTestId,
+      queryByTestId,
+      queryAllByTestId,
+    } = render(<HomeScreen />);
+
+    expect(getAllByText('DENNE UGE').length).toBeGreaterThan(0);
+    expect(getAllByText('I dag').length).toBeGreaterThan(0);
+    expect(queryAllByTestId('home.weekSummary.currentWeek')).toHaveLength(1);
+    expect(queryAllByTestId('home.weekSummary.upcoming')).toHaveLength(1);
+    expect(queryAllByTestId('mock.activityCard')).toHaveLength(1);
+
+    fireEvent.press(getByTestId('home.currentWeek.modeToggle'));
+    expect(queryAllByTestId('mock.activityCard')).toHaveLength(0);
+    fireEvent.press(getAllByText('I dag')[0]);
+    expect(queryAllByTestId('mock.activityCard')).toHaveLength(1);
+
+    expect(queryByTestId('home.previousWeeks.loadOne')).toBeNull();
+    fireEvent.press(getByTestId('home.previousWeeks.toggle'));
+    expect(queryAllByTestId('home.weekSummary.previous')).toHaveLength(1);
+    expect(queryByTestId('home.previousWeeks.loadOne')).toBeTruthy();
+
+    fireEvent.press(getByTestId('home.previousWeeks.loadOne'));
+    expect(queryAllByTestId('home.weekSummary.previous')).toHaveLength(2);
+
+    fireEvent.press(getByTestId('home.previousWeeks.toggle'));
+    expect(queryAllByTestId('home.weekSummary.previous')).toHaveLength(0);
   });
 });
