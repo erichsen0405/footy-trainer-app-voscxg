@@ -58,9 +58,9 @@
  */
 
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform, useColorScheme, Alert, DeviceEventEmitter, Image, LayoutChangeEvent, NativeSyntheticEvent, TextLayoutEventData } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform, useColorScheme, DeviceEventEmitter, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Defs, Stop, LinearGradient as SvgLinearGradient, Circle, Rect, G } from 'react-native-svg';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
@@ -125,6 +125,432 @@ function getPerformanceGradient(percentage: number): readonly [string, string, s
     return ['#CD7F32', '#B8722E', '#A0642A'] as const;
   }
 }
+
+function getPerformanceScaleVisuals(percentage: number): {
+  ringGlow: string;
+  ringStops: [string, string, string];
+  barColors: [string, string, string];
+} {
+  const safePercentage = typeof percentage === 'number' && !isNaN(percentage) ? percentage : 0;
+  const ringStops: [string, string, string] = ['#FF5A5F', '#FFD76B', '#5DE488'];
+  const barColors: [string, string, string] = ['#FF6B6B', '#FDE776', '#59E382'];
+  if (safePercentage >= 80) {
+    return {
+      ringGlow: 'rgba(96, 224, 123, 0.55)',
+      ringStops,
+      barColors,
+    };
+  }
+  if (safePercentage >= 60) {
+    return {
+      ringGlow: 'rgba(255, 210, 94, 0.55)',
+      ringStops,
+      barColors,
+    };
+  }
+  return {
+    ringGlow: 'rgba(255, 92, 92, 0.55)',
+    ringStops,
+    barColors,
+  };
+}
+
+type ThisWeekPremiumCardProps = {
+  weekLabel: string; // "Uge 9"
+  dateRangeLabel: string; // "23. feb. – 1. mar."
+  percentNumber: number; // 0..100
+  tasksLabel: string; // "Opgaver 35/35"
+  plannedLabel: string; // "Planlagt 12,1 t"
+  activitiesLabel?: string; // "Aktiviteter 23"
+  trophyCount?: number; // 0..n
+  expanded: boolean;
+  onToggle: () => void;
+  onCreateActivity: () => void;
+  isTodayOnly: boolean;
+  onToggleMode: () => void;
+};
+
+const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
+
+const THIS_WEEK_SPECKS = [
+  { x: 12, y: 22, r: 1.2, c: '#BFE9FF', o: 0.55 },
+  { x: 18, y: 58, r: 0.9, c: '#FFFFFF', o: 0.35 },
+  { x: 26, y: 40, r: 1.1, c: '#FFE7B0', o: 0.3 },
+  { x: 34, y: 18, r: 0.8, c: '#7EF0FF', o: 0.35 },
+  { x: 44, y: 35, r: 1.4, c: '#FFFFFF', o: 0.22 },
+  { x: 52, y: 28, r: 1, c: '#FFE7B0', o: 0.3 },
+  { x: 61, y: 44, r: 0.8, c: '#BFE9FF', o: 0.3 },
+  { x: 68, y: 22, r: 1.2, c: '#FFFFFF', o: 0.22 },
+  { x: 74, y: 55, r: 1, c: '#FFE7B0', o: 0.25 },
+  { x: 82, y: 33, r: 0.9, c: '#7EF0FF', o: 0.25 },
+  { x: 88, y: 64, r: 1.1, c: '#FFFFFF', o: 0.18 },
+];
+
+const ThisWeekPremiumCard = React.memo(function ThisWeekPremiumCard({
+  weekLabel,
+  dateRangeLabel,
+  percentNumber,
+  tasksLabel,
+  plannedLabel,
+  activitiesLabel,
+  trophyCount = 0,
+  expanded,
+  onToggle,
+  onCreateActivity,
+  isTodayOnly,
+  onToggleMode,
+}: ThisWeekPremiumCardProps) {
+  const p = clamp01((Number.isFinite(percentNumber) ? percentNumber : 0) / 100);
+  const visuals = getPerformanceScaleVisuals(percentNumber);
+
+  const size = 170;
+  const stroke = 14;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const dashOffset = c * (1 - p);
+
+  const chevronRotation = expanded ? '180deg' : '0deg';
+  const handleCreatePress = useCallback(
+    (e: any) => {
+      // Prevent accordion toggle when pressing the "+".
+      e?.stopPropagation?.();
+      onCreateActivity();
+    },
+    [onCreateActivity]
+  );
+
+  const handleModeTogglePress = useCallback(
+    (e: any) => {
+      // Prevent accordion toggle when switching mode.
+      e?.stopPropagation?.();
+      onToggleMode();
+    },
+    [onToggleMode]
+  );
+
+  return (
+    <Pressable
+      testID="home.thisWeekPremiumCard.toggle"
+      onPress={onToggle}
+      style={thisWeekPremiumCardStyles.cardPressable}
+      accessibilityRole="button"
+    >
+      <LinearGradient
+        testID="home.thisWeekPremiumCard"
+        colors={['#0B1220', '#0E1B2C', '#0B121A']}
+        start={{ x: 0.1, y: 0.05 }}
+        end={{ x: 0.95, y: 0.95 }}
+        style={thisWeekPremiumCardStyles.card}
+      >
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          <Svg width="100%" height="100%">
+            <Defs>
+              <SvgLinearGradient id="homeThisWeekPremiumSheen" x1="0" y1="0" x2="1" y2="1">
+                <Stop offset="0" stopColor="#7EF0FF" stopOpacity="0.10" />
+                <Stop offset="0.35" stopColor="#FFFFFF" stopOpacity="0.04" />
+                <Stop offset="0.7" stopColor="#FFDA7A" stopOpacity="0.06" />
+                <Stop offset="1" stopColor="#000000" stopOpacity="0.00" />
+              </SvgLinearGradient>
+            </Defs>
+
+            <Rect x="0" y="0" width="100%" height="100%" fill="#000" opacity="0.18" />
+            <Rect x="-40" y="-80" width="140%" height="140%" fill="url(#homeThisWeekPremiumSheen)" opacity="0.8" />
+
+            <G opacity="0.35">
+              {THIS_WEEK_SPECKS.map((s, i) => (
+                <Circle key={`sp-${i}`} cx={`${s.x}%`} cy={`${s.y}%`} r={s.r} fill={s.c} opacity={s.o} />
+              ))}
+            </G>
+          </Svg>
+        </View>
+
+        <View style={thisWeekPremiumCardStyles.headerRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={thisWeekPremiumCardStyles.headerKicker}>
+              DENNE UGE <Text style={thisWeekPremiumCardStyles.headerDot}>•</Text>{' '}
+              <Text style={thisWeekPremiumCardStyles.headerWeek}>{weekLabel}</Text>
+            </Text>
+            <Text style={thisWeekPremiumCardStyles.headerRange}>{dateRangeLabel}</Text>
+          </View>
+
+          <View style={thisWeekPremiumCardStyles.headerActions}>
+            <Pressable
+              onPress={handleCreatePress}
+              style={thisWeekPremiumCardStyles.createCircle}
+              accessibilityRole="button"
+              accessibilityLabel="Opret aktivitet"
+              testID="home.thisWeekPremiumCard.create"
+            >
+              <Text style={thisWeekPremiumCardStyles.createPlus}>+</Text>
+            </Pressable>
+
+            <View style={thisWeekPremiumCardStyles.chevronCircle}>
+              <Text style={[thisWeekPremiumCardStyles.chevron, { transform: [{ rotate: chevronRotation }] }]}>⌄</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={thisWeekPremiumCardStyles.contentRow}>
+          <View
+            testID="home.thisWeekPremiumCard.ring"
+            style={[
+              thisWeekPremiumCardStyles.ringWrap,
+              { shadowColor: visuals.ringGlow },
+            ]}
+          >
+            <Svg width={size} height={size}>
+              <Defs>
+                <SvgLinearGradient id="homeThisWeekPremiumRing" x1="0" y1="0" x2="1" y2="1">
+                  <Stop offset="0" stopColor={visuals.ringStops[0]} />
+                  <Stop offset="0.5" stopColor={visuals.ringStops[1]} />
+                  <Stop offset="1" stopColor={visuals.ringStops[2]} />
+                </SvgLinearGradient>
+              </Defs>
+
+              <Circle
+                cx={size / 2}
+                cy={size / 2}
+                r={r}
+                stroke="rgba(255,255,255,0.08)"
+                strokeWidth={stroke}
+                fill="none"
+              />
+              <Circle
+                cx={size / 2}
+                cy={size / 2}
+                r={r}
+                stroke="url(#homeThisWeekPremiumRing)"
+                strokeWidth={stroke}
+                fill="none"
+                strokeLinecap="round"
+                strokeDasharray={`${c} ${c}`}
+                strokeDashoffset={dashOffset}
+                rotation={-90}
+                originX={size / 2}
+                originY={size / 2}
+              />
+            </Svg>
+
+            <Text testID="home.thisWeekPremiumCard.percent" style={thisWeekPremiumCardStyles.percentText}>
+              {Math.round(p * 100)}%
+            </Text>
+          </View>
+
+          <View style={thisWeekPremiumCardStyles.rightCol}>
+            <View testID="home.thisWeekPremiumCard.trophy" style={thisWeekPremiumCardStyles.trophyBubble}>
+              <Text style={thisWeekPremiumCardStyles.trophyMedal}>🏅</Text>
+              <Text style={thisWeekPremiumCardStyles.trophyCount}>{trophyCount}</Text>
+            </View>
+
+            {/* Progress bar removed (per design); keep test hook stable */}
+            <View testID="home.thisWeekPremiumCard.progress" style={thisWeekPremiumCardStyles.progressTestHook} />
+          </View>
+        </View>
+
+        <View style={thisWeekPremiumCardStyles.chipsRow}>
+          <View testID="home.thisWeekPremiumCard.chip.tasks" style={thisWeekPremiumCardStyles.chip}>
+            <IconSymbol ios_icon_name="checkmark.circle" android_material_icon_name="check_circle" size={14} color="rgba(255,255,255,0.92)" />
+            <Text numberOfLines={1} ellipsizeMode="tail" style={thisWeekPremiumCardStyles.chipText}>
+              {tasksLabel}
+            </Text>
+          </View>
+
+          <View testID="home.thisWeekPremiumCard.chip.planned" style={thisWeekPremiumCardStyles.chip}>
+            <IconSymbol ios_icon_name="clock" android_material_icon_name="schedule" size={14} color="rgba(255,255,255,0.92)" />
+            <Text numberOfLines={1} ellipsizeMode="tail" style={thisWeekPremiumCardStyles.chipText}>
+              {plannedLabel}
+            </Text>
+          </View>
+        </View>
+
+        <View style={thisWeekPremiumCardStyles.chipsRow2}>
+          {activitiesLabel ? (
+            <View testID="home.thisWeekPremiumCard.chip.activities" style={thisWeekPremiumCardStyles.chip}>
+              <IconSymbol ios_icon_name="calendar" android_material_icon_name="calendar_today" size={14} color="rgba(255,255,255,0.92)" />
+              <Text numberOfLines={1} ellipsizeMode="tail" style={thisWeekPremiumCardStyles.chipText}>
+                {activitiesLabel}
+              </Text>
+            </View>
+          ) : (
+            <View style={{ flex: 1 }} />
+          )}
+
+          <View testID="home.thisWeekPremiumCard.badge.today" style={thisWeekPremiumCardStyles.todayBadge}>
+            <Pressable
+              onPress={handleModeTogglePress}
+              testID="home.currentWeek.modeToggle"
+              accessibilityRole="switch"
+              accessibilityState={{ checked: isTodayOnly }}
+              style={thisWeekPremiumCardStyles.todayPressable}
+            >
+              <IconSymbol ios_icon_name="sun.max" android_material_icon_name="wb_sunny" size={14} color="rgba(255,255,255,0.92)" />
+              <Text numberOfLines={1} style={thisWeekPremiumCardStyles.todayText}>
+                {isTodayOnly ? 'I dag' : 'Uge'}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </LinearGradient>
+    </Pressable>
+  );
+});
+
+const thisWeekPremiumCardStyles = StyleSheet.create({
+  cardPressable: {
+    borderRadius: 28,
+  },
+  card: {
+    borderRadius: 28,
+    padding: 18,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 8,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  headerKicker: {
+    color: 'rgba(255,255,255,0.92)',
+    fontSize: 20,
+    letterSpacing: 1.5,
+    fontWeight: '700',
+  },
+  headerDot: { color: 'rgba(255,255,255,0.55)' },
+  headerWeek: { color: 'rgba(255,255,255,0.75)', fontWeight: '600' },
+  headerRange: {
+    marginTop: 6,
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  headerActions: { marginLeft: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  createCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#2DBE66',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: 'rgba(45, 190, 102, 0.55)',
+    shadowOpacity: 0.5,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
+  },
+  createPlus: { color: '#FFFFFF', fontSize: 22, fontWeight: '800', marginTop: -1 },
+  chevronCircle: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chevron: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 18,
+    marginTop: -2,
+  },
+  contentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  ringWrap: {
+    width: 190,
+    height: 190,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowOpacity: 0.55,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 12 },
+  },
+  percentText: {
+    position: 'absolute',
+    color: 'rgba(255,255,255,0.92)',
+    fontSize: 56,
+    fontWeight: '800',
+  },
+  rightCol: { flex: 1, paddingLeft: 10, alignItems: 'flex-end', justifyContent: 'center' },
+  trophyBubble: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: 'rgba(255, 210, 122, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 210, 122, 0.32)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#FFD27A',
+    shadowOpacity: 0.45,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
+  },
+  trophyMedal: { fontSize: 22, marginBottom: 4 },
+  trophyCount: { color: 'rgba(255,255,255,0.92)', fontSize: 18, fontWeight: '800' },
+  progressTestHook: { width: 1, height: 1, opacity: 0 },
+  chipsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 6,
+  },
+  chipsRow2: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 10,
+    alignItems: 'center',
+  },
+  chip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    gap: 8,
+  },
+  chipText: {
+    color: 'rgba(255,255,255,0.88)',
+    fontSize: 15,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  todayBadge: {
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 210, 122, 0.30)',
+    alignSelf: 'flex-end',
+    flexGrow: 0,
+    flexShrink: 0,
+  },
+  todayPressable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    gap: 8,
+  },
+  todayText: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+});
 
 const INTENSITY_CHOICES = Array.from({ length: 10 }, (_, idx) => idx + 1);
 
@@ -341,9 +767,6 @@ export default function HomeScreen() {
   const [expandedUpcomingDays, setExpandedUpcomingDays] = useState<Record<string, boolean>>({});
   const [isCurrentWeekTodayOnly, setIsCurrentWeekTodayOnly] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isPerformanceCardCollapsed, setIsPerformanceCardCollapsed] = useState(true);
-  const [progressPercentageBoxHeight, setProgressPercentageBoxHeight] = useState(72);
-  const [progressPercentageSymbolHeight, setProgressPercentageSymbolHeight] = useState(56);
   const [currentTrainerId, setCurrentTrainerId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
@@ -474,7 +897,7 @@ export default function HomeScreen() {
     }
   }, [loading]);
 
-  const { currentWeekGroup, upcomingByWeek, previousByWeek, resolvedActivities } = useMemo(() => {
+  const { currentWeekGroup, upcomingByWeek, previousByWeek } = useMemo(() => {
     // STEP H: Guard against non-array activities
     const safeActivities = Array.isArray(activities) ? activities : [];
 
@@ -589,7 +1012,7 @@ export default function HomeScreen() {
       }))
       .sort((a, b) => b.weekStart.getTime() - a.weekStart.getTime());
 
-    return { currentWeekGroup, upcomingByWeek, previousByWeek, resolvedActivities: resolved };
+    return { currentWeekGroup, upcomingByWeek, previousByWeek };
   }, [activities, intensityNoteOverrides, intensityOverrides]);
 
   const feedbackActivityIds = useMemo(() => {
@@ -896,45 +1319,6 @@ export default function HomeScreen() {
     };
   }, [currentWeekStats]);
 
-  const timeMetrics = useMemo(() => {
-    const now = new Date();
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(todayStart);
-    todayEnd.setHours(23, 59, 59, 999);
-
-    const weekStart = startOfWeek(now, { weekStartsOn: 1 });
-    const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
-
-    const source = Array.isArray(resolvedActivities) ? resolvedActivities : [];
-
-    let todayMinutes = 0;
-    let weekMinutes = 0;
-
-    source.forEach((activity: any) => {
-      const date = activity?.__resolvedDateTime;
-      if (!(date instanceof Date) || Number.isNaN(date.getTime())) return;
-
-      const minutes = getActivityEffectiveDurationMinutes(activity);
-      if (date >= weekStart && date <= weekEnd) {
-        weekMinutes += minutes;
-      }
-      if (date >= todayStart && date <= todayEnd) {
-        todayMinutes += minutes;
-      }
-    });
-
-    return {
-      todayHoursLabel: formatHoursDa(todayMinutes),
-      weekHoursLabel: formatHoursDa(weekMinutes),
-    };
-  }, [resolvedActivities]);
-
-  const performanceGradientColors = useMemo(() => {
-    const [first, second = first, third = second] = performanceMetrics.gradientColors;
-    return [first, second, third] as const;
-  }, [performanceMetrics.gradientColors]);
-
   const handleCreateActivity = useCallback(async (activityData: any) => {
     try {
       // STEP H: Guard against null/undefined functions
@@ -967,6 +1351,10 @@ export default function HomeScreen() {
       // STEP H: Safe fallback - no throw
     }
   }, [createActivity, refreshData, updateIntensityByCategory]);
+
+  const handleOpenCreateModal = useCallback(() => {
+    setShowCreateModal(true);
+  }, []);
 
   const handleLoadMorePrevious = useCallback(() => {
     setShowPreviousWeeks(prev => {
@@ -1004,16 +1392,13 @@ export default function HomeScreen() {
     };
   }, []);
 
-  const getCurrentWeekDayToggleKeys = useCallback(
-    (todayOnly: boolean) => {
-      const { currentWeekKey, todayDayKey } = getCurrentWeekIdentity();
-      if (!todayOnly) {
-        return [];
-      }
-      return [buildUpcomingDayToggleKey(currentWeekKey, todayDayKey)];
-    },
-    [buildUpcomingDayToggleKey, getCurrentWeekIdentity]
-  );
+  const getCurrentWeekDayToggleKeys = useCallback((todayOnly: boolean) => {
+    const { currentWeekKey, todayDayKey } = getCurrentWeekIdentity();
+    if (!todayOnly) {
+      return [];
+    }
+    return [buildUpcomingDayToggleKey(currentWeekKey, todayDayKey)];
+  }, [buildUpcomingDayToggleKey, getCurrentWeekIdentity]);
 
   const applyCurrentWeekViewMode = useCallback((todayOnly: boolean) => {
     const { currentWeekKey } = getCurrentWeekIdentity();
@@ -1122,50 +1507,6 @@ export default function HomeScreen() {
       applyCurrentWeekViewMode(isCurrentWeekTodayOnly);
     }, [applyCurrentWeekViewMode, isCurrentWeekTodayOnly])
   );
-
-  const togglePerformanceCardCollapsed = useCallback(() => {
-    setIsPerformanceCardCollapsed((prev) => !prev);
-  }, []);
-
-  const handleProgressPercentageLayout = useCallback((event: LayoutChangeEvent) => {
-    const measuredHeight = Math.round(event.nativeEvent.layout.height);
-    const nextHeight = measuredHeight > 0 ? measuredHeight : 72;
-    setProgressPercentageBoxHeight((prev) => (prev === nextHeight ? prev : nextHeight));
-  }, []);
-
-  const handleProgressPercentageTextLayout = useCallback(
-    (event: NativeSyntheticEvent<TextLayoutEventData>) => {
-      const line = event.nativeEvent.lines?.[0];
-      if (!line) return;
-
-      const ascender = typeof line.ascender === 'number' ? line.ascender : null;
-      const descender = typeof line.descender === 'number' ? line.descender : null;
-      const capHeight = typeof line.capHeight === 'number' ? line.capHeight : null;
-      const lineHeight = typeof line.height === 'number' ? line.height : null;
-
-      const derivedHeight =
-        capHeight && capHeight > 0
-          ? capHeight
-          : ascender !== null && descender !== null && ascender + descender > 0
-            ? ascender + descender
-            : lineHeight && lineHeight > 0
-              ? lineHeight
-              : null;
-
-      if (!derivedHeight) return;
-      const nextHeight = Math.max(40, Math.round(derivedHeight));
-      setProgressPercentageSymbolHeight((prev) => (prev === nextHeight ? prev : nextHeight));
-    },
-    [],
-  );
-
-  const progressMedalSizing = useMemo(() => {
-    const badgeSize = Math.max(40, Math.round(progressPercentageSymbolHeight));
-    const iconSize = Math.max(24, Math.round(badgeSize * 0.73));
-    const boxHeight = Math.max(badgeSize, Math.round(progressPercentageBoxHeight));
-    const verticalInset = Math.max(0, Math.round((boxHeight - badgeSize) / 2));
-    return { badgeSize, iconSize, verticalInset };
-  }, [progressPercentageBoxHeight, progressPercentageSymbolHeight]);
 
   // P4 FIX: Pull-to-refresh handler with deterministic stop
   const onRefresh = useCallback(async () => {
@@ -1623,8 +1964,33 @@ export default function HomeScreen() {
               ? 'DENNE UGE'
               : 'KOMMENDE UGE';
 
+        if (item.section === 'currentWeek') {
+          const weekNumber = getWeek(item.weekGroup.weekStart, { weekStartsOn: 1, locale: da });
+          const isExpanded = expandedUpcomingWeeks[item.weekKey] === true;
+          const percentage = Math.max(0, Math.min(100, Math.round(performanceMetrics.percentageUpToToday || 0)));
+          const trophyCount = percentage >= 80 ? 1 : percentage >= 60 ? 2 : 3;
+          return (
+            <View style={styles.upcomingSummaryWrapper} testID="home.weekSummary.currentWeek">
+              <ThisWeekPremiumCard
+                weekLabel={`Uge ${weekNumber}`}
+                dateRangeLabel={getWeekLabel(item.weekGroup.weekStart)}
+                percentNumber={percentage}
+                tasksLabel={`Opgaver ${performanceMetrics.completedTasksWeek}/${performanceMetrics.totalTasksWeek}`}
+                plannedLabel={`Planlagt ${formatHoursDa(item.totalMinutes)}`}
+                activitiesLabel={`Aktiviteter ${item.activityCount}`}
+                trophyCount={trophyCount}
+                expanded={isExpanded}
+                onToggle={() => toggleUpcomingWeekExpanded(item.weekKey, item.section)}
+                onCreateActivity={handleOpenCreateModal}
+                isTodayOnly={isCurrentWeekTodayOnly}
+                onToggleMode={toggleCurrentWeekViewMode}
+              />
+            </View>
+          );
+        }
+
         return (
-          <View testID={`home.weekSummary.${item.section ?? 'unknown'}`}>
+          <View style={styles.upcomingSummaryWithQuickCreate} testID={`home.weekSummary.${item.section ?? 'unknown'}`}>
             <WeeklySummaryCard
               weekStart={item.weekGroup.weekStart}
               isDark={isDark}
@@ -1636,32 +2002,14 @@ export default function HomeScreen() {
               eyebrowText={summaryEyebrowText}
               timeLabelPrefix="Planlagt"
             />
-            {item.section === 'currentWeek' && (
-              <Pressable
-                style={[
-                  styles.currentWeekModeToggle,
-                  {
-                    backgroundColor: isDark ? 'rgba(22, 33, 41, 0.9)' : 'rgba(255, 255, 255, 0.94)',
-                    borderColor: isDark ? 'rgba(191, 220, 203, 0.25)' : 'rgba(44, 90, 64, 0.2)',
-                  },
-                ]}
-                onPress={toggleCurrentWeekViewMode}
-                accessibilityRole="switch"
-                accessibilityState={{ checked: isCurrentWeekTodayOnly }}
-                accessibilityLabel={isCurrentWeekTodayOnly ? 'Vis kun i dag' : 'Vis hele ugen'}
-                testID="home.currentWeek.modeToggle"
-              >
-                <IconSymbol
-                  ios_icon_name={isCurrentWeekTodayOnly ? 'sun.max' : 'calendar'}
-                  android_material_icon_name={isCurrentWeekTodayOnly ? 'wb_sunny' : 'date_range'}
-                  size={13}
-                  color={isDark ? '#D8EFE1' : '#1D3A2A'}
-                />
-                <Text style={[styles.currentWeekModeToggleText, { color: isDark ? '#D8EFE1' : '#1D3A2A' }]}>
-                  {isCurrentWeekTodayOnly ? 'I dag' : 'Uge'}
-                </Text>
-              </Pressable>
-            )}
+            <Pressable
+              style={styles.weekQuickCreateButtonFloating}
+              onPress={handleOpenCreateModal}
+              accessibilityRole="button"
+              accessibilityLabel="Opret aktivitet"
+            >
+              <Text style={styles.weekQuickCreateButtonText}>+</Text>
+            </Pressable>
           </View>
         );
 
@@ -1984,7 +2332,9 @@ export default function HomeScreen() {
     router,
     handleLoadMorePrevious,
     togglePreviousWeeksVisibility,
+    handleOpenCreateModal,
     handleOpenIntensityModal,
+    performanceMetrics,
     feedbackCompletionByActivityId,
     feedbackCompletionByActivityTaskId,
     feedbackDoneByActivityId,
@@ -2044,117 +2394,6 @@ export default function HomeScreen() {
         <Text style={[styles.weekHeaderSubtitle, { color: isDark ? '#999' : colors.textSecondary }]}>{currentWeekLabel}</Text>
       </View>
 
-      {/* Performance card */}
-      <LinearGradient
-        colors={performanceGradientColors}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.performanceCard}
-      >
-        <View style={styles.progressHeader}>
-          <Text style={styles.progressLabel}>DENNE UGE</Text>
-          <Pressable
-            style={styles.performanceCollapseButton}
-            onPress={togglePerformanceCardCollapsed}
-            accessibilityRole="button"
-            accessibilityLabel={isPerformanceCardCollapsed ? 'Udvid performance-kort' : 'Kollaps performance-kort'}
-          >
-            <IconSymbol
-              ios_icon_name="chevron.down"
-              android_material_icon_name="keyboard-arrow-down"
-              size={18}
-              color="#FFFFFF"
-              style={[
-                styles.performanceCollapseIcon,
-                !isPerformanceCardCollapsed && styles.performanceCollapseIconExpanded,
-              ]}
-            />
-          </Pressable>
-        </View>
-
-        <View style={styles.progressPercentageRow}>
-          <Text
-            style={styles.progressPercentage}
-            onLayout={handleProgressPercentageLayout}
-            onTextLayout={handleProgressPercentageTextLayout}
-          >
-            {performanceMetrics.percentageUpToToday}%
-          </Text>
-          <View
-            style={[
-              styles.medalBadge,
-              {
-                width: progressMedalSizing.badgeSize,
-                height: progressMedalSizing.badgeSize,
-                borderRadius: progressMedalSizing.badgeSize / 2,
-                marginTop: progressMedalSizing.verticalInset,
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.medalIcon,
-                {
-                  fontSize: progressMedalSizing.iconSize,
-                  lineHeight: progressMedalSizing.iconSize,
-                },
-              ]}
-            >
-              {performanceMetrics.trophyEmoji}
-            </Text>
-          </View>
-        </View>
-        
-        <View style={styles.progressBar}>
-          <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
-        </View>
-
-        <Text style={styles.progressDetail}>
-          Opgaver indtil i dag: {performanceMetrics.completedTasksToday} / {performanceMetrics.totalTasksToday}
-        </Text>
-        {!isPerformanceCardCollapsed && (
-          <>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressBarFill, { width: `${performanceMetrics.percentageUpToToday}%` }]} />
-            </View>
-
-            <Text style={styles.progressDetail}>
-              Hele ugen: {performanceMetrics.completedTasksWeek} / {performanceMetrics.totalTasksWeek} opgaver
-            </Text>
-
-            <Text style={styles.progressDetail} testID="home.performance.hoursToday">
-              Timer i dag: {timeMetrics.todayHoursLabel}
-            </Text>
-            <Text style={styles.progressDetail} testID="home.performance.hoursWeek">
-              Timer denne uge: {timeMetrics.weekHoursLabel}
-            </Text>
-
-            <Text style={styles.motivationText}>
-              {performanceMetrics.motivationText}
-            </Text>
-
-            {/* Se Performance Button - Inside Performance Card */}
-            <Pressable 
-              style={styles.performanceButton}
-              onPress={() => {
-                // STEP H: Guard against null router
-                if (!router) {
-                  console.error('[Home] Cannot navigate: router is null');
-                  return;
-                }
-                try {
-                  router.push('/(tabs)/performance');
-                } catch (error) {
-                  console.error('[Home] Error navigating to performance:', error);
-                }
-              }}
-            >
-              <Text style={styles.performanceButtonText}>Se performance</Text>
-            </Pressable>
-          </>
-        )}
-      </LinearGradient>
-
       {/* STEP E: Static inline info-box when adminMode !== 'self' */}
       {adminMode !== 'self' && (
         <View style={[styles.adminInfoBox, { backgroundColor: isDark ? '#3a2a1a' : '#FFF3E0', borderColor: isDark ? '#B8860B' : '#FF9800' }]}>
@@ -2170,16 +2409,8 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* Create Activity Button */}
-      <Pressable 
-        style={styles.createButton}
-        onPress={() => setShowCreateModal(true)}
-        testID="home.createActivityButton"
-      >
-        <Text style={styles.createButtonText}>+  Opret Aktivitet</Text>
-      </Pressable>
     </>
-  ), [isDark, currentWeekNumber, currentWeekLabel, performanceMetrics, adminMode, router, performanceGradientColors, timeMetrics, isPerformanceCardCollapsed, togglePerformanceCardCollapsed, handleProgressPercentageLayout, handleProgressPercentageTextLayout, progressMedalSizing]);
+  ), [isDark, currentWeekNumber, currentWeekLabel, adminMode]);
 
   // List footer component
   const ListFooterComponent = useCallback(() => (
@@ -2594,6 +2825,245 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 12,
   },
+  upcomingSummaryWithQuickCreate: {
+    position: 'relative',
+  },
+  weekQuickCreateButtonFloating: {
+    position: 'absolute',
+    right: 74,
+    top: 16,
+    zIndex: 3,
+  },
+  weekQuickCreateButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2DBE63',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    shadowColor: '#2DBE63',
+    shadowOpacity: 0.45,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  weekQuickCreateButtonText: {
+    color: '#FFFFFF',
+    fontSize: 22,
+    lineHeight: 24,
+    fontWeight: '800',
+    marginTop: -1,
+  },
+  thisWeekPremiumCard: {
+    borderColor: 'rgba(142, 194, 255, 0.55)',
+    borderRadius: 30,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 7,
+  },
+  thisWeekPremiumHeaderText: {
+    color: '#E3F3D8',
+    fontSize: 13,
+    letterSpacing: 2.2,
+  },
+  thisWeekPremiumRange: {
+    color: '#E9EDF4',
+    marginTop: 4,
+    fontSize: 18,
+  },
+  thisWeekPremiumBackgroundImage: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+  },
+  thisWeekPremiumBackgroundTint: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+  },
+  thisWeekPremiumGlowTopLeft: {
+    position: 'absolute',
+    left: 42,
+    top: 70,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(109, 247, 239, 0.16)',
+  },
+  thisWeekPremiumGlowRight: {
+    position: 'absolute',
+    right: 36,
+    top: 128,
+    width: 136,
+    height: 136,
+    borderRadius: 68,
+  },
+  thisWeekPremiumMainRow: {
+    marginTop: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  thisWeekPremiumPercent: {
+    color: '#FFFFFF',
+    fontSize: 56,
+    lineHeight: 58,
+    fontWeight: '900',
+  },
+  thisWeekRingOuterGlow: {
+    width: 178,
+    height: 178,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#FFD46B',
+    shadowOpacity: 0.42,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  thisWeekRingInner: {
+    position: 'absolute',
+    width: 128,
+    height: 128,
+    borderRadius: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(145, 191, 255, 0.35)',
+    backgroundColor: 'rgba(3, 18, 37, 0.92)',
+    shadowColor: '#6AB3FF',
+    shadowOpacity: 0.24,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+  },
+  thisWeekPremiumRightColumn: {
+    flex: 1,
+    marginLeft: 14,
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+    minHeight: 144,
+    paddingTop: 4,
+    paddingBottom: 4,
+  },
+  thisWeekPremiumTrophyBadge: {
+    alignSelf: 'flex-end',
+    width: 78,
+    height: 78,
+    borderRadius: 39,
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 229, 132, 0.45)',
+    shadowColor: '#FFD86B',
+    shadowOpacity: 0.45,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+  },
+  thisWeekPremiumTrophyText: {
+    fontSize: 40,
+    lineHeight: 40,
+  },
+  thisWeekPremiumProgressTrack: {
+    marginTop: 16,
+    height: 20,
+    borderRadius: 999,
+    backgroundColor: 'rgba(238, 216, 153, 0.52)',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 239, 192, 0.72)',
+    shadowColor: '#FFD86B',
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  thisWeekPremiumProgressFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  thisWeekPremiumChip: {
+    minHeight: 44,
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(131, 181, 255, 0.48)',
+    backgroundColor: 'rgba(12, 27, 50, 0.72)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    flexBasis: '48%',
+    width: '48%',
+    maxWidth: '48%',
+    shadowColor: '#6AA8FF',
+    shadowOpacity: 0.28,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  thisWeekPremiumChipText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+    flexShrink: 1,
+  },
+  thisWeekPremiumModeToggle: {
+    minHeight: 44,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 218, 146, 0.55)',
+    backgroundColor: 'rgba(18, 32, 56, 0.86)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 6,
+    shadowColor: '#FFD67D',
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+    flexBasis: '48%',
+    width: '48%',
+    maxWidth: '48%',
+    justifyContent: 'center',
+  },
+  thisWeekPremiumModeToggleText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+    flexShrink: 1,
+  },
+  thisWeekPremiumTodayBadge: {
+    minHeight: 30,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.30)',
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 6,
+  },
+  thisWeekPremiumTodayText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.1,
+  },
   currentWeekModeToggle: {
     position: 'absolute',
     right: 32,
@@ -2644,6 +3114,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+  },
+  thisWeekHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 10,
+  },
+  thisWeekPremiumChevronButton: {
+    borderWidth: 1,
+    borderColor: 'rgba(255, 236, 186, 0.55)',
+    shadowColor: '#FFE39C',
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
   },
   upcomingSummaryEyebrow: {
     fontSize: 11,
