@@ -222,14 +222,18 @@ describe('Home performance card hour sums', () => {
     mockUseTeamPlayer.mockReturnValue({ selectedContext: null });
   });
 
-  it('renders Timer i dag and Timer denne uge with expected totals', () => {
-    const { getByText, getByTestId, getByLabelText } = render(<HomeScreen />);
-    fireEvent.press(getByLabelText('Udvid performance-kort'));
+  it('renders this week premium card with expected header and badges', () => {
+    const { getByText, getByTestId } = render(<HomeScreen />);
 
-    expect(getByText('Timer i dag: 1 t')).toBeTruthy();
-    expect(getByText('Timer denne uge: 2 t')).toBeTruthy();
-    expect(getByTestId('home.performance.hoursToday')).toBeTruthy();
-    expect(getByTestId('home.performance.hoursWeek')).toBeTruthy();
+    expect(getByTestId('home.thisWeekPremiumCard')).toBeTruthy();
+    expect(getByText(/DENNE UGE/i)).toBeTruthy();
+    expect(getByTestId('home.thisWeekPremiumCard.percent')).toBeTruthy();
+    expect(getByTestId('home.thisWeekPremiumCard.ring')).toBeTruthy();
+    expect(getByTestId('home.thisWeekPremiumCard.progress')).toBeTruthy();
+    expect(getByTestId('home.thisWeekPremiumCard.chip.tasks')).toBeTruthy();
+    expect(getByTestId('home.thisWeekPremiumCard.chip.planned')).toBeTruthy();
+    expect(getByTestId('home.thisWeekPremiumCard.badge.today')).toBeTruthy();
+    expect(getByTestId('home.thisWeekPremiumCard.trophy')).toBeTruthy();
     expect(mockPush).toHaveBeenCalledTimes(0);
   });
 
@@ -300,7 +304,7 @@ describe('Home performance card hour sums', () => {
       queryAllByTestId,
     } = render(<HomeScreen />);
 
-    expect(getAllByText('DENNE UGE').length).toBeGreaterThan(0);
+    expect(getByTestId('home.thisWeekPremiumCard')).toBeTruthy();
     expect(getAllByText('I dag').length).toBeGreaterThan(0);
     expect(queryAllByTestId('home.weekSummary.currentWeek')).toHaveLength(1);
     expect(queryAllByTestId('home.weekSummary.upcoming')).toHaveLength(1);
@@ -308,7 +312,8 @@ describe('Home performance card hour sums', () => {
 
     fireEvent.press(getByTestId('home.currentWeek.modeToggle'));
     expect(queryAllByTestId('mock.activityCard')).toHaveLength(0);
-    fireEvent.press(getAllByText('I dag')[0]);
+    const todayLabels = getAllByText('I dag');
+    fireEvent.press(todayLabels[todayLabels.length - 1]);
     expect(queryAllByTestId('mock.activityCard')).toHaveLength(1);
 
     expect(queryByTestId('home.previousWeeks.loadOne')).toBeNull();
