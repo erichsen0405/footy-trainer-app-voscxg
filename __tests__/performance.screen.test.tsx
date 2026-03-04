@@ -77,12 +77,22 @@ describe('PerformanceScreen', () => {
     jest.useRealTimers();
   });
 
-  it('renders performance task counts including intensity-adjusted totals', () => {
-    const { getByTestId, getByText } = render(<PerformanceScreen />);
+  it('shows collapsible pokaler and udvikling sections', () => {
+    const { getByTestId, getByText, queryByTestId, queryByText } = render(<PerformanceScreen />);
 
-    expect(getByTestId('performance.statTasks.today')).toBeTruthy();
-    expect(getByText('3 / 5')).toBeTruthy();
-    expect(getByText('5 / 8')).toBeTruthy();
+    expect(getByText('Pokaler')).toBeTruthy();
+    expect(getByText('Udvikling')).toBeTruthy();
+    expect(getByText('Guld pokaler')).toBeTruthy();
+    expect(getByTestId('mock.progressionSection')).toBeTruthy();
+
+    fireEvent.press(getByTestId('performance.trophies.toggle'));
+    expect(queryByText('Guld pokaler')).toBeNull();
+
+    fireEvent.press(getByTestId('performance.trophies.toggle'));
+    expect(getByText('Guld pokaler')).toBeTruthy();
+
+    fireEvent.press(getByTestId('performance.progression.toggle'));
+    expect(queryByTestId('mock.progressionSection')).toBeNull();
   });
 
   it('shows historik and excludes current week activities', () => {
@@ -109,9 +119,10 @@ describe('PerformanceScreen', () => {
       ],
     });
 
-    const { getByText, getAllByTestId, queryByText } = render(<PerformanceScreen />);
+    const { getByText, getAllByTestId, getByTestId, queryByText } = render(<PerformanceScreen />);
 
     expect(getByText('Historik')).toBeTruthy();
+    fireEvent.press(getByTestId('performance.history.toggle'));
     expect(getAllByTestId('mock.weeklySummaryCard')).toHaveLength(1);
 
     fireEvent.press(getByText('mock.weeklySummaryCard'));
