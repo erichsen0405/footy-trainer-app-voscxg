@@ -10,6 +10,7 @@ import { SubscriptionProvider, useSubscription } from '@/contexts/SubscriptionCo
 import { TeamPlayerProvider } from '@/contexts/TeamPlayerContext';
 import { AdminProvider } from '@/contexts/AdminContext';
 import { AppleIAPProvider, useAppleIAP } from '@/contexts/AppleIAPContext';
+import { CelebrationProvider } from '@/contexts/CelebrationContext';
 import { supabase } from '@/integrations/supabase/client';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -98,28 +99,30 @@ export default function RootLayout() {
         <SubscriptionRedirectObserver />
         <TeamPlayerProvider>
           <AdminProvider>
-            <FootballProvider>
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="index" />
-                <Stack.Screen name="choose-plan" />
-                <Stack.Screen name="(tabs)" />
-                <Stack.Screen name="profile" />
-                <Stack.Screen name="+not-found" />
-                <Stack.Screen name="activity-details" options={{ presentation: 'modal' }} />
-                <Stack.Screen name="auth/check-email" />
-                <Stack.Screen name="auth/forgot-password" />
-                <Stack.Screen name="auth/callback" />
-                <Stack.Screen name="auth/recovery-callback" />
-                <Stack.Screen name="auth/recovery-redirect" />
-                <Stack.Screen name="email-confirmed" />
-                <Stack.Screen name="update-password" />
-                {__DEV__ ? <Stack.Screen name="console-logs" options={{ headerShown: true }} /> : null}
-                {__DEV__ ? (
-                  <Stack.Screen name="notification-debug" options={{ headerShown: true }} />
-                ) : null}
-              </Stack>
-              <StatusBar style="auto" />
-            </FootballProvider>
+            <CelebrationProvider>
+              <FootballProvider>
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="index" />
+                  <Stack.Screen name="choose-plan" />
+                  <Stack.Screen name="(tabs)" />
+                  <Stack.Screen name="profile" />
+                  <Stack.Screen name="+not-found" />
+                  <Stack.Screen name="activity-details" options={{ presentation: 'modal' }} />
+                  <Stack.Screen name="auth/check-email" />
+                  <Stack.Screen name="auth/forgot-password" />
+                  <Stack.Screen name="auth/callback" />
+                  <Stack.Screen name="auth/recovery-callback" />
+                  <Stack.Screen name="auth/recovery-redirect" />
+                  <Stack.Screen name="email-confirmed" />
+                  <Stack.Screen name="update-password" />
+                  {__DEV__ ? <Stack.Screen name="console-logs" options={{ headerShown: true }} /> : null}
+                  {__DEV__ ? (
+                    <Stack.Screen name="notification-debug" options={{ headerShown: true }} />
+                  ) : null}
+                </Stack>
+                <StatusBar style="auto" />
+              </FootballProvider>
+            </CelebrationProvider>
           </AdminProvider>
         </TeamPlayerProvider>
       </AppleIAPProvider>

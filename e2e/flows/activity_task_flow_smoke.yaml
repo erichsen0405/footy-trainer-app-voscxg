@@ -252,6 +252,15 @@ tags:
             visible: '^Markér som udført$'
           commands:
             - tapOn: '^Markér som udført$'
+            - runFlow:
+                when:
+                  visible:
+                    id: '^celebration-overlay$'
+                commands:
+                  - extendedWaitUntil:
+                      notVisible:
+                        id: '^celebration-overlay$'
+                      timeout: 4000
 
 # Fuldfør normal opgave
 - runFlow:
@@ -268,6 +277,15 @@ tags:
           timeout: 15000
       - tapOn:
           id: '^activity\.completeButton\.markDone$'
+      - runFlow:
+          when:
+            visible:
+              id: '^celebration-overlay$'
+          commands:
+            - extendedWaitUntil:
+                notVisible:
+                  id: '^celebration-overlay$'
+                timeout: 4000
 
 # Fuldfør feedback-opgave
 - runFlow:
@@ -285,6 +303,15 @@ tags:
           commands:
             - tapOn:
                 id: '^activity\.completeButton\.markDone$'
+            - runFlow:
+                when:
+                  visible:
+                    id: '^celebration-overlay$'
+                commands:
+                  - extendedWaitUntil:
+                      notVisible:
+                        id: '^celebration-overlay$'
+                      timeout: 4000
       - extendedWaitUntil:
           visible:
             id: '^feedback\.scoreInput$'
