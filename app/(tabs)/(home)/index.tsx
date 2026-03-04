@@ -57,10 +57,10 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform, useColorScheme, DeviceEventEmitter, Image } from 'react-native';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import { FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform, useColorScheme, DeviceEventEmitter, Image, ImageBackground, Modal } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Defs, Stop, LinearGradient as SvgLinearGradient, Circle, Rect, G } from 'react-native-svg';
+import Svg, { Defs, Stop, LinearGradient as SvgLinearGradient, Circle, G } from 'react-native-svg';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
@@ -130,15 +130,20 @@ function getPerformanceScaleVisuals(percentage: number): {
   ringGlow: string;
   ringStops: [string, string, string];
   barColors: [string, string, string];
+  middleRingProgress: string;
+  middleRingTrack: string;
 } {
   const safePercentage = typeof percentage === 'number' && !isNaN(percentage) ? percentage : 0;
-  const ringStops: [string, string, string] = ['#FF5A5F', '#FFD76B', '#5DE488'];
+  // Ring stays "premium" cyan -> green -> gold (reference), glow follows thresholds.
+  const ringStops: [string, string, string] = ['#7EF0FF', '#A6FF7A', '#FFD27A'];
   const barColors: [string, string, string] = ['#FF6B6B', '#FDE776', '#59E382'];
   if (safePercentage >= 80) {
     return {
       ringGlow: 'rgba(96, 224, 123, 0.55)',
       ringStops,
       barColors,
+      middleRingProgress: '#6FAF88',
+      middleRingTrack: 'rgba(111, 175, 136, 0.24)',
     };
   }
   if (safePercentage >= 60) {
@@ -146,12 +151,16 @@ function getPerformanceScaleVisuals(percentage: number): {
       ringGlow: 'rgba(255, 210, 94, 0.55)',
       ringStops,
       barColors,
+      middleRingProgress: '#BDA86A',
+      middleRingTrack: 'rgba(189, 168, 106, 0.24)',
     };
   }
   return {
     ringGlow: 'rgba(255, 92, 92, 0.55)',
     ringStops,
     barColors,
+    middleRingProgress: '#B36F6F',
+    middleRingTrack: 'rgba(179, 111, 111, 0.24)',
   };
 }
 
@@ -171,20 +180,8 @@ type ThisWeekPremiumCardProps = {
 };
 
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
-
-const THIS_WEEK_SPECKS = [
-  { x: 12, y: 22, r: 1.2, c: '#BFE9FF', o: 0.55 },
-  { x: 18, y: 58, r: 0.9, c: '#FFFFFF', o: 0.35 },
-  { x: 26, y: 40, r: 1.1, c: '#FFE7B0', o: 0.3 },
-  { x: 34, y: 18, r: 0.8, c: '#7EF0FF', o: 0.35 },
-  { x: 44, y: 35, r: 1.4, c: '#FFFFFF', o: 0.22 },
-  { x: 52, y: 28, r: 1, c: '#FFE7B0', o: 0.3 },
-  { x: 61, y: 44, r: 0.8, c: '#BFE9FF', o: 0.3 },
-  { x: 68, y: 22, r: 1.2, c: '#FFFFFF', o: 0.22 },
-  { x: 74, y: 55, r: 1, c: '#FFE7B0', o: 0.25 },
-  { x: 82, y: 33, r: 0.9, c: '#7EF0FF', o: 0.25 },
-  { x: 88, y: 64, r: 1.1, c: '#FFFFFF', o: 0.18 },
-];
+const THIS_WEEK_PREMIUM_BG = require('../../../assets/images/home_this_week_premium_bg.png');
+const THIS_WEEK_CARD_RADIUS = 24;
 
 const ThisWeekPremiumCard = React.memo(function ThisWeekPremiumCard({
   weekLabel,
@@ -202,14 +199,27 @@ const ThisWeekPremiumCard = React.memo(function ThisWeekPremiumCard({
 }: ThisWeekPremiumCardProps) {
   const p = clamp01((Number.isFinite(percentNumber) ? percentNumber : 0) / 100);
   const visuals = getPerformanceScaleVisuals(percentNumber);
+  const ignoreNextToggleRef = useRef(false);
+  const trophyEmoji = trophyCount <= 1 ? '🥇' : trophyCount === 2 ? '🥈' : '🥉';
 
-  const size = 170;
-  const stroke = 14;
+  const size = 109;
+  const stroke = 9;
   const r = (size - stroke) / 2;
+  const progressRingStroke = stroke;
+  const progressRingRadius = r;
+  const bgRingStroke = progressRingStroke * 2;
+  const bgRingRadius = progressRingRadius + progressRingStroke / 2 - bgRingStroke / 2;
   const c = 2 * Math.PI * r;
   const dashOffset = c * (1 - p);
 
   const chevronRotation = expanded ? '180deg' : '0deg';
+  const handleCardPress = useCallback(() => {
+    if (ignoreNextToggleRef.current) {
+      ignoreNextToggleRef.current = false;
+      return;
+    }
+    onToggle();
+  }, [onToggle]);
   const handleCreatePress = useCallback(
     (e: any) => {
       // Prevent accordion toggle when pressing the "+".
@@ -227,46 +237,28 @@ const ThisWeekPremiumCard = React.memo(function ThisWeekPremiumCard({
     },
     [onToggleMode]
   );
-
   return (
     <Pressable
       testID="home.thisWeekPremiumCard.toggle"
-      onPress={onToggle}
+      onPress={handleCardPress}
       style={thisWeekPremiumCardStyles.cardPressable}
       accessibilityRole="button"
     >
-      <LinearGradient
-        testID="home.thisWeekPremiumCard"
-        colors={['#0B1220', '#0E1B2C', '#0B121A']}
-        start={{ x: 0.1, y: 0.05 }}
-        end={{ x: 0.95, y: 0.95 }}
-        style={thisWeekPremiumCardStyles.card}
-      >
-        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-          <Svg width="100%" height="100%">
-            <Defs>
-              <SvgLinearGradient id="homeThisWeekPremiumSheen" x1="0" y1="0" x2="1" y2="1">
-                <Stop offset="0" stopColor="#7EF0FF" stopOpacity="0.10" />
-                <Stop offset="0.35" stopColor="#FFFFFF" stopOpacity="0.04" />
-                <Stop offset="0.7" stopColor="#FFDA7A" stopOpacity="0.06" />
-                <Stop offset="1" stopColor="#000000" stopOpacity="0.00" />
-              </SvgLinearGradient>
-            </Defs>
+      <View style={thisWeekPremiumCardStyles.glowWrap}>
+        <View style={thisWeekPremiumCardStyles.cardInner}>
+          <ImageBackground
+            testID="home.thisWeekPremiumCard"
+            source={THIS_WEEK_PREMIUM_BG}
+            style={thisWeekPremiumCardStyles.cardBackground}
+            imageStyle={thisWeekPremiumCardStyles.cardImage}
+            resizeMode="stretch"
+          />
+          <View pointerEvents="none" style={thisWeekPremiumCardStyles.cardImageOverlay} />
 
-            <Rect x="0" y="0" width="100%" height="100%" fill="#000" opacity="0.18" />
-            <Rect x="-40" y="-80" width="140%" height="140%" fill="url(#homeThisWeekPremiumSheen)" opacity="0.8" />
-
-            <G opacity="0.35">
-              {THIS_WEEK_SPECKS.map((s, i) => (
-                <Circle key={`sp-${i}`} cx={`${s.x}%`} cy={`${s.y}%`} r={s.r} fill={s.c} opacity={s.o} />
-              ))}
-            </G>
-          </Svg>
-        </View>
-
+          <View style={thisWeekPremiumCardStyles.cardContent}>
         <View style={thisWeekPremiumCardStyles.headerRow}>
           <View style={{ flex: 1 }}>
-            <Text style={thisWeekPremiumCardStyles.headerKicker}>
+            <Text numberOfLines={1} ellipsizeMode="tail" style={thisWeekPremiumCardStyles.headerKicker}>
               DENNE UGE <Text style={thisWeekPremiumCardStyles.headerDot}>•</Text>{' '}
               <Text style={thisWeekPremiumCardStyles.headerWeek}>{weekLabel}</Text>
             </Text>
@@ -275,17 +267,60 @@ const ThisWeekPremiumCard = React.memo(function ThisWeekPremiumCard({
 
           <View style={thisWeekPremiumCardStyles.headerActions}>
             <Pressable
+              onPressIn={() => {
+                ignoreNextToggleRef.current = true;
+              }}
               onPress={handleCreatePress}
-              style={thisWeekPremiumCardStyles.createCircle}
+              style={thisWeekPremiumCardStyles.createCirclePressable}
               accessibilityRole="button"
               accessibilityLabel="Opret aktivitet"
-              testID="home.thisWeekPremiumCard.create"
+              testID="home.thisWeekPremiumCard.addButton"
             >
-              <Text style={thisWeekPremiumCardStyles.createPlus}>+</Text>
+              <LinearGradient
+                colors={['#4CC46E', '#279B4A']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={thisWeekPremiumCardStyles.createCircle}
+              >
+                <IconSymbol
+                  ios_icon_name="plus"
+                  android_material_icon_name="add"
+                  size={18}
+                  color="#FFFFFF"
+                />
+                <LinearGradient
+                  pointerEvents="none"
+                  colors={['rgba(255,255,255,0.35)', 'rgba(255,255,255,0.00)']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={thisWeekPremiumCardStyles.createSheen}
+                />
+              </LinearGradient>
             </Pressable>
 
             <View style={thisWeekPremiumCardStyles.chevronCircle}>
-              <Text style={[thisWeekPremiumCardStyles.chevron, { transform: [{ rotate: chevronRotation }] }]}>⌄</Text>
+              <LinearGradient
+                colors={['#4CC46E', '#279B4A']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={thisWeekPremiumCardStyles.chevronCircleButton}
+              >
+                <View style={[thisWeekPremiumCardStyles.chevronIconWrap, { transform: [{ rotate: chevronRotation }] }]}>
+                  <IconSymbol
+                    ios_icon_name="chevron.down"
+                    android_material_icon_name="keyboard-arrow-down"
+                    size={18}
+                    color="#FFFFFF"
+                  />
+                </View>
+                <LinearGradient
+                  pointerEvents="none"
+                  colors={['rgba(255,255,255,0.35)', 'rgba(255,255,255,0.00)']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={thisWeekPremiumCardStyles.chevronSheen}
+                />
+              </LinearGradient>
             </View>
           </View>
         </View>
@@ -307,20 +342,30 @@ const ThisWeekPremiumCard = React.memo(function ThisWeekPremiumCard({
                 </SvgLinearGradient>
               </Defs>
 
+              {/* Outer glow (fake blur via thicker stroke) */}
               <Circle
                 cx={size / 2}
                 cy={size / 2}
-                r={r}
-                stroke="rgba(255,255,255,0.08)"
-                strokeWidth={stroke}
+                r={bgRingRadius}
+                stroke={visuals.middleRingProgress}
+                strokeWidth={bgRingStroke}
+                fill="none"
+                opacity={0.48}
+              />
+              <Circle
+                cx={size / 2}
+                cy={size / 2}
+                r={progressRingRadius}
+                stroke="rgba(213, 246, 230, 0.30)"
+                strokeWidth={progressRingStroke}
                 fill="none"
               />
               <Circle
                 cx={size / 2}
                 cy={size / 2}
-                r={r}
+                r={progressRingRadius}
                 stroke="url(#homeThisWeekPremiumRing)"
-                strokeWidth={stroke}
+                strokeWidth={progressRingStroke}
                 fill="none"
                 strokeLinecap="round"
                 strokeDasharray={`${c} ${c}`}
@@ -337,26 +382,69 @@ const ThisWeekPremiumCard = React.memo(function ThisWeekPremiumCard({
           </View>
 
           <View style={thisWeekPremiumCardStyles.rightCol}>
-            <View testID="home.thisWeekPremiumCard.trophy" style={thisWeekPremiumCardStyles.trophyBubble}>
-              <Text style={thisWeekPremiumCardStyles.trophyMedal}>🏅</Text>
-              <Text style={thisWeekPremiumCardStyles.trophyCount}>{trophyCount}</Text>
+            <View style={thisWeekPremiumCardStyles.trophyWrap}>
+              <View pointerEvents="none" style={thisWeekPremiumCardStyles.trophySparkles}>
+                <Svg width="100%" height="100%">
+                  <G opacity="0.85">
+                    <Circle cx="12%" cy="34%" r="2.2" fill="#FFE7B0" opacity="0.85" />
+                    <Circle cx="24%" cy="16%" r="1.2" fill="#FFFFFF" opacity="0.6" />
+                    <Circle cx="78%" cy="14%" r="1.5" fill="#FFE7B0" opacity="0.7" />
+                    <Circle cx="90%" cy="40%" r="1.1" fill="#FFFFFF" opacity="0.48" />
+                  </G>
+                </Svg>
+              </View>
+              <View testID="home.thisWeekPremiumCard.trophy" style={thisWeekPremiumCardStyles.trophyBubble}>
+                <Text style={thisWeekPremiumCardStyles.trophyMedal}>{trophyEmoji}</Text>
+              </View>
             </View>
 
-            {/* Progress bar removed (per design); keep test hook stable */}
-            <View testID="home.thisWeekPremiumCard.progress" style={thisWeekPremiumCardStyles.progressTestHook} />
+            <View style={thisWeekPremiumCardStyles.longBarTrack}>
+              <View
+                testID="home.thisWeekPremiumCard.progress"
+                style={[
+                  thisWeekPremiumCardStyles.longBarFill,
+                  {
+                    width: `${Math.round(p * 100)}%`,
+                    backgroundColor: visuals.middleRingProgress,
+                  },
+                ]}
+              />
+            </View>
           </View>
         </View>
 
         <View style={thisWeekPremiumCardStyles.chipsRow}>
-          <View testID="home.thisWeekPremiumCard.chip.tasks" style={thisWeekPremiumCardStyles.chip}>
-            <IconSymbol ios_icon_name="checkmark.circle" android_material_icon_name="check_circle" size={14} color="rgba(255,255,255,0.92)" />
+          <View
+            testID="home.thisWeekPremiumCard.chip.tasks"
+            style={[thisWeekPremiumCardStyles.chip, thisWeekPremiumCardStyles.chipTasks]}
+          >
+            <LinearGradient
+              pointerEvents="none"
+              colors={['rgba(175,228,255,0.24)', 'rgba(175,228,255,0.18)', 'rgba(255,255,255,0.08)', 'rgba(255,210,122,0.14)', 'rgba(255,210,122,0.20)']}
+              locations={[0, 0.24, 0.50, 0.76, 1]}
+              start={{ x: 0.0, y: 0.12 }}
+              end={{ x: 1.0, y: 0.88 }}
+              style={[thisWeekPremiumCardStyles.chipGradientTint, thisWeekPremiumCardStyles.chipGradientTintTasks]}
+            />
+            <IconSymbol ios_icon_name="checkmark.circle" android_material_icon_name="check_circle" size={12} color="rgba(255,255,255,0.92)" />
             <Text numberOfLines={1} ellipsizeMode="tail" style={thisWeekPremiumCardStyles.chipText}>
               {tasksLabel}
             </Text>
           </View>
 
-          <View testID="home.thisWeekPremiumCard.chip.planned" style={thisWeekPremiumCardStyles.chip}>
-            <IconSymbol ios_icon_name="clock" android_material_icon_name="schedule" size={14} color="rgba(255,255,255,0.92)" />
+          <View
+            testID="home.thisWeekPremiumCard.chip.planned"
+            style={[thisWeekPremiumCardStyles.chip, thisWeekPremiumCardStyles.chipPlanned]}
+          >
+            <LinearGradient
+              pointerEvents="none"
+              colors={['rgba(166,224,255,0.16)', 'rgba(255,255,255,0.08)', 'rgba(255,216,132,0.16)', 'rgba(255,216,132,0.24)', 'rgba(255,216,132,0.30)']}
+              locations={[0, 0.30, 0.55, 0.80, 1]}
+              start={{ x: 0.08, y: 0.30 }}
+              end={{ x: 0.92, y: 0.70 }}
+              style={[thisWeekPremiumCardStyles.chipGradientTint, thisWeekPremiumCardStyles.chipGradientTintPlanned]}
+            />
+            <IconSymbol ios_icon_name="clock" android_material_icon_name="schedule" size={12} color="rgba(255,255,255,0.92)" />
             <Text numberOfLines={1} ellipsizeMode="tail" style={thisWeekPremiumCardStyles.chipText}>
               {plannedLabel}
             </Text>
@@ -365,8 +453,19 @@ const ThisWeekPremiumCard = React.memo(function ThisWeekPremiumCard({
 
         <View style={thisWeekPremiumCardStyles.chipsRow2}>
           {activitiesLabel ? (
-            <View testID="home.thisWeekPremiumCard.chip.activities" style={thisWeekPremiumCardStyles.chip}>
-              <IconSymbol ios_icon_name="calendar" android_material_icon_name="calendar_today" size={14} color="rgba(255,255,255,0.92)" />
+            <View
+              testID="home.thisWeekPremiumCard.chip.activities"
+              style={[thisWeekPremiumCardStyles.chip, thisWeekPremiumCardStyles.chipActivities]}
+            >
+              <LinearGradient
+                pointerEvents="none"
+                colors={['rgba(248,210,124,0.18)', 'rgba(248,210,124,0.13)', 'rgba(255,255,255,0.08)', 'rgba(172,228,255,0.16)', 'rgba(172,228,255,0.22)']}
+                locations={[0, 0.26, 0.52, 0.78, 1]}
+                start={{ x: 0.92, y: 0.10 }}
+                end={{ x: 0.08, y: 0.90 }}
+                style={[thisWeekPremiumCardStyles.chipGradientTint, thisWeekPremiumCardStyles.chipGradientTintActivities]}
+              />
+              <IconSymbol ios_icon_name="calendar" android_material_icon_name="calendar_today" size={12} color="rgba(255,255,255,0.92)" />
               <Text numberOfLines={1} ellipsizeMode="tail" style={thisWeekPremiumCardStyles.chipText}>
                 {activitiesLabel}
               </Text>
@@ -375,101 +474,175 @@ const ThisWeekPremiumCard = React.memo(function ThisWeekPremiumCard({
             <View style={{ flex: 1 }} />
           )}
 
-          <View testID="home.thisWeekPremiumCard.badge.today" style={thisWeekPremiumCardStyles.todayBadge}>
+          <View
+            testID="home.thisWeekPremiumCard.badge.today"
+            style={[thisWeekPremiumCardStyles.todayBadge, thisWeekPremiumCardStyles.todayBadgeVariant]}
+          >
+            <LinearGradient
+              pointerEvents="none"
+              colors={['rgba(168,230,255,0.12)', 'rgba(255,255,255,0.06)', 'rgba(255,220,138,0.14)', 'rgba(255,220,138,0.22)', 'rgba(255,220,138,0.28)']}
+              locations={[0, 0.32, 0.56, 0.80, 1]}
+              start={{ x: 0.16, y: 0.24 }}
+              end={{ x: 0.84, y: 0.76 }}
+              style={thisWeekPremiumCardStyles.todayBadgeGradientTint}
+            />
             <Pressable
+              onPressIn={() => {
+                ignoreNextToggleRef.current = true;
+              }}
               onPress={handleModeTogglePress}
               testID="home.currentWeek.modeToggle"
               accessibilityRole="switch"
               accessibilityState={{ checked: isTodayOnly }}
               style={thisWeekPremiumCardStyles.todayPressable}
             >
-              <IconSymbol ios_icon_name="sun.max" android_material_icon_name="wb_sunny" size={14} color="rgba(255,255,255,0.92)" />
+              <IconSymbol ios_icon_name="sun.max" android_material_icon_name="wb_sunny" size={12} color="rgba(255,255,255,0.92)" />
               <Text numberOfLines={1} style={thisWeekPremiumCardStyles.todayText}>
                 {isTodayOnly ? 'I dag' : 'Uge'}
               </Text>
             </Pressable>
           </View>
         </View>
-      </LinearGradient>
+          </View>
+        </View>
+      </View>
     </Pressable>
   );
 });
 
 const thisWeekPremiumCardStyles = StyleSheet.create({
   cardPressable: {
-    borderRadius: 28,
+    borderRadius: THIS_WEEK_CARD_RADIUS,
   },
-  card: {
-    borderRadius: 28,
-    padding: 18,
+  glowWrap: {
+    borderRadius: THIS_WEEK_CARD_RADIUS,
+    position: 'relative',
+    overflow: 'visible',
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    borderColor: 'transparent',
+    shadowColor: 'transparent',
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 0,
+  },
+  cardInner: {
+    position: 'relative',
+    borderRadius: THIS_WEEK_CARD_RADIUS,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-    shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 8,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    borderColor: 'transparent',
+    shadowColor: 'transparent',
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 0,
+  },
+  cardBackground: {
+    ...StyleSheet.absoluteFillObject,
+    left: 0,
+    right: 0,
+    width: '100%',
+    height: '100%',
+    borderRadius: THIS_WEEK_CARD_RADIUS,
+  },
+  cardImage: {
+    borderRadius: THIS_WEEK_CARD_RADIUS,
+  },
+  cardImageOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.12)',
+  },
+  cardContent: {
+    paddingHorizontal: 18,
+    paddingVertical: 10,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   headerKicker: {
     color: 'rgba(255,255,255,0.92)',
-    fontSize: 20,
-    letterSpacing: 1.5,
+    fontSize: 18,
+    letterSpacing: 1.2,
     fontWeight: '700',
   },
   headerDot: { color: 'rgba(255,255,255,0.55)' },
   headerWeek: { color: 'rgba(255,255,255,0.75)', fontWeight: '600' },
   headerRange: {
-    marginTop: 6,
+    marginTop: 4,
     color: 'rgba(255,255,255,0.55)',
     fontSize: 14,
     fontWeight: '500',
   },
   headerActions: { marginLeft: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  createCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#2DBE66',
-    alignItems: 'center',
-    justifyContent: 'center',
+  createCirclePressable: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     shadowColor: 'rgba(45, 190, 102, 0.55)',
-    shadowOpacity: 0.5,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 8,
+    shadowOpacity: 0.52,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 9,
   },
-  createPlus: { color: '#FFFFFF', fontSize: 22, fontWeight: '800', marginTop: -1 },
-  chevronCircle: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: 'rgba(0,0,0,0.25)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
+  createCircle: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
-  chevron: {
-    color: 'rgba(255,255,255,0.9)',
-    fontSize: 18,
-    marginTop: -2,
+  createSheen: {
+    position: 'absolute',
+    left: -5,
+    top: -5,
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+  },
+  chevronCircle: {
+    borderRadius: 28,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  chevronCircleButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  chevronIconWrap: {
+    marginTop: 0,
+  },
+  chevronSheen: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
   },
   contentRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: -6,
   },
   ringWrap: {
-    width: 190,
-    height: 190,
+    width: 122,
+    height: 122,
     alignItems: 'center',
     justifyContent: 'center',
+    transform: [{ translateY: -11 }],
+    marginLeft: -7,
     shadowOpacity: 0.55,
     shadowRadius: 22,
     shadowOffset: { width: 0, height: 12 },
@@ -477,17 +650,35 @@ const thisWeekPremiumCardStyles = StyleSheet.create({
   percentText: {
     position: 'absolute',
     color: 'rgba(255,255,255,0.92)',
-    fontSize: 56,
+    width: '100%',
+    textAlign: 'center',
+    fontSize: 25.65,
     fontWeight: '800',
   },
-  rightCol: { flex: 1, paddingLeft: 10, alignItems: 'flex-end', justifyContent: 'center' },
+  rightCol: { flex: 1, paddingLeft: 8, justifyContent: 'center' },
+  trophyWrap: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    position: 'relative',
+    width: 96,
+    height: 80,
+    transform: [{ translateY: -24 }],
+    alignSelf: 'flex-end',
+  },
+  trophySparkles: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 96,
+    height: 80,
+  },
   trophyBubble: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: 'rgba(255, 210, 122, 0.08)',
+    width: 47,
+    height: 47,
+    borderRadius: 23.5,
+    backgroundColor: 'rgba(255, 210, 122, 0.10)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 210, 122, 0.32)',
+    borderColor: 'rgba(255,210,122,0.35)',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#FFD27A',
@@ -496,58 +687,141 @@ const thisWeekPremiumCardStyles = StyleSheet.create({
     shadowOffset: { width: 0, height: 10 },
     elevation: 8,
   },
-  trophyMedal: { fontSize: 22, marginBottom: 4 },
-  trophyCount: { color: 'rgba(255,255,255,0.92)', fontSize: 18, fontWeight: '800' },
-  progressTestHook: { width: 1, height: 1, opacity: 0 },
+  trophyMedal: { fontSize: 38, lineHeight: 42 },
+  longBarTrack: {
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    overflow: 'hidden',
+    marginTop: -38,
+    width: '108%',
+    alignSelf: 'flex-end',
+  },
+  longBarFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 210, 122, 0.90)',
+  },
   chipsRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     gap: 12,
-    marginTop: 6,
+    marginTop: -6,
   },
   chipsRow2: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     gap: 12,
-    marginTop: 10,
+    marginTop: 4,
     alignItems: 'center',
   },
   chip: {
-    flex: 1,
+    width: '48%',
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 9,
+    minHeight: 18,
+    paddingVertical: 5,
     paddingHorizontal: 12,
     borderRadius: 999,
     backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-    gap: 8,
+    borderWidth: 1.1,
+    borderTopColor: 'rgba(175, 228, 255, 0.58)',
+    borderLeftColor: 'rgba(175, 228, 255, 0.44)',
+    borderRightColor: 'rgba(255, 210, 122, 0.44)',
+    borderBottomColor: 'rgba(255, 210, 122, 0.58)',
+    gap: 6,
+    shadowColor: '#84D9FF',
+    shadowOpacity: 0.14,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+    overflow: 'hidden',
+  },
+  chipGradientTint: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 999,
+  },
+  chipGradientTintTasks: {
+    opacity: 0.56,
+  },
+  chipGradientTintPlanned: {
+    opacity: 0.58,
+  },
+  chipGradientTintActivities: {
+    opacity: 0.54,
+  },
+  chipTasks: {
+    borderTopColor: 'rgba(166, 232, 255, 0.82)',
+    borderLeftColor: 'rgba(166, 232, 255, 0.72)',
+    borderRightColor: 'rgba(246, 212, 126, 0.36)',
+    borderBottomColor: 'rgba(246, 212, 126, 0.44)',
+    shadowColor: '#8EE0FF',
+    shadowOpacity: 0.2,
+  },
+  chipPlanned: {
+    borderTopColor: 'rgba(156, 223, 255, 0.34)',
+    borderLeftColor: 'rgba(156, 223, 255, 0.30)',
+    borderRightColor: 'rgba(255, 216, 132, 0.78)',
+    borderBottomColor: 'rgba(255, 216, 132, 0.86)',
+    shadowColor: '#FFD27A',
+    shadowOpacity: 0.22,
+  },
+  chipActivities: {
+    borderTopColor: 'rgba(174, 230, 255, 0.70)',
+    borderLeftColor: 'rgba(174, 230, 255, 0.62)',
+    borderRightColor: 'rgba(250, 210, 120, 0.62)',
+    borderBottomColor: 'rgba(250, 210, 120, 0.40)',
+    shadowColor: '#A8E9FF',
+    shadowOpacity: 0.19,
   },
   chipText: {
     color: 'rgba(255,255,255,0.88)',
-    fontSize: 15,
+    fontSize: 10,
     fontWeight: '600',
     flexShrink: 1,
   },
   todayBadge: {
+    width: '24%',
     borderRadius: 999,
     backgroundColor: 'rgba(0,0,0,0.22)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 210, 122, 0.30)',
-    alignSelf: 'flex-end',
-    flexGrow: 0,
-    flexShrink: 0,
+    borderWidth: 1.1,
+    borderTopColor: 'rgba(175, 228, 255, 0.62)',
+    borderLeftColor: 'rgba(175, 228, 255, 0.46)',
+    borderRightColor: 'rgba(255, 210, 122, 0.46)',
+    borderBottomColor: 'rgba(255, 210, 122, 0.62)',
+    marginLeft: 'auto',
+    shadowColor: '#FFD27A',
+    shadowOpacity: 0.16,
+    shadowRadius: 7,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+    overflow: 'hidden',
+  },
+  todayBadgeGradientTint: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 999,
+    opacity: 0.60,
+  },
+  todayBadgeVariant: {
+    borderTopColor: 'rgba(168, 230, 255, 0.36)',
+    borderLeftColor: 'rgba(168, 230, 255, 0.32)',
+    borderRightColor: 'rgba(255, 220, 138, 0.84)',
+    borderBottomColor: 'rgba(255, 220, 138, 0.92)',
+    shadowOpacity: 0.24,
   },
   todayPressable: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 9,
+    justifyContent: 'center',
+    minHeight: 18,
+    paddingVertical: 5,
     paddingHorizontal: 12,
     borderRadius: 999,
-    gap: 8,
+    gap: 6,
   },
   todayText: {
     color: 'rgba(255,255,255,0.85)',
-    fontSize: 15,
+    fontSize: 10,
     fontWeight: '700',
   },
 });
@@ -762,7 +1036,7 @@ export default function HomeScreen() {
   const { selectedContext } = useTeamPlayer();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showPreviousWeeks, setShowPreviousWeeks] = useState(0);
-  const [isPreviousWeeksVisible, setIsPreviousWeeksVisible] = useState(false);
+  const [isPreviousWeeksModalVisible, setIsPreviousWeeksModalVisible] = useState(false);
   const [expandedUpcomingWeeks, setExpandedUpcomingWeeks] = useState<Record<string, boolean>>({});
   const [expandedUpcomingDays, setExpandedUpcomingDays] = useState<Record<string, boolean>>({});
   const [isCurrentWeekTodayOnly, setIsCurrentWeekTodayOnly] = useState(true);
@@ -860,9 +1134,6 @@ export default function HomeScreen() {
     };
   }, [currentUserId]);
 
-  const currentWeekNumber = getWeek(new Date(), { weekStartsOn: 1, locale: da });
-  const currentWeekLabel = getWeekLabel(new Date());
-
   // CRITICAL FIX: Check for both player AND team admin mode
   const isPlayerAdmin = adminMode !== 'self' && adminTargetType === 'player';
   const isTeamAdmin = adminMode !== 'self' && adminTargetId === 'team';
@@ -892,7 +1163,7 @@ export default function HomeScreen() {
   // Reset previously loaded week count when loading starts (pull-to-refresh or navigation back)
   useEffect(() => {
     if (loading) {
-      setIsPreviousWeeksVisible(false);
+      setIsPreviousWeeksModalVisible(false);
       setShowPreviousWeeks(0);
     }
   }, [loading]);
@@ -1254,7 +1525,7 @@ export default function HomeScreen() {
     if (safeShowPreviousWeeks === 0) return [];
 
     const safePreviousWeekSummaries = Array.isArray(previousWeekSummaries) ? previousWeekSummaries : [];
-    return safePreviousWeekSummaries.slice(-safeShowPreviousWeeks).reverse();
+    return safePreviousWeekSummaries.slice(0, safeShowPreviousWeeks);
   }, [previousWeekSummaries, showPreviousWeeks]);
 
   // LINT FIX: Include currentWeekStats in dependency array
@@ -1365,20 +1636,19 @@ export default function HomeScreen() {
     });
   }, [previousWeekSummaries]);
 
-  const togglePreviousWeeksVisibility = useCallback(() => {
-    setIsPreviousWeeksVisible((prev) => {
-      const next = !prev;
-      if (next) {
-        setShowPreviousWeeks((currentCount) => {
-          const safeCount = typeof currentCount === 'number' && currentCount >= 0 ? currentCount : 0;
-          if (safeCount > 0) return safeCount;
-          const maxWeeks = Array.isArray(previousWeekSummaries) ? previousWeekSummaries.length : 0;
-          return Math.min(1, maxWeeks);
-        });
-      }
-      return next;
+  const handleOpenPreviousWeeksModal = useCallback(() => {
+    setShowPreviousWeeks((currentCount) => {
+      const safeCount = typeof currentCount === 'number' && currentCount >= 0 ? currentCount : 0;
+      if (safeCount > 0) return safeCount;
+      const maxWeeks = Array.isArray(previousWeekSummaries) ? previousWeekSummaries.length : 0;
+      return Math.min(1, maxWeeks);
     });
+    setIsPreviousWeeksModalVisible(true);
   }, [previousWeekSummaries]);
+
+  const handleClosePreviousWeeksModal = useCallback(() => {
+    setIsPreviousWeeksModalVisible(false);
+  }, []);
 
   const buildUpcomingDayToggleKey = useCallback((weekKey: string, dayKey: string) => {
     return `${weekKey}::${dayKey}`;
@@ -1808,7 +2078,6 @@ export default function HomeScreen() {
     const safeCurrentWeekSummary = currentWeekSummary?.weekGroup ? currentWeekSummary : null;
     const safeUpcomingWeekSummaries = Array.isArray(upcomingWeekSummaries) ? upcomingWeekSummaries : [];
     const safePreviousWeekSummaries = Array.isArray(previousWeekSummaries) ? previousWeekSummaries : [];
-    const safeVisiblePreviousWeeks = Array.isArray(visiblePreviousWeeks) ? visiblePreviousWeeks : [];
 
     const appendWeekAccordionRows = (summary: any, section: string) => {
       if (!summary?.weekGroup || !summary?.weekKey) return;
@@ -1906,17 +2175,11 @@ export default function HomeScreen() {
       });
     };
 
-    // Add previously loaded weeks
+    // Add control row for previous weeks (opened in modal)
     if (safePreviousWeekSummaries.length > 0) {
-      if (isPreviousWeeksVisible) {
-        safeVisiblePreviousWeeks.forEach((summary) => {
-          appendWeekAccordionRows(summary, 'previous');
-        });
-      }
       data.push({
         type: 'loadMore',
         key: 'loadMore:previous',
-        previousVisible: isPreviousWeeksVisible,
         canLoadMore: showPreviousWeeks < safePreviousWeekSummaries.length,
       });
     }
@@ -1938,14 +2201,124 @@ export default function HomeScreen() {
     buildActivityKey,
     currentWeekSummary,
     isCurrentWeekTodayOnly,
-    isPreviousWeeksVisible,
     previousWeekSummaries,
-    visiblePreviousWeeks,
     showPreviousWeeks,
     upcomingWeekSummaries,
     buildUpcomingDayToggleKey,
     expandedUpcomingDays,
     expandedUpcomingWeeks,
+  ]);
+
+  const previousWeeksModalData = useMemo(() => {
+    const data: any[] = [];
+    const safeVisiblePreviousWeeks = Array.isArray(visiblePreviousWeeks) ? visiblePreviousWeeks : [];
+
+    const appendWeekAccordionRows = (summary: any, section: string) => {
+      if (!summary?.weekGroup || !summary?.weekKey) return;
+
+      data.push({
+        type: 'upcomingWeekSummary',
+        weekGroup: summary.weekGroup,
+        section,
+        weekKey: summary.weekKey,
+        activityCount: summary.activityCount,
+        totalTasks: summary.totalTasks,
+        totalMinutes: summary.totalMinutes,
+        key: `summary:${section}:${summary.weekKey}`,
+      });
+
+      if (!expandedUpcomingWeeks[summary.weekKey]) return;
+
+      const rawWeekActivities = Array.isArray(summary.weekGroup.activities) ? summary.weekGroup.activities : [];
+      const dayStatsByKey: Record<
+        string,
+        { activityCount: number; totalTasks: number; totalMinutes: number }
+      > = {};
+
+      rawWeekActivities.forEach((activity: any) => {
+        if (!activity) return;
+        const resolvedDate =
+          activity.__resolvedDateTime instanceof Date && !isNaN(activity.__resolvedDateTime.getTime())
+            ? activity.__resolvedDateTime
+            : null;
+        const dayKey = resolvedDate ? format(resolvedDate, 'yyyy-MM-dd') : null;
+        if (!dayKey) return;
+        if (!dayStatsByKey[dayKey]) {
+          dayStatsByKey[dayKey] = { activityCount: 0, totalTasks: 0, totalMinutes: 0 };
+        }
+        dayStatsByKey[dayKey].activityCount += 1;
+        dayStatsByKey[dayKey].totalTasks += getActivityTasks(activity).length;
+        dayStatsByKey[dayKey].totalMinutes += getActivityEffectiveDurationMinutes(activity);
+      });
+
+      let previousDayKey: string | null = null;
+      rawWeekActivities.forEach((activity: any) => {
+        if (!activity) return;
+        const resolvedDate =
+          activity.__resolvedDateTime instanceof Date && !isNaN(activity.__resolvedDateTime.getTime())
+            ? activity.__resolvedDateTime
+            : null;
+        const dayKey = resolvedDate ? format(resolvedDate, 'yyyy-MM-dd') : null;
+
+        if (dayKey && dayKey !== previousDayKey) {
+          const dayToggleKey = buildUpcomingDayToggleKey(summary.weekKey, dayKey);
+          const dayStats = dayStatsByKey[dayKey] ?? {
+            activityCount: 0,
+            totalTasks: 0,
+            totalMinutes: 0,
+          };
+          data.push({
+            type: 'upcomingDayDivider',
+            section,
+            weekKey: summary.weekKey,
+            dayKey,
+            dayToggleKey,
+            date: resolvedDate,
+            activityCount: dayStats.activityCount,
+            totalTasks: dayStats.totalTasks,
+            totalMinutes: dayStats.totalMinutes,
+            key: `divider:${section}:${summary.weekKey}:${dayKey}`,
+          });
+          previousDayKey = dayKey;
+        }
+
+        if (dayKey) {
+          const dayToggleKey = buildUpcomingDayToggleKey(summary.weekKey, dayKey);
+          if (!expandedUpcomingDays[dayToggleKey]) {
+            return;
+          }
+        }
+
+        data.push({
+          type: 'activity',
+          activity,
+          section,
+          key: buildActivityKey(activity, section),
+        });
+      });
+    };
+
+    safeVisiblePreviousWeeks.forEach((summary) => {
+      appendWeekAccordionRows(summary, 'previous');
+    });
+
+    data.push({
+      type: 'loadMore',
+      key: 'loadMore:previous:modal',
+      canLoadMore: showPreviousWeeks < safeVisiblePreviousWeeks.length
+        ? false
+        : showPreviousWeeks < (Array.isArray(previousWeekSummaries) ? previousWeekSummaries.length : 0),
+    });
+
+    return data;
+  }, [
+    buildActivityKey,
+    buildUpcomingDayToggleKey,
+    expandedUpcomingDays,
+    expandedUpcomingWeeks,
+    previousWeekSummaries,
+    showPreviousWeeks,
+    visiblePreviousWeeks,
   ]);
 
   // Render item based on type
@@ -2008,7 +2381,27 @@ export default function HomeScreen() {
               accessibilityRole="button"
               accessibilityLabel="Opret aktivitet"
             >
-              <Text style={styles.weekQuickCreateButtonText}>+</Text>
+              <View style={styles.upcomingChevronShadow}>
+                <LinearGradient
+                  colors={isDark ? ['#3CC06A', '#1F8A43'] : ['#4CC46E', '#279B4A']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.upcomingChevronButton}
+                >
+                  <IconSymbol
+                    ios_icon_name="plus"
+                    android_material_icon_name="add"
+                    size={18}
+                    color="#FFFFFF"
+                  />
+                  <LinearGradient
+                    colors={['rgba(255,255,255,0.35)', 'rgba(255,255,255,0.00)']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.upcomingChevronSheen}
+                  />
+                </LinearGradient>
+              </View>
             </Pressable>
           </View>
         );
@@ -2271,12 +2664,12 @@ export default function HomeScreen() {
         );
 
       case 'loadMore':
-        const isPreviousVisible = item.previousVisible === true;
         const canLoadMore = item.canLoadMore === true;
-        return (
-          <View style={styles.loadMoreContainer}>
-            <View style={styles.loadMoreButtonRow}>
-              {isPreviousVisible && canLoadMore && (
+        if (isPreviousWeeksModalVisible) {
+          if (!canLoadMore) return null;
+          return (
+            <View style={styles.loadMoreContainer}>
+              <View style={styles.loadMoreButtonRow}>
                 <Pressable
                   style={[
                     styles.loadMoreButton,
@@ -2292,22 +2685,28 @@ export default function HomeScreen() {
                     +1
                   </Text>
                   <IconSymbol
-                    ios_icon_name="arrow.up"
-                    android_material_icon_name="north"
+                    ios_icon_name="plus"
+                    android_material_icon_name="add"
                     size={12}
                     color={isDark ? '#e3e3e3' : colors.text}
                   />
                 </Pressable>
-              )}
+              </View>
+            </View>
+          );
+        }
+        return (
+          <View style={styles.loadMoreContainer}>
+            <View style={styles.loadMoreButtonRow}>
               <Pressable
                 style={[styles.loadMoreButton, { backgroundColor: isDark ? '#2a2a2a' : colors.card, borderColor: isDark ? '#444' : colors.highlight }]}
-                onPress={togglePreviousWeeksVisibility}
+                onPress={handleOpenPreviousWeeksModal}
                 accessibilityRole="button"
-                accessibilityLabel={isPreviousVisible ? 'Skjul tidligere uger' : 'Vis tidligere uger'}
+                accessibilityLabel="Vis forrige uger"
                 testID="home.previousWeeks.toggle"
               >
                 <Text style={[styles.loadMoreButtonText, { color: isDark ? '#e3e3e3' : colors.text }]}>
-                  {isPreviousVisible ? 'Skjul tidligere uger' : 'Vis tidligere uger'}
+                  Forrige
                 </Text>
               </Pressable>
             </View>
@@ -2331,7 +2730,7 @@ export default function HomeScreen() {
     adminMode,
     router,
     handleLoadMorePrevious,
-    togglePreviousWeeksVisibility,
+    handleOpenPreviousWeeksModal,
     handleOpenCreateModal,
     handleOpenIntensityModal,
     performanceMetrics,
@@ -2339,6 +2738,7 @@ export default function HomeScreen() {
     feedbackCompletionByActivityTaskId,
     feedbackDoneByActivityId,
     getFeedbackActivityCandidates,
+    isPreviousWeeksModalVisible,
   ]);
 
   // Key extractor for FlatList
@@ -2377,7 +2777,7 @@ export default function HomeScreen() {
           <Image
             source={require('../../../assets/images/fc_logo_blue.png')}
             style={styles.headerLogo}
-            resizeMode="contain"
+            resizeMode="stretch"
             accessibilityLabel="Football Coach logo"
             testID="home-header-logo"
           />
@@ -2386,12 +2786,6 @@ export default function HomeScreen() {
           <Text style={styles.headerTitle}>Football Coach</Text>
           <Text style={styles.headerSubtitle}>Træn som en Pro</Text>
         </View>
-      </View>
-
-      {/* Week Header */}
-      <View style={[styles.weekHeaderContainer, { backgroundColor: isDark ? '#1a1a1a' : colors.background }]}>
-        <Text style={[styles.weekHeaderTitle, { color: isDark ? '#e3e3e3' : colors.text }]}>UGE {currentWeekNumber}</Text>
-        <Text style={[styles.weekHeaderSubtitle, { color: isDark ? '#999' : colors.textSecondary }]}>{currentWeekLabel}</Text>
       </View>
 
       {/* STEP E: Static inline info-box when adminMode !== 'self' */}
@@ -2410,7 +2804,7 @@ export default function HomeScreen() {
       )}
 
     </>
-  ), [isDark, currentWeekNumber, currentWeekLabel, adminMode]);
+  ), [adminMode, isDark]);
 
   // List footer component
   const ListFooterComponent = useCallback(() => (
@@ -2448,6 +2842,39 @@ export default function HomeScreen() {
           }
         />
       )}
+
+      <Modal
+        visible={isPreviousWeeksModalVisible}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={handleClosePreviousWeeksModal}
+      >
+        <View style={[styles.previousModalRoot, { backgroundColor: isDark ? '#111' : '#F3F4F6' }]}>
+          <View style={styles.previousModalHeader}>
+            <Text style={[styles.previousModalTitle, { color: isDark ? '#E6F5EC' : '#1D3A2A' }]}>Forrige Uger</Text>
+            <Pressable
+              style={[styles.previousModalCloseButton, { borderColor: isDark ? '#444' : '#D6D6D6' }]}
+              onPress={handleClosePreviousWeeksModal}
+              accessibilityRole="button"
+              accessibilityLabel="Luk forrige uger"
+            >
+              <Text style={[styles.previousModalCloseText, { color: isDark ? '#E6F5EC' : '#1D3A2A' }]}>Luk</Text>
+            </Pressable>
+          </View>
+
+          <FlatList
+            data={previousWeeksModalData}
+            renderItem={renderItem}
+            keyExtractor={keyExtractor}
+            keyboardShouldPersistTaps="handled"
+            removeClippedSubviews={Platform.OS !== 'web'}
+            initialNumToRender={8}
+            maxToRenderPerBatch={10}
+            windowSize={5}
+            contentContainerStyle={styles.previousModalListContent}
+          />
+        </View>
+      </Modal>
 
       {/* Create Activity Modal */}
       {showCreateModal ? (
@@ -2546,7 +2973,7 @@ const styles = StyleSheet.create({
   performanceCard: {
     marginHorizontal: 16,
     marginTop: 8,
-    borderRadius: 24,
+    borderRadius: 28,
     padding: 24,
     boxShadow: '0px 6px 20px rgba(0, 0, 0, 0.25)',
     elevation: 8,
@@ -2705,7 +3132,8 @@ const styles = StyleSheet.create({
   },
   loadMoreContainer: {
     paddingHorizontal: 16,
-    marginBottom: 8,
+    marginTop: 12,
+    marginBottom: 12,
     alignItems: 'flex-end',
   },
   loadMoreButtonRow: {
@@ -2734,6 +3162,38 @@ const styles = StyleSheet.create({
   loadMoreSecondaryText: {
     fontSize: 11,
     letterSpacing: 0.1,
+  },
+  previousModalRoot: {
+    flex: 1,
+  },
+  previousModalHeader: {
+    paddingTop: Platform.OS === 'android' ? 48 : 16,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(120,120,120,0.35)',
+  },
+  previousModalTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  previousModalCloseButton: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  previousModalCloseText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  previousModalListContent: {
+    paddingTop: 8,
+    paddingBottom: 24,
   },
   emptyContainer: {
     paddingHorizontal: 16,
@@ -2833,28 +3293,6 @@ const styles = StyleSheet.create({
     right: 74,
     top: 16,
     zIndex: 3,
-  },
-  weekQuickCreateButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#2DBE63',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
-    shadowColor: '#2DBE63',
-    shadowOpacity: 0.45,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-  },
-  weekQuickCreateButtonText: {
-    color: '#FFFFFF',
-    fontSize: 22,
-    lineHeight: 24,
-    fontWeight: '800',
-    marginTop: -1,
   },
   thisWeekPremiumCard: {
     borderColor: 'rgba(142, 194, 255, 0.55)',
@@ -3083,10 +3521,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   upcomingSummaryPressable: {
-    borderRadius: 24,
+    borderRadius: 28,
   },
   upcomingSummaryShadow: {
-    borderRadius: 24,
+    borderRadius: 28,
     shadowColor: '#000',
     shadowOpacity: 0.08,
     shadowRadius: 14,
@@ -3094,7 +3532,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   upcomingSummaryCard: {
-    borderRadius: 24,
+    borderRadius: 28,
     padding: 16,
     borderWidth: 1,
     overflow: 'hidden',
@@ -3178,7 +3616,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   upcomingChevronShadow: {
-    borderRadius: 18,
+    borderRadius: 28,
     shadowColor: '#000',
     shadowOpacity: 0.12,
     shadowRadius: 10,
