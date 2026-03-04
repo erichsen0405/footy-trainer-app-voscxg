@@ -181,7 +181,8 @@ type ThisWeekPremiumCardProps = {
 
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
 const THIS_WEEK_PREMIUM_BG = require('../../../assets/images/home_this_week_premium_bg.png');
-const THIS_WEEK_CARD_RADIUS = 24;
+const THIS_WEEK_CARD_RADIUS = 28;
+const THIS_WEEK_BG_CROP_RADIUS = THIS_WEEK_CARD_RADIUS;
 
 const ThisWeekPremiumCard = React.memo(function ThisWeekPremiumCard({
   weekLabel,
@@ -254,6 +255,7 @@ const ThisWeekPremiumCard = React.memo(function ThisWeekPremiumCard({
             resizeMode="stretch"
           />
           <View pointerEvents="none" style={thisWeekPremiumCardStyles.cardImageOverlay} />
+          <View pointerEvents="none" style={thisWeekPremiumCardStyles.cardBorderOverlay} />
 
           <View style={thisWeekPremiumCardStyles.cardContent}>
         <View style={thisWeekPremiumCardStyles.headerRow}>
@@ -414,44 +416,6 @@ const ThisWeekPremiumCard = React.memo(function ThisWeekPremiumCard({
         </View>
 
         <View style={thisWeekPremiumCardStyles.chipsRow}>
-          <View
-            testID="home.thisWeekPremiumCard.chip.tasks"
-            style={[thisWeekPremiumCardStyles.chip, thisWeekPremiumCardStyles.chipTasks]}
-          >
-            <LinearGradient
-              pointerEvents="none"
-              colors={['rgba(175,228,255,0.18)', 'rgba(175,228,255,0.15)', 'rgba(255,255,255,0.11)', 'rgba(255,210,122,0.15)', 'rgba(255,210,122,0.18)']}
-              locations={[0, 0.28, 0.50, 0.72, 1]}
-              start={{ x: 0.0, y: 0.12 }}
-              end={{ x: 1.0, y: 0.88 }}
-              style={[thisWeekPremiumCardStyles.chipGradientTint, thisWeekPremiumCardStyles.chipGradientTintTasks]}
-            />
-            <IconSymbol ios_icon_name="checkmark.circle" android_material_icon_name="check_circle" size={12} color="rgba(255,255,255,0.92)" />
-            <Text numberOfLines={1} ellipsizeMode="tail" style={thisWeekPremiumCardStyles.chipText}>
-              {tasksLabel}
-            </Text>
-          </View>
-
-          <View
-            testID="home.thisWeekPremiumCard.chip.planned"
-            style={[thisWeekPremiumCardStyles.chip, thisWeekPremiumCardStyles.chipPlanned]}
-          >
-            <LinearGradient
-              pointerEvents="none"
-              colors={['rgba(166,224,255,0.14)', 'rgba(255,255,255,0.10)', 'rgba(255,216,132,0.14)', 'rgba(255,216,132,0.18)', 'rgba(255,216,132,0.22)']}
-              locations={[0, 0.34, 0.56, 0.78, 1]}
-              start={{ x: 0.08, y: 0.30 }}
-              end={{ x: 0.92, y: 0.70 }}
-              style={[thisWeekPremiumCardStyles.chipGradientTint, thisWeekPremiumCardStyles.chipGradientTintPlanned]}
-            />
-            <IconSymbol ios_icon_name="clock" android_material_icon_name="schedule" size={12} color="rgba(255,255,255,0.92)" />
-            <Text numberOfLines={1} ellipsizeMode="tail" style={thisWeekPremiumCardStyles.chipText}>
-              {plannedLabel}
-            </Text>
-          </View>
-        </View>
-
-        <View style={thisWeekPremiumCardStyles.chipsRow2}>
           {activitiesLabel ? (
             <View
               testID="home.thisWeekPremiumCard.chip.activities"
@@ -465,7 +429,7 @@ const ThisWeekPremiumCard = React.memo(function ThisWeekPremiumCard({
                 end={{ x: 0.08, y: 0.90 }}
                 style={[thisWeekPremiumCardStyles.chipGradientTint, thisWeekPremiumCardStyles.chipGradientTintActivities]}
               />
-              <IconSymbol ios_icon_name="calendar" android_material_icon_name="calendar_today" size={12} color="rgba(255,255,255,0.92)" />
+              <IconSymbol ios_icon_name="calendar" android_material_icon_name="calendar_today" size={14} color="rgba(255,255,255,0.92)" />
               <Text numberOfLines={1} ellipsizeMode="tail" style={thisWeekPremiumCardStyles.chipText}>
                 {activitiesLabel}
               </Text>
@@ -473,6 +437,45 @@ const ThisWeekPremiumCard = React.memo(function ThisWeekPremiumCard({
           ) : (
             <View style={{ flex: 1 }} />
           )}
+
+          <View
+            testID="home.thisWeekPremiumCard.chip.tasks"
+            style={[thisWeekPremiumCardStyles.chip, thisWeekPremiumCardStyles.chipTasks]}
+          >
+            <LinearGradient
+              pointerEvents="none"
+              colors={['rgba(175,228,255,0.18)', 'rgba(175,228,255,0.15)', 'rgba(255,255,255,0.11)', 'rgba(255,210,122,0.15)', 'rgba(255,210,122,0.18)']}
+              locations={[0, 0.28, 0.50, 0.72, 1]}
+              start={{ x: 0.0, y: 0.12 }}
+              end={{ x: 1.0, y: 0.88 }}
+              style={[thisWeekPremiumCardStyles.chipGradientTint, thisWeekPremiumCardStyles.chipGradientTintTasks]}
+            />
+            <IconSymbol ios_icon_name="checkmark.circle" android_material_icon_name="check_circle" size={14} color="rgba(255,255,255,0.92)" />
+            <Text numberOfLines={1} ellipsizeMode="tail" style={thisWeekPremiumCardStyles.chipText}>
+              {tasksLabel}
+            </Text>
+          </View>
+
+        </View>
+
+        <View style={thisWeekPremiumCardStyles.chipsRow2}>
+          <View
+            testID="home.thisWeekPremiumCard.chip.planned"
+            style={[thisWeekPremiumCardStyles.chip, thisWeekPremiumCardStyles.chipPlanned]}
+          >
+            <LinearGradient
+              pointerEvents="none"
+              colors={['rgba(166,224,255,0.14)', 'rgba(255,255,255,0.10)', 'rgba(255,216,132,0.14)', 'rgba(255,216,132,0.18)', 'rgba(255,216,132,0.22)']}
+              locations={[0, 0.34, 0.56, 0.78, 1]}
+              start={{ x: 0.08, y: 0.30 }}
+              end={{ x: 0.92, y: 0.70 }}
+              style={[thisWeekPremiumCardStyles.chipGradientTint, thisWeekPremiumCardStyles.chipGradientTintPlanned]}
+            />
+            <IconSymbol ios_icon_name="clock" android_material_icon_name="schedule" size={14} color="rgba(255,255,255,0.92)" />
+            <Text numberOfLines={1} ellipsizeMode="tail" style={thisWeekPremiumCardStyles.chipText}>
+              {plannedLabel}
+            </Text>
+          </View>
 
           <View
             testID="home.thisWeekPremiumCard.badge.today"
@@ -496,7 +499,7 @@ const ThisWeekPremiumCard = React.memo(function ThisWeekPremiumCard({
               accessibilityState={{ checked: isTodayOnly }}
               style={thisWeekPremiumCardStyles.todayPressable}
             >
-              <IconSymbol ios_icon_name="sun.max" android_material_icon_name="wb_sunny" size={12} color="rgba(255,255,255,0.92)" />
+              <IconSymbol ios_icon_name="sun.max" android_material_icon_name="wb_sunny" size={14} color="rgba(255,255,255,0.92)" />
               <Text numberOfLines={1} style={thisWeekPremiumCardStyles.todayText}>
                 {isTodayOnly ? 'I dag' : 'Uge'}
               </Text>
@@ -542,22 +545,39 @@ const thisWeekPremiumCardStyles = StyleSheet.create({
   },
   cardBackground: {
     ...StyleSheet.absoluteFillObject,
-    left: 0,
-    right: 0,
-    width: '100%',
-    height: '100%',
-    borderRadius: THIS_WEEK_CARD_RADIUS,
+    top: -1,
+    left: -1,
+    right: -1,
+    bottom: -1,
+    borderRadius: THIS_WEEK_BG_CROP_RADIUS,
+    overflow: 'hidden',
   },
   cardImage: {
-    borderRadius: THIS_WEEK_CARD_RADIUS,
+    borderRadius: THIS_WEEK_BG_CROP_RADIUS,
   },
   cardImageOverlay: {
     ...StyleSheet.absoluteFillObject,
+    top: -1,
+    left: -1,
+    right: -1,
+    bottom: -1,
+    borderRadius: THIS_WEEK_BG_CROP_RADIUS,
     backgroundColor: 'rgba(0, 0, 0, 0.12)',
+  },
+  cardBorderOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: THIS_WEEK_CARD_RADIUS,
+    borderWidth: 1.2,
+    borderTopColor: 'rgba(174, 230, 255, 0.72)',
+    borderLeftColor: 'rgba(174, 230, 255, 0.60)',
+    borderRightColor: 'rgba(255, 214, 128, 0.62)',
+    borderBottomColor: 'rgba(255, 214, 128, 0.78)',
+    zIndex: 3,
   },
   cardContent: {
     paddingHorizontal: 18,
-    paddingVertical: 10,
+    paddingTop: 10,
+    paddingBottom: 16,
   },
   headerRow: {
     flexDirection: 'row',
@@ -641,7 +661,7 @@ const thisWeekPremiumCardStyles = StyleSheet.create({
     height: 122,
     alignItems: 'center',
     justifyContent: 'center',
-    transform: [{ translateY: -11 }],
+    transform: [{ translateY: 0 }],
     marginLeft: -7,
     shadowOpacity: 0.55,
     shadowRadius: 22,
@@ -662,7 +682,7 @@ const thisWeekPremiumCardStyles = StyleSheet.create({
     position: 'relative',
     width: 96,
     height: 80,
-    transform: [{ translateY: -24 }],
+    transform: [{ translateY: -13 }],
     alignSelf: 'flex-end',
   },
   trophySparkles: {
@@ -693,7 +713,7 @@ const thisWeekPremiumCardStyles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: 'rgba(255,255,255,0.16)',
     overflow: 'hidden',
-    marginTop: -38,
+    marginTop: -27,
     width: '108%',
     alignSelf: 'flex-end',
   },
@@ -705,22 +725,22 @@ const thisWeekPremiumCardStyles = StyleSheet.create({
   chipsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 12,
-    marginTop: -6,
+    gap: 10,
+    marginTop: 14,
   },
   chipsRow2: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 12,
-    marginTop: 4,
+    gap: 10,
+    marginTop: 10,
     alignItems: 'center',
   },
   chip: {
     width: '48%',
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 18,
-    paddingVertical: 5,
+    height: 32,
+    paddingVertical: 0,
     paddingHorizontal: 12,
     borderRadius: 999,
     backgroundColor: 'rgba(255,255,255,0.10)',
@@ -729,7 +749,7 @@ const thisWeekPremiumCardStyles = StyleSheet.create({
     borderLeftColor: 'rgba(175, 228, 255, 0.44)',
     borderRightColor: 'rgba(255, 210, 122, 0.44)',
     borderBottomColor: 'rgba(255, 210, 122, 0.58)',
-    gap: 6,
+    gap: 8,
     shadowColor: '#84D9FF',
     shadowOpacity: 0.14,
     shadowRadius: 6,
@@ -776,7 +796,7 @@ const thisWeekPremiumCardStyles = StyleSheet.create({
   },
   chipText: {
     color: 'rgba(255,255,255,0.88)',
-    fontSize: 10,
+    fontSize: 13,
     fontWeight: '600',
     flexShrink: 1,
   },
@@ -813,15 +833,15 @@ const thisWeekPremiumCardStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 18,
-    paddingVertical: 5,
+    height: 32,
+    paddingVertical: 0,
     paddingHorizontal: 12,
     borderRadius: 999,
-    gap: 6,
+    gap: 8,
   },
   todayText: {
     color: 'rgba(255,255,255,0.85)',
-    fontSize: 10,
+    fontSize: 13,
     fontWeight: '700',
   },
 });

@@ -47,7 +47,6 @@ function buildHistoryActivityKey(activity: any, weekKey: string, index: number):
 export default function PerformanceScreen() {
   const {
     trophies,
-    currentWeekStats,
     externalCalendars,
     fetchExternalCalendarEvents,
     categories,
@@ -58,7 +57,9 @@ export default function PerformanceScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [expandedTrophy, setExpandedTrophy] = useState<'gold' | 'silver' | 'bronze' | null>(null);
   const [expandedHistoryWeeks, setExpandedHistoryWeeks] = useState<Record<string, boolean>>({});
-  const [isHistorySectionExpanded, setIsHistorySectionExpanded] = useState(true);
+  const [isTrophySectionExpanded, setIsTrophySectionExpanded] = useState(true);
+  const [isProgressionSectionExpanded, setIsProgressionSectionExpanded] = useState(true);
+  const [isHistorySectionExpanded, setIsHistorySectionExpanded] = useState(false);
 
   const palette = useMemo(() => {
     const fromHelper =
@@ -138,25 +139,6 @@ export default function PerformanceScreen() {
     return items;
   }, [expandedHistoryWeeks, historyWeeks]);
 
-  const safeWeekStats = currentWeekStats ?? {
-    totalTasksForWeek: 0,
-    completedTasksForWeek: 0,
-  };
-
-  const totalTasksForWeek = safeWeekStats.totalTasksForWeek;
-  const completedTasksForWeek = safeWeekStats.completedTasksForWeek;
-  const weekPercentage =
-    totalTasksForWeek > 0 ? Math.round((completedTasksForWeek / totalTasksForWeek) * 100) : 0;
-
-  const currentPercentage =
-    currentWeekStats && currentWeekStats.percentage !== undefined ? currentWeekStats.percentage : 0;
-  const completedTasks =
-    currentWeekStats && currentWeekStats.completedTasks !== undefined
-      ? currentWeekStats.completedTasks
-      : 0;
-  const totalTasks =
-    currentWeekStats && currentWeekStats.totalTasks !== undefined ? currentWeekStats.totalTasks : 0;
-
   const currentWeek = getWeek(new Date());
   const currentYear = new Date().getFullYear();
 
@@ -190,30 +172,6 @@ export default function PerformanceScreen() {
     return grouped;
   }, [trophies, currentWeek, currentYear]);
 
-  const getTrophyEmoji = (type: 'gold' | 'silver' | 'bronze') => {
-    switch (type) {
-      case 'gold':
-        return '🥇';
-      case 'silver':
-        return '🥈';
-      case 'bronze':
-        return '🥉';
-    }
-  };
-
-  const getCoachingMessage = (percentage: number) => {
-    if (percentage >= 80) {
-      return 'Fantastisk! Du er helt på toppen indtil nu! Fortsæt det gode arbejde! 🌟';
-    }
-    if (percentage >= 60) {
-      return 'Rigtig godt! Du klarer dig godt indtil nu. Bliv ved! 💪';
-    }
-    if (percentage >= 40) {
-      return 'Du er på vej! Der er stadig tid til at forbedre dig. 🔥';
-    }
-    return 'Kom igen! Fokuser på dine opgaver for at komme tilbage på sporet. ⚽';
-  };
-
   const goldTrophies = trophyWeeksByType.gold.length;
   const silverTrophies = trophyWeeksByType.silver.length;
   const bronzeTrophies = trophyWeeksByType.bronze.length;
@@ -241,146 +199,228 @@ export default function PerformanceScreen() {
         <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>Se hvordan du klarer dig over tid</Text>
       </View>
 
-      <View
-        style={[styles.currentWeekCard, { backgroundColor: palette.accent }]}
-        testID="performance.currentWeekCard"
-      >
-        <View style={styles.currentWeekHeader}>
-          <Text style={styles.currentWeekTitle}>Denne uge</Text>
-          <Text style={styles.trophyBadge}>
-            {getTrophyEmoji(currentPercentage >= 80 ? 'gold' : currentPercentage >= 60 ? 'silver' : 'bronze')}
-          </Text>
-        </View>
-        <Text style={styles.currentWeekSubtitle}>
-          Uge {currentWeek}, {currentYear}
-        </Text>
+      <View style={styles.historySection}>
+        <Pressable
+          style={({ pressed }) => [styles.historyHeaderPressable, pressed && styles.historyHeaderPressed]}
+          onPress={() => setIsTrophySectionExpanded((prev) => !prev)}
+          testID="performance.trophies.toggle"
+        >
+          <View style={styles.historyHeaderShadow}>
+            <LinearGradient
+              colors={
+                isDark
+                  ? ['rgba(43, 76, 92, 0.62)', 'rgba(29, 52, 69, 0.62)', 'rgba(25, 43, 56, 0.62)']
+                  : ['rgba(255, 255, 255, 0.62)', 'rgba(234, 243, 238, 0.62)', 'rgba(221, 239, 227, 0.62)']
+              }
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[styles.historyHeaderCard, { borderColor: isDark ? 'rgba(191, 220, 203, 0.20)' : 'rgba(76, 175, 80, 0.22)' }]}
+            >
+              <LinearGradient
+                colors={
+                  isDark
+                    ? ['rgba(255, 255, 255, 0.10)', 'rgba(255, 255, 255, 0.00)']
+                    : ['rgba(255, 255, 255, 0.55)', 'rgba(255, 255, 255, 0.00)']
+                }
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0.8, y: 0.8 }}
+                style={styles.historyHeaderSheen}
+              />
 
-        <View style={styles.statsRow}>
-          <View style={styles.statBox} testID="performance.statBox.today">
-            <Text style={styles.statLabel}>Indtil i dag</Text>
-            <Text style={styles.statPercentage} testID="performance.statPercentage.today">
-              {currentPercentage}%
-            </Text>
-            <Text style={styles.statTasks} testID="performance.statTasks.today">
-              {completedTasks} / {totalTasks}
-            </Text>
-            <View style={styles.progressBarContainer}>
-              <View style={[styles.progressBar, { width: `${currentPercentage}%` }]} />
-            </View>
+              <View style={styles.historyHeader}>
+                <View style={styles.historyTitleBlock}>
+                  <Text style={[styles.historyTitle, { color: isDark ? '#E6F5EC' : '#1D3A2A' }]}>Pokaler</Text>
+                  <Text style={[styles.historySubtitle, { color: isDark ? '#B5D8C2' : '#2C5A40' }]}>
+                    Se dine pokaler for tidligere uger
+                  </Text>
+                </View>
+                <View style={styles.historyChevronShadow}>
+                  <LinearGradient
+                    colors={isDark ? ['#3CC06A', '#1F8A43'] : ['#4CC46E', '#279B4A']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.historyChevronButton}
+                  >
+                    <IconSymbol
+                      ios_icon_name={isTrophySectionExpanded ? 'chevron.up' : 'chevron.down'}
+                      android_material_icon_name={isTrophySectionExpanded ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
+                      size={20}
+                      color="#FFFFFF"
+                    />
+                    <LinearGradient
+                      colors={['rgba(255,255,255,0.35)', 'rgba(255,255,255,0.00)']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.historyChevronSheen}
+                    />
+                  </LinearGradient>
+                </View>
+              </View>
+            </LinearGradient>
           </View>
-
-          <View style={styles.statBox}>
-            <Text style={styles.statLabel}>Hele ugen</Text>
-            <Text style={styles.statPercentage}>{weekPercentage}%</Text>
-            <Text style={styles.statTasks}>
-              {completedTasksForWeek} / {totalTasksForWeek}
-            </Text>
-            <View style={styles.progressBarContainer}>
-              <View style={[styles.progressBar, { width: `${weekPercentage}%` }]} />
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.coachingBox}>
-          <Text style={styles.coachingTitle}>💬 Coaching</Text>
-          <Text style={styles.coachingText}>{getCoachingMessage(currentPercentage)}</Text>
-        </View>
+        </Pressable>
       </View>
 
-      <Pressable
-        onPress={() => toggleExpandedTrophy('gold')}
-        style={[styles.trophiesCard, { backgroundColor: palette.gold }]}
-      >
-        <View style={styles.trophiesHeader}>
-          <View style={styles.trophiesContent}>
-            <Text style={styles.trophiesTitle}>Guld pokaler</Text>
-            <Text style={styles.trophiesCount}>{goldTrophies}</Text>
-          </View>
-          <View style={styles.trophiesMeta}>
-            <Text style={styles.trophiesEmoji}>🥇</Text>
-            <Text style={styles.expandHint}>{expandedTrophy === 'gold' ? 'Skjul' : 'Vis uger'}</Text>
-          </View>
-        </View>
-        {expandedTrophy === 'gold' && (
-          <FlatList
-            data={trophyWeeksByType.gold}
-            scrollEnabled={false}
-            keyExtractor={(item, index) => `gold-${item.year}-${item.week}-${index}`}
-            contentContainerStyle={styles.expandedList}
-            ListEmptyComponent={<Text style={styles.emptyWeekText}>Ingen guld-uger endnu</Text>}
-            renderItem={({ item }) => (
-              <View style={styles.weekRow}>
-                <Text style={styles.weekLabel}>Uge {item.week}, {item.year}</Text>
-                <Text style={styles.weekValue}>{item.completedTasks} / {item.totalTasks}</Text>
+      {isTrophySectionExpanded ? (
+        <>
+          <Pressable
+            onPress={() => toggleExpandedTrophy('gold')}
+            style={[styles.trophiesCard, { backgroundColor: palette.gold }]}
+          >
+            <View style={styles.trophiesHeader}>
+              <View style={styles.trophiesContent}>
+                <Text style={styles.trophiesTitle}>Guld pokaler</Text>
+                <Text style={styles.trophiesCount}>{goldTrophies}</Text>
               </View>
-            )}
-          />
-        )}
-      </Pressable>
-
-      <Pressable
-        onPress={() => toggleExpandedTrophy('silver')}
-        style={[styles.trophiesCard, { backgroundColor: palette.silver }]}
-      >
-        <View style={styles.trophiesHeader}>
-          <View style={styles.trophiesContent}>
-            <Text style={styles.trophiesTitle}>Sølv pokaler</Text>
-            <Text style={styles.trophiesCount}>{silverTrophies}</Text>
-          </View>
-          <View style={styles.trophiesMeta}>
-            <Text style={styles.trophiesEmoji}>🥈</Text>
-            <Text style={styles.expandHint}>{expandedTrophy === 'silver' ? 'Skjul' : 'Vis uger'}</Text>
-          </View>
-        </View>
-        {expandedTrophy === 'silver' && (
-          <FlatList
-            data={trophyWeeksByType.silver}
-            scrollEnabled={false}
-            keyExtractor={(item, index) => `silver-${item.year}-${item.week}-${index}`}
-            contentContainerStyle={styles.expandedList}
-            ListEmptyComponent={<Text style={styles.emptyWeekText}>Ingen sølv-uger endnu</Text>}
-            renderItem={({ item }) => (
-              <View style={styles.weekRow}>
-                <Text style={styles.weekLabel}>Uge {item.week}, {item.year}</Text>
-                <Text style={styles.weekValue}>{item.completedTasks} / {item.totalTasks}</Text>
+              <View style={styles.trophiesMeta}>
+                <Text style={styles.trophiesEmoji}>🥇</Text>
+                <Text style={styles.expandHint}>{expandedTrophy === 'gold' ? 'Skjul' : 'Vis uger'}</Text>
               </View>
+            </View>
+            {expandedTrophy === 'gold' && (
+              <FlatList
+                data={trophyWeeksByType.gold}
+                scrollEnabled={false}
+                keyExtractor={(item, index) => `gold-${item.year}-${item.week}-${index}`}
+                contentContainerStyle={styles.expandedList}
+                ListEmptyComponent={<Text style={styles.emptyWeekText}>Ingen guld-uger endnu</Text>}
+                renderItem={({ item }) => (
+                  <View style={styles.weekRow}>
+                    <Text style={styles.weekLabel}>Uge {item.week}, {item.year}</Text>
+                    <Text style={styles.weekValue}>{item.completedTasks} / {item.totalTasks}</Text>
+                  </View>
+                )}
+              />
             )}
-          />
-        )}
-      </Pressable>
+          </Pressable>
 
-      <Pressable
-        onPress={() => toggleExpandedTrophy('bronze')}
-        style={[styles.trophiesCard, { backgroundColor: palette.bronze }]}
-      >
-        <View style={styles.trophiesHeader}>
-          <View style={styles.trophiesContent}>
-            <Text style={styles.trophiesTitle}>Bronze pokaler</Text>
-            <Text style={styles.trophiesCount}>{bronzeTrophies}</Text>
-          </View>
-          <View style={styles.trophiesMeta}>
-            <Text style={styles.trophiesEmoji}>🥉</Text>
-            <Text style={styles.expandHint}>{expandedTrophy === 'bronze' ? 'Skjul' : 'Vis uger'}</Text>
-          </View>
-        </View>
-        {expandedTrophy === 'bronze' && (
-          <FlatList
-            data={trophyWeeksByType.bronze}
-            scrollEnabled={false}
-            keyExtractor={(item, index) => `bronze-${item.year}-${item.week}-${index}`}
-            contentContainerStyle={styles.expandedList}
-            ListEmptyComponent={<Text style={styles.emptyWeekText}>Ingen bronze-uger endnu</Text>}
-            renderItem={({ item }) => (
-              <View style={styles.weekRow}>
-                <Text style={styles.weekLabel}>Uge {item.week}, {item.year}</Text>
-                <Text style={styles.weekValue}>{item.completedTasks} / {item.totalTasks}</Text>
+          <Pressable
+            onPress={() => toggleExpandedTrophy('silver')}
+            style={[styles.trophiesCard, { backgroundColor: palette.silver }]}
+          >
+            <View style={styles.trophiesHeader}>
+              <View style={styles.trophiesContent}>
+                <Text style={styles.trophiesTitle}>Sølv pokaler</Text>
+                <Text style={styles.trophiesCount}>{silverTrophies}</Text>
               </View>
+              <View style={styles.trophiesMeta}>
+                <Text style={styles.trophiesEmoji}>🥈</Text>
+                <Text style={styles.expandHint}>{expandedTrophy === 'silver' ? 'Skjul' : 'Vis uger'}</Text>
+              </View>
+            </View>
+            {expandedTrophy === 'silver' && (
+              <FlatList
+                data={trophyWeeksByType.silver}
+                scrollEnabled={false}
+                keyExtractor={(item, index) => `silver-${item.year}-${item.week}-${index}`}
+                contentContainerStyle={styles.expandedList}
+                ListEmptyComponent={<Text style={styles.emptyWeekText}>Ingen sølv-uger endnu</Text>}
+                renderItem={({ item }) => (
+                  <View style={styles.weekRow}>
+                    <Text style={styles.weekLabel}>Uge {item.week}, {item.year}</Text>
+                    <Text style={styles.weekValue}>{item.completedTasks} / {item.totalTasks}</Text>
+                  </View>
+                )}
+              />
             )}
-          />
-        )}
-      </Pressable>
+          </Pressable>
 
-      <ProgressionSection categories={categories} />
+          <Pressable
+            onPress={() => toggleExpandedTrophy('bronze')}
+            style={[styles.trophiesCard, { backgroundColor: palette.bronze }]}
+          >
+            <View style={styles.trophiesHeader}>
+              <View style={styles.trophiesContent}>
+                <Text style={styles.trophiesTitle}>Bronze pokaler</Text>
+                <Text style={styles.trophiesCount}>{bronzeTrophies}</Text>
+              </View>
+              <View style={styles.trophiesMeta}>
+                <Text style={styles.trophiesEmoji}>🥉</Text>
+                <Text style={styles.expandHint}>{expandedTrophy === 'bronze' ? 'Skjul' : 'Vis uger'}</Text>
+              </View>
+            </View>
+            {expandedTrophy === 'bronze' && (
+              <FlatList
+                data={trophyWeeksByType.bronze}
+                scrollEnabled={false}
+                keyExtractor={(item, index) => `bronze-${item.year}-${item.week}-${index}`}
+                contentContainerStyle={styles.expandedList}
+                ListEmptyComponent={<Text style={styles.emptyWeekText}>Ingen bronze-uger endnu</Text>}
+                renderItem={({ item }) => (
+                  <View style={styles.weekRow}>
+                    <Text style={styles.weekLabel}>Uge {item.week}, {item.year}</Text>
+                    <Text style={styles.weekValue}>{item.completedTasks} / {item.totalTasks}</Text>
+                  </View>
+                )}
+              />
+            )}
+          </Pressable>
+        </>
+      ) : null}
+
+      <View style={styles.historySection}>
+        <Pressable
+          style={({ pressed }) => [styles.historyHeaderPressable, pressed && styles.historyHeaderPressed]}
+          onPress={() => setIsProgressionSectionExpanded((prev) => !prev)}
+          testID="performance.progression.toggle"
+        >
+          <View style={styles.historyHeaderShadow}>
+            <LinearGradient
+              colors={
+                isDark
+                  ? ['rgba(43, 76, 92, 0.62)', 'rgba(29, 52, 69, 0.62)', 'rgba(25, 43, 56, 0.62)']
+                  : ['rgba(255, 255, 255, 0.62)', 'rgba(234, 243, 238, 0.62)', 'rgba(221, 239, 227, 0.62)']
+              }
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[styles.historyHeaderCard, { borderColor: isDark ? 'rgba(191, 220, 203, 0.20)' : 'rgba(76, 175, 80, 0.22)' }]}
+            >
+              <LinearGradient
+                colors={
+                  isDark
+                    ? ['rgba(255, 255, 255, 0.10)', 'rgba(255, 255, 255, 0.00)']
+                    : ['rgba(255, 255, 255, 0.55)', 'rgba(255, 255, 255, 0.00)']
+                }
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0.8, y: 0.8 }}
+                style={styles.historyHeaderSheen}
+              />
+
+              <View style={styles.historyHeader}>
+                <View style={styles.historyTitleBlock}>
+                  <Text style={[styles.historyTitle, { color: isDark ? '#E6F5EC' : '#1D3A2A' }]}>Udvikling</Text>
+                  <Text style={[styles.historySubtitle, { color: isDark ? '#B5D8C2' : '#2C5A40' }]}>
+                    Se din udvikling for fokuspunkter og intensitet.
+                  </Text>
+                </View>
+                <View style={styles.historyChevronShadow}>
+                  <LinearGradient
+                    colors={isDark ? ['#3CC06A', '#1F8A43'] : ['#4CC46E', '#279B4A']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.historyChevronButton}
+                  >
+                    <IconSymbol
+                      ios_icon_name={isProgressionSectionExpanded ? 'chevron.up' : 'chevron.down'}
+                      android_material_icon_name={isProgressionSectionExpanded ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
+                      size={20}
+                      color="#FFFFFF"
+                    />
+                    <LinearGradient
+                      colors={['rgba(255,255,255,0.35)', 'rgba(255,255,255,0.00)']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.historyChevronSheen}
+                    />
+                  </LinearGradient>
+                </View>
+              </View>
+            </LinearGradient>
+          </View>
+        </Pressable>
+      </View>
+
+      {isProgressionSectionExpanded ? <ProgressionSection categories={categories} /> : null}
 
       <View style={styles.historySection}>
         <Pressable
@@ -518,88 +558,6 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     fontSize: 16,
-  },
-  currentWeekCard: {
-    borderRadius: 20,
-    padding: 24,
-    marginBottom: 16,
-  },
-  currentWeekHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  currentWeekTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  trophyBadge: {
-    fontSize: 32,
-  },
-  currentWeekSubtitle: {
-    fontSize: 14,
-    color: '#fff',
-    opacity: 0.9,
-    marginBottom: 20,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 20,
-  },
-  statBox: {
-    flex: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 12,
-    padding: 16,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#fff',
-    opacity: 0.9,
-    marginBottom: 8,
-    fontWeight: '600',
-  },
-  statPercentage: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 4,
-  },
-  statTasks: {
-    fontSize: 14,
-    color: '#fff',
-    opacity: 0.9,
-    marginBottom: 8,
-  },
-  progressBarContainer: {
-    height: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  progressBar: {
-    height: '100%',
-    backgroundColor: '#fff',
-    borderRadius: 3,
-  },
-  coachingBox: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 12,
-    padding: 16,
-  },
-  coachingTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 8,
-  },
-  coachingText: {
-    fontSize: 15,
-    color: '#fff',
-    lineHeight: 22,
   },
   trophiesCard: {
     borderRadius: 16,
