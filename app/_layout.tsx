@@ -9,6 +9,7 @@ import { SubscriptionProvider, useSubscription } from '@/contexts/SubscriptionCo
 import { TeamPlayerProvider } from '@/contexts/TeamPlayerContext';
 import { AppleIAPProvider, useAppleIAP } from '@/contexts/AppleIAPContext';
 import { AdminProvider } from '@/contexts/AdminContext';
+import { CelebrationProvider } from '@/contexts/CelebrationContext';
 import NotificationPermissionPrompt from '@/components/NotificationPermissionPrompt';
 import { supabase } from '@/integrations/supabase/client';
 import * as Notifications from 'expo-notifications';
@@ -268,74 +269,76 @@ export default function RootLayout() {
         <SubscriptionRedirectObserver />
         <TeamPlayerProvider>
           <AdminProvider>
-            <FootballProvider>
-              <NotificationPermissionPrompt />
-              <Stack initialRouteName="index">
-                {/* Root redirect route (/) */}
-                <Stack.Screen name="index" options={{ headerShown: false }} />
+            <CelebrationProvider>
+              <FootballProvider>
+                <NotificationPermissionPrompt />
+                <Stack initialRouteName="index">
+                  {/* Root redirect route (/) */}
+                  <Stack.Screen name="index" options={{ headerShown: false }} />
 
-                {/* Subscription paywall */}
-                <Stack.Screen name="choose-plan" options={{ headerShown: false }} />
+                  {/* Subscription paywall */}
+                  <Stack.Screen name="choose-plan" options={{ headerShown: false }} />
 
-                {/* Main tabs */}
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                <Stack.Screen name="profile" options={{ headerShown: false }} />
+                  {/* Main tabs */}
+                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                  <Stack.Screen name="profile" options={{ headerShown: false }} />
 
-                {/* Modals overlay */}
-                <Stack.Screen
-                  name="(modals)"
-                  options={{
-                    presentation: 'transparentModal',
-                    headerShown: false,
-                    contentStyle: { backgroundColor: 'transparent' },
-                    animation: 'fade',
-                  }}
-                />
-
-                {/* Activity details */}
-                <Stack.Screen
-                  name="activity-details"
-                  options={{
-                    presentation: 'modal',
-                    headerShown: false,
-                  }}
-                />
-
-                {/* Not found */}
-                <Stack.Screen name="+not-found" options={{ headerShown: false }} />
-
-                {/* Debug routes - only available in development */}
-                {__DEV__ ? (
+                  {/* Modals overlay */}
                   <Stack.Screen
-                    name="console-logs"
+                    name="(modals)"
+                    options={{
+                      presentation: 'transparentModal',
+                      headerShown: false,
+                      contentStyle: { backgroundColor: 'transparent' },
+                      animation: 'fade',
+                    }}
+                  />
+
+                  {/* Activity details */}
+                  <Stack.Screen
+                    name="activity-details"
                     options={{
                       presentation: 'modal',
                       headerShown: false,
-                      title: 'Console Logs (DEV)',
                     }}
                   />
-                ) : null}
-                {__DEV__ ? (
-                  <Stack.Screen
-                    name="notification-debug"
-                    options={{
-                      presentation: 'modal',
-                      headerShown: false,
-                      title: 'Notification Debug (DEV)',
-                    }}
-                  />
-                ) : null}
-                <Stack.Screen name="auth/check-email" options={{ headerShown: false }} />
-                <Stack.Screen name="auth/forgot-password" options={{ headerShown: false }} />
-                <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
-                <Stack.Screen name="auth/recovery-callback" options={{ headerShown: false }} />
-                <Stack.Screen name="auth/recovery-redirect" options={{ headerShown: false }} />
-                <Stack.Screen name="email-confirmed" options={{ headerShown: false }} />
-                <Stack.Screen name="update-password" options={{ headerShown: false }} />
-              </Stack>
 
-              <StatusBar style="auto" />
-            </FootballProvider>
+                  {/* Not found */}
+                  <Stack.Screen name="+not-found" options={{ headerShown: false }} />
+
+                  {/* Debug routes - only available in development */}
+                  {__DEV__ ? (
+                    <Stack.Screen
+                      name="console-logs"
+                      options={{
+                        presentation: 'modal',
+                        headerShown: false,
+                        title: 'Console Logs (DEV)',
+                      }}
+                    />
+                  ) : null}
+                  {__DEV__ ? (
+                    <Stack.Screen
+                      name="notification-debug"
+                      options={{
+                        presentation: 'modal',
+                        headerShown: false,
+                        title: 'Notification Debug (DEV)',
+                      }}
+                    />
+                  ) : null}
+                  <Stack.Screen name="auth/check-email" options={{ headerShown: false }} />
+                  <Stack.Screen name="auth/forgot-password" options={{ headerShown: false }} />
+                  <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
+                  <Stack.Screen name="auth/recovery-callback" options={{ headerShown: false }} />
+                  <Stack.Screen name="auth/recovery-redirect" options={{ headerShown: false }} />
+                  <Stack.Screen name="email-confirmed" options={{ headerShown: false }} />
+                  <Stack.Screen name="update-password" options={{ headerShown: false }} />
+                </Stack>
+
+                <StatusBar style="auto" />
+              </FootballProvider>
+            </CelebrationProvider>
           </AdminProvider>
         </TeamPlayerProvider>
       </AppleIAPProvider>

@@ -34,12 +34,14 @@ Alle ovenstående har `tags: [smoke]`.
 - `MAESTRO_TEAM_PLAYER_EMAIL` (optional): player email used in team/player CRUD (defaults to `MAESTRO_PLAYER_EMAIL`)
 - `MAESTRO_PLATFORM_SUFFIX` (optional): suffix used in created object names to avoid cross-platform collisions (`ios` / `android`)
 - `MAESTRO_APP_ID` (optional): platform app package/bundle id. Defaults: Android=`com.anonymous.FootballCoach`, iOS=`com.erichsen.footballcoach`.
+- `EXPO_PUBLIC_E2E_DISABLE_CELEBRATIONS` (optional): default is `1` in Maestro scripts to avoid overlay flake across flows.
 
 ## Platform env profiles (.sh)
 
 - iOS: `e2e/maestro.env.ios.sh`
 - Android: `e2e/maestro.env.android.sh`
 - Begge profiler bruger samme `MAESTRO_*` variabelnavne, så flows er shared.
+- Celebration overlays er disabled i scripts som default (`EXPO_PUBLIC_E2E_DISABLE_CELEBRATIONS=1`). Sæt til `0` hvis du eksplicit vil teste celebrations i E2E.
 - Kør iOS og Android parallelt med separate konti i hver profil for at undgå data-races.
 - Profilerne er defaults/placeholders; overstyr i terminal med rigtige credentials før kørsel.
 

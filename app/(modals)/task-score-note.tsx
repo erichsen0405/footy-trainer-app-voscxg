@@ -4,6 +4,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { TaskScoreNoteModal, type TaskScoreNoteModalPayload } from '@/components/TaskScoreNoteModal';
 import { supabase } from '@/integrations/supabase/client';
 import { useFootball } from '@/contexts/FootballContext';
+import { useCelebration } from '@/contexts/CelebrationContext';
+import { resolveCelebrationProgressAfterCompletion, resolveCelebrationTypeAfterCompletion } from '@/utils/celebration';
 
 function decodeParam(value: unknown): string | null {
   const first = Array.isArray(value) ? value[0] : value;
@@ -23,7 +25,10 @@ function decodeParam(value: unknown): string | null {
 export default function TaskScoreNoteScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { refreshData, updateActivitySingle } = useFootball();
+  const { refreshData, updateActivitySingle, currentWeekStats } = useFootball();
+  const { showCelebration } = useCelebration();
+  const completedTasksToday = Math.max(0, Number((currentWeekStats as any)?.completedTasks ?? 0));
+  const totalTasksToday = Math.max(0, Number((currentWeekStats as any)?.totalTasks ?? 0));
 
   const activityIdParam = (params as any).activityId ?? (params as any).id ?? (params as any).activity_id;
   const initialScoreParam = decodeParam((params as any).initialScore);
@@ -177,6 +182,22 @@ export default function TaskScoreNoteScreen() {
           note: typeof note === 'string' ? note.trim() : null,
           source: 'task-score-note',
         });
+
+        const completingToDone = initialScore === null && typeof score === 'number';
+        const celebrationType = resolveCelebrationTypeAfterCompletion({
+          completedTasks: completedTasksToday,
+          totalTasks: totalTasksToday,
+          completingToDone,
+        });
+        const celebrationProgress = resolveCelebrationProgressAfterCompletion({
+          completedTasks: completedTasksToday,
+          totalTasks: totalTasksToday,
+          completingToDone,
+        });
+        if (celebrationType) {
+          showCelebration({ type: celebrationType, ...(celebrationProgress ?? {}) });
+        }
+
         Promise.resolve(refreshData()).catch(() => {});
         safeDismiss();
       } catch (e) {
@@ -185,7 +206,18 @@ export default function TaskScoreNoteScreen() {
         setIsSavingSafe(false);
       }
     },
-    [activityId, refreshData, safeDismiss, setErrorSafe, setIsSavingSafe, updateActivitySingle]
+    [
+      activityId,
+      completedTasksToday,
+      totalTasksToday,
+      initialScore,
+      refreshData,
+      safeDismiss,
+      setErrorSafe,
+      setIsSavingSafe,
+      showCelebration,
+      updateActivitySingle,
+    ]
   );
 
   const handleClear = useCallback(async () => {

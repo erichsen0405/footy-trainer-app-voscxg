@@ -19,10 +19,12 @@ import { taskService } from '@/services/taskService';
 import { activityService } from '@/services/activityService';
 import { calendarService } from '@/services/calendarService';
 import { useAdmin } from '@/contexts/AdminContext';
+import { useCelebration } from '@/contexts/CelebrationContext';
 import { subscribeToTaskCompletion, emitTaskCompletionEvent } from '@/utils/taskEvents';
 import { emitActivityPatch, emitActivitiesRefreshRequested } from '@/utils/activityEvents';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { isTaskVisibleForActivity } from '@/utils/taskTemplateVisibility';
+import { resolveCelebrationProgressAfterCompletion, resolveCelebrationTypeAfterCompletion } from '@/utils/celebration';
 
 type ExternalTaskForPerformance = {
   id?: string | number | null;
@@ -219,6 +221,7 @@ export const calculateIntensityPerformanceTotals = ({
 
 export const useFootballData = () => {
   const { adminMode, adminTargetId, adminTargetType } = useAdmin();
+  const { showCelebration } = useCelebration();
 
   const [activities, setActivities] = useState<Activity[]>([]);
   const [categories, setCategories] = useState<ActivityCategory[]>([]);
@@ -1456,6 +1459,21 @@ export const useFootballData = () => {
           console.error('[toggleTaskCompletion] Notification refresh failed:', queueError);
         });
 
+        const completingToDone = targetState === true && previousState !== true;
+        const celebrationType = resolveCelebrationTypeAfterCompletion({
+          completedTasks: currentWeekStats.completedTasks,
+          totalTasks: currentWeekStats.totalTasks,
+          completingToDone,
+        });
+        const celebrationProgress = resolveCelebrationProgressAfterCompletion({
+          completedTasks: currentWeekStats.completedTasks,
+          totalTasks: currentWeekStats.totalTasks,
+          completingToDone,
+        });
+        if (celebrationType) {
+          showCelebration({ type: celebrationType, ...(celebrationProgress ?? {}) });
+        }
+
         console.log(`${logPrefix} - done`);
       } catch (error) {
         console.error(`${logPrefix} - failed`, error);
@@ -1467,7 +1485,7 @@ export const useFootballData = () => {
         throw error;
       }
     },
-    [findTaskCompletionState, refreshData]
+    [currentWeekStats.completedTasks, currentWeekStats.totalTasks, findTaskCompletionState, refreshData, showCelebration]
   );
 
   const setTaskCompletion = useCallback(
