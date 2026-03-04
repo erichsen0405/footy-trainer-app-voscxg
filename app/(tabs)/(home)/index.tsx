@@ -420,8 +420,8 @@ const ThisWeekPremiumCard = React.memo(function ThisWeekPremiumCard({
           >
             <LinearGradient
               pointerEvents="none"
-              colors={['rgba(175,228,255,0.24)', 'rgba(175,228,255,0.18)', 'rgba(255,255,255,0.08)', 'rgba(255,210,122,0.14)', 'rgba(255,210,122,0.20)']}
-              locations={[0, 0.24, 0.50, 0.76, 1]}
+              colors={['rgba(175,228,255,0.18)', 'rgba(175,228,255,0.15)', 'rgba(255,255,255,0.11)', 'rgba(255,210,122,0.15)', 'rgba(255,210,122,0.18)']}
+              locations={[0, 0.28, 0.50, 0.72, 1]}
               start={{ x: 0.0, y: 0.12 }}
               end={{ x: 1.0, y: 0.88 }}
               style={[thisWeekPremiumCardStyles.chipGradientTint, thisWeekPremiumCardStyles.chipGradientTintTasks]}
@@ -438,8 +438,8 @@ const ThisWeekPremiumCard = React.memo(function ThisWeekPremiumCard({
           >
             <LinearGradient
               pointerEvents="none"
-              colors={['rgba(166,224,255,0.16)', 'rgba(255,255,255,0.08)', 'rgba(255,216,132,0.16)', 'rgba(255,216,132,0.24)', 'rgba(255,216,132,0.30)']}
-              locations={[0, 0.30, 0.55, 0.80, 1]}
+              colors={['rgba(166,224,255,0.14)', 'rgba(255,255,255,0.10)', 'rgba(255,216,132,0.14)', 'rgba(255,216,132,0.18)', 'rgba(255,216,132,0.22)']}
+              locations={[0, 0.34, 0.56, 0.78, 1]}
               start={{ x: 0.08, y: 0.30 }}
               end={{ x: 0.92, y: 0.70 }}
               style={[thisWeekPremiumCardStyles.chipGradientTint, thisWeekPremiumCardStyles.chipGradientTintPlanned]}
@@ -459,8 +459,8 @@ const ThisWeekPremiumCard = React.memo(function ThisWeekPremiumCard({
             >
               <LinearGradient
                 pointerEvents="none"
-                colors={['rgba(248,210,124,0.18)', 'rgba(248,210,124,0.13)', 'rgba(255,255,255,0.08)', 'rgba(172,228,255,0.16)', 'rgba(172,228,255,0.22)']}
-                locations={[0, 0.26, 0.52, 0.78, 1]}
+                colors={['rgba(248,210,124,0.16)', 'rgba(248,210,124,0.13)', 'rgba(255,255,255,0.10)', 'rgba(172,228,255,0.14)', 'rgba(172,228,255,0.18)']}
+                locations={[0, 0.28, 0.50, 0.72, 1]}
                 start={{ x: 0.92, y: 0.10 }}
                 end={{ x: 0.08, y: 0.90 }}
                 style={[thisWeekPremiumCardStyles.chipGradientTint, thisWeekPremiumCardStyles.chipGradientTintActivities]}
@@ -480,8 +480,8 @@ const ThisWeekPremiumCard = React.memo(function ThisWeekPremiumCard({
           >
             <LinearGradient
               pointerEvents="none"
-              colors={['rgba(168,230,255,0.12)', 'rgba(255,255,255,0.06)', 'rgba(255,220,138,0.14)', 'rgba(255,220,138,0.22)', 'rgba(255,220,138,0.28)']}
-              locations={[0, 0.32, 0.56, 0.80, 1]}
+              colors={['rgba(168,230,255,0.11)', 'rgba(255,255,255,0.08)', 'rgba(255,220,138,0.12)', 'rgba(255,220,138,0.16)', 'rgba(255,220,138,0.20)']}
+              locations={[0, 0.34, 0.56, 0.78, 1]}
               start={{ x: 0.16, y: 0.24 }}
               end={{ x: 0.84, y: 0.76 }}
               style={thisWeekPremiumCardStyles.todayBadgeGradientTint}
@@ -742,13 +742,13 @@ const thisWeekPremiumCardStyles = StyleSheet.create({
     borderRadius: 999,
   },
   chipGradientTintTasks: {
-    opacity: 0.56,
+    opacity: 0.46,
   },
   chipGradientTintPlanned: {
-    opacity: 0.58,
+    opacity: 0.48,
   },
   chipGradientTintActivities: {
-    opacity: 0.54,
+    opacity: 0.45,
   },
   chipTasks: {
     borderTopColor: 'rgba(166, 232, 255, 0.82)',
@@ -800,7 +800,7 @@ const thisWeekPremiumCardStyles = StyleSheet.create({
   todayBadgeGradientTint: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: 999,
-    opacity: 0.60,
+    opacity: 0.50,
   },
   todayBadgeVariant: {
     borderTopColor: 'rgba(168, 230, 255, 0.36)',
@@ -2181,6 +2181,7 @@ export default function HomeScreen() {
         type: 'loadMore',
         key: 'loadMore:previous',
         canLoadMore: showPreviousWeeks < safePreviousWeekSummaries.length,
+        source: 'main',
       });
     }
 
@@ -2308,6 +2309,7 @@ export default function HomeScreen() {
       canLoadMore: showPreviousWeeks < safeVisiblePreviousWeeks.length
         ? false
         : showPreviousWeeks < (Array.isArray(previousWeekSummaries) ? previousWeekSummaries.length : 0),
+      source: 'modal',
     });
 
     return data;
@@ -2665,7 +2667,7 @@ export default function HomeScreen() {
 
       case 'loadMore':
         const canLoadMore = item.canLoadMore === true;
-        if (isPreviousWeeksModalVisible) {
+        if (item.source === 'modal') {
           if (!canLoadMore) return null;
           return (
             <View style={styles.loadMoreContainer}>
@@ -2695,6 +2697,7 @@ export default function HomeScreen() {
             </View>
           );
         }
+        if (isPreviousWeeksModalVisible) return null;
         return (
           <View style={styles.loadMoreContainer}>
             <View style={styles.loadMoreButtonRow}>
@@ -2857,6 +2860,7 @@ export default function HomeScreen() {
               onPress={handleClosePreviousWeeksModal}
               accessibilityRole="button"
               accessibilityLabel="Luk forrige uger"
+              testID="home.previousWeeks.toggle"
             >
               <Text style={[styles.previousModalCloseText, { color: isDark ? '#E6F5EC' : '#1D3A2A' }]}>Luk</Text>
             </Pressable>
