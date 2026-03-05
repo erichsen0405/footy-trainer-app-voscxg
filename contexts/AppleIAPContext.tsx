@@ -186,6 +186,12 @@ interface SubscriptionStatus {
   isInTrialPeriod: boolean;
 }
 
+type EntitlementCheckState =
+  | 'idle'
+  | 'inconclusive'
+  | 'authoritative_entitled'
+  | 'authoritative_none';
+
 // IAP diagnostics and logging
 interface IapDiagnostics {
   requestedSkus: string[];
@@ -271,6 +277,11 @@ interface AppleIAPContextType {
     activeProductId: string | null;
     subscriptionTier: SubscriptionTier | null;
     isEntitled: boolean;
+    isAuthoritative: boolean;
+    isAuthoritativelyUnsubscribed: boolean;
+    checkState: EntitlementCheckState;
+    lastCheckedAt: string | null;
+    lastCheckError: string | null;
   };
   verifiedActiveProductId: string | null;
   verifying: boolean;
@@ -538,6 +549,10 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
   const [isRestoring, setIsRestoring] = useState(false);
   const [verifiedActiveProductId, setVerifiedActiveProductId] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
+  const [entitlementCheckState, setEntitlementCheckState] =
+    useState<EntitlementCheckState>('idle');
+  const [entitlementLastCheckedAtMs, setEntitlementLastCheckedAtMs] = useState<number | null>(null);
+  const [entitlementLastCheckError, setEntitlementLastCheckError] = useState<string | null>(null);
   const lastRequestedSkuRef = useRef<string | null>(null);
   const lastRequestedAtRef = useRef<number | null>(null);
   const subscriptionStatusRef = useRef<SubscriptionStatus | null>(null);
@@ -568,6 +583,15 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
   }, [pendingPlan]);
 
   const buildFlowKey = (sku: string) => `${sku}_${Date.now()}`;
+
+  const markEntitlementCheck = useCallback(
+    (nextState: EntitlementCheckState, errorMessage: string | null = null) => {
+      setEntitlementCheckState(nextState);
+      setEntitlementLastCheckError(errorMessage);
+      setEntitlementLastCheckedAtMs(Date.now());
+    },
+    []
+  );
 
   const showAlertOnceByKey = (key: string, title: string, message: string) => {
     if (alertInFlightRef.current) return;
@@ -714,20 +738,24 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
           await fetchEntitlements();
           const ready = await syncIapReadyState();
           if (!ready) {
-            setIapUnavailableReason(getIapUnavailableMessage());
+            const unavailableMessage = getIapUnavailableMessage();
+            setIapUnavailableReason(unavailableMessage);
             const emptyStatus: SubscriptionStatus = { isActive: false, productId: null, expiryDate: null, isInTrialPeriod: false };
             setSubscriptionStatus(emptyStatus);
             subscriptionStatusRef.current = emptyStatus;
             setPendingPlan(null);
+            markEntitlementCheck('inconclusive', unavailableMessage);
             return;
           }
           if (!RNIap || typeof RNIap.getAvailablePurchases !== 'function') {
-            setIapUnavailableReason(getIapUnavailableMessage());
+            const unavailableMessage = getIapUnavailableMessage();
+            setIapUnavailableReason(unavailableMessage);
             console.error('[AppleIAP] getAvailablePurchases unavailable – native module missing.');
             const emptyStatus: SubscriptionStatus = { isActive: false, productId: null, expiryDate: null, isInTrialPeriod: false };
             setSubscriptionStatus(emptyStatus);
             subscriptionStatusRef.current = emptyStatus;
             setPendingPlan(null);
+            markEntitlementCheck('inconclusive', 'iap_unavailable');
             return;
           }
           setIapUnavailableReason(null);
@@ -852,6 +880,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
               setSubscriptionStatus(nextStatus);
               subscriptionStatusRef.current = nextStatus;
               setPendingPlan(nextPending);
+              markEntitlementCheck('authoritative_entitled', null);
 
               const receiptOrToken =
                 activePurchase.original?.transactionReceipt ||
@@ -879,6 +908,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
               setSubscriptionStatus(emptyStatus);
               subscriptionStatusRef.current = emptyStatus;
               setPendingPlan(null);
+              markEntitlementCheck('authoritative_none', null);
               console.log('[AppleIAP] No active subscriptions found');
               if (!autoRestoreAttemptedRef.current && Platform.OS === 'ios') {
                 autoRestoreAttemptedRef.current = true;
@@ -895,6 +925,9 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
             }
           } catch (error) {
             console.error('[AppleIAP] Error refreshing subscription status:', error);
+            const errorMessage =
+              error instanceof Error ? error.message : typeof error === 'string' ? error : 'unknown_refresh_error';
+            markEntitlementCheck('inconclusive', errorMessage);
           }
         } finally {
           refreshInFlightRef.current = false;
@@ -907,6 +940,7 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
     [
       fetchEntitlements,
       getAvailablePurchasesSafe,
+      markEntitlementCheck,
       performRestore,
       syncIapReadyState,
     ],
@@ -918,6 +952,8 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       if (session?.user) {
         autoRestoreAttemptedRef.current = false;
         setVerifiedActiveProductId(null);
+        setEntitlementCheckState('idle');
+        setEntitlementLastCheckError(null);
         void refreshSubscriptionStatus({ force: true, reason: 'auth_login' });
         return;
       }
@@ -939,6 +975,9 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       lastAlertKeyRef.current = null;
       lastAlertAtRef.current = 0;
       setIapUnavailableReason(null);
+      setEntitlementCheckState('idle');
+      setEntitlementLastCheckedAtMs(null);
+      setEntitlementLastCheckError(null);
     });
     return () => {
       data.subscription.unsubscribe();
@@ -1633,14 +1672,35 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
         ? loading || isRestoring || verifying || (!iapReady && !isExpoGo)
         : loading;
     const hasActiveSubscription = Boolean(effectiveSubscriptionTier);
+    const isAuthoritative =
+      entitlementCheckState === 'authoritative_entitled' ||
+      entitlementCheckState === 'authoritative_none';
+    const lastCheckedAt =
+      entitlementLastCheckedAtMs != null ? new Date(entitlementLastCheckedAtMs).toISOString() : null;
     return {
       resolving,
       hasActiveSubscription,
       activeProductId: verifiedActiveProductId ?? appleActiveSku ?? null,
       subscriptionTier: effectiveSubscriptionTier,
       isEntitled: hasActiveSubscription,
+      isAuthoritative,
+      isAuthoritativelyUnsubscribed: entitlementCheckState === 'authoritative_none',
+      checkState: entitlementCheckState,
+      lastCheckedAt,
+      lastCheckError: entitlementLastCheckError,
     };
-  }, [appleActiveSku, effectiveSubscriptionTier, iapReady, isRestoring, loading, verifying, verifiedActiveProductId]);
+  }, [
+    appleActiveSku,
+    effectiveSubscriptionTier,
+    entitlementCheckState,
+    entitlementLastCheckError,
+    entitlementLastCheckedAtMs,
+    iapReady,
+    isRestoring,
+    loading,
+    verifying,
+    verifiedActiveProductId,
+  ]);
 
   const lastEntitlementSignatureRef = useRef<string | null>(null);
   useEffect(() => {
