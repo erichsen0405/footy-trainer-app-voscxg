@@ -442,6 +442,7 @@ export default function TasksScreen() {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
 
   const [videoUrl, setVideoUrl] = useState('');
 
@@ -521,6 +522,7 @@ export default function TasksScreen() {
     setSelectedTask(null);
     setIsCreating(false);
     setIsModalVisible(false);
+    setIsCategoryDropdownOpen(false);
     setVideoUrl('');
     setIsSaving(false);
   }, []);
@@ -706,15 +708,15 @@ export default function TasksScreen() {
 
   const toggleCategory = useCallback(
     (categoryId: string) => {
-      if (!selectedTask) return;
-
-      const current = new Set((((selectedTask as any)?.categoryIds ?? []) as string[]).filter(Boolean));
-      if (current.has(categoryId)) current.delete(categoryId);
-      else current.add(categoryId);
-
-      setSelectedTask({ ...(selectedTask as any), categoryIds: Array.from(current) });
+      setSelectedTask((prev) => {
+        if (!prev) return prev;
+        const current = new Set((((prev as any)?.categoryIds ?? []) as string[]).filter(Boolean));
+        if (current.has(categoryId)) current.delete(categoryId);
+        else current.add(categoryId);
+        return { ...(prev as any), categoryIds: Array.from(current) } as Task;
+      });
     },
-    [selectedTask],
+    [],
   );
 
   const getCategoryNames = useCallback(
@@ -985,6 +987,15 @@ export default function TasksScreen() {
     return Array.from(map.values());
   }, [categories]);
 
+  const selectedCategoryObjects = useMemo(() => {
+    const selectedIds = Array.from(new Set((((selectedTask as any)?.categoryIds ?? []) as string[]).filter(Boolean)));
+    if (!selectedIds.length) return [];
+    const byId = new Map(uniqueCategories.map((category: any) => [String(category.id), category]));
+    return selectedIds
+      .map((id) => byId.get(String(id)))
+      .filter(Boolean) as any[];
+  }, [selectedTask, uniqueCategories]);
+
   const isPlayerAdmin = adminMode !== 'self' && adminTargetType === 'player';
   const isTeamAdmin = adminMode !== 'self' && adminTargetType === 'team';
   const isAdminMode = isPlayerAdmin || isTeamAdmin;
@@ -1059,7 +1070,7 @@ export default function TasksScreen() {
 
                   <View style={styles.videoSection}>
                     <View style={styles.videoLabelRow}>
-                      <Text style={[styles.label, { color: textColor }]}>Video URL (YouTube eller Vimeo)</Text>
+                      <Text style={[styles.label, { color: textColor }]}>Indsæt link til video</Text>
                       {videoUrl.trim() ? (
                         <TouchableOpacity style={styles.deleteVideoButton} onPress={handleDeleteVideo} disabled={isSaving}>
                           <IconSymbol ios_icon_name="trash.fill" android_material_icon_name="delete" size={18} color={colors.error} />
@@ -1286,29 +1297,63 @@ export default function TasksScreen() {
                   </View>
 
                   <Text style={[styles.label, { color: textColor }]}>Aktivitetskategorier</Text>
-                  <View style={styles.categoriesGrid}>
-                    {uniqueCategories.map((category: any, index: number) => {
-                      const catId = String(category.id);
-                      const catColor = category.color || colors.primary;
-                      const selected = !!selectedTask?.categoryIds?.includes?.(catId);
-
-                      return (
-                        <TouchableOpacity
-                          key={catId}
-                          style={[
-                            styles.categoryChip,
-                            { backgroundColor: selected ? catColor : bgColor, borderColor: catColor, borderWidth: 2 },
-                          ]}
-                          onPress={() => toggleCategory(catId)}
-                          disabled={isSaving}
-                          testID={`tasks.template.categoryChip.${index}`}
-                        >
-                          <Text style={styles.categoryEmoji}>{String(category.emoji ?? '')}</Text>
-                          <Text style={[styles.categoryName, { color: selected ? '#fff' : textColor }]}>{String(category.name ?? '')}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
+                  <TouchableOpacity
+                    style={[
+                      styles.categoryDropdownToggle,
+                      {
+                        backgroundColor: bgColor,
+                        borderColor: isDark ? '#444' : '#d0d7e3',
+                        opacity: isSaving ? 0.6 : 1,
+                      },
+                    ]}
+                    onPress={() => setIsCategoryDropdownOpen((prev) => !prev)}
+                    disabled={isSaving}
+                    testID="tasks.template.categoryDropdownToggle"
+                  >
+                    <Text style={[styles.categoryDropdownToggleText, { color: textColor }]}>
+                      {selectedCategoryObjects.length
+                        ? selectedCategoryObjects.map((category: any) => String(category.name ?? '')).join(', ')
+                        : 'Vælg kategorier'}
+                    </Text>
+                    <IconSymbol
+                      ios_icon_name={isCategoryDropdownOpen ? 'chevron.up' : 'chevron.down'}
+                      android_material_icon_name={isCategoryDropdownOpen ? 'expand_less' : 'expand_more'}
+                      size={18}
+                      color={textSecondaryColor}
+                    />
+                  </TouchableOpacity>
+                  {isCategoryDropdownOpen && (
+                    <FlatList
+                      data={uniqueCategories}
+                      keyExtractor={(item: any) => String(item.id)}
+                      scrollEnabled={false}
+                      contentContainerStyle={styles.categoryDropdownList}
+                      renderItem={({ item, index }) => {
+                        const catId = String(item.id);
+                        const catColor = item.color || colors.primary;
+                        const isSelected = !!selectedTask?.categoryIds?.includes?.(catId);
+                        return (
+                          <TouchableOpacity
+                            style={[
+                              styles.categorySelectionRow,
+                              {
+                                backgroundColor: isSelected ? catColor : bgColor,
+                                borderColor: catColor,
+                              },
+                            ]}
+                            onPress={() => toggleCategory(catId)}
+                            disabled={isSaving}
+                            testID={`tasks.template.categoryOption.${index}`}
+                          >
+                            <Text style={styles.categoryEmoji}>{String(item.emoji ?? '')}</Text>
+                            <Text style={[styles.categoryName, { color: isSelected ? '#fff' : textColor }]}>
+                              {String(item.name ?? '')}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      }}
+                    />
+                  )}
                 </View>
               )}
               showsVerticalScrollIndicator={false}
@@ -1509,6 +1554,36 @@ const styles = StyleSheet.create({
   categoryChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 },
   categoryEmoji: { fontSize: 16 },
   categoryName: { fontSize: 14, fontWeight: '600' },
+  categoryDropdownToggle: {
+    marginBottom: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  categoryDropdownToggleText: {
+    fontSize: 14,
+    fontWeight: '600',
+    flex: 1,
+    marginRight: 10,
+  },
+  categoryDropdownList: {
+    marginTop: 4,
+    marginBottom: 6,
+  },
+  categorySelectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 2,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+  },
 
   modalFooter: { flexDirection: 'row', gap: 12, padding: 20, borderTopWidth: 1, borderTopColor: colors.highlight },
   modalButton: { flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
