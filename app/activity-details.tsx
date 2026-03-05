@@ -3065,8 +3065,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           throw new Error(localTemplateError?.message || 'Kunne ikke oprette lokal skabelon.');
         }
 
-        const payload = {
-          activity_id: activity.id,
+        const basePayload = {
           title: String(template.title ?? '').trim() || 'Opgave',
           description: String(template.description ?? ''),
           completed: false,
@@ -3083,8 +3082,32 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               ? clampMinutes(template.taskDurationMinutes ?? template.task_duration_minutes ?? 0)
               : null,
         };
+        const fallbackBasePayload = { ...basePayload } as Record<string, any>;
+        delete fallbackBasePayload.after_training_enabled;
+        delete fallbackBasePayload.after_training_delay_minutes;
+        delete fallbackBasePayload.task_duration_enabled;
+        delete fallbackBasePayload.task_duration_minutes;
 
-        const { error } = await supabase.from('activity_tasks').insert(payload);
+        const table = activity.isExternal ? 'external_event_tasks' : 'activity_tasks';
+        const payload = activity.isExternal
+          ? { local_meta_id: activity.id, ...basePayload }
+          : { activity_id: activity.id, ...basePayload };
+
+        let { error } = await supabase.from(table).insert(payload as any);
+        if (
+          error &&
+          (isMissingColumn(error, 'after_training_enabled') ||
+            isMissingColumn(error, 'after_training_delay_minutes') ||
+            isMissingColumn(error, 'task_duration_enabled') ||
+            isMissingColumn(error, 'task_duration_minutes'))
+        ) {
+          const fallbackPayload = activity.isExternal
+            ? { local_meta_id: activity.id, ...fallbackBasePayload }
+            : { activity_id: activity.id, ...fallbackBasePayload };
+          const retry = await supabase.from(table).insert(fallbackPayload as any);
+          error = retry.error;
+        }
+
         if (error) {
           if (error.code === '23505') {
             Alert.alert('Findes allerede', 'Denne opgave er allerede tilføjet til aktiviteten.');
@@ -3102,7 +3125,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         setIsTemplateTaskSaving(false);
       }
     },
-    [activity.id, currentUserId, isTemplateTaskSaving, refreshActivityTasks],
+    [activity.id, activity.isExternal, currentUserId, isTemplateTaskSaving, refreshActivityTasks],
   );
 
   const formatTemplateTaskMeta = useCallback((template: Task): string => {
@@ -3964,7 +3987,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
         <View style={styles.v2TasksHeaderRow}>
           <Text style={[styles.v2SectionTitle, styles.v2SectionTitleInRow]}>Opgaver</Text>
-            {!activity.isExternal && !isEditing && (
+            {!isEditing && (
               <TouchableOpacity
                 style={[styles.addTaskHeaderButton, { backgroundColor: primaryColor }]}
                 onPress={handleAddTask}
@@ -4583,6 +4606,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           activityTitle={activity.title}
           activityDate={activity.date}
           activityTime={activity.time}
+          isExternalActivity={activity.isExternal}
         />
       )}
 

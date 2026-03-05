@@ -258,6 +258,78 @@ const devLog = (...args: unknown[]) => {
   }
 };
 
+const EXTERNAL_META_QUERY_CHUNK_SIZE = 75;
+
+const chunkArray = <T,>(values: T[], size: number): T[][] => {
+  if (!values.length || size <= 0) return [];
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+};
+
+const summarizeSupabaseError = (error: any) => {
+  const message =
+    typeof error?.message === 'string'
+      ? error.message.slice(0, 240)
+      : String(error?.message ?? 'unknown').slice(0, 240);
+  return {
+    code: error?.code ?? null,
+    message,
+    details:
+      typeof error?.details === 'string'
+        ? error.details.slice(0, 240)
+        : error?.details ?? null,
+    hint: typeof error?.hint === 'string' ? error.hint.slice(0, 240) : error?.hint ?? null,
+  };
+};
+
+const fetchExternalMetaRows = async ({
+  userId,
+  column,
+  values,
+  metaSelect,
+}: {
+  userId: string;
+  column: 'external_event_id' | 'external_event_uid';
+  values: string[];
+  metaSelect: string;
+}): Promise<{ data: any[]; error: any | null }> => {
+  const normalized = Array.from(
+    new Set(
+      values
+        .map((value) => String(value ?? '').trim())
+        .filter((value) => value.length > 0)
+    )
+  );
+  if (!normalized.length) {
+    return { data: [], error: null };
+  }
+
+  const chunks = chunkArray(normalized, EXTERNAL_META_QUERY_CHUNK_SIZE);
+  const merged: any[] = [];
+  let firstError: any = null;
+
+  for (const chunk of chunks) {
+    const { data, error } = await supabase
+      .from('events_local_meta')
+      .select(metaSelect)
+      .eq('user_id', userId)
+      .in(column, chunk);
+
+    if (error) {
+      if (!firstError) firstError = error;
+      continue;
+    }
+    if (Array.isArray(data) && data.length) {
+      merged.push(...data);
+    }
+  }
+
+  return { data: merged, error: firstError };
+};
+
 interface UseHomeActivitiesResult {
   activities: ActivityWithCategory[];
   loading: boolean;
@@ -710,27 +782,31 @@ export function useHomeActivities(): UseHomeActivitiesResult {
             `;
 
           const [metaByEventIdRes, metaByUidRes] = await Promise.all([
-            eventRowIds.length
-              ? supabase
-                  .from('events_local_meta')
-                  .select(metaSelect)
-                  .eq('user_id', userId)
-                  .in('external_event_id', eventRowIds)
-              : Promise.resolve({ data: [], error: null }),
-            providerUids.length
-              ? supabase
-                  .from('events_local_meta')
-                  .select(metaSelect)
-                  .eq('user_id', userId)
-                  .in('external_event_uid', providerUids)
-              : Promise.resolve({ data: [], error: null }),
+            fetchExternalMetaRows({
+              userId,
+              column: 'external_event_id',
+              values: eventRowIds,
+              metaSelect,
+            }),
+            fetchExternalMetaRows({
+              userId,
+              column: 'external_event_uid',
+              values: providerUids,
+              metaSelect,
+            }),
           ]);
 
           if (metaByEventIdRes.error) {
-            console.error('[useHomeActivities] Error fetching external event metadata by id:', metaByEventIdRes.error);
+            console.warn(
+              '[useHomeActivities] External metadata by id fetch had partial failure',
+              summarizeSupabaseError(metaByEventIdRes.error),
+            );
           }
           if (metaByUidRes.error) {
-            console.error('[useHomeActivities] Error fetching external event metadata by uid:', metaByUidRes.error);
+            console.warn(
+              '[useHomeActivities] External metadata by uid fetch had partial failure',
+              summarizeSupabaseError(metaByUidRes.error),
+            );
           }
 
           const mergedMetaMap = new Map<string, any>();
