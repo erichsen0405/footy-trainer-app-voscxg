@@ -50,6 +50,23 @@ describe('subscription gate state', () => {
     expect(state.shouldShowChooseSubscription).toBe(false);
   });
 
+  it('treats meaningful backend planName as active', () => {
+    const state = getSubscriptionGateState({
+      user: { id: 'u1' },
+      subscriptionStatus: { planName: 'Livstid' },
+    });
+    expect(state.hasBackendSubscription).toBe(true);
+    expect(state.shouldShowChooseSubscription).toBe(false);
+  });
+
+  it('does not treat unknown planName as active', () => {
+    const state = getSubscriptionGateState({
+      user: { id: 'u1' },
+      subscriptionStatus: { planName: 'ukendt' },
+    });
+    expect(state.hasBackendSubscription).toBe(false);
+  });
+
   it('normalizes uppercase status when evaluating active state', () => {
     const state = getSubscriptionGateState({
       user: { id: 'u1' },
@@ -86,5 +103,48 @@ describe('subscription gate state', () => {
     expect(state.hasActiveSubscription).toBe(false);
     expect(state.shouldShowChooseSubscription).toBe(true);
   });
-});
 
+  it('keeps gate closed when authoritative signals exist but are inconclusive', () => {
+    const state = getSubscriptionGateState({
+      user: { id: 'u1' },
+      entitlementSnapshot: {
+        isEntitled: false,
+        hasActiveSubscription: false,
+        isAuthoritative: false,
+        isAuthoritativelyUnsubscribed: false,
+      },
+    });
+    expect(state.hasAuthoritativeNoSubscription).toBe(false);
+    expect(state.shouldShowChooseSubscription).toBe(false);
+  });
+
+  it('opens gate only when authoritative no-subscription signal is present', () => {
+    const state = getSubscriptionGateState({
+      user: { id: 'u1' },
+      entitlementSnapshot: {
+        isEntitled: false,
+        hasActiveSubscription: false,
+        isAuthoritative: true,
+        isAuthoritativelyUnsubscribed: true,
+      },
+    });
+    expect(state.hasAuthoritativeNoSubscription).toBe(true);
+    expect(state.shouldShowChooseSubscription).toBe(true);
+  });
+
+  it('keeps gate closed when backend says active even if iap says authoritative no-sub', () => {
+    const state = getSubscriptionGateState({
+      user: { id: 'u1' },
+      subscriptionStatus: {
+        hasSubscription: true,
+        planName: 'Livstid',
+      },
+      entitlementSnapshot: {
+        isAuthoritative: true,
+        isAuthoritativelyUnsubscribed: true,
+      },
+    });
+    expect(state.hasActiveSubscription).toBe(true);
+    expect(state.shouldShowChooseSubscription).toBe(false);
+  });
+});

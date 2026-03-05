@@ -27,6 +27,7 @@ interface FetchRoleOptions {
 export function useUserRole() {
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const userIdRef = useRef<string | null>(null);
   const lastKnownRoleRef = useRef<UserRole | null>(null);
@@ -53,6 +54,7 @@ export function useUserRole() {
             lastKnownRoleRef.current = null;
             setUserRole(null);
             setCurrentUserId(null);
+            setIsAuthenticated(false);
           }
           return;
         }
@@ -65,6 +67,7 @@ export function useUserRole() {
       }
 
       userIdRef.current = targetUserId;
+      setIsAuthenticated(true);
       setCurrentUserId(prev => (prev === targetUserId ? prev : targetUserId));
 
       const { data, error } = await supabase
@@ -127,12 +130,14 @@ export function useUserRole() {
       }
 
       if (session?.user) {
+        setIsAuthenticated(true);
         fetchUserRole({ reason: 'auth-change', userId: session.user.id });
       } else {
         userIdRef.current = null;
         lastKnownRoleRef.current = null;
         setCurrentUserId(null);
         setUserRole(null);
+        setIsAuthenticated(false);
         setLoading(false);
       }
     });
@@ -203,5 +208,5 @@ export function useUserRole() {
   // Export isAdmin as a computed property - includes both admin and trainer roles
   const isAdmin = userRole === 'admin' || userRole === 'trainer';
 
-  return { userRole, loading, isAdmin, refreshUserRole };
+  return { userRole, loading, isAdmin, refreshUserRole, isAuthenticated };
 }

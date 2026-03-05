@@ -3,6 +3,7 @@ import { useFonts } from 'expo-font';
 import { Stack, usePathname, useRouter, useRootNavigationState } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import { Platform } from 'react-native';
 import 'react-native-reanimated';
 import { FootballProvider } from '@/contexts/FootballContext';
 import { SubscriptionProvider, useSubscription } from '@/contexts/SubscriptionContext';
@@ -489,6 +490,10 @@ function SubscriptionRedirectObserver() {
   }, [authChecked, pathname, triggerRedirect, unverifiedEmail]);
 
   useEffect(() => {
+    if (Platform.OS === 'ios') {
+      return;
+    }
+
     if (!authChecked || resolving || !userId) {
       const now = Date.now();
       if (now - lastSuppressedLogAtRef.current > 2000) {
