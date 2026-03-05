@@ -17,7 +17,7 @@ import AppleSubscriptionManager from '@/components/AppleSubscriptionManager';
 import SubscriptionManager from '@/components/SubscriptionManager';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useAppleIAP, PRODUCT_IDS, TRAINER_PRODUCT_IDS } from '@/contexts/AppleIAPContext';
-import { getSubscriptionGateState } from '@/utils/subscriptionGate';
+import { resolveSubscriptionAccessState } from '@/utils/accessGate';
 import { TimeoutError, withTimeout } from '@/utils/withTimeout';
 
 type Role = 'admin' | 'trainer' | 'player';
@@ -36,6 +36,10 @@ interface OnboardingGateProps {
 }
 
 const ONBOARDING_ACCESS_CACHE_KEY = 'onboarding_gate_last_known_access_v1';
+const ONBOARDING_AUTHORITATIVE_NO_SUB_KEY = 'onboarding_gate_authoritative_no_sub_v1';
+const AUTHORITATIVE_NO_SUB_WINDOW_MS = 60 * 60 * 1000;
+const AUTHORITATIVE_NO_SUB_REQUIRED_HITS = 3;
+const AUTHORITATIVE_NO_SUB_DEDUPE_MS = 5 * 60 * 1000;
 
 type CachedOnboardingAccess = {
   userId: string | null;
@@ -44,12 +48,11 @@ type CachedOnboardingAccess = {
   updatedAt: string;
 };
 
-const FullScreenLoader = ({ message }: { message: string }) => (
-  <View style={styles.loaderContainer}>
-    <ActivityIndicator size="large" color={colors.primary} />
-    <Text style={styles.loaderText}>{message}</Text>
-  </View>
-);
+type CachedAuthoritativeNoSub = {
+  userId: string;
+  timestamps: number[];
+  updatedAt: string;
+};
 
 export function OnboardingGate({ children, renderInlinePaywall = false }: OnboardingGateProps) {
   const STARTUP_TIMEOUT_MS = 12000;
@@ -64,7 +67,8 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
   });
   const [activatingSubscription, setActivatingSubscription] = useState(false);
   const [activationMessage, setActivationMessage] = useState('Aktiverer abonnement...');
-  const { subscriptionStatus, refreshSubscription, createSubscription } = useSubscription();
+  const { subscriptionStatus, subscriptionMeta, refreshSubscription, createSubscription } =
+    useSubscription();
   const { entitlementSnapshot, refreshSubscriptionStatus } = useAppleIAP();
   const { resolving } = entitlementSnapshot;
   const router = useRouter();
@@ -79,6 +83,8 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
   const backgroundRecoveryInFlightRef = useRef(false);
   const isMountedRef = useRef(true);
   const hydrationRunRef = useRef(0);
+  const startupMountedAtRef = useRef(Date.now());
+  const startupHomeRedirectDoneRef = useRef(false);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -96,27 +102,6 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
     },
     [router]
   );
-  useEffect(() => {
-    setState(prev => {
-      if (prev.hydrating) return prev;
-      const gateState = getSubscriptionGateState({
-        user: prev.user,
-        subscriptionStatus,
-        entitlementSnapshot,
-      });
-      const shouldNeed = gateState.shouldShowChooseSubscription;
-      if (shouldNeed === prev.needsSubscription) return prev;
-      console.log('[OnboardingGate] needsSubscription updated', {
-        shouldNeed,
-        user: prev.user?.id ?? null,
-        role: prev.role,
-        resolving: gateState.isResolving,
-        isEntitled: gateState.hasActiveEntitlement,
-        backendHasSubscription: gateState.hasBackendSubscription,
-      });
-      return { ...prev, needsSubscription: shouldNeed };
-    });
-  }, [entitlementSnapshot, subscriptionStatus]);
   useEffect(() => {
     subscriptionStatusRef.current = subscriptionStatus;
   }, [subscriptionStatus]);
@@ -155,6 +140,47 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
       // Non-blocking cache persistence
     }
   }, []);
+
+  const loadAuthoritativeNoSubCache = useCallback(async (): Promise<CachedAuthoritativeNoSub | null> => {
+    try {
+      const raw = await AsyncStorage.getItem(ONBOARDING_AUTHORITATIVE_NO_SUB_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as Partial<CachedAuthoritativeNoSub>;
+      const userId = typeof parsed.userId === 'string' ? parsed.userId.trim() : '';
+      const timestamps = Array.isArray(parsed.timestamps)
+        ? parsed.timestamps
+            .map(value => Number(value))
+            .filter(value => Number.isFinite(value) && value > 0)
+        : [];
+      if (!userId.length) return null;
+      return {
+        userId,
+        timestamps,
+        updatedAt:
+          typeof parsed.updatedAt === 'string' ? parsed.updatedAt : new Date(0).toISOString(),
+      };
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const persistAuthoritativeNoSubCache = useCallback(
+    async (payload: CachedAuthoritativeNoSub | null) => {
+      try {
+        if (!payload) {
+          await AsyncStorage.removeItem(ONBOARDING_AUTHORITATIVE_NO_SUB_KEY);
+          return;
+        }
+        await AsyncStorage.setItem(
+          ONBOARDING_AUTHORITATIVE_NO_SUB_KEY,
+          JSON.stringify(payload),
+        );
+      } catch {
+        // Non-blocking cache persistence
+      }
+    },
+    []
+  );
 
   const applyCachedApprovedAccess = useCallback(
     async (user: any | null, runId: number, setStateIfCurrent?: (next: React.SetStateAction<GateState>) => void) => {
@@ -199,6 +225,103 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
       return subscriptionStatusRef.current ?? null;
     }
   }, [refreshSubscription]);
+
+  const resolveNeedsSubscription = useCallback(
+    async ({
+      user,
+      accessState,
+    }: {
+      user: any | null;
+      accessState: 'granted' | 'grace' | 'denied_authoritative';
+    }): Promise<boolean> => {
+      const userId = typeof user?.id === 'string' ? user.id.trim() : '';
+      if (!userId.length) {
+        await persistAuthoritativeNoSubCache(null);
+        return false;
+      }
+
+      if (accessState === 'granted') {
+        await persistAuthoritativeNoSubCache(null);
+        return false;
+      }
+
+      if (accessState !== 'denied_authoritative') {
+        return false;
+      }
+
+      const now = Date.now();
+      const cached = await loadAuthoritativeNoSubCache();
+      const cachedTimestamps = Array.isArray(cached?.timestamps) ? cached.timestamps : [];
+      const previousTimestamps = cached?.userId === userId ? cachedTimestamps : [];
+      const withinWindow = previousTimestamps.filter(
+        value => Number.isFinite(value) && now - value <= AUTHORITATIVE_NO_SUB_WINDOW_MS
+      );
+      const lastHit = withinWindow.length ? withinWindow[withinWindow.length - 1] : null;
+      const shouldAppend = !lastHit || now - lastHit >= AUTHORITATIVE_NO_SUB_DEDUPE_MS;
+      const nextTimestamps = shouldAppend ? [...withinWindow, now] : withinWindow;
+
+      await persistAuthoritativeNoSubCache({
+        userId,
+        timestamps: nextTimestamps.slice(-20),
+        updatedAt: new Date(now).toISOString(),
+      });
+
+      return nextTimestamps.length >= AUTHORITATIVE_NO_SUB_REQUIRED_HITS;
+    },
+    [loadAuthoritativeNoSubCache, persistAuthoritativeNoSubCache]
+  );
+
+  useEffect(() => {
+    if (state.hydrating) return;
+    let cancelled = false;
+
+    const accessSnapshot = resolveSubscriptionAccessState({
+      user: state.user,
+      subscriptionStatus,
+      subscriptionMeta,
+      entitlementSnapshot,
+    });
+
+    const evaluateGate = async () => {
+      const shouldNeed = await resolveNeedsSubscription({
+        user: state.user,
+        accessState: accessSnapshot.accessState,
+      });
+
+      if (cancelled || !isMountedRef.current) return;
+
+      setState(prev => {
+        if (prev.hydrating) return prev;
+        if (prev.needsSubscription === shouldNeed) return prev;
+        console.log('[OnboardingGate] needsSubscription updated', {
+          shouldNeed,
+          user: prev.user?.id ?? null,
+          role: prev.role,
+          accessState: accessSnapshot.accessState,
+          hasActiveSubscription: accessSnapshot.hasActiveSubscription,
+          authoritativeIapNoSubscription:
+            accessSnapshot.hasAuthoritativeIapNoSubscription,
+          authoritativeBackendNoSubscription:
+            accessSnapshot.hasAuthoritativeBackendNoSubscription,
+        });
+        return { ...prev, needsSubscription: shouldNeed };
+      });
+    };
+
+    void evaluateGate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    entitlementSnapshot,
+    resolveNeedsSubscription,
+    state.hydrating,
+    state.user,
+    subscriptionMeta,
+    subscriptionStatus,
+  ]);
+
   const deriveRoleFromSubscription = useCallback((status: any): Role | null => {
     if (!status) return null;
     const maxPlayers = status.maxPlayers ?? status.max_players ?? status.playerLimit ?? null;
@@ -246,11 +369,13 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
         lastGateUserIdRef.current = nextUserId;
         refreshCalledRef.current = false;
         subscriptionStatusRef.current = null;
+        await persistAuthoritativeNoSubCache(null);
       }
       setStateIfCurrent(prev => ({ ...prev, hydrating: true, user, initError: null }));
 
       if (!user) {
         await persistCachedAccess(null);
+        await persistAuthoritativeNoSubCache(null);
         setStateIfCurrent({
           hydrating: false,
           user: null,
@@ -279,12 +404,17 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
           STARTUP_TIMEOUT_MS,
           'Onboarding subscription query timed out'
         );
-        const gateState = getSubscriptionGateState({
+        const accessSnapshot = resolveSubscriptionAccessState({
           user,
           subscriptionStatus: visibleStatus,
+          subscriptionMeta,
           entitlementSnapshot,
         });
-        const derivedRole = gateState.hasActiveSubscription
+        const shouldNeedSubscription = await resolveNeedsSubscription({
+          user,
+          accessState: accessSnapshot.accessState,
+        });
+        const derivedRole = accessSnapshot.hasActiveSubscription
           ? deriveRoleFromSubscription(visibleStatus) ?? roleFromDb
           : roleFromDb;
 
@@ -300,13 +430,13 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
           hydrating: false,
           user,
           role: derivedRole ?? roleFromDb,
-          needsSubscription: gateState.shouldShowChooseSubscription,
+          needsSubscription: shouldNeedSubscription,
           initError: null,
         });
         await persistCachedAccess({
           userId: user.id ?? null,
           role: derivedRole ?? roleFromDb,
-          hasApprovedAccess: !gateState.shouldShowChooseSubscription,
+          hasApprovedAccess: !shouldNeedSubscription,
           updatedAt: new Date().toISOString(),
         });
       } catch (error) {
@@ -341,6 +471,9 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
       ensureSubscriptionStatus,
       entitlementSnapshot,
       persistCachedAccess,
+      persistAuthoritativeNoSubCache,
+      resolveNeedsSubscription,
+      subscriptionMeta,
       upsertRole,
     ]
   );
@@ -515,6 +648,31 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
     }
   }, [needsPaywall, normalizeFallbackTarget, pathname, renderInlinePaywall, safeReplace]);
 
+  useEffect(() => {
+    if (renderInlinePaywall) return;
+    if (startupHomeRedirectDoneRef.current) return;
+    if (state.hydrating || state.initError || !state.user || needsPaywall) return;
+
+    const startupElapsedMs = Date.now() - startupMountedAtRef.current;
+    if (startupElapsedMs > 15_000) {
+      startupHomeRedirectDoneRef.current = true;
+      return;
+    }
+
+    if (pathname === '/(tabs)/profile' || pathname === '/profile') {
+      startupHomeRedirectDoneRef.current = true;
+      safeReplace('/(tabs)/(home)');
+    }
+  }, [
+    needsPaywall,
+    pathname,
+    renderInlinePaywall,
+    safeReplace,
+    state.hydrating,
+    state.initError,
+    state.user,
+  ]);
+
   if (needsPaywall && renderInlinePaywall) {
     return (
       <View style={styles.paywallContainer}>
@@ -550,13 +708,8 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
     );
   }
 
-  const showBlockingOverlay =
-    state.hydrating ||
-    Boolean(state.initError) ||
-    (!renderInlinePaywall && needsPaywall && pathname !== '/choose-plan');
-  const overlayMessage = state.hydrating
-    ? 'Klargører konto'
-    : state.initError ?? 'Åbner Vælg abonnement...';
+  const showBlockingOverlay = Boolean(state.initError);
+  const overlayMessage = state.initError ?? 'Der opstod en fejl.';
 
   return (
     <View style={styles.container}>

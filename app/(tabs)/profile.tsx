@@ -36,6 +36,7 @@ import { useSubscriptionFeatures } from '@/hooks/useSubscriptionFeatures';
 import { forceUserRoleRefresh } from '@/hooks/useUserRole';
 import { useAppleIAP, PRODUCT_IDS } from '@/contexts/AppleIAPContext';
 import { getSubscriptionGateState } from '@/utils/subscriptionGate';
+import { resolveSubscriptionAccessState } from '@/utils/accessGate';
 import { checkNotificationPermissions, openNotificationSettings, requestNotificationPermissions } from '@/utils/notificationService';
 import { syncPushTokenForCurrentUser } from '@/utils/pushTokenService';
 import { DropdownSelect } from '@/components/ui/DropdownSelect';
@@ -755,6 +756,7 @@ export default function ProfileScreen() {
   // Get subscription status
   const {
     subscriptionStatus,
+    subscriptionMeta,
     refreshSubscription,
     createSubscription,
     loading: subscriptionLoading,
@@ -774,7 +776,13 @@ export default function ProfileScreen() {
     subscriptionStatus,
     entitlementSnapshot,
   });
-  const shouldShowChooseSubscription = subscriptionGate.shouldShowChooseSubscription;
+  const subscriptionAccess = resolveSubscriptionAccessState({
+    user,
+    subscriptionStatus,
+    subscriptionMeta,
+    entitlementSnapshot,
+  });
+  const shouldShowChooseSubscription = subscriptionAccess.accessState === 'denied_authoritative';
 
   const subscriptionPlansLoading =
     Platform.OS === 'ios'

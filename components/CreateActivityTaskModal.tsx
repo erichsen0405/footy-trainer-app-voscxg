@@ -60,6 +60,40 @@ const REMINDER_DELAY_OPTIONS = [
   { value: 120, label: '120' },
 ] as const;
 const LOCAL_ACTIVITY_TEMPLATE_SOURCE = 'activity_local_task';
+const TASK_LOCAL_OPTIONAL_COLUMNS = [
+  'after_training_enabled',
+  'after_training_delay_minutes',
+  'task_duration_enabled',
+  'task_duration_minutes',
+] as const;
+const TASK_FEEDBACK_OPTIONAL_COLUMNS = [
+  'feedback_template_id',
+  'is_feedback_task',
+] as const;
+
+const isMissingColumn = (error: any, columnName: string): boolean => {
+  const needle = String(columnName ?? '').trim().toLowerCase();
+  if (!needle.length) return false;
+  const haystack = [error?.message, error?.details, error?.hint, error?.code]
+    .filter(Boolean)
+    .map((value) => String(value).toLowerCase())
+    .join(' | ');
+  return haystack.includes(needle);
+};
+
+const hasMissingTaskLocalOptionError = (error: any): boolean =>
+  TASK_LOCAL_OPTIONAL_COLUMNS.some((columnName) => isMissingColumn(error, columnName));
+const hasMissingTaskFeedbackOptionError = (error: any): boolean =>
+  TASK_FEEDBACK_OPTIONAL_COLUMNS.some((columnName) => isMissingColumn(error, columnName));
+
+const omitTaskLocalOptions = (payload: Record<string, any>): Record<string, any> => {
+  const next = { ...payload };
+  delete next.after_training_enabled;
+  delete next.after_training_delay_minutes;
+  delete next.task_duration_enabled;
+  delete next.task_duration_minutes;
+  return next;
+};
 
 interface SubtaskDraft {
   id: string;
@@ -128,6 +162,7 @@ interface CreateActivityTaskModalProps {
   activityTitle: string;
   activityDate?: Date | string | null;
   activityTime: string;
+  isExternalActivity?: boolean;
 }
 
 export function CreateActivityTaskModal({
@@ -141,6 +176,7 @@ export function CreateActivityTaskModal({
   activityTitle,
   activityDate,
   activityTime,
+  isExternalActivity = false,
 }: CreateActivityTaskModalProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -154,6 +190,7 @@ export function CreateActivityTaskModal({
   const [isLoading, setIsLoading] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [activityExists, setActivityExists] = useState(false);
+  const [resolvedExternalMetaId, setResolvedExternalMetaId] = useState<string | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const isEditMode = !!editingTask?.id;
 
@@ -167,6 +204,12 @@ export function CreateActivityTaskModal({
     () => (safeActivityDate ? safeActivityDate.toLocaleDateString('da-DK') : 'Ukendt dato'),
     [safeActivityDate],
   );
+  const resolvedActivityLinkId = useMemo(() => {
+    if (!isExternalActivity) {
+      return String(activityId ?? '').trim();
+    }
+    return String(resolvedExternalMetaId ?? '').trim();
+  }, [activityId, isExternalActivity, resolvedExternalMetaId]);
 
   const normalizeDurationInput = useCallback((raw: string): number => {
     const parsed = Number(raw);
@@ -291,32 +334,50 @@ export function CreateActivityTaskModal({
   const syncLocalFeedbackTask = useCallback(
     async ({
       parentTaskId,
+      activityLinkId,
       templateId,
       taskTitle,
       enabled,
       delayMinutes,
     }: {
       parentTaskId: string;
+      activityLinkId?: string;
       templateId: string;
       taskTitle: string;
       enabled: boolean;
       delayMinutes: number | null;
     }) => {
       const parentId = String(parentTaskId ?? '').trim();
+      const normalizedActivityLinkId = String(activityLinkId ?? activityId ?? '').trim();
       const normalizedTemplateId = String(templateId ?? '').trim();
-      if (!parentId || !normalizedTemplateId) return;
+      if (!parentId || !normalizedTemplateId || !normalizedActivityLinkId) return;
 
       const legacyMarker = `[[feedback_parent_task_id:${parentId}]]`;
       const description = buildFeedbackTaskDescription(normalizedTemplateId);
       const title = buildFeedbackTaskTitle(taskTitle);
 
-      const { data: existingRows, error: existingError } = await supabase
+      let supportsFeedbackColumns = true;
+      let existingRows: any[] = [];
+      const existingRowsFull = await supabase
         .from('activity_tasks')
         .select('id, description, created_at, completed, feedback_template_id, task_template_id, is_feedback_task')
-        .eq('activity_id', activityId);
+        .eq('activity_id', normalizedActivityLinkId);
 
-      if (existingError) {
-        throw new Error(`Kunne ikke hente eksisterende feedback-opgave: ${existingError.message}`);
+      if (existingRowsFull.error) {
+        if (!hasMissingTaskFeedbackOptionError(existingRowsFull.error)) {
+          throw new Error(`Kunne ikke hente eksisterende feedback-opgave: ${existingRowsFull.error.message}`);
+        }
+        supportsFeedbackColumns = false;
+        const existingRowsFallback = await supabase
+          .from('activity_tasks')
+          .select('id, description, created_at, completed, task_template_id')
+          .eq('activity_id', normalizedActivityLinkId);
+        if (existingRowsFallback.error) {
+          throw new Error(`Kunne ikke hente eksisterende feedback-opgave: ${existingRowsFallback.error.message}`);
+        }
+        existingRows = Array.isArray(existingRowsFallback.data) ? existingRowsFallback.data : [];
+      } else {
+        existingRows = Array.isArray(existingRowsFull.data) ? existingRowsFull.data : [];
       }
 
       const matchedRows = (existingRows || []).filter((row: any) => {
@@ -366,17 +427,20 @@ export function CreateActivityTaskModal({
 
       if (matchedIds.length) {
         const keepId = matchedIds[0];
+        const updateFeedbackPayload: Record<string, any> = {
+          title,
+          description,
+          reminder_minutes: delayMinutes,
+          task_template_id: null,
+          updated_at: new Date().toISOString(),
+        };
+        if (supportsFeedbackColumns) {
+          updateFeedbackPayload.feedback_template_id = normalizedTemplateId;
+          updateFeedbackPayload.is_feedback_task = true;
+        }
         const { error: updateFeedbackError } = await supabase
           .from('activity_tasks')
-          .update({
-            title,
-            description,
-            reminder_minutes: delayMinutes,
-            feedback_template_id: normalizedTemplateId,
-            is_feedback_task: true,
-            task_template_id: null,
-            updated_at: new Date().toISOString(),
-          })
+          .update(updateFeedbackPayload)
           .eq('id', keepId);
         if (updateFeedbackError) {
           throw new Error(`Kunne ikke opdatere feedback-opgave: ${updateFeedbackError.message}`);
@@ -396,28 +460,179 @@ export function CreateActivityTaskModal({
         return;
       }
 
+      const insertFeedbackPayload: Record<string, any> = {
+        activity_id: normalizedActivityLinkId,
+        title,
+        description,
+        completed: false,
+        reminder_minutes: delayMinutes,
+        task_template_id: null,
+      };
+      if (supportsFeedbackColumns) {
+        insertFeedbackPayload.feedback_template_id = normalizedTemplateId;
+        insertFeedbackPayload.is_feedback_task = true;
+      }
       const { error: insertFeedbackError } = await supabase
         .from('activity_tasks')
-        .insert({
-          activity_id: activityId,
-          title,
-          description,
-          completed: false,
-          reminder_minutes: delayMinutes,
-          feedback_template_id: normalizedTemplateId,
-          is_feedback_task: true,
-          task_template_id: null,
-          after_training_enabled: false,
-          after_training_delay_minutes: null,
-          task_duration_enabled: false,
-          task_duration_minutes: null,
-        });
+        .insert(insertFeedbackPayload as any);
 
       if (insertFeedbackError) {
         throw new Error(`Kunne ikke oprette feedback-opgave: ${insertFeedbackError.message}`);
       }
     },
     [activityId, buildFeedbackTaskDescription, buildFeedbackTaskTitle],
+  );
+
+  const syncExternalFeedbackTask = useCallback(
+    async ({
+      parentTaskId,
+      localMetaId,
+      templateId,
+      taskTitle,
+      enabled,
+      delayMinutes,
+    }: {
+      parentTaskId: string;
+      localMetaId: string;
+      templateId: string;
+      taskTitle: string;
+      enabled: boolean;
+      delayMinutes: number | null;
+    }) => {
+      const parentId = String(parentTaskId ?? '').trim();
+      const normalizedLocalMetaId = String(localMetaId ?? '').trim();
+      const normalizedTemplateId = String(templateId ?? '').trim();
+      if (!parentId || !normalizedLocalMetaId || !normalizedTemplateId) return;
+
+      const legacyMarker = `[[feedback_parent_task_id:${parentId}]]`;
+      const description = buildFeedbackTaskDescription(normalizedTemplateId);
+      const title = buildFeedbackTaskTitle(taskTitle);
+
+      let supportsFeedbackColumns = true;
+      let existingRows: any[] = [];
+      const existingRowsFull = await supabase
+        .from('external_event_tasks')
+        .select('id, description, created_at, completed, feedback_template_id, task_template_id, is_feedback_task')
+        .eq('local_meta_id', normalizedLocalMetaId);
+
+      if (existingRowsFull.error) {
+        if (!hasMissingTaskFeedbackOptionError(existingRowsFull.error)) {
+          throw new Error(`Kunne ikke hente eksisterende feedback-opgave: ${existingRowsFull.error.message}`);
+        }
+        supportsFeedbackColumns = false;
+        const existingRowsFallback = await supabase
+          .from('external_event_tasks')
+          .select('id, description, created_at, completed, task_template_id')
+          .eq('local_meta_id', normalizedLocalMetaId);
+        if (existingRowsFallback.error) {
+          throw new Error(`Kunne ikke hente eksisterende feedback-opgave: ${existingRowsFallback.error.message}`);
+        }
+        existingRows = Array.isArray(existingRowsFallback.data) ? existingRowsFallback.data : [];
+      } else {
+        existingRows = Array.isArray(existingRowsFull.data) ? existingRowsFull.data : [];
+      }
+
+      const matchedRows = (existingRows || []).filter((row: any) => {
+        const directFeedbackTemplateId =
+          typeof row?.feedback_template_id === 'string' ? row.feedback_template_id.trim() : '';
+        if (directFeedbackTemplateId && directFeedbackTemplateId === normalizedTemplateId) {
+          return true;
+        }
+
+        const directTaskTemplateId =
+          typeof row?.task_template_id === 'string' ? row.task_template_id.trim() : '';
+        if (row?.is_feedback_task === true && directTaskTemplateId && directTaskTemplateId === normalizedTemplateId) {
+          return true;
+        }
+
+        const rowDescription = typeof row?.description === 'string' ? row.description : '';
+        const markerTemplateId = parseTemplateIdFromMarker(rowDescription);
+        if (markerTemplateId && String(markerTemplateId).trim() === normalizedTemplateId) {
+          return true;
+        }
+        return rowDescription.includes(legacyMarker);
+      });
+
+      const matchedRowsSorted = sortFeedbackTaskCandidates(
+        matchedRows as {
+          id?: string | null;
+          created_at?: string | null;
+          completed?: boolean | null;
+        }[],
+      );
+      const matchedIds = matchedRowsSorted
+        .map((row: any) => String(row?.id ?? '').trim())
+        .filter((id: string) => id.length > 0);
+
+      if (!enabled) {
+        if (matchedIds.length) {
+          const { error: deleteError } = await supabase
+            .from('external_event_tasks')
+            .delete()
+            .in('id', matchedIds);
+          if (deleteError) {
+            throw new Error(`Kunne ikke fjerne feedback-opgave: ${deleteError.message}`);
+          }
+        }
+        return;
+      }
+
+      if (matchedIds.length) {
+        const keepId = matchedIds[0];
+        const updateFeedbackPayload: Record<string, any> = {
+          title,
+          description,
+          reminder_minutes: delayMinutes,
+          task_template_id: null,
+          updated_at: new Date().toISOString(),
+        };
+        if (supportsFeedbackColumns) {
+          updateFeedbackPayload.feedback_template_id = normalizedTemplateId;
+          updateFeedbackPayload.is_feedback_task = true;
+        }
+        const { error: updateFeedbackError } = await supabase
+          .from('external_event_tasks')
+          .update(updateFeedbackPayload)
+          .eq('id', keepId);
+        if (updateFeedbackError) {
+          throw new Error(`Kunne ikke opdatere feedback-opgave: ${updateFeedbackError.message}`);
+        }
+
+        if (matchedIds.length > 1) {
+          const extras = matchedIds.slice(1);
+          const { error: deleteExtrasError } = await supabase
+            .from('external_event_tasks')
+            .delete()
+            .in('id', extras);
+          if (deleteExtrasError) {
+            throw new Error(`Kunne ikke rydde op i ekstra feedback-opgaver: ${deleteExtrasError.message}`);
+          }
+        }
+
+        return;
+      }
+
+      const insertFeedbackPayload: Record<string, any> = {
+        local_meta_id: normalizedLocalMetaId,
+        title,
+        description,
+        completed: false,
+        reminder_minutes: delayMinutes,
+        task_template_id: null,
+      };
+      if (supportsFeedbackColumns) {
+        insertFeedbackPayload.feedback_template_id = normalizedTemplateId;
+        insertFeedbackPayload.is_feedback_task = true;
+      }
+      const { error: insertFeedbackError } = await supabase
+        .from('external_event_tasks')
+        .insert(insertFeedbackPayload as any);
+
+      if (insertFeedbackError) {
+        throw new Error(`Kunne ikke oprette feedback-opgave: ${insertFeedbackError.message}`);
+      }
+    },
+    [buildFeedbackTaskDescription, buildFeedbackTaskTitle],
   );
 
   const syncActivitySubtasks = useCallback(async (activityTaskId: string, drafts: SubtaskDraft[]) => {
@@ -596,33 +811,57 @@ export function CreateActivityTaskModal({
     const verifyActivity = async () => {
       if (!activityId || !visible) {
         setActivityExists(false);
+        setResolvedExternalMetaId(null);
         return;
       }
 
-      console.log('🔍 Verifying activity exists:', activityId);
-      
       try {
+        if (isExternalActivity) {
+          const { data: directMeta, error: directMetaError } = await supabase
+            .from('events_local_meta')
+            .select('id')
+            .eq('id', activityId)
+            .maybeSingle();
+
+          if (directMetaError) {
+            setResolvedExternalMetaId(null);
+            setActivityExists(false);
+            return;
+          }
+
+          if (directMeta?.id) {
+            setResolvedExternalMetaId(String(directMeta.id));
+            setActivityExists(true);
+            return;
+          }
+
+          const { data: linkedMeta, error: linkedMetaError } = await supabase
+            .from('events_local_meta')
+            .select('id')
+            .eq('external_event_id', activityId)
+            .maybeSingle();
+
+          if (linkedMetaError || !linkedMeta?.id) {
+            setResolvedExternalMetaId(null);
+            setActivityExists(false);
+            return;
+          }
+
+          setResolvedExternalMetaId(String(linkedMeta.id));
+          setActivityExists(true);
+          return;
+        }
+
         const { data, error } = await supabase
           .from('activities')
           .select('id')
           .eq('id', activityId)
           .single();
 
-        if (error) {
-          console.error('❌ Error verifying activity:', error);
-          setActivityExists(false);
-          return;
-        }
-
-        if (data) {
-          console.log('✅ Activity verified:', data.id);
-          setActivityExists(true);
-        } else {
-          console.log('⚠️ Activity not found');
-          setActivityExists(false);
-        }
+        setResolvedExternalMetaId(null);
+        setActivityExists(!error && !!data);
       } catch (error) {
-        console.error('❌ Exception verifying activity:', error);
+        setResolvedExternalMetaId(null);
         setActivityExists(false);
       }
     };
@@ -636,7 +875,7 @@ export function CreateActivityTaskModal({
     } else {
       verifyActivity();
     }
-  }, [activityId, visible]);
+  }, [activityId, isExternalActivity, visible]);
 
   const handleSave = useCallback(async () => {
     if (!title.trim()) {
@@ -649,10 +888,12 @@ export function CreateActivityTaskModal({
       return;
     }
 
-    if (!activityExists) {
+    if (!activityExists || !resolvedActivityLinkId) {
       Alert.alert(
         'Vent venligst',
-        'Aktiviteten er ved at blive oprettet. Prøv igen om et øjeblik.',
+        isExternalActivity
+          ? 'Aktiviteten synkroniseres stadig. Prøv igen om et øjeblik.'
+          : 'Aktiviteten er ved at blive oprettet. Prøv igen om et øjeblik.',
         [{ text: 'OK' }]
       );
       return;
@@ -685,101 +926,186 @@ export function CreateActivityTaskModal({
         taskDurationEnabled: hasTaskDuration,
         taskDurationMinutes: taskDurationPayload,
       });
+      const baseTaskPayload: Record<string, any> = {
+        title: title.trim(),
+        description: description.trim(),
+        completed: false,
+        reminder_minutes: reminderPayload,
+        task_template_id: localTemplateId,
+        after_training_enabled: hasAfterTrainingFeedback,
+        after_training_delay_minutes: feedbackDelayPayload,
+        task_duration_enabled: hasTaskDuration,
+        task_duration_minutes: taskDurationPayload,
+      };
+      const baseTaskPayloadWithoutLocalOptions = omitTaskLocalOptions(baseTaskPayload);
+      const buildTaskUpdatePayload = () => ({
+        ...baseTaskPayload,
+        updated_at: new Date().toISOString(),
+      });
 
-      if (isEditMode && editingTask?.id) {
-        const updatePayload: Record<string, any> = {
-          title: title.trim(),
-          description: description.trim(),
-          reminder_minutes: reminderPayload,
-          task_template_id: localTemplateId,
-          feedback_template_id: null,
-          is_feedback_task: false,
-          after_training_enabled: hasAfterTrainingFeedback,
-          after_training_delay_minutes: feedbackDelayPayload,
-          task_duration_enabled: hasTaskDuration,
-          task_duration_minutes: taskDurationPayload,
-          updated_at: new Date().toISOString(),
-        };
-
-        const { error: updateError } = await supabase
-          .from('activity_tasks')
+      const runTaskUpdate = async (
+        table: 'activity_tasks' | 'external_event_tasks',
+        linkColumn: 'activity_id' | 'local_meta_id',
+        taskId: string,
+      ): Promise<boolean> => {
+        const updatePayload = buildTaskUpdatePayload();
+        let updateResponse = await (supabase as any)
+          .from(table)
           .update(updatePayload)
-          .eq('id', editingTask.id)
-          .eq('activity_id', activityId);
+          .eq('id', taskId)
+          .eq(linkColumn, resolvedActivityLinkId)
+          .select('id');
 
-        if (updateError) {
-          throw new Error(`Database fejl: ${updateError.message}`);
+        if (updateResponse.error && hasMissingTaskLocalOptionError(updateResponse.error)) {
+          const fallbackPayload = omitTaskLocalOptions(updatePayload);
+          updateResponse = await (supabase as any)
+            .from(table)
+            .update(fallbackPayload)
+            .eq('id', taskId)
+            .eq(linkColumn, resolvedActivityLinkId)
+            .select('id');
         }
 
-        await syncActivitySubtasks(editingTask.id, subtasks);
+        if (updateResponse.error) {
+          throw new Error(`Database fejl: ${updateResponse.error.message}`);
+        }
 
-        await syncLocalFeedbackTask({
-          parentTaskId: editingTask.id,
-          templateId: localTemplateId,
-          taskTitle: title.trim(),
-          enabled: hasAfterTrainingFeedback,
-          delayMinutes: feedbackDelayPayload,
-        });
+        return Array.isArray(updateResponse.data) && updateResponse.data.length > 0;
+      };
+
+      const runTaskInsert = async (
+        table: 'activity_tasks' | 'external_event_tasks',
+        linkColumn: 'activity_id' | 'local_meta_id',
+      ): Promise<any> => {
+        const insertPayload: Record<string, any> = {
+          [linkColumn]: resolvedActivityLinkId,
+          ...baseTaskPayload,
+        };
+
+        let insertResponse = await (supabase as any)
+          .from(table)
+          .insert(insertPayload)
+          .select()
+          .single();
+
+        if (insertResponse.error && hasMissingTaskLocalOptionError(insertResponse.error)) {
+          const fallbackPayload: Record<string, any> = {
+            [linkColumn]: resolvedActivityLinkId,
+            ...baseTaskPayloadWithoutLocalOptions,
+          };
+          insertResponse = await (supabase as any)
+            .from(table)
+            .insert(fallbackPayload)
+            .select()
+            .single();
+        }
+
+        if (insertResponse.error) {
+          throw new Error(`Database fejl: ${insertResponse.error.message}`);
+        }
+
+        if (!insertResponse.data) {
+          throw new Error('Ingen data returneret fra databasen');
+        }
+
+        return insertResponse.data;
+      };
+
+      if (isEditMode && editingTask?.id) {
+        let activeTable: 'activity_tasks' | 'external_event_tasks' = isExternalActivity
+          ? 'external_event_tasks'
+          : 'activity_tasks';
+        let updated = await runTaskUpdate(
+          activeTable,
+          activeTable === 'external_event_tasks' ? 'local_meta_id' : 'activity_id',
+          editingTask.id,
+        );
+
+        if (!updated && isExternalActivity) {
+          updated = await runTaskUpdate('activity_tasks', 'activity_id', editingTask.id);
+          if (updated) {
+            activeTable = 'activity_tasks';
+          }
+        }
+
+        if (!updated) {
+          throw new Error('Opgaven kunne ikke findes på aktiviteten.');
+        }
+
+        if (activeTable === 'activity_tasks') {
+          await syncActivitySubtasks(editingTask.id, subtasks);
+          await syncLocalFeedbackTask({
+            parentTaskId: editingTask.id,
+            activityLinkId: resolvedActivityLinkId,
+            templateId: localTemplateId,
+            taskTitle: title.trim(),
+            enabled: hasAfterTrainingFeedback,
+            delayMinutes: feedbackDelayPayload,
+          });
+        } else {
+          await syncExternalFeedbackTask({
+            parentTaskId: editingTask.id,
+            localMetaId: resolvedActivityLinkId,
+            templateId: localTemplateId,
+            taskTitle: title.trim(),
+            enabled: hasAfterTrainingFeedback,
+            delayMinutes: feedbackDelayPayload,
+          });
+        }
 
         Alert.alert('Opgave opdateret', `Opgaven "${title}" er opdateret.`, [{ text: 'OK' }]);
         if (onTaskUpdated) {
           await onTaskUpdated();
         }
       } else {
-        const { data: activityCheck, error: activityCheckError } = await supabase
-          .from('activities')
-          .select('id')
-          .eq('id', activityId)
-          .single();
+        if (!isExternalActivity) {
+          const { data: activityCheck, error: activityCheckError } = await supabase
+            .from('activities')
+            .select('id')
+            .eq('id', resolvedActivityLinkId)
+            .single();
 
-        if (activityCheckError || !activityCheck) {
-          throw new Error('Aktiviteten kunne ikke findes. Prøv at lukke og åbne aktiviteten igen.');
+          if (activityCheckError || !activityCheck) {
+            throw new Error('Aktiviteten kunne ikke findes. Prøv at lukke og åbne aktiviteten igen.');
+          }
         }
 
-        const taskPayload: Record<string, any> = {
-          activity_id: activityId,
-          title: title.trim(),
-          description: description.trim(),
-          completed: false,
-          reminder_minutes: reminderPayload,
-          task_template_id: localTemplateId,
-          after_training_enabled: hasAfterTrainingFeedback,
-          after_training_delay_minutes: feedbackDelayPayload,
-          task_duration_enabled: hasTaskDuration,
-          task_duration_minutes: taskDurationPayload,
-        };
+        const activeTable: 'activity_tasks' | 'external_event_tasks' = isExternalActivity
+          ? 'external_event_tasks'
+          : 'activity_tasks';
+        const taskData = await runTaskInsert(
+          activeTable,
+          activeTable === 'external_event_tasks' ? 'local_meta_id' : 'activity_id',
+        );
 
-        const { data: taskData, error: taskError } = await supabase
-          .from('activity_tasks')
-          .insert(taskPayload as any)
-          .select()
-          .single();
-
-        if (taskError) {
-          throw new Error(`Database fejl: ${taskError.message}`);
+        if (activeTable === 'activity_tasks') {
+          await syncActivitySubtasks(String(taskData.id), subtasks);
+          await syncLocalFeedbackTask({
+            parentTaskId: String(taskData.id),
+            activityLinkId: resolvedActivityLinkId,
+            templateId: localTemplateId,
+            taskTitle: title.trim(),
+            enabled: hasAfterTrainingFeedback,
+            delayMinutes: feedbackDelayPayload,
+          });
+        } else {
+          await syncExternalFeedbackTask({
+            parentTaskId: String(taskData.id),
+            localMetaId: resolvedActivityLinkId,
+            templateId: localTemplateId,
+            taskTitle: title.trim(),
+            enabled: hasAfterTrainingFeedback,
+            delayMinutes: feedbackDelayPayload,
+          });
         }
 
-        if (!taskData) {
-          throw new Error('Ingen data returneret fra databasen');
-        }
-
-        await syncActivitySubtasks(String(taskData.id), subtasks);
-
-        await syncLocalFeedbackTask({
-          parentTaskId: String(taskData.id),
-          templateId: localTemplateId,
-          taskTitle: title.trim(),
-          enabled: hasAfterTrainingFeedback,
-          delayMinutes: feedbackDelayPayload,
-        });
-
-        if (hasReminder && safeActivityDate) {
+        if (!isExternalActivity && hasReminder && safeActivityDate) {
           const activityDateStr = safeActivityDate.toISOString().split('T')[0];
           const success = await scheduleTaskReminderImmediate(
             taskData.id,
             title.trim(),
             description.trim(),
-            activityId,
+            resolvedActivityLinkId,
             activityTitle,
             activityDateStr,
             activityTime,
@@ -799,7 +1125,7 @@ export function CreateActivityTaskModal({
               [{ text: 'OK' }]
             );
           }
-        } else if (hasReminder && !safeActivityDate) {
+        } else if (!isExternalActivity && hasReminder && !safeActivityDate) {
           Alert.alert(
             'Opgave oprettet',
             `Opgaven "${title}" er oprettet, men der kunne ikke planlægges påmindelse uden gyldig dato.`,
@@ -865,7 +1191,7 @@ export function CreateActivityTaskModal({
     title,
     userId,
     activityExists,
-    activityId,
+    resolvedActivityLinkId,
     activityTitle,
     safeActivityDate,
     activityTime,
@@ -880,6 +1206,7 @@ export function CreateActivityTaskModal({
     upsertLocalTaskTemplate,
     syncActivitySubtasks,
     syncLocalFeedbackTask,
+    syncExternalFeedbackTask,
     description,
     onSave,
     onTaskCreated,
@@ -887,6 +1214,7 @@ export function CreateActivityTaskModal({
     onClose,
     isEditMode,
     editingTask,
+    isExternalActivity,
   ]);
 
   return (
@@ -924,7 +1252,9 @@ export function CreateActivityTaskModal({
           {!activityExists && (
             <View style={styles.warningBanner}>
               <Text style={styles.warningText}>
-                ⏳ Venter på at aktiviteten bliver oprettet...
+                ⏳ {isExternalActivity
+                  ? 'Venter på at ekstern aktivitet bliver synkroniseret...'
+                  : 'Venter på at aktiviteten bliver oprettet...'}
               </Text>
             </View>
           )}

@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { PRODUCT_IDS } from '@/contexts/appleProductIds';
 import { bumpEntitlementsVersion, subscribeToEntitlementVersion } from '@/services/entitlementsEvents';
 import type { SubscriptionTier } from '@/services/entitlementsSync';
+import { getProfileEntitlements } from '@/utils/profileEntitlements';
 
 export function forceEntitlementVersionBump(reason = 'external') {
   bumpEntitlementsVersion(reason);
@@ -39,6 +40,12 @@ type SubscriptionStatus = {
   isLifetime?: boolean;
 };
 
+type SubscriptionStatusMeta = {
+  lastUpdateReason: string | null;
+  lastUpdatedAt: string | null;
+  backendAuthoritative: boolean;
+};
+
 export type AppleEntitlementIngest = {
   resolving: boolean;
   isEntitled: boolean;
@@ -67,6 +74,7 @@ const buildEmptyStatus = (): SubscriptionStatus => ({
 
 interface SubscriptionContextType {
   subscriptionStatus: SubscriptionStatus | null;
+  subscriptionMeta: SubscriptionStatusMeta;
   subscriptionPlans: SubscriptionPlan[];
   loading: boolean;
   refreshSubscription: () => Promise<void>;
@@ -154,8 +162,27 @@ const subscriptionTierFromSku = (sku: string | null): SubscriptionTier | null =>
   }
 };
 
+const subscriptionTierFromProfile = (tier: string | null): SubscriptionTier | null => {
+  const normalized = String(tier ?? '').trim().toLowerCase();
+  switch (normalized) {
+    case 'player_basic':
+    case 'player_premium':
+    case 'trainer_basic':
+    case 'trainer_standard':
+    case 'trainer_premium':
+      return normalized;
+    default:
+      return null;
+  }
+};
+
 export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus | null>(null);
+  const [subscriptionMeta, setSubscriptionMeta] = useState<SubscriptionStatusMeta>({
+    lastUpdateReason: null,
+    lastUpdatedAt: null,
+    backendAuthoritative: false,
+  });
   const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [entitlementVersion, setEntitlementVersion] = useState(0);
@@ -182,6 +209,14 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const applyStatus = useCallback((next: SubscriptionStatus, reason: string) => {
+    const checkedAtIso = new Date().toISOString();
+    const backendAuthoritative = reason === 'fetch-success';
+    setSubscriptionMeta({
+      lastUpdateReason: reason,
+      lastUpdatedAt: checkedAtIso,
+      backendAuthoritative,
+    });
+
     const isAuthoritative = reason === 'fetch-success';
     const shouldPersist =
       next.hasSubscription || next.isLifetime || Boolean(next.subscriptionTier) || Boolean(next.planName) || isAuthoritative;
@@ -308,6 +343,48 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     [appleIsEntitled, appleActiveProductId, appleEntitlementTier, appleResolving]
   );
 
+  const applyProfileEntitlementFallback = useCallback(
+    async (userId: string, status: SubscriptionStatus): Promise<SubscriptionStatus> => {
+      if (status.hasSubscription || status.subscriptionTier || status.isLifetime) {
+        return status;
+      }
+
+      const profileEntitlements = await getProfileEntitlements(userId);
+      if (!profileEntitlements.hasEntitlement) {
+        return status;
+      }
+
+      const tierFromProfile = subscriptionTierFromProfile(profileEntitlements.tier);
+      const planMeta =
+        derivePlanMetaFromTier(tierFromProfile) ??
+        derivePlanMetaFromSku(
+          profileEntitlements.productId ? String(profileEntitlements.productId) : null
+        );
+      const resolvedMaxPlayers = planMeta?.maxPlayers ?? status.maxPlayers ?? 1;
+
+      const fallbackStatus: SubscriptionStatus = {
+        ...status,
+        hasSubscription: true,
+        status: status.status ?? 'lifetime',
+        planName: planMeta?.name ?? status.planName ?? 'Livstid',
+        maxPlayers: resolvedMaxPlayers,
+        currentPlayers: Math.max(status.currentPlayers ?? 0, 1),
+        subscriptionTier: tierFromProfile ?? status.subscriptionTier,
+        isLifetime: true,
+      };
+
+      console.warn('[SubscriptionContext] Using profile entitlement fallback', {
+        userId,
+        profileTier: profileEntitlements.tier,
+        profileProductId: profileEntitlements.productId,
+        fallbackStatus,
+      });
+
+      return fallbackStatus;
+    },
+    []
+  );
+
   const fetchSubscriptionStatus = useCallback(async () => {
     try {
       console.log('[SubscriptionContext] Fetching subscription status');
@@ -382,8 +459,9 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         subscriptionTier: (data?.subscriptionTier as SubscriptionTier | null) ?? null,
       };
 
+      const statusWithProfileFallback = await applyProfileEntitlementFallback(user.id, statusData);
       const reason = payloadHasError ? 'fetch-fallback' : 'fetch-success';
-      applyStatus(coerceWithEntitlements(statusData, reason), reason);
+      applyStatus(coerceWithEntitlements(statusWithProfileFallback, reason), reason);
     } catch {
       console.warn('[SubscriptionContext] Network request failed');
 
@@ -397,7 +475,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         console.log('[SubscriptionContext] Loading set to false');
       }
     }
-  }, [applyStatus, coerceWithEntitlements]);
+  }, [applyProfileEntitlementFallback, applyStatus, coerceWithEntitlements]);
 
   useEffect(() => {
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -643,6 +721,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     <SubscriptionContext.Provider
       value={{
         subscriptionStatus,
+        subscriptionMeta,
         subscriptionPlans,
         loading,
         refreshSubscription,

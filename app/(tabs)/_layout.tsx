@@ -8,6 +8,8 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { OnboardingGate } from '@/components/OnboardingGate';
 import { useSubscriptionFeatures } from '@/hooks/useSubscriptionFeatures';
+import { useAppleIAP } from '@/contexts/AppleIAPContext';
+import { resolveSubscriptionAccessState } from '@/utils/accessGate';
 
 /* ======================================================
    ROOT TAB LAYOUT
@@ -16,8 +18,13 @@ import { useSubscriptionFeatures } from '@/hooks/useSubscriptionFeatures';
 export default function TabLayout() {
   const router = useRouter();
   const segments = useSegments();
-  const { userRole, loading } = useUserRole();
-  const { entitlementVersion, subscriptionStatus: serverSubscriptionStatus } = useSubscription();
+  const { userRole, loading, isAuthenticated } = useUserRole();
+  const {
+    entitlementVersion,
+    subscriptionStatus: serverSubscriptionStatus,
+    subscriptionMeta,
+  } = useSubscription();
+  const { entitlementSnapshot } = useAppleIAP();
   const {
     hasActiveSubscription,
     subscriptionTier,
@@ -45,10 +52,20 @@ export default function TabLayout() {
     subscriptionFeaturesLoading && lastStableHasSubscriptionRef.current != null
       ? lastStableHasSubscriptionRef.current
       : hasSubscription;
+  const subscriptionAccess = resolveSubscriptionAccessState({
+    user: isAuthenticated ? { id: 'authenticated' } : null,
+    subscriptionStatus: serverSubscriptionStatus,
+    subscriptionMeta,
+    entitlementSnapshot,
+  });
 
-  const locked =
-    !effectiveRole ||
-    (!effectiveHasSubscription && !(Platform.OS === 'ios' && subscriptionFeaturesLoading));
+  const lockedByRole = !isAuthenticated && !loading;
+  const lockedBySubscription =
+    Platform.OS === 'ios'
+      ? false
+      : subscriptionAccess.accessState === 'denied_authoritative' ||
+        (!effectiveHasSubscription && !subscriptionFeaturesLoading);
+  const locked = lockedByRole || lockedBySubscription;
 
   const navigationKey = useMemo(() => {
     const rolePart = effectiveRole ?? 'anon';

@@ -69,6 +69,11 @@ interface AppleIAPContextType {
     activeProductId: string | null;
     subscriptionTier: string | null;
     isEntitled: boolean;
+    isAuthoritative: boolean;
+    isAuthoritativelyUnsubscribed: boolean;
+    checkState: 'idle' | 'inconclusive' | 'authoritative_entitled' | 'authoritative_none';
+    lastCheckedAt: string | null;
+    lastCheckError: string | null;
   };
   verifiedActiveProductId: string | null;
   verifying: boolean;
@@ -141,6 +146,11 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       activeProductId: null,
       subscriptionTier: null,
       isEntitled: false,
+      isAuthoritative: false,
+      isAuthoritativelyUnsubscribed: false,
+      checkState: 'idle',
+      lastCheckedAt: null,
+      lastCheckError: null,
     },
     verifiedActiveProductId: null,
     verifying: false,

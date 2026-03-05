@@ -134,7 +134,8 @@ describe('OnboardingGate startup hydration', () => {
       </OnboardingGate>
     );
 
-    expect(screen.getByText('Klargører konto')).toBeTruthy();
+    expect(screen.getByText('App indhold')).toBeTruthy();
+    expect(screen.queryByText('Klargører konto')).toBeNull();
 
     await act(async () => {
       jest.advanceTimersByTime(12000);
@@ -183,7 +184,8 @@ describe('OnboardingGate startup hydration', () => {
       </OnboardingGate>
     );
 
-    expect(screen.getByText('Klargører konto')).toBeTruthy();
+    expect(screen.getByText('App indhold')).toBeTruthy();
+    expect(screen.queryByText('Klargører konto')).toBeNull();
 
     await act(async () => {
       await Promise.resolve();
@@ -251,7 +253,8 @@ describe('OnboardingGate startup hydration', () => {
       </OnboardingGate>
     );
 
-    expect(screen.getByText('Klargører konto')).toBeTruthy();
+    expect(screen.getByText('App indhold')).toBeTruthy();
+    expect(screen.queryByText('Klargører konto')).toBeNull();
 
     await act(async () => {
       await Promise.resolve();
