@@ -2616,7 +2616,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         Alert.alert('Succes', 'Aktiviteten er blevet konverteret til en gentagende serie');
         setIsEditing(false);
         setEditScope('single');
-        router.replace('/(tabs)/(home)');
+        safeDismiss();
         return;
       }
 
@@ -2748,7 +2748,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     isInternalActivity,
     recurrenceType,
     refreshData,
-    router,
+    safeDismiss,
     selectedDays,
     updateActivitySeries,
     updateIntensityByCategory,
@@ -4076,7 +4076,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               await duplicateActivity(currentActivity.id);
               if (!cancelled) {
                 Alert.alert('Succes', 'Aktiviteten er blevet duplikeret');
-                router.replace('/(tabs)/(home)');
+                safeDismiss();
               }
             } catch (error: any) {
               console.error('Error duplicating activity:', error);
@@ -4177,7 +4177,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               }
               if (!cancelled) {
                 Promise.resolve(refreshData()).catch(() => {});
-                router.replace('/(tabs)/(home)');
+                safeDismiss();
                 setTimeout(() => {
                   Alert.alert('Slettet', 'Den eksterne aktivitet er blevet slettet fra din app');
                 }, 300);
@@ -4197,7 +4197,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             try {
               await deleteActivitySingle(currentActivity.id);
               if (!cancelled) {
-                router.replace('/(tabs)/(home)');
+                safeDismiss();
                 setTimeout(() => {
                   Alert.alert('Slettet', 'Aktiviteten er blevet slettet');
                 }, 300);
@@ -4218,7 +4218,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             try {
               await deleteActivitySeries(currentActivity.seriesId);
               if (!cancelled) {
-                router.replace('/(tabs)/(home)');
+                safeDismiss();
                 setTimeout(() => {
                   Alert.alert('Slettet', 'Hele serien er blevet slettet');
                 }, 300);
@@ -4253,6 +4253,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     pendingAction,
     refreshData,
     router,
+    safeDismiss,
     tasksState,
   ]);
 
