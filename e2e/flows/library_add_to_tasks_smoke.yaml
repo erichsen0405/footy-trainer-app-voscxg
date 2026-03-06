@@ -129,10 +129,15 @@ tags:
     visible:
       id: '^home\.screen$'
     timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: '^home\.thisWeekPremiumCard\.addButton$'
+    direction: DOWN
+    timeout: 15000
 - assertVisible:
-    id: '^home\.createActivityButton$'
+    id: '^home\.thisWeekPremiumCard\.addButton$'
 - tapOn:
-    id: '^home\.createActivityButton$'
+    id: '^home\.thisWeekPremiumCard\.addButton$'
 - extendedWaitUntil:
     visible:
       id: '^activity\.create\.titleInput$'

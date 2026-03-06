@@ -33,8 +33,13 @@ tags:
     visible:
       id: '^home\.screen$'
     timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: '^home\.thisWeekPremiumCard\.addButton$'
+    direction: DOWN
+    timeout: 15000
 - tapOn:
-    id: '^home\.createActivityButton$'
+    id: '^home\.thisWeekPremiumCard\.addButton$'
 - extendedWaitUntil:
     visible:
       id: '^activity\.create\.titleInput$'
@@ -137,16 +142,21 @@ tags:
           id: '^tasks\.template\.feedbackDelayOption\.15$'
 - scrollUntilVisible:
     element:
-      id: '^tasks\.template\.categoryChip\.3$'
+      id: '^tasks\.template\.categoryDropdownToggle$'
     direction: DOWN
     timeout: 15000
-- runFlow:
-    when:
-      visible:
-        id: '^tasks\.template\.categoryChip\.3$'
-    commands:
-      - tapOn:
-          id: '^tasks\.template\.categoryChip\.3$'
+- tapOn:
+    id: '^tasks\.template\.categoryDropdownToggle$'
+- swipe:
+    start: 50%, 80%
+    end: 50%, 20%
+- scrollUntilVisible:
+    element:
+      id: '^tasks\.template\.categoryOption\.3$'
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: '^tasks\.template\.categoryOption\.3$'
 - tapOn:
     id: '^tasks\.template\.saveButton$'
 - runFlow:
@@ -461,8 +471,30 @@ tags:
     visible:
       id: '^tasks\.folder\.toggle\.personal$'
     timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: '^tasks\.folder\.toggle\.personal$'
+    direction: UP
+    timeout: 10000
 - tapOn:
     id: '^tasks\.folder\.toggle\.personal$'
+- runFlow:
+    when:
+      notVisible:
+        id: '^tasks\.template\.deleteButton\..+$'
+    commands:
+      - tapOn:
+          id: '^tasks\.folder\.toggle\.personal$'
+- runFlow:
+    when:
+      notVisible:
+        id: '^tasks\.template\.deleteButton\..+$'
+    commands:
+      - scrollUntilVisible:
+          element:
+            id: '^tasks\.template\.deleteButton\..+$'
+          direction: DOWN
+          timeout: 10000
 - runFlow:
     when:
       visible:

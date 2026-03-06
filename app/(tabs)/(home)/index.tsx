@@ -58,7 +58,7 @@
  */
 
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
-import { FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform, useColorScheme, DeviceEventEmitter, Image, ImageBackground, Modal } from 'react-native';
+import { BackHandler, FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform, useColorScheme, DeviceEventEmitter, Image, ImageBackground } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Defs, Stop, LinearGradient as SvgLinearGradient, Circle, G } from 'react-native-svg';
 import { useRouter } from 'expo-router';
@@ -1196,10 +1196,20 @@ export default function HomeScreen() {
   // Reset previously loaded week count when loading starts (pull-to-refresh or navigation back)
   useEffect(() => {
     if (loading) {
-      setIsPreviousWeeksModalVisible(false);
-      setShowPreviousWeeks(0);
+      if (!isPreviousWeeksModalVisible) {
+        setShowPreviousWeeks(0);
+      }
     }
-  }, [loading]);
+  }, [loading, isPreviousWeeksModalVisible]);
+
+  useEffect(() => {
+    if (!isPreviousWeeksModalVisible || Platform.OS !== 'android') return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      setIsPreviousWeeksModalVisible(false);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [isPreviousWeeksModalVisible]);
 
   const { currentWeekGroup, upcomingByWeek, previousByWeek } = useMemo(() => {
     // STEP H: Guard against non-array activities
@@ -1549,6 +1559,7 @@ export default function HomeScreen() {
     const safePreviousByWeek = Array.isArray(previousByWeek) ? previousByWeek : [];
     return safePreviousByWeek.map((weekGroup, index) => buildWeekSummary(weekGroup, index, 'previous'));
   }, [buildWeekSummary, previousByWeek]);
+  const hasPreviousWeekSummaries = previousWeekSummaries.length > 0;
 
   // Calculate how many previous weeks to display
   const visiblePreviousWeeks = useMemo(() => {
@@ -2378,7 +2389,13 @@ export default function HomeScreen() {
           const percentage = Math.max(0, Math.min(100, Math.round(performanceMetrics.percentageUpToToday || 0)));
           const trophyCount = percentage >= 80 ? 1 : percentage >= 60 ? 2 : 3;
           return (
-            <View style={styles.upcomingSummaryWrapper} testID="home.weekSummary.currentWeek">
+            <View
+              style={[
+                styles.upcomingSummaryWrapper,
+                !hasPreviousWeekSummaries && styles.currentWeekSummaryTopSpacing,
+              ]}
+              testID="home.weekSummary.currentWeek"
+            >
               <ThisWeekPremiumCard
                 weekLabel={`Uge ${weekNumber}`}
                 dateRangeLabel={getWeekLabel(item.weekGroup.weekStart)}
@@ -2775,6 +2792,7 @@ export default function HomeScreen() {
     feedbackDoneByActivityId,
     getFeedbackActivityCandidates,
     isPreviousWeeksModalVisible,
+    hasPreviousWeekSummaries,
   ]);
 
   // Key extractor for FlatList
@@ -2879,39 +2897,36 @@ export default function HomeScreen() {
         />
       )}
 
-      <Modal
-        visible={isPreviousWeeksModalVisible}
-        animationType="slide"
-        transparent={false}
-        onRequestClose={handleClosePreviousWeeksModal}
-      >
-        <View style={[styles.previousModalRoot, { backgroundColor: isDark ? '#111' : '#F3F4F6' }]}>
-          <View style={styles.previousModalHeader}>
-            <Text style={[styles.previousModalTitle, { color: isDark ? '#E6F5EC' : '#1D3A2A' }]}>Forrige Uger</Text>
-            <Pressable
-              style={[styles.previousModalCloseButton, { borderColor: isDark ? '#444' : '#D6D6D6' }]}
-              onPress={handleClosePreviousWeeksModal}
-              accessibilityRole="button"
-              accessibilityLabel="Luk forrige uger"
-              testID="home.previousWeeks.toggle"
-            >
-              <Text style={[styles.previousModalCloseText, { color: isDark ? '#E6F5EC' : '#1D3A2A' }]}>Luk</Text>
-            </Pressable>
-          </View>
+      {isPreviousWeeksModalVisible ? (
+        <View style={styles.previousModalOverlay}>
+          <View style={[styles.previousModalRoot, { backgroundColor: isDark ? '#111' : '#F3F4F6' }]}>
+            <View style={styles.previousModalHeader}>
+              <Text style={[styles.previousModalTitle, { color: isDark ? '#E6F5EC' : '#1D3A2A' }]}>Forrige Uger</Text>
+              <Pressable
+                style={[styles.previousModalCloseButton, { borderColor: isDark ? '#444' : '#D6D6D6' }]}
+                onPress={handleClosePreviousWeeksModal}
+                accessibilityRole="button"
+                accessibilityLabel="Luk forrige uger"
+                testID="home.previousWeeks.toggle"
+              >
+                <Text style={[styles.previousModalCloseText, { color: isDark ? '#E6F5EC' : '#1D3A2A' }]}>Luk</Text>
+              </Pressable>
+            </View>
 
-          <FlatList
-            data={previousWeeksModalData}
-            renderItem={renderItem}
-            keyExtractor={keyExtractor}
-            keyboardShouldPersistTaps="handled"
-            removeClippedSubviews={Platform.OS !== 'web'}
-            initialNumToRender={8}
-            maxToRenderPerBatch={10}
-            windowSize={5}
-            contentContainerStyle={styles.previousModalListContent}
-          />
+            <FlatList
+              data={previousWeeksModalData}
+              renderItem={renderItem}
+              keyExtractor={keyExtractor}
+              keyboardShouldPersistTaps="handled"
+              removeClippedSubviews={Platform.OS !== 'web'}
+              initialNumToRender={8}
+              maxToRenderPerBatch={10}
+              windowSize={5}
+              contentContainerStyle={styles.previousModalListContent}
+            />
+          </View>
         </View>
-      </Modal>
+      ) : null}
 
       {/* Create Activity Modal */}
       {showCreateModal ? (
@@ -3203,6 +3218,11 @@ const styles = StyleSheet.create({
   previousModalRoot: {
     flex: 1,
   },
+  previousModalOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 30,
+    elevation: 30,
+  },
   previousModalHeader: {
     paddingTop: Platform.OS === 'android' ? 48 : 16,
     paddingHorizontal: 16,
@@ -3321,6 +3341,9 @@ const styles = StyleSheet.create({
   upcomingSummaryWrapper: {
     paddingHorizontal: 16,
     marginBottom: 12,
+  },
+  currentWeekSummaryTopSpacing: {
+    marginTop: 16,
   },
   upcomingSummaryWithQuickCreate: {
     position: 'relative',
