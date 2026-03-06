@@ -81,6 +81,7 @@ import { canTrainerManageActivity } from '@/utils/permissions';
 import { fetchSelfFeedbackForActivities } from '@/services/feedbackService';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { formatHoursDa, getActivityEffectiveDurationMinutes } from '@/utils/activityDuration';
+import { markHomeScreenReady } from '@/utils/startupLoader';
 import type { TaskTemplateSelfFeedback } from '@/types';
 
 const FALLBACK_COLORS = {
@@ -1031,7 +1032,12 @@ function getActivityTasks(activity: any): any[] {
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { activities, loading, refresh: refreshActivities } = useHomeActivities();
+  const {
+    activities,
+    loading,
+    initialLoadSucceeded,
+    refresh: refreshActivities,
+  } = useHomeActivities();
   const {
     categories,
     createActivity,
@@ -1055,6 +1061,13 @@ export default function HomeScreen() {
   const [feedbackRefreshKey, setFeedbackRefreshKey] = useState(0);
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const emittedHomeReadyRef = useRef(false);
+
+  useEffect(() => {
+    if (loading || !initialLoadSucceeded || emittedHomeReadyRef.current) return;
+    emittedHomeReadyRef.current = true;
+    markHomeScreenReady();
+  }, [initialLoadSucceeded, loading]);
 
   useEffect(() => {
     const handleSaved = (payload: any) => {

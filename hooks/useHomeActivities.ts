@@ -13,6 +13,7 @@ import {
   getActivitiesRefreshRequestedVersion,
   getLastActivitiesRefreshRequestedEvent,
 } from '@/utils/activityEvents';
+import { setHomeLoadProgress } from '@/utils/startupLoader';
 
 interface ActivityTask {
   id: string;
@@ -333,13 +334,16 @@ const fetchExternalMetaRows = async ({
 interface UseHomeActivitiesResult {
   activities: ActivityWithCategory[];
   loading: boolean;
+  initialLoadSucceeded: boolean;
   refresh: () => Promise<void>;
 }
 
 export function useHomeActivities(): UseHomeActivitiesResult {
   const [userId, setUserId] = useState<string | null>(null);
+  const [sessionChecked, setSessionChecked] = useState(false);
   const [activities, setActivities] = useState<ActivityWithCategory[]>([]);
   const [loading, setLoading] = useState(true);
+  const [initialLoadSucceeded, setInitialLoadSucceeded] = useState(false);
   const categoryMapRef = useRef<Map<string, DatabaseActivityCategory>>(new Map());
   const refetchInFlightRef = useRef(false);
   const pendingRefreshReasonRef = useRef<string | null>(null);
@@ -487,6 +491,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
   // Get user ID
   useEffect(() => {
     const fetchUser = async () => {
+      setHomeLoadProgress(0.05);
       try {
         const {
           data: { session },
@@ -496,34 +501,51 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         if (error) {
           console.error('Failed to fetch session:', error);
           setActivities([]);
+          setInitialLoadSucceeded(false);
           setLoading(false);
+          setSessionChecked(true);
           return;
         }
 
         const userIdFromSession = session?.user?.id;
         if (!userIdFromSession) {
           setActivities([]);
+          setInitialLoadSucceeded(true);
           setLoading(false);
+          setSessionChecked(true);
+          setHomeLoadProgress(1);
           return;
         }
 
         setUserId(userIdFromSession);
+        setSessionChecked(true);
+        setHomeLoadProgress(0.12);
       } catch (err) {
         console.error('Failed to fetch session:', err);
         setActivities([]);
+        setInitialLoadSucceeded(false);
         setLoading(false);
+        setSessionChecked(true);
+        setHomeLoadProgress(0);
       }
     };
     fetchUser();
   }, []);
 
-  const refetchActivities = useCallback(async () => {
+  const refetchActivities = useCallback(async (): Promise<boolean> => {
+    const setStartupProgressIfInitial = (progress: number) => {
+      if (hasLoadedOnceRef.current) return;
+      setHomeLoadProgress(progress);
+    };
+
     if (!userId) {
       setActivities([]);
-      return;
+      setStartupProgressIfInitial(1);
+      return true;
     }
 
     try {
+      setStartupProgressIfInitial(0.2);
       devLog('[useHomeActivities] Fetching activities for user:', userId);
 
       // ✅ PARALLEL FETCH GROUP 1: Categories + Internal Activities + External Calendars + Category Mappings
@@ -647,6 +669,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       devLog('[useHomeActivities] Categories fetched:', categoriesData?.length ?? 0);
       devLog('[useHomeActivities] Internal activities:', internalData?.length ?? 0);
       devLog('[useHomeActivities] Category mappings:', categoryMappingsData?.length ?? 0);
+      setStartupProgressIfInitial(0.45);
 
       // Create a map for quick category lookup
       const categoryMap = new Map<string, DatabaseActivityCategory>();
@@ -906,6 +929,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         }
       }
 
+      setStartupProgressIfInitial(0.65);
+
       devLog('[useHomeActivities] External activities:', externalActivities.length);
 
       // 4. Merge internal and external activities
@@ -1008,6 +1033,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           : Promise.resolve({ data: [], error: null }),
         fetchActivityTasksWithFallback(externalEventRowIds),
       ]);
+      setStartupProgressIfInitial(0.85);
 
       // Preload after_training_delay_minutes for any task templates referenced directly or via markers
       const templateIdCandidates = new Set<string>();
@@ -1314,6 +1340,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         }
       }
 
+      setStartupProgressIfInitial(0.95);
       setActivities(finalActivities);
 
       if (orphanCleanupResults.length && __DEV__) {
@@ -1339,29 +1366,36 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           });
         }
       }
+      setStartupProgressIfInitial(0.98);
+      return true;
     } catch (err) {
       console.error('Failed to fetch activities:', err);
       setActivities([]);
+      if (!hasLoadedOnceRef.current) {
+        setHomeLoadProgress(0.2);
+      }
+      return false;
     }
   }, [userId]);
 
   const triggerRefetch = useCallback(
-    async (reason: string = 'unspecified') => {
+    async (reason: string = 'unspecified'): Promise<boolean> => {
       if (!userId) {
-        return;
+        return false;
       }
 
       if (refetchInFlightRef.current) {
         pendingRefreshReasonRef.current = reason;
-        return;
+        return false;
       }
 
       refetchInFlightRef.current = true;
       try {
         devLog(`[useHomeActivities] Refetch triggered (${reason})`);
-        await refetchActivities();
+        return await refetchActivities();
       } catch (error) {
         console.error(`[useHomeActivities] Refetch failed (${reason}):`, error);
+        return false;
       } finally {
         refetchInFlightRef.current = false;
         if (pendingRefreshReasonRef.current) {
@@ -1383,19 +1417,35 @@ export function useHomeActivities(): UseHomeActivitiesResult {
     let mounted = true;
 
     async function load() {
-      if (!userId) {
-        setActivities([]);
-        setLoading(false);
+      if (!sessionChecked) {
         return;
       }
 
+      if (!userId) {
+        setActivities([]);
+        setInitialLoadSucceeded(true);
+        setLoading(false);
+        setHomeLoadProgress(1);
+        return;
+      }
+
+      if (mounted) {
+        setLoading(true);
+        setInitialLoadSucceeded(false);
+        setHomeLoadProgress(0.15);
+      }
+
+      let firstLoadSucceeded = false;
       try {
-        await triggerRefetch('initial_load');
+        firstLoadSucceeded = await triggerRefetch('initial_load');
       } catch (err) {
         console.error('Failed to load home activities:', err);
       } finally {
         hasLoadedOnceRef.current = true;
-        if (mounted) setLoading(false);
+        if (mounted) {
+          setInitialLoadSucceeded(firstLoadSucceeded);
+          setLoading(false);
+        }
       }
     }
 
@@ -1404,7 +1454,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
     return () => {
       mounted = false;
     };
-  }, [userId, triggerRefetch]);
+  }, [sessionChecked, userId, triggerRefetch]);
 
   useFocusEffect(
     useCallback(() => {
@@ -1466,6 +1516,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
   return {
     activities,
     loading,
+    initialLoadSucceeded,
     refresh,
   };
 }
