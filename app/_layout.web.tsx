@@ -3,6 +3,7 @@ import { Stack, usePathname, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
+import { StyleSheet, View } from 'react-native';
 import 'react-native-reanimated';
 
 import { FootballProvider } from '@/contexts/FootballContext';
@@ -12,6 +13,14 @@ import { AdminProvider } from '@/contexts/AdminContext';
 import { AppleIAPProvider, useAppleIAP } from '@/contexts/AppleIAPContext';
 import { CelebrationProvider } from '@/contexts/CelebrationContext';
 import { supabase } from '@/integrations/supabase/client';
+import AppStartupLoader from '@/components/AppStartupLoader';
+import {
+  getHomeLoadProgress,
+  isHomeStartupPath,
+  resetHomeScreenReady,
+  subscribeToHomeLoadProgress,
+  subscribeToHomeScreenReady,
+} from '@/utils/startupLoader';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -76,15 +85,73 @@ const isUserEmailConfirmed = (user: any) =>
   Boolean(user?.email_confirmed_at || user?.confirmed_at);
 
 export default function RootLayout() {
+  const pathname = usePathname();
   const [fontsLoaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
+  const [showStartupLoader, setShowStartupLoader] = useState(true);
+  const [homeScreenReady, setHomeScreenReady] = useState(false);
+  const [homeLoadProgress, setHomeLoadProgress] = useState(getHomeLoadProgress());
+  const isTabsPath = pathname.startsWith('/(tabs)');
+  const isHomePath = isHomeStartupPath(pathname);
+  const isBootstrapPath = pathname === '/index' || pathname.length === 0;
+  const shouldWaitForHomeReady = isHomePath || isBootstrapPath || isTabsPath;
+  const startupPrerequisitesDoneCount = [fontsLoaded].filter(Boolean).length;
+  const startupPrerequisitesProgress = startupPrerequisitesDoneCount / 1;
+  const startupProgress = shouldWaitForHomeReady
+    ? homeScreenReady
+      ? 1
+      : Math.min(
+          startupPrerequisitesProgress * 0.6 +
+            (fontsLoaded ? homeLoadProgress * 0.4 : 0),
+          0.99,
+        )
+    : Math.min(startupPrerequisitesProgress, 0.99);
 
   useEffect(() => {
     if (fontsLoaded) {
       SplashScreen.hideAsync().catch(() => {});
     }
   }, [fontsLoaded]);
+
+  useEffect(() => {
+    resetHomeScreenReady();
+    setHomeScreenReady(false);
+    setHomeLoadProgress(getHomeLoadProgress());
+
+    const unsubscribeReady = subscribeToHomeScreenReady(() => {
+      setHomeScreenReady(true);
+    });
+    const unsubscribeProgress = subscribeToHomeLoadProgress((progress) => {
+      setHomeLoadProgress(progress);
+    });
+
+    return () => {
+      unsubscribeReady();
+      unsubscribeProgress();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!showStartupLoader || !fontsLoaded) return;
+
+    if (shouldWaitForHomeReady && homeScreenReady) {
+      setShowStartupLoader(false);
+      return;
+    }
+
+    if (!shouldWaitForHomeReady) {
+      setShowStartupLoader(false);
+    }
+  }, [
+    fontsLoaded,
+    homeScreenReady,
+    isBootstrapPath,
+    isHomePath,
+    isTabsPath,
+    shouldWaitForHomeReady,
+    showStartupLoader,
+  ]);
 
   useEffect(() => {
     if (__DEV__) {
@@ -101,26 +168,29 @@ export default function RootLayout() {
           <AdminProvider>
             <CelebrationProvider>
               <FootballProvider>
-                <Stack screenOptions={{ headerShown: false }}>
-                  <Stack.Screen name="index" />
-                  <Stack.Screen name="choose-plan" />
-                  <Stack.Screen name="(tabs)" />
-                  <Stack.Screen name="profile" />
-                  <Stack.Screen name="+not-found" />
-                  <Stack.Screen name="activity-details" options={{ presentation: 'modal' }} />
-                  <Stack.Screen name="auth/check-email" />
-                  <Stack.Screen name="auth/forgot-password" />
-                  <Stack.Screen name="auth/callback" />
-                  <Stack.Screen name="auth/recovery-callback" />
-                  <Stack.Screen name="auth/recovery-redirect" />
-                  <Stack.Screen name="email-confirmed" />
-                  <Stack.Screen name="update-password" />
-                  {__DEV__ ? <Stack.Screen name="console-logs" options={{ headerShown: true }} /> : null}
-                  {__DEV__ ? (
-                    <Stack.Screen name="notification-debug" options={{ headerShown: true }} />
-                  ) : null}
-                </Stack>
-                <StatusBar style="auto" />
+                <View style={styles.container}>
+                  <Stack screenOptions={{ headerShown: false }}>
+                    <Stack.Screen name="index" />
+                    <Stack.Screen name="choose-plan" />
+                    <Stack.Screen name="(tabs)" />
+                    <Stack.Screen name="profile" />
+                    <Stack.Screen name="+not-found" />
+                    <Stack.Screen name="activity-details" options={{ presentation: 'modal' }} />
+                    <Stack.Screen name="auth/check-email" />
+                    <Stack.Screen name="auth/forgot-password" />
+                    <Stack.Screen name="auth/callback" />
+                    <Stack.Screen name="auth/recovery-callback" />
+                    <Stack.Screen name="auth/recovery-redirect" />
+                    <Stack.Screen name="email-confirmed" />
+                    <Stack.Screen name="update-password" />
+                    {__DEV__ ? <Stack.Screen name="console-logs" options={{ headerShown: true }} /> : null}
+                    {__DEV__ ? (
+                      <Stack.Screen name="notification-debug" options={{ headerShown: true }} />
+                    ) : null}
+                  </Stack>
+                  <StatusBar style="auto" />
+                  <AppStartupLoader visible={showStartupLoader} progress={startupProgress} />
+                </View>
               </FootballProvider>
             </CelebrationProvider>
           </AdminProvider>
@@ -129,6 +199,12 @@ export default function RootLayout() {
     </SubscriptionProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+});
 
 function SubscriptionRedirectObserver() {
   const router = useRouter();
