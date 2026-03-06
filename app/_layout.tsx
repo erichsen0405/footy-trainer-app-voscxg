@@ -3,7 +3,7 @@ import { useFonts } from 'expo-font';
 import { Stack, usePathname, useRouter, useRootNavigationState } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { Platform } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import 'react-native-reanimated';
 import { FootballProvider } from '@/contexts/FootballContext';
 import { SubscriptionProvider, useSubscription } from '@/contexts/SubscriptionContext';
@@ -17,6 +17,14 @@ import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { clearPushTokenCache, syncPushTokenForCurrentUser } from '@/utils/pushTokenService';
 import { buildNotificationRouteFromResponse } from '@/utils/notificationDeepLink';
+import AppStartupLoader from '@/components/AppStartupLoader';
+import {
+  getHomeLoadProgress,
+  isHomeStartupPath,
+  resetHomeScreenReady,
+  subscribeToHomeLoadProgress,
+  subscribeToHomeScreenReady,
+} from '@/utils/startupLoader';
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -46,6 +54,7 @@ const isUserEmailConfirmed = (user: any) =>
 
 export default function RootLayout() {
   const router = useRouter();
+  const pathname = usePathname();
   const rootNavigationState = useRootNavigationState();
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
@@ -57,8 +66,33 @@ export default function RootLayout() {
   const [authReady, setAuthReady] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pendingRouteStorageLoaded, setPendingRouteStorageLoaded] = useState(false);
+  const [showStartupLoader, setShowStartupLoader] = useState(true);
+  const [homeScreenReady, setHomeScreenReady] = useState(false);
+  const [homeLoadProgress, setHomeLoadProgress] = useState(getHomeLoadProgress());
   const isNavigationReady = Boolean(rootNavigationState?.key);
   const canHandleNotificationNavigation = isNavigationReady && authReady && isAuthenticated;
+  const startupPrerequisitesReady =
+    loaded && authReady && pendingRouteStorageLoaded && isNavigationReady;
+  const isTabsPath = pathname.startsWith('/(tabs)');
+  const isHomePath = isHomeStartupPath(pathname);
+  const isBootstrapPath = pathname === '/index' || pathname.length === 0;
+  const shouldWaitForHomeReady = isHomePath || isBootstrapPath || isTabsPath;
+  const startupPrerequisitesDoneCount = [
+    loaded,
+    authReady,
+    pendingRouteStorageLoaded,
+    isNavigationReady,
+  ].filter(Boolean).length;
+  const startupPrerequisitesProgress = startupPrerequisitesDoneCount / 4;
+  const startupProgress = shouldWaitForHomeReady
+    ? homeScreenReady
+      ? 1
+      : Math.min(
+          startupPrerequisitesProgress * 0.6 +
+            (startupPrerequisitesReady ? homeLoadProgress * 0.4 : 0),
+          0.99,
+        )
+    : Math.min(startupPrerequisitesProgress, 0.99);
 
   const persistPendingRoute = useCallback(
     (route: { pathname: string; params?: Record<string, string> } | null) => {
@@ -173,6 +207,45 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
+    resetHomeScreenReady();
+    setHomeScreenReady(false);
+    setHomeLoadProgress(getHomeLoadProgress());
+
+    const unsubscribeReady = subscribeToHomeScreenReady(() => {
+      setHomeScreenReady(true);
+    });
+    const unsubscribeProgress = subscribeToHomeLoadProgress((progress) => {
+      setHomeLoadProgress(progress);
+    });
+
+    return () => {
+      unsubscribeReady();
+      unsubscribeProgress();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!showStartupLoader || !startupPrerequisitesReady) return;
+
+    if (shouldWaitForHomeReady && homeScreenReady) {
+      setShowStartupLoader(false);
+      return;
+    }
+
+    if (!shouldWaitForHomeReady) {
+      setShowStartupLoader(false);
+    }
+  }, [
+    homeScreenReady,
+    isBootstrapPath,
+    isHomePath,
+    isTabsPath,
+    showStartupLoader,
+    shouldWaitForHomeReady,
+    startupPrerequisitesReady,
+  ]);
+
+  useEffect(() => {
     const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
       handleNotificationResponse(response);
     });
@@ -272,72 +345,75 @@ export default function RootLayout() {
           <AdminProvider>
             <CelebrationProvider>
               <FootballProvider>
-                <NotificationPermissionPrompt />
-                <Stack initialRouteName="index">
-                  {/* Root redirect route (/) */}
-                  <Stack.Screen name="index" options={{ headerShown: false }} />
+                <View style={styles.container}>
+                  <NotificationPermissionPrompt />
+                  <Stack initialRouteName="index">
+                    {/* Root redirect route (/) */}
+                    <Stack.Screen name="index" options={{ headerShown: false }} />
 
-                  {/* Subscription paywall */}
-                  <Stack.Screen name="choose-plan" options={{ headerShown: false }} />
+                    {/* Subscription paywall */}
+                    <Stack.Screen name="choose-plan" options={{ headerShown: false }} />
 
-                  {/* Main tabs */}
-                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                  <Stack.Screen name="profile" options={{ headerShown: false }} />
+                    {/* Main tabs */}
+                    <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                    <Stack.Screen name="profile" options={{ headerShown: false }} />
 
-                  {/* Modals overlay */}
-                  <Stack.Screen
-                    name="(modals)"
-                    options={{
-                      presentation: 'transparentModal',
-                      headerShown: false,
-                      contentStyle: { backgroundColor: 'transparent' },
-                      animation: 'fade',
-                    }}
-                  />
-
-                  {/* Activity details */}
-                  <Stack.Screen
-                    name="activity-details"
-                    options={{
-                      presentation: 'modal',
-                      headerShown: false,
-                    }}
-                  />
-
-                  {/* Not found */}
-                  <Stack.Screen name="+not-found" options={{ headerShown: false }} />
-
-                  {/* Debug routes - only available in development */}
-                  {__DEV__ ? (
+                    {/* Modals overlay */}
                     <Stack.Screen
-                      name="console-logs"
+                      name="(modals)"
+                      options={{
+                        presentation: 'transparentModal',
+                        headerShown: false,
+                        contentStyle: { backgroundColor: 'transparent' },
+                        animation: 'fade',
+                      }}
+                    />
+
+                    {/* Activity details */}
+                    <Stack.Screen
+                      name="activity-details"
                       options={{
                         presentation: 'modal',
                         headerShown: false,
-                        title: 'Console Logs (DEV)',
                       }}
                     />
-                  ) : null}
-                  {__DEV__ ? (
-                    <Stack.Screen
-                      name="notification-debug"
-                      options={{
-                        presentation: 'modal',
-                        headerShown: false,
-                        title: 'Notification Debug (DEV)',
-                      }}
-                    />
-                  ) : null}
-                  <Stack.Screen name="auth/check-email" options={{ headerShown: false }} />
-                  <Stack.Screen name="auth/forgot-password" options={{ headerShown: false }} />
-                  <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
-                  <Stack.Screen name="auth/recovery-callback" options={{ headerShown: false }} />
-                  <Stack.Screen name="auth/recovery-redirect" options={{ headerShown: false }} />
-                  <Stack.Screen name="email-confirmed" options={{ headerShown: false }} />
-                  <Stack.Screen name="update-password" options={{ headerShown: false }} />
-                </Stack>
 
-                <StatusBar style="auto" />
+                    {/* Not found */}
+                    <Stack.Screen name="+not-found" options={{ headerShown: false }} />
+
+                    {/* Debug routes - only available in development */}
+                    {__DEV__ ? (
+                      <Stack.Screen
+                        name="console-logs"
+                        options={{
+                          presentation: 'modal',
+                          headerShown: false,
+                          title: 'Console Logs (DEV)',
+                        }}
+                      />
+                    ) : null}
+                    {__DEV__ ? (
+                      <Stack.Screen
+                        name="notification-debug"
+                        options={{
+                          presentation: 'modal',
+                          headerShown: false,
+                          title: 'Notification Debug (DEV)',
+                        }}
+                      />
+                    ) : null}
+                    <Stack.Screen name="auth/check-email" options={{ headerShown: false }} />
+                    <Stack.Screen name="auth/forgot-password" options={{ headerShown: false }} />
+                    <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
+                    <Stack.Screen name="auth/recovery-callback" options={{ headerShown: false }} />
+                    <Stack.Screen name="auth/recovery-redirect" options={{ headerShown: false }} />
+                    <Stack.Screen name="email-confirmed" options={{ headerShown: false }} />
+                    <Stack.Screen name="update-password" options={{ headerShown: false }} />
+                  </Stack>
+
+                  <StatusBar style="auto" />
+                  <AppStartupLoader visible={showStartupLoader} progress={startupProgress} />
+                </View>
               </FootballProvider>
             </CelebrationProvider>
           </AdminProvider>
@@ -346,6 +422,12 @@ export default function RootLayout() {
     </SubscriptionProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+});
 
 function SubscriptionRedirectObserver() {
   const router = useRouter();
