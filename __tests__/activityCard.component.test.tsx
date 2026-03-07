@@ -275,4 +275,21 @@ describe('ActivityCard completion UI', () => {
       },
     });
   });
+
+  it('renders trainer-assigned badge when enabled', () => {
+    const { getByTestId, getByText } = render(
+      <ActivityCard
+        activity={{
+          ...baseActivity,
+          tasks: [],
+        }}
+        resolvedDate={new Date('2026-01-01T10:00:00Z')}
+        showTasks
+        showTrainerAssignedBadge
+      />
+    );
+
+    expect(getByTestId('home.activity.trainerAssignedBadge')).toBeTruthy();
+    expect(getByText('Tildelt af træner')).toBeTruthy();
+  });
 });

@@ -322,6 +322,55 @@ export type Database = {
           },
         ]
       }
+      activity_assignment_team_exclusions: {
+        Row: {
+          created_at: string
+          external_event_id: string | null
+          id: string
+          player_id: string
+          source_activity_id: string | null
+          team_id: string
+        }
+        Insert: {
+          created_at?: string
+          external_event_id?: string | null
+          id?: string
+          player_id: string
+          source_activity_id?: string | null
+          team_id: string
+        }
+        Update: {
+          created_at?: string
+          external_event_id?: string | null
+          id?: string
+          player_id?: string
+          source_activity_id?: string | null
+          team_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_assignment_team_exclusions_external_event_id_fkey"
+            columns: ["external_event_id"]
+            isOneToOne: false
+            referencedRelation: "events_external"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_assignment_team_exclusions_source_activity_id_fkey"
+            columns: ["source_activity_id"]
+            isOneToOne: false
+            referencedRelation: "activities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_assignment_team_exclusions_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       admin_player_relationships: {
         Row: {
           admin_id: string

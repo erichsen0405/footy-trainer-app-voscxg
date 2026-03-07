@@ -28,6 +28,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { Activity, ActivityCategory, Task, TaskTemplateSelfFeedback } from '@/types';
 import { useUserRole } from '@/hooks/useUserRole';
 import { CreateActivityTaskModal } from '@/components/CreateActivityTaskModal';
+import { AssignActivityModal } from '@/components/AssignActivityModal';
 import { deleteSingleExternalActivity } from '@/utils/deleteExternalActivities';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -36,6 +37,7 @@ import {
   fetchSelfFeedbackForTemplates,
   upsertSelfFeedback,
 } from '@/services/feedbackService';
+import { activityAssignmentsService } from '@/services/activityAssignments';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { filterVisibleTasksForActivity } from '@/utils/taskTemplateVisibility';
 import { resolveActivityIntensityEnabled } from '@/utils/activityIntensity';
@@ -311,6 +313,9 @@ const parseIntensityValue = (raw: any): number | null => {
 // --- Supabase select strings (with/without optional video_url) ---
 const INTERNAL_SELECT_WITH_VIDEO = `
   id,
+  user_id,
+  player_id,
+  team_id,
   title,
   activity_date,
   activity_time,
@@ -350,6 +355,9 @@ const INTERNAL_SELECT_WITH_VIDEO = `
 
 const INTERNAL_SELECT_NO_VIDEO = `
   id,
+  user_id,
+  player_id,
+  team_id,
   title,
   activity_date,
   activity_time,
@@ -388,6 +396,9 @@ const INTERNAL_SELECT_NO_VIDEO = `
 
 const EXTERNAL_META_SELECT_WITH_VIDEO = `
   id,
+  user_id,
+  player_id,
+  team_id,
   external_event_id,
   category_id,
   intensity,
@@ -429,6 +440,9 @@ const EXTERNAL_META_SELECT_WITH_VIDEO = `
 
 const EXTERNAL_META_SELECT_NO_VIDEO = `
   id,
+  user_id,
+  player_id,
+  team_id,
   external_event_id,
   category_id,
   intensity,
@@ -469,6 +483,9 @@ const EXTERNAL_META_SELECT_NO_VIDEO = `
 
 const EXTERNAL_META_SELECT_MINIMAL = `
   id,
+  user_id,
+  player_id,
+  team_id,
   external_event_id,
   category_id,
   intensity,
@@ -505,6 +522,9 @@ const EXTERNAL_META_SELECT_MINIMAL = `
 
 const EXTERNAL_META_SELECT_LEGACY = `
   id,
+  user_id,
+  player_id,
+  team_id,
   external_event_id,
   category_id,
   intensity,
@@ -876,7 +896,10 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         intensity: intensityValue,
         intensityEnabled,
         intensityNote,
-      };
+        user_id: internalActivityAny.user_id ?? null,
+        player_id: internalActivityAny.player_id ?? null,
+        team_id: internalActivityAny.team_id ?? null,
+      } as Activity;
     }
 
     const fetchExternalMetaFirst = async (
@@ -1102,7 +1125,10 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         intensity: metaIntensity,
         intensityEnabled: metaIntensityEnabled,
         intensityNote: metaIntensityNote,
-      };
+        user_id: localMetaAny.user_id ?? null,
+        player_id: localMetaAny.player_id ?? null,
+        team_id: localMetaAny.team_id ?? null,
+      } as Activity;
     }
 
     if (__DEV__ && metaError) {
@@ -1339,6 +1365,8 @@ interface ActivityDetailsContentProps {
   activity: Activity;
   categories: ActivityCategory[];
   isAdmin: boolean;
+  isTrainerProfile?: boolean;
+  isPlayerProfile?: boolean;
   isDark: boolean;
   onBack: () => void;
   onActivityUpdated: (activity: Activity) => void;
@@ -1713,6 +1741,8 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     activity,
     categories,
     isAdmin,
+    isTrainerProfile = false,
+    isPlayerProfile = false,
     isDark,
     onBack,
     onActivityUpdated,
@@ -1756,12 +1786,17 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
   const [editingActivityTask, setEditingActivityTask] = useState<FeedbackTask | null>(null);
   const [showTemplateTaskModal, setShowTemplateTaskModal] = useState(false);
+  const [assignActivityModalVisible, setAssignActivityModalVisible] = useState(false);
   const [isTemplateTaskSaving, setIsTemplateTaskSaving] = useState(false);
   const [templateTaskSearch, setTemplateTaskSearch] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [tasksState, setTasksState] = useState<FeedbackTask[]>((activity.tasks as FeedbackTask[]) || []);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [activityAssignmentSummary, setActivityAssignmentSummary] = useState<{
+    playerCount: number;
+    teamCount: number;
+  } | null>(null);
 
   const [feedbackConfigByTemplate, setFeedbackConfigByTemplate] = useState<
     Record<string, AfterTrainingFeedbackConfig>
@@ -1850,6 +1885,39 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const activityExternalEventId =
     activity.externalEventId ?? (activity as any)?.external_event_id;
   const activityTasks = activity.tasks;
+  const activityPlayerScopeId = normalizeId((activity as any)?.playerId ?? (activity as any)?.player_id);
+  const activityTeamScopeId = normalizeId((activity as any)?.teamId ?? (activity as any)?.team_id);
+  const isTrainerAssignedActivityForPlayer = useMemo(
+    () => isPlayerProfile && (!!activityPlayerScopeId || !!activityTeamScopeId),
+    [activityPlayerScopeId, activityTeamScopeId, isPlayerProfile],
+  );
+  const canManageAssignedActivity = !isTrainerAssignedActivityForPlayer;
+  const assignableActivity = useMemo(() => {
+    const externalEventRowId = normalizeId(
+      (activity as any)?.externalEventRowId ??
+      (activity as any)?.external_event_row_id ??
+      (activity as any)?.externalEventId ??
+      (activity as any)?.external_event_id,
+    );
+    const categoryId = normalizeId(activity?.category?.id);
+    const intensity = parseIntensityValue((activity as any)?.intensity ?? (activity as any)?.activity_intensity);
+    const intensityNoteRaw =
+      (activity as any)?.intensityNote ??
+      (activity as any)?.intensity_note ??
+      (activity as any)?.activity_intensity_note;
+    const intensityNote = typeof intensityNoteRaw === 'string' ? intensityNoteRaw : null;
+
+    return {
+      id: activity.id,
+      title: activity.title,
+      isExternal: activity.isExternal === true,
+      externalEventRowId: externalEventRowId ?? null,
+      categoryId: categoryId ?? null,
+      intensity,
+      intensityEnabled: resolveActivityIntensityEnabled(activity),
+      intensityNote,
+    };
+  }, [activity]);
 
   const feedbackActivityCandidates = useMemo(() => {
     const ids: string[] = [];
@@ -2353,6 +2421,52 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   }, [activity.id, initialFeedbackTaskId, initialOpenTaskId]);
 
   useEffect(() => {
+    setActivityAssignmentSummary(null);
+    setAssignActivityModalVisible(false);
+  }, [activity.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!isTrainerProfile || !currentUserId) {
+      setActivityAssignmentSummary(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void activityAssignmentsService
+      .fetchAssignments({
+        activityId: assignableActivity.id,
+        trainerId: currentUserId,
+        isExternal: assignableActivity.isExternal,
+        externalEventRowId: assignableActivity.externalEventRowId ?? null,
+      })
+      .then((assignment) => {
+        if (cancelled) return;
+        setActivityAssignmentSummary({
+          playerCount: assignment.playerIds.length,
+          teamCount: assignment.teamIds.length,
+        });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error('[ActivityDetails] assignment summary load failed', error);
+        setActivityAssignmentSummary(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    assignableActivity.externalEventRowId,
+    assignableActivity.id,
+    assignableActivity.isExternal,
+    currentUserId,
+    isTrainerProfile,
+  ]);
+
+  useEffect(() => {
     if (isEditing) return;
     setShowDatePicker(false);
     setShowTimePicker(false);
@@ -2390,6 +2504,11 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   }, []);
 
   const handleEditClick = useCallback(() => {
+    if (!canManageAssignedActivity) {
+      Alert.alert('Låst aktivitet', 'Denne aktivitet er tildelt af en træner og kan ikke redigeres.');
+      return;
+    }
+
     if (activity?.seriesId) {
       Alert.alert('Rediger serie', 'Vil du redigere kun denne aktivitet eller hele serien?', [
         { text: 'Annuller', style: 'cancel' },
@@ -2401,10 +2520,14 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
     setEditScope('single');
     setIsEditing(true);
-  }, [activity?.seriesId, handleEditAll, handleEditSingle]);
+  }, [activity?.seriesId, canManageAssignedActivity, handleEditAll, handleEditSingle]);
 
   const handleDuplicate = useCallback(() => {
     if (!activity) return;
+    if (!canManageAssignedActivity) {
+      Alert.alert('Låst aktivitet', 'Denne aktivitet er tildelt af en træner og kan ikke redigeres.');
+      return;
+    }
 
     if (activity.isExternal) {
       Alert.alert(
@@ -2422,7 +2545,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         { text: 'Duplikér', onPress: () => setPendingAction({ type: 'duplicate' }) },
       ],
     );
-  }, [activity]);
+  }, [activity, canManageAssignedActivity]);
 
   const handleIntensityToggle = useCallback((value: boolean) => {
     if (value === editIntensityEnabled) return;
@@ -2980,6 +3103,25 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     setEditingActivityTask(null);
   }, []);
 
+  const handleOpenAssignActivityModal = useCallback(() => {
+    setAssignActivityModalVisible(true);
+  }, []);
+
+  const handleCloseAssignActivityModal = useCallback(() => {
+    setAssignActivityModalVisible(false);
+  }, []);
+
+  const handleAssignActivitySuccess = useCallback(
+    (payload: { createdCount: number; assignedPlayerCount: number; assignedTeamCount: number }) => {
+      setActivityAssignmentSummary({
+        playerCount: payload.assignedPlayerCount,
+        teamCount: payload.assignedTeamCount,
+      });
+      Promise.resolve(refreshData()).catch(() => {});
+    },
+    [refreshData],
+  );
+
   const filteredTemplateTasks = useMemo(() => {
     const query = templateTaskSearch.trim().toLowerCase();
     const allTemplates = Array.isArray(taskTemplates) ? taskTemplates : [];
@@ -3169,6 +3311,13 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
     return entries;
   }, [resolveFeedbackTemplateId, selfFeedbackByTemplate, tasksState]);
+
+  const activityAssignmentSummaryText = useMemo(() => {
+    if (!activityAssignmentSummary) return null;
+    const playerLabel = activityAssignmentSummary.playerCount === 1 ? 'spiller' : 'spillere';
+    const teamLabel = activityAssignmentSummary.teamCount === 1 ? 'hold' : 'hold';
+    return `Tilknyttet: ${activityAssignmentSummary.playerCount} ${playerLabel} · ${activityAssignmentSummary.teamCount} ${teamLabel}`;
+  }, [activityAssignmentSummary]);
 
   const taskListItems = useMemo<TaskListItem[]>(() => {
     const items: TaskListItem[] = [];
@@ -3395,7 +3544,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         isFeedbackTask(task) ||
         hasLocalFeedbackMarker ||
         (!!templateId && hasFeedbackTemplateId);
-      const canManageTask = !isFeedbackTaskLocal;
+      const canManageTask = !isFeedbackTaskLocal && canManageAssignedActivity;
 
       const isFeedbackCompleted = isFeedbackTaskLocal ? isFeedbackAnswered(feedback, config) : false;
 
@@ -3527,6 +3676,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       selfFeedbackByTemplate,
       textColor,
       textSecondaryColor,
+      canManageAssignedActivity,
     ],
   );
 
@@ -3978,6 +4128,33 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             </View>
           </View>
         ) : null}
+
+        {!isEditing && isTrainerProfile ? (
+          <View style={[styles.v2CardWrap, { marginTop: 12 }]} testID="activity.assign.section">
+            <View style={[styles.activityAssignCard, { backgroundColor: isDark ? '#ffffff0f' : '#ffffff' }]}>
+              <Text style={[styles.activityAssignTitle, { color: textColor }]}>Spillere & hold</Text>
+              <Text style={[styles.activityAssignMessage, { color: textSecondaryColor }]}>
+                Tilknyt denne aktivitet til spillere eller hold.
+              </Text>
+              {activityAssignmentSummaryText ? (
+                <Text
+                  style={[styles.activityAssignSummary, { color: textSecondaryColor }]}
+                  testID="activity.assign.summary"
+                >
+                  {activityAssignmentSummaryText}
+                </Text>
+              ) : null}
+              <TouchableOpacity
+                style={[styles.activityAssignButton, { backgroundColor: primaryColor }]}
+                activeOpacity={0.8}
+                onPress={handleOpenAssignActivityModal}
+                testID="activity.assign.openModalButton"
+              >
+                <Text style={styles.activityAssignButtonText}>Tilføj spillere eller hold</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
       </View>
     );
 
@@ -4003,6 +4180,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     );
   }, [
     activity,
+    activityAssignmentSummaryText,
     cardBgColor,
     primaryColor,
     convertToRecurring,
@@ -4015,6 +4193,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     fieldBackgroundColor,
     fieldBorderColor,
     handleAddTask,
+    handleOpenAssignActivityModal,
     handleDateChange,
     handleEndDateChange,
     handleEndTimeChange,
@@ -4024,6 +4203,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     infoTextColor,
     isDark,
     isEditing,
+    isTrainerProfile,
     isInternalActivity,
     recurrenceType,
     renderCategorySelector,
@@ -4040,16 +4220,21 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     latestCategoryFeedback,
     isLatestCategoryFeedbackLoading,
     isLatestFeedbackExpanded,
-    textColor,
-    textSecondaryColor,
-    toggleDay,
-    shouldShowActivityIntensityField,
-    currentActivityIntensity,
+      textColor,
+      textSecondaryColor,
+      toggleDay,
+      shouldShowActivityIntensityField,
+      currentActivityIntensity,
   ]);
 
   const listHeaderComponent = useMemo(() => renderListHeader(), [renderListHeader]);
 
   const handleDeleteClick = useCallback(() => {
+    if (!canManageAssignedActivity) {
+      Alert.alert('Låst aktivitet', 'Denne aktivitet er tildelt af en træner og kan ikke redigeres.');
+      return;
+    }
+
     if (activity?.isExternal) {
       Alert.alert(
         'Slet ekstern aktivitet',
@@ -4075,7 +4260,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       { text: 'Annuller', style: 'cancel' },
       { text: 'Slet', style: 'destructive', onPress: () => setPendingAction({ type: 'delete-single' }) },
     ]);
-  }, [activity]);
+  }, [activity, canManageAssignedActivity]);
 
   useEffect(() => {
     if (!pendingAction) return;
@@ -4358,6 +4543,12 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           <Text style={styles.headerTitle} numberOfLines={2}>
             {activity.title}
           </Text>
+          {isTrainerAssignedActivityForPlayer ? (
+            <View style={styles.trainerAssignedBadge} testID="activity.details.trainerAssignedBadge">
+              <IconSymbol ios_icon_name="person.crop.circle.badge.checkmark" android_material_icon_name="verified" size={14} color="#fff" />
+              <Text style={styles.trainerAssignedBadgeText}>Tildelt af træner</Text>
+            </View>
+          ) : null}
           {activity.seriesId && (
             <View style={styles.seriesBadge}>
               <IconSymbol ios_icon_name="repeat" android_material_icon_name="repeat" size={16} color="#fff" />
@@ -4377,7 +4568,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             </TouchableOpacity>
           ) : (
             <>
-              {!activity.isExternal && (
+              {canManageAssignedActivity && !activity.isExternal && (
                 <TouchableOpacity
                   style={styles.headerButton}
                   hitSlop={HEADER_ACTION_HITSLOP}
@@ -4394,19 +4585,23 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                 </TouchableOpacity>
               )}
 
-              <TouchableOpacity
-                style={[styles.headerButton, !activity.isExternal ? styles.headerButtonGap : null]}
-                hitSlop={HEADER_ACTION_HITSLOP}
-                onPress={handleEditClick}
-                activeOpacity={0.7}
-                testID="activity.details.editButton"
-              >
-                <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={24} color="#fff" />
-              </TouchableOpacity>
+              {canManageAssignedActivity ? (
+                <TouchableOpacity
+                  style={[styles.headerButton, !activity.isExternal ? styles.headerButtonGap : null]}
+                  hitSlop={HEADER_ACTION_HITSLOP}
+                  onPress={handleEditClick}
+                  activeOpacity={0.7}
+                  testID="activity.details.editButton"
+                >
+                  <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={24} color="#fff" />
+                </TouchableOpacity>
+              ) : null}
 
-              <TouchableOpacity style={[styles.headerButton, styles.headerButtonGap]} hitSlop={HEADER_ACTION_HITSLOP} onPress={handleDeleteClick} activeOpacity={0.7} testID="activity.details.deleteButton">
-                <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={24} color="#fff" />
-              </TouchableOpacity>
+              {canManageAssignedActivity ? (
+                <TouchableOpacity style={[styles.headerButton, styles.headerButtonGap]} hitSlop={HEADER_ACTION_HITSLOP} onPress={handleDeleteClick} activeOpacity={0.7} testID="activity.details.deleteButton">
+                  <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={24} color="#fff" />
+                </TouchableOpacity>
+              ) : null}
             </>
           )}
         </View>
@@ -4609,6 +4804,16 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         />
       )}
 
+      {assignActivityModalVisible ? (
+        <AssignActivityModal
+          visible={assignActivityModalVisible}
+          activity={assignableActivity}
+          trainerId={currentUserId}
+          onClose={handleCloseAssignActivityModal}
+          onSuccess={handleAssignActivitySuccess}
+        />
+      ) : null}
+
     </KeyboardAvoidingView>
   );
 }
@@ -4633,6 +4838,8 @@ export default function ActivityDetailsScreen() {
   const { categories } = useFootball();
   const { userRole } = useUserRole();
   const isAdmin = userRole === 'admin' || userRole === 'trainer';
+  const isTrainerProfile = userRole === 'trainer';
+  const isPlayerProfile = userRole === 'player';
 
   const normalizeParam = useCallback((value?: string | string[] | null) => {
     const first = Array.isArray(value) ? value[0] : value;
@@ -4773,6 +4980,8 @@ export default function ActivityDetailsScreen() {
       activity={activity}
       categories={categories}
       isAdmin={isAdmin}
+      isTrainerProfile={isTrainerProfile}
+      isPlayerProfile={isPlayerProfile}
       isDark={isDark}
       onBack={handleBack}
       onActivityUpdated={handleActivityUpdated}
@@ -4813,6 +5022,21 @@ const styles = StyleSheet.create({
     color: '#fff',
     textAlign: 'center',
     lineHeight: 34,
+  },
+  trainerAssignedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 12,
+    paddingVertical: 3,
+    paddingHorizontal: 9,
+    marginTop: 6,
+    gap: 4,
+  },
+  trainerAssignedBadgeText: {
+    fontSize: 12,
+    color: '#fff',
+    fontWeight: '700',
   },
   seriesBadge: {
     flexDirection: 'row',
@@ -5039,6 +5263,42 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 14,
     borderRadius: 7,
+  },
+  activityAssignCard: {
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    elevation: 6,
+  },
+  activityAssignTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  activityAssignMessage: {
+    marginTop: 6,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  activityAssignSummary: {
+    marginTop: 8,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  activityAssignButton: {
+    marginTop: 12,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activityAssignButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '800',
   },
   v2StickyCtaWrap: {
     position: 'absolute',

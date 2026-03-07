@@ -33,6 +33,8 @@ interface ActivityTask {
 interface ActivityWithCategory {
   id: string;
   user_id: string;
+  player_id?: string | null;
+  team_id?: string | null;
   title: string;
   activity_date: string;
   activity_time: string;
@@ -113,6 +115,26 @@ const normalizeId = (value: unknown): string | null => {
   if (value === null || value === undefined) return null;
   const trimmed = String(value).trim();
   return trimmed.length ? trimmed : null;
+};
+
+const normalizeIds = (values: unknown[]): string[] => {
+  const unique = new Set<string>();
+  values.forEach((value) => {
+    const normalized = normalizeId(value);
+    if (normalized) unique.add(normalized);
+  });
+  return Array.from(unique);
+};
+
+const buildActivityScopeFilter = (userId: string, teamIds: string[]): string => {
+  const scopes = [
+    `and(user_id.eq.${userId},player_id.is.null,team_id.is.null)`,
+    `player_id.eq.${userId}`,
+  ];
+  if (teamIds.length) {
+    scopes.push(`team_id.in.(${teamIds.join(',')})`);
+  }
+  return scopes.join(',');
 };
 
 const isMissingColumnError = (error: any, columnName: string): boolean => {
@@ -287,12 +309,12 @@ const summarizeSupabaseError = (error: any) => {
 };
 
 const fetchExternalMetaRows = async ({
-  userId,
+  scopeFilter,
   column,
   values,
   metaSelect,
 }: {
-  userId: string;
+  scopeFilter: string;
   column: 'external_event_id' | 'external_event_uid';
   values: string[];
   metaSelect: string;
@@ -316,7 +338,7 @@ const fetchExternalMetaRows = async ({
     const { data, error } = await supabase
       .from('events_local_meta')
       .select(metaSelect)
-      .eq('user_id', userId)
+      .or(scopeFilter)
       .in(column, chunk);
 
     if (error) {
@@ -548,11 +570,12 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       setStartupProgressIfInitial(0.2);
       devLog('[useHomeActivities] Fetching activities for user:', userId);
 
-      // ✅ PARALLEL FETCH GROUP 1: Categories + Internal Activities + External Calendars + Category Mappings
-      // These are independent and can run in parallel
+      // ✅ PARALLEL FETCH GROUP 1: Categories + External Calendars + Category Mappings + Team Scopes
       const internalSelectWithLocalOptions = `
             id,
             user_id,
+            player_id,
+            team_id,
             title,
             activity_date,
             activity_time,
@@ -581,6 +604,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       const internalSelectLegacy = `
             id,
             user_id,
+            player_id,
+            team_id,
             title,
             activity_date,
             activity_time,
@@ -603,11 +628,11 @@ export function useHomeActivities(): UseHomeActivitiesResult {
             )
           `;
 
-      const fetchInternalActivities = async () => {
+      const fetchInternalActivities = async (scopeFilter: string) => {
         const withLocal = await supabase
           .from('activities')
           .select(internalSelectWithLocalOptions)
-          .eq('user_id', userId);
+          .or(scopeFilter);
 
         if (!withLocal.error) {
           return withLocal.data;
@@ -621,7 +646,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         const legacy = await supabase
           .from('activities')
           .select(internalSelectLegacy)
-          .eq('user_id', userId);
+          .or(scopeFilter);
 
         if (legacy.error) {
           console.error('[useHomeActivities] Error fetching internal activities (legacy fallback):', legacy.error);
@@ -631,14 +656,11 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         return legacy.data;
       };
 
-      const [categoriesData, internalData, calendarsData, categoryMappingsData] = await Promise.all([
+      const [categoriesData, calendarsData, categoryMappingsData, teamScopeRows] = await Promise.all([
         // 1. Fetch categories (user + system)
         getCategories(userId),
-
-        // 2. Fetch internal activities WITH TASKS
-        fetchInternalActivities(),
-
-        // 3. Fetch external calendars
+        
+        // 2. Fetch external calendars
         supabase
           .from('external_calendars')
           .select('id')
@@ -652,7 +674,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
             return data;
           }),
 
-        // 4. Fetch user-defined external category mappings
+        // 3. Fetch user-defined external category mappings
         supabase
           .from('category_mappings')
           .select('external_category, internal_category_id')
@@ -664,10 +686,28 @@ export function useHomeActivities(): UseHomeActivitiesResult {
             }
             return data;
           }),
+
+        // 4. Fetch teams where current user is member (for team assignments)
+        supabase
+          .from('team_members')
+          .select('team_id')
+          .eq('player_id', userId)
+          .then(({ data, error }) => {
+            if (error) {
+              console.error('[useHomeActivities] Error fetching team scope:', error);
+              return [];
+            }
+            return data || [];
+          }),
       ]);
+
+      const teamScopeIds = normalizeIds((teamScopeRows || []).map((row: any) => row?.team_id));
+      const activityScopeFilter = buildActivityScopeFilter(userId, teamScopeIds);
+      const internalData = await fetchInternalActivities(activityScopeFilter);
 
       devLog('[useHomeActivities] Categories fetched:', categoriesData?.length ?? 0);
       devLog('[useHomeActivities] Internal activities:', internalData?.length ?? 0);
+      devLog('[useHomeActivities] Team scopes:', teamScopeIds.length);
       devLog('[useHomeActivities] Category mappings:', categoryMappingsData?.length ?? 0);
       setStartupProgressIfInitial(0.45);
 
@@ -736,6 +776,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         return {
           id: activity.id,
           user_id: activity.user_id,
+          player_id: activity.player_id ?? null,
+          team_id: activity.team_id ?? null,
           title: activity.title,
           activity_date: activity.activity_date,
           activity_time: activity.activity_time,
@@ -797,6 +839,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
               external_event_uid,
               category_id,
               user_id,
+              player_id,
+              team_id,
               intensity,
               intensity_note,
               intensity_enabled,
@@ -806,13 +850,13 @@ export function useHomeActivities(): UseHomeActivitiesResult {
 
           const [metaByEventIdRes, metaByUidRes] = await Promise.all([
             fetchExternalMetaRows({
-              userId,
+              scopeFilter: activityScopeFilter,
               column: 'external_event_id',
               values: eventRowIds,
               metaSelect,
             }),
             fetchExternalMetaRows({
-              userId,
+              scopeFilter: activityScopeFilter,
               column: 'external_event_uid',
               values: providerUids,
               metaSelect,
@@ -897,7 +941,9 @@ export function useHomeActivities(): UseHomeActivitiesResult {
 
             return {
               id: meta?.id || event.id,
-              user_id: userId,
+              user_id: meta?.user_id || userId,
+              player_id: meta?.player_id ?? null,
+              team_id: meta?.team_id ?? null,
               title: meta?.local_title_override || event.title,
               activity_date: event.start_date,
               activity_time: event.start_time || '12:00:00',

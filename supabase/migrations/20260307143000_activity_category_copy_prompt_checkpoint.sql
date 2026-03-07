@@ -1,0 +1,2 @@
+-- Prompt checkpoint migration.
+-- No schema change is required for the client-side category visibility fix in this prompt.

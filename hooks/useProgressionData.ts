@@ -214,6 +214,13 @@ export const normalizeEventId = (value?: string | null) => {
   if (!trimmed) return null;
   return isUuid(trimmed) ? trimmed : null;
 };
+const feedbackTitlePrefixRegex = /^\s*feedback\s+p(?:å|a\u030a|a)\s*[:\s-]*/i;
+export const resolveProgressionFeedbackName = (value?: string | null) => {
+  const trimmed = String(value ?? '').trim();
+  if (!trimmed) return 'Feedback opgaver';
+  const stripped = trimmed.replace(feedbackTitlePrefixRegex, '').trim();
+  return stripped || trimmed;
+};
 export const buildSessionKey = (args: {
   eventId?: string | null;
   userId?: string | null;
@@ -481,7 +488,7 @@ export function useProgressionData({
     const activityDate = row.activities?.activity_date as string | null;
     const dateKey = toDateKey(activityDate || createdIso);
     const templateId = row.task_template_id ? String(row.task_template_id) : null;
-    const templateName = row.task_templates?.title ?? 'Feedback opgaver';
+    const templateName = resolveProgressionFeedbackName(row.task_templates?.title ?? null);
     const templateDescription = row.task_templates?.description ?? null;
     const templateScoreExplanation = row.task_templates?.after_training_feedback_score_explanation ?? null;
 
@@ -513,7 +520,7 @@ export function useProgressionData({
     const ownerId = row.activities?.user_id as string | null;
     const dateKey = toDateKey(activityDate || row.created_at);
     const templateId = row.task_template_id ? String(row.task_template_id) : null;
-    const templateName = row.task_templates?.title ?? 'Feedback opgaver';
+    const templateName = resolveProgressionFeedbackName(row.task_templates?.title ?? row.title ?? null);
 
     return {
       templateId,
@@ -611,6 +618,7 @@ export function useProgressionData({
 
       const activityTaskSelect = `
         id,
+        title,
         created_at,
         activity_id,
         task_template_id,
@@ -621,6 +629,7 @@ export function useProgressionData({
       const activitySelect = 'id, activity_date, activity_time, category_id, intensity, intensity_note, title, user_id, created_at, external_event_id';
       const externalTaskSelect = `
         id,
+        title,
         created_at,
         local_meta_id,
         task_template_id,
@@ -969,6 +978,24 @@ export function useProgressionData({
 
       const templateTitleById = new Map<string, string>();
       const templateMetaById = new Map<string, { title: string; description: string | null; scoreExplanation: string | null }>();
+      const rememberTemplateFallback = (templateIdValue: unknown, titleValue: unknown) => {
+        const templateId = normalizeId(templateIdValue);
+        if (!templateId || templateMetaById.has(templateId)) return;
+        const title = resolveProgressionFeedbackName(typeof titleValue === 'string' ? titleValue : null);
+        if (!title || title === 'Feedback opgaver') return;
+        templateTitleById.set(templateId, title);
+        templateMetaById.set(templateId, {
+          title,
+          description: null,
+          scoreExplanation: null,
+        });
+      };
+
+      [...(possibleCurrent || []), ...(possiblePrevious || []), ...(externalPossibleCurrent || []), ...(externalPossiblePrevious || [])]
+        .forEach((row: any) => {
+          rememberTemplateFallback(row?.task_template_id ?? row?.feedback_template_id, row?.title);
+        });
+
       if (uniqueTemplateIds.length) {
         for (const chunk of chunkArray(uniqueTemplateIds, 50)) {
           const { data, error } = await supabase
@@ -978,7 +1005,7 @@ export function useProgressionData({
           if (error) throw error;
           (data || []).forEach((row: any) => {
             if (!row?.id) return;
-            const title = row.title ?? 'Feedback opgaver';
+            const title = resolveProgressionFeedbackName(row.title);
             templateTitleById.set(String(row.id), title);
             templateMetaById.set(String(row.id), {
               title,
@@ -1117,7 +1144,7 @@ export function useProgressionData({
         const templateName =
           row.task_templates?.title ??
           (templateId ? templateMetaById.get(templateId)?.title : null) ??
-          'Feedback opgaver';
+          resolveProgressionFeedbackName(row.title);
         const activityId = row.local_meta_id ?? meta.id ?? null;
 
         return {

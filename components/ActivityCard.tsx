@@ -16,6 +16,7 @@ interface ActivityCardProps {
   resolvedDate: Date;
   onPress?: () => void;
   onPressIntensity?: () => void;
+  showTrainerAssignedBadge?: boolean;
   showTasks?: boolean;
   feedbackActivityId?: string | null;
   feedbackCompletionByTaskId?: Record<string, boolean>;
@@ -227,6 +228,7 @@ export default function ActivityCard({
   resolvedDate,
   onPress: _deprecatedOnPress,
   onPressIntensity: _deprecatedOnPressIntensity,
+  showTrainerAssignedBadge = false,
   showTasks = false,
   feedbackActivityId,
   feedbackCompletionByTaskId,
@@ -822,6 +824,11 @@ export default function ActivityCard({
                   <Text style={styles.externalText}>📅 Ekstern kalender</Text>
                 </View>
               )}
+              {showTrainerAssignedBadge ? (
+                <View style={styles.trainerAssignedBadge} testID="home.activity.trainerAssignedBadge">
+                  <Text style={styles.trainerAssignedText}>Tildelt af træner</Text>
+                </View>
+              ) : null}
             </View>
 
             {/* Chevron Arrow */}
@@ -1127,6 +1134,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     color: 'rgba(255, 255, 255, 0.9)',
+  },
+  trainerAssignedBadge: {
+    marginTop: 6,
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 999,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+  },
+  trainerAssignedText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(255, 255, 255, 0.95)',
   },
 
   // Chevron Arrow
