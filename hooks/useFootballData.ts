@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Activity,
   ActivityCategory,
@@ -239,6 +239,7 @@ export const useFootballData = () => {
     weekActivities: [] as Activity[],
   });
   const [loading, setLoading] = useState(true);
+  const refreshDataPromiseRef = useRef<Promise<void> | null>(null);
 
   const findTaskCompletionState = useCallback(
     (activityId: string, taskId: string): boolean | null => {
@@ -1407,16 +1408,33 @@ export const useFootballData = () => {
   );
 
   const refreshData = useCallback(async () => {
-    console.log('[refreshData] Refreshing core datasets...');
-    await Promise.all([
-      fetchCategories(),
-      fetchActivities(),
-      fetchTasks(),
-      fetchTrophies(),
-      fetchExternalCalendars(),
-      fetchActivitySeries(),
-      fetchCurrentWeekStats(),
-    ]);
+    if (refreshDataPromiseRef.current) {
+      await refreshDataPromiseRef.current;
+      return;
+    }
+
+    const pendingRefresh = (async () => {
+      console.log('[refreshData] Refreshing core datasets...');
+      await Promise.all([
+        fetchCategories(),
+        fetchActivities(),
+        fetchTasks(),
+        fetchTrophies(),
+        fetchExternalCalendars(),
+        fetchActivitySeries(),
+        fetchCurrentWeekStats(),
+      ]);
+    })();
+
+    refreshDataPromiseRef.current = pendingRefresh;
+
+    try {
+      await pendingRefresh;
+    } finally {
+      if (refreshDataPromiseRef.current === pendingRefresh) {
+        refreshDataPromiseRef.current = null;
+      }
+    }
   }, [
     fetchCategories,
     fetchActivities,
