@@ -127,4 +127,45 @@ describe('Tasks template editor without subtasks', () => {
     expect(createArg).toBeDefined();
     expect(createArg.subtasks).toBeUndefined();
   });
+
+  it('shows category dropdown and lets user select categories', () => {
+    mockUseFootball.mockReturnValue({
+      tasks: [
+        {
+          id: 'template-1',
+          title: 'Pasningsøvelse',
+          description: 'test',
+          completed: false,
+          isTemplate: true,
+          categoryIds: ['cat-1'],
+          subtasks: [],
+          archivedAt: null,
+        },
+      ],
+      categories: [
+        { id: 'cat-1', name: 'Teknik', color: '#00AAFF', emoji: '⚽️' },
+        { id: 'cat-2', name: 'Styrke', color: '#EF4444', emoji: '💪' },
+      ],
+      duplicateTask: jest.fn(),
+      deleteTask: jest.fn().mockResolvedValue(undefined),
+      refreshAll: jest.fn().mockResolvedValue(undefined),
+      refreshData: jest.fn().mockResolvedValue(undefined),
+      updateTask: jest.fn().mockResolvedValue(undefined),
+      isLoading: false,
+    });
+
+    const { getByTestId, getByText, queryByTestId, queryByText } = render(<TasksScreen />);
+
+    fireEvent.press(getByTestId('tasks.folder.toggle.personal'));
+    fireEvent.press(getByTestId('tasks.template.card.template-1'));
+
+    expect(getByText('Indsæt link til video')).toBeTruthy();
+    expect(getByText('Teknik')).toBeTruthy();
+    expect(queryByText('Teknik, Styrke')).toBeNull();
+
+    fireEvent.press(getByTestId('tasks.template.categoryDropdownToggle'));
+    fireEvent.press(getByTestId('tasks.template.categoryOption.1'));
+
+    expect(getByText('Teknik, Styrke')).toBeTruthy();
+  });
 });
