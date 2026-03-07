@@ -2159,7 +2159,6 @@ export default function HomeScreen() {
   const handleOpenCreateModal = useCallback(() => {
     setShowCreateModal(true);
   }, []);
-  const hasPreviousWeekSummaries = Array.isArray(previousWeekSummaries) && previousWeekSummaries.length > 0;
 
   const renderItem = useCallback(({ item }: { item: any }) => {
     // STEP H: Guard against null item
