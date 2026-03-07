@@ -894,6 +894,21 @@ function isExternalActivity(activity: any): boolean {
   return Boolean(activity?.is_external ?? activity?.isExternal);
 }
 
+function isTrainerAssignedActivityForCurrentUser(activity: any, currentUserId: string | null): boolean {
+  const currentUser = normalizeId(currentUserId);
+  if (!activity || !currentUser) return false;
+
+  const scopedPlayerId = normalizeId(activity?.player_id ?? activity?.playerId);
+  if (scopedPlayerId && scopedPlayerId === currentUser) {
+    return true;
+  }
+
+  const scopedTeamId = normalizeId(activity?.team_id ?? activity?.teamId);
+  if (!scopedTeamId) return false;
+  const ownerId = normalizeId(activity?.user_id ?? activity?.userId);
+  return !!ownerId && ownerId !== currentUser;
+}
+
 type AfterTrainingFeedbackConfig = {
   enableScore: boolean;
   scoreExplanation?: string | null;
@@ -2666,6 +2681,7 @@ export default function HomeScreen() {
         const feedbackDone = feedbackActivityCandidates.some(
           (candidateId) => feedbackDoneByActivityId[candidateId] === true,
         );
+        const showTrainerAssignedBadge = isTrainerAssignedActivityForCurrentUser(activity, currentUserId);
 
         return (
           <View
@@ -2684,6 +2700,7 @@ export default function HomeScreen() {
               feedbackCompletionByTaskId={mergedFeedbackCompletionByTaskId}
               feedbackCompletionByTemplateId={mergedFeedbackCompletionByTemplateId}
               feedbackDone={feedbackDone}
+              showTrainerAssignedBadge={showTrainerAssignedBadge}
               onPress={handleActivityPress}
               onPressIntensity={intensityPressHandler}
             />
@@ -2763,6 +2780,7 @@ export default function HomeScreen() {
     isCurrentWeekTodayOnly,
     isAdminMode,
     currentTrainerId,
+    currentUserId,
     adminMode,
     router,
     handleLoadMorePrevious,
