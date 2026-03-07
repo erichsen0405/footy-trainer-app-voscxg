@@ -82,6 +82,7 @@ import { fetchSelfFeedbackForActivities } from '@/services/feedbackService';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { formatHoursDa, getActivityEffectiveDurationMinutes } from '@/utils/activityDuration';
 import { markHomeScreenReady } from '@/utils/startupLoader';
+import { withTimeout } from '@/utils/withTimeout';
 import type { TaskTemplateSelfFeedback } from '@/types';
 
 const FALLBACK_COLORS = {
@@ -222,6 +223,7 @@ const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
 const THIS_WEEK_PREMIUM_BG = require('../../../assets/images/home_this_week_premium_bg.png');
 const THIS_WEEK_CARD_RADIUS = 28;
 const THIS_WEEK_BG_CROP_RADIUS = THIS_WEEK_CARD_RADIUS;
+const HOME_REFRESH_TIMEOUT_MS = 10000;
 
 const ThisWeekPremiumCard = React.memo(function ThisWeekPremiumCard({
   weekLabel,
@@ -1050,13 +1052,13 @@ export default function HomeScreen() {
   const {
     activities,
     loading,
-    initialLoadSucceeded,
     refresh: refreshActivities,
   } = useHomeActivities();
   const {
     categories,
     createActivity,
     refreshData,
+    isLoading: footballLoading,
     currentWeekStats,
     updateIntensityByCategory,
   } = useFootball();
@@ -1079,10 +1081,10 @@ export default function HomeScreen() {
   const emittedHomeReadyRef = useRef(false);
 
   useEffect(() => {
-    if (loading || !initialLoadSucceeded || emittedHomeReadyRef.current) return;
+    if (loading || footballLoading || emittedHomeReadyRef.current) return;
     emittedHomeReadyRef.current = true;
     markHomeScreenReady();
-  }, [initialLoadSucceeded, loading]);
+  }, [footballLoading, loading]);
 
   useEffect(() => {
     const handleSaved = (payload: any) => {
@@ -1390,6 +1392,36 @@ export default function HomeScreen() {
     setFeedbackRefreshKey((prev) => prev + 1);
   }, []);
 
+  const refreshHomeScreen = useCallback(async (timeoutMs: number = HOME_REFRESH_TIMEOUT_MS) => {
+    const refreshPromises: Promise<unknown>[] = [];
+
+    if (typeof refreshActivities === 'function') {
+      refreshPromises.push(refreshActivities());
+    } else {
+      console.error('[Home] refreshActivities is not a function');
+    }
+
+    if (typeof refreshData === 'function') {
+      refreshPromises.push(refreshData());
+    } else {
+      console.error('[Home] refreshData is not a function');
+    }
+
+    try {
+      if (!refreshPromises.length) {
+        return;
+      }
+
+      await withTimeout(
+        Promise.allSettled(refreshPromises),
+        timeoutMs,
+        '[Home] Refresh timed out'
+      );
+    } finally {
+      triggerFeedbackRefresh();
+    }
+  }, [refreshActivities, refreshData, triggerFeedbackRefresh]);
+
   useFocusEffect(
     useCallback(() => {
       if (!currentUserId || !feedbackActivityIds.length) return;
@@ -1399,17 +1431,10 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      const refreshPromises: Promise<unknown>[] = [];
-      if (typeof refreshActivities === 'function') {
-        refreshPromises.push(refreshActivities());
-      }
-      if (typeof refreshData === 'function') {
-        refreshPromises.push(refreshData());
-      }
-      if (refreshPromises.length) {
-        void Promise.allSettled(refreshPromises);
-      }
-    }, [refreshActivities, refreshData])
+      void refreshHomeScreen().catch((error) => {
+        console.error('[Home] Focus refresh failed:', error);
+      });
+    }, [refreshHomeScreen])
   );
 
   useEffect(() => {
@@ -1851,24 +1876,7 @@ export default function HomeScreen() {
     setIsRefreshing(true);
 
     try {
-      const refreshPromises: Promise<unknown>[] = [];
-
-      // STEP H: Guard against null/undefined refreshActivities
-      if (typeof refreshActivities === 'function') {
-        refreshPromises.push(refreshActivities());
-      } else {
-        console.error('[Home] refreshActivities is not a function');
-      }
-
-      if (typeof refreshData === 'function') {
-        refreshPromises.push(refreshData());
-      } else {
-        console.error('[Home] refreshData is not a function');
-      }
-
-      if (refreshPromises.length) {
-        await Promise.allSettled(refreshPromises);
-      }
+      await refreshHomeScreen();
       console.log('[Home] Pull-to-refresh completed successfully');
     } catch (error) {
       console.error('[Home] Pull-to-refresh error:', error);
@@ -1878,7 +1886,7 @@ export default function HomeScreen() {
       setIsRefreshing(false);
       console.log('[Home] Pull-to-refresh spinner stopped');
     }
-  }, [isRefreshing, refreshActivities, refreshData]);
+  }, [isRefreshing, refreshHomeScreen]);
 
   const buildActivityKey = useCallback((activity: any, section: string) => {
     if (!activity) return `fallback:activity:${section}`;
