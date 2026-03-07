@@ -1723,6 +1723,18 @@ export type Database = {
           trial_end: string
         }[]
       }
+      log_startup_telemetry: {
+        Args: {
+          p_device_install_id: string
+          p_event_name: string
+          p_launch_id: string
+          p_metadata?: Json | null
+          p_occurred_at?: string
+          p_route?: string | null
+          p_status?: string | null
+        }
+        Returns: undefined
+      }
       get_user_role: { Args: { p_user_id: string }; Returns: string }
       is_admin: { Args: { p_user_id: string }; Returns: boolean }
       migrate_external_activities: {
