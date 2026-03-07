@@ -31,7 +31,7 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const PENDING_NOTIFICATION_ROUTE_KEY = '@pending_notification_route_v1';
 const AUTH_BOOTSTRAP_TIMEOUT_MS = 4000;
-const STARTUP_LOADER_HOME_TIMEOUT_MS = 5000;
+const STARTUP_LOADER_STALL_LOG_MS = 5000;
 
 const NO_PLAN_TIER_VALUES = new Set([
   'none',
@@ -268,19 +268,17 @@ export default function RootLayout() {
     }
 
     const timer = setTimeout(() => {
-      console.warn('[RootLayout] Startup loader fallback hide fired before home ready');
-      startupLoaderHideReasonRef.current = 'home_ready_timeout';
+      console.warn('[RootLayout] Startup loader still waiting for home ready');
       void trackStartupTelemetry(supabase, {
-        eventName: 'startup_loader_fallback',
-        status: 'timeout',
+        eventName: 'startup_loader_waiting',
+        status: 'waiting',
         route: pathname,
         metadata: {
-          timeoutMs: STARTUP_LOADER_HOME_TIMEOUT_MS,
+          timeoutMs: STARTUP_LOADER_STALL_LOG_MS,
           shouldWaitForHomeReady,
         },
       });
-      setShowStartupLoader(false);
-    }, STARTUP_LOADER_HOME_TIMEOUT_MS);
+    }, STARTUP_LOADER_STALL_LOG_MS);
 
     return () => clearTimeout(timer);
   }, [homeScreenReady, pathname, shouldWaitForHomeReady, showStartupLoader, startupPrerequisitesReady]);
