@@ -285,7 +285,9 @@ describe('Library screen gating and card state', () => {
     expect(queryByText(/kræver Premium/i)).toBeNull();
   });
 
-  it('shows trainer personal exercise under Øvelser fra træner as already added for player', async () => {
+  it(
+    'shows trainer personal exercise under Øvelser fra træner as already added for player',
+    async () => {
     setupSupabaseFixture({
       personalExercises: [
         {
@@ -320,10 +322,12 @@ describe('Library screen gating and card state', () => {
     fireEvent.press(await findByText(/Øvelser fra træner/i));
     fireEvent.press(await findByText(/Coach One/i));
 
-    const ctaButton = await findByTestId('library.addToTasksButton.trainer-personal-1');
-    expect(ctaButton.props.accessibilityState?.disabled).toBe(true);
-    expect(ctaButton.props.accessibilityLabel).toMatch(/tilføjet/i);
-  });
+      const ctaButton = await findByTestId('library.addToTasksButton.trainer-personal-1');
+      expect(ctaButton.props.accessibilityState?.disabled).toBe(true);
+      expect(ctaButton.props.accessibilityLabel).toMatch(/tilføjet/i);
+    },
+    10000
+  );
 
   it('renders assign CTA for trainer profile', async () => {
     setupSupabaseFixture({

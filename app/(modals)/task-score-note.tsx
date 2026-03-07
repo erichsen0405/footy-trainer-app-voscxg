@@ -194,12 +194,13 @@ export default function TaskScoreNoteScreen() {
           totalTasks: totalTasksToday,
           completingToDone,
         });
-        if (celebrationType) {
-          showCelebration({ type: celebrationType, ...(celebrationProgress ?? {}) });
-        }
-
-        Promise.resolve(refreshData()).catch(() => {});
         safeDismiss();
+        if (celebrationType) {
+          setTimeout(() => {
+            showCelebration({ type: celebrationType, ...(celebrationProgress ?? {}) });
+          }, 280);
+        }
+        Promise.resolve(refreshData()).catch(() => {});
       } catch (e) {
         setErrorSafe('Kunne ikke gemme intensitet. Prøv igen.');
       } finally {

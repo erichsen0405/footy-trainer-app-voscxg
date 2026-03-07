@@ -405,7 +405,6 @@ export default function TaskFeedbackNoteScreen() {
       });
 
       setIsSavingSafe(true);
-      safeDismiss();
       let lastError: any = null;
       let lastTriedId: string | null = null;
       let savedActivityId: string | null = null;
@@ -505,10 +504,12 @@ export default function TaskFeedbackNoteScreen() {
           totalTasks: totalTasksToday,
           completingToDone,
         });
+        safeDismiss();
         if (celebrationType) {
-          showCelebration({ type: celebrationType, ...(celebrationProgress ?? {}) });
+          setTimeout(() => {
+            showCelebration({ type: celebrationType, ...(celebrationProgress ?? {}) });
+          }, 280);
         }
-
         Promise.resolve(refreshData()).catch(() => {});
         return;
       } catch (e) {

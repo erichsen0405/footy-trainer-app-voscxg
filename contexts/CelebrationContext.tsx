@@ -3,6 +3,7 @@ import {
   AccessibilityInfo,
   Animated,
   Easing,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -785,13 +786,32 @@ export function CelebrationProvider({ children }: { children: React.ReactNode })
     <CelebrationContext.Provider value={value}>
       <View style={styles.root}>
         {children}
-        {activeCelebration ? (
-          <CelebrationOverlay
-            celebration={activeCelebration}
-            reduceMotionEnabled={reduceMotionEnabled}
-            onDismiss={dismissCelebration}
-          />
-        ) : null}
+        {activeCelebration
+          ? Platform.OS === 'web'
+            ? (
+                <CelebrationOverlay
+                  celebration={activeCelebration}
+                  reduceMotionEnabled={reduceMotionEnabled}
+                  onDismiss={dismissCelebration}
+                />
+              )
+            : (
+                <Modal
+                  visible
+                  transparent
+                  animationType="none"
+                  statusBarTranslucent
+                  presentationStyle="overFullScreen"
+                  onRequestClose={dismissCelebration}
+                >
+                  <CelebrationOverlay
+                    celebration={activeCelebration}
+                    reduceMotionEnabled={reduceMotionEnabled}
+                    onDismiss={dismissCelebration}
+                  />
+                </Modal>
+              )
+          : null}
       </View>
     </CelebrationContext.Provider>
   );
