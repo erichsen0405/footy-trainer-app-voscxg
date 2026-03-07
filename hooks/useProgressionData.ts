@@ -5,6 +5,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { ActivityCategory } from '@/types';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 
+const PROGRESSION_FETCH_MAX_ATTEMPTS = 2;
+const PROGRESSION_FETCH_RETRY_DELAY_MS = 1000;
+
 export type ProgressionMetric = 'rating' | 'intensity';
 
 export interface ProgressionEntry {
@@ -117,6 +120,33 @@ interface UseProgressionDataResult {
   possibleCount: number;
   requiresLogin: boolean;
 }
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isTransientProgressionFetchError = (error: unknown) => {
+  const message = String((error as any)?.message || '').toLowerCase();
+  const code = String((error as any)?.code || '').toUpperCase();
+
+  return (
+    code === '502' ||
+    code === '503' ||
+    code === '504' ||
+    message.includes('bad gateway') ||
+    message.includes('error code 502') ||
+    message.includes('error code 503') ||
+    message.includes('error code 504') ||
+    message.includes('cloudflare') ||
+    /\breceived:\s*(502|503|504)\b/i.test(message)
+  );
+};
+
+const getProgressionFetchErrorMessage = (error: unknown) => {
+  if (isTransientProgressionFetchError(error)) {
+    return 'Progression kunne ikke hentes lige nu. Prøv igen om et øjeblik.';
+  }
+
+  return (error as any)?.message ?? 'Kunne ikke hente progression';
+};
 
 interface HomeAlignedTaskCounter {
   periodStart: string;
@@ -579,7 +609,7 @@ export function useProgressionData({
       setError(null);
     });
 
-    try {
+    const loadEntries = async () => {
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) {
         throw sessionError;
@@ -1297,12 +1327,29 @@ export function useProgressionData({
           perfCompletedTaskIdsSample: toCurrentCompletedIds.slice(0, 5),
         });
       }
+    };
+
+    let lastError: unknown = null;
+
+    try {
+      for (let attempt = 1; attempt <= PROGRESSION_FETCH_MAX_ATTEMPTS; attempt += 1) {
+        try {
+          await loadEntries();
+          return;
+        } catch (error) {
+          lastError = error;
+          if (!isTransientProgressionFetchError(error) || attempt >= PROGRESSION_FETCH_MAX_ATTEMPTS) {
+            throw error;
+          }
+          await wait(PROGRESSION_FETCH_RETRY_DELAY_MS);
+        }
+      }
     } catch (err: any) {
       console.error('[useProgressionData] fetch failed:', err);
       clearDataState();
       runIfMounted(() => {
         setRequiresLogin(false);
-        setError(err?.message ?? 'Kunne ikke hente progression');
+        setError(getProgressionFetchErrorMessage(lastError ?? err));
       });
     } finally {
       runIfMounted(() => setIsLoading(false));
