@@ -18,6 +18,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { clearPushTokenCache, syncPushTokenForCurrentUser } from '@/utils/pushTokenService';
 import { buildNotificationRouteFromResponse } from '@/utils/notificationDeepLink';
 import AppStartupLoader from '@/components/AppStartupLoader';
+import { getStartupLaunchId, trackStartupTelemetry } from '@/utils/startupTelemetry';
 import {
   getHomeLoadProgress,
   isHomeStartupPath,
@@ -29,6 +30,8 @@ import {
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const PENDING_NOTIFICATION_ROUTE_KEY = '@pending_notification_route_v1';
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 4000;
+const STARTUP_LOADER_HOME_TIMEOUT_MS = 5000;
 
 const NO_PLAN_TIER_VALUES = new Set([
   'none',
@@ -60,9 +63,11 @@ export default function RootLayout() {
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
   const didHideSplashRef = useRef(false);
+  const didTrackStartupLaunchRef = useRef(false);
   const pendingRouteRef = useRef<{ pathname: string; params?: Record<string, string> } | null>(null);
   const pendingTaskIdRef = useRef<string | null>(null);
   const handledNotificationIdsRef = useRef<Set<string>>(new Set());
+  const startupLoaderHideReasonRef = useRef<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pendingRouteStorageLoaded, setPendingRouteStorageLoaded] = useState(false);
@@ -73,10 +78,9 @@ export default function RootLayout() {
   const canHandleNotificationNavigation = isNavigationReady && authReady && isAuthenticated;
   const startupPrerequisitesReady =
     loaded && authReady && pendingRouteStorageLoaded && isNavigationReady;
-  const isTabsPath = pathname.startsWith('/(tabs)');
   const isHomePath = isHomeStartupPath(pathname);
   const isBootstrapPath = pathname === '/index' || pathname.length === 0;
-  const shouldWaitForHomeReady = isHomePath || isBootstrapPath || isTabsPath;
+  const shouldWaitForHomeReady = isHomePath || isBootstrapPath;
   const startupPrerequisitesDoneCount = [
     loaded,
     authReady,
@@ -104,6 +108,20 @@ export default function RootLayout() {
     },
     [],
   );
+
+  useEffect(() => {
+    if (didTrackStartupLaunchRef.current) return;
+    didTrackStartupLaunchRef.current = true;
+    void trackStartupTelemetry(supabase, {
+      eventName: 'startup_launch',
+      status: 'begin',
+      route: pathname,
+      metadata: {
+        launchId: getStartupLaunchId(),
+        platform: Platform.OS,
+      },
+    });
+  }, [pathname]);
 
   useEffect(() => {
     if (!loaded || didHideSplashRef.current) return;
@@ -239,11 +257,33 @@ export default function RootLayout() {
     homeScreenReady,
     isBootstrapPath,
     isHomePath,
-    isTabsPath,
     showStartupLoader,
     shouldWaitForHomeReady,
     startupPrerequisitesReady,
   ]);
+
+  useEffect(() => {
+    if (!showStartupLoader || !startupPrerequisitesReady || !shouldWaitForHomeReady || homeScreenReady) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      console.warn('[RootLayout] Startup loader fallback hide fired before home ready');
+      startupLoaderHideReasonRef.current = 'home_ready_timeout';
+      void trackStartupTelemetry(supabase, {
+        eventName: 'startup_loader_fallback',
+        status: 'timeout',
+        route: pathname,
+        metadata: {
+          timeoutMs: STARTUP_LOADER_HOME_TIMEOUT_MS,
+          shouldWaitForHomeReady,
+        },
+      });
+      setShowStartupLoader(false);
+    }, STARTUP_LOADER_HOME_TIMEOUT_MS);
+
+    return () => clearTimeout(timer);
+  }, [homeScreenReady, pathname, shouldWaitForHomeReady, showStartupLoader, startupPrerequisitesReady]);
 
   useEffect(() => {
     const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
@@ -281,19 +321,71 @@ export default function RootLayout() {
   }, [canHandleNotificationNavigation, pendingRouteStorageLoaded, persistPendingRoute, router]);
 
   useEffect(() => {
+    if (showStartupLoader) return;
+
+    void trackStartupTelemetry(supabase, {
+      eventName: 'startup_loader_hidden',
+      status: startupLoaderHideReasonRef.current ?? 'ready',
+      route: pathname,
+      metadata: {
+        startupPrerequisitesReady,
+        shouldWaitForHomeReady,
+        homeScreenReady,
+      },
+    });
+  }, [homeScreenReady, pathname, shouldWaitForHomeReady, showStartupLoader, startupPrerequisitesReady]);
+
+  useEffect(() => {
     let isMounted = true;
+    let authResolved = false;
+    void trackStartupTelemetry(supabase, {
+      eventName: 'auth_bootstrap',
+      status: 'started',
+      route: pathname,
+    });
+    const authBootstrapTimer = setTimeout(() => {
+      if (!isMounted || authResolved) return;
+      console.warn('[RootLayout] Auth bootstrap timed out; continuing startup');
+      void trackStartupTelemetry(supabase, {
+        eventName: 'auth_bootstrap',
+        status: 'timeout',
+        route: pathname,
+        metadata: {
+          timeoutMs: AUTH_BOOTSTRAP_TIMEOUT_MS,
+        },
+      });
+      setAuthReady(true);
+    }, AUTH_BOOTSTRAP_TIMEOUT_MS);
 
     supabase.auth
       .getSession()
       .then(({ data }) => {
         if (!isMounted) return;
+        authResolved = true;
+        clearTimeout(authBootstrapTimer);
         setIsAuthenticated(Boolean(data.session?.user));
         setAuthReady(true);
+        void trackStartupTelemetry(supabase, {
+          eventName: 'auth_bootstrap',
+          status: 'resolved',
+          route: pathname,
+          metadata: {
+            hasSession: Boolean(data.session),
+            hasUser: Boolean(data.session?.user),
+          },
+        });
       })
       .catch(() => {
         if (!isMounted) return;
+        authResolved = true;
+        clearTimeout(authBootstrapTimer);
         setIsAuthenticated(false);
         setAuthReady(true);
+        void trackStartupTelemetry(supabase, {
+          eventName: 'auth_bootstrap',
+          status: 'error',
+          route: pathname,
+        });
       });
 
     const {
@@ -305,9 +397,10 @@ export default function RootLayout() {
 
     return () => {
       isMounted = false;
+      clearTimeout(authBootstrapTimer);
       subscription.unsubscribe();
     };
-  }, []);
+  }, [pathname]);
 
   useEffect(() => {
     let cancelled = false;

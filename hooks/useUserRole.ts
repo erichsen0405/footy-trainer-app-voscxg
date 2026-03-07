@@ -45,11 +45,13 @@ export function useUserRole() {
 
       if (!targetUserId) {
         const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser();
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
 
-        if (userError || !user) {
+        const sessionUser = session?.user ?? null;
+
+        if (sessionError || !sessionUser) {
           if (mountedRef.current) {
             lastKnownRoleRef.current = null;
             setUserRole(null);
@@ -59,7 +61,7 @@ export function useUserRole() {
           return;
         }
 
-        targetUserId = user.id;
+        targetUserId = sessionUser.id;
       }
 
       if (userIdRef.current && userIdRef.current !== targetUserId) {
