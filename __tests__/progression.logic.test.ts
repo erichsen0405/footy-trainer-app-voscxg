@@ -1,6 +1,7 @@
 import {
   computeProgressionSummary,
   dedupeByLatestCreatedAt,
+  resolveProgressionFeedbackName,
   resolveBaseKey,
   resolveFeedbackBaseKey,
 } from '@/hooks/useProgressionData';
@@ -36,6 +37,12 @@ const makeEntry = (overrides: Partial<ProgressionEntry>): ProgressionEntry => ({
 });
 
 describe('progression KPI summary', () => {
+  it('resolves feedback display names from visible feedback task titles', () => {
+    expect(resolveProgressionFeedbackName('Feedback på Afleveringer')).toBe('Afleveringer');
+    expect(resolveProgressionFeedbackName('Feedback pa\u030a Demo')).toBe('Demo');
+    expect(resolveProgressionFeedbackName('')).toBe('Feedback opgaver');
+  });
+
   it('returns zeros for empty rating datasets', () => {
     const summary = computeProgressionSummary({
       metric: 'rating',

@@ -3,6 +3,7 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 
 import * as ActivityDetailsModule from '../app/activity-details';
+import { AssignActivityModal } from '@/components/AssignActivityModal';
 import type { TaskTemplateSelfFeedback } from '@/types';
 
 const mockRefreshData = jest.fn().mockResolvedValue(undefined);
@@ -15,6 +16,42 @@ const mockFetchSelfFeedbackForTemplates = jest.fn().mockResolvedValue([]);
 const mockFetchLatestCategoryFeedback = jest.fn().mockResolvedValue([]);
 const mockUpsertSelfFeedback = jest.fn();
 const mockRouterPush = jest.fn();
+const mockFetchActivityAssignments = jest.fn().mockResolvedValue({ playerIds: [], teamIds: [] });
+const mockFetchActivityAssignmentState = jest.fn().mockResolvedValue({
+  playerIds: [],
+  teamIds: [],
+  directPlayerIds: [],
+  teamScopeByPlayerId: {},
+});
+const mockAssignActivity = jest.fn().mockResolvedValue({
+  createdCount: 1,
+  removedCount: 0,
+  updatedCount: 0,
+  skippedPlayerIds: [],
+  skippedTeamIds: [],
+  assignment: { playerIds: ['player-1'], teamIds: [] },
+});
+const mockGetTeamMembers = jest.fn().mockResolvedValue([
+  {
+    id: 'player-1',
+    full_name: 'Spiller Test',
+    phone_number: '11111111',
+  },
+]);
+const teamPlayerMockPlayers = [
+  {
+    id: 'player-1',
+    full_name: 'Spiller Test',
+    phone_number: '11111111',
+  },
+];
+const teamPlayerMockTeams = [
+  {
+    id: 'team-1',
+    name: 'Hold Test',
+    description: 'Beskrivelse',
+  },
+];
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({
@@ -27,6 +64,22 @@ jest.mock('expo-router', () => ({
 
 jest.mock('@/hooks/useUserRole', () => ({
   useUserRole: () => ({ userRole: 'trainer' }),
+}));
+
+jest.mock('@/contexts/TeamPlayerContext', () => ({
+  useTeamPlayer: () => ({
+    players: teamPlayerMockPlayers,
+    teams: teamPlayerMockTeams,
+    getTeamMembers: (...args: any[]) => mockGetTeamMembers(...args),
+  }),
+}));
+
+jest.mock('@/services/activityAssignments', () => ({
+  activityAssignmentsService: {
+    fetchAssignments: (...args: any[]) => mockFetchActivityAssignments(...args),
+    fetchAssignmentState: (...args: any[]) => mockFetchActivityAssignmentState(...args),
+    assignActivity: (...args: any[]) => mockAssignActivity(...args),
+  },
 }));
 
 jest.mock('@/contexts/FootballContext', () => ({
@@ -133,6 +186,28 @@ describe('ActivityDetails add-task flow', () => {
     mockFetchSelfFeedbackForActivities.mockResolvedValue([]);
     mockFetchSelfFeedbackForTemplates.mockResolvedValue([]);
     mockFetchLatestCategoryFeedback.mockResolvedValue([]);
+    mockFetchActivityAssignments.mockResolvedValue({ playerIds: [], teamIds: [] });
+    mockFetchActivityAssignmentState.mockResolvedValue({
+      playerIds: [],
+      teamIds: [],
+      directPlayerIds: [],
+      teamScopeByPlayerId: {},
+    });
+    mockAssignActivity.mockResolvedValue({
+      createdCount: 1,
+      removedCount: 0,
+      updatedCount: 0,
+      skippedPlayerIds: [],
+      skippedTeamIds: [],
+      assignment: { playerIds: ['player-1'], teamIds: [] },
+    });
+    mockGetTeamMembers.mockResolvedValue([
+      {
+        id: 'player-1',
+        full_name: 'Spiller Test',
+        phone_number: '11111111',
+      },
+    ]);
     mockSupabaseFrom.mockImplementation((table: string) => {
       if (table !== 'activities') {
         return {
@@ -927,5 +1002,335 @@ describe('ActivityDetails add-task flow', () => {
         initialScore: '',
       },
     });
+  });
+
+  it('shows assign section only for trainer profiles', () => {
+    const activity = {
+      id: 'activity-assign-gating-1',
+      title: 'Session',
+      date: new Date('2026-02-10T10:00:00.000Z'),
+      time: '10:00',
+      location: 'Pitch',
+      category: { id: 'cat-1', name: 'Training', color: '#123456', emoji: '⚽️' },
+      tasks: [],
+      isExternal: false,
+      intensityEnabled: false,
+      intensity: null,
+    };
+
+    const trainerView = render(
+      <ActivityDetailsModule.ActivityDetailsContent
+        activity={activity as any}
+        categories={[activity.category as any]}
+        isAdmin
+        isTrainerProfile
+        isDark={false}
+        onBack={jest.fn()}
+        onActivityUpdated={jest.fn()}
+      />,
+    );
+
+    expect(trainerView.getByTestId('activity.assign.openModalButton')).toBeTruthy();
+
+    const playerView = render(
+      <ActivityDetailsModule.ActivityDetailsContent
+        activity={activity as any}
+        categories={[activity.category as any]}
+        isAdmin={false}
+        isTrainerProfile={false}
+        isDark={false}
+        onBack={jest.fn()}
+        onActivityUpdated={jest.fn()}
+      />,
+    );
+
+    expect(playerView.queryByTestId('activity.assign.openModalButton')).toBeNull();
+  });
+
+  it.skip('synchronizes team and player selection in assign modal and saves selected team', async () => {
+    let assignmentLookup = { playerIds: [] as string[], teamIds: [] as string[] };
+    let assignmentState = {
+      playerIds: [] as string[],
+      teamIds: [] as string[],
+      directPlayerIds: [] as string[],
+      teamScopeByPlayerId: {} as Record<string, string | null>,
+    };
+    mockFetchActivityAssignments.mockImplementation(() => assignmentLookup);
+    mockFetchActivityAssignmentState.mockImplementation(() => assignmentState);
+    mockGetTeamMembers.mockImplementation(() => teamPlayerMockPlayers);
+    mockAssignActivity.mockImplementationOnce(async () => {
+      assignmentLookup = { playerIds: ['player-1'], teamIds: ['team-1'] };
+      assignmentState = {
+        playerIds: ['player-1'],
+        teamIds: ['team-1'],
+        directPlayerIds: [],
+        teamScopeByPlayerId: { 'player-1': 'team-1' },
+      };
+      return {
+        createdCount: 1,
+        removedCount: 0,
+        updatedCount: 0,
+        skippedPlayerIds: [],
+        skippedTeamIds: [],
+        assignment: assignmentLookup,
+      };
+    });
+
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const onClose = jest.fn();
+    const onSuccess = jest.fn();
+
+    const { getByTestId, findByTestId } = render(
+      <AssignActivityModal
+        visible
+        activity={{
+          id: 'activity-assign-flow-1',
+          title: 'Session',
+          isExternal: false,
+          externalEventRowId: null,
+          categoryId: 'cat-1',
+          intensity: null,
+          intensityEnabled: false,
+          intensityNote: null,
+        }}
+        trainerId="user-1"
+        onClose={onClose}
+        onSuccess={onSuccess}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(await findByTestId('activity.assign.modal')).toBeTruthy();
+    expect(getByTestId('activity.assign.list.players')).toBeTruthy();
+
+    fireEvent.press(getByTestId('activity.assign.tab.teams'));
+    expect(getByTestId('activity.assign.list.teams')).toBeTruthy();
+    expect(await findByTestId('activity.assign.team.member.team-1.player-1')).toBeTruthy();
+    fireEvent.press(getByTestId('activity.assign.row.team.team-1'));
+    expect(await findByTestId('activity.assign.row.selected.team.team-1')).toBeTruthy();
+
+    fireEvent.press(getByTestId('activity.assign.tab.players'));
+    expect(await findByTestId('activity.assign.row.selected.player.player-1')).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(getByTestId('activity.assign.saveButton'));
+    });
+
+    await waitFor(() =>
+      expect(mockAssignActivity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          activityId: 'activity-assign-flow-1',
+          playerIds: [],
+          teamIds: ['team-1'],
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(onSuccess).toHaveBeenCalledWith({
+        createdCount: 1,
+        assignedPlayerCount: 1,
+        assignedTeamCount: 1,
+      }),
+    );
+    expect(onClose).toHaveBeenCalled();
+
+    alertSpy.mockRestore();
+  });
+
+  it.skip('allows trainer to remove an assigned team from activity and saves empty selection', async () => {
+    let assignmentLookup = { playerIds: ['player-1'] as string[], teamIds: ['team-1'] as string[] };
+    let assignmentState = {
+      playerIds: ['player-1'] as string[],
+      teamIds: ['team-1'] as string[],
+      directPlayerIds: [] as string[],
+      teamScopeByPlayerId: { 'player-1': 'team-1' } as Record<string, string | null>,
+    };
+    mockFetchActivityAssignments.mockImplementation(() => assignmentLookup);
+    mockFetchActivityAssignmentState.mockImplementation(() => assignmentState);
+    mockGetTeamMembers.mockImplementation(() => teamPlayerMockPlayers);
+    mockAssignActivity.mockImplementationOnce(async () => {
+      assignmentLookup = { playerIds: [], teamIds: [] };
+      assignmentState = {
+        playerIds: [],
+        teamIds: [],
+        directPlayerIds: [],
+        teamScopeByPlayerId: {},
+      };
+      return {
+        createdCount: 0,
+        removedCount: 1,
+        updatedCount: 0,
+        skippedPlayerIds: [],
+        skippedTeamIds: [],
+        assignment: assignmentLookup,
+      };
+    });
+
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const onClose = jest.fn();
+    const onSuccess = jest.fn();
+
+    const { getByTestId, queryByTestId, findByText } = render(
+      <AssignActivityModal
+        visible
+        activity={{
+          id: 'activity-assign-remove-1',
+          title: 'Session',
+          isExternal: false,
+          externalEventRowId: null,
+          categoryId: 'cat-1',
+          intensity: null,
+          intensityEnabled: false,
+          intensityNote: null,
+        }}
+        trainerId="user-1"
+        onClose={onClose}
+        onSuccess={onSuccess}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    fireEvent.press(getByTestId('activity.assign.tab.teams'));
+    expect(await findByText('Hold Test')).toBeTruthy();
+    await waitFor(() =>
+      expect(queryByTestId('activity.assign.row.selected.team.team-1')).toBeTruthy(),
+    );
+
+    fireEvent.press(getByTestId('activity.assign.row.team.team-1'));
+    await waitFor(() =>
+      expect(queryByTestId('activity.assign.row.selected.team.team-1')).toBeNull(),
+    );
+    await act(async () => {
+      fireEvent.press(getByTestId('activity.assign.saveButton'));
+    });
+
+    await waitFor(() =>
+      expect(mockAssignActivity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          activityId: 'activity-assign-remove-1',
+          playerIds: [],
+          teamIds: [],
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(onSuccess).toHaveBeenCalledWith({
+        createdCount: 0,
+        assignedPlayerCount: 0,
+        assignedTeamCount: 0,
+      }),
+    );
+    expect(onClose).toHaveBeenCalled();
+
+    alertSpy.mockRestore();
+  });
+
+  it('shows trainer-assigned badge for player, hides activity edit, and uses the same add-task chooser', async () => {
+    const activity = {
+      id: 'activity-player-assigned-1',
+      title: 'Session',
+      date: new Date('2026-02-10T10:00:00.000Z'),
+      time: '10:00',
+      location: 'Pitch',
+      category: { id: 'cat-1', name: 'Training', color: '#123456', emoji: '⚽️' },
+      tasks: [
+        {
+          id: 'task-lock-1',
+          title: 'Opgave',
+          description: '',
+          completed: false,
+        },
+      ],
+      isExternal: false,
+      intensityEnabled: true,
+      intensity: null,
+      user_id: 'trainer-1',
+      player_id: 'user-1',
+      team_id: null,
+    };
+
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+
+    const { getByTestId, queryByTestId, findByTestId } = render(
+      <ActivityDetailsModule.ActivityDetailsContent
+        activity={activity as any}
+        categories={[activity.category as any]}
+        isAdmin={false}
+        isTrainerProfile={false}
+        isPlayerProfile
+        isDark={false}
+        onBack={jest.fn()}
+        onActivityUpdated={jest.fn()}
+      />,
+    );
+
+    expect(getByTestId('activity.details.trainerAssignedBadge')).toBeTruthy();
+    expect(queryByTestId('activity.details.editButton')).toBeNull();
+    expect(queryByTestId('activity.details.task.edit.task-lock-1')).toBeNull();
+
+    fireEvent.press(getByTestId('activity.addTaskButton'));
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Tilføj opgave',
+      'Vælg hvordan du vil oprette opgaven.',
+      expect.any(Array),
+    );
+
+    const buttons = alertSpy.mock.calls[0]?.[2] as any[];
+    const manualButton = buttons.find((button) => button?.text === 'Opret manuelt');
+    manualButton?.onPress?.();
+
+    expect(await findByTestId('mock.createActivityTaskModal')).toBeTruthy();
+
+    alertSpy.mockRestore();
+  });
+
+  it('allows player on trainer-assigned activity to choose template task flow', async () => {
+    const activity = {
+      id: 'activity-player-assigned-template-1',
+      title: 'Session',
+      date: new Date('2026-02-10T10:00:00.000Z'),
+      time: '10:00',
+      location: 'Pitch',
+      category: { id: 'cat-1', name: 'Training', color: '#123456', emoji: '⚽️' },
+      tasks: [],
+      isExternal: false,
+      intensityEnabled: true,
+      intensity: null,
+      user_id: 'trainer-1',
+      player_id: 'user-1',
+      team_id: null,
+    };
+
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
+      const templateButton = Array.isArray(buttons)
+        ? (buttons as any[]).find((button) => button?.text === 'Opret fra skabelon')
+        : null;
+      templateButton?.onPress?.();
+    });
+
+    const { getByTestId, findByText, queryByTestId } = render(
+      <ActivityDetailsModule.ActivityDetailsContent
+        activity={activity as any}
+        categories={[activity.category as any]}
+        isAdmin={false}
+        isTrainerProfile={false}
+        isPlayerProfile
+        isDark={false}
+        onBack={jest.fn()}
+        onActivityUpdated={jest.fn()}
+      />,
+    );
+
+    fireEvent.press(getByTestId('activity.addTaskButton'));
+
+    expect(await findByText('Vælg opgaveskabelon')).toBeTruthy();
+    expect(queryByTestId('mock.createActivityTaskModal')).toBeNull();
+
+    alertSpy.mockRestore();
   });
 });

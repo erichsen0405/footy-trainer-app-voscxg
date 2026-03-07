@@ -193,6 +193,31 @@ tags:
     visible:
       id: '^activity\.details\.editButton$'
     timeout: 15000
+- runFlow:
+    when:
+      visible:
+        id: '^activity\.assign\.openModalButton$'
+    commands:
+      - tapOn:
+          id: '^activity\.assign\.openModalButton$'
+      - extendedWaitUntil:
+          visible:
+            id: '^activity\.assign\.tab\.players$'
+          timeout: 10000
+      - assertVisible:
+          id: '^activity\.assign\.tab\.teams$'
+      - tapOn:
+          id: '^activity\.assign\.tab\.teams$'
+      - assertVisible:
+          id: '^activity\.assign\.list\.teams$'
+      - tapOn:
+          id: '^activity\.assign\.tab\.players$'
+      - assertVisible:
+          id: '^activity\.assign\.list\.players$'
+      - assertVisible:
+          id: '^activity\.assign\.saveButton$'
+      - tapOn:
+          id: '^activity\.assign\.closeButton$'
 - scrollUntilVisible:
     element:
       id: '^activity\.details\.(taskButton\.incomplete|feedbackTaskButton\.incomplete)$'

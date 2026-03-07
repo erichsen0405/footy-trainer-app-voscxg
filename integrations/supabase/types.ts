@@ -322,6 +322,55 @@ export type Database = {
           },
         ]
       }
+      activity_assignment_team_exclusions: {
+        Row: {
+          created_at: string
+          external_event_id: string | null
+          id: string
+          player_id: string
+          source_activity_id: string | null
+          team_id: string
+        }
+        Insert: {
+          created_at?: string
+          external_event_id?: string | null
+          id?: string
+          player_id: string
+          source_activity_id?: string | null
+          team_id: string
+        }
+        Update: {
+          created_at?: string
+          external_event_id?: string | null
+          id?: string
+          player_id?: string
+          source_activity_id?: string | null
+          team_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_assignment_team_exclusions_external_event_id_fkey"
+            columns: ["external_event_id"]
+            isOneToOne: false
+            referencedRelation: "events_external"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_assignment_team_exclusions_source_activity_id_fkey"
+            columns: ["source_activity_id"]
+            isOneToOne: false
+            referencedRelation: "activities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_assignment_team_exclusions_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       admin_player_relationships: {
         Row: {
           admin_id: string
@@ -1746,6 +1795,18 @@ export type Database = {
           status: string
           trial_end: string
         }[]
+      }
+      log_startup_telemetry: {
+        Args: {
+          p_device_install_id: string
+          p_event_name: string
+          p_launch_id: string
+          p_metadata?: Json | null
+          p_occurred_at?: string
+          p_route?: string | null
+          p_status?: string | null
+        }
+        Returns: undefined
       }
       get_user_role: { Args: { p_user_id: string }; Returns: string }
       is_admin: { Args: { p_user_id: string }; Returns: boolean }

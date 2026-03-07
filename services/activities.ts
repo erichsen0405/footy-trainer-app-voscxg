@@ -72,7 +72,7 @@ export async function getCategories(
   const { data, error } = await supabase
     .from('activity_categories')
     .select('*')
-    .or(`user_id.eq.${userId},is_system.eq.true`)
+    .or(`user_id.eq.${userId},player_id.eq.${userId},is_system.eq.true`)
     .order('name', { ascending: true })
     .abortSignal(signal);
 
@@ -126,4 +126,3 @@ export async function deleteActivity(
 
 // Legacy export for backward compatibility
 export const fetchActivities = getActivities;
-
