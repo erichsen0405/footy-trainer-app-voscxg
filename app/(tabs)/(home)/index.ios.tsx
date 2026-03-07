@@ -2159,7 +2159,6 @@ export default function HomeScreen() {
   const handleOpenCreateModal = useCallback(() => {
     setShowCreateModal(true);
   }, []);
-  const hasPreviousWeekSummaries = Array.isArray(previousWeekSummaries) && previousWeekSummaries.length > 0;
 
   const renderItem = useCallback(({ item }: { item: any }) => {
     // STEP H: Guard against null item
@@ -2185,7 +2184,10 @@ export default function HomeScreen() {
 
           return (
             <View
-              style={[styles.upcomingSummaryWrapper, !hasPreviousWeekSummaries && { marginTop: 16 }]}
+              style={[
+                styles.upcomingSummaryWrapper,
+                !(Array.isArray(previousWeekSummaries) && previousWeekSummaries.length > 0) && { marginTop: 16 },
+              ]}
               testID="home.weekSummary.currentWeek"
             >
               <ThisWeekPremiumCard
@@ -2710,7 +2712,7 @@ export default function HomeScreen() {
     feedbackDoneByActivityId,
     getFeedbackActivityCandidates,
     isPreviousWeeksModalVisible,
-    hasPreviousWeekSummaries,
+    previousWeekSummaries,
   ]);
 
   // Key extractor for FlatList
