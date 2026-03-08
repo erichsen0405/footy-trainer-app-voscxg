@@ -65,12 +65,13 @@ const originalGetSession = supabase.auth.getSession.bind(supabase.auth);
 const originalGetUser = supabase.auth.getUser.bind(supabase.auth);
 
 supabase.auth.getSession = async () => {
-  if (inFlightGetSession && Date.now() - inFlightGetSessionStartedAt < AUTH_DEDUPE_WINDOW_MS) {
+  if (inFlightGetSession) {
     void trackStartupTelemetry(supabase, {
       eventName: 'auth_get_session_dedupe_hit',
       status: 'reused',
       metadata: {
         dedupeWindowMs: AUTH_DEDUPE_WINDOW_MS,
+        ageMs: Math.max(0, Date.now() - inFlightGetSessionStartedAt),
       },
     });
     return inFlightGetSession;
@@ -125,8 +126,7 @@ supabase.auth.getSession = async () => {
 supabase.auth.getUser = async (jwt?: string) => {
   if (
     jwt === undefined &&
-    inFlightGetUser &&
-    Date.now() - inFlightGetUserStartedAt < AUTH_DEDUPE_WINDOW_MS
+    inFlightGetUser
   ) {
     return inFlightGetUser;
   }
