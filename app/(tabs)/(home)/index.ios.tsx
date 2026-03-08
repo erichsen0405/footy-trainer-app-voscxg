@@ -1079,12 +1079,13 @@ export default function HomeScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const emittedHomeReadyRef = useRef(false);
+  const didSkipInitialFocusRefreshRef = useRef(false);
 
   useEffect(() => {
-    if (loading || footballLoading || emittedHomeReadyRef.current) return;
+    if (loading || emittedHomeReadyRef.current) return;
     emittedHomeReadyRef.current = true;
     markHomeScreenReady();
-  }, [footballLoading, loading]);
+  }, [loading]);
 
   useEffect(() => {
     const handleSaved = (payload: any) => {
@@ -1431,10 +1432,15 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      if (!didSkipInitialFocusRefreshRef.current) {
+        didSkipInitialFocusRefreshRef.current = true;
+        return;
+      }
+      if (loading || footballLoading) return;
       void refreshHomeScreen().catch((error) => {
         console.error('[Home] Focus refresh failed:', error);
       });
-    }, [refreshHomeScreen])
+    }, [footballLoading, loading, refreshHomeScreen])
   );
 
   useEffect(() => {

@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import * as FileSystem from 'expo-file-system';
+import { addMonths, format } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { getCategories, DatabaseActivityCategory } from '@/services/activities';
 import { resolveActivityCategory, type CategoryMappingRecord } from '@/shared/activityCategoryResolver';
@@ -282,6 +283,8 @@ const devLog = (...args: unknown[]) => {
 };
 
 const EXTERNAL_META_QUERY_CHUNK_SIZE = 75;
+const UI_ACTIVITY_WINDOW_MONTHS = 3;
+const UI_ACTIVITY_QUERY_PAGE_SIZE = 1000;
 
 const chunkArray = <T,>(values: T[], size: number): T[][] => {
   if (!values.length || size <= 0) return [];
@@ -306,6 +309,39 @@ const summarizeSupabaseError = (error: any) => {
         : error?.details ?? null,
     hint: typeof error?.hint === 'string' ? error.hint.slice(0, 240) : error?.hint ?? null,
   };
+};
+
+const getUpcomingActivityWindow = () => {
+  const startDate = new Date();
+  return {
+    startDate: format(startDate, 'yyyy-MM-dd'),
+    endDateExclusive: format(addMonths(startDate, UI_ACTIVITY_WINDOW_MONTHS), 'yyyy-MM-dd'),
+  };
+};
+
+const fetchAllQueryPages = async <T,>(
+  runPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: any | null }>
+): Promise<{ data: T[] | null; error: any | null }> => {
+  const merged: T[] = [];
+  let from = 0;
+
+  while (true) {
+    const to = from + UI_ACTIVITY_QUERY_PAGE_SIZE - 1;
+    const { data, error } = await runPage(from, to);
+
+    if (error) {
+      return { data: null, error };
+    }
+
+    const page = Array.isArray(data) ? data : [];
+    merged.push(...page);
+
+    if (page.length < UI_ACTIVITY_QUERY_PAGE_SIZE) {
+      return { data: merged, error: null };
+    }
+
+    from += UI_ACTIVITY_QUERY_PAGE_SIZE;
+  }
 };
 
 const fetchExternalMetaRows = async ({
@@ -629,10 +665,22 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           `;
 
       const fetchInternalActivities = async (scopeFilter: string) => {
-        const withLocal = await supabase
-          .from('activities')
-          .select(internalSelectWithLocalOptions)
-          .or(scopeFilter);
+        const { startDate, endDateExclusive } = getUpcomingActivityWindow();
+        devLog('[useHomeActivities] Internal window', { startDate, endDateExclusive });
+
+        const withLocal = await fetchAllQueryPages<any>((from, to) =>
+          supabase
+            .from('activities')
+            .select(internalSelectWithLocalOptions)
+            .or(scopeFilter)
+            .gte('activity_date', startDate)
+            .lt('activity_date', endDateExclusive)
+            .order('activity_date', { ascending: true })
+            .order('activity_time', { ascending: true })
+            .order('created_at', { ascending: true })
+            .order('id', { ascending: true })
+            .range(from, to)
+        );
 
         if (!withLocal.error) {
           return withLocal.data;
@@ -643,10 +691,19 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           return null;
         }
 
-        const legacy = await supabase
-          .from('activities')
-          .select(internalSelectLegacy)
-          .or(scopeFilter);
+        const legacy = await fetchAllQueryPages<any>((from, to) =>
+          supabase
+            .from('activities')
+            .select(internalSelectLegacy)
+            .or(scopeFilter)
+            .gte('activity_date', startDate)
+            .lt('activity_date', endDateExclusive)
+            .order('activity_date', { ascending: true })
+            .order('activity_time', { ascending: true })
+            .order('created_at', { ascending: true })
+            .order('id', { ascending: true })
+            .range(from, to)
+        );
 
         if (legacy.error) {
           console.error('[useHomeActivities] Error fetching internal activities (legacy fallback):', legacy.error);
@@ -813,12 +870,23 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       let externalMetaData: any[] = [];
 
       if (calendarIdsNormalized.length > 0) {
-        const { data: eventsData, error: eventsError } = await supabase
-          .from('events_external')
-          .select('id, title, start_date, start_time, end_date, end_time, location, provider_calendar_id, provider_event_uid, raw_payload')
-          .in('provider_calendar_id', calendarIdsNormalized)
-          .eq('deleted', false)
-          .is('deleted_at', null);
+        const { startDate, endDateExclusive } = getUpcomingActivityWindow();
+        devLog('[useHomeActivities] External window', { startDate, endDateExclusive });
+
+        const { data: eventsData, error: eventsError } = await fetchAllQueryPages<any>((from, to) =>
+          supabase
+            .from('events_external')
+            .select('id, title, start_date, start_time, end_date, end_time, location, provider_calendar_id, provider_event_uid, raw_payload')
+            .in('provider_calendar_id', calendarIdsNormalized)
+            .eq('deleted', false)
+            .is('deleted_at', null)
+            .gte('start_date', startDate)
+            .lt('start_date', endDateExclusive)
+            .order('start_date', { ascending: true })
+            .order('start_time', { ascending: true })
+            .order('id', { ascending: true })
+            .range(from, to)
+        );
 
         if (eventsError) {
           console.error('[useHomeActivities] Error fetching external events:', {
