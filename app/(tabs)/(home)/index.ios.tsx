@@ -82,7 +82,8 @@ import { fetchSelfFeedbackForActivities } from '@/services/feedbackService';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { formatHoursDa, getActivityEffectiveDurationMinutes } from '@/utils/activityDuration';
 import { markHomeScreenReady } from '@/utils/startupLoader';
-import { withTimeout } from '@/utils/withTimeout';
+import { trackStartupTelemetry } from '@/utils/startupTelemetry';
+import { TimeoutError, withTimeout } from '@/utils/withTimeout';
 import type { TaskTemplateSelfFeedback } from '@/types';
 
 const FALLBACK_COLORS = {
@@ -105,6 +106,9 @@ const FALLBACK_COLORS = {
 };
 
 const colors = (CommonStyles as any).colors ?? FALLBACK_COLORS;
+const HOME_REFRESH_TELEMETRY_ROUTE = '/';
+
+type HomeRefreshSource = 'focus' | 'pull_to_refresh';
 
 function resolveActivityDateTime(activity: any): Date | null {
   // STEP H: Guard against null/undefined activity
@@ -1393,7 +1397,33 @@ export default function HomeScreen() {
     setFeedbackRefreshKey((prev) => prev + 1);
   }, []);
 
-  const refreshHomeScreen = useCallback(async (timeoutMs: number = HOME_REFRESH_TIMEOUT_MS) => {
+  const trackHomeRefreshFailure = useCallback(
+    (source: HomeRefreshSource, timeoutMs: number, error: unknown) => {
+      const telemetryError =
+        error instanceof Error
+          ? error
+          : new Error(typeof error === 'string' ? error : 'Unknown home refresh error');
+      const status = telemetryError instanceof TimeoutError ? 'timeout' : 'error';
+
+      void trackStartupTelemetry(supabase, {
+        eventName: 'home_refresh',
+        status,
+        route: HOME_REFRESH_TELEMETRY_ROUTE,
+        metadata: {
+          source,
+          timeoutMs,
+          message: telemetryError.message,
+          name: telemetryError.name,
+        },
+      });
+    },
+    []
+  );
+
+  const refreshHomeScreen = useCallback(async (
+    source: HomeRefreshSource = 'focus',
+    timeoutMs: number = HOME_REFRESH_TIMEOUT_MS
+  ) => {
     const refreshPromises: Promise<unknown>[] = [];
 
     if (typeof refreshActivities === 'function') {
@@ -1418,10 +1448,13 @@ export default function HomeScreen() {
         timeoutMs,
         '[Home] Refresh timed out'
       );
+    } catch (error) {
+      trackHomeRefreshFailure(source, timeoutMs, error);
+      throw error;
     } finally {
       triggerFeedbackRefresh();
     }
-  }, [refreshActivities, refreshData, triggerFeedbackRefresh]);
+  }, [refreshActivities, refreshData, trackHomeRefreshFailure, triggerFeedbackRefresh]);
 
   useFocusEffect(
     useCallback(() => {
@@ -1437,7 +1470,7 @@ export default function HomeScreen() {
         return;
       }
       if (loading || footballLoading) return;
-      void refreshHomeScreen().catch((error) => {
+      void refreshHomeScreen('focus').catch((error) => {
         console.error('[Home] Focus refresh failed:', error);
       });
     }, [footballLoading, loading, refreshHomeScreen])
@@ -1882,7 +1915,7 @@ export default function HomeScreen() {
     setIsRefreshing(true);
 
     try {
-      await refreshHomeScreen();
+      await refreshHomeScreen('pull_to_refresh');
       console.log('[Home] Pull-to-refresh completed successfully');
     } catch (error) {
       console.error('[Home] Pull-to-refresh error:', error);
