@@ -11,6 +11,8 @@ const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiO
 // import { supabase } from "@/integrations/supabase/client";
 
 const AUTH_DEDUPE_WINDOW_MS = 1500;
+const AUTH_GET_SESSION_TIMEOUT_MS = 4000;
+const AUTH_GET_USER_TIMEOUT_MS = 4000;
 
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
@@ -31,6 +33,16 @@ let inFlightGetUser:
   | null = null;
 let inFlightGetSessionStartedAt = 0;
 let inFlightGetUserStartedAt = 0;
+
+class AuthRequestTimeoutError extends Error {
+  timeoutMs: number;
+
+  constructor(requestName: string, timeoutMs: number) {
+    super(`${requestName} timed out after ${timeoutMs}ms`);
+    this.name = 'AuthRequestTimeoutError';
+    this.timeoutMs = timeoutMs;
+  }
+}
 
 // Global error handler for invalid refresh token
 supabase.auth.onAuthStateChange((event, session) => {
@@ -64,46 +76,100 @@ supabase.auth.onAuthStateChange((event, session) => {
 const originalGetSession = supabase.auth.getSession.bind(supabase.auth);
 const originalGetUser = supabase.auth.getUser.bind(supabase.auth);
 
+const withAuthRequestTimeout = async <T,>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  requestName: string,
+): Promise<T> => {
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_resolve, reject) => {
+        timeoutHandle = setTimeout(() => {
+          reject(new AuthRequestTimeoutError(requestName, timeoutMs));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+};
+
+const isAuthRequestTimeoutError = (error: unknown): error is AuthRequestTimeoutError =>
+  error instanceof AuthRequestTimeoutError;
+
 supabase.auth.getSession = async () => {
-  if (inFlightGetSession) {
+  const inFlightAgeMs = Math.max(0, Date.now() - inFlightGetSessionStartedAt);
+  if (inFlightGetSession && inFlightAgeMs < AUTH_DEDUPE_WINDOW_MS) {
     void trackStartupTelemetry(supabase, {
       eventName: 'auth_get_session_dedupe_hit',
       status: 'reused',
       metadata: {
         dedupeWindowMs: AUTH_DEDUPE_WINDOW_MS,
-        ageMs: Math.max(0, Date.now() - inFlightGetSessionStartedAt),
+        ageMs: inFlightAgeMs,
       },
     });
     return inFlightGetSession;
   }
 
-  inFlightGetSessionStartedAt = Date.now();
-  inFlightGetSession = (async () => {
-  try {
-    const result = await originalGetSession();
-    latestSession = result.data.session ?? null;
+  if (inFlightGetSession) {
     void trackStartupTelemetry(supabase, {
-      eventName: 'auth_get_session_completed',
-      status: 'success',
+      eventName: 'auth_get_session_dedupe_hit',
+      status: 'expired',
       metadata: {
-        durationMs: Date.now() - inFlightGetSessionStartedAt,
-        hasSession: Boolean(result.data.session),
-        hasUser: Boolean(result.data.session?.user),
+        dedupeWindowMs: AUTH_DEDUPE_WINDOW_MS,
+        ageMs: inFlightAgeMs,
       },
     });
-    return result;
-  } catch (error: any) {
-    if (isInvalidRefreshTokenError(error)) {
+  }
+
+  inFlightGetSessionStartedAt = Date.now();
+  const requestPromise = (async () => {
+    try {
+      const result = await withAuthRequestTimeout(
+        originalGetSession(),
+        AUTH_GET_SESSION_TIMEOUT_MS,
+        'supabase.auth.getSession',
+      );
+      latestSession = result.data.session ?? null;
       void trackStartupTelemetry(supabase, {
         eventName: 'auth_get_session_completed',
-        status: 'invalid_refresh_token',
+        status: 'success',
         metadata: {
           durationMs: Date.now() - inFlightGetSessionStartedAt,
+          hasSession: Boolean(result.data.session),
+          hasUser: Boolean(result.data.session?.user),
         },
       });
-      await handleInvalidRefreshToken();
-      return { data: { session: null }, error: null };
-    }
+      return result;
+    } catch (error: any) {
+      if (isAuthRequestTimeoutError(error)) {
+        void trackStartupTelemetry(supabase, {
+          eventName: 'auth_get_session_completed',
+          status: 'timeout',
+          metadata: {
+            durationMs: Date.now() - inFlightGetSessionStartedAt,
+            timeoutMs: AUTH_GET_SESSION_TIMEOUT_MS,
+            reusedLatestSession: Boolean(latestSession),
+          },
+        });
+        return { data: { session: latestSession }, error: null };
+      }
+      if (isInvalidRefreshTokenError(error)) {
+        void trackStartupTelemetry(supabase, {
+          eventName: 'auth_get_session_completed',
+          status: 'invalid_refresh_token',
+          metadata: {
+            durationMs: Date.now() - inFlightGetSessionStartedAt,
+          },
+        });
+        await handleInvalidRefreshToken();
+        return { data: { session: null }, error: null };
+      }
       void trackStartupTelemetry(supabase, {
         eventName: 'auth_get_session_completed',
         status: 'error',
@@ -115,33 +181,51 @@ supabase.auth.getSession = async () => {
       throw error;
     }
   })();
+  inFlightGetSession = requestPromise;
 
   try {
-    return await inFlightGetSession;
+    return await requestPromise;
   } finally {
-    inFlightGetSession = null;
+    if (inFlightGetSession === requestPromise) {
+      inFlightGetSession = null;
+      inFlightGetSessionStartedAt = 0;
+    }
   }
 };
 
 supabase.auth.getUser = async (jwt?: string) => {
+  const inFlightAgeMs = Math.max(0, Date.now() - inFlightGetUserStartedAt);
   if (
     jwt === undefined &&
-    inFlightGetUser
+    inFlightGetUser &&
+    inFlightAgeMs < AUTH_DEDUPE_WINDOW_MS
   ) {
     return inFlightGetUser;
   }
 
-  const run = async () => {
-  try {
-    const result = await originalGetUser(jwt);
-    return result;
-  } catch (error: unknown) {
-    if (jwt === undefined && isInvalidRefreshTokenError(error)) {
-      await handleInvalidRefreshToken();
-      return originalGetUser();
-    }
-    throw error;
+  if (jwt === undefined && inFlightGetUser && inFlightAgeMs >= AUTH_DEDUPE_WINDOW_MS) {
+    inFlightGetUser = null;
+    inFlightGetUserStartedAt = 0;
   }
+
+  const run = async () => {
+    try {
+      const result = await withAuthRequestTimeout(
+        originalGetUser(jwt),
+        AUTH_GET_USER_TIMEOUT_MS,
+        'supabase.auth.getUser',
+      );
+      return result;
+    } catch (error: unknown) {
+      if (jwt === undefined && isAuthRequestTimeoutError(error)) {
+        return { data: { user: latestSession?.user ?? null }, error: null };
+      }
+      if (jwt === undefined && isInvalidRefreshTokenError(error)) {
+        await handleInvalidRefreshToken();
+        return { data: { user: null }, error: null };
+      }
+      throw error;
+    }
   };
 
   if (jwt !== undefined) {
@@ -149,12 +233,16 @@ supabase.auth.getUser = async (jwt?: string) => {
   }
 
   inFlightGetUserStartedAt = Date.now();
-  inFlightGetUser = run();
+  const requestPromise = run();
+  inFlightGetUser = requestPromise;
 
   try {
-    return await inFlightGetUser;
+    return await requestPromise;
   } finally {
-    inFlightGetUser = null;
+    if (inFlightGetUser === requestPromise) {
+      inFlightGetUser = null;
+      inFlightGetUserStartedAt = 0;
+    }
   }
 };
 
