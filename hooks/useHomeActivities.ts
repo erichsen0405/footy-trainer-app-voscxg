@@ -283,8 +283,9 @@ const devLog = (...args: unknown[]) => {
 };
 
 const EXTERNAL_META_QUERY_CHUNK_SIZE = 75;
-const UI_ACTIVITY_WINDOW_MONTHS = 3;
-const UI_ACTIVITY_QUERY_PAGE_SIZE = 1000;
+const HOME_ACTIVITY_PAST_WINDOW_MONTHS = 6;
+const HOME_ACTIVITY_FUTURE_WINDOW_MONTHS = 6;
+export const HOME_ACTIVITY_QUERY_PAGE_SIZE = 3000;
 
 const chunkArray = <T,>(values: T[], size: number): T[][] => {
   if (!values.length || size <= 0) return [];
@@ -311,11 +312,11 @@ const summarizeSupabaseError = (error: any) => {
   };
 };
 
-const getUpcomingActivityWindow = () => {
-  const startDate = new Date();
+export const getHomeActivityWindow = (now: Date = new Date()) => {
+  const startDate = addMonths(now, -HOME_ACTIVITY_PAST_WINDOW_MONTHS);
   return {
     startDate: format(startDate, 'yyyy-MM-dd'),
-    endDateExclusive: format(addMonths(startDate, UI_ACTIVITY_WINDOW_MONTHS), 'yyyy-MM-dd'),
+    endDateExclusive: format(addMonths(now, HOME_ACTIVITY_FUTURE_WINDOW_MONTHS), 'yyyy-MM-dd'),
   };
 };
 
@@ -326,7 +327,7 @@ const fetchAllQueryPages = async <T,>(
   let from = 0;
 
   while (true) {
-    const to = from + UI_ACTIVITY_QUERY_PAGE_SIZE - 1;
+    const to = from + HOME_ACTIVITY_QUERY_PAGE_SIZE - 1;
     const { data, error } = await runPage(from, to);
 
     if (error) {
@@ -336,11 +337,11 @@ const fetchAllQueryPages = async <T,>(
     const page = Array.isArray(data) ? data : [];
     merged.push(...page);
 
-    if (page.length < UI_ACTIVITY_QUERY_PAGE_SIZE) {
+    if (page.length < HOME_ACTIVITY_QUERY_PAGE_SIZE) {
       return { data: merged, error: null };
     }
 
-    from += UI_ACTIVITY_QUERY_PAGE_SIZE;
+    from += HOME_ACTIVITY_QUERY_PAGE_SIZE;
   }
 };
 
@@ -665,7 +666,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           `;
 
       const fetchInternalActivities = async (scopeFilter: string) => {
-        const { startDate, endDateExclusive } = getUpcomingActivityWindow();
+        const { startDate, endDateExclusive } = getHomeActivityWindow();
         devLog('[useHomeActivities] Internal window', { startDate, endDateExclusive });
 
         const withLocal = await fetchAllQueryPages<any>((from, to) =>
@@ -870,7 +871,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       let externalMetaData: any[] = [];
 
       if (calendarIdsNormalized.length > 0) {
-        const { startDate, endDateExclusive } = getUpcomingActivityWindow();
+        const { startDate, endDateExclusive } = getHomeActivityWindow();
         devLog('[useHomeActivities] External window', { startDate, endDateExclusive });
 
         const { data: eventsData, error: eventsError } = await fetchAllQueryPages<any>((from, to) =>
