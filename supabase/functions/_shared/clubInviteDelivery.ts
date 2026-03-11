@@ -1,0 +1,460 @@
+// @ts-ignore Deno edge functions require explicit file extensions for relative imports.
+import { AppError } from './http.ts';
+// @ts-ignore Deno edge functions require explicit file extensions for relative imports.
+import type { ClubInvite } from './clubAdmin.ts';
+
+type RpcError = {
+  message?: string;
+};
+
+type RpcClient = {
+  rpc: <T>(fn: string, args?: Record<string, unknown>) => Promise<{ data: T | null; error: RpcError | null }>;
+};
+
+type AuthLinkType = 'invite' | 'magiclink';
+
+type GenerateLinkSuccess = {
+  properties: {
+    action_link?: string;
+    redirect_to?: string;
+    verification_type?: string;
+  } | null;
+};
+
+type ClubInviteDeliveryClient = RpcClient & {
+  auth: {
+    admin: {
+      generateLink: (params: {
+        type: AuthLinkType;
+        email: string;
+        options?: {
+          redirectTo?: string;
+        };
+      }) => Promise<{ data: GenerateLinkSuccess | null; error: RpcError | null }>;
+    };
+  };
+};
+
+export type ClubInviteEmailConfig = {
+  appName: string;
+  authRedirectUrl: string;
+  fromEmail: string;
+  fromName: string;
+  landingUrl: string;
+  awsRegion: string;
+  awsAccessKeyId: string;
+  awsSecretAccessKey: string;
+  awsSessionToken: string | null;
+};
+
+type ClubInviteDeliveryContext = {
+  actionLink: string;
+  authLinkType: AuthLinkType;
+  clubName: string;
+  landingUrl: string;
+};
+
+type ClubInviteEmailContent = {
+  subject: string;
+  html: string;
+  text: string;
+};
+
+type ClubInviteEmailDeliveryResult = {
+  authLinkType: AuthLinkType;
+  clubName: string;
+  landingUrl: string;
+  provider: 'aws_ses';
+};
+
+function getEnv(name: string): string | null {
+  const deno = (globalThis as { Deno?: { env?: { get: (key: string) => string | undefined } } }).Deno;
+  if (deno?.env) {
+    return deno.env.get(name)?.trim() ?? null;
+  }
+
+  const nodeProcess = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+  if (nodeProcess?.env) {
+    return nodeProcess.env[name]?.trim() ?? null;
+  }
+
+  return null;
+}
+
+function requireEnv(name: string): string {
+  const value = getEnv(name);
+  if (!value) {
+    throw new AppError('INTERNAL_ERROR', `Missing ${name}.`, 500);
+  }
+
+  return value;
+}
+
+function optionalEnv(name: string, fallback: string): string {
+  return getEnv(name) ?? fallback;
+}
+
+async function callRpc<T>(
+  client: RpcClient,
+  fn: string,
+  args?: Record<string, unknown>
+): Promise<T> {
+  const { data, error } = await client.rpc<T>(fn, args);
+  if (error) {
+    throw new AppError('INTERNAL_ERROR', error.message ?? `RPC ${fn} failed.`, 500);
+  }
+
+  if (data === null || data === undefined) {
+    throw new AppError('INTERNAL_ERROR', `RPC ${fn} returned no data.`, 500);
+  }
+
+  return data;
+}
+
+async function callNullableRpc<T>(
+  client: RpcClient,
+  fn: string,
+  args?: Record<string, unknown>
+): Promise<T | null> {
+  const { data, error } = await client.rpc<T>(fn, args);
+  if (error) {
+    throw new AppError('INTERNAL_ERROR', error.message ?? `RPC ${fn} failed.`, 500);
+  }
+
+  return data ?? null;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+export function getClubInviteEmailConfigFromEnv(): ClubInviteEmailConfig {
+  return {
+    appName: optionalEnv('CLUB_INVITE_APP_NAME', 'Footy Trainer'),
+    authRedirectUrl: requireEnv('CLUB_INVITE_AUTH_REDIRECT_URL'),
+    fromEmail: requireEnv('CLUB_INVITE_FROM_EMAIL'),
+    fromName: optionalEnv('CLUB_INVITE_FROM_NAME', 'Footy Trainer'),
+    landingUrl: requireEnv('CLUB_INVITE_LANDING_URL'),
+    awsRegion: requireEnv('AWS_SES_REGION'),
+    awsAccessKeyId: requireEnv('AWS_SES_ACCESS_KEY_ID'),
+    awsSecretAccessKey: requireEnv('AWS_SES_SECRET_ACCESS_KEY'),
+    awsSessionToken: getEnv('AWS_SES_SESSION_TOKEN'),
+  };
+}
+
+export function buildClubInviteLandingUrl(baseUrl: string, invite: Pick<ClubInvite, 'token'>): string {
+  const url = new URL(baseUrl);
+  url.searchParams.set('token', invite.token);
+  return url.toString();
+}
+
+export function buildClubInviteAuthRedirectUrl(baseUrl: string, invite: Pick<ClubInvite, 'token'>): string {
+  const url = new URL(baseUrl);
+  url.searchParams.set('clubInviteToken', invite.token);
+  return url.toString();
+}
+
+async function resolveClubName(client: RpcClient, clubId: string): Promise<string> {
+  const payload = await callRpc<Record<string, unknown>>(client, 'get_club_payload', {
+    p_club_id: clubId,
+  });
+
+  const clubName = payload.name;
+  if (typeof clubName !== 'string' || !clubName.trim()) {
+    throw new AppError('INTERNAL_ERROR', 'Could not resolve club name for invite delivery.', 500);
+  }
+
+  return clubName.trim();
+}
+
+export async function resolveClubInviteDeliveryContext(
+  client: ClubInviteDeliveryClient,
+  invite: ClubInvite,
+  config: ClubInviteEmailConfig,
+  clubName?: string
+): Promise<ClubInviteDeliveryContext> {
+  const existingAuthUserId = await callNullableRpc<string>(client, 'get_auth_user_id_by_email', {
+    p_email: invite.email,
+  });
+
+  const authLinkType: AuthLinkType = existingAuthUserId ? 'magiclink' : 'invite';
+  const redirectTo = buildClubInviteAuthRedirectUrl(config.authRedirectUrl, invite);
+  const {
+    data,
+    error,
+  } = await client.auth.admin.generateLink({
+    type: authLinkType,
+    email: invite.email,
+    options: {
+      redirectTo,
+    },
+  });
+
+  if (error) {
+    throw new AppError('INTERNAL_ERROR', error.message ?? 'Could not generate invite auth link.', 500);
+  }
+
+  const actionLink = data?.properties?.action_link?.trim();
+  if (!actionLink) {
+    throw new AppError('INTERNAL_ERROR', 'Could not generate invite auth link.', 500);
+  }
+
+  return {
+    actionLink,
+    authLinkType,
+    clubName: clubName?.trim() || (await resolveClubName(client, invite.clubId)),
+    landingUrl: buildClubInviteLandingUrl(config.landingUrl, invite),
+  };
+}
+
+export function buildClubInviteEmailContent(
+  invite: Pick<ClubInvite, 'email' | 'role'>,
+  context: ClubInviteDeliveryContext,
+  config: Pick<ClubInviteEmailConfig, 'appName'>
+): ClubInviteEmailContent {
+  const subject = `${context.clubName}: invitation som ${invite.role}`;
+  const primaryActionLabel =
+    context.authLinkType === 'invite'
+      ? 'Opret konto og vælg adgangskode'
+      : 'Log ind og accepter invitation';
+  const intro =
+    context.authLinkType === 'invite'
+      ? 'Du er blevet inviteret og skal først oprette din konto i Supabase-authflowet.'
+      : 'Du er blevet inviteret og kan fortsætte direkte via login-linket herunder.';
+  const safeClubName = escapeHtml(context.clubName);
+  const safeRole = escapeHtml(invite.role);
+  const safeEmail = escapeHtml(invite.email);
+  const safeAppName = escapeHtml(config.appName);
+  const safeActionLink = escapeHtml(context.actionLink);
+  const safeLandingUrl = escapeHtml(context.landingUrl);
+
+  return {
+    subject,
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #111827;">
+        <p>Hej,</p>
+        <p>Du er inviteret til klubben <strong>${safeClubName}</strong> som <strong>${safeRole}</strong> i ${safeAppName}.</p>
+        <p>${escapeHtml(intro)}</p>
+        <p>Denne invitation er sendt til <strong>${safeEmail}</strong>.</p>
+        <p style="margin: 24px 0;">
+          <a
+            href="${safeActionLink}"
+            style="display: inline-block; background: #111827; color: #ffffff; text-decoration: none; padding: 12px 18px; border-radius: 8px;"
+          >
+            ${escapeHtml(primaryActionLabel)}
+          </a>
+        </p>
+        <p>Hvis knappen ikke virker, kan du åbne invitationen direkte her:</p>
+        <p><a href="${safeLandingUrl}">${safeLandingUrl}</a></p>
+      </div>
+    `.trim(),
+    text: [
+      `Du er inviteret til ${context.clubName} som ${invite.role} i ${config.appName}.`,
+      intro,
+      `Denne invitation er sendt til ${invite.email}.`,
+      '',
+      `${primaryActionLabel}: ${context.actionLink}`,
+      '',
+      `Fallback invite-link: ${context.landingUrl}`,
+    ].join('\n'),
+  };
+}
+
+function toHex(buffer: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buffer))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const encoded = new TextEncoder().encode(value);
+  const hash = await crypto.subtle.digest('SHA-256', encoded);
+  return toHex(hash);
+}
+
+async function hmacSha256(key: Uint8Array, value: string): Promise<Uint8Array> {
+  const keyBytes = Uint8Array.from(key);
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyBytes.buffer,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, new TextEncoder().encode(value));
+  return new Uint8Array(signature);
+}
+
+function formatAmzDate(date: Date): { amzDate: string; dateStamp: string } {
+  const iso = date.toISOString().replace(/[:-]|\.\d{3}/g, '');
+  return {
+    amzDate: iso,
+    dateStamp: iso.slice(0, 8),
+  };
+}
+
+async function createAwsSesAuthorizationHeader(
+  payload: string,
+  headers: Record<string, string>,
+  signingDate: { amzDate: string; dateStamp: string },
+  config: Pick<ClubInviteEmailConfig, 'awsAccessKeyId' | 'awsSecretAccessKey' | 'awsRegion'>
+): Promise<string> {
+  const canonicalHeaders = Object.entries(headers)
+    .map(([key, value]) => [key.toLowerCase(), value.trim().replace(/\s+/g, ' ')] as const)
+    .sort(([left], [right]) => left.localeCompare(right));
+
+  const signedHeaders = canonicalHeaders.map(([key]) => key).join(';');
+  const canonicalHeadersString = canonicalHeaders
+    .map(([key, value]) => `${key}:${value}\n`)
+    .join('');
+
+  const canonicalRequest = [
+    'POST',
+    '/v2/email/outbound-emails',
+    '',
+    canonicalHeadersString,
+    signedHeaders,
+    await sha256Hex(payload),
+  ].join('\n');
+
+  const credentialScope = `${signingDate.dateStamp}/${config.awsRegion}/ses/aws4_request`;
+  const stringToSign = [
+    'AWS4-HMAC-SHA256',
+    signingDate.amzDate,
+    credentialScope,
+    await sha256Hex(canonicalRequest),
+  ].join('\n');
+
+  const secretKey = new TextEncoder().encode(`AWS4${config.awsSecretAccessKey}`);
+  const dateKey = await hmacSha256(secretKey, signingDate.dateStamp);
+  const regionKey = await hmacSha256(dateKey, config.awsRegion);
+  const serviceKey = await hmacSha256(regionKey, 'ses');
+  const signingKey = await hmacSha256(serviceKey, 'aws4_request');
+  const signature = toHex(Uint8Array.from(await hmacSha256(signingKey, stringToSign)).buffer);
+
+  return [
+    `AWS4-HMAC-SHA256 Credential=${config.awsAccessKeyId}/${credentialScope}`,
+    `SignedHeaders=${signedHeaders}`,
+    `Signature=${signature}`,
+  ].join(', ');
+}
+
+async function sendWithAwsSes(
+  content: ClubInviteEmailContent,
+  invite: Pick<ClubInvite, 'email'>,
+  config: Pick<
+    ClubInviteEmailConfig,
+    'fromEmail' | 'fromName' | 'awsRegion' | 'awsAccessKeyId' | 'awsSecretAccessKey' | 'awsSessionToken'
+  >
+): Promise<void> {
+  const payload = JSON.stringify({
+    FromEmailAddress: `${config.fromName} <${config.fromEmail}>`,
+    Destination: {
+      ToAddresses: [invite.email],
+    },
+    Content: {
+      Simple: {
+        Subject: {
+          Data: content.subject,
+          Charset: 'UTF-8',
+        },
+        Body: {
+          Html: {
+            Data: content.html,
+            Charset: 'UTF-8',
+          },
+          Text: {
+            Data: content.text,
+            Charset: 'UTF-8',
+          },
+        },
+      },
+    },
+  });
+
+  const payloadHash = await sha256Hex(payload);
+  const signingDate = formatAmzDate(new Date());
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+    host: `email.${config.awsRegion}.amazonaws.com`,
+    'x-amz-content-sha256': payloadHash,
+    'x-amz-date': signingDate.amzDate,
+  };
+
+  if (config.awsSessionToken) {
+    headers['x-amz-security-token'] = config.awsSessionToken;
+  }
+
+  headers.authorization = await createAwsSesAuthorizationHeader(payload, headers, signingDate, config);
+
+  const response = await fetch(`https://email.${config.awsRegion}.amazonaws.com/v2/email/outbound-emails`, {
+    method: 'POST',
+    headers: {
+      Authorization: headers.authorization,
+      'Content-Type': headers['content-type'],
+      Host: headers.host,
+      'X-Amz-Content-Sha256': headers['x-amz-content-sha256'],
+      'X-Amz-Date': headers['x-amz-date'],
+      ...(config.awsSessionToken ? { 'X-Amz-Security-Token': config.awsSessionToken } : {}),
+    },
+    body: payload,
+  });
+
+  if (!response.ok) {
+    const failureBody = await response.text();
+    console.error('[club-invite-delivery] aws ses failure', {
+      status: response.status,
+      body: failureBody,
+    });
+    const normalizedMessage = failureBody.replace(/\s+/g, ' ').trim();
+    throw new AppError(
+      'INTERNAL_ERROR',
+      normalizedMessage ? `Could not send invite email: ${normalizedMessage}` : 'Could not send invite email.',
+      500
+    );
+  }
+}
+
+export async function deliverClubInviteEmail(
+  client: ClubInviteDeliveryClient,
+  invite: ClubInvite,
+  options?: {
+    clubName?: string;
+    config?: ClubInviteEmailConfig;
+  }
+  ): Promise<ClubInviteEmailDeliveryResult> {
+  const config = options?.config ?? getClubInviteEmailConfigFromEnv();
+  let context: ClubInviteDeliveryContext;
+  try {
+    context = await resolveClubInviteDeliveryContext(client, invite, config, options?.clubName);
+  } catch (error) {
+    if (error instanceof AppError) {
+      throw new AppError(error.code, `Invite auth-link generation failed: ${error.message}`, error.status);
+    }
+
+    throw new AppError('INTERNAL_ERROR', 'Invite auth-link generation failed.', 500);
+  }
+
+  const content = buildClubInviteEmailContent(invite, context, config);
+  try {
+    await sendWithAwsSes(content, invite, config);
+  } catch (error) {
+    if (error instanceof AppError) {
+      throw new AppError(error.code, `Invite email send failed: ${error.message}`, error.status);
+    }
+
+    throw new AppError('INTERNAL_ERROR', 'Invite email send failed.', 500);
+  }
+
+  return {
+    authLinkType: context.authLinkType,
+    clubName: context.clubName,
+    landingUrl: context.landingUrl,
+    provider: 'aws_ses',
+  };
+}
