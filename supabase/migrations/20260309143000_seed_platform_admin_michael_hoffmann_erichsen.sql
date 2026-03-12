@@ -10,7 +10,8 @@ begin
   limit 1;
 
   if v_user_id is null then
-    raise exception 'AUTH_USER_NOT_FOUND: michael@danishhealthcare.com';
+    raise notice 'Skipping platform admin seed for michael@danishhealthcare.com because auth user was not found.';
+    return;
   end if;
 
   insert into public.profiles (

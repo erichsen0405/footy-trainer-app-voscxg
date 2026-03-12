@@ -60,11 +60,13 @@ type ClubInviteEmailContent = {
   text: string;
 };
 
-type ClubInviteEmailDeliveryResult = {
-  authLinkType: AuthLinkType;
-  clubName: string;
-  landingUrl: string;
-  provider: 'aws_ses';
+export type ClubInviteEmailDeliveryResult = {
+  status: 'sent' | 'skipped' | 'failed';
+  authLinkType: AuthLinkType | null;
+  clubName: string | null;
+  landingUrl: string | null;
+  provider: 'aws_ses' | 'none';
+  warning: string | null;
 };
 
 function getInviteRoleLabel(role: ClubInvite['role']): string {
@@ -94,18 +96,14 @@ function getEnv(name: string): string | null {
   return null;
 }
 
-function requireEnv(name: string): string {
-  const value = getEnv(name);
-  if (!value) {
-    throw new AppError('INTERNAL_ERROR', `Missing ${name}.`, 500);
-  }
-
-  return value;
-}
-
 function optionalEnv(name: string, fallback: string): string {
   return getEnv(name) ?? fallback;
 }
+
+type ClubInviteEmailConfigResolution = {
+  config: ClubInviteEmailConfig | null;
+  missing: string[];
+};
 
 async function callRpc<T>(
   client: RpcClient,
@@ -146,17 +144,57 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#39;');
 }
 
-export function getClubInviteEmailConfigFromEnv(): ClubInviteEmailConfig {
+export function getClubInviteEmailConfigFromEnv(): ClubInviteEmailConfigResolution {
+  const requiredEnv = {
+    authRedirectUrl: getEnv('CLUB_INVITE_AUTH_REDIRECT_URL'),
+    fromEmail: getEnv('CLUB_INVITE_FROM_EMAIL'),
+    landingUrl: getEnv('CLUB_INVITE_LANDING_URL'),
+    awsRegion: getEnv('AWS_SES_REGION'),
+    awsAccessKeyId: getEnv('AWS_SES_ACCESS_KEY_ID'),
+    awsSecretAccessKey: getEnv('AWS_SES_SECRET_ACCESS_KEY'),
+  } as const;
+
+  const missing = Object.entries(requiredEnv)
+    .filter(([, value]) => !value)
+    .map(([key]) => {
+      switch (key) {
+        case 'authRedirectUrl':
+          return 'CLUB_INVITE_AUTH_REDIRECT_URL';
+        case 'fromEmail':
+          return 'CLUB_INVITE_FROM_EMAIL';
+        case 'landingUrl':
+          return 'CLUB_INVITE_LANDING_URL';
+        case 'awsRegion':
+          return 'AWS_SES_REGION';
+        case 'awsAccessKeyId':
+          return 'AWS_SES_ACCESS_KEY_ID';
+        case 'awsSecretAccessKey':
+          return 'AWS_SES_SECRET_ACCESS_KEY';
+        default:
+          return key;
+      }
+    });
+
+  if (missing.length > 0) {
+    return {
+      config: null,
+      missing,
+    };
+  }
+
   return {
-    appName: optionalEnv('CLUB_INVITE_APP_NAME', 'Footy Trainer'),
-    authRedirectUrl: requireEnv('CLUB_INVITE_AUTH_REDIRECT_URL'),
-    fromEmail: requireEnv('CLUB_INVITE_FROM_EMAIL'),
-    fromName: optionalEnv('CLUB_INVITE_FROM_NAME', 'Footy Trainer'),
-    landingUrl: requireEnv('CLUB_INVITE_LANDING_URL'),
-    awsRegion: requireEnv('AWS_SES_REGION'),
-    awsAccessKeyId: requireEnv('AWS_SES_ACCESS_KEY_ID'),
-    awsSecretAccessKey: requireEnv('AWS_SES_SECRET_ACCESS_KEY'),
-    awsSessionToken: getEnv('AWS_SES_SESSION_TOKEN'),
+    config: {
+      appName: optionalEnv('CLUB_INVITE_APP_NAME', 'Footy Trainer'),
+      authRedirectUrl: requiredEnv.authRedirectUrl!,
+      fromEmail: requiredEnv.fromEmail!,
+      fromName: optionalEnv('CLUB_INVITE_FROM_NAME', 'Footy Trainer'),
+      landingUrl: requiredEnv.landingUrl!,
+      awsRegion: requiredEnv.awsRegion!,
+      awsAccessKeyId: requiredEnv.awsAccessKeyId!,
+      awsSecretAccessKey: requiredEnv.awsSecretAccessKey!,
+      awsSessionToken: getEnv('AWS_SES_SESSION_TOKEN'),
+    },
+    missing: [],
   };
 }
 
@@ -445,33 +483,77 @@ export async function deliverClubInviteEmail(
     config?: ClubInviteEmailConfig;
   }
   ): Promise<ClubInviteEmailDeliveryResult> {
-  const config = options?.config ?? getClubInviteEmailConfigFromEnv();
+  const configResolution = options?.config
+    ? { config: options.config, missing: [] }
+    : getClubInviteEmailConfigFromEnv();
+  const config = configResolution.config;
+
+  if (!config) {
+    const warning = `Invite email skipped: missing ${configResolution.missing.join(', ')}.`;
+    console.warn('[club-invite-delivery] skipped', {
+      inviteId: invite.id,
+      missing: configResolution.missing,
+    });
+    return {
+      status: 'skipped',
+      authLinkType: null,
+      clubName: options?.clubName?.trim() ?? null,
+      landingUrl: null,
+      provider: 'none',
+      warning,
+    };
+  }
+
   let context: ClubInviteDeliveryContext;
   try {
     context = await resolveClubInviteDeliveryContext(client, invite, config, options?.clubName);
   } catch (error) {
-    if (error instanceof AppError) {
-      throw new AppError(error.code, `Invite auth-link generation failed: ${error.message}`, error.status);
-    }
-
-    throw new AppError('INTERNAL_ERROR', 'Invite auth-link generation failed.', 500);
+    const warning =
+      error instanceof AppError
+        ? `Invite auth-link generation failed: ${error.message}`
+        : 'Invite auth-link generation failed.';
+    console.error('[club-invite-delivery] auth-link failed', {
+      inviteId: invite.id,
+      error,
+    });
+    return {
+      status: 'failed',
+      authLinkType: null,
+      clubName: options?.clubName?.trim() ?? null,
+      landingUrl: buildClubInviteLandingUrl(config.landingUrl, invite),
+      provider: 'aws_ses',
+      warning,
+    };
   }
 
   const content = buildClubInviteEmailContent(invite, context, config);
   try {
     await sendWithAwsSes(content, invite, config);
   } catch (error) {
-    if (error instanceof AppError) {
-      throw new AppError(error.code, `Invite email send failed: ${error.message}`, error.status);
-    }
-
-    throw new AppError('INTERNAL_ERROR', 'Invite email send failed.', 500);
+    const warning =
+      error instanceof AppError
+        ? `Invite email send failed: ${error.message}`
+        : 'Invite email send failed.';
+    console.error('[club-invite-delivery] send failed', {
+      inviteId: invite.id,
+      error,
+    });
+    return {
+      status: 'failed',
+      authLinkType: context.authLinkType,
+      clubName: context.clubName,
+      landingUrl: context.landingUrl,
+      provider: 'aws_ses',
+      warning,
+    };
   }
 
   return {
+    status: 'sent',
     authLinkType: context.authLinkType,
     clubName: context.clubName,
     landingUrl: context.landingUrl,
     provider: 'aws_ses',
+    warning: null,
   };
 }

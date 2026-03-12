@@ -13,8 +13,11 @@ Deno.serve(async (req: Request) => {
     const { serviceClient, userId } = await requireAuthContext(req);
     const body = await readJsonBody(req);
     const data = await createClubInviteAction(serviceClient, userId, body);
-    await deliverClubInviteEmail(serviceClient, data.invite);
-    return successResponse(data);
+    const mailDelivery = await deliverClubInviteEmail(serviceClient, data.invite);
+    return successResponse({
+      ...data,
+      mailDelivery,
+    });
   } catch (error) {
     return responseFromError(error);
   }

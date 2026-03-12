@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Database } from './types';
-import type { Session } from '@supabase/supabase-js';
-import { createClient } from '@supabase/supabase-js'
+import type { Session, User } from '@supabase/supabase-js';
+import { AuthError, createClient } from '@supabase/supabase-js'
 import { trackStartupTelemetry } from '@/utils/startupTelemetry';
 
 const SUPABASE_URL = "https://lhpczofddvwcyrgotzha.supabase.co";
@@ -75,6 +75,57 @@ supabase.auth.onAuthStateChange((event, session) => {
 // Wrap auth methods to handle invalid refresh token errors
 const originalGetSession = supabase.auth.getSession.bind(supabase.auth);
 const originalGetUser = supabase.auth.getUser.bind(supabase.auth);
+type GetSessionResult = Awaited<ReturnType<typeof originalGetSession>>;
+type GetUserResult = Awaited<ReturnType<typeof originalGetUser>>;
+
+const getSessionSuccess = (session: Session): GetSessionResult => ({
+  data: { session },
+  error: null,
+});
+
+const getSessionNull = (): GetSessionResult => ({
+  data: { session: null },
+  error: null,
+});
+
+const getSessionError = (error: AuthError): GetSessionResult => ({
+  data: { session: null },
+  error,
+});
+
+const normalizeGetSessionResult = (result: GetSessionResult): GetSessionResult => {
+  if (result.error) {
+    return getSessionError(result.error);
+  }
+
+  if (result.data.session) {
+    return getSessionSuccess(result.data.session);
+  }
+
+  return getSessionNull();
+};
+
+const getUserSuccess = (user: User): GetUserResult => ({
+  data: { user },
+  error: null,
+});
+
+const getUserError = (error: AuthError): GetUserResult => ({
+  data: { user: null },
+  error,
+});
+
+const normalizeGetUserResult = (result: GetUserResult): GetUserResult => {
+  if (result.error) {
+    return getUserError(result.error);
+  }
+
+  if (result.data.user) {
+    return getUserSuccess(result.data.user);
+  }
+
+  return getUserError(new AuthError('User not found', 404, 'user_not_found'));
+};
 
 const withAuthRequestTimeout = async <T,>(
   promise: Promise<T>,
@@ -102,7 +153,7 @@ const withAuthRequestTimeout = async <T,>(
 const isAuthRequestTimeoutError = (error: unknown): error is AuthRequestTimeoutError =>
   error instanceof AuthRequestTimeoutError;
 
-supabase.auth.getSession = async () => {
+supabase.auth.getSession = async (): Promise<GetSessionResult> => {
   const inFlightAgeMs = Math.max(0, Date.now() - inFlightGetSessionStartedAt);
   if (inFlightGetSession && inFlightAgeMs < AUTH_DEDUPE_WINDOW_MS) {
     void trackStartupTelemetry(supabase, {
@@ -145,7 +196,7 @@ supabase.auth.getSession = async () => {
           hasUser: Boolean(result.data.session?.user),
         },
       });
-      return result;
+      return normalizeGetSessionResult(result);
     } catch (error: any) {
       if (isAuthRequestTimeoutError(error)) {
         void trackStartupTelemetry(supabase, {
@@ -157,7 +208,7 @@ supabase.auth.getSession = async () => {
             reusedLatestSession: Boolean(latestSession),
           },
         });
-        return { data: { session: latestSession }, error: null };
+        return latestSession ? getSessionSuccess(latestSession) : getSessionNull();
       }
       if (isInvalidRefreshTokenError(error)) {
         void trackStartupTelemetry(supabase, {
@@ -168,7 +219,7 @@ supabase.auth.getSession = async () => {
           },
         });
         await handleInvalidRefreshToken();
-        return { data: { session: null }, error: null };
+        return getSessionNull();
       }
       void trackStartupTelemetry(supabase, {
         eventName: 'auth_get_session_completed',
@@ -193,7 +244,7 @@ supabase.auth.getSession = async () => {
   }
 };
 
-supabase.auth.getUser = async (jwt?: string) => {
+supabase.auth.getUser = async (jwt?: string): Promise<GetUserResult> => {
   const inFlightAgeMs = Math.max(0, Date.now() - inFlightGetUserStartedAt);
   if (
     jwt === undefined &&
@@ -215,14 +266,16 @@ supabase.auth.getUser = async (jwt?: string) => {
         AUTH_GET_USER_TIMEOUT_MS,
         'supabase.auth.getUser',
       );
-      return result;
+      return normalizeGetUserResult(result);
     } catch (error: unknown) {
       if (jwt === undefined && isAuthRequestTimeoutError(error)) {
-        return { data: { user: latestSession?.user ?? null }, error: null };
+        return latestSession?.user
+          ? getUserSuccess(latestSession.user)
+          : getUserError(new AuthError(error.message, 408, 'auth_get_user_timeout'));
       }
       if (jwt === undefined && isInvalidRefreshTokenError(error)) {
         await handleInvalidRefreshToken();
-        return { data: { user: null }, error: null };
+        return getUserError(new AuthError('Invalid Refresh Token', 401, 'invalid_refresh_token'));
       }
       throw error;
     }

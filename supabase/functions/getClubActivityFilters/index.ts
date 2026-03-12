@@ -8,7 +8,7 @@ import {
   optionsResponse,
   readJsonBody,
   responseFromError,
-  successCompatResponse,
+  successResponse,
 } from '../_shared/http.ts';
 
 Deno.serve(async (req: Request) => {
@@ -21,7 +21,7 @@ Deno.serve(async (req: Request) => {
     const input = parseClubActivityFiltersBody(body);
     const { serviceClient, userId } = await requireAuthContext(req);
     const data = await getClubActivityFiltersAction(serviceClient as any, userId, input);
-    return successCompatResponse(data);
+    return successResponse(data);
   } catch (error) {
     return responseFromError(error);
   }

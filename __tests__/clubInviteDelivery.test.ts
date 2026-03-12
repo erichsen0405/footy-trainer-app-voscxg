@@ -155,10 +155,12 @@ describe('club invite delivery helpers', () => {
         config,
       })
     ).resolves.toEqual({
+      status: 'sent',
       authLinkType: 'invite',
       clubName: 'FC Copenhagen',
       landingUrl: 'https://admin.example.com/invite?token=secure-token',
       provider: 'aws_ses',
+      warning: null,
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -174,5 +176,21 @@ describe('club invite delivery helpers', () => {
         }),
       })
     );
+  });
+
+  it('skips delivery when required env is missing', async () => {
+    const client = createClient(null);
+
+    await expect(deliverClubInviteEmail(client, invite)).resolves.toEqual({
+      status: 'skipped',
+      authLinkType: null,
+      clubName: null,
+      landingUrl: null,
+      provider: 'none',
+      warning:
+        'Invite email skipped: missing CLUB_INVITE_AUTH_REDIRECT_URL, CLUB_INVITE_FROM_EMAIL, CLUB_INVITE_LANDING_URL, AWS_SES_REGION, AWS_SES_ACCESS_KEY_ID, AWS_SES_SECRET_ACCESS_KEY.',
+    });
+
+    expect(client.auth.admin.generateLink).not.toHaveBeenCalled();
   });
 });

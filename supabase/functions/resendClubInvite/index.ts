@@ -60,13 +60,11 @@ Deno.serve(async (req: Request) => {
       throw normalizeStageError('rpc', error);
     }
 
-    try {
-      await deliverClubInviteEmail(serviceClient, data);
-    } catch (error) {
-      throw normalizeStageError('mail', error);
-    }
-
-    return successResponse(data);
+    const mailDelivery = await deliverClubInviteEmail(serviceClient, data);
+    return successResponse({
+      ...data,
+      mailDelivery,
+    });
   } catch (error) {
     return responseFromError(error);
   }

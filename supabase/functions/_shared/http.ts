@@ -43,20 +43,6 @@ export function successResponse(data: unknown, status = 200): Response {
   });
 }
 
-export function successCompatResponse(data: unknown, status = 200): Response {
-  if (data && typeof data === 'object' && !Array.isArray(data)) {
-    return new Response(JSON.stringify({ success: true, data, ...(data as Record<string, unknown>) }), {
-      status,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json',
-      },
-    });
-  }
-
-  return successResponse(data, status);
-}
-
 export function errorResponse(code: ErrorCode, message: string, status = 400): Response {
   return new Response(
     JSON.stringify({
