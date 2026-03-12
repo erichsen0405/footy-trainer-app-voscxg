@@ -428,7 +428,7 @@ tags:
     timeout: 15000
 - assertVisible: 'Seneste feedback'
 - extendedWaitUntil:
-    visible: 'Score 5/10'
+    visible: 'Score 5/5'
     timeout: 15000
 - extendedWaitUntil:
     visible: '${MAESTRO_FEEDBACK_NOTE}'

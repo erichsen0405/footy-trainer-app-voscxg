@@ -8,6 +8,14 @@ import { DropdownSelect } from './ui/DropdownSelect';
 import { format } from 'date-fns';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useFocusEffect } from '@react-navigation/native';
+import {
+  MID_SCORE_THRESHOLD,
+  PERFECT_SCORE,
+  SCORE_AXIS_VALUES,
+  SCORE_MAX,
+  SUCCESS_SCORE_THRESHOLD,
+  formatScoreOutOfFive,
+} from '@/utils/scoreScale';
 
 type Props = {
   categories: ActivityCategory[];
@@ -107,8 +115,8 @@ export function ProgressionSection({ categories }: Props) {
 
   const resolveValueColor = useCallback(
     (value: number) => {
-      if (value >= 8) return palette.success;
-      if (value >= 5) return palette.warning;
+      if (value >= SUCCESS_SCORE_THRESHOLD) return palette.success;
+      if (value >= MID_SCORE_THRESHOLD) return palette.warning;
       return palette.error;
     },
     [palette]
@@ -251,7 +259,7 @@ export function ProgressionSection({ categories }: Props) {
     return matched;
   }, [rawEntries, selectedPoint]);
 
-  const yAxisLabels = [0, 2, 4, 6, 8, 10];
+  const yAxisLabels = [...SCORE_AXIS_VALUES];
   const isMultiSeries = trendSeries.length > 1;
 
   const focusTierBuckets = useMemo(() => {
@@ -263,7 +271,8 @@ export function ProgressionSection({ categories }: Props) {
       begynder: [] as TierTaskItem[],
     };
 
-    const isEliteStreak = (scores: number[]) => scores.length >= 5 && scores.every(score => score >= 9);
+    const isEliteStreak = (scores: number[]) =>
+      scores.length >= 5 && scores.every(score => score >= PERFECT_SCORE);
 
     const byTemplate = new Map<
       string,
@@ -332,7 +341,7 @@ export function ProgressionSection({ categories }: Props) {
         return;
       }
 
-      if (typeof latestScore === 'number' && latestScore >= 6) {
+      if (typeof latestScore === 'number' && latestScore >= MID_SCORE_THRESHOLD) {
         buckets.oevet.push(taskItem);
         assigned.add(templateId);
         return;
@@ -354,11 +363,11 @@ export function ProgressionSection({ categories }: Props) {
   const handleTierInfo = useCallback(
     (tier: 'elite' | 'oevet' | 'begynder') => {
       const messages: Record<typeof tier, string> = {
-        elite: 'Elite kræver, at dine sidste 5 scores er 9–10/10 (min. fem gange i træk).',
+        elite: 'Elite kræver, at dine sidste 5 scores er 5/5 (min. fem gange i træk).',
         oevet:
-          'Øvet viser opgaver hvor din seneste score er 6–8/10, eller 9–10/10 endnu ikke fem gange i træk.',
+          'Øvet viser opgaver hvor din seneste score er 3–4/5, eller 5/5 endnu ikke fem gange i træk.',
         begynder:
-          'Begynder viser opgaver hvor din seneste score er mellem 1-5/10.',
+          'Begynder viser opgaver hvor din seneste score er mellem 1–2/5.',
       };
       Alert.alert('Krav for niveau', messages[tier]);
     },
@@ -459,7 +468,9 @@ export function ProgressionSection({ categories }: Props) {
 
                 {/* Y-axis */}
                 {yAxisLabels.map(label => {
-                  const y = (1 - label / 10) * (chartHeight - chartPadding.top - chartPadding.bottom) + chartPadding.top;
+                  const y =
+                    (1 - label / SCORE_MAX) * (chartHeight - chartPadding.top - chartPadding.bottom) +
+                    chartPadding.top;
                   return (
                     <SvgText
                       key={`y-label-${label}`}
@@ -468,6 +479,7 @@ export function ProgressionSection({ categories }: Props) {
                       fill={palette.textSecondary}
                       fontSize="12"
                       textAnchor="end"
+                      testID={`progression.chartYAxis.${label}`}
                     >
                       {label}
                     </SvgText>
@@ -513,8 +525,8 @@ export function ProgressionSection({ categories }: Props) {
                   const startX = groupCenter - totalBarsWidth / 2;
 
                   return pointsForDate.map((barPoint, barIndex) => {
-                    const clamped = Math.max(0, Math.min(10, barPoint.value));
-                    const barHeight = (clamped / 10) * chartInnerHeight;
+                    const clamped = Math.max(0, Math.min(SCORE_MAX, barPoint.value));
+                    const barHeight = (clamped / SCORE_MAX) * chartInnerHeight;
                     const x = startX + barIndex * (barWidth + barGap);
                     const y = chartPadding.top + (chartInnerHeight - barHeight);
                     const fillColor = isMultiSeries
@@ -705,7 +717,7 @@ export function ProgressionSection({ categories }: Props) {
                         { backgroundColor: resolveValueColor(entry.rating) },
                       ]}
                     >
-                      <Text style={styles.historyScoreText}>{Math.round(entry.rating)}/10</Text>
+                      <Text style={styles.historyScoreText}>{formatScoreOutOfFive(entry.rating)}</Text>
                     </View>
                   </View>
                 ))}

@@ -20,6 +20,7 @@ import { AssignExerciseModal } from '@/components/AssignExerciseModal';
 import { useUserRole } from '@/hooks/useUserRole';
 import { supabase } from '@/integrations/supabase/client';
 import { resolveVideoUrl } from '@/utils/videoKey';
+import { formatScoreOutOfFive, normalizeFivePointScore } from '@/utils/scoreScale';
 
 type Exercise = {
   id: string;
@@ -46,7 +47,10 @@ const clampDifficulty = (value: any): number => {
 };
 
 const formatMetaLine = (lastScore?: number | null, executionCount?: number | null) => {
-  const scorePart = typeof lastScore === 'number' ? `Senest: ${lastScore}/10` : 'Senest: –/10';
+  const scorePart =
+    normalizeFivePointScore(lastScore) !== null
+      ? `Senest: ${formatScoreOutOfFive(lastScore)}`
+      : 'Senest: –/5';
   const countPart = typeof executionCount === 'number' && executionCount > 0 ? `Udført: ${executionCount}x` : 'Udført: –x';
   return `${scorePart}  |  ${countPart}`;
 };

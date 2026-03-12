@@ -2,7 +2,6 @@ import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from '
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -16,10 +15,12 @@ import {
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '@/styles/commonStyles';
-
-const SCORE_VALUES = Array.from({ length: 10 }, (_, idx) => idx + 1);
-const SCORE_WHEEL_ITEM_HEIGHT = 42;
-const SCORE_WHEEL_VISIBLE_ITEMS = 5;
+import {
+  FEEDBACK_SCORE_OPTIONS,
+  findScoreOptionLabel,
+  normalizeFivePointScore,
+  type ScoreOption,
+} from '@/utils/scoreScale';
 
 export interface TaskScoreNoteModalPayload {
   score: number | null;
@@ -49,6 +50,8 @@ interface TaskScoreNoteModalProps {
   onClear?: () => void | Promise<void>;
   onClose: () => void;
   showLabels?: boolean; // default true
+  scoreOptions?: ScoreOption[];
+  scorePlaceholder?: string;
   infoModalTitle?: string;
   infoModalLines?: string[];
   infoButtonAccessibilityLabel?: string;
@@ -75,33 +78,37 @@ function TaskScoreNoteModalComponent({
   onSave,
   onClear,
   onClose,
+  scoreOptions = FEEDBACK_SCORE_OPTIONS,
+  scorePlaceholder = 'Vælg score',
   infoModalTitle,
   infoModalLines,
   infoButtonAccessibilityLabel = 'Vis info',
 }: TaskScoreNoteModalProps) {
-  const [score, setScore] = useState<number | null>(initialScore ?? null);
+  const normalizedInitialScore = useMemo(
+    () => (enableScore ? normalizeFivePointScore(initialScore) : null),
+    [enableScore, initialScore],
+  );
+  const [score, setScore] = useState<number | null>(normalizedInitialScore);
   const [note, setNote] = useState(initialNote ?? '');
   const [isScoreDropdownOpen, setIsScoreDropdownOpen] = useState(false);
   const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
-  const scoreWheelRef = useRef<FlatList<number> | null>(null);
   const hasMountedRef = useRef(false);
 
   useEffect(() => {
     if (visible) {
-      setScore(initialScore ?? null);
+      setScore(normalizedInitialScore);
       setNote(initialNote ?? '');
       setIsScoreDropdownOpen(false);
       setIsInfoModalOpen(false);
       hasMountedRef.current = true;
     }
-  }, [initialNote, initialScore, visible]);
+  }, [initialNote, normalizedInitialScore, visible]);
 
   const disableInteractions = isSaving || readonly;
   const hasInfoContent = typeof infoModalTitle === 'string' && infoModalTitle.trim().length > 0 && Array.isArray(infoModalLines) && infoModalLines.length > 0;
   const hasClearAction = typeof onClear === 'function';
   const normalizedInitialNote = useMemo(() => (initialNote ?? '').trim(), [initialNote]);
   const normalizedNote = note.trim();
-  const normalizedInitialScore = enableScore ? (initialScore ?? null) : null;
   const scoreWasSetInitially = enableScore && normalizedInitialScore !== null;
   const isInitiallyCompleted =
     (enableScore && normalizedInitialScore !== null) ||
@@ -121,39 +128,18 @@ function TaskScoreNoteModalComponent({
   const shouldShowClear = !shouldShowUpdate && canMarkNotDone && !hasChanges;
   const scoreRequired = enableScore && score === null && !shouldShowClear;
 
-  const scrollWheelToValue = useCallback((value: number, animated: boolean) => {
-    const valueIndex = SCORE_VALUES.indexOf(value);
-    if (valueIndex < 0) return;
-    scoreWheelRef.current?.scrollToIndex?.({
-      index: valueIndex,
-      animated,
-      viewPosition: 0.5,
-    });
-  }, []);
-
   const handleSelectScore = useCallback(
-    (value: number, centerWheel: boolean = false) => {
+    (value: number) => {
       if (disableInteractions || !enableScore) return;
       setScore(value);
-      if (centerWheel) {
-        scrollWheelToValue(value, true);
-      }
     },
-    [disableInteractions, enableScore, scrollWheelToValue]
+    [disableInteractions, enableScore]
   );
 
   const toggleScoreDropdown = useCallback(() => {
     if (disableInteractions || !enableScore) return;
-    setIsScoreDropdownOpen((prev) => {
-      const next = !prev;
-      if (next) {
-        setTimeout(() => {
-          scrollWheelToValue(typeof score === 'number' ? score : 5, false);
-        }, 0);
-      }
-      return next;
-    });
-  }, [disableInteractions, enableScore, score, scrollWheelToValue]);
+    setIsScoreDropdownOpen((prev) => !prev);
+  }, [disableInteractions, enableScore]);
 
   const handleClear = useCallback(() => {
     if (disableInteractions || !hasClearAction) return;
@@ -234,7 +220,8 @@ function TaskScoreNoteModalComponent({
 
   const renderScoreDropdown = () => {
     if (!enableScore) return null;
-    const selectedLabel = typeof score === 'number' ? String(score) : 'Vælg score';
+    const selectedLabel =
+      findScoreOptionLabel(scoreOptions, score) ?? scorePlaceholder;
 
     return (
       <View style={styles.scoreDropdownWrap}>
@@ -246,58 +233,39 @@ function TaskScoreNoteModalComponent({
           onPress={toggleScoreDropdown}
           disabled={disableInteractions}
         >
-          <Text style={styles.scoreDropdownValue}>{selectedLabel}</Text>
+          <Text style={styles.scoreDropdownValue} testID="feedback.scoreInput.value">
+            {selectedLabel}
+          </Text>
           <Text style={styles.scoreDropdownChevron}>{isScoreDropdownOpen ? '▲' : '▼'}</Text>
         </Pressable>
 
         {isScoreDropdownOpen ? (
           <View style={styles.scoreDropdownList} testID="feedback.scoreDropdown.list">
-            <View pointerEvents="none" style={styles.scoreWheelSelectionBand} />
-            <FlatList
-              ref={scoreWheelRef}
-              data={SCORE_VALUES}
-              keyExtractor={(item) => String(item)}
-              showsVerticalScrollIndicator={false}
-              snapToInterval={SCORE_WHEEL_ITEM_HEIGHT}
-              decelerationRate="fast"
-              getItemLayout={(_, index) => ({
-                length: SCORE_WHEEL_ITEM_HEIGHT,
-                offset: SCORE_WHEEL_ITEM_HEIGHT * index,
-                index,
-              })}
-              contentContainerStyle={styles.scoreWheelContent}
-              style={styles.scoreWheel}
-              renderItem={({ item: value }) => {
-                const isSelected = score === value;
-                return (
-                  <Pressable
-                    style={styles.scoreOption}
-                    accessibilityRole="button"
-                    testID={`feedback.scoreOption.${value}`}
-                    accessibilityLabel={`Score ${value}`}
-                    onPress={() => handleSelectScore(value, true)}
-                    disabled={disableInteractions}
+            {scoreOptions.map((option, index) => {
+              const isSelected = score === option.value;
+              return (
+                <Pressable
+                  key={option.value}
+                  style={[
+                    styles.scoreOption,
+                    index > 0 && styles.scoreOptionWithBorder,
+                    isSelected && styles.scoreOptionSelected,
+                  ]}
+                  accessibilityRole="button"
+                  testID={`feedback.scoreOption.${option.value}`}
+                  accessibilityLabel={option.label}
+                  onPress={() => handleSelectScore(option.value)}
+                  disabled={disableInteractions}
+                >
+                  <Text
+                    style={[styles.scoreOptionText, isSelected && styles.scoreOptionTextSelected]}
+                    testID={`feedback.scoreOptionLabel.${option.value}`}
                   >
-                    <Text style={[styles.scoreOptionText, isSelected && styles.scoreOptionTextSelected]}>
-                      {value}
-                    </Text>
-                  </Pressable>
-                );
-              }}
-              onMomentumScrollEnd={(event) => {
-                const offsetY = event.nativeEvent.contentOffset.y;
-                const index = Math.round(offsetY / SCORE_WHEEL_ITEM_HEIGHT);
-                const clampedIndex = Math.max(0, Math.min(SCORE_VALUES.length - 1, index));
-                const picked = SCORE_VALUES[clampedIndex];
-                handleSelectScore(picked);
-              }}
-              onScrollToIndexFailed={({ index }) => {
-                scoreWheelRef.current?.scrollToOffset?.({
-                  offset: Math.max(0, index) * SCORE_WHEEL_ITEM_HEIGHT,
-                  animated: false,
-                });
-              }}
-            />
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
             <Pressable
               style={[styles.scoreDoneButton, disableInteractions && styles.scoreDoneButtonDisabled]}
               testID="feedback.scoreDoneButton"
@@ -593,35 +561,24 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: '#FFFFFF',
-    position: 'relative',
-  },
-  scoreWheel: {
-    height: SCORE_WHEEL_ITEM_HEIGHT * SCORE_WHEEL_VISIBLE_ITEMS,
-  },
-  scoreWheelContent: {
-    paddingVertical: SCORE_WHEEL_ITEM_HEIGHT * 2,
-  },
-  scoreWheelSelectionBand: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: SCORE_WHEEL_ITEM_HEIGHT * 2,
-    height: SCORE_WHEEL_ITEM_HEIGHT,
-    backgroundColor: 'rgba(11, 123, 90, 0.08)',
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: 'rgba(11, 123, 90, 0.2)',
-    zIndex: 1,
   },
   scoreOption: {
-    height: SCORE_WHEEL_ITEM_HEIGHT,
-    paddingHorizontal: 14,
+    minHeight: 56,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     justifyContent: 'center',
-    alignItems: 'center',
+  },
+  scoreOptionWithBorder: {
+    borderTopWidth: 1,
+    borderColor: 'rgba(11, 15, 25, 0.08)',
+  },
+  scoreOptionSelected: {
+    backgroundColor: 'rgba(11, 123, 90, 0.08)',
   },
   scoreOptionText: {
-    fontSize: 16,
+    fontSize: 15,
     color: '#20283E',
+    lineHeight: 20,
   },
   scoreOptionTextSelected: {
     fontWeight: '700',

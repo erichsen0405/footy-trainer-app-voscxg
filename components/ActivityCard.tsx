@@ -10,6 +10,7 @@ import TaskDetailsModal from '@/components/TaskDetailsModal';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { resolveActivityIntensityEnabled } from '@/utils/activityIntensity';
 import { getTaskDurationMinutes } from '@/utils/activityDuration';
+import { formatScoreOutOfFive, normalizeFivePointScore } from '@/utils/scoreScale';
 
 interface ActivityCardProps {
   activity: any;
@@ -622,10 +623,10 @@ export default function ActivityCard({
 
   const intensityValue = useMemo(() => {
     const raw = activity?.intensity ?? activity?.activity_intensity;
-    if (typeof raw === 'number') return raw;
+    if (typeof raw === 'number') return normalizeFivePointScore(raw);
     if (typeof raw === 'string') {
       const parsed = parseFloat(raw);
-      return Number.isFinite(parsed) ? parsed : null;
+      return Number.isFinite(parsed) ? normalizeFivePointScore(parsed) : null;
     }
     return null;
   }, [activity]);
@@ -634,7 +635,7 @@ export default function ActivityCard({
   const hasIntensityValue = typeof intensityValue === 'number';
   const showIntensityRow = intensityEnabled || hasIntensityValue;
   const intensityMissing = !hasIntensityValue;
-  const intensityBadgeLabel = intensityMissing ? '–/10' : `${intensityValue}/10`;
+  const intensityBadgeLabel = intensityMissing ? '–/5' : formatScoreOutOfFive(intensityValue);
 
   // Card-level reminder badge (min reminder across tasks or activity-level fields)
   const reminderMinutesValue = useMemo(() => {

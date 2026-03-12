@@ -48,7 +48,7 @@ export const fixtureFeedbackSaved = {
   task_template_id: 'template-001',
   task_instance_id: 'instance-001',
   activity_id: fixtureActivityWithTasks.id,
-  rating: 8,
+  rating: 4,
   note: 'Great intensity and focus',
   created_at: '2026-02-01T10:00:00.000Z',
   updated_at: '2026-02-01T10:00:00.000Z',

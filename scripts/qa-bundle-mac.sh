@@ -92,8 +92,6 @@ cmd_file="$out_dir/qa-commands.txt"
 full_dir="$out_dir/full_worktree"
 manifest_file="$full_dir/manifest.txt"
 
-mkdir -p "$full_dir"
-
 tmp_unstaged="$(mktemp)"
 tmp_unstaged_deletions="$(mktemp)"
 tmp_untracked="$(mktemp)"
@@ -143,6 +141,35 @@ git diff --name-only --diff-filter=D > "$tmp_unstaged_deletions"
 git ls-files --others --exclude-standard > "$tmp_untracked"
 git diff --name-only --cached > "$tmp_staged"
 
+echo "=== QA commands output ===" > "$cmd_file"
+qa_overall_exit=0
+
+if [[ ${#QA_COMMANDS[@]} -gt 0 ]]; then
+  for cmd in "${QA_COMMANDS[@]}"; do
+    {
+      echo
+      echo ">>> $cmd"
+    } >> "$cmd_file"
+
+    set +e
+    cmd_output="$(bash -lc "$cmd" 2>&1)"
+    cmd_exit=$?
+    set -e
+
+    if [[ -n "$cmd_output" ]]; then
+      printf "%s\n" "$cmd_output" >> "$cmd_file"
+    fi
+    echo "exitCode: $cmd_exit" >> "$cmd_file"
+    if [[ $cmd_exit -ne 0 && $qa_overall_exit -eq 0 ]]; then
+      qa_overall_exit=$cmd_exit
+    fi
+  done
+else
+  echo "NOTE: QA commands were not run (disabled or empty)." >> "$cmd_file"
+fi
+
+mkdir -p "$full_dir"
+
 cat "$tmp_unstaged" "$tmp_untracked" | sed '/^[[:space:]]*$/d' | sort -u > "$tmp_all_candidates"
 cat "$tmp_staged" | sed '/^[[:space:]]*$/d' | sort -u > "$tmp_staged_unique"
 
@@ -176,33 +203,6 @@ staged_only_count="$(wc -l < "$tmp_staged_unique" | tr -d ' ')"
   echo "skipped (missing):"
   cat "$tmp_skipped"
 } > "$manifest_file"
-
-echo "=== QA commands output ===" > "$cmd_file"
-qa_overall_exit=0
-
-if [[ ${#QA_COMMANDS[@]} -gt 0 ]]; then
-  for cmd in "${QA_COMMANDS[@]}"; do
-    {
-      echo
-      echo ">>> $cmd"
-    } >> "$cmd_file"
-
-    set +e
-    cmd_output="$(bash -lc "$cmd" 2>&1)"
-    cmd_exit=$?
-    set -e
-
-    if [[ -n "$cmd_output" ]]; then
-      printf "%s\n" "$cmd_output" >> "$cmd_file"
-    fi
-    echo "exitCode: $cmd_exit" >> "$cmd_file"
-    if [[ $cmd_exit -ne 0 && $qa_overall_exit -eq 0 ]]; then
-      qa_overall_exit=$cmd_exit
-    fi
-  done
-else
-  echo "NOTE: QA commands were not run (disabled or empty)." >> "$cmd_file"
-fi
 
 (cd "$out_dir" && zip -qr "$zip_path" .)
 rm -rf "$out_dir"
