@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { resolveExternalCategoryIntensityTargetIds } from '@/utils/activityIntensity';
+import { normalizeFivePointScore } from '@/utils/scoreScale';
 
 export interface CreateActivityData {
   title: string;
@@ -79,11 +80,7 @@ const ensureEndTimeAfterStart = (startTime?: string | null, endTime?: string | n
 };
 
 const normalizeIntensity = (value?: number | null): number | null => {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return null;
-  }
-  const rounded = Math.round(value);
-  return rounded >= 1 && rounded <= 10 ? rounded : null;
+  return normalizeFivePointScore(value);
 };
 
 const normalizeIntensityNote = (value?: string | null): string | null => {

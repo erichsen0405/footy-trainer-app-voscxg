@@ -47,6 +47,21 @@ describe('TaskScoreNoteModal', () => {
     expect(getByTestId('feedback.noteInput')).toBeTruthy();
   });
 
+  it('shows exactly five feedback labels in the score dropdown', () => {
+    const { getAllByTestId, getByTestId, getByText } = render(
+      <TaskScoreNoteModal visible title="Feedback" initialScore={null} onSave={jest.fn()} onClose={jest.fn()} />
+    );
+
+    fireEvent.press(getByTestId('feedback.scoreInput'));
+
+    expect(getAllByTestId(/feedback\.scoreOption\./)).toHaveLength(5);
+    expect(getByText('Meget svært i dag')).toBeTruthy();
+    expect(getByText('Lidt svært i dag')).toBeTruthy();
+    expect(getByText('Okay i dag')).toBeTruthy();
+    expect(getByText('Godt i dag')).toBeTruthy();
+    expect(getByText('Rigtig godt i dag')).toBeTruthy();
+  });
+
   it('sends expected payload on save after input changes', () => {
     const onSave = jest.fn();
     const { getByTestId } = render(
@@ -54,13 +69,13 @@ describe('TaskScoreNoteModal', () => {
     );
 
     fireEvent.press(getByTestId('feedback.scoreInput'));
-    fireEvent.press(getByTestId('feedback.scoreOption.8'));
+    fireEvent.press(getByTestId('feedback.scoreOption.4'));
     fireEvent.press(getByTestId('feedback.scoreDoneButton'));
     fireEvent.changeText(getByTestId('feedback.noteInput'), '  Solid session  ');
     fireEvent.press(getByTestId('feedback.saveButton'));
 
     expect(onSave).toHaveBeenCalledWith({
-      score: 8,
+      score: 4,
       note: 'Solid session',
     });
   });
@@ -73,13 +88,13 @@ describe('TaskScoreNoteModal', () => {
     fireEvent.press(getByTestId('feedback.scoreInput'));
     expect(getByTestId('feedback.scoreDropdown.list')).toBeTruthy();
 
-    fireEvent.press(getByTestId('feedback.scoreOption.7'));
+    fireEvent.press(getByTestId('feedback.scoreOption.4'));
     expect(getByTestId('feedback.scoreDropdown.list')).toBeTruthy();
 
     fireEvent.press(getByTestId('feedback.scoreDoneButton'));
 
     expect(queryByTestId('feedback.scoreDropdown.list')).toBeNull();
-    expect(getByTestId('feedback.selectedScore.7')).toBeTruthy();
+    expect(getByTestId('feedback.selectedScore.4')).toBeTruthy();
   });
 
   it('shows missing-score alert and does not call save when score is required', () => {
@@ -110,7 +125,7 @@ describe('TaskScoreNoteModal', () => {
         onClose={jest.fn()}
         onSave={jest.fn()}
         onClear={onClear}
-        initialScore={7}
+        initialScore={4}
         initialNote=""
       />
     );

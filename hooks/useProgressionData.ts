@@ -4,6 +4,11 @@ import { subDays, startOfDay, parseISO, format, differenceInCalendarDays, addDay
 import { supabase } from '@/integrations/supabase/client';
 import { ActivityCategory } from '@/types';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
+import {
+  SCORE_MAX,
+  SUCCESS_SCORE_THRESHOLD,
+  normalizeFivePointScore,
+} from '@/utils/scoreScale';
 
 const PROGRESSION_FETCH_MAX_ATTEMPTS = 2;
 const PROGRESSION_FETCH_RETRY_DELAY_MS = 1000;
@@ -155,7 +160,6 @@ interface HomeAlignedTaskCounter {
   completedIds: string[];
 }
 
-const SUCCESS_THRESHOLD = 7;
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type DedupeSource = {
@@ -326,12 +330,14 @@ export const computeProgressionSummary = ({
     const ratingsPrev = previousCompleted.map(entry => entry.rating ?? 0);
     const avgCurrent = ratings.length ? ratings.reduce((sum, v) => sum + v, 0) / ratings.length : 0;
     const avgPrevious = ratingsPrev.length ? ratingsPrev.reduce((sum, v) => sum + v, 0) / ratingsPrev.length : 0;
-    const scorePercent = Math.round((avgCurrent / 10) * 100);
-    const previousScorePercent = Math.round((avgPrevious / 10) * 100);
+    const scorePercent = Math.round((avgCurrent / SCORE_MAX) * 100);
+    const previousScorePercent = Math.round((avgPrevious / SCORE_MAX) * 100);
     const deltaPercentPoints = scorePercent - previousScorePercent;
     const avgChangePercent =
       avgPrevious > 0 ? ((avgCurrent - avgPrevious) / avgPrevious) * 100 : avgCurrent > 0 ? 100 : 0;
-    const successCount = completed.filter(entry => (entry.rating ?? 0) >= SUCCESS_THRESHOLD).length;
+    const successCount = completed.filter(
+      entry => (entry.rating ?? 0) >= SUCCESS_SCORE_THRESHOLD,
+    ).length;
     const uniqueDates = Array.from(
       new Set(completed.map(entry => entry.dateKey || entry.createdAt.slice(0, 10)))
     )
@@ -356,7 +362,7 @@ export const computeProgressionSummary = ({
     if (streak >= 3) badges.push('Streak 3+');
     if (delta > 0) badges.push('Momentum');
     if (completedCount >= Math.max(3, Math.round(days / 4))) badges.push('Consistency');
-    if (successCount >= 3) badges.push('8+ mastery');
+    if (successCount >= 3) badges.push('4+ mastery');
 
     return {
       completionRate,
@@ -389,12 +395,14 @@ export const computeProgressionSummary = ({
   const intensitiesPrev = previousRegistered.map(entry => entry.intensity ?? 0);
   const avgCurrent = intensities.length ? intensities.reduce((sum, v) => sum + v, 0) / intensities.length : 0;
   const avgPrevious = intensitiesPrev.length ? intensitiesPrev.reduce((sum, v) => sum + v, 0) / intensitiesPrev.length : 0;
-  const scorePercent = Math.round((avgCurrent / 10) * 100);
-  const previousScorePercent = Math.round((avgPrevious / 10) * 100);
+  const scorePercent = Math.round((avgCurrent / SCORE_MAX) * 100);
+  const previousScorePercent = Math.round((avgPrevious / SCORE_MAX) * 100);
   const deltaPercentPoints = scorePercent - previousScorePercent;
   const avgChangePercent =
     avgPrevious > 0 ? ((avgCurrent - avgPrevious) / avgPrevious) * 100 : avgCurrent > 0 ? 100 : 0;
-  const successCount = registered.filter(entry => (entry.intensity ?? 0) >= SUCCESS_THRESHOLD).length;
+  const successCount = registered.filter(
+    entry => (entry.intensity ?? 0) >= SUCCESS_SCORE_THRESHOLD,
+  ).length;
   const uniqueDates = Array.from(new Set(registered.map(entry => entry.dateKey || entry.createdAt.slice(0, 10))))
     .map(d => parseISO(`${d}T00:00:00`))
     .sort((a, b) => b.getTime() - a.getTime());
@@ -417,7 +425,7 @@ export const computeProgressionSummary = ({
   if (streak >= 3) badges.push('Streak 3+');
   if (delta > 0) badges.push('Momentum');
   if (registeredCount >= Math.max(3, Math.round(days / 4))) badges.push('Consistency');
-  if (successCount >= 3) badges.push('8+ mastery');
+  if (successCount >= 3) badges.push('4+ mastery');
 
   return {
     completionRate,
@@ -532,7 +540,7 @@ export function useProgressionData({
       taskTemplateName: templateName,
       taskTemplateDescription: templateDescription,
       taskTemplateScoreExplanation: templateScoreExplanation,
-      rating: typeof row.rating === 'number' ? row.rating : null,
+      rating: normalizeFivePointScore(row.rating),
       intensity: null,
       note: row.note ?? null,
       dateKey,
@@ -586,7 +594,7 @@ export function useProgressionData({
         taskTemplateName: null,
         activityTitle: row.title ?? null,
         rating: null,
-        intensity: typeof row.intensity === 'number' ? row.intensity : null,
+        intensity: normalizeFivePointScore(row.intensity),
         note: typeof row.intensity_note === 'string' ? row.intensity_note : null,
         dateKey,
         focusCategoryId: categoryId,
@@ -1210,7 +1218,7 @@ export function useProgressionData({
           taskTemplateName: null,
           activityTitle: row.local_title_override ?? event.title ?? null,
           rating: null,
-          intensity: typeof row.intensity === 'number' ? row.intensity : null,
+          intensity: normalizeFivePointScore(row.intensity),
           note: typeof row.intensity_note === 'string' ? row.intensity_note : null,
           dateKey,
           focusCategoryId: categoryId,

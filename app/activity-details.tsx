@@ -41,6 +41,11 @@ import { activityAssignmentsService } from '@/services/activityAssignments';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { filterVisibleTasksForActivity } from '@/utils/taskTemplateVisibility';
 import { resolveActivityIntensityEnabled } from '@/utils/activityIntensity';
+import {
+  PERFECT_SCORE,
+  formatScoreOutOfFive,
+  normalizeFivePointScore,
+} from '@/utils/scoreScale';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import TaskDetailsModal from '@/components/TaskDetailsModal';
@@ -302,10 +307,10 @@ const getTaskVideoUrl = (task: any): string | null => {
 };
 
 const parseIntensityValue = (raw: any): number | null => {
-  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  if (typeof raw === 'number' && Number.isFinite(raw)) return normalizeFivePointScore(raw);
   if (typeof raw === 'string') {
     const parsed = parseFloat(raw);
-    return Number.isFinite(parsed) ? parsed : null;
+    return Number.isFinite(parsed) ? normalizeFivePointScore(parsed) : null;
   }
   return null;
 };
@@ -1679,7 +1684,7 @@ function buildFeedbackSummary(
   const parts: string[] = [];
 
   if (config?.enableScore !== false) {
-    parts.push(typeof feedback.rating === 'number' ? `Score ${feedback.rating}/10` : 'Score mangler');
+    parts.push(typeof feedback.rating === 'number' ? `Score ${formatScoreOutOfFive(feedback.rating)}` : 'Score mangler');
   }
 
   return parts.length ? parts.join(' – ') : null;
@@ -2101,7 +2106,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         .filter((rating): rating is number => typeof rating === 'number');
       const latestPerfectScores = ratings.slice(0, FOCUS_CHANGE_PERFECT_SCORE_STREAK);
       if (latestPerfectScores.length < FOCUS_CHANGE_PERFECT_SCORE_STREAK) continue;
-      if (!latestPerfectScores.every((rating) => rating === 10)) continue;
+      if (!latestPerfectScores.every((rating) => rating === PERFECT_SCORE)) continue;
 
       items.push({
         templateId,
@@ -2123,8 +2128,8 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     const names = focusChangeRecommendations.map((item) => item.name).join(', ');
     const message =
       focusChangeRecommendations.length === 1
-        ? `Du har scoret 10 ${FOCUS_CHANGE_PERFECT_SCORE_STREAK} gange i træk på "${names}". Vi anbefaler, at du skifter fokuspunkt for at udvikle andre skills.`
-        : `Du har scoret 10 ${FOCUS_CHANGE_PERFECT_SCORE_STREAK} gange i træk på: ${names}. Vi anbefaler, at du skifter fokuspunkt for at udvikle andre skills.`;
+        ? `Du har scoret 5/5 ${FOCUS_CHANGE_PERFECT_SCORE_STREAK} gange i træk på "${names}". Vi anbefaler, at du skifter fokuspunkt for at udvikle andre skills.`
+        : `Du har scoret 5/5 ${FOCUS_CHANGE_PERFECT_SCORE_STREAK} gange i træk på: ${names}. Vi anbefaler, at du skifter fokuspunkt for at udvikle andre skills.`;
 
     Alert.alert('Overvej at skifte fokus', message);
   }, [activityId, focusChangeRecommendations]);
@@ -3508,7 +3513,9 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               <View style={styles.taskTitleRow}>
                 <Text style={[styles.taskTitle, { color: textColor }]}>Intensitet</Text>
                 {intensityTaskCompleted && (
-                  <Text style={[styles.intensityTaskValue, { color: textSecondaryColor }]}>{`${currentActivityIntensity}/10`}</Text>
+                  <Text style={[styles.intensityTaskValue, { color: textSecondaryColor }]}>
+                    {formatScoreOutOfFive(currentActivityIntensity)}
+                  </Text>
                 )}
               </View>
               {!intensityTaskCompleted && (
@@ -4016,7 +4023,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           <View style={[styles.v2CardWrap, { marginTop: 12 }]}>
             <DetailsCard
               label="Intensitet"
-              value={currentActivityIntensity !== null ? `${currentActivityIntensity}/10` : 'Ikke angivet'}
+              value={currentActivityIntensity !== null ? formatScoreOutOfFive(currentActivityIntensity) : 'Ikke angivet'}
               backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
               textColor={textColor}
               secondaryTextColor={textSecondaryColor}
@@ -4106,7 +4113,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                           {hasScore ? (
                             <View style={[styles.latestFeedbackScoreChip, { backgroundColor: infoBackgroundColor }]}>
                               <Text style={[styles.latestFeedbackScoreChipText, { color: textColor }]}>
-                                Score {item.rating}/10
+                                Score {formatScoreOutOfFive(item.rating)}
                               </Text>
                             </View>
                           ) : null}

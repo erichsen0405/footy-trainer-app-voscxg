@@ -163,7 +163,7 @@ describe('task-feedback-note screen', () => {
     expect(screen.getByTestId('feedback.selectedScore.none')).toBeTruthy();
 
     fireEvent.press(screen.getByTestId('feedback.scoreInput'));
-    fireEvent.press(screen.getByTestId('feedback.scoreOption.8'));
+    fireEvent.press(screen.getByTestId('feedback.scoreOption.4'));
     fireEvent.press(screen.getByTestId('feedback.scoreDoneButton'));
     fireEvent.changeText(screen.getByTestId('feedback.noteInput'), 'Midlertidig note');
     expect(screen.getByTestId('feedback.noteInput').props.value).toBe('Midlertidig note');
@@ -180,6 +180,20 @@ describe('task-feedback-note screen', () => {
     expect(mockDismiss).toHaveBeenCalled();
   }, 15000);
 
+  it('shows exactly five feedback labels in the score UI', async () => {
+    const screen = render(<TaskFeedbackNoteScreen />);
+
+    await waitFor(() => expect(screen.getByTestId('feedback.scoreInput')).toBeTruthy());
+    fireEvent.press(screen.getByTestId('feedback.scoreInput'));
+
+    expect(screen.getAllByTestId(/feedback\.scoreOption\./)).toHaveLength(5);
+    expect(screen.getByText('Meget svært i dag')).toBeTruthy();
+    expect(screen.getByText('Lidt svært i dag')).toBeTruthy();
+    expect(screen.getByText('Okay i dag')).toBeTruthy();
+    expect(screen.getByText('Godt i dag')).toBeTruthy();
+    expect(screen.getByText('Rigtig godt i dag')).toBeTruthy();
+  });
+
   it('hydrates persisted score+note when task completion flag is stale but feedback exists', async () => {
     const taskInstanceId = '11111111-1111-4111-8111-111111111111';
     mockCompletionByTaskId[taskInstanceId] = false;
@@ -190,7 +204,7 @@ describe('task-feedback-note screen', () => {
         taskTemplateId: 'template-1',
         taskInstanceId: 'task-other',
         activityId: '2ac31159-22f6-42a2-a067-4fb3ab6dd2ab',
-        rating: 10,
+        rating: 5,
         note: 'Skal ikke bruges',
         createdAt: '2026-02-19T10:00:00.000Z',
         updatedAt: '2026-02-19T10:00:00.000Z',
@@ -201,7 +215,7 @@ describe('task-feedback-note screen', () => {
         taskTemplateId: 'template-1',
         taskInstanceId,
         activityId: '2ac31159-22f6-42a2-a067-4fb3ab6dd2ab',
-        rating: 6,
+        rating: 3,
         note: 'Gemt feedback note',
         createdAt: '2026-02-18T10:00:00.000Z',
         updatedAt: '2026-02-18T10:00:00.000Z',
@@ -216,7 +230,8 @@ describe('task-feedback-note screen', () => {
     const screen = render(<TaskFeedbackNoteScreen />);
 
     await waitFor(() => expect(screen.getByTestId('feedback.noteInput').props.value).toBe('Gemt feedback note'));
-    expect(screen.getByTestId('feedback.selectedScore.6')).toBeTruthy();
+    expect(screen.getByTestId('feedback.selectedScore.3')).toBeTruthy();
+    expect(screen.getByTestId('feedback.scoreInput.value').props.children).toBe('Okay i dag');
   });
 
   it('hydrates persisted feedback for non-UUID task id using template fallback instance id', async () => {
@@ -228,7 +243,7 @@ describe('task-feedback-note screen', () => {
         taskTemplateId: 'template-1',
         taskInstanceId: 'template-1',
         activityId: '2ac31159-22f6-42a2-a067-4fb3ab6dd2ab',
-        rating: 4,
+        rating: 2,
         note: 'Gemt via template fallback',
         createdAt: '2026-02-20T10:00:00.000Z',
         updatedAt: '2026-02-20T10:00:00.000Z',
@@ -245,7 +260,8 @@ describe('task-feedback-note screen', () => {
     await waitFor(() =>
       expect(screen.getByTestId('feedback.noteInput').props.value).toBe('Gemt via template fallback'),
     );
-    expect(screen.getByTestId('feedback.selectedScore.4')).toBeTruthy();
+    expect(screen.getByTestId('feedback.selectedScore.2')).toBeTruthy();
+    expect(screen.getByTestId('feedback.scoreInput.value').props.children).toBe('Lidt svært i dag');
   });
 
   it('hydrates persisted feedback for non-UUID task id stored as raw instance id', async () => {
@@ -257,7 +273,7 @@ describe('task-feedback-note screen', () => {
         taskTemplateId: 'template-1',
         taskInstanceId: 'task-local-raw',
         activityId: '2ac31159-22f6-42a2-a067-4fb3ab6dd2ab',
-        rating: 9,
+        rating: 5,
         note: 'Gemt via raw non-uuid instance',
         createdAt: '2026-02-20T11:00:00.000Z',
         updatedAt: '2026-02-20T11:00:00.000Z',
@@ -274,7 +290,8 @@ describe('task-feedback-note screen', () => {
     await waitFor(() =>
       expect(screen.getByTestId('feedback.noteInput').props.value).toBe('Gemt via raw non-uuid instance'),
     );
-    expect(screen.getByTestId('feedback.selectedScore.9')).toBeTruthy();
+    expect(screen.getByTestId('feedback.selectedScore.5')).toBeTruthy();
+    expect(screen.getByTestId('feedback.scoreInput.value').props.children).toBe('Rigtig godt i dag');
   });
 
   it('shows feedback-score info modal when pressing info button', async () => {

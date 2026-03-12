@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useFootball } from '@/contexts/FootballContext';
 import { useCelebration } from '@/contexts/CelebrationContext';
 import { resolveCelebrationProgressAfterCompletion, resolveCelebrationTypeAfterCompletion } from '@/utils/celebration';
+import { INTENSITY_SCORE_OPTIONS, normalizeFivePointScore } from '@/utils/scoreScale';
 
 function decodeParam(value: unknown): string | null {
   const first = Array.isArray(value) ? value[0] : value;
@@ -90,7 +91,7 @@ export default function TaskScoreNoteScreen() {
 
       if (initialScoreParam && !cancelled) {
         const n = Number(initialScoreParam);
-        if (Number.isFinite(n)) setInitialScore(n);
+        if (Number.isFinite(n)) setInitialScore(normalizeFivePointScore(n));
       }
 
       try {
@@ -134,7 +135,7 @@ export default function TaskScoreNoteScreen() {
           return;
         }
 
-        const intensity = typeof intensityCarrier.intensity === 'number' ? intensityCarrier.intensity : null;
+        const intensity = normalizeFivePointScore(intensityCarrier.intensity);
         if (intensity === null) {
           setInitialScore(null);
           setInitialNote('');
@@ -256,11 +257,13 @@ export default function TaskScoreNoteScreen() {
       visible
       title="Feedback på Intensitet"
       introText="Hvordan gik det?"
-      helperText="1 = let · 10 = maks"
+      helperText="Vælg det tempo du faktisk kunne holde i dag."
       initialScore={initialScore}
       initialNote={initialNote}
       enableScore
       enableNote
+      scoreOptions={INTENSITY_SCORE_OPTIONS}
+      scorePlaceholder="Vælg intensitet"
       isSaving={isSaving}
       error={error}
       onSave={handleSave}
@@ -271,13 +274,10 @@ export default function TaskScoreNoteScreen() {
       infoButtonAccessibilityLabel="Vis info om intensitet"
       infoModalTitle="Sådan bruger du Intensitet"
       infoModalLines={[
-        'Intensitet viser hvor frisk din krop er i dag.',
-        'Din træner kan se, om du måske har brug for mere hvile.',
-        '10 = en dag hvor du er tæt på helt frisk og kan præstere som dit bedste.',
-        'Lavere tal = en dag hvor du føler dig tung, selv om du prøver lige så hårdt.',
-        'Eksempel: Hvis du på en frisk dag kan løbe ca. 9 km, er det 10.',
-        'Hvis du en anden dag kun kan løbe ca. 5 km, selv om du giver alt, kan det være omkring 6.',
-        'Vigtigt: Giv altid alt hvad du kan til alle dine holdtræninger. Det flytter dit niveau hurtigere og det er en vigtig del af at spille på et højt niveau',
+        'Intensitet handler om det tempo og den synlige intensitet du faktisk kunne holde udefra set.',
+        'Det handler ikke om hvor hårdt du følte, at du prøvede.',
+        'Vælg den beskrivelse der bedst passer på dit tempo i dag.',
+        'Det gør det lettere at sammenligne dine dage på en ens måde over tid.',
       ]}
       onClose={handleClose}
     />

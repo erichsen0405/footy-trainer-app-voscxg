@@ -7,6 +7,7 @@ import { fetchSelfFeedbackForTemplates, upsertSelfFeedback } from '@/services/fe
 import { useFootball } from '@/contexts/FootballContext';
 import { useCelebration } from '@/contexts/CelebrationContext';
 import { resolveCelebrationProgressAfterCompletion, resolveCelebrationTypeAfterCompletion } from '@/utils/celebration';
+import { FEEDBACK_SCORE_OPTIONS, normalizeFivePointScore } from '@/utils/scoreScale';
 import type { TaskTemplateSelfFeedback } from '@/types';
 
 function decodeParam(value: unknown): string | null {
@@ -348,7 +349,7 @@ export default function TaskFeedbackNoteScreen() {
             ? latestForInstance ?? null
             : latestForActivity ?? null;
 
-          setInitialScore(typeof selected?.rating === 'number' ? selected.rating : null);
+          setInitialScore(normalizeFivePointScore(selected?.rating));
           setInitialNote(typeof selected?.note === 'string' ? selected.note : '');
         } catch {
           // ignore
@@ -724,6 +725,8 @@ export default function TaskFeedbackNoteScreen() {
       initialNote={initialNote}
       enableScore={enableScore}
       enableNote={enableNote}
+      scoreOptions={FEEDBACK_SCORE_OPTIONS}
+      scorePlaceholder="Vælg feedback"
       isSaving={isSaving}
       error={error}
       onSave={handleSave}
