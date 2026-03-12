@@ -44,14 +44,15 @@ Expected behavior:
 
 URL:
 
-- `CLUB_INVITE_AUTH_REDIRECT_URL?clubInviteToken=<club_invite_token>&...supabase_auth_params`
+- `CLUB_INVITE_AUTH_REDIRECT_URL?clubInviteToken=<club_invite_token>&clubInviteAuthType=<invite|magiclink>&...supabase_auth_params`
 
 Expected behavior:
 
 - complete Supabase auth session from callback params
 - read `clubInviteToken`
-- if callback type is `invite`, send user to password setup before acceptance
-- if callback type is `magiclink`, continue directly to invite acceptance
+- read `clubInviteAuthType`
+- if `clubInviteAuthType=invite`, send user to password setup before acceptance
+- if `clubInviteAuthType=magiclink`, continue directly to invite acceptance
 
 ### 3. Password setup for new invited users
 

@@ -93,7 +93,7 @@ describe('club invite delivery helpers', () => {
   it('uses invite auth links for new users', async () => {
     const client = createClient(null);
 
-    await expect(resolveClubInviteDeliveryContext(client, invite, config)).resolves.toMatchObject({
+      await expect(resolveClubInviteDeliveryContext(client, invite, config)).resolves.toMatchObject({
       authLinkType: 'invite',
       clubName: 'FC Copenhagen',
       landingUrl: 'https://admin.example.com/invite?token=secure-token',
@@ -103,7 +103,7 @@ describe('club invite delivery helpers', () => {
       type: 'invite',
       email: 'coach@example.com',
       options: {
-        redirectTo: 'https://admin.example.com/auth/callback?clubInviteToken=secure-token',
+        redirectTo: 'https://admin.example.com/auth/callback?clubInviteToken=secure-token&clubInviteAuthType=invite',
       },
     });
   });
@@ -120,7 +120,7 @@ describe('club invite delivery helpers', () => {
       type: 'magiclink',
       email: 'coach@example.com',
       options: {
-        redirectTo: 'https://admin.example.com/auth/callback?clubInviteToken=secure-token',
+        redirectTo: 'https://admin.example.com/auth/callback?clubInviteToken=secure-token&clubInviteAuthType=magiclink',
       },
     });
   });
@@ -137,8 +137,10 @@ describe('club invite delivery helpers', () => {
       config
     );
 
-    expect(content.subject).toBe('FC Copenhagen: invitation som coach');
+    expect(content.subject).toBe('FC Copenhagen: invitation som træner');
+    expect(content.html).toContain('som <strong>træner</strong>');
     expect(content.html).toContain('Opret konto og vælg adgangskode');
+    expect(content.text).toContain('Du er inviteret til FC Copenhagen som træner i Footy Trainer.');
     expect(content.text).toContain('Fallback invite-link: https://admin.example.com/invite?token=secure-token');
   });
 

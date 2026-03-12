@@ -67,6 +67,19 @@ type ClubInviteEmailDeliveryResult = {
   provider: 'aws_ses';
 };
 
+function getInviteRoleLabel(role: ClubInvite['role']): string {
+  switch (role) {
+    case 'coach':
+      return 'træner';
+    case 'player':
+      return 'spiller';
+    case 'admin':
+      return 'admin';
+    default:
+      return role;
+  }
+}
+
 function getEnv(name: string): string | null {
   const deno = (globalThis as { Deno?: { env?: { get: (key: string) => string | undefined } } }).Deno;
   if (deno?.env) {
@@ -153,9 +166,16 @@ export function buildClubInviteLandingUrl(baseUrl: string, invite: Pick<ClubInvi
   return url.toString();
 }
 
-export function buildClubInviteAuthRedirectUrl(baseUrl: string, invite: Pick<ClubInvite, 'token'>): string {
+export function buildClubInviteAuthRedirectUrl(
+  baseUrl: string,
+  invite: Pick<ClubInvite, 'token'>,
+  authLinkType?: AuthLinkType
+): string {
   const url = new URL(baseUrl);
   url.searchParams.set('clubInviteToken', invite.token);
+  if (authLinkType) {
+    url.searchParams.set('clubInviteAuthType', authLinkType);
+  }
   return url.toString();
 }
 
@@ -183,7 +203,7 @@ export async function resolveClubInviteDeliveryContext(
   });
 
   const authLinkType: AuthLinkType = existingAuthUserId ? 'magiclink' : 'invite';
-  const redirectTo = buildClubInviteAuthRedirectUrl(config.authRedirectUrl, invite);
+  const redirectTo = buildClubInviteAuthRedirectUrl(config.authRedirectUrl, invite, authLinkType);
   const {
     data,
     error,
@@ -217,17 +237,14 @@ export function buildClubInviteEmailContent(
   context: ClubInviteDeliveryContext,
   config: Pick<ClubInviteEmailConfig, 'appName'>
 ): ClubInviteEmailContent {
-  const subject = `${context.clubName}: invitation som ${invite.role}`;
+  const roleLabel = getInviteRoleLabel(invite.role);
+  const subject = `${context.clubName}: invitation som ${roleLabel}`;
   const primaryActionLabel =
     context.authLinkType === 'invite'
       ? 'Opret konto og vælg adgangskode'
       : 'Log ind og accepter invitation';
-  const intro =
-    context.authLinkType === 'invite'
-      ? 'Du er blevet inviteret og skal først oprette din konto i Supabase-authflowet.'
-      : 'Du er blevet inviteret og kan fortsætte direkte via login-linket herunder.';
   const safeClubName = escapeHtml(context.clubName);
-  const safeRole = escapeHtml(invite.role);
+  const safeRole = escapeHtml(roleLabel);
   const safeEmail = escapeHtml(invite.email);
   const safeAppName = escapeHtml(config.appName);
   const safeActionLink = escapeHtml(context.actionLink);
@@ -239,7 +256,7 @@ export function buildClubInviteEmailContent(
       <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #111827;">
         <p>Hej,</p>
         <p>Du er inviteret til klubben <strong>${safeClubName}</strong> som <strong>${safeRole}</strong> i ${safeAppName}.</p>
-        <p>${escapeHtml(intro)}</p>
+        <p>Du er blevet inviteret og skal først oprette din konto.</p>
         <p>Denne invitation er sendt til <strong>${safeEmail}</strong>.</p>
         <p style="margin: 24px 0;">
           <a
@@ -254,8 +271,8 @@ export function buildClubInviteEmailContent(
       </div>
     `.trim(),
     text: [
-      `Du er inviteret til ${context.clubName} som ${invite.role} i ${config.appName}.`,
-      intro,
+      `Du er inviteret til ${context.clubName} som ${roleLabel} i ${config.appName}.`,
+      'Du er blevet inviteret og skal først oprette din konto.',
       `Denne invitation er sendt til ${invite.email}.`,
       '',
       `${primaryActionLabel}: ${context.actionLink}`,

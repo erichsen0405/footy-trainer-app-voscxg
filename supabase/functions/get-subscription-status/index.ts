@@ -123,7 +123,7 @@ serve(async (req) => {
       const nowIso = new Date().toISOString();
       const { data: entitlementRows, error: entitlementError } = await supabaseAdmin
         .from('user_entitlements')
-        .select('entitlement')
+        .select('entitlement, source')
         .eq('user_id', user.id)
         .eq('is_active', true)
         .or(`expires_at.is.null,expires_at.gt.${nowIso}`);
@@ -135,6 +135,12 @@ serve(async (req) => {
       const entitlementsList = entitlementRows ?? [];
       const hasComplimentaryTrainer = entitlementsList.some(row => row.entitlement === 'træner_premium');
       const hasComplimentaryPlayer = entitlementsList.some(row => row.entitlement === 'spiller_premium');
+      const hasClubTrainer = entitlementsList.some(
+        row => row.entitlement === 'træner_premium' && row.source === 'club'
+      );
+      const hasClubPlayer = entitlementsList.some(
+        row => row.entitlement === 'spiller_premium' && row.source === 'club'
+      );
 
       const complimentaryTier = hasComplimentaryTrainer
         ? 'trainer_premium'
@@ -143,7 +149,14 @@ serve(async (req) => {
           : null;
 
       if (complimentaryTier) {
-        const planName = complimentaryTier === 'trainer_premium' ? 'Træner Premium' : 'Premium spiller';
+        const planName =
+          complimentaryTier === 'trainer_premium'
+            ? hasClubTrainer
+              ? 'Træner Premium - Klub-adgang'
+              : 'Træner Premium'
+            : hasClubPlayer
+              ? 'Premium spiller - Klub-adgang'
+              : 'Premium spiller';
         const maxPlayers = complimentaryTier === 'trainer_premium' ? 50 : 1;
         const currentPlayers = complimentaryTier === 'trainer_premium' ? await getTrainerPlayerCount(user.id) : 1;
 
