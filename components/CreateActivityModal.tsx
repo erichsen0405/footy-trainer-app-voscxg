@@ -53,6 +53,8 @@ type IntensityScopeModalState = {
   previousScope: 'single' | 'category';
 };
 
+type ActivityCreationMode = 'title' | 'category';
+
 const DAYS_OF_WEEK = [
   { label: 'Søn', value: 0 },
   { label: 'Man', value: 1 },
@@ -114,6 +116,7 @@ export default function CreateActivityModal({
   const scrollViewRef = useRef<ScrollView>(null);
   const defaultTimesRef = useRef(getDefaultStartEndTimes());
 
+  const [creationMode, setCreationMode] = useState<ActivityCreationMode | null>(null);
   const [title, setTitle] = useState('');
   const [location, setLocation] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
@@ -198,14 +201,37 @@ export default function CreateActivityModal({
 
   // Auto-select first category only if user hasn’t interacted
   useEffect(() => {
-    if (safeCategories.length > 0 && !selectedCategory && !userTouchedCategoryRef.current) {
+    if (
+      creationMode === 'title' &&
+      safeCategories.length > 0 &&
+      !selectedCategory &&
+      !userTouchedCategoryRef.current
+    ) {
       setSelectedCategory(safeCategories[0].id);
     }
-  }, [safeCategories, selectedCategory]);
+  }, [creationMode, safeCategories, selectedCategory]);
+
+  const selectedCategoryDetails = useMemo(
+    () => safeCategories.find(category => category.id === selectedCategory) ?? null,
+    [safeCategories, selectedCategory]
+  );
+
+  const effectiveTitle = useMemo(() => {
+    if (creationMode === 'category') {
+      return selectedCategoryDetails?.name?.trim() ?? '';
+    }
+    return title.trim();
+  }, [creationMode, selectedCategoryDetails, title]);
+
+  const isCategoryMode = creationMode === 'category';
+  const showModeSelection = creationMode === null;
+  const showCategorySelection = isCategoryMode && !selectedCategoryDetails;
+  const showActivityForm = creationMode === 'title' || (isCategoryMode && !!selectedCategoryDetails);
 
   const handleClose = useCallback(() => {
     const safeOnClose = typeof onClose === 'function' ? onClose : () => {};
 
+    setCreationMode(null);
     setTitle('');
     setLocation('');
     setSelectedCategory(safeCategories[0]?.id || '');
@@ -235,7 +261,7 @@ export default function CreateActivityModal({
   }, [safeCategories, onClose]);
 
   const handleCreate = useCallback(async () => {
-    if (!title.trim()) {
+    if (!effectiveTitle) {
       Alert.alert('Fejl', 'Indtast venligst en titel');
       return;
     }
@@ -272,7 +298,7 @@ export default function CreateActivityModal({
 
     try {
       await onCreateActivity({
-        title: title.trim(),
+        title: effectiveTitle,
         location: location.trim() || 'Ingen lokation',
         categoryId: effectiveCategoryId,
         date,
@@ -300,7 +326,6 @@ export default function CreateActivityModal({
       setIsCreating(false);
     }
   }, [
-    title,
     selectedCategory,
     isRecurring,
     recurrenceType,
@@ -315,10 +340,32 @@ export default function CreateActivityModal({
     intensityApplyScope,
     hasEndDate,
     endDate,
+    effectiveTitle,
     onCreateActivity,
     handleClose,
     safeCategories,
   ]);
+
+  const handleSelectTitleMode = useCallback(() => {
+    setCreationMode('title');
+    if (!selectedCategory && safeCategories[0]?.id) {
+      setSelectedCategory(safeCategories[0].id);
+    }
+  }, [safeCategories, selectedCategory]);
+
+  const handleSelectCategoryMode = useCallback(() => {
+    setCreationMode('category');
+    setSelectedCategory('');
+  }, []);
+
+  const handleBack = useCallback(() => {
+    if (creationMode === 'category' && selectedCategoryDetails) {
+      setSelectedCategory('');
+      return;
+    }
+
+    setCreationMode(null);
+  }, [creationMode, selectedCategoryDetails]);
 
   const toggleDay = useCallback((day: number) => {
     setSelectedDays(prev =>
@@ -427,6 +474,10 @@ export default function CreateActivityModal({
     setSelectedCategory(prev => (prev === categoryId ? '' : categoryId));
   }, []);
 
+  const handleCategoryModeCategorySelect = useCallback((categoryId: string) => {
+    setSelectedCategory(categoryId);
+  }, []);
+
   const handleIntensityToggle = useCallback((enabled: boolean) => {
     if (enabled === intensityEnabled) return;
     if (intensityScopeModal.visible) return;
@@ -497,7 +548,22 @@ export default function CreateActivityModal({
         >
           <View style={[styles.modalContent, { backgroundColor: cardBgColor }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: textColor }]}>Opret aktivitet</Text>
+              <View style={styles.modalTitleGroup}>
+                <Text style={[styles.modalTitle, { color: textColor }]}>Opret aktivitet</Text>
+                {!showModeSelection ? (
+                  <TouchableOpacity onPress={handleBack} activeOpacity={0.7} style={styles.backButton}>
+                    <IconSymbol
+                      ios_icon_name="chevron.left"
+                      android_material_icon_name="arrow_back"
+                      size={18}
+                      color={colors.primary}
+                    />
+                    <Text style={styles.backButtonText}>
+                      {showCategorySelection ? 'Valg' : isCategoryMode ? 'Skift kategori' : 'Valg'}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
               <TouchableOpacity onPress={handleClose} activeOpacity={0.7}>
                 <IconSymbol
                   ios_icon_name="xmark.circle.fill"
@@ -513,370 +579,541 @@ export default function CreateActivityModal({
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.scrollContent}
             >
-              <TextInput
-                style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
-                value={title}
-                onChangeText={setTitle}
-                placeholder="Titel *"
-                placeholderTextColor={textSecondaryColor}
-                testID="activity.create.titleInput"
-              />
+              {showModeSelection ? (
+                <View style={styles.creationModeContainer}>
+                  <Text style={[styles.creationModeIntro, { color: textSecondaryColor }]}>
+                    Vælg hvordan du vil oprette aktiviteten.
+                  </Text>
 
-              <TextInput
-                style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
-                value={location}
-                onChangeText={setLocation}
-                placeholder="Lokation"
-                placeholderTextColor={textSecondaryColor}
-                testID="activity.create.locationInput"
-              />
-
-              {/* Category */}
-              <View>
-                <View style={styles.categoryHeaderRow}>
-                  <Text style={[styles.categoryHeaderText, { color: textColor }]}>Kategori</Text>
-
-                  {/* ✅ P14: replace top-right button block 1:1 */}
                   <TouchableOpacity
-                    onPress={openCategoryManagement}
-                    activeOpacity={0.7}
-                    style={styles.createCategoryTopRight}
-                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                    testID="activity.create.openCategoryButton"
+                    style={[styles.creationModeCard, { backgroundColor: bgColor }]}
+                    onPress={handleSelectTitleMode}
+                    activeOpacity={0.85}
+                    testID="activity.create.mode.title"
                   >
-                    <Text style={styles.createCategoryTopRightText}>+ Opret kategori</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {safeCategories.length === 0 ? (
-                  <TouchableOpacity onPress={openCategoryManagement} activeOpacity={0.7}>
-                    <View style={[styles.emptyCategoryContainer, { backgroundColor: bgColor }]}>
+                    <View style={styles.creationModeCardIcon}>
                       <IconSymbol
-                        ios_icon_name="folder.badge.plus"
-                        android_material_icon_name="create_new_folder"
-                        size={32}
-                        color={textSecondaryColor}
+                        ios_icon_name="text.cursor"
+                        android_material_icon_name="title"
+                        size={26}
+                        color={colors.primary}
                       />
-                      <Text style={[styles.emptyCategoryText, { color: textColor }]}>
-                        Opret en kategori først
+                    </View>
+                    <View style={styles.creationModeCardContent}>
+                      <Text style={[styles.creationModeCardTitle, { color: textColor }]}>
+                        Opret med titel
+                      </Text>
+                      <Text style={[styles.creationModeCardDescription, { color: textSecondaryColor }]}>
+                        Samme flow som nu, hvor du selv navngiver aktiviteten og vælger kategori bagefter.
                       </Text>
                     </View>
                   </TouchableOpacity>
-                ) : (
-                  <View style={styles.categoryWrapContainer}>
-                    {safeCategories.map((cat, index) => {
-                      const isSelected = selectedCategory === cat.id;
-                      return (
+
+                  <TouchableOpacity
+                    style={[styles.creationModeCard, { backgroundColor: bgColor }]}
+                    onPress={handleSelectCategoryMode}
+                    activeOpacity={0.85}
+                    testID="activity.create.mode.category"
+                  >
+                    <View style={styles.creationModeCardIcon}>
+                      <IconSymbol
+                        ios_icon_name="square.grid.2x2"
+                        android_material_icon_name="category"
+                        size={26}
+                        color={colors.primary}
+                      />
+                    </View>
+                    <View style={styles.creationModeCardContent}>
+                      <Text style={[styles.creationModeCardTitle, { color: textColor }]}>
+                        Opret fra kategori
+                      </Text>
+                      <Text style={[styles.creationModeCardDescription, { color: textSecondaryColor }]}>
+                        Vælg en eksisterende kategori. Aktiviteten får automatisk kategoriens navn og kategori.
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+
+              {showCategorySelection ? (
+                <View>
+                  <View style={styles.categoryHeaderRow}>
+                    <Text style={[styles.categoryHeaderText, { color: textColor }]}>
+                      Vælg kategori
+                    </Text>
+
+                    <TouchableOpacity
+                      onPress={openCategoryManagement}
+                      activeOpacity={0.7}
+                      style={styles.createCategoryTopRight}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                      testID="activity.create.openCategoryButton"
+                    >
+                      <Text style={styles.createCategoryTopRightText}>+ Opret kategori</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <Text style={[styles.categorySelectionHelper, { color: textSecondaryColor }]}>
+                    Aktiviteten får automatisk samme navn som den valgte kategori.
+                  </Text>
+
+                  {safeCategories.length === 0 ? (
+                    <TouchableOpacity onPress={openCategoryManagement} activeOpacity={0.7}>
+                      <View style={[styles.emptyCategoryContainer, { backgroundColor: bgColor }]}>
+                        <IconSymbol
+                          ios_icon_name="folder.badge.plus"
+                          android_material_icon_name="create_new_folder"
+                          size={32}
+                          color={textSecondaryColor}
+                        />
+                        <Text style={[styles.emptyCategoryText, { color: textColor }]}>
+                          Opret en kategori først
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={styles.categoryWrapContainer}>
+                      {safeCategories.map((cat, index) => (
                         <TouchableOpacity
                           key={cat.id}
                           style={[
                             styles.categoryChip,
                             {
-                              backgroundColor: isSelected ? cat.color : bgColor,
+                              backgroundColor: cat.color,
                               borderColor: cat.color,
                             },
                           ]}
-                          onPress={categoryPressHandlers[cat.id]}
+                          onPress={() => handleCategoryModeCategorySelect(cat.id)}
                           activeOpacity={0.7}
-                          testID={`activity.create.categoryChip.${index}`}
+                          testID={`activity.create.categoryModeChip.${index}`}
                         >
                           <Text style={styles.categoryChipEmoji}>{cat.emoji}</Text>
-                          <Text
-                            style={[
-                              styles.categoryChipText,
-                              { color: isSelected ? '#fff' : textColor },
-                            ]}
-                          >
+                          <Text style={[styles.categoryChipText, styles.categoryChipTextSelected]}>
                             {cat.name}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                )}
-              </View>
-
-              {/* Date Picker */}
-              <TouchableOpacity
-                style={[styles.pickerButton, { backgroundColor: bgColor }]}
-                onPress={() => setShowDatePicker(true)}
-                activeOpacity={0.7}
-              >
-                <IconSymbol
-                  ios_icon_name="calendar"
-                  android_material_icon_name="calendar_today"
-                  size={20}
-                  color={textColor}
-                />
-                <Text style={[styles.pickerButtonText, { color: textColor }]}>{formatDate(date)}</Text>
-              </TouchableOpacity>
-
-              {showDatePicker ? (
-                <View
-                  style={[
-                    Platform.OS === 'ios' ? styles.iosPickerContainer : undefined,
-                    { backgroundColor: isDark ? '#2a2a2a' : '#FFFFFF' },
-                  ]}
-                >
-                  <DateTimePicker
-                    value={date}
-                    mode="date"
-                    display={Platform.OS === 'ios' ? 'inline' : 'default'}
-                    onChange={handleDateChange}
-                    minimumDate={new Date()}
-                    themeVariant={isDark ? 'dark' : 'light'}
-                    textColor={Platform.OS === 'ios' ? (isDark ? '#FFFFFF' : '#000000') : undefined}
-                    style={undefined}
-                  />
-                </View>
-              ) : null}
-
-              {Platform.OS === 'ios' && showDatePicker ? (
-                <TouchableOpacity
-                  style={[styles.doneButton, { backgroundColor: colors.primary }]}
-                  onPress={() => setShowDatePicker(false)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.doneButtonText}>Færdig</Text>
-                </TouchableOpacity>
-              ) : null}
-
-              {/* Time Picker */}
-              <TouchableOpacity
-                style={[styles.pickerButton, { backgroundColor: bgColor }]}
-                onPress={() => setShowTimePicker(true)}
-                activeOpacity={0.7}
-                testID="activity.create.startTimeButton"
-              >
-                <IconSymbol
-                  ios_icon_name="clock"
-                  android_material_icon_name="schedule"
-                  size={20}
-                  color={textColor}
-                />
-                <Text style={[styles.pickerButtonText, { color: textColor }]}>{time}</Text>
-              </TouchableOpacity>
-
-              {showTimePicker ? (
-                <View
-                  style={[
-                    Platform.OS === 'ios' ? styles.iosPickerContainer : undefined,
-                    { backgroundColor: isDark ? '#2a2a2a' : '#FFFFFF' },
-                  ]}
-                >
-                  <DateTimePicker
-                    value={getTimeAsDate()}
-                    mode="time"
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    onChange={handleTimeChange}
-                    is24Hour={true}
-                    themeVariant={isDark ? 'dark' : 'light'}
-                    textColor={Platform.OS === 'ios' ? (isDark ? '#FFFFFF' : '#000000') : undefined}
-                    style={Platform.OS === 'ios' ? styles.iosPicker : undefined}
-                  />
-                </View>
-              ) : null}
-
-              {Platform.OS === 'ios' && showTimePicker ? (
-                <TouchableOpacity
-                  style={[styles.doneButton, { backgroundColor: colors.primary }]}
-                  onPress={() => setShowTimePicker(false)}
-                  activeOpacity={0.7}
-                  testID="activity.create.startTimeDone"
-                >
-                  <Text style={styles.doneButtonText}>Færdig</Text>
-                </TouchableOpacity>
-              ) : null}
-
-              {/* End Time Picker */}
-              <TouchableOpacity
-                style={[styles.pickerButton, { backgroundColor: bgColor }]}
-                onPress={() => setShowEndTimePicker(true)}
-                activeOpacity={0.7}
-                testID="activity.create.endTimeButton"
-              >
-                <IconSymbol
-                  ios_icon_name="clock.fill"
-                  android_material_icon_name="schedule"
-                  size={20}
-                  color={textColor}
-                />
-                <Text style={[styles.pickerButtonText, { color: textColor }]}>
-                  {endTime || 'Vælg sluttidspunkt'}
-                </Text>
-              </TouchableOpacity>
-
-              {showEndTimePicker ? (
-                <View
-                  style={[
-                    Platform.OS === 'ios' ? styles.iosPickerContainer : undefined,
-                    { backgroundColor: isDark ? '#2a2a2a' : '#FFFFFF' },
-                  ]}
-                >
-                  <DateTimePicker
-                    value={getEndTimeAsDate()}
-                    mode="time"
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    onChange={handleEndTimeChange}
-                    is24Hour={true}
-                    themeVariant={isDark ? 'dark' : 'light'}
-                    textColor={Platform.OS === 'ios' ? (isDark ? '#FFFFFF' : '#000000') : undefined}
-                    style={Platform.OS === 'ios' ? styles.iosPicker : undefined}
-                  />
-                </View>
-              ) : null}
-
-              {Platform.OS === 'ios' && showEndTimePicker ? (
-                <TouchableOpacity
-                  style={[styles.doneButton, { backgroundColor: colors.primary }]}
-                  onPress={() => setShowEndTimePicker(false)}
-                  activeOpacity={0.7}
-                  testID="activity.create.endTimeDone"
-                >
-                  <Text style={styles.doneButtonText}>Færdig</Text>
-                </TouchableOpacity>
-              ) : null}
-
-              {/* Validation Error for End Time */}
-              {endTimeError ? (
-                <View style={styles.errorContainer}>
-                  <Text style={styles.errorText}>{endTimeError}</Text>
-                </View>
-              ) : null}
-
-              {/* Intensity */}
-              <View style={[styles.switchContainer, { backgroundColor: bgColor }]}>
-                <View style={styles.switchLabelContainer}>
-                  <IconSymbol
-                    ios_icon_name="flame"
-                    android_material_icon_name="local_fire_department"
-                    size={20}
-                    color={textColor}
-                  />
-                  <Text style={[styles.switchLabel, { color: textColor }]}>Tilføj intensitet</Text>
-                </View>
-                <Switch
-                  value={intensityEnabled}
-                  onValueChange={handleIntensityToggle}
-                  trackColor={{ false: '#767577', true: colors.primary }}
-                  thumbColor={intensityEnabled ? '#fff' : '#f4f3f4'}
-                  testID="activity.create.intensityToggle"
-                />
-              </View>
-
-              {/* Series Toggle */}
-              <View style={[styles.switchContainer, { backgroundColor: bgColor }]}>
-                <View style={styles.switchLabelContainer}>
-                  <IconSymbol
-                    ios_icon_name="repeat"
-                    android_material_icon_name="repeat"
-                    size={20}
-                    color={textColor}
-                  />
-                  <Text style={[styles.switchLabel, { color: textColor }]}>Opret som serie</Text>
-                </View>
-                <Switch
-                  value={isRecurring}
-                  onValueChange={setIsRecurring}
-                  trackColor={{ false: '#767577', true: colors.primary }}
-                  thumbColor={isRecurring ? '#fff' : '#f4f3f4'}
-                />
-              </View>
-
-              {isRecurring ? (
-                <>
-                  <View style={styles.recurrenceTypeContainer}>
-                    {RECURRENCE_TYPES.map((type) => (
-                      <TouchableOpacity
-                        key={type.value}
-                        style={[
-                          styles.recurrenceTypeButton,
-                          { backgroundColor: recurrenceType === type.value ? colors.primary : bgColor },
-                        ]}
-                        onPress={() => setRecurrenceType(type.value)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={{ color: recurrenceType === type.value ? '#fff' : textColor, fontSize: 14 }}>
-                          {type.label}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-
-                  {needsDaySelection ? (
-                    <View style={styles.daysContainer}>
-                      {DAYS_OF_WEEK.map(day => (
-                        <TouchableOpacity
-                          key={day.value}
-                          style={[
-                            styles.dayButton,
-                            { backgroundColor: selectedDays.includes(day.value) ? colors.primary : bgColor },
-                          ]}
-                          onPress={() => toggleDay(day.value)}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={{ color: selectedDays.includes(day.value) ? '#fff' : textColor }}>
-                            {day.label}
                           </Text>
                         </TouchableOpacity>
                       ))}
                     </View>
+                  )}
+                </View>
+              ) : null}
+
+              {showActivityForm ? (
+                <>
+                  {isCategoryMode ? (
+                    <View style={[styles.lockedSelectionCard, { backgroundColor: bgColor }]}>
+                      <Text style={[styles.lockedSelectionLabel, { color: textSecondaryColor }]}>
+                        Aktivitet oprettes fra kategori
+                      </Text>
+                      <View style={styles.lockedSelectionRow}>
+                        <View
+                          style={[
+                            styles.lockedCategoryBadge,
+                            {
+                              backgroundColor: selectedCategoryDetails?.color ?? colors.primary,
+                            },
+                          ]}
+                        >
+                          <Text style={styles.lockedCategoryBadgeEmoji}>
+                            {selectedCategoryDetails?.emoji ?? '🏷️'}
+                          </Text>
+                          <Text style={styles.lockedCategoryBadgeText}>
+                            {selectedCategoryDetails?.name ?? 'Kategori'}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={[styles.lockedSelectionValue, { color: textColor }]}>
+                        Titel: {effectiveTitle}
+                      </Text>
+                    </View>
+                  ) : (
+                    <>
+                      <TextInput
+                        style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+                        value={title}
+                        onChangeText={setTitle}
+                        placeholder="Titel *"
+                        placeholderTextColor={textSecondaryColor}
+                        testID="activity.create.titleInput"
+                      />
+
+                      <View>
+                        <View style={styles.categoryHeaderRow}>
+                          <Text style={[styles.categoryHeaderText, { color: textColor }]}>Kategori</Text>
+
+                          <TouchableOpacity
+                            onPress={openCategoryManagement}
+                            activeOpacity={0.7}
+                            style={styles.createCategoryTopRight}
+                            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                            testID="activity.create.openCategoryButton"
+                          >
+                            <Text style={styles.createCategoryTopRightText}>+ Opret kategori</Text>
+                          </TouchableOpacity>
+                        </View>
+
+                        {safeCategories.length === 0 ? (
+                          <TouchableOpacity onPress={openCategoryManagement} activeOpacity={0.7}>
+                            <View style={[styles.emptyCategoryContainer, { backgroundColor: bgColor }]}>
+                              <IconSymbol
+                                ios_icon_name="folder.badge.plus"
+                                android_material_icon_name="create_new_folder"
+                                size={32}
+                                color={textSecondaryColor}
+                              />
+                              <Text style={[styles.emptyCategoryText, { color: textColor }]}>
+                                Opret en kategori først
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                        ) : (
+                          <View style={styles.categoryWrapContainer}>
+                            {safeCategories.map((cat, index) => {
+                              const isSelected = selectedCategory === cat.id;
+                              return (
+                                <TouchableOpacity
+                                  key={cat.id}
+                                  style={[
+                                    styles.categoryChip,
+                                    {
+                                      backgroundColor: isSelected ? cat.color : bgColor,
+                                      borderColor: cat.color,
+                                    },
+                                  ]}
+                                  onPress={categoryPressHandlers[cat.id]}
+                                  activeOpacity={0.7}
+                                  testID={`activity.create.categoryChip.${index}`}
+                                >
+                                  <Text style={styles.categoryChipEmoji}>{cat.emoji}</Text>
+                                  <Text
+                                    style={[
+                                      styles.categoryChipText,
+                                      { color: isSelected ? '#fff' : textColor },
+                                    ]}
+                                  >
+                                    {cat.name}
+                                  </Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        )}
+                      </View>
+                    </>
+                  )}
+
+                  <TextInput
+                    style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+                    value={location}
+                    onChangeText={setLocation}
+                    placeholder="Lokation"
+                    placeholderTextColor={textSecondaryColor}
+                    testID="activity.create.locationInput"
+                  />
+
+                  <TouchableOpacity
+                    style={[styles.pickerButton, { backgroundColor: bgColor }]}
+                    onPress={() => setShowDatePicker(true)}
+                    activeOpacity={0.7}
+                  >
+                    <IconSymbol
+                      ios_icon_name="calendar"
+                      android_material_icon_name="calendar_today"
+                      size={20}
+                      color={textColor}
+                    />
+                    <Text style={[styles.pickerButtonText, { color: textColor }]}>
+                      {formatDate(date)}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {showDatePicker ? (
+                    <View
+                      style={[
+                        Platform.OS === 'ios' ? styles.iosPickerContainer : undefined,
+                        { backgroundColor: isDark ? '#2a2a2a' : '#FFFFFF' },
+                      ]}
+                    >
+                      <DateTimePicker
+                        value={date}
+                        mode="date"
+                        display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                        onChange={handleDateChange}
+                        minimumDate={new Date()}
+                        themeVariant={isDark ? 'dark' : 'light'}
+                        textColor={Platform.OS === 'ios' ? (isDark ? '#FFFFFF' : '#000000') : undefined}
+                        style={undefined}
+                      />
+                    </View>
+                  ) : null}
+
+                  {Platform.OS === 'ios' && showDatePicker ? (
+                    <TouchableOpacity
+                      style={[styles.doneButton, { backgroundColor: colors.primary }]}
+                      onPress={() => setShowDatePicker(false)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.doneButtonText}>Færdig</Text>
+                    </TouchableOpacity>
+                  ) : null}
+
+                  <TouchableOpacity
+                    style={[styles.pickerButton, { backgroundColor: bgColor }]}
+                    onPress={() => setShowTimePicker(true)}
+                    activeOpacity={0.7}
+                    testID="activity.create.startTimeButton"
+                  >
+                    <IconSymbol
+                      ios_icon_name="clock"
+                      android_material_icon_name="schedule"
+                      size={20}
+                      color={textColor}
+                    />
+                    <Text style={[styles.pickerButtonText, { color: textColor }]}>{time}</Text>
+                  </TouchableOpacity>
+
+                  {showTimePicker ? (
+                    <View
+                      style={[
+                        Platform.OS === 'ios' ? styles.iosPickerContainer : undefined,
+                        { backgroundColor: isDark ? '#2a2a2a' : '#FFFFFF' },
+                      ]}
+                    >
+                      <DateTimePicker
+                        value={getTimeAsDate()}
+                        mode="time"
+                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                        onChange={handleTimeChange}
+                        is24Hour={true}
+                        themeVariant={isDark ? 'dark' : 'light'}
+                        textColor={Platform.OS === 'ios' ? (isDark ? '#FFFFFF' : '#000000') : undefined}
+                        style={Platform.OS === 'ios' ? styles.iosPicker : undefined}
+                      />
+                    </View>
+                  ) : null}
+
+                  {Platform.OS === 'ios' && showTimePicker ? (
+                    <TouchableOpacity
+                      style={[styles.doneButton, { backgroundColor: colors.primary }]}
+                      onPress={() => setShowTimePicker(false)}
+                      activeOpacity={0.7}
+                      testID="activity.create.startTimeDone"
+                    >
+                      <Text style={styles.doneButtonText}>Færdig</Text>
+                    </TouchableOpacity>
+                  ) : null}
+
+                  <TouchableOpacity
+                    style={[styles.pickerButton, { backgroundColor: bgColor }]}
+                    onPress={() => setShowEndTimePicker(true)}
+                    activeOpacity={0.7}
+                    testID="activity.create.endTimeButton"
+                  >
+                    <IconSymbol
+                      ios_icon_name="clock.fill"
+                      android_material_icon_name="schedule"
+                      size={20}
+                      color={textColor}
+                    />
+                    <Text style={[styles.pickerButtonText, { color: textColor }]}>
+                      {endTime || 'Vælg sluttidspunkt'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {showEndTimePicker ? (
+                    <View
+                      style={[
+                        Platform.OS === 'ios' ? styles.iosPickerContainer : undefined,
+                        { backgroundColor: isDark ? '#2a2a2a' : '#FFFFFF' },
+                      ]}
+                    >
+                      <DateTimePicker
+                        value={getEndTimeAsDate()}
+                        mode="time"
+                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                        onChange={handleEndTimeChange}
+                        is24Hour={true}
+                        themeVariant={isDark ? 'dark' : 'light'}
+                        textColor={Platform.OS === 'ios' ? (isDark ? '#FFFFFF' : '#000000') : undefined}
+                        style={Platform.OS === 'ios' ? styles.iosPicker : undefined}
+                      />
+                    </View>
+                  ) : null}
+
+                  {Platform.OS === 'ios' && showEndTimePicker ? (
+                    <TouchableOpacity
+                      style={[styles.doneButton, { backgroundColor: colors.primary }]}
+                      onPress={() => setShowEndTimePicker(false)}
+                      activeOpacity={0.7}
+                      testID="activity.create.endTimeDone"
+                    >
+                      <Text style={styles.doneButtonText}>Færdig</Text>
+                    </TouchableOpacity>
+                  ) : null}
+
+                  {endTimeError ? (
+                    <View style={styles.errorContainer}>
+                      <Text style={styles.errorText}>{endTimeError}</Text>
+                    </View>
                   ) : null}
 
                   <View style={[styles.switchContainer, { backgroundColor: bgColor }]}>
-                    <Text style={[styles.switchLabel, { color: textColor }]}>Slutdato</Text>
+                    <View style={styles.switchLabelContainer}>
+                      <IconSymbol
+                        ios_icon_name="flame"
+                        android_material_icon_name="local_fire_department"
+                        size={20}
+                        color={textColor}
+                      />
+                      <Text style={[styles.switchLabel, { color: textColor }]}>
+                        Tilføj intensitet
+                      </Text>
+                    </View>
                     <Switch
-                      value={hasEndDate}
-                      onValueChange={setHasEndDate}
+                      value={intensityEnabled}
+                      onValueChange={handleIntensityToggle}
                       trackColor={{ false: '#767577', true: colors.primary }}
-                      thumbColor={hasEndDate ? '#fff' : '#f4f3f4'}
+                      thumbColor={intensityEnabled ? '#fff' : '#f4f3f4'}
+                      testID="activity.create.intensityToggle"
                     />
                   </View>
 
-                  {hasEndDate ? (
-                    <>
-                      <TouchableOpacity
-                        style={[styles.pickerButton, { backgroundColor: bgColor }]}
-                        onPress={() => setShowEndDatePicker(true)}
-                        activeOpacity={0.7}
-                      >
-                        <IconSymbol
-                          ios_icon_name="calendar.badge.clock"
-                          android_material_icon_name="event"
-                          size={20}
-                          color={textColor}
-                        />
-                        <Text style={[styles.pickerButtonText, { color: textColor }]}>{formatDate(endDate)}</Text>
-                      </TouchableOpacity>
+                  <View style={[styles.switchContainer, { backgroundColor: bgColor }]}>
+                    <View style={styles.switchLabelContainer}>
+                      <IconSymbol
+                        ios_icon_name="repeat"
+                        android_material_icon_name="repeat"
+                        size={20}
+                        color={textColor}
+                      />
+                      <Text style={[styles.switchLabel, { color: textColor }]}>Opret som serie</Text>
+                    </View>
+                    <Switch
+                      value={isRecurring}
+                      onValueChange={setIsRecurring}
+                      trackColor={{ false: '#767577', true: colors.primary }}
+                      thumbColor={isRecurring ? '#fff' : '#f4f3f4'}
+                    />
+                  </View>
 
-                      {showEndDatePicker ? (
-                        <View
-                          style={[
-                            Platform.OS === 'ios' ? styles.iosPickerContainer : undefined,
-                            { backgroundColor: isDark ? '#2a2a2a' : '#FFFFFF' },
-                          ]}
-                        >
-                          <DateTimePicker
-                            value={endDate}
-                            mode="date"
-                            display={Platform.OS === 'ios' ? 'inline' : 'default'}
-                            onChange={handleEndDateChange}
-                            minimumDate={date}
-                            themeVariant={isDark ? 'dark' : 'light'}
-                            textColor={Platform.OS === 'ios' ? (isDark ? '#FFFFFF' : '#000000') : undefined}
-                            style={undefined}
-                          />
+                  {isRecurring ? (
+                    <>
+                      <View style={styles.recurrenceTypeContainer}>
+                        {RECURRENCE_TYPES.map((type) => (
+                          <TouchableOpacity
+                            key={type.value}
+                            style={[
+                              styles.recurrenceTypeButton,
+                              {
+                                backgroundColor:
+                                  recurrenceType === type.value ? colors.primary : bgColor,
+                              },
+                            ]}
+                            onPress={() => setRecurrenceType(type.value)}
+                            activeOpacity={0.7}
+                          >
+                            <Text
+                              style={{
+                                color: recurrenceType === type.value ? '#fff' : textColor,
+                                fontSize: 14,
+                              }}
+                            >
+                              {type.label}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+
+                      {needsDaySelection ? (
+                        <View style={styles.daysContainer}>
+                          {DAYS_OF_WEEK.map(day => (
+                            <TouchableOpacity
+                              key={day.value}
+                              style={[
+                                styles.dayButton,
+                                {
+                                  backgroundColor: selectedDays.includes(day.value)
+                                    ? colors.primary
+                                    : bgColor,
+                                },
+                              ]}
+                              onPress={() => toggleDay(day.value)}
+                              activeOpacity={0.7}
+                            >
+                              <Text
+                                style={{
+                                  color: selectedDays.includes(day.value) ? '#fff' : textColor,
+                                }}
+                              >
+                                {day.label}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
                         </View>
                       ) : null}
 
-                      {Platform.OS === 'ios' && showEndDatePicker ? (
-                        <TouchableOpacity
-                          style={[styles.doneButton, { backgroundColor: colors.primary }]}
-                          onPress={() => setShowEndDatePicker(false)}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.doneButtonText}>Færdig</Text>
-                        </TouchableOpacity>
+                      <View style={[styles.switchContainer, { backgroundColor: bgColor }]}>
+                        <Text style={[styles.switchLabel, { color: textColor }]}>Slutdato</Text>
+                        <Switch
+                          value={hasEndDate}
+                          onValueChange={setHasEndDate}
+                          trackColor={{ false: '#767577', true: colors.primary }}
+                          thumbColor={hasEndDate ? '#fff' : '#f4f3f4'}
+                        />
+                      </View>
+
+                      {hasEndDate ? (
+                        <>
+                          <TouchableOpacity
+                            style={[styles.pickerButton, { backgroundColor: bgColor }]}
+                            onPress={() => setShowEndDatePicker(true)}
+                            activeOpacity={0.7}
+                          >
+                            <IconSymbol
+                              ios_icon_name="calendar.badge.clock"
+                              android_material_icon_name="event"
+                              size={20}
+                              color={textColor}
+                            />
+                            <Text style={[styles.pickerButtonText, { color: textColor }]}>
+                              {formatDate(endDate)}
+                            </Text>
+                          </TouchableOpacity>
+
+                          {showEndDatePicker ? (
+                            <View
+                              style={[
+                                Platform.OS === 'ios' ? styles.iosPickerContainer : undefined,
+                                { backgroundColor: isDark ? '#2a2a2a' : '#FFFFFF' },
+                              ]}
+                            >
+                              <DateTimePicker
+                                value={endDate}
+                                mode="date"
+                                display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                                onChange={handleEndDateChange}
+                                minimumDate={date}
+                                themeVariant={isDark ? 'dark' : 'light'}
+                                textColor={Platform.OS === 'ios'
+                                  ? isDark
+                                    ? '#FFFFFF'
+                                    : '#000000'
+                                  : undefined}
+                                style={undefined}
+                              />
+                            </View>
+                          ) : null}
+
+                          {Platform.OS === 'ios' && showEndDatePicker ? (
+                            <TouchableOpacity
+                              style={[styles.doneButton, { backgroundColor: colors.primary }]}
+                              onPress={() => setShowEndDatePicker(false)}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={styles.doneButtonText}>Færdig</Text>
+                            </TouchableOpacity>
+                          ) : null}
+                        </>
                       ) : null}
                     </>
                   ) : null}
@@ -898,10 +1135,11 @@ export default function CreateActivityModal({
                 style={[
                   styles.modalButton,
                   styles.saveButton,
-                  (safeCategories.length === 0 || !!endTimeError) && styles.disabledButton,
+                  (!showActivityForm || safeCategories.length === 0 || !!endTimeError) &&
+                    styles.disabledButton,
                 ]}
                 onPress={handleCreate}
-                disabled={isCreating || safeCategories.length === 0 || !!endTimeError}
+                disabled={isCreating || !showActivityForm || safeCategories.length === 0 || !!endTimeError}
                 activeOpacity={0.7}
                 testID="activity.create.submitButton"
               >
@@ -997,9 +1235,60 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: 'bold',
   },
+  modalTitleGroup: {
+    flex: 1,
+    marginRight: 16,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    marginTop: 6,
+  },
+  backButtonText: {
+    color: colors.primary,
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
   scrollContent: {
     padding: 24,
     paddingTop: 0,
+  },
+  creationModeContainer: {
+    gap: 16,
+  },
+  creationModeIntro: {
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 4,
+  },
+  creationModeCard: {
+    borderRadius: 18,
+    padding: 18,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  creationModeCardIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(77, 203, 96, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+  creationModeCardContent: {
+    flex: 1,
+  },
+  creationModeCardTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  creationModeCardDescription: {
+    fontSize: 14,
+    lineHeight: 20,
   },
   input: {
     borderRadius: 12,
@@ -1018,6 +1307,11 @@ const styles = StyleSheet.create({
   categoryHeaderText: {
     fontSize: 17,
     fontWeight: '500',
+  },
+  categorySelectionHelper: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 12,
   },
   createCategoryTopRight: {
     paddingVertical: 6,
@@ -1057,6 +1351,48 @@ const styles = StyleSheet.create({
   categoryChipText: {
     fontSize: 15,
     fontWeight: '500',
+  },
+  categoryChipTextSelected: {
+    color: '#fff',
+  },
+  lockedSelectionCard: {
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+  },
+  lockedSelectionLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: 12,
+  },
+  lockedSelectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  lockedCategoryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+  },
+  lockedCategoryBadgeEmoji: {
+    fontSize: 16,
+    marginRight: 8,
+  },
+  lockedCategoryBadgeText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  lockedSelectionValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    lineHeight: 22,
   },
 
   emptyCategoryContainer: {

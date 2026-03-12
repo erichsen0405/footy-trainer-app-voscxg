@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useColorSc
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAppleIAP, PRODUCT_IDS, ORDERED_PRODUCT_IDS, TRAINER_PRODUCT_IDS } from '@/contexts/AppleIAPContext';
+import { useSubscription } from '@/contexts/SubscriptionContext';
 import { formatPrice } from '@/utils/formatPrice';
 
 interface AppleSubscriptionManagerProps {
@@ -220,6 +221,7 @@ export default function AppleSubscriptionManager({
     isRestoring,
     entitlementSnapshot,
   } = useAppleIAP();
+  const { subscriptionStatus: serverSubscriptionStatus } = useSubscription();
   const entitlementSnapshotRef = useRef(entitlementSnapshot);
   useEffect(() => {
     entitlementSnapshotRef.current = entitlementSnapshot;
@@ -275,8 +277,19 @@ export default function AppleSubscriptionManager({
   const hasApplePlayerPremium = subscriptionStatus?.isActive && subscriptionStatus.productId === PRODUCT_IDS.PLAYER_PREMIUM;
   const hasAppleTrainerPlan =
     subscriptionStatus?.isActive && !!subscriptionStatus.productId && trainerProductSet.has(subscriptionStatus.productId);
-  const showComplimentaryPlayerBanner = hasComplimentaryPlayerPremium && !hasApplePlayerPremium;
-  const showComplimentaryTrainerBanner = hasComplimentaryTrainerPremium && !hasAppleTrainerPlan;
+  const normalizedServerPlanName = serverSubscriptionStatus?.planName?.trim().toLowerCase() ?? '';
+  const isClubAccessPlan = normalizedServerPlanName.includes('klub-adgang');
+  const complimentaryDisplayName = isClubAccessPlan
+    ? serverSubscriptionStatus?.planName?.trim() ?? null
+    : hasComplimentaryTrainerPremium
+      ? 'Træner Premium'
+      : hasComplimentaryPlayerPremium
+        ? 'Premium spiller'
+        : null;
+  const showComplimentaryPlayerBanner =
+    hasComplimentaryPlayerPremium && !hasApplePlayerPremium && !isClubAccessPlan;
+  const showComplimentaryTrainerBanner =
+    hasComplimentaryTrainerPremium && !hasAppleTrainerPlan && !isClubAccessPlan;
   const complimentaryPlanProductId = hasComplimentaryTrainerPremium
     ? PRODUCT_IDS.TRAINER_PREMIUM
     : hasComplimentaryPlayerPremium
@@ -889,12 +902,16 @@ export default function AppleSubscriptionManager({
             <View style={styles.currentPlanInfo}>
               <Text style={styles.currentPlanLabel}>Dit aktive abonnement:</Text>
               <Text style={styles.currentPlanName}>
-                {getPlanName({ productId: activePlanProductIdSafe })}
+                {complimentaryDisplayName ?? getPlanName({ productId: activePlanProductIdSafe })}
               </Text>
-              <Text style={styles.currentPlanDateSecondary}>Uendeligt (partner-adgang)</Text>
+              <Text style={styles.currentPlanDateSecondary}>
+                {isClubAccessPlan ? 'Klub-adgang' : 'Uendeligt (partner-adgang)'}
+              </Text>
             </View>
             <View style={styles.currentPlanBadge}>
-              <Text style={styles.currentPlanBadgeText}>Uendeligt</Text>
+              <Text style={styles.currentPlanBadgeText}>
+                {isClubAccessPlan ? 'Klub-adgang' : 'Uendeligt'}
+              </Text>
             </View>
           </View>
         </View>
@@ -1055,6 +1072,8 @@ export default function AppleSubscriptionManager({
     cardBgColor,
     handleRestorePurchases,
     hasAnyActivePlan,
+    complimentaryDisplayName,
+    isClubAccessPlan,
     isOrangeBoxExpanded,
     isSignupFlow,
     openLegalLink,
