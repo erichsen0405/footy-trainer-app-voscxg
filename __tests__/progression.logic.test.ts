@@ -69,7 +69,7 @@ describe('progression KPI summary', () => {
     const summary = computeProgressionSummary({
       metric: 'rating',
       days: 30,
-      focusCompleted: [makeEntry({ rating: 6 })],
+      focusCompleted: [makeEntry({ rating: 3 })],
       focusCompletedPrevious: [],
       intensityCompleted: [],
       intensityCompletedPrevious: [],
@@ -90,8 +90,8 @@ describe('progression KPI summary', () => {
     const summary = computeProgressionSummary({
       metric: 'rating',
       days: 10,
-      focusCompleted: [makeEntry({ rating: 8 })],
-      focusCompletedPrevious: [makeEntry({ rating: 4, dateKey: '2026-01-01' })],
+      focusCompleted: [makeEntry({ rating: 4 })],
+      focusCompletedPrevious: [makeEntry({ rating: 2, dateKey: '2026-01-01' })],
       intensityCompleted: [],
       intensityCompletedPrevious: [],
       intensityPossible: [],
@@ -111,9 +111,9 @@ describe('progression KPI summary', () => {
       metric: 'rating',
       days: 8,
       focusCompleted: [
-        makeEntry({ id: 'e1', rating: 8, dateKey: '2026-01-10' }),
-        makeEntry({ id: 'e2', rating: 9, dateKey: '2026-01-09' }),
-        makeEntry({ id: 'e3', rating: 8, dateKey: '2026-01-08' }),
+        makeEntry({ id: 'e1', rating: 4, dateKey: '2026-01-10' }),
+        makeEntry({ id: 'e2', rating: 5, dateKey: '2026-01-09' }),
+        makeEntry({ id: 'e3', rating: 4, dateKey: '2026-01-08' }),
       ],
       focusCompletedPrevious: [],
       intensityCompleted: [],
@@ -129,14 +129,14 @@ describe('progression KPI summary', () => {
     expect(summary.streakDays).toBe(3);
     expect(summary.badges).toContain('Streak 3+');
     expect(summary.badges).toContain('Consistency');
-    expect(summary.badges).toContain('8+ mastery');
+    expect(summary.badges).toContain('4+ mastery');
   });
 
   it('sets avgChangePercent to 100 when previous average is zero and current > 0', () => {
     const summary = computeProgressionSummary({
       metric: 'rating',
       days: 30,
-      focusCompleted: [makeEntry({ rating: 6 })],
+      focusCompleted: [makeEntry({ rating: 3 })],
       focusCompletedPrevious: [makeEntry({ rating: 0, dateKey: '2026-01-01' })],
       intensityCompleted: [],
       intensityCompletedPrevious: [],
@@ -178,10 +178,10 @@ describe('progression KPI summary', () => {
       days: 30,
       focusCompleted: [],
       focusCompletedPrevious: [],
-      intensityCompleted: [makeEntry({ kind: 'intensity', intensity: 7 })],
+      intensityCompleted: [makeEntry({ kind: 'intensity', intensity: 4 })],
       intensityCompletedPrevious: [],
       intensityPossible: [
-        makeEntry({ id: 'i1', kind: 'intensity', intensity: 7 }),
+        makeEntry({ id: 'i1', kind: 'intensity', intensity: 4 }),
         makeEntry({ id: 'i2', kind: 'intensity', intensity: null }),
         makeEntry({ id: 'i3', kind: 'intensity', intensity: null }),
       ],
@@ -204,8 +204,8 @@ describe('progression KPI summary', () => {
       focusCompleted: [],
       focusCompletedPrevious: [],
       intensityCompleted: [
-        makeEntry({ id: 'i1', kind: 'intensity', intensity: 8, dateKey: '2026-01-10' }),
-        makeEntry({ id: 'i2', kind: 'intensity', intensity: 8, dateKey: '2026-01-08' }),
+        makeEntry({ id: 'i1', kind: 'intensity', intensity: 4, dateKey: '2026-01-10' }),
+        makeEntry({ id: 'i2', kind: 'intensity', intensity: 4, dateKey: '2026-01-08' }),
       ],
       intensityCompletedPrevious: [],
       intensityPossible: [
@@ -230,7 +230,7 @@ describe('progression KPI summary', () => {
         createdAt: '2026-02-20T10:00:00.000Z',
         activityId: '9b66da22-3ec4-4f6d-b7d4-f2234b58ab10',
         taskTemplateId: 'template-1',
-        rating: 8,
+        rating: 4,
         note: 'gammel note',
       }),
       makeEntry({
@@ -261,7 +261,7 @@ describe('progression KPI summary', () => {
         createdAt: '2026-02-20T10:00:00.000Z',
         activityId: '1ce6adf1-32f1-47e3-a9e1-a0a7f2d70811',
         taskTemplateId: 'template-1',
-        rating: 7,
+        rating: 4,
         note: 'oprindelig note',
       }),
       makeEntry({
@@ -277,7 +277,7 @@ describe('progression KPI summary', () => {
         createdAt: '2026-02-20T12:00:00.000Z',
         activityId: '1ce6adf1-32f1-47e3-a9e1-a0a7f2d70811',
         taskTemplateId: 'template-1',
-        rating: 5,
+        rating: 3,
         note: null,
       }),
     ];
@@ -299,7 +299,7 @@ describe('progression KPI summary', () => {
       activityId: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',
       sessionKey: 'event:feedfeed-feed-4eed-aeed-feedfeedfeed',
       taskTemplateId: 'template-1',
-      rating: 4,
+      rating: 2,
       note: 'old note',
     });
     const latestEntry = makeEntry({
@@ -308,7 +308,7 @@ describe('progression KPI summary', () => {
       activityId: 'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb',
       sessionKey: 'event:feedfeed-feed-4eed-aeed-feedfeedfeed',
       taskTemplateId: 'template-1',
-      rating: 7,
+      rating: 4,
       note: 'new note',
     });
 
@@ -329,7 +329,7 @@ describe('progression KPI summary', () => {
       activityId: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',
       taskInstanceId: '11111111-1111-4111-8111-111111111111',
       taskTemplateId: 'template-1',
-      rating: 4,
+      rating: 2,
       note: 'old note',
     });
     const latestEntry = makeEntry({
@@ -338,7 +338,7 @@ describe('progression KPI summary', () => {
       activityId: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',
       taskInstanceId: '11111111-1111-4111-8111-111111111111',
       taskTemplateId: 'template-1',
-      rating: 7,
+      rating: 4,
       note: 'new note',
     });
 

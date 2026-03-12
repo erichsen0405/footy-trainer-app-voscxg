@@ -527,7 +527,7 @@ describe('Library screen gating and card state', () => {
                 title: 'Refresh Drill',
                 is_system: false,
                 is_added_to_tasks: false,
-                last_score: personalFetchCount >= 2 ? 7 : null,
+                last_score: personalFetchCount >= 2 ? 4 : null,
                 execution_count: personalFetchCount >= 2 ? 1 : 0,
               },
             ],
@@ -544,7 +544,7 @@ describe('Library screen gating and card state', () => {
                 title: 'Refresh Drill',
                 is_system: false,
                 is_added_to_tasks: false,
-                last_score: personalFetchCount >= 2 ? 7 : null,
+                last_score: personalFetchCount >= 2 ? 4 : null,
                 execution_count: personalFetchCount >= 2 ? 1 : 0,
               },
             ],
@@ -574,7 +574,7 @@ describe('Library screen gating and card state', () => {
     fireEvent.press(await findByText(/Øvelser fra træner/i));
     fireEvent.press(await findByText(/Coach One/i));
 
-    expect(await findByTestId('library.counter.lastScore.ex-refresh-1')).toHaveTextContent('Senest: –/10');
+    expect(await findByTestId('library.counter.lastScore.ex-refresh-1')).toHaveTextContent('Senest: –/5');
     expect(await findByTestId('library.counter.executionCount.ex-refresh-1')).toHaveTextContent('Udført: –x');
     expect(await findByTestId('library.badge.lastScore.ex-refresh-1')).toBeTruthy();
     expect(await findByTestId('library.badge.executionCount.ex-refresh-1')).toBeTruthy();
@@ -584,11 +584,12 @@ describe('Library screen gating and card state', () => {
         activityId: 'activity-1',
         templateId: 'template-1',
         taskInstanceId: 'task-instance-1',
+        rating: 4,
       });
     });
 
     await waitFor(async () => {
-      expect(await findByTestId('library.counter.lastScore.ex-refresh-1')).toHaveTextContent('Senest: 7/10');
+      expect(await findByTestId('library.counter.lastScore.ex-refresh-1')).toHaveTextContent('Senest: 4/5');
       expect(await findByTestId('library.counter.executionCount.ex-refresh-1')).toHaveTextContent('Udført: 1x');
       expect(await findByTestId('library.badge.lastScore.ex-refresh-1')).toBeTruthy();
       expect(await findByTestId('library.badge.executionCount.ex-refresh-1')).toBeTruthy();
@@ -625,7 +626,7 @@ describe('Library screen gating and card state', () => {
 
     fireEvent.press(await findByText(/Øvelser fra træner/i));
     fireEvent.press(await findByText(/Coach One/i));
-    expect(await findByTestId('library.counter.lastScore.ex-map-1')).toHaveTextContent('Senest: –/10');
+    expect(await findByTestId('library.counter.lastScore.ex-map-1')).toHaveTextContent('Senest: –/5');
     expect(await findByTestId('library.counter.executionCount.ex-map-1')).toHaveTextContent('Udført: –x');
     expect(await findByTestId('library.badge.lastScore.ex-map-1')).toBeTruthy();
     expect(await findByTestId('library.badge.executionCount.ex-map-1')).toBeTruthy();
@@ -635,13 +636,13 @@ describe('Library screen gating and card state', () => {
         activityId: 'activity-xyz',
         templateId: 'template-xyz',
         taskInstanceId: 'task-instance-xyz',
-        rating: 8,
+        rating: 4,
         optimisticId: 'optimistic:test:1',
       });
     });
 
     await waitFor(async () => {
-      expect(await findByTestId('library.counter.lastScore.ex-map-1')).toHaveTextContent('Senest: 8/10');
+      expect(await findByTestId('library.counter.lastScore.ex-map-1')).toHaveTextContent('Senest: 4/5');
       expect(await findByTestId('library.counter.executionCount.ex-map-1')).toHaveTextContent('Udført: 1x');
       expect(await findByTestId('library.badge.lastScore.ex-map-1')).toBeTruthy();
       expect(await findByTestId('library.badge.executionCount.ex-map-1')).toBeTruthy();
@@ -706,13 +707,13 @@ describe('Library screen gating and card state', () => {
         activityId: 'activity-existing-1',
         templateId: 'template-existing-1',
         taskInstanceId: 'task-instance-existing-1',
-        rating: 9,
+        rating: 5,
         optimisticId: 'optimistic:existing-1',
       });
     });
 
     await waitFor(async () => {
-      expect(await findByTestId('library.counter.lastScore.ex-existing-1')).toHaveTextContent('Senest: 9/10');
+      expect(await findByTestId('library.counter.lastScore.ex-existing-1')).toHaveTextContent('Senest: 5/5');
       expect(await findByTestId('library.counter.executionCount.ex-existing-1')).toHaveTextContent('Udført: 2x');
     });
   });
@@ -753,7 +754,7 @@ describe('Library screen gating and card state', () => {
         activityId: 'activity-1',
         templateId: 'template-corrected',
         taskInstanceId: 'task-instance-1',
-        rating: 6,
+        rating: 3,
         optimisticId: 'optimistic:fail-1',
       });
     });
@@ -771,13 +772,13 @@ describe('Library screen gating and card state', () => {
         activityId: 'activity-1',
         templateId: 'template-corrected',
         taskInstanceId: 'task-instance-1',
-        rating: 6,
+        rating: 3,
         optimisticId: 'optimistic:corrected-1',
       });
     });
 
     await waitFor(async () => {
-      expect(await findByTestId('library.counter.lastScore.ex-map-2')).toHaveTextContent('Senest: 6/10');
+      expect(await findByTestId('library.counter.lastScore.ex-map-2')).toHaveTextContent('Senest: 3/5');
       expect(await findByTestId('library.counter.executionCount.ex-map-2')).toHaveTextContent('Udført: 1x');
       expect(await findByTestId('library.badge.lastScore.ex-map-2')).toBeTruthy();
       expect(await findByTestId('library.badge.executionCount.ex-map-2')).toBeTruthy();
@@ -820,7 +821,7 @@ describe('Library screen gating and card state', () => {
         activityId: 'activity-edit-1',
         templateId: 'template-edit',
         taskInstanceId: 'task-edit-1',
-        rating: 7,
+        rating: 4,
         optimisticId: 'optimistic:edit-1',
       });
     });
@@ -835,13 +836,13 @@ describe('Library screen gating and card state', () => {
         activityId: 'activity-edit-1',
         templateId: 'template-edit',
         taskInstanceId: 'task-edit-1',
-        rating: 9,
+        rating: 5,
         optimisticId: 'optimistic:edit-2',
       });
     });
 
     await waitFor(async () => {
-      expect(await findByTestId('library.counter.lastScore.ex-map-3')).toHaveTextContent('Senest: 9/10');
+      expect(await findByTestId('library.counter.lastScore.ex-map-3')).toHaveTextContent('Senest: 5/5');
       expect(await findByTestId('library.counter.executionCount.ex-map-3')).toHaveTextContent('Udført: 1x');
       expect(await findByTestId('library.badge.lastScore.ex-map-3')).toBeTruthy();
       expect(await findByTestId('library.badge.executionCount.ex-map-3')).toBeTruthy();

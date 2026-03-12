@@ -86,6 +86,7 @@ import { formatHoursDa, getActivityEffectiveDurationMinutes } from '@/utils/acti
 import { resolveActivityDateTime } from '@/utils/performanceHistory';
 import { markHomeScreenReady } from '@/utils/startupLoader';
 import { trackStartupTelemetry } from '@/utils/startupTelemetry';
+import { INTENSITY_SCORE_OPTIONS, normalizeFivePointScore } from '@/utils/scoreScale';
 import { TimeoutError, withTimeout } from '@/utils/withTimeout';
 import type { TaskTemplateSelfFeedback } from '@/types';
 
@@ -853,17 +854,15 @@ const thisWeekPremiumCardStyles = StyleSheet.create({
   },
 });
 
-const INTENSITY_CHOICES = Array.from({ length: 10 }, (_, idx) => idx + 1);
-
 function getActivityIntensityValue(activity: any): number | null {
   if (!activity) {
     return null;
   }
   if (typeof activity?.intensity === 'number') {
-    return activity.intensity;
+    return normalizeFivePointScore(activity.intensity);
   }
   if (typeof activity?.activity_intensity === 'number') {
-    return activity.activity_intensity;
+    return normalizeFivePointScore(activity.activity_intensity);
   }
   return null;
 }
@@ -3008,17 +3007,18 @@ export default function HomeScreen() {
           visible={Boolean(selectedActivityId)}
           title="Feedback på Intensitet"
           introText="Hvordan gik det?"
-          helperText="1 = let · 10 = maks"
+          helperText="Vælg det tempo du faktisk kunne holde i dag."
           initialScore={currentIntensityDraft}
           initialNote={currentIntensityNoteDraft}
           enableScore
           enableNote
+          scoreOptions={INTENSITY_SCORE_OPTIONS}
+          scorePlaceholder="Vælg intensitet"
           isSaving={isSavingIntensity}
           error={intensityModalError}
           onSave={handleIntensityModalSave}
           onClear={handleIntensityModalClear}
           onClose={handleCloseIntensityModal}
-          showLabels={false}
           missingScoreTitle="Manglende intensitet"
           missingScoreMessage="VÃ¦lg en intensitet fÃ¸r du kan markere som udfÃ¸rt."
         />

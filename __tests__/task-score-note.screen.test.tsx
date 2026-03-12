@@ -114,7 +114,7 @@ describe('task-score-note screen', () => {
     expect(screen.getByTestId('feedback.selectedScore.none')).toBeTruthy();
 
     fireEvent.press(screen.getByTestId('feedback.scoreInput'));
-    fireEvent.press(screen.getByTestId('feedback.scoreOption.7'));
+    fireEvent.press(screen.getByTestId('feedback.scoreOption.4'));
     fireEvent.press(screen.getByTestId('feedback.scoreDoneButton'));
     fireEvent.changeText(screen.getByTestId('feedback.noteInput'), 'Kun draft');
     fireEvent.press(screen.getByText('X'));
@@ -127,10 +127,24 @@ describe('task-score-note screen', () => {
     expect(mockDismiss).toHaveBeenCalled();
   });
 
+  it('shows exactly five intensity labels in the score UI', async () => {
+    const screen = render(<TaskScoreNoteScreen />);
+
+    await waitFor(() => expect(screen.getByTestId('feedback.scoreInput')).toBeTruthy());
+    fireEvent.press(screen.getByTestId('feedback.scoreInput'));
+
+    expect(screen.getAllByTestId(/feedback\.scoreOption\./)).toHaveLength(5);
+    expect(screen.getByText('Jeg kunne ikke holde tempo i dag')).toBeTruthy();
+    expect(screen.getByText('Jeg havde svært ved tempoet i dag')).toBeTruthy();
+    expect(screen.getByText('Jeg holdt et okay tempo i dag')).toBeTruthy();
+    expect(screen.getByText('Jeg holdt et højt tempo i dag')).toBeTruthy();
+    expect(screen.getByText('Jeg var helt i top på tempo i dag')).toBeTruthy();
+  });
+
   it('hydrates persisted intensity note+score when task is completed', async () => {
     mockActivityRowsById['activity-completed'] = {
       id: 'activity-completed',
-      intensity: 9,
+      intensity: 5,
       intensity_enabled: true,
       intensity_note: 'Gemt intensitet note',
     };
@@ -139,7 +153,10 @@ describe('task-score-note screen', () => {
     const screen = render(<TaskScoreNoteScreen />);
 
     await waitFor(() => expect(screen.getByTestId('feedback.noteInput').props.value).toBe('Gemt intensitet note'));
-    await waitFor(() => expect(screen.getByTestId('feedback.selectedScore.9')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('feedback.selectedScore.5')).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByTestId('feedback.scoreInput.value').props.children).toBe('Jeg var helt i top på tempo i dag'),
+    );
   });
 
   it('shows intensity info modal when pressing info button', async () => {
@@ -149,6 +166,8 @@ describe('task-score-note screen', () => {
     fireEvent.press(screen.getByTestId('feedback.infoButton'));
 
     expect(screen.getByText('Sådan bruger du Intensitet')).toBeTruthy();
-    expect(screen.getByText('Intensitet viser hvor frisk din krop er i dag.')).toBeTruthy();
+    expect(
+      screen.getByText('Intensitet handler om det tempo og den synlige intensitet du faktisk kunne holde udefra set.'),
+    ).toBeTruthy();
   });
 });

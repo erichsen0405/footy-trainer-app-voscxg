@@ -42,12 +42,6 @@ tags:
     id: '^home\.thisWeekPremiumCard\.addButton$'
 - extendedWaitUntil:
     visible:
-      id: '^activity\.create\.mode\.title$'
-    timeout: 15000
-- tapOn:
-    id: '^activity\.create\.mode\.title$'
-- extendedWaitUntil:
-    visible:
       id: '^activity\.create\.titleInput$'
     timeout: 15000
 - tapOn:
@@ -434,7 +428,7 @@ tags:
     timeout: 15000
 - assertVisible: 'Seneste feedback'
 - extendedWaitUntil:
-    visible: 'Score 5/10'
+    visible: 'Score 5/5'
     timeout: 15000
 - extendedWaitUntil:
     visible: '${MAESTRO_FEEDBACK_NOTE}'

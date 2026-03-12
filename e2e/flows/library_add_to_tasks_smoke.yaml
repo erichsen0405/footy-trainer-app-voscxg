@@ -140,12 +140,6 @@ tags:
     id: '^home\.thisWeekPremiumCard\.addButton$'
 - extendedWaitUntil:
     visible:
-      id: '^activity\.create\.mode\.title$'
-    timeout: 15000
-- tapOn:
-    id: '^activity\.create\.mode\.title$'
-- extendedWaitUntil:
-    visible:
       id: '^activity\.create\.titleInput$'
     timeout: 15000
 - assertVisible:
@@ -504,7 +498,7 @@ tags:
     timeout: 15000
 - extendedWaitUntil:
     visible:
-      text: '^Senest:\s*5/10$'
+      text: '^Senest:\s*5/5$'
     timeout: 15000
 - assertVisible:
     id: '^library\.counter\.lastScore\.711f3229-2fee-45fe-b46e-87dd1605af03$'

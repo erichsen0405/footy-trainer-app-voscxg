@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { TaskTemplateSelfFeedback } from '@/types';
+import { normalizeFivePointScore } from '@/utils/scoreScale';
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
@@ -12,7 +13,7 @@ export function mapFeedbackRow(row: any): TaskTemplateSelfFeedback {
     taskTemplateId: row.task_template_id,
     taskInstanceId: row.task_instance_id ?? null,
     activityId: row.activity_id,
-    rating: row.rating,
+    rating: normalizeFivePointScore(row.rating),
     note: row.note,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -254,7 +255,7 @@ export async function upsertSelfFeedback(args: UpsertSelfFeedbackArgs) {
     task_template_id: templateId,
     task_instance_id: taskInstanceId,
     activity_id: activityId,
-    rating: args.rating,
+    rating: args.rating === null ? null : normalizeFivePointScore(args.rating),
     note: trimmedNote.length ? trimmedNote : null,
   };
 

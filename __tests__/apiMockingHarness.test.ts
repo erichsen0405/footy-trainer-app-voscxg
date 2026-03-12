@@ -70,7 +70,7 @@ describe('API mocking harness (offline deterministic)', () => {
       templateId: '11111111-1111-4111-8111-111111111111',
       userId: fixtureFeedbackSaved.user_id,
       activity_id: fixtureFeedbackSaved.activity_id,
-      rating: 6,
+      rating: 3,
       note: 'Latest note',
     });
 

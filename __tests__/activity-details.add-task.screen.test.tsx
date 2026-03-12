@@ -388,7 +388,7 @@ describe('ActivityDetails add-task flow', () => {
         taskTemplateId: 'tpl-1',
         taskInstanceId: 'task-1',
         activityId: 'activity-old-1',
-        rating: 8,
+        rating: 4,
         note: 'Hold fokus pa forste beroring.',
         focusPointTitle: 'Forste beroring',
         createdAt: '2026-02-20T09:00:00.000Z',
@@ -422,7 +422,7 @@ describe('ActivityDetails add-task flow', () => {
 
     expect(await findByText('Seneste feedback')).toBeTruthy();
     expect(await findByText('Forste beroring')).toBeTruthy();
-    expect(await findByText('Score 8/10')).toBeTruthy();
+    expect(await findByText('Score 4/5')).toBeTruthy();
     expect(await findByText('Hold fokus pa forste beroring.')).toBeTruthy();
   });
 
@@ -434,7 +434,7 @@ describe('ActivityDetails add-task flow', () => {
         taskTemplateId: 'tpl-1',
         taskInstanceId: 'task-1',
         activityId: 'activity-old-1',
-        rating: 6,
+        rating: 3,
         note: 'Skub bolden frem i lobet.',
         focusPointTitle: 'Boldkontrol',
         createdAt: '2026-02-20T09:00:00.000Z',

@@ -31,6 +31,7 @@ import { Task } from '@/types';
 import { extractVideoKey, resolveVideoUrl } from '@/utils/videoKey';
 import { HOLDTRAINING_POSITIONS } from '@/utils/exercisePositions';
 import { AssignExerciseModal } from '@/components/AssignExerciseModal';
+import { formatScoreOutOfFive, normalizeFivePointScore } from '@/utils/scoreScale';
 
 type RootFolderId = 'personal' | 'trainer' | 'footballcoach';
 
@@ -123,7 +124,7 @@ const clampDifficulty = (value: any): number => {
 };
 
 const formatLatestScoreLine = (lastScore?: number | null) =>
-  typeof lastScore === 'number' ? `Senest: ${lastScore}/10` : 'Senest: –/10';
+  normalizeFivePointScore(lastScore) !== null ? `Senest: ${formatScoreOutOfFive(lastScore)}` : 'Senest: –/5';
 
 const formatExecutionCountLine = (executionCount?: number | null) =>
   typeof executionCount === 'number' && executionCount > 0 ? `Udført: ${executionCount}x` : 'Udført: –x';
