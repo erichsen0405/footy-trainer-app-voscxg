@@ -13,9 +13,6 @@ import {
 const PROGRESSION_FETCH_MAX_ATTEMPTS = 2;
 const PROGRESSION_FETCH_RETRY_DELAY_MS = 1000;
 
-const PROGRESSION_FETCH_MAX_ATTEMPTS = 2;
-const PROGRESSION_FETCH_RETRY_DELAY_MS = 1000;
-
 export type ProgressionMetric = 'rating' | 'intensity';
 
 export interface ProgressionEntry {
