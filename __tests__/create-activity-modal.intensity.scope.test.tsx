@@ -49,6 +49,8 @@ describe('CreateActivityModal intensity scope', () => {
       />
     );
 
+    fireEvent.press(getByTestId('activity.create.mode.title'));
+
     expect(queryByTestId('activity.create.intensityOption.1')).toBeNull();
 
     fireEvent(getByTestId('activity.create.intensityToggle'), 'valueChange', true);
@@ -74,6 +76,8 @@ describe('CreateActivityModal intensity scope', () => {
       />
     );
 
+    fireEvent.press(getByTestId('activity.create.mode.title'));
+
     fireEvent.changeText(getByTestId('activity.create.titleInput'), 'Ny aktivitet');
     const categoryChip = getByTestId('activity.create.categoryChip.0');
     const chipStyle = StyleSheet.flatten(categoryChip.props.style);
@@ -93,6 +97,36 @@ describe('CreateActivityModal intensity scope', () => {
           categoryId: 'cat-1',
           intensityEnabled: true,
           intensityApplyScope: 'category',
+        })
+      )
+    );
+  });
+
+  it('submits category flow with category name as title', async () => {
+    const onCreateActivity = jest.fn().mockResolvedValue(undefined);
+    jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+
+    const { getByTestId, queryByTestId } = render(
+      <CreateActivityModal
+        visible
+        onClose={jest.fn()}
+        onCreateActivity={onCreateActivity}
+        categories={categories as any}
+        onRefreshCategories={jest.fn()}
+      />
+    );
+
+    fireEvent.press(getByTestId('activity.create.mode.category'));
+    expect(queryByTestId('activity.create.titleInput')).toBeNull();
+
+    fireEvent.press(getByTestId('activity.create.categoryModeChip.0'));
+    fireEvent.press(getByTestId('activity.create.submitButton'));
+
+    await waitFor(() =>
+      expect(onCreateActivity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Training',
+          categoryId: 'cat-1',
         })
       )
     );
