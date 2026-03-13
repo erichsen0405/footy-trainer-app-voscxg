@@ -20,12 +20,19 @@ import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useFootball } from '@/contexts/FootballContext';
+import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 
 // Robust import: avoid runtime crash if named export "colors" changes
 import * as CommonStyles from '@/styles/commonStyles';
 
 import { IconSymbol } from '@/components/IconSymbol';
-import { Activity, ActivityCategory, Task, TaskTemplateSelfFeedback } from '@/types';
+import {
+  Activity,
+  ActivityCategory,
+  Task,
+  TaskTemplateSelfFeedback,
+  TrainerActivityFeedback,
+} from '@/types';
 import { useUserRole } from '@/hooks/useUserRole';
 import { CreateActivityTaskModal } from '@/components/CreateActivityTaskModal';
 import { AssignActivityModal } from '@/components/AssignActivityModal';
@@ -37,6 +44,11 @@ import {
   fetchSelfFeedbackForTemplates,
   upsertSelfFeedback,
 } from '@/services/feedbackService';
+import {
+  fetchTrainerFeedbackForPlayerActivity,
+  fetchTrainerFeedbackForTrainerActivity,
+  sendTrainerFeedback,
+} from '@/services/trainerFeedbackService';
 import { activityAssignmentsService } from '@/services/activityAssignments';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { filterVisibleTasksForActivity } from '@/utils/taskTemplateVisibility';
@@ -271,6 +283,17 @@ function formatShortDate(value: string): string {
   });
 }
 
+function sortTrainerFeedbackByUpdatedAtDesc(entries: TrainerActivityFeedback[]): TrainerActivityFeedback[] {
+  return [...entries].sort((left, right) => {
+    const leftTime = Date.parse(left.updatedAt || left.createdAt || '');
+    const rightTime = Date.parse(right.updatedAt || right.createdAt || '');
+    if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
+      return rightTime - leftTime;
+    }
+    return right.createdAt.localeCompare(left.createdAt);
+  });
+}
+
 function formatDateTime(date: Date, time: string): string {
   const timeDisplay = time.substring(0, 5);
   return `${formatDate(date)} kl. ${timeDisplay}`;
@@ -321,6 +344,7 @@ const INTERNAL_SELECT_WITH_VIDEO = `
   user_id,
   player_id,
   team_id,
+  source_activity_id,
   title,
   activity_date,
   activity_time,
@@ -363,6 +387,7 @@ const INTERNAL_SELECT_NO_VIDEO = `
   user_id,
   player_id,
   team_id,
+  source_activity_id,
   title,
   activity_date,
   activity_time,
@@ -904,6 +929,8 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         user_id: internalActivityAny.user_id ?? null,
         player_id: internalActivityAny.player_id ?? null,
         team_id: internalActivityAny.team_id ?? null,
+        sourceActivityId: internalActivityAny.source_activity_id ?? null,
+        source_activity_id: internalActivityAny.source_activity_id ?? null,
       } as Activity;
     }
 
@@ -1409,6 +1436,11 @@ type LatestCategoryFeedbackEntry = {
   note?: string | null;
 };
 
+type TrainerFeedbackPlayerOption = {
+  id: string;
+  name: string;
+};
+
 function normalizeId(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   const trimmed = String(value).trim();
@@ -1782,6 +1814,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     duplicateActivity,
     tasks: taskTemplates,
   } = useFootball();
+  const { players } = useTeamPlayer();
 
   const listRef = useRef<FlatList<TaskListItem>>(null);
 
@@ -1802,6 +1835,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     playerCount: number;
     teamCount: number;
   } | null>(null);
+  const [activityAssignmentPlayerIds, setActivityAssignmentPlayerIds] = useState<string[]>([]);
 
   const [feedbackConfigByTemplate, setFeedbackConfigByTemplate] = useState<
     Record<string, AfterTrainingFeedbackConfig>
@@ -1820,6 +1854,21 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const [isLatestCategoryFeedbackLoading, setIsLatestCategoryFeedbackLoading] = useState(true);
   const [latestFeedbackRefreshKey, setLatestFeedbackRefreshKey] = useState(0);
   const [isLatestFeedbackExpanded, setIsLatestFeedbackExpanded] = useState(true);
+  const [trainerFeedbackModalVisible, setTrainerFeedbackModalVisible] = useState(false);
+  const [selectedTrainerFeedbackPlayerId, setSelectedTrainerFeedbackPlayerId] = useState<string | null>(null);
+  const [trainerFeedbackInput, setTrainerFeedbackInput] = useState('');
+  const [isTrainerFeedbackSending, setIsTrainerFeedbackSending] = useState(false);
+  const [trainerActivityFeedback, setTrainerActivityFeedback] = useState<TrainerActivityFeedback[]>([]);
+  const [isTrainerActivityFeedbackLoading, setIsTrainerActivityFeedbackLoading] = useState(false);
+  const [selectedTrainerActivityFeedback, setSelectedTrainerActivityFeedback] =
+    useState<TrainerActivityFeedback | null>(null);
+  const [trainerActivityFeedbackModalVisible, setTrainerActivityFeedbackModalVisible] =
+    useState(false);
+  const [playerTrainerFeedback, setPlayerTrainerFeedback] = useState<TrainerActivityFeedback[]>([]);
+  const [isPlayerTrainerFeedbackLoading, setIsPlayerTrainerFeedbackLoading] = useState(false);
+  const [selectedPlayerTrainerFeedback, setSelectedPlayerTrainerFeedback] =
+    useState<TrainerActivityFeedback | null>(null);
+  const [playerTrainerFeedbackModalVisible, setPlayerTrainerFeedbackModalVisible] = useState(false);
 
   const [selectedNormalTask, setSelectedNormalTask] = useState<FeedbackTask | null>(null);
   const [isNormalTaskModalVisible, setIsNormalTaskModalVisible] = useState(false);
@@ -1890,6 +1939,10 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const activityExternalEventId =
     activity.externalEventId ?? (activity as any)?.external_event_id;
   const activityTasks = activity.tasks;
+  const activityOwnerId = normalizeId((activity as any)?.user_id ?? (activity as any)?.userId);
+  const activitySourceActivityId = normalizeId(
+    (activity as any)?.sourceActivityId ?? (activity as any)?.source_activity_id,
+  );
   const activityPlayerScopeId = normalizeId((activity as any)?.playerId ?? (activity as any)?.player_id);
   const activityTeamScopeId = normalizeId((activity as any)?.teamId ?? (activity as any)?.team_id);
   const isTrainerAssignedActivityForPlayer = useMemo(
@@ -1923,6 +1976,13 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       intensityNote,
     };
   }, [activity]);
+  const isTrainerOwnedActivity = useMemo(() => {
+    if (!currentUserId) return false;
+    if (activity.isExternal) {
+      return !activityOwnerId || activityOwnerId === currentUserId;
+    }
+    return activityOwnerId === currentUserId && !activitySourceActivityId;
+  }, [activity.isExternal, activityOwnerId, activitySourceActivityId, currentUserId]);
 
   const feedbackActivityCandidates = useMemo(() => {
     const ids: string[] = [];
@@ -2251,6 +2311,78 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   }, [activity?.category?.id, currentUserId, isCurrentUserResolved, latestFeedbackRefreshKey]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    if (!isPlayerProfile || !currentUserId) {
+      setPlayerTrainerFeedback([]);
+      setIsPlayerTrainerFeedbackLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setIsPlayerTrainerFeedbackLoading(true);
+    void fetchTrainerFeedbackForPlayerActivity({
+      activity,
+      playerId: currentUserId,
+    })
+      .then((feedbackRows) => {
+        if (cancelled) return;
+        setPlayerTrainerFeedback(sortTrainerFeedbackByUpdatedAtDesc(feedbackRows));
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error('[ActivityDetails] player trainer feedback load failed', error);
+        setPlayerTrainerFeedback([]);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsPlayerTrainerFeedbackLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activity, currentUserId, isPlayerProfile]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!isTrainerProfile || !currentUserId || !isTrainerOwnedActivity) {
+      setTrainerActivityFeedback([]);
+      setIsTrainerActivityFeedbackLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setIsTrainerActivityFeedbackLoading(true);
+    void fetchTrainerFeedbackForTrainerActivity({
+      activity,
+      trainerId: currentUserId,
+    })
+      .then((feedbackRows) => {
+        if (cancelled) return;
+        setTrainerActivityFeedback(sortTrainerFeedbackByUpdatedAtDesc(feedbackRows));
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error('[ActivityDetails] trainer feedback list load failed', error);
+        setTrainerActivityFeedback([]);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsTrainerActivityFeedbackLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activity, currentUserId, isTrainerOwnedActivity, isTrainerProfile]);
+
+  useEffect(() => {
     if (!pendingFeedbackTaskId) return;
 
     const task = tasksState.find((t) => String(t.id) === String(pendingFeedbackTaskId));
@@ -2427,7 +2559,18 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
   useEffect(() => {
     setActivityAssignmentSummary(null);
+    setActivityAssignmentPlayerIds([]);
     setAssignActivityModalVisible(false);
+    setTrainerFeedbackModalVisible(false);
+    setSelectedTrainerFeedbackPlayerId(null);
+    setTrainerFeedbackInput('');
+    setTrainerActivityFeedback([]);
+    setIsTrainerActivityFeedbackLoading(false);
+    setSelectedTrainerActivityFeedback(null);
+    setTrainerActivityFeedbackModalVisible(false);
+    setPlayerTrainerFeedback([]);
+    setSelectedPlayerTrainerFeedback(null);
+    setPlayerTrainerFeedbackModalVisible(false);
   }, [activity.id]);
 
   useEffect(() => {
@@ -2435,6 +2578,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
     if (!isTrainerProfile || !currentUserId) {
       setActivityAssignmentSummary(null);
+      setActivityAssignmentPlayerIds([]);
       return () => {
         cancelled = true;
       };
@@ -2453,11 +2597,13 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           playerCount: assignment.playerIds.length,
           teamCount: assignment.teamIds.length,
         });
+        setActivityAssignmentPlayerIds(assignment.playerIds);
       })
       .catch((error) => {
         if (cancelled) return;
         console.error('[ActivityDetails] assignment summary load failed', error);
         setActivityAssignmentSummary(null);
+        setActivityAssignmentPlayerIds([]);
       });
 
     return () => {
@@ -3324,6 +3470,155 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     return `Tilknyttet: ${activityAssignmentSummary.playerCount} ${playerLabel} · ${activityAssignmentSummary.teamCount} ${teamLabel}`;
   }, [activityAssignmentSummary]);
 
+  const trainerFeedbackPlayerOptions = useMemo<TrainerFeedbackPlayerOption[]>(() => {
+    if (!activityAssignmentPlayerIds.length) return [];
+
+    return activityAssignmentPlayerIds
+      .map((playerId) => {
+        const profile = players.find((player) => String(player.id) === playerId);
+        return {
+          id: playerId,
+          name:
+            typeof profile?.full_name === 'string' && profile.full_name.trim()
+              ? profile.full_name.trim()
+              : 'Spiller',
+        };
+      })
+      .sort((left, right) => left.name.localeCompare(right.name, 'da-DK', { sensitivity: 'base' }));
+  }, [activityAssignmentPlayerIds, players]);
+
+  const trainerFeedbackPlayerNamesById = useMemo(() => {
+    const nameMap: Record<string, string> = {};
+
+    for (const player of players) {
+      const playerId = normalizeId((player as any)?.id);
+      if (!playerId) continue;
+      const fullName =
+        typeof (player as any)?.full_name === 'string' && (player as any).full_name.trim()
+          ? (player as any).full_name.trim()
+          : 'Spiller';
+      nameMap[playerId] = fullName;
+    }
+
+    for (const player of trainerFeedbackPlayerOptions) {
+      nameMap[player.id] = player.name;
+    }
+
+    return nameMap;
+  }, [players, trainerFeedbackPlayerOptions]);
+
+  const selectedTrainerFeedbackPlayer = useMemo(
+    () =>
+      trainerFeedbackPlayerOptions.find((player) => player.id === selectedTrainerFeedbackPlayerId) ??
+      null,
+    [selectedTrainerFeedbackPlayerId, trainerFeedbackPlayerOptions],
+  );
+
+  const selectedTrainerActivityFeedbackPlayerName = useMemo(() => {
+    if (!selectedTrainerActivityFeedback) return 'Spiller';
+    return trainerFeedbackPlayerNamesById[selectedTrainerActivityFeedback.playerId] || 'Spiller';
+  }, [selectedTrainerActivityFeedback, trainerFeedbackPlayerNamesById]);
+
+  const latestPlayerTrainerFeedback = useMemo(
+    () => playerTrainerFeedback[0] ?? null,
+    [playerTrainerFeedback],
+  );
+
+  const shouldShowTrainerFeedbackSection =
+    !isEditing && isTrainerProfile && isTrainerOwnedActivity;
+  const shouldShowPlayerTrainerFeedbackSection =
+    !isEditing && isPlayerProfile && !isPlayerTrainerFeedbackLoading && playerTrainerFeedback.length > 0;
+
+  const handleOpenTrainerFeedbackModal = useCallback(() => {
+    if (!trainerFeedbackPlayerOptions.length) {
+      Alert.alert('Ingen spillere', 'Aktiviteten har ingen tilknyttede spillere endnu.');
+      return;
+    }
+
+    setSelectedTrainerFeedbackPlayerId((current) => {
+      if (current && trainerFeedbackPlayerOptions.some((player) => player.id === current)) {
+        return current;
+      }
+      return trainerFeedbackPlayerOptions[0].id;
+    });
+    setTrainerFeedbackModalVisible(true);
+  }, [trainerFeedbackPlayerOptions]);
+
+  const handleCloseTrainerFeedbackModal = useCallback(() => {
+    if (isTrainerFeedbackSending) return;
+    setTrainerFeedbackModalVisible(false);
+    setTrainerFeedbackInput('');
+    setSelectedTrainerFeedbackPlayerId(null);
+  }, [isTrainerFeedbackSending]);
+
+  const handleOpenTrainerActivityFeedbackModal = useCallback((feedback: TrainerActivityFeedback) => {
+    setSelectedTrainerActivityFeedback(feedback);
+    setTrainerActivityFeedbackModalVisible(true);
+  }, []);
+
+  const handleCloseTrainerActivityFeedbackModal = useCallback(() => {
+    setTrainerActivityFeedbackModalVisible(false);
+    setSelectedTrainerActivityFeedback(null);
+  }, []);
+
+  const handleOpenPlayerTrainerFeedbackModal = useCallback((feedback: TrainerActivityFeedback) => {
+    setSelectedPlayerTrainerFeedback(feedback);
+    setPlayerTrainerFeedbackModalVisible(true);
+  }, []);
+
+  const handleClosePlayerTrainerFeedbackModal = useCallback(() => {
+    setPlayerTrainerFeedbackModalVisible(false);
+    setSelectedPlayerTrainerFeedback(null);
+  }, []);
+
+  const handleSendTrainerFeedback = useCallback(async () => {
+    const playerId = normalizeId(selectedTrainerFeedbackPlayerId);
+    const feedbackText = trainerFeedbackInput.trim();
+
+    if (!playerId) {
+      Alert.alert('Vælg spiller', 'Vælg en spiller, før du sender feedback.');
+      return;
+    }
+
+    if (!feedbackText) {
+      Alert.alert('Skriv feedback', 'Skriv feedback, før du sender.');
+      return;
+    }
+
+    setIsTrainerFeedbackSending(true);
+    try {
+      const result = await sendTrainerFeedback({
+        activityId: String(activity.id),
+        playerId,
+        feedbackText,
+      });
+      setTrainerFeedbackModalVisible(false);
+      setTrainerFeedbackInput('');
+      setSelectedTrainerFeedbackPlayerId(null);
+      setTrainerActivityFeedback((current) =>
+        sortTrainerFeedbackByUpdatedAtDesc([
+          result.feedback,
+          ...current.filter((entry) => entry.id !== result.feedback.id),
+        ]),
+      );
+      const mailStatus = result.delivery?.mail?.status;
+      const pushStatus = result.delivery?.push?.status;
+      if (mailStatus === 'sent' && pushStatus === 'sent') {
+        Alert.alert('Feedback sendt', 'Spilleren har modtaget feedbacken.');
+      } else {
+        Alert.alert(
+          'Feedback gemt',
+          'Feedbacken blev gemt, men mindst én notifikation kunne ikke bekræftes sendt.',
+        );
+      }
+    } catch (error: any) {
+      console.error('[ActivityDetails] trainer feedback send failed', error);
+      Alert.alert('Kunne ikke sende', error?.message || 'Prøv igen senere.');
+    } finally {
+      setIsTrainerFeedbackSending(false);
+    }
+  }, [activity.id, selectedTrainerFeedbackPlayerId, trainerFeedbackInput]);
+
   const taskListItems = useMemo<TaskListItem[]>(() => {
     const items: TaskListItem[] = [];
     if (showIntensityTaskRow) {
@@ -4162,6 +4457,166 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             </View>
           </View>
         ) : null}
+
+        {shouldShowTrainerFeedbackSection ? (
+          <View style={[styles.v2CardWrap, { marginTop: 12 }]} testID="trainer-feedback-section">
+            <View style={[styles.activityAssignCard, { backgroundColor: isDark ? '#ffffff0f' : '#ffffff' }]}>
+              <View style={styles.trainerFeedbackHeaderRow}>
+                <Text style={[styles.activityAssignTitle, { color: textColor }]}>Spiller feedback</Text>
+                <TouchableOpacity
+                  style={[
+                    styles.trainerFeedbackAddButton,
+                    {
+                      backgroundColor: trainerFeedbackPlayerOptions.length ? primaryColor : fieldBackgroundColor,
+                      borderColor: trainerFeedbackPlayerOptions.length ? primaryColor : fieldBorderColor,
+                    },
+                  ]}
+                  activeOpacity={0.8}
+                  onPress={handleOpenTrainerFeedbackModal}
+                  testID="trainer-feedback-add-button"
+                >
+                  <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={18} color={trainerFeedbackPlayerOptions.length ? '#fff' : textSecondaryColor} />
+                </TouchableOpacity>
+              </View>
+              <Text style={[styles.activityAssignMessage, { color: textSecondaryColor }]}>
+                Send individuel feedback til en spiller på denne aktivitet.
+              </Text>
+              <Text style={[styles.activityAssignSummary, { color: textSecondaryColor }]}>
+                {trainerFeedbackPlayerOptions.length
+                  ? `${trainerFeedbackPlayerOptions.length} ${trainerFeedbackPlayerOptions.length === 1 ? 'spiller er' : 'spillere er'} tilknyttet`
+                  : 'Ingen spillere tilknyttet endnu'}
+              </Text>
+              {isTrainerActivityFeedbackLoading ? (
+                <Text style={[styles.activityAssignSummary, { color: textSecondaryColor }]}>
+                  Henter sendt feedback...
+                </Text>
+              ) : trainerActivityFeedback.length ? (
+                <View style={styles.trainerFeedbackList}>
+                  {trainerActivityFeedback.map((feedback, index) => {
+                    const playerName = trainerFeedbackPlayerNamesById[feedback.playerId] || 'Spiller';
+                    const feedbackMeta = feedback.updatedAt
+                      ? `Opdateret ${formatShortDate(feedback.updatedAt)}`
+                      : 'Sendt feedback';
+
+                    return (
+                      <TouchableOpacity
+                        key={feedback.id}
+                        style={[
+                          styles.trainerFeedbackListItem,
+                          {
+                            backgroundColor: fieldBackgroundColor,
+                            borderColor: fieldBorderColor,
+                            marginTop: index === 0 ? 0 : 10,
+                          },
+                        ]}
+                        activeOpacity={0.8}
+                        onPress={() => handleOpenTrainerActivityFeedbackModal(feedback)}
+                        testID={`trainer-feedback-open-modal-${feedback.id}`}
+                      >
+                        <View style={styles.trainerFeedbackListItemTextWrap}>
+                          <Text style={[styles.trainerFeedbackListItemTitle, { color: textColor }]}>
+                            {playerName}
+                          </Text>
+                          <Text
+                            style={[styles.trainerFeedbackListItemMeta, { color: textSecondaryColor }]}
+                          >
+                            {feedbackMeta}
+                          </Text>
+                        </View>
+                        <IconSymbol
+                          ios_icon_name="chevron.right"
+                          android_material_icon_name="chevron_right"
+                          size={18}
+                          color={textSecondaryColor}
+                        />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
+
+        {shouldShowPlayerTrainerFeedbackSection ? (
+          <View style={[styles.v2CardWrap, { marginTop: 12 }]} testID="player-trainer-feedback-section">
+            <View style={[styles.activityAssignCard, { backgroundColor: isDark ? '#ffffff0f' : '#ffffff' }]}>
+              <Text style={[styles.activityAssignTitle, { color: textColor }]}>Feedback fra træner</Text>
+              {playerTrainerFeedback.length === 1 && latestPlayerTrainerFeedback ? (
+                <>
+                  <Text style={[styles.activityAssignMessage, { color: textSecondaryColor }]}>
+                    {latestPlayerTrainerFeedback.updatedAt
+                      ? `Opdateret ${formatShortDate(latestPlayerTrainerFeedback.updatedAt)}`
+                      : 'Du har modtaget feedback på denne aktivitet.'}
+                  </Text>
+                  <Text style={[styles.trainerFeedbackPreviewText, { color: textColor }]} numberOfLines={3}>
+                    {latestPlayerTrainerFeedback.feedbackText}
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.activityAssignButton, { backgroundColor: primaryColor }]}
+                    activeOpacity={0.8}
+                    onPress={() => handleOpenPlayerTrainerFeedbackModal(latestPlayerTrainerFeedback)}
+                    testID="player-trainer-feedback-open-modal"
+                  >
+                    <Text style={styles.activityAssignButtonText}>Læs feedback</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <Text style={[styles.activityAssignMessage, { color: textSecondaryColor }]}>
+                    {`${playerTrainerFeedback.length} feedbackbeskeder på denne aktivitet.`}
+                  </Text>
+                  <View style={styles.trainerFeedbackList}>
+                    {playerTrainerFeedback.map((feedback, index) => {
+                      const feedbackLabel = `Feedback ${index + 1}`;
+                      const feedbackMeta = feedback.updatedAt
+                        ? `Opdateret ${formatShortDate(feedback.updatedAt)}`
+                        : 'Modtaget feedback';
+
+                      return (
+                        <TouchableOpacity
+                          key={feedback.id}
+                          style={[
+                            styles.trainerFeedbackListItem,
+                            {
+                              backgroundColor: fieldBackgroundColor,
+                              borderColor: fieldBorderColor,
+                              marginTop: index === 0 ? 0 : 10,
+                            },
+                          ]}
+                          activeOpacity={0.8}
+                          onPress={() => handleOpenPlayerTrainerFeedbackModal(feedback)}
+                          testID={
+                            index === 0
+                              ? 'player-trainer-feedback-open-modal'
+                              : `player-trainer-feedback-open-modal-${feedback.id}`
+                          }
+                        >
+                          <View style={styles.trainerFeedbackListItemTextWrap}>
+                            <Text style={[styles.trainerFeedbackListItemTitle, { color: textColor }]}>
+                              {feedbackLabel}
+                            </Text>
+                            <Text
+                              style={[styles.trainerFeedbackListItemMeta, { color: textSecondaryColor }]}
+                            >
+                              {feedbackMeta}
+                            </Text>
+                          </View>
+                          <IconSymbol
+                            ios_icon_name="chevron.right"
+                            android_material_icon_name="chevron_right"
+                            size={18}
+                            color={textSecondaryColor}
+                          />
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </>
+              )}
+            </View>
+          </View>
+        ) : null}
       </View>
     );
 
@@ -4201,6 +4656,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     fieldBorderColor,
     handleAddTask,
     handleOpenAssignActivityModal,
+    handleOpenTrainerFeedbackModal,
     handleDateChange,
     handleEndDateChange,
     handleEndTimeChange,
@@ -4211,7 +4667,10 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     isDark,
     isEditing,
     isTrainerProfile,
+    shouldShowTrainerFeedbackSection,
+    shouldShowPlayerTrainerFeedbackSection,
     isInternalActivity,
+    playerTrainerFeedback,
     recurrenceType,
     renderCategorySelector,
     renderIntensitySection,
@@ -4227,11 +4686,18 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     latestCategoryFeedback,
     isLatestCategoryFeedbackLoading,
     isLatestFeedbackExpanded,
-      textColor,
-      textSecondaryColor,
-      toggleDay,
-      shouldShowActivityIntensityField,
-      currentActivityIntensity,
+    textColor,
+    textSecondaryColor,
+    toggleDay,
+    shouldShowActivityIntensityField,
+    currentActivityIntensity,
+    handleOpenPlayerTrainerFeedbackModal,
+    handleOpenTrainerActivityFeedbackModal,
+    isTrainerActivityFeedbackLoading,
+    latestPlayerTrainerFeedback,
+    trainerActivityFeedback,
+    trainerFeedbackPlayerOptions,
+    trainerFeedbackPlayerNamesById,
   ]);
 
   const listHeaderComponent = useMemo(() => renderListHeader(), [renderListHeader]);
@@ -4531,7 +4997,11 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   }
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.container, { backgroundColor: bgColor }]}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={[styles.container, { backgroundColor: bgColor }]}
+      testID="activity.details.screen"
+    >
       <LinearGradient colors={headerGradientColors} style={[styles.header, styles.v2Topbar, { paddingTop: insets.top + 8 }]}>
         <View style={styles.headerChevronWrap} pointerEvents="box-none">
           <TouchableOpacity
@@ -4772,6 +5242,171 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               <Text style={[styles.intensityScopeModalCancelText, { color: textSecondaryColor }]}>
                 {isTemplateTaskSaving ? 'Opretter...' : 'Luk'}
               </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={trainerFeedbackModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCloseTrainerFeedbackModal}
+      >
+        <View style={styles.intensityScopeModalBackdrop}>
+          <View style={[styles.templateTaskModalCard, { backgroundColor: cardBgColor }]}>
+            <Text style={[styles.templateTaskModalTitle, { color: textColor }]}>Spiller feedback</Text>
+            <Text style={[styles.templateTaskModalSubtitle, { color: textSecondaryColor }]}>
+              Vælg en spiller og skriv din feedback.
+            </Text>
+
+            <View
+              style={[
+                styles.trainerFeedbackPicker,
+                { borderColor: fieldBorderColor, backgroundColor: fieldBackgroundColor },
+              ]}
+              testID="trainer-feedback-player-picker"
+            >
+              <FlatList
+                data={trainerFeedbackPlayerOptions}
+                keyExtractor={(item) => item.id}
+                keyboardShouldPersistTaps="handled"
+                renderItem={({ item }) => {
+                  const isSelected = item.id === selectedTrainerFeedbackPlayerId;
+                  return (
+                    <TouchableOpacity
+                      style={[
+                        styles.trainerFeedbackPlayerRow,
+                        {
+                          borderColor: isSelected ? primaryColor : fieldBorderColor,
+                          backgroundColor: isSelected ? (isDark ? '#13253a' : '#eef6ff') : cardBgColor,
+                        },
+                      ]}
+                      activeOpacity={0.8}
+                      onPress={() => setSelectedTrainerFeedbackPlayerId(item.id)}
+                    >
+                      <Text style={[styles.trainerFeedbackPlayerName, { color: textColor }]}>{item.name}</Text>
+                      {isSelected ? (
+                        <IconSymbol
+                          ios_icon_name="checkmark.circle.fill"
+                          android_material_icon_name="check_circle"
+                          size={18}
+                          color={primaryColor}
+                        />
+                      ) : null}
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+            </View>
+
+            <TextInput
+              style={[
+                styles.trainerFeedbackInput,
+                { backgroundColor: fieldBackgroundColor, borderColor: fieldBorderColor, color: textColor },
+              ]}
+              value={trainerFeedbackInput}
+              onChangeText={setTrainerFeedbackInput}
+              editable={!isTrainerFeedbackSending}
+              multiline
+              placeholder={
+                selectedTrainerFeedbackPlayer
+                  ? `Skriv feedback til ${selectedTrainerFeedbackPlayer.name}`
+                  : 'Skriv feedback'
+              }
+              placeholderTextColor={textSecondaryColor}
+              testID="trainer-feedback-input"
+            />
+
+            <TouchableOpacity
+              style={[
+                styles.activityAssignButton,
+                {
+                  backgroundColor:
+                    isTrainerFeedbackSending || !selectedTrainerFeedbackPlayerId || !trainerFeedbackInput.trim()
+                      ? fieldBorderColor
+                      : primaryColor,
+                },
+              ]}
+              activeOpacity={0.8}
+              disabled={isTrainerFeedbackSending || !selectedTrainerFeedbackPlayerId || !trainerFeedbackInput.trim()}
+              onPress={() => {
+                void handleSendTrainerFeedback();
+              }}
+              testID="trainer-feedback-send-button"
+            >
+              {isTrainerFeedbackSending ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.activityAssignButtonText}>Send feedback</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.intensityScopeModalCancelButton}
+              onPress={handleCloseTrainerFeedbackModal}
+              activeOpacity={0.85}
+              disabled={isTrainerFeedbackSending}
+            >
+              <Text style={[styles.intensityScopeModalCancelText, { color: textSecondaryColor }]}>Luk</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={playerTrainerFeedbackModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={handleClosePlayerTrainerFeedbackModal}
+      >
+        <View style={styles.intensityScopeModalBackdrop}>
+          <View style={[styles.intensityScopeModalCard, { backgroundColor: cardBgColor }]}>
+            <Text style={[styles.intensityScopeModalTitle, { color: textColor }]}>Feedback fra træner</Text>
+            {selectedPlayerTrainerFeedback?.updatedAt ? (
+              <Text style={[styles.templateTaskModalSubtitle, { color: textSecondaryColor, marginBottom: 12 }]}>
+                {`Opdateret ${formatShortDate(selectedPlayerTrainerFeedback.updatedAt)}`}
+              </Text>
+            ) : null}
+            <Text style={[styles.trainerFeedbackModalText, { color: textColor }]}>
+              {selectedPlayerTrainerFeedback?.feedbackText}
+            </Text>
+            <TouchableOpacity
+              style={[styles.activityAssignButton, { backgroundColor: primaryColor, marginTop: 16 }]}
+              onPress={handleClosePlayerTrainerFeedbackModal}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.activityAssignButtonText}>Luk</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={trainerActivityFeedbackModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCloseTrainerActivityFeedbackModal}
+      >
+        <View style={styles.intensityScopeModalBackdrop}>
+          <View style={[styles.intensityScopeModalCard, { backgroundColor: cardBgColor }]}>
+            <Text style={[styles.intensityScopeModalTitle, { color: textColor }]}>
+              {`Feedback til ${selectedTrainerActivityFeedbackPlayerName}`}
+            </Text>
+            {selectedTrainerActivityFeedback?.updatedAt ? (
+              <Text style={[styles.templateTaskModalSubtitle, { color: textSecondaryColor, marginBottom: 12 }]}>
+                {`Opdateret ${formatShortDate(selectedTrainerActivityFeedback.updatedAt)}`}
+              </Text>
+            ) : null}
+            <Text style={[styles.trainerFeedbackModalText, { color: textColor }]}>
+              {selectedTrainerActivityFeedback?.feedbackText}
+            </Text>
+            <TouchableOpacity
+              style={[styles.activityAssignButton, { backgroundColor: primaryColor, marginTop: 16 }]}
+              onPress={handleCloseTrainerActivityFeedbackModal}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.activityAssignButtonText}>Luk</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -5285,6 +5920,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
+  trainerFeedbackHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  trainerFeedbackAddButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
   activityAssignMessage: {
     marginTop: 6,
     fontSize: 14,
@@ -5294,6 +5942,31 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 13,
     fontWeight: '600',
+  },
+  trainerFeedbackList: {
+    marginTop: 12,
+  },
+  trainerFeedbackListItem: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  trainerFeedbackListItemTextWrap: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  trainerFeedbackListItemTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  trainerFeedbackListItemMeta: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '500',
   },
   activityAssignButton: {
     marginTop: 12,
@@ -5307,6 +5980,11 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '800',
+  },
+  trainerFeedbackPreviewText: {
+    marginTop: 12,
+    fontSize: 14,
+    lineHeight: 20,
   },
   v2StickyCtaWrap: {
     position: 'absolute',
@@ -5684,6 +6362,40 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     paddingVertical: 12,
+  },
+  trainerFeedbackPicker: {
+    borderWidth: 1,
+    borderRadius: 12,
+    maxHeight: 190,
+    marginBottom: 12,
+    padding: 8,
+  },
+  trainerFeedbackPlayerRow: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  trainerFeedbackPlayerName: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  trainerFeedbackInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 15,
+    minHeight: 120,
+    textAlignVertical: 'top',
+  },
+  trainerFeedbackModalText: {
+    fontSize: 15,
+    lineHeight: 22,
   },
   headerChevronWrap: {
     position: 'absolute',

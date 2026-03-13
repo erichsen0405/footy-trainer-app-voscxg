@@ -18,6 +18,11 @@ export interface Activity {
   externalCategory?: string;
   seriesId?: string;
   seriesInstanceDate?: Date;
+  sourceActivityId?: string | null;
+  source_activity_id?: string | null;
+  user_id?: string | null;
+  player_id?: string | null;
+  team_id?: string | null;
 }
 
 export interface ActivityCategory {
@@ -173,6 +178,17 @@ export interface TaskTemplateSelfFeedback {
   activityId: string;
   rating?: number | null;
   note?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TrainerActivityFeedback {
+  id: string;
+  activityContextType: 'internal' | 'external';
+  activityContextId: string;
+  playerId: string;
+  trainerId: string;
+  feedbackText: string;
   createdAt: string;
   updatedAt: string;
 }
