@@ -1553,6 +1553,39 @@ export type Database = {
           },
         ]
       }
+      trainer_activity_feedback: {
+        Row: {
+          activity_context_id: string
+          activity_context_type: string
+          created_at: string
+          feedback_text: string
+          id: string
+          player_id: string
+          trainer_id: string
+          updated_at: string
+        }
+        Insert: {
+          activity_context_id: string
+          activity_context_type: string
+          created_at?: string
+          feedback_text: string
+          id?: string
+          player_id: string
+          trainer_id: string
+          updated_at?: string
+        }
+        Update: {
+          activity_context_id?: string
+          activity_context_type?: string
+          created_at?: string
+          feedback_text?: string
+          id?: string
+          player_id?: string
+          trainer_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       trophies: {
         Row: {
           completed_tasks: number

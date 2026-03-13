@@ -45,6 +45,28 @@ tags:
     timeout: 15000
 - assertNotVisible:
     id: '^library\.createExerciseButton$'
+- openLink: 'footballcoach:///(tabs)/(home)'
+- extendedWaitUntil:
+    visible:
+      id: '^home\.screen$'
+    timeout: 15000
+- runFlow:
+    when:
+      visible:
+        id: '^home\.activityCardButton$'
+    commands:
+      - tapOn:
+          id: '^home\.activityCardButton$'
+          index: 0
+          point: 50%,12%
+      - extendedWaitUntil:
+          visible:
+            id: '^activity\.details\.screen$'
+          timeout: 15000
+      - assertNotVisible:
+          id: '^trainer-feedback-section$'
+      - assertNotVisible:
+          id: '^trainer-feedback-add-button$'
 
 # Trainer: trainer-only UI skal vises
 - openLink: 'footballcoach:///(tabs)/profile'
@@ -93,6 +115,33 @@ tags:
 - assertVisible:
     id: '^profile\.subscriptionPlanBadgeText$'
     text: '(?i).*træner.*'
+- openLink: 'footballcoach:///(tabs)/(home)'
+- extendedWaitUntil:
+    visible:
+      id: '^home\.screen$'
+    timeout: 15000
+- runFlow:
+    when:
+      visible:
+        id: '^home\.activityCardButton$'
+    commands:
+      - tapOn:
+          id: '^home\.activityCardButton$'
+          index: 0
+          point: 50%,12%
+      - extendedWaitUntil:
+          visible:
+            id: '^activity\.details\.screen$'
+          timeout: 15000
+      - assertVisible:
+          id: '^trainer-feedback-section$'
+      - assertVisible:
+          id: '^trainer-feedback-add-button$'
+- openLink: 'footballcoach:///(tabs)/profile'
+- extendedWaitUntil:
+    visible:
+      id: '^profile\.teamPlayersSection\.toggle$'
+    timeout: 15000
 - assertVisible:
     id: '^profile\.teamPlayersSection\.toggle$'
 - tapOn:

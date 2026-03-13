@@ -1,3 +1,4 @@
+import { buildTrainerFeedbackPushPayload } from '../supabase/functions/_shared/trainerFeedbackDelivery';
 import { buildNotificationRouteFromData } from '@/utils/notificationDeepLink';
 
 describe('notification deeplink mapping', () => {
@@ -124,6 +125,25 @@ describe('notification deeplink mapping', () => {
       params: {
         id: 'activity-only',
         activityId: 'activity-only',
+      },
+    });
+  });
+
+  it('maps trainer feedback push payloads to the activity deeplink', () => {
+    const payload = buildTrainerFeedbackPushPayload({
+      activityId: 'player-activity-1',
+      activityTitle: 'Mandagstræning',
+      trainerName: 'Coach Kim',
+      feedbackText: 'Bliv ved med at orientere dig før førsteberøringen.',
+    });
+
+    const route = buildNotificationRouteFromData(payload.data);
+
+    expect(route).toEqual({
+      pathname: '/activity-details',
+      params: {
+        id: 'player-activity-1',
+        activityId: 'player-activity-1',
       },
     });
   });

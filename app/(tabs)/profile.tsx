@@ -2535,8 +2535,11 @@ export default function ProfileScreen() {
                   placeholderTextColor={textSecondaryColor}
                   autoCapitalize="none"
                   keyboardType="email-address"
+                  autoComplete="email"
+                  textContentType="username"
                   editable={!loading}
                   autoCorrect={false}
+                  contextMenuHidden={false}
                   testID="auth.login.emailInput"
                   accessibilityLabel="Email"
                 />
@@ -2558,6 +2561,9 @@ export default function ProfileScreen() {
                   editable={!loading}
                   autoCorrect={false}
                   autoCapitalize="none"
+                  autoComplete="password"
+                  textContentType="password"
+                  contextMenuHidden={false}
                   testID="auth.login.passwordInput"
                   accessibilityLabel="Adgangskode"
                 />
