@@ -14,11 +14,14 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import SmartVideoPlayer from '@/components/SmartVideoPlayer';
 import { IconSymbol } from '@/components/IconSymbol';
+import { TaskDescriptionRenderer } from '@/components/TaskDescriptionRenderer';
 import * as CommonStyles from '@/styles/commonStyles';
+import { extractFirstPlayableVideoUrl, isPlayableVideoUrl } from '@/utils/videoUrlParser';
 
 const FALLBACK_COLORS = {
   primary: '#3B82F6',
 };
+const SECTION_TEXT_COLOR = '#20283E';
 
 const colors = ((CommonStyles as any)?.colors as typeof FALLBACK_COLORS | undefined) ?? FALLBACK_COLORS;
 
@@ -85,6 +88,20 @@ function TaskDetailsModalComponent({
   onComplete,
 }: TaskDetailsModalProps) {
   const base = useMemo(() => clampColorHex(categoryColor), [categoryColor]);
+  const trimmedVideoUrl =
+    typeof videoUrl === 'string' && isPlayableVideoUrl(videoUrl) ? videoUrl.trim() : null;
+  const derivedDescriptionVideoUrl = useMemo(() => extractFirstPlayableVideoUrl(description), [description]);
+  const resolvedVideoUrl = trimmedVideoUrl ?? derivedDescriptionVideoUrl;
+  const descriptionForDisplay = useMemo(() => {
+    if (typeof description !== 'string') return '';
+    const trimmed = description.trim();
+    if (!trimmed) return '';
+    if (!resolvedVideoUrl) return trimmed;
+    return trimmed.replace(resolvedVideoUrl, '').trim();
+  }, [description, resolvedVideoUrl]);
+  const hasDescription = descriptionForDisplay.length > 0;
+  const hasReminder = reminderMinutes !== null && reminderMinutes !== undefined;
+  const hasBodyContent = Boolean(resolvedVideoUrl || hasDescription || hasReminder);
 
   const disable = isSaving;
 
@@ -123,22 +140,22 @@ function TaskDetailsModalComponent({
                 contentContainerStyle={styles.bodyContent}
                 showsVerticalScrollIndicator={false}
               >
-                {videoUrl ? (
+                {resolvedVideoUrl ? (
                   <View style={styles.videoSection}>
                     <View style={styles.videoContainer}>
-                      <SmartVideoPlayer url={videoUrl} />
+                      <SmartVideoPlayer url={resolvedVideoUrl} />
                     </View>
                   </View>
                 ) : null}
 
-                {description ? (
+                {hasDescription ? (
                   <View style={styles.section}>
                     <Text style={styles.sectionLabel}>Beskrivelse</Text>
-                    <Text style={styles.sectionText}>{description}</Text>
+                    <TaskDescriptionRenderer description={descriptionForDisplay} textColor={SECTION_TEXT_COLOR} />
                   </View>
                 ) : null}
 
-                {reminderMinutes !== null && reminderMinutes !== undefined ? (
+                {hasReminder ? (
                   <View style={styles.section}>
                     <View style={styles.chip}>
                       <IconSymbol
@@ -149,6 +166,12 @@ function TaskDetailsModalComponent({
                       />
                       <Text style={styles.chipText}>{reminderMinutes} min før</Text>
                     </View>
+                  </View>
+                ) : null}
+
+                {!hasBodyContent ? (
+                  <View style={styles.emptyState}>
+                    <Text style={styles.emptyStateText}>Ingen detaljer på denne opgave endnu.</Text>
                   </View>
                 ) : null}
               </ScrollView>
@@ -247,7 +270,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 22,
     fontWeight: '500',
-    color: '#20283E',
+    color: SECTION_TEXT_COLOR,
+  },
+  emptyState: {
+    marginTop: 12,
+    borderRadius: 18,
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(240, 242, 247, 0.75)',
+  },
+  emptyStateText: {
+    fontSize: 15,
+    lineHeight: 21,
+    color: '#55607A',
   },
 
   videoSection: { marginTop: 6 },
