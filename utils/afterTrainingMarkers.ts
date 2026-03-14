@@ -7,8 +7,12 @@ export function stripAfterTrainingMarkers(value?: string | null): string {
   }
 
   return value
-    .replace(AUTO_AFTER_TRAINING_REGEX, ' ')
-    .replace(/\s{2,}/g, ' ')
+    .replace(/\r\n/g, '\n')
+    .replace(AUTO_AFTER_TRAINING_REGEX, '')
+    .split('\n')
+    .map(line => line.replace(/[^\S\n\r]{2,}/g, ' ').trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
