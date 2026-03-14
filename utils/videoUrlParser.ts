@@ -16,6 +16,88 @@ export interface VideoInfo {
   thumbnailUrl: string | null;
 }
 
+const DIRECT_VIDEO_PATTERN = /\.(mp4|m4v|mov|webm|ogv|m3u8)(?:$|[?#])/i;
+
+function safeParseUrl(url: string): URL | null {
+  try {
+    return new URL(url);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeHost(hostname: string): string {
+  return hostname.toLowerCase().replace(/^www\./, '').replace(/^m\./, '');
+}
+
+function sanitizeVideoId(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+}
+
+function parseYouTubeVideoId(url: string): string | null {
+  const parsed = safeParseUrl(url);
+  if (parsed) {
+    const host = normalizeHost(parsed.hostname);
+    if (host === 'youtu.be') {
+      return sanitizeVideoId(parsed.pathname.split('/').filter(Boolean)[0] ?? null);
+    }
+
+    if (host === 'youtube.com' || host === 'youtube-nocookie.com') {
+      const fromQuery = sanitizeVideoId(parsed.searchParams.get('v'));
+      if (fromQuery) return fromQuery;
+
+      const segments = parsed.pathname.split('/').filter(Boolean);
+      if (!segments.length) return null;
+
+      if (segments[0] === 'embed' || segments[0] === 'shorts' || segments[0] === 'live') {
+        return sanitizeVideoId(segments[1] ?? null);
+      }
+    }
+  }
+
+  const regexFallbacks = [
+    /(?:youtu\.be\/)([^&\n?#/]+)/i,
+    /(?:youtube(?:-nocookie)?\.com\/embed\/)([^&\n?#/]+)/i,
+    /(?:youtube\.com\/shorts\/)([^&\n?#/]+)/i,
+    /(?:youtube\.com\/live\/)([^&\n?#/]+)/i,
+    /(?:[?&]v=)([^&\n?#/]+)/i,
+  ];
+
+  for (const pattern of regexFallbacks) {
+    const match = url.match(pattern);
+    if (match?.[1]) return sanitizeVideoId(match[1]);
+  }
+
+  return null;
+}
+
+function parseVimeoVideoId(url: string): string | null {
+  const parsed = safeParseUrl(url);
+  if (parsed) {
+    const host = normalizeHost(parsed.hostname);
+    if (host === 'vimeo.com' || host === 'player.vimeo.com') {
+      const segments = parsed.pathname.split('/').filter(Boolean);
+      const firstNumeric = segments.find(segment => /^\d+$/.test(segment));
+      if (firstNumeric) return firstNumeric;
+    }
+  }
+
+  const regexFallbacks = [
+    /(?:player\.vimeo\.com\/video\/)(\d+)/i,
+    /(?:vimeo\.com\/video\/)(\d+)/i,
+    /(?:vimeo\.com\/)(\d+)/i,
+  ];
+
+  for (const pattern of regexFallbacks) {
+    const match = url.match(pattern);
+    if (match?.[1]) return sanitizeVideoId(match[1]);
+  }
+
+  return null;
+}
+
 /**
  * Parse video URL and extract platform information
  * Converts any valid YouTube or Vimeo URL to proper embed format
@@ -32,58 +114,55 @@ export function parseVideoUrl(url: string): VideoInfo {
 
   const trimmedUrl = url.trim();
 
-  // YouTube detection patterns
-  // Supports: youtube.com/watch?v=, youtu.be/, youtube.com/embed/, youtube.com/shorts/
-  const youtubePatterns = [
-    /(?:youtube\.com\/watch\?v=)([^&\n?#]+)/,
-    /(?:youtu\.be\/)([^&\n?#]+)/,
-    /(?:youtube\.com\/embed\/)([^&\n?#]+)/,
-    /(?:youtube\.com\/shorts\/)([^&\n?#]+)/,
-  ];
-
-  for (const pattern of youtubePatterns) {
-    const match = trimmedUrl.match(pattern);
-    if (match && match[1]) {
-      const videoId = match[1];
-      // Always return embed URL format
-      return {
-        platform: 'youtube',
-        videoId,
-        embedUrl: `https://www.youtube.com/embed/${videoId}`,
-        thumbnailUrl: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
-      };
-    }
+  const youtubeId = parseYouTubeVideoId(trimmedUrl);
+  if (youtubeId) {
+    return {
+      platform: 'youtube',
+      videoId: youtubeId,
+      embedUrl: `https://www.youtube.com/embed/${youtubeId}`,
+      thumbnailUrl: `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`,
+    };
   }
 
-  // Vimeo detection patterns
-  // Supports: vimeo.com/{id}, vimeo.com/video/{id}, player.vimeo.com/video/{id}
-  const vimeoPatterns = [
-    /(?:vimeo\.com\/)(\d+)/,
-    /(?:vimeo\.com\/video\/)(\d+)/,
-    /(?:player\.vimeo\.com\/video\/)(\d+)/,
-  ];
-
-  for (const pattern of vimeoPatterns) {
-    const match = trimmedUrl.match(pattern);
-    if (match && match[1]) {
-      const videoId = match[1];
-      // Always return embed URL format
-      return {
-        platform: 'vimeo',
-        videoId,
-        embedUrl: `https://player.vimeo.com/video/${videoId}`,
-        thumbnailUrl: null, // Vimeo thumbnails require API call
-      };
-    }
+  const vimeoId = parseVimeoVideoId(trimmedUrl);
+  if (vimeoId) {
+    return {
+      platform: 'vimeo',
+      videoId: vimeoId,
+      embedUrl: `https://player.vimeo.com/video/${vimeoId}`,
+      thumbnailUrl: null,
+    };
   }
 
-  // URL is not a supported video platform
   return {
     platform: 'unsupported',
     videoId: null,
     embedUrl: null,
     thumbnailUrl: null,
   };
+}
+
+export function isDirectVideoUrl(url: string): boolean {
+  if (!url || !url.trim()) return false;
+  return DIRECT_VIDEO_PATTERN.test(url.trim());
+}
+
+export function isPlayableVideoUrl(url: string): boolean {
+  if (!url || !url.trim()) return false;
+  if (isDirectVideoUrl(url)) return true;
+  const videoInfo = parseVideoUrl(url);
+  return videoInfo.platform !== 'unsupported' && videoInfo.videoId !== null;
+}
+
+export function extractFirstPlayableVideoUrl(value?: string | null): string | null {
+  if (typeof value !== 'string') return null;
+  const matches = value.match(/https?:\/\/[^\s]+/gi) ?? [];
+  for (const candidate of matches) {
+    if (isPlayableVideoUrl(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
 }
 
 /**

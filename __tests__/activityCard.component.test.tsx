@@ -1,11 +1,21 @@
 import React from 'react';
-import { fireEvent, render } from '@testing-library/react-native';
-
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import ActivityCard from '@/components/ActivityCard';
+
+const mockHydrateTaskForModal = jest.fn(async (task: any) => task);
+
+jest.mock('@/utils/taskModalContent', () => {
+  const actual = jest.requireActual('@/utils/taskModalContent');
+  return {
+    ...actual,
+    hydrateTaskForModal: (task: any) => mockHydrateTaskForModal(task),
+  };
+});
 
 const mockPush = jest.fn();
 const mockToggleTaskCompletion = jest.fn();
 const mockRefreshData = jest.fn();
+const mockTaskDetailsModal = jest.fn();
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({
@@ -32,7 +42,10 @@ jest.mock('@/components/IconSymbol', () => {
 jest.mock('@/components/TaskDetailsModal', () => {
   const React = jest.requireActual('react');
   const { View } = jest.requireActual('react-native');
-  return () => <View testID="task-details-modal" />;
+  return (props: any) => {
+    mockTaskDetailsModal(props);
+    return <View testID="task-details-modal" />;
+  };
 });
 
 jest.mock('@/contexts/FootballContext', () => ({
@@ -57,6 +70,8 @@ const baseActivity = {
 describe('ActivityCard completion UI', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockTaskDetailsModal.mockReset();
+    mockHydrateTaskForModal.mockImplementation(async (task: any) => task);
   });
 
   it('shows task as not completed initially', () => {
@@ -249,6 +264,62 @@ describe('ActivityCard completion UI', () => {
         taskInstanceId: 'feedback-task-route-1',
       },
     });
+  });
+
+  it('passes camelCase task videoUrl into the task modal', async () => {
+    const { getByTestId } = render(
+      <ActivityCard
+        activity={{
+          ...baseActivity,
+          tasks: [
+            {
+              id: 'task-video-1',
+              title: 'Førsteberøring',
+              completed: false,
+              videoUrl: 'focus/run.mp4',
+            },
+          ],
+        }}
+        resolvedDate={new Date('2026-01-01T10:00:00Z')}
+        showTasks
+      />
+    );
+
+    fireEvent.press(getByTestId('home.activityTaskButton.incomplete'));
+
+    await waitFor(() => {
+      expect(mockTaskDetailsModal).toHaveBeenCalled();
+      expect(mockTaskDetailsModal.mock.calls.at(-1)?.[0]?.videoUrl).toBe('focus/run.mp4');
+    });
+  });
+
+  it('opens the task modal immediately without waiting for hydration', () => {
+    mockHydrateTaskForModal.mockImplementation(
+      () => new Promise(() => {})
+    );
+
+    const { getByTestId } = render(
+      <ActivityCard
+        activity={{
+          ...baseActivity,
+          tasks: [
+            {
+              id: 'task-video-2',
+              title: 'Føring',
+              completed: false,
+              task_template_id: 'template-2',
+            },
+          ],
+        }}
+        resolvedDate={new Date('2026-01-01T10:00:00Z')}
+        showTasks
+      />
+    );
+
+    fireEvent.press(getByTestId('home.activityTaskButton.incomplete'));
+
+    expect(mockTaskDetailsModal).toHaveBeenCalled();
+    expect(mockTaskDetailsModal.mock.calls.at(-1)?.[0]?.title).toBe('Føring');
   });
 
   it('opens canonical intensity modal route from Home card', () => {

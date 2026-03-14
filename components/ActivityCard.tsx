@@ -11,6 +11,12 @@ import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { resolveActivityIntensityEnabled } from '@/utils/activityIntensity';
 import { getTaskDurationMinutes } from '@/utils/activityDuration';
 import { formatScoreOutOfFive, normalizeFivePointScore } from '@/utils/scoreScale';
+import {
+  getTaskModalTemplateId,
+  getTaskModalVideoUrl,
+  hydrateTaskForModal,
+  shouldHydrateTaskForModal,
+} from '@/utils/taskModalContent';
 
 interface ActivityCardProps {
   activity: any;
@@ -298,6 +304,7 @@ export default function ActivityCard({
   const [selectedTask, setSelectedTask] = useState<any | null>(null);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [isTaskModalSaving, setIsTaskModalSaving] = useState(false);
+  const modalHydrationAttemptsRef = useRef<Set<string>>(new Set());
 
   // Initialize and update optimistic tasks from activity (incl. external sources)
   useEffect(() => {
@@ -314,6 +321,34 @@ export default function ActivityCard({
     areTaskListsEqual,
     extractTasksFromActivity,
   ]);
+
+  useEffect(() => {
+    if (!isTaskModalOpen || !selectedTask) return;
+    if (!shouldHydrateTaskForModal(selectedTask)) return;
+
+    const taskId = normalizeId(selectedTask?.id ?? selectedTask?.task_id) ?? 'no-task-id';
+    const templateId = getTaskModalTemplateId(selectedTask) ?? 'no-template-id';
+    const hydrationKey = `${taskId}:${templateId}`;
+    if (modalHydrationAttemptsRef.current.has(hydrationKey)) return;
+    modalHydrationAttemptsRef.current.add(hydrationKey);
+
+    let cancelled = false;
+
+    void (async () => {
+      const hydratedTask = await hydrateTaskForModal(selectedTask);
+      if (cancelled) return;
+      setSelectedTask((current: any) => {
+        if (!current) return current;
+        const currentId = normalizeId(current?.id ?? current?.task_id);
+        if (currentId !== taskId) return current;
+        return hydratedTask;
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isTaskModalOpen, selectedTask]);
 
   const resolveFeedbackTemplateId = useCallback((task: any): string | null => {
     if (!task) return null;
@@ -526,6 +561,7 @@ export default function ActivityCard({
   const handleModalClose = useCallback(() => {
     setIsTaskModalOpen(false);
     setSelectedTask(null);
+    modalHydrationAttemptsRef.current.clear();
     Promise.resolve(refreshData()).catch(() => {});
   }, [refreshData]);
 
@@ -673,7 +709,7 @@ export default function ActivityCard({
             task_template_id: firstTask.task_template_id,
             feedback_template_id: firstTask.feedback_template_id,
             reminder_minutes: firstTask.reminder_minutes,
-            video_url: firstTask.video_url ?? null,
+            video_url: getTaskModalVideoUrl(firstTask),
             descriptionSnippet: typeof firstTask.description === 'string' ? firstTask.description.slice(0, 80) : null,
             keys: Object.keys(firstTask).slice(0, 20),
           }
@@ -689,7 +725,7 @@ export default function ActivityCard({
         return (
           hasTemplateOrFeedback(task) ||
           resolveReminderMinutes(task) !== null ||
-          (typeof task.video_url === 'string' && task.video_url.trim().length > 0)
+          getTaskModalVideoUrl(task) !== null
         );
       }
       return showTasks || hasTemplateOrFeedback(task);
@@ -1031,7 +1067,7 @@ export default function ActivityCard({
                         )}
                       </TouchableOpacity>
 
-                      {task.video_url && (
+                      {getTaskModalVideoUrl(task) && (
                         <View style={styles.videoIndicator}>
                           <IconSymbol
                             ios_icon_name="play.circle.fill"
@@ -1059,7 +1095,7 @@ export default function ActivityCard({
           isDark={isDark}
           description={typeof selectedTask?.description === 'string' ? selectedTask.description : undefined}
           reminderMinutes={resolveReminderMinutes(selectedTask)}
-          videoUrl={typeof selectedTask?.video_url === 'string' ? selectedTask.video_url : null}
+          videoUrl={getTaskModalVideoUrl(selectedTask)}
           completed={!!selectedTask?.completed}
           isSaving={isTaskModalSaving}
           onClose={handleModalClose}

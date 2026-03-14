@@ -1,67 +1,99 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Image, Pressable, Text, StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as Linking from 'expo-linking';
+import { resolveVideoUrl } from '@/utils/videoKey';
+import { isDirectVideoUrl, parseVideoUrl } from '@/utils/videoUrlParser';
 
 export default function SmartVideoPlayer({ url }: { url?: string }) {
   const [playVimeo, setPlayVimeo] = useState(false);
-  
-  if (!url) return null;
 
-  if (isYouTube(url)) {
-    const id = ytId(url);
-    if (!id) return null;
+  const resolvedUrl = useMemo(() => resolveVideoUrl(url), [url]);
+  const parsedVideo = useMemo(
+    () => (resolvedUrl && /^https?:\/\//i.test(resolvedUrl) ? parseVideoUrl(resolvedUrl) : null),
+    [resolvedUrl]
+  );
+  const youtubeId = parsedVideo?.platform === 'youtube' ? parsedVideo.videoId : null;
+  const vimeoId = parsedVideo?.platform === 'vimeo' ? parsedVideo.videoId : null;
+  const inlineVideoHtml = useMemo(() => {
+    if (!resolvedUrl || !isDirectVideoUrl(resolvedUrl)) return null;
+    return buildVideoHtml(resolvedUrl);
+  }, [resolvedUrl]);
+  const vimeoHtml = useMemo(() => {
+    if (!resolvedUrl || !vimeoId) return null;
+    return buildVideoHtml(resolvedUrl, playVimeo);
+  }, [playVimeo, resolvedUrl, vimeoId]);
+  const thumbnailUrl = useMemo(() => {
+    if (parsedVideo?.platform === 'youtube') return parsedVideo.thumbnailUrl;
+    if (parsedVideo?.platform === 'vimeo' && vimeoId) return `https://vumbnail.com/${vimeoId}.jpg`;
+    return null;
+  }, [parsedVideo, vimeoId]);
+
+  useEffect(() => {
+    setPlayVimeo(false);
+  }, [resolvedUrl]);
+
+  if (!resolvedUrl) return null;
+
+  if (youtubeId && thumbnailUrl) {
     return (
       <Thumb
-        img={`https://img.youtube.com/vi/${id}/hqdefault.jpg`}
-        onPress={() => Linking.openURL(url)}
+        img={thumbnailUrl}
+        onPress={() => Linking.openURL(resolvedUrl)}
+        testID="smart-video-player.thumbnail"
       />
     );
   }
 
-  if (isVimeo(url)) {
-    const id = vimeoId(url);
-    if (!id) return null;
-
-    // CRITICAL FIX: WebView is always mounted, visibility controlled via opacity and height
+  if (vimeoHtml && thumbnailUrl) {
     return (
       <View style={styles.vimeoContainer}>
-        {/* Thumbnail overlay - shown when not playing */}
-        <View 
-          style={[
-            styles.thumbnailOverlay,
-            { 
-              opacity: playVimeo ? 0 : 1,
-              pointerEvents: playVimeo ? 'none' : 'auto'
-            }
-          ]}
+        <View
+          pointerEvents={playVimeo ? 'none' : 'auto'}
+          style={[styles.thumbnailOverlay, { opacity: playVimeo ? 0 : 1 }]}
         >
           <Thumb
-            img={`https://vumbnail.com/${id}.jpg`}
+            img={thumbnailUrl}
             onPress={() => setPlayVimeo(true)}
+            testID="smart-video-player.thumbnail"
           />
         </View>
 
-        {/* WebView - always mounted, visibility controlled via opacity */}
-        <View 
-          style={[
-            styles.webViewContainer,
-            { 
-              opacity: playVimeo ? 1 : 0,
-              height: playVimeo ? 220 : 0
-            }
-          ]}
+        <View
+          pointerEvents={playVimeo ? 'auto' : 'none'}
+          style={[styles.webViewContainer, { opacity: playVimeo ? 1 : 0, height: playVimeo ? 220 : 0 }]}
         >
           <WebView
-            source={{ uri: `https://player.vimeo.com/video/${id}` }}
+            testID="smart-video-player.webview"
+            source={{ html: vimeoHtml }}
             javaScriptEnabled
             domStorageEnabled
             allowsInlineMediaPlayback
             allowsFullscreenVideo
+            scrollEnabled={false}
+            bounces={false}
             style={styles.webView}
           />
         </View>
+      </View>
+    );
+  }
+
+  if (inlineVideoHtml) {
+    return (
+      <View style={styles.directVideoContainer}>
+        <WebView
+          testID="smart-video-player.webview"
+          source={{ html: inlineVideoHtml }}
+          javaScriptEnabled
+          domStorageEnabled
+          allowsInlineMediaPlayback
+          allowsFullscreenVideo
+          scrollEnabled={false}
+          bounces={false}
+          style={styles.webView}
+        />
       </View>
     );
   }
@@ -70,18 +102,85 @@ export default function SmartVideoPlayer({ url }: { url?: string }) {
 }
 
 /* helpers */
-const isYouTube = (u: string) =>
-  u.includes('youtu.be') || u.includes('youtube.com');
-const isVimeo = (u: string) => u.includes('vimeo.com');
-const ytId = (u: string) =>
-  u.split('v=')[1]?.split('&')[0] ||
-  u.split('youtu.be/')[1]?.split('?')[0];
-const vimeoId = (u: string) =>
-  u.split('vimeo.com/')[1]?.split('?')[0];
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function buildVideoHtml(videoUrl: string, autoPlay = false): string {
+  const parsedVideo = parseVideoUrl(videoUrl);
+  const youtubeId = parsedVideo.platform === 'youtube' ? parsedVideo.videoId : null;
+  const vimeoId = parsedVideo.platform === 'vimeo' ? parsedVideo.videoId : null;
+  const embedUrl = youtubeId
+    ? `https://www.youtube.com/embed/${youtubeId}?autoplay=${autoPlay ? 1 : 0}&playsinline=1&rel=0`
+    : vimeoId
+      ? `https://player.vimeo.com/video/${vimeoId}?autoplay=${autoPlay ? 1 : 0}&playsinline=1`
+      : null;
+
+  if (embedUrl) {
+    const safeEmbedUrl = escapeHtml(embedUrl);
+    return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background: #000;
+      }
+      iframe {
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: #000;
+      }
+    </style>
+  </head>
+  <body>
+    <iframe src="${safeEmbedUrl}" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>
+  </body>
+</html>`;
+  }
+
+  const safeVideoUrl = escapeHtml(videoUrl);
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background: #000;
+      }
+      video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        background: #000;
+      }
+    </style>
+  </head>
+  <body>
+    <video controls playsinline webkit-playsinline preload="metadata">
+      <source src="${safeVideoUrl}" />
+    </video>
+  </body>
+</html>`;
+}
 
 /* ui */
-const Thumb = ({ img, onPress }: any) => (
-  <Pressable onPress={onPress} style={styles.thumbContainer}>
+const Thumb = ({ img, onPress, testID }: any) => (
+  <Pressable onPress={onPress} style={styles.thumbContainer} testID={testID}>
     <Image
       source={{ uri: img }}
       style={styles.thumbImage}
@@ -100,6 +199,11 @@ const styles = StyleSheet.create({
     height: 220,
     backgroundColor: '#000',
     position: 'relative',
+  },
+  directVideoContainer: {
+    height: 220,
+    backgroundColor: '#000',
+    overflow: 'hidden',
   },
   thumbnailOverlay: {
     position: 'absolute',

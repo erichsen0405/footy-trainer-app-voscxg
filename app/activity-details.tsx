@@ -49,6 +49,12 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import TaskDetailsModal from '@/components/TaskDetailsModal';
+import {
+  getTaskModalTemplateId,
+  getTaskModalVideoUrl,
+  hydrateTaskForModal,
+  shouldHydrateTaskForModal,
+} from '@/utils/taskModalContent';
 
 const FALLBACK_COLORS = {
   primary: '#3B82F6',
@@ -297,14 +303,6 @@ function parseTimeToDate(baseDate: Date, time?: string | null): Date {
   next.setHours(safeHours, safeMinutes, 0, 0);
   return next;
 }
-
-const getTaskVideoUrl = (task: any): string | null => {
-  if (!task) return null;
-  const camel = typeof task.videoUrl === 'string' ? task.videoUrl.trim() : '';
-  if (camel) return camel;
-  const snake = typeof task.video_url === 'string' ? task.video_url.trim() : '';
-  return snake || null;
-};
 
 const parseIntensityValue = (raw: any): number | null => {
   if (typeof raw === 'number' && Number.isFinite(raw)) return normalizeFivePointScore(raw);
@@ -828,7 +826,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         const markerTemplateId = getMarkerTemplateId({ description: task.description, title: task.title });
         const feedbackTemplateId = directFeedbackTemplateId ?? markerTemplateId ?? null;
         const isFeedbackTask = Boolean(feedbackTemplateId) || isFeedbackTitle(task.title);
-        const resolvedVideo = getTaskVideoUrl(task);
+        const resolvedVideo = getTaskModalVideoUrl(task);
         const mapped: any = {
           id: task.id,
           title: task.title,
@@ -1040,7 +1038,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         const markerTemplateId = getMarkerTemplateId({ description: task.description, title: task.title });
         const feedbackTemplateId = directFeedbackTemplateId ?? markerTemplateId ?? null;
         const isFeedbackTask = Boolean(feedbackTemplateId) || isFeedbackTitle(task.title);
-        const resolvedVideo = getTaskVideoUrl(task);
+        const resolvedVideo = getTaskModalVideoUrl(task);
         const mapped: any = {
           id: task.id,
           title: task.title,
@@ -1155,7 +1153,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         const markerTemplateId = getMarkerTemplateId({ description: task.description, title: task.title });
         const feedbackTemplateId = directFeedbackTemplateId ?? markerTemplateId ?? null;
         const isFeedbackTask = Boolean(feedbackTemplateId) || isFeedbackTitle(task.title);
-        const resolvedVideo = getTaskVideoUrl(task);
+        const resolvedVideo = getTaskModalVideoUrl(task);
         const mapped: any = {
           id: task.id,
           title: task.title,
@@ -1824,11 +1822,40 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const [selectedNormalTask, setSelectedNormalTask] = useState<FeedbackTask | null>(null);
   const [isNormalTaskModalVisible, setIsNormalTaskModalVisible] = useState(false);
   const [isNormalTaskCompleting, setIsNormalTaskCompleting] = useState(false);
+  const normalTaskHydrationAttemptsRef = useRef<Set<string>>(new Set());
 
   const normalTaskVideoUrl = useMemo(
-    () => (selectedNormalTask ? getTaskVideoUrl(selectedNormalTask) : null),
+    () => (selectedNormalTask ? getTaskModalVideoUrl(selectedNormalTask) : null),
     [selectedNormalTask],
   );
+
+  useEffect(() => {
+    if (!isNormalTaskModalVisible || !selectedNormalTask) return;
+    if (!shouldHydrateTaskForModal(selectedNormalTask)) return;
+
+    const taskId = normalizeId(selectedNormalTask?.id) ?? 'no-task-id';
+    const templateId = getTaskModalTemplateId(selectedNormalTask) ?? 'no-template-id';
+    const hydrationKey = `${taskId}:${templateId}`;
+    if (normalTaskHydrationAttemptsRef.current.has(hydrationKey)) return;
+    normalTaskHydrationAttemptsRef.current.add(hydrationKey);
+
+    let cancelled = false;
+
+    void (async () => {
+      const hydratedTask = await hydrateTaskForModal(selectedNormalTask);
+      if (cancelled) return;
+      setSelectedNormalTask((current) => {
+        if (!current) return current;
+        const currentId = normalizeId(current?.id);
+        if (currentId !== taskId) return current;
+        return hydratedTask as FeedbackTask;
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isNormalTaskModalVisible, selectedNormalTask]);
 
   const handleNormalTaskComplete = useCallback(async () => {
     if (!selectedNormalTask) return;
@@ -2946,6 +2973,11 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     [openCanonicalFeedbackModal],
   );
 
+  const openNormalTaskModal = useCallback((task: FeedbackTask) => {
+    setSelectedNormalTask(task);
+    setIsNormalTaskModalVisible(true);
+  }, []);
+
   const handleTaskRowPress = useCallback(
     (task: FeedbackTask) => {
       const templateId = resolveFeedbackTemplateId(task);
@@ -2964,10 +2996,9 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         return;
       }
 
-      setSelectedNormalTask(task);
-      setIsNormalTaskModalVisible(true);
+      void openNormalTaskModal(task);
     },
-    [openTemplateFeedbackModal, resolveFeedbackTemplateId],
+    [openNormalTaskModal, openTemplateFeedbackModal, resolveFeedbackTemplateId],
   );
 
   const handleNormalTaskModalClose = useCallback(() => {
@@ -2975,6 +3006,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     setIsNormalTaskModalVisible(false);
     setSelectedNormalTask(null);
     setPendingNormalTaskId(null);
+    normalTaskHydrationAttemptsRef.current.clear();
   }, [isNormalTaskCompleting]);
 
   const handleDeleteTask = useCallback(
