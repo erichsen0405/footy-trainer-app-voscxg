@@ -54,6 +54,7 @@ export function AssignExerciseModal({ visible, exercise, trainerId, onClose, onS
     players,
     teams,
     getTeamMembers,
+    ensureRosterLoaded,
   } = useTeamPlayer();
 
   const [activeTab, setActiveTab] = useState<TabKey>('players');
@@ -96,13 +97,13 @@ export function AssignExerciseModal({ visible, exercise, trainerId, onClose, onS
     setAssignmentTemplateStates(templateStates);
   }, [exercise?.id, trainerId]);
 
-  const loadTeamMembers = useCallback(async () => {
-    if (!teams.length) {
+  const loadTeamMembers = useCallback(async (sourceTeams: typeof teams = teams) => {
+    if (!sourceTeams.length) {
       setTeamMembersByTeamId({});
       return;
     }
     const resolved = await Promise.all(
-      teams.map(async team => {
+      sourceTeams.map(async team => {
         const members = await getTeamMembers(team.id);
         const rows: PlayerRow[] = members
           .map(member => ({
@@ -120,10 +121,10 @@ export function AssignExerciseModal({ visible, exercise, trainerId, onClose, onS
     });
     setTeamMembersByTeamId(next);
     setExpandedTeamIds(prev => {
-      if (prev.size || !teams.length) return prev;
-      return new Set([teams[0].id]);
+      if (prev.size || !sourceTeams.length) return prev;
+      return new Set([sourceTeams[0].id]);
     });
-  }, [teams, getTeamMembers]);
+  }, [getTeamMembers, teams]);
 
   useEffect(() => {
     if (!visible) {
@@ -152,7 +153,8 @@ export function AssignExerciseModal({ visible, exercise, trainerId, onClose, onS
 
     (async () => {
       try {
-        await Promise.all([loadAssignments(), loadTeamMembers()]);
+        const roster = await ensureRosterLoaded();
+        await Promise.all([loadAssignments(), loadTeamMembers(roster.teams)]);
         setLoadingState('idle');
       } catch (err: any) {
         console.error('[AssignExerciseModal] load failed', err);
@@ -160,7 +162,7 @@ export function AssignExerciseModal({ visible, exercise, trainerId, onClose, onS
         setLoadingState('error');
       }
     })();
-  }, [visible, exercise?.id, trainerId, loadAssignments, loadTeamMembers]);
+  }, [visible, ensureRosterLoaded, exercise?.id, trainerId, loadAssignments, loadTeamMembers]);
 
   const playerRows = useMemo(
     () =>

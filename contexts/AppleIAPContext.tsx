@@ -625,8 +625,9 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
     }
     try {
       const {
-        data: { user },
-      } = await supabase.auth.getUser();
+        data: { session },
+      } = await supabase.auth.getSession();
+      const user = session?.user ?? null;
       if (!user) {
         setEntitlements([]);
         return;
@@ -1176,10 +1177,9 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    await fetchProducts();
-    await refreshSubscriptionStatus();
+    await refreshSubscriptionStatus({ force: true, reason: 'startup_init' });
     setLoading(false);
-  }, [fetchProducts, refreshSubscriptionStatus, syncIapReadyState]);
+  }, [refreshSubscriptionStatus, syncIapReadyState]);
 
   // Initialize IAP connection
   useEffect(() => {

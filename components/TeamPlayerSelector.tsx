@@ -21,6 +21,7 @@ export default function TeamPlayerSelector() {
     players,
     selectedContext,
     setSelectedContext,
+    ensureRosterLoaded,
     loading,
   } = useTeamPlayer();
 
@@ -36,7 +37,10 @@ export default function TeamPlayerSelector() {
   // Fetch trainer's own profile
   useEffect(() => {
     const fetchTrainerProfile = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const user = session?.user ?? null;
       if (!user) return;
 
       const { data: profile } = await supabase
@@ -61,6 +65,11 @@ export default function TeamPlayerSelector() {
 
     fetchTrainerProfile();
   }, []);
+
+  useEffect(() => {
+    if (!showModal) return;
+    void ensureRosterLoaded();
+  }, [ensureRosterLoaded, showModal]);
 
   const handleSelectPlayer = async (playerId: string, playerName: string) => {
     // CRITICAL FIX: Update both TeamPlayerContext AND AdminContext
@@ -238,7 +247,11 @@ export default function TeamPlayerSelector() {
             {/* Players Section */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Spillere ({players.length})</Text>
-              {players.length === 0 ? (
+              {loading ? (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyText}>Indlæser spillere...</Text>
+                </View>
+              ) : players.length === 0 ? (
                 <View style={styles.emptyState}>
                   <Text style={styles.emptyText}>Ingen spillere tilgængelige</Text>
                 </View>
@@ -291,7 +304,11 @@ export default function TeamPlayerSelector() {
             {/* Teams Section */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Teams ({teams.length})</Text>
-              {teams.length === 0 ? (
+              {loading ? (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyText}>Indlæser teams...</Text>
+                </View>
+              ) : teams.length === 0 ? (
                 <View style={styles.emptyState}>
                   <Text style={styles.emptyText}>Ingen teams tilgængelige</Text>
                 </View>

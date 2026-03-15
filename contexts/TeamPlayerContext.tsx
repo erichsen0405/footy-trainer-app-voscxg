@@ -33,6 +33,7 @@ interface TeamPlayerContextType {
   selectedContext: SelectedContext;
   loading: boolean;
   setSelectedContext: (context: SelectedContext) => Promise<void>;
+  ensureRosterLoaded: (force?: boolean) => Promise<{ teams: Team[]; players: Player[] }>;
   refreshTeams: () => Promise<void>;
   refreshPlayers: () => Promise<void>;
   createTeam: (name: string, description?: string) => Promise<Team>;
@@ -58,6 +59,9 @@ export function TeamPlayerProvider({ children }: { children: ReactNode }) {
   });
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
+  const rosterLoadedRef = React.useRef(false);
+  const rosterLoadRequestIdRef = React.useRef(0);
+  const rosterLoadPromiseRef = React.useRef<Promise<{ teams: Team[]; players: Player[] }> | null>(null);
 
   // Keep userId in sync with auth state (initial load + sign in/out)
   useEffect(() => {
@@ -65,8 +69,9 @@ export function TeamPlayerProvider({ children }: { children: ReactNode }) {
 
     const syncCurrentUser = async () => {
       const {
-        data: { user },
-      } = await supabase.auth.getUser();
+        data: { session },
+      } = await supabase.auth.getSession();
+      const user = session?.user ?? null;
       if (!mounted) return;
       console.log('TeamPlayerContext - Current user:', user?.id);
       setUserId(user?.id || null);
@@ -92,8 +97,9 @@ export function TeamPlayerProvider({ children }: { children: ReactNode }) {
     if (userId) return userId;
 
     const {
-      data: { user },
-    } = await supabase.auth.getUser();
+      data: { session },
+    } = await supabase.auth.getSession();
+    const user = session?.user ?? null;
 
     const resolvedUserId = user?.id || null;
     setUserId(resolvedUserId);
@@ -121,105 +127,155 @@ export function TeamPlayerProvider({ children }: { children: ReactNode }) {
     loadSavedSelection();
   }, []);
 
+  useEffect(() => {
+    rosterLoadedRef.current = false;
+    rosterLoadPromiseRef.current = null;
+    setTeams([]);
+    setPlayers([]);
+
+    setLoading(false);
+  }, [userId]);
+
+  const loadTeamsForUser = useCallback(async (resolvedUserId: string): Promise<Team[]> => {
+    console.log('Fetching teams for admin:', resolvedUserId);
+    const { data, error } = await supabase
+      .from('teams')
+      .select('*')
+      .eq('admin_id', resolvedUserId)
+      .order('name', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching teams:', error);
+      throw error;
+    }
+
+    const loadedTeams: Team[] = (data || []).map(team => ({
+      id: team.id,
+      admin_id: team.admin_id,
+      name: team.name,
+      description: team.description,
+      created_at: toDateOrNow(team.created_at),
+      updated_at: toDateOrNow(team.updated_at),
+    }));
+
+    console.log('Loaded teams:', loadedTeams.length);
+    return loadedTeams;
+  }, []);
+
+  const loadPlayersForUser = useCallback(async (resolvedUserId: string): Promise<Player[]> => {
+    console.log('Fetching players for admin:', resolvedUserId);
+
+    const { data: relationships, error: relError } = await supabase
+      .from('admin_player_relationships')
+      .select('player_id')
+      .eq('admin_id', resolvedUserId);
+
+    if (relError) {
+      console.error('Error fetching relationships:', relError);
+      throw relError;
+    }
+
+    if (!relationships || relationships.length === 0) {
+      console.log('No player relationships found');
+      return [];
+    }
+
+    const playerIds = relationships.map(rel => rel.player_id);
+
+    const { data: profiles, error: profilesError } = await supabase
+      .from('profiles')
+      .select('user_id, full_name, phone_number')
+      .in('user_id', playerIds);
+
+    if (profilesError) {
+      console.error('Error fetching profiles:', profilesError);
+      throw profilesError;
+    }
+
+    const loadedPlayers: Player[] = (profiles || []).map(profile => ({
+      id: profile.user_id,
+      email: '',
+      full_name: profile.full_name || 'Unavngivet',
+      phone_number: profile.phone_number || '',
+    }));
+
+    console.log('Loaded players:', loadedPlayers.length);
+    return loadedPlayers;
+  }, []);
+
   // Refresh teams
   const refreshTeams = useCallback(async () => {
-    if (!userId) return;
+    if (!userId) {
+      setTeams([]);
+      return;
+    }
 
     try {
-      console.log('Fetching teams for admin:', userId);
-      const { data, error } = await supabase
-        .from('teams')
-        .select('*')
-        .eq('admin_id', userId)
-        .order('name', { ascending: true });
-
-      if (error) {
-        console.error('Error fetching teams:', error);
-        return;
-      }
-
-      const loadedTeams: Team[] = (data || []).map(team => ({
-        id: team.id,
-        admin_id: team.admin_id,
-        name: team.name,
-        description: team.description,
-        created_at: toDateOrNow(team.created_at),
-        updated_at: toDateOrNow(team.updated_at),
-      }));
-
-      console.log('Loaded teams:', loadedTeams.length);
+      const loadedTeams = await loadTeamsForUser(userId);
       setTeams(loadedTeams);
     } catch (error) {
       console.error('Error in refreshTeams:', error);
     }
-  }, [userId]);
+  }, [loadTeamsForUser, userId]);
 
   // Refresh players
   const refreshPlayers = useCallback(async () => {
-    if (!userId) return;
+    if (!userId) {
+      setPlayers([]);
+      return;
+    }
 
     try {
-      console.log('Fetching players for admin:', userId);
-      
-      // Get all player relationships for this admin
-      const { data: relationships, error: relError } = await supabase
-        .from('admin_player_relationships')
-        .select('player_id')
-        .eq('admin_id', userId);
-
-      if (relError) {
-        console.error('Error fetching relationships:', relError);
-        return;
-      }
-
-      if (!relationships || relationships.length === 0) {
-        console.log('No player relationships found');
-        setPlayers([]);
-        return;
-      }
-
-      const playerIds = relationships.map(rel => rel.player_id);
-
-      // Get profiles for all players
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('user_id, full_name, phone_number')
-        .in('user_id', playerIds);
-
-      if (profilesError) {
-        console.error('Error fetching profiles:', profilesError);
-        return;
-      }
-
-      const loadedPlayers: Player[] = (profiles || []).map(profile => ({
-        id: profile.user_id,
-        email: '', // Email not available through RLS
-        full_name: profile.full_name || 'Unavngivet',
-        phone_number: profile.phone_number || '',
-      }));
-
-      console.log('Loaded players:', loadedPlayers.length);
+      const loadedPlayers = await loadPlayersForUser(userId);
       setPlayers(loadedPlayers);
     } catch (error) {
       console.error('Error in refreshPlayers:', error);
     }
-  }, [userId]);
+  }, [loadPlayersForUser, userId]);
 
-  // Load teams and players on mount
-  useEffect(() => {
-    if (!userId) {
-      setLoading(false);
-      return;
-    }
+  const ensureRosterLoaded = useCallback(
+    async (force = false): Promise<{ teams: Team[]; players: Player[] }> => {
+      if (!userId) {
+        setTeams([]);
+        setPlayers([]);
+        setLoading(false);
+        return { teams: [], players: [] };
+      }
 
-    const loadData = async () => {
-      setLoading(true);
-      await Promise.all([refreshTeams(), refreshPlayers()]);
-      setLoading(false);
-    };
+      if (!force && rosterLoadPromiseRef.current) {
+        return rosterLoadPromiseRef.current;
+      }
 
-    loadData();
-  }, [userId, refreshTeams, refreshPlayers]);
+      if (!force && rosterLoadedRef.current) {
+        return { teams, players };
+      }
+
+      const requestId = rosterLoadRequestIdRef.current + 1;
+      rosterLoadRequestIdRef.current = requestId;
+      const run = (async () => {
+        setLoading(true);
+        try {
+          const [loadedTeams, loadedPlayers] = await Promise.all([
+            loadTeamsForUser(userId),
+            loadPlayersForUser(userId),
+          ]);
+          setTeams(loadedTeams);
+          setPlayers(loadedPlayers);
+          rosterLoadedRef.current = true;
+          return { teams: loadedTeams, players: loadedPlayers };
+        } finally {
+          setLoading(false);
+          if (rosterLoadRequestIdRef.current === requestId) {
+            rosterLoadPromiseRef.current = null;
+          }
+        }
+      })();
+
+      rosterLoadPromiseRef.current = run;
+      return run;
+    },
+    [loadPlayersForUser, loadTeamsForUser, players, teams, userId]
+  );
 
   // Set selected context and save to AsyncStorage
   const setSelectedContext = async (context: SelectedContext) => {
@@ -413,6 +469,7 @@ export function TeamPlayerProvider({ children }: { children: ReactNode }) {
         selectedContext,
         loading,
         setSelectedContext,
+        ensureRosterLoaded,
         refreshTeams,
         refreshPlayers,
         createTeam,

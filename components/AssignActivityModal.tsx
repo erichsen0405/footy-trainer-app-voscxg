@@ -117,7 +117,7 @@ export function AssignActivityModal({
 }: AssignActivityModalProps) {
   const colorScheme = useColorScheme();
   const theme = getColors(colorScheme);
-  const { players, teams, getTeamMembers } = useTeamPlayer();
+  const { players, teams, getTeamMembers, ensureRosterLoaded } = useTeamPlayer();
 
   const [activeTab, setActiveTab] = useState<TabKey>('players');
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<string>>(new Set());
@@ -172,14 +172,14 @@ export function AssignActivityModal({
     return lookup;
   }, [activity?.externalEventRowId, activity?.id, activity?.isExternal, applyAssignments, trainerId]);
 
-  const loadTeamMembers = useCallback(async () => {
-    if (!teams.length) {
+  const loadTeamMembers = useCallback(async (sourceTeams: typeof teams = teams) => {
+    if (!sourceTeams.length) {
       setTeamMembersByTeamId({});
       return;
     }
 
     const resolved = await Promise.all(
-      teams.map(async (team) => {
+      sourceTeams.map(async (team) => {
         const members = await getTeamMembers(team.id);
         const rows: PlayerRow[] = members
           .map((member) => ({
@@ -198,8 +198,8 @@ export function AssignActivityModal({
     });
     setTeamMembersByTeamId(next);
     setExpandedTeamIds((prev) => {
-      if (prev.size || !teams.length) return prev;
-      return new Set([teams[0].id]);
+      if (prev.size || !sourceTeams.length) return prev;
+      return new Set([sourceTeams[0].id]);
     });
   }, [getTeamMembers, teams]);
 
@@ -222,7 +222,8 @@ export function AssignActivityModal({
 
     setLoadingState('loading');
     setErrorMessage('');
-    void Promise.all([loadAssignments(), loadTeamMembers()])
+    void ensureRosterLoaded()
+      .then((roster) => Promise.all([loadAssignments(), loadTeamMembers(roster.teams)]))
       .then(() => {
         setLoadingState('idle');
       })
@@ -231,7 +232,7 @@ export function AssignActivityModal({
         setErrorMessage(error?.message || 'Kunne ikke hente tildelinger.');
         setLoadingState('error');
       });
-  }, [activity?.id, loadAssignments, loadTeamMembers, resetSelection, trainerId, visible]);
+  }, [activity?.id, ensureRosterLoaded, loadAssignments, loadTeamMembers, resetSelection, trainerId, visible]);
 
   const playerRows = useMemo<PlayerRow[]>(
     () =>
