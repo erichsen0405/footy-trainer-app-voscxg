@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import * as FileSystem from 'expo-file-system';
-import { addMonths, format } from 'date-fns';
+import { addDays, addMonths, endOfWeek, format, startOfWeek } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { getCategories, DatabaseActivityCategory } from '@/services/activities';
 import { resolveActivityCategory, type CategoryMappingRecord } from '@/shared/activityCategoryResolver';
@@ -15,6 +15,7 @@ import {
   getLastActivitiesRefreshRequestedEvent,
 } from '@/utils/activityEvents';
 import { setHomeLoadProgress } from '@/utils/startupLoader';
+import { useAdmin, type AdminMode } from '@/contexts/AdminContext';
 
 interface ActivityTask {
   id: string;
@@ -127,13 +128,38 @@ const normalizeIds = (values: unknown[]): string[] => {
   return Array.from(unique);
 };
 
-const buildActivityScopeFilter = (userId: string, teamIds: string[]): string => {
+type BuildActivityScopeFilterOptions = {
+  sessionUserId: string;
+  adminMode: AdminMode;
+  adminTargetId: string | null;
+  adminTargetType: 'player' | 'team' | null;
+  selfTeamIds: string[];
+};
+
+export const buildActivityScopeFilter = ({
+  sessionUserId,
+  adminMode,
+  adminTargetId,
+  adminTargetType,
+  selfTeamIds,
+}: BuildActivityScopeFilterOptions): string => {
+  if (adminMode === 'player' && adminTargetType === 'player' && adminTargetId) {
+    return [
+      `and(user_id.eq.${adminTargetId},player_id.is.null,team_id.is.null)`,
+      `player_id.eq.${adminTargetId}`,
+    ].join(',');
+  }
+
+  if (adminMode === 'team' && adminTargetType === 'team' && adminTargetId) {
+    return `team_id.eq.${adminTargetId}`;
+  }
+
   const scopes = [
-    `and(user_id.eq.${userId},player_id.is.null,team_id.is.null)`,
-    `player_id.eq.${userId}`,
+    `and(user_id.eq.${sessionUserId},player_id.is.null,team_id.is.null)`,
+    `player_id.eq.${sessionUserId}`,
   ];
-  if (teamIds.length) {
-    scopes.push(`team_id.in.(${teamIds.join(',')})`);
+  if (selfTeamIds.length) {
+    scopes.push(`team_id.in.(${selfTeamIds.join(',')})`);
   }
   return scopes.join(',');
 };
@@ -286,6 +312,12 @@ const EXTERNAL_META_QUERY_CHUNK_SIZE = 75;
 const HOME_ACTIVITY_PAST_WINDOW_MONTHS = 6;
 const HOME_ACTIVITY_FUTURE_WINDOW_MONTHS = 6;
 export const HOME_ACTIVITY_QUERY_PAGE_SIZE = 3000;
+type HomeActivityWindow = {
+  startDate: string;
+  endDateExclusive: string;
+};
+
+type HomeActivityLoadScope = 'initial' | 'full';
 
 const chunkArray = <T,>(values: T[], size: number): T[][] => {
   if (!values.length || size <= 0) return [];
@@ -312,11 +344,20 @@ const summarizeSupabaseError = (error: any) => {
   };
 };
 
-export const getHomeActivityWindow = (now: Date = new Date()) => {
+export const getHomeActivityWindow = (now: Date = new Date()): HomeActivityWindow => {
   const startDate = addMonths(now, -HOME_ACTIVITY_PAST_WINDOW_MONTHS);
   return {
     startDate: format(startDate, 'yyyy-MM-dd'),
     endDateExclusive: format(addMonths(now, HOME_ACTIVITY_FUTURE_WINDOW_MONTHS), 'yyyy-MM-dd'),
+  };
+};
+
+export const getInitialHomeActivityWindow = (now: Date = new Date()): HomeActivityWindow => {
+  const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+  const weekEndExclusive = addDays(endOfWeek(now, { weekStartsOn: 1 }), 1);
+  return {
+    startDate: format(weekStart, 'yyyy-MM-dd'),
+    endDateExclusive: format(weekEndExclusive, 'yyyy-MM-dd'),
   };
 };
 
@@ -394,20 +435,47 @@ interface UseHomeActivitiesResult {
   activities: ActivityWithCategory[];
   loading: boolean;
   initialLoadSucceeded: boolean;
+  hasLoadedFullWindow: boolean;
   refresh: () => Promise<void>;
+  loadFullWindow: () => Promise<boolean>;
 }
 
 export function useHomeActivities(): UseHomeActivitiesResult {
+  const { adminMode, adminTargetId, adminTargetType } = useAdmin();
   const [userId, setUserId] = useState<string | null>(null);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [activities, setActivities] = useState<ActivityWithCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [initialLoadSucceeded, setInitialLoadSucceeded] = useState(false);
+  const [hasLoadedFullWindow, setHasLoadedFullWindow] = useState(false);
   const categoryMapRef = useRef<Map<string, DatabaseActivityCategory>>(new Map());
   const refetchInFlightRef = useRef(false);
-  const pendingRefreshReasonRef = useRef<string | null>(null);
+  const pendingRefreshRequestRef = useRef<{ reason: string; scope: HomeActivityLoadScope } | null>(null);
   const lastSeenRefreshVersionRef = useRef<number>(0);
   const hasLoadedOnceRef = useRef(false);
+  const hasLoadedFullWindowRef = useRef(false);
+
+  useEffect(() => {
+    hasLoadedFullWindowRef.current = hasLoadedFullWindow;
+  }, [hasLoadedFullWindow]);
+
+  const activityScopeKey = [
+    userId ?? 'anonymous',
+    adminMode,
+    adminTargetType ?? 'none',
+    adminTargetId ?? 'none',
+  ].join('|');
+
+  useEffect(() => {
+    refetchInFlightRef.current = false;
+    pendingRefreshRequestRef.current = null;
+    lastSeenRefreshVersionRef.current = 0;
+    hasLoadedOnceRef.current = false;
+    hasLoadedFullWindowRef.current = false;
+    setActivities([]);
+    setInitialLoadSucceeded(false);
+    setHasLoadedFullWindow(false);
+  }, [activityScopeKey]);
 
   const patchActivityTasks = useCallback((activityId: string, taskId: string, completed: boolean) => {
     setActivities(prev => {
@@ -591,11 +659,13 @@ export function useHomeActivities(): UseHomeActivitiesResult {
     fetchUser();
   }, []);
 
-  const refetchActivities = useCallback(async (): Promise<boolean> => {
+  const refetchActivities = useCallback(async (scope: HomeActivityLoadScope = 'full'): Promise<boolean> => {
     const setStartupProgressIfInitial = (progress: number) => {
       if (hasLoadedOnceRef.current) return;
       setHomeLoadProgress(progress);
     };
+    const activityWindow =
+      scope === 'initial' ? getInitialHomeActivityWindow() : getHomeActivityWindow();
 
     if (!userId) {
       setActivities([]);
@@ -605,7 +675,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
 
     try {
       setStartupProgressIfInitial(0.2);
-      devLog('[useHomeActivities] Fetching activities for user:', userId);
+      devLog('[useHomeActivities] Fetching activities for user:', userId, { scope, activityWindow });
 
       // ✅ PARALLEL FETCH GROUP 1: Categories + External Calendars + Category Mappings + Team Scopes
       const internalSelectWithLocalOptions = `
@@ -666,7 +736,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           `;
 
       const fetchInternalActivities = async (scopeFilter: string) => {
-        const { startDate, endDateExclusive } = getHomeActivityWindow();
+        const { startDate, endDateExclusive } = activityWindow;
         devLog('[useHomeActivities] Internal window', { startDate, endDateExclusive });
 
         const withLocal = await fetchAllQueryPages<any>((from, to) =>
@@ -746,21 +816,29 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           }),
 
         // 4. Fetch teams where current user is member (for team assignments)
-        supabase
-          .from('team_members')
-          .select('team_id')
-          .eq('player_id', userId)
-          .then(({ data, error }) => {
-            if (error) {
-              console.error('[useHomeActivities] Error fetching team scope:', error);
-              return [];
-            }
-            return data || [];
-          }),
+        adminMode === 'self'
+          ? supabase
+              .from('team_members')
+              .select('team_id')
+              .eq('player_id', userId)
+              .then(({ data, error }) => {
+                if (error) {
+                  console.error('[useHomeActivities] Error fetching team scope:', error);
+                  return [];
+                }
+                return data || [];
+              })
+          : Promise.resolve([]),
       ]);
 
       const teamScopeIds = normalizeIds((teamScopeRows || []).map((row: any) => row?.team_id));
-      const activityScopeFilter = buildActivityScopeFilter(userId, teamScopeIds);
+      const activityScopeFilter = buildActivityScopeFilter({
+        sessionUserId: userId,
+        adminMode,
+        adminTargetId,
+        adminTargetType,
+        selfTeamIds: teamScopeIds,
+      });
       const internalData = await fetchInternalActivities(activityScopeFilter);
 
       devLog('[useHomeActivities] Categories fetched:', categoriesData?.length ?? 0);
@@ -871,7 +949,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       let externalMetaData: any[] = [];
 
       if (calendarIdsNormalized.length > 0) {
-        const { startDate, endDateExclusive } = getHomeActivityWindow();
+        const { startDate, endDateExclusive } = activityWindow;
         devLog('[useHomeActivities] External window', { startDate, endDateExclusive });
 
         const { data: eventsData, error: eventsError } = await fetchAllQueryPages<any>((from, to) =>
@@ -1482,41 +1560,48 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         }
       }
       setStartupProgressIfInitial(0.98);
+      setHasLoadedFullWindow(scope === 'full');
       return true;
     } catch (err) {
       console.error('Failed to fetch activities:', err);
       setActivities([]);
+      if (scope === 'full') {
+        setHasLoadedFullWindow(false);
+      }
       if (!hasLoadedOnceRef.current) {
         setHomeLoadProgress(0.2);
       }
       return false;
     }
-  }, [userId]);
+  }, [adminMode, adminTargetId, adminTargetType, userId]);
 
   const triggerRefetch = useCallback(
-    async (reason: string = 'unspecified'): Promise<boolean> => {
+    async (
+      reason: string = 'unspecified',
+      scope: HomeActivityLoadScope = 'full'
+    ): Promise<boolean> => {
       if (!userId) {
         return false;
       }
 
       if (refetchInFlightRef.current) {
-        pendingRefreshReasonRef.current = reason;
+        pendingRefreshRequestRef.current = { reason, scope };
         return false;
       }
 
       refetchInFlightRef.current = true;
       try {
-        devLog(`[useHomeActivities] Refetch triggered (${reason})`);
-        return await refetchActivities();
+        devLog(`[useHomeActivities] Refetch triggered (${reason})`, { scope });
+        return await refetchActivities(scope);
       } catch (error) {
         console.error(`[useHomeActivities] Refetch failed (${reason}):`, error);
         return false;
       } finally {
         refetchInFlightRef.current = false;
-        if (pendingRefreshReasonRef.current) {
-          const nextReason = pendingRefreshReasonRef.current;
-          pendingRefreshReasonRef.current = null;
-          void triggerRefetch(`${nextReason}|pending`);
+        if (pendingRefreshRequestRef.current) {
+          const nextRequest = pendingRefreshRequestRef.current;
+          pendingRefreshRequestRef.current = null;
+          void triggerRefetch(`${nextRequest.reason}|pending`, nextRequest.scope);
         }
       }
     },
@@ -1527,6 +1612,36 @@ export function useHomeActivities(): UseHomeActivitiesResult {
     devLog('[useHomeActivities] Manual refresh triggered');
     await triggerRefetch('manual_refresh');
   }, [triggerRefetch]);
+
+  const waitForFullWindowLoad = useCallback(async (): Promise<boolean> => {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      if (hasLoadedFullWindowRef.current) {
+        return true;
+      }
+
+      const pendingFullWindowRequest = pendingRefreshRequestRef.current?.scope === 'full';
+      if (!refetchInFlightRef.current && !pendingFullWindowRequest) {
+        return hasLoadedFullWindowRef.current;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+
+    return hasLoadedFullWindowRef.current;
+  }, []);
+
+  const loadFullWindow = useCallback(async () => {
+    if (hasLoadedFullWindowRef.current) {
+      return true;
+    }
+
+    const didLoad = await triggerRefetch('performance_history_full_window', 'full');
+    if (didLoad) {
+      return true;
+    }
+
+    return waitForFullWindowLoad();
+  }, [triggerRefetch, waitForFullWindowLoad]);
 
   useEffect(() => {
     let mounted = true;
@@ -1552,7 +1667,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
 
       let firstLoadSucceeded = false;
       try {
-        firstLoadSucceeded = await triggerRefetch('initial_load');
+        firstLoadSucceeded = await triggerRefetch('initial_load_first_week', 'initial');
       } catch (err) {
         console.error('Failed to load home activities:', err);
       } finally {
@@ -1562,6 +1677,10 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           setLoading(false);
         }
       }
+
+      if (mounted && firstLoadSucceeded && !refetchInFlightRef.current) {
+        void triggerRefetch('initial_load_background_full', 'full');
+      }
     }
 
     load();
@@ -1569,7 +1688,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
     return () => {
       mounted = false;
     };
-  }, [sessionChecked, userId, triggerRefetch]);
+  }, [activityScopeKey, sessionChecked, userId, triggerRefetch]);
 
   useFocusEffect(
     useCallback(() => {
@@ -1613,7 +1732,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
     return () => {
       unsubscribe();
     };
-  }, [userId, triggerRefetch]);
+  }, [activityScopeKey, userId, triggerRefetch]);
 
   useEffect(() => {
     if (!userId) {
@@ -1626,12 +1745,14 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       const lastEvent = getLastActivitiesRefreshRequestedEvent();
       triggerRefetch(lastEvent?.reason || 'missed_refresh_event');
     }
-  }, [userId, triggerRefetch]);
+  }, [activityScopeKey, userId, triggerRefetch]);
 
   return {
     activities,
     loading,
     initialLoadSucceeded,
+    hasLoadedFullWindow,
     refresh,
+    loadFullWindow,
   };
 }

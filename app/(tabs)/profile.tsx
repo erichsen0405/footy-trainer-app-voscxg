@@ -448,7 +448,12 @@ export default function ProfileScreen() {
   const routeAuthMode = extractFirstParamValue(params.authMode);
   const routeOpenTrainerRequests = extractFirstParamValue(params.openTrainerRequests);
   const routeOpenTeamPlayers = extractFirstParamValue(params.openTeamPlayers);
-  const { refreshAll, activities } = useFootball();
+  const {
+    refreshAll,
+    activities,
+    hasActivitiesLoaded,
+    ensureActivitiesLoaded,
+  } = useFootball();
   const [manualUpgradeTarget, setManualUpgradeTarget] = useState<UpgradeTarget | null>(null);
   const hasAutoOpenedUpgradeTargetRef = useRef<UpgradeTarget | null>(null);
 
@@ -504,6 +509,15 @@ export default function ProfileScreen() {
       });
       return () => cancelAnimationFrame(frame);
     }, [])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!user) return;
+      void ensureActivitiesLoaded().catch((error) => {
+        console.error('[Profile] Failed to load activities on focus:', error);
+      });
+    }, [ensureActivitiesLoaded, user])
   );
 
   useEffect(() => {
@@ -583,6 +597,7 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     if (!overdueSettingsLoaded) return;
+    if (!hasActivitiesLoaded && overdueReminderSettings.enabled) return;
     let cancelled = false;
 
     const run = async () => {
@@ -654,6 +669,7 @@ export default function ProfileScreen() {
     overdueReminderSettings.startTimeMinutes,
     overdueReminderSettings.intervalMinutes,
     overdueSettingsLoaded,
+    hasActivitiesLoaded,
     activities,
   ]);
 
@@ -768,7 +784,6 @@ export default function ProfileScreen() {
     iapReady,
     iapUnavailableReason,
     isRestoring,
-    products: iapProducts,
   } = useAppleIAP();
   const { featureAccess, isLoading: subscriptionFeaturesLoading } = useSubscriptionFeatures();
   const subscriptionGate = getSubscriptionGateState({
@@ -786,7 +801,7 @@ export default function ProfileScreen() {
 
   const subscriptionPlansLoading =
     Platform.OS === 'ios'
-      ? (iapLoading || isRestoring || (!iapReady && !iapUnavailableReason) || (!iapUnavailableReason && iapProducts.length === 0))
+      ? (iapLoading || isRestoring || (!iapReady && !iapUnavailableReason))
       : subscriptionLoading;
 
   const entitlementSnapshotRef = useRef(entitlementSnapshot);

@@ -391,15 +391,18 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       setLoading(true);
 
       const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
-      if (userError || !user) {
+      const user = session?.user ?? null;
+
+      if (sessionError || !session || !user) {
+        console.warn('[SubscriptionContext] No valid session');
         currentUserIdRef.current = null;
         lastStableStatusRef.current = null;
         lastSignatureRef.current = buildEntitlementSignature(null);
-        applyStatus(coerceWithEntitlements(buildEmptyStatus(), 'no-user'), 'no-user');
+        applyStatus(coerceWithEntitlements(buildEmptyStatus(), 'no-session'), 'no-session');
         return;
       }
 
@@ -408,17 +411,6 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         lastSignatureRef.current = buildEntitlementSignature(null);
       }
       currentUserIdRef.current = user.id;
-
-      const {
-        data: { session },
-        error: sessionError,
-      } = await supabase.auth.getSession();
-
-      if (sessionError || !session) {
-        console.warn('[SubscriptionContext] No valid session');
-        applyStatus(coerceWithEntitlements(buildEmptyStatus(), 'no-session'), 'no-session');
-        return;
-      }
 
       const supabaseUrl = 'https://lhpczofddvwcyrgotzha.supabase.co';
       const functionUrl = `${supabaseUrl}/functions/v1/get-subscription-status`;

@@ -1074,6 +1074,7 @@ export default function HomeScreen() {
     refreshData,
     isLoading: footballLoading,
     currentWeekStats,
+    hasCurrentWeekStatsLoaded,
     toggleTaskCompletion,
     updateActivitySingle,
     updateIntensityByCategory,
@@ -1650,16 +1651,44 @@ export default function HomeScreen() {
     return safePreviousWeekSummaries.slice(0, safeShowPreviousWeeks);
   }, [previousWeekSummaries, showPreviousWeeks]);
 
+  const fallbackCurrentWeekStats = useMemo(() => {
+    const weekActivities = Array.isArray(currentWeekGroup?.activities) ? currentWeekGroup.activities : [];
+    const todayIso = format(new Date(), 'yyyy-MM-dd');
+    let totalTasksForWeek = 0;
+    let completedTasksForWeek = 0;
+    let totalTasks = 0;
+    let completedTasks = 0;
+
+    weekActivities.forEach((activity: any) => {
+      const tasks = getActivityTasks(activity);
+      const completedForActivity = tasks.filter((task) => task?.completed === true).length;
+      totalTasksForWeek += tasks.length;
+      completedTasksForWeek += completedForActivity;
+
+      const activityDate =
+        typeof activity?.activity_date === 'string' ? activity.activity_date.slice(0, 10) : null;
+      if (activityDate && activityDate <= todayIso) {
+        totalTasks += tasks.length;
+        completedTasks += completedForActivity;
+      }
+    });
+
+    return {
+      percentage: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0,
+      completedTasks,
+      totalTasks,
+      completedTasksForWeek,
+      totalTasksForWeek,
+    };
+  }, [currentWeekGroup]);
+
   // LINT FIX: Include currentWeekStats in dependency array
   const performanceMetrics = useMemo(() => {
     // STEP H: Guard against null/undefined currentWeekStats
-    const safeStats = currentWeekStats || {
-      percentage: 0,
-      completedTasks: 0,
-      totalTasks: 0,
-      completedTasksForWeek: 0,
-      totalTasksForWeek: 0,
-    };
+    const safeStats =
+      footballLoading || !hasCurrentWeekStatsLoaded
+        ? fallbackCurrentWeekStats
+        : currentWeekStats || fallbackCurrentWeekStats;
 
     const percentageUpToToday = typeof safeStats.percentage === 'number' ? safeStats.percentage : 0;
     const totalTasksForWeek = typeof safeStats.totalTasksForWeek === 'number' ? safeStats.totalTasksForWeek : 0;
@@ -1710,7 +1739,7 @@ export default function HomeScreen() {
       totalTasksWeek: totalTasksForWeek,
       gradientColors,
     };
-  }, [currentWeekStats]);
+  }, [currentWeekStats, fallbackCurrentWeekStats, footballLoading, hasCurrentWeekStatsLoaded]);
 
   const handleCreateActivity = useCallback(async (activityData: any) => {
     try {

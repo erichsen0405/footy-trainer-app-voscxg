@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -22,13 +22,13 @@ export default function TeamManagement() {
     teams,
     players,
     loading,
+    ensureRosterLoaded,
     createTeam,
     updateTeam,
     deleteTeam,
     addPlayerToTeam,
     removePlayerFromTeam,
     getTeamMembers,
-    refreshTeams,
   } = useTeamPlayer();
 
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -39,6 +39,10 @@ export default function TeamManagement() {
   const [teamName, setTeamName] = useState('');
   const [teamDescription, setTeamDescription] = useState('');
   const [processing, setProcessing] = useState(false);
+
+  useEffect(() => {
+    void ensureRosterLoaded();
+  }, [ensureRosterLoaded]);
 
   const handleCreateTeam = async () => {
     if (!teamName.trim()) {

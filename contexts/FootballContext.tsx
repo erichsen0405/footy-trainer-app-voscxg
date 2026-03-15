@@ -20,6 +20,9 @@ interface FootballContextType {
     totalTasksForWeek: number;
     weekActivities: Activity[];
   };
+  hasCurrentWeekStatsLoaded: boolean;
+  hasActivitiesLoaded: boolean;
+  hasPerformanceDataLoaded: boolean;
   todayActivities: Activity[];
   addActivity: (activity: Omit<Activity, 'id'>) => void;
   createActivity: (activityData: {
@@ -72,6 +75,8 @@ interface FootballContextType {
   deleteActivityTask: (activityId: string, taskId: string) => Promise<void>;
   refreshData: () => Promise<void>;
   refreshAll: () => Promise<void>;
+  ensureActivitiesLoaded: (force?: boolean) => Promise<void>;
+  ensurePerformanceDataLoaded: (force?: boolean) => Promise<void>;
   addExternalCalendar: (calendar: Omit<ExternalCalendar, 'id'>) => void;
   toggleCalendar: (id: string) => void;
   deleteExternalCalendar: (id: string) => void;
@@ -97,6 +102,9 @@ export function FootballProvider({ children }: { children: ReactNode }) {
     externalActivities,
     isLoading,
     currentWeekStats,
+    hasCurrentWeekStatsLoaded,
+    hasActivitiesLoaded,
+    hasPerformanceDataLoaded,
     todayActivities,
     addActivity,
     createActivity,
@@ -117,6 +125,8 @@ export function FootballProvider({ children }: { children: ReactNode }) {
     deleteActivityTask,
     refreshData,
     refreshAll,
+    ensureActivitiesLoaded,
+    ensurePerformanceDataLoaded,
     addExternalCalendar,
     toggleCalendar,
     deleteExternalCalendar,
@@ -179,6 +189,9 @@ export function FootballProvider({ children }: { children: ReactNode }) {
       externalActivities,
       isLoading,
       currentWeekStats,
+      hasCurrentWeekStatsLoaded,
+      hasActivitiesLoaded,
+      hasPerformanceDataLoaded,
       todayActivities,
       addActivity,
       createActivity: safeCreateActivity,
@@ -199,6 +212,8 @@ export function FootballProvider({ children }: { children: ReactNode }) {
       deleteActivityTask,
       refreshData,
       refreshAll,
+      ensureActivitiesLoaded,
+      ensurePerformanceDataLoaded,
       addExternalCalendar,
       toggleCalendar,
       deleteExternalCalendar,
@@ -216,6 +231,9 @@ export function FootballProvider({ children }: { children: ReactNode }) {
       externalActivities,
       isLoading,
       currentWeekStats,
+      hasCurrentWeekStatsLoaded,
+      hasActivitiesLoaded,
+      hasPerformanceDataLoaded,
       todayActivities,
       addActivity,
       safeCreateActivity,
@@ -236,6 +254,8 @@ export function FootballProvider({ children }: { children: ReactNode }) {
       deleteActivityTask,
       refreshData,
       refreshAll,
+      ensureActivitiesLoaded,
+      ensurePerformanceDataLoaded,
       addExternalCalendar,
       toggleCalendar,
       deleteExternalCalendar,

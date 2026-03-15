@@ -4,6 +4,17 @@ import { ScrollView } from 'react-native';
 
 import ProfileScreen from '@/app/(tabs)/profile';
 
+const mockLocalSearchParams: Record<string, string> = {};
+const mockAppleIAPState = {
+  entitlementSnapshot: null,
+  refreshSubscriptionStatus: jest.fn(),
+  loading: false,
+  iapReady: true,
+  iapUnavailableReason: null,
+  isRestoring: false,
+  products: [] as any[],
+};
+
 const mockCheckNotificationPermissions = jest.fn();
 const mockRequestNotificationPermissions = jest.fn();
 const mockOpenNotificationSettings = jest.fn();
@@ -19,7 +30,7 @@ jest.mock('expo-router', () => ({
     replace: jest.fn(),
     push: jest.fn(),
   }),
-  useLocalSearchParams: () => ({}),
+  useLocalSearchParams: () => mockLocalSearchParams,
 }));
 
 jest.mock('@react-navigation/native', () => ({
@@ -66,6 +77,14 @@ jest.mock('@/components/AppleSubscriptionManager', () => {
   return {
     __esModule: true,
     default: () => <View />,
+  };
+});
+
+jest.mock('expo-glass-effect', () => {
+  const React = jest.requireActual('react');
+  const { View } = jest.requireActual('react-native');
+  return {
+    GlassView: View,
   };
 });
 
@@ -121,6 +140,8 @@ jest.mock('@/contexts/FootballContext', () => ({
   useFootball: () => ({
     refreshAll: jest.fn(),
     activities: [],
+    hasActivitiesLoaded: true,
+    ensureActivitiesLoaded: jest.fn().mockResolvedValue(undefined),
   }),
 }));
 
@@ -137,15 +158,7 @@ jest.mock('@/hooks/useUserRole', () => ({
 
 jest.mock('@/contexts/AppleIAPContext', () => ({
   PRODUCT_IDS: { PLAYER_PREMIUM: 'player-premium' },
-  useAppleIAP: () => ({
-    entitlementSnapshot: null,
-    refreshSubscriptionStatus: jest.fn(),
-    loading: false,
-    iapReady: true,
-    iapUnavailableReason: null,
-    isRestoring: false,
-    products: [],
-  }),
+  useAppleIAP: () => mockAppleIAPState,
 }));
 
 jest.mock('@/utils/subscriptionGate', () => ({
@@ -217,6 +230,20 @@ describe('profile overdue reminder settings', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    Object.keys(mockLocalSearchParams).forEach((key) => delete mockLocalSearchParams[key]);
+    Object.assign(mockAppleIAPState, {
+      entitlementSnapshot: null,
+      refreshSubscriptionStatus: jest.fn(),
+      loading: false,
+      iapReady: true,
+      iapUnavailableReason: null,
+      isRestoring: false,
+      products: [],
+    });
+    (global as any).window = {
+      ...(global as any).window,
+      dispatchEvent: jest.fn(),
+    };
     consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
     mockLoadOverdueReminderSettings.mockResolvedValue({
       enabled: false,
@@ -289,5 +316,20 @@ describe('profile overdue reminder settings', () => {
     expect(rootScrollView.props.keyboardShouldPersistTaps).toBe('handled');
     expect(rootScrollView.props.canCancelContentTouches).toBeUndefined();
     expect(rootScrollView.props.scrollEnabled).toBeUndefined();
+  });
+
+  it('does not keep subscription plans loading on iOS just because products are still empty', async () => {
+    mockAppleIAPState.loading = false;
+    mockAppleIAPState.iapReady = true;
+    mockAppleIAPState.iapUnavailableReason = null;
+    mockAppleIAPState.isRestoring = false;
+    mockAppleIAPState.products = [];
+
+    const screen = render(<ProfileScreen />);
+    fireEvent.press(await screen.findByText('Abonnement'));
+
+    await waitFor(() => {
+      expect(screen.queryByText('Henter abonnementer...')).toBeNull();
+    });
   });
 });

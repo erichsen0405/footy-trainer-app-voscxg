@@ -14,7 +14,7 @@ import {
   forceRefreshNotificationQueue,
 } from '@/utils/notificationScheduler';
 import { addDays, startOfWeek, endOfWeek, format } from 'date-fns';
-import { AppState, AppStateStatus, Platform } from 'react-native';
+import { AppState, AppStateStatus, InteractionManager, Platform } from 'react-native';
 import { taskService } from '@/services/taskService';
 import { activityService } from '@/services/activityService';
 import { calendarService } from '@/services/calendarService';
@@ -83,6 +83,10 @@ type TrophyRowInput = {
   completed_tasks?: unknown;
   totalTasks?: unknown;
   total_tasks?: unknown;
+  created_at?: unknown;
+  user_id?: unknown;
+  player_id?: unknown;
+  team_id?: unknown;
 };
 
 const toNumberOrZero = (value: unknown): number => {
@@ -105,16 +109,65 @@ export const normalizePerformanceRowsToTrophies = (rows: TrophyRowInput[]): Trop
       const type = toTrophyType(row.trophy_type ?? row.type);
       if (!type) return null;
 
+      const totalTasks = Math.trunc(toNumberOrZero(row.total_tasks ?? row.totalTasks));
+      if (totalTasks <= 0) {
+        return null;
+      }
+
       return {
         week: Math.trunc(toNumberOrZero(row.week_number ?? row.week)),
         year: Math.trunc(toNumberOrZero(row.year)),
         type,
         percentage: Math.trunc(toNumberOrZero(row.percentage)),
         completedTasks: Math.trunc(toNumberOrZero(row.completed_tasks ?? row.completedTasks)),
-        totalTasks: Math.trunc(toNumberOrZero(row.total_tasks ?? row.totalTasks)),
+        totalTasks,
       } satisfies Trophy;
     })
     .filter((row): row is Trophy => row !== null);
+};
+
+const compareTrophyRows = (candidate: TrophyRowInput, incumbent: TrophyRowInput): number => {
+  const candidateCreatedAt = Date.parse(String(candidate.created_at ?? ''));
+  const incumbentCreatedAt = Date.parse(String(incumbent.created_at ?? ''));
+
+  if (Number.isFinite(candidateCreatedAt) || Number.isFinite(incumbentCreatedAt)) {
+    const candidateSafe = Number.isFinite(candidateCreatedAt) ? candidateCreatedAt : 0;
+    const incumbentSafe = Number.isFinite(incumbentCreatedAt) ? incumbentCreatedAt : 0;
+    if (candidateSafe !== incumbentSafe) return candidateSafe - incumbentSafe;
+  }
+
+  const candidateTotalTasks = Math.trunc(toNumberOrZero(candidate.total_tasks ?? candidate.totalTasks));
+  const incumbentTotalTasks = Math.trunc(toNumberOrZero(incumbent.total_tasks ?? incumbent.totalTasks));
+  if (candidateTotalTasks !== incumbentTotalTasks) return candidateTotalTasks - incumbentTotalTasks;
+
+  const candidateCompletedTasks = Math.trunc(toNumberOrZero(candidate.completed_tasks ?? candidate.completedTasks));
+  const incumbentCompletedTasks = Math.trunc(toNumberOrZero(incumbent.completed_tasks ?? incumbent.completedTasks));
+  if (candidateCompletedTasks !== incumbentCompletedTasks) return candidateCompletedTasks - incumbentCompletedTasks;
+
+  const candidatePercentage = Math.trunc(toNumberOrZero(candidate.percentage));
+  const incumbentPercentage = Math.trunc(toNumberOrZero(incumbent.percentage));
+  return candidatePercentage - incumbentPercentage;
+};
+
+const normalizeAndDedupeTrophies = (rows: TrophyRowInput[]): Trophy[] => {
+  const dedupedRows = new Map<string, TrophyRowInput>();
+
+  rows.forEach((row) => {
+    const type = toTrophyType(row.trophy_type ?? row.type);
+    if (!type) return;
+
+    const week = Math.trunc(toNumberOrZero(row.week_number ?? row.week));
+    const year = Math.trunc(toNumberOrZero(row.year));
+    if (week <= 0 || year <= 0) return;
+
+    const key = `${type}:${year}:${week}`;
+    const existing = dedupedRows.get(key);
+    if (!existing || compareTrophyRows(row, existing) > 0) {
+      dedupedRows.set(key, row);
+    }
+  });
+
+  return normalizePerformanceRowsToTrophies(Array.from(dedupedRows.values()));
 };
 
 const getCompletedTasksFromTrophy = (trophy: TrophyAggregationInput): number => {
@@ -219,6 +272,20 @@ export const calculateIntensityPerformanceTotals = ({
   };
 };
 
+type DataLoadOperation = {
+  name: string;
+  run: () => Promise<void>;
+};
+
+const emptyCurrentWeekStats = {
+  percentage: 0,
+  completedTasks: 0,
+  totalTasks: 0,
+  completedTasksForWeek: 0,
+  totalTasksForWeek: 0,
+  weekActivities: [] as Activity[],
+};
+
 export const useFootballData = () => {
   const { adminMode, adminTargetId, adminTargetType } = useAdmin();
   const { showCelebration } = useCelebration();
@@ -230,16 +297,17 @@ export const useFootballData = () => {
   const [externalCalendars, setExternalCalendars] = useState<ExternalCalendar[]>([]);
   const [activitySeries, setActivitySeries] = useState<ActivitySeries[]>([]);
   const [externalActivities] = useState<Activity[]>([]);
-  const [currentWeekStats, setCurrentWeekStats] = useState({
-    percentage: 0,
-    completedTasks: 0,
-    totalTasks: 0,
-    completedTasksForWeek: 0,
-    totalTasksForWeek: 0,
-    weekActivities: [] as Activity[],
-  });
+  const [currentWeekStats, setCurrentWeekStats] = useState(emptyCurrentWeekStats);
+  const [hasCurrentWeekStatsLoaded, setHasCurrentWeekStatsLoaded] = useState(false);
+  const [hasActivitiesLoaded, setHasActivitiesLoaded] = useState(false);
+  const [hasPerformanceDataLoaded, setHasPerformanceDataLoaded] = useState(false);
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const refreshDataPromiseRef = useRef<Promise<void> | null>(null);
+  const deferredStartupLoadPromiseRef = useRef<Promise<void> | null>(null);
+  const activitiesLoadPromiseRef = useRef<Promise<void> | null>(null);
+  const performanceDataLoadPromiseRef = useRef<Promise<void> | null>(null);
+  const lazyLoadScopeKeyRef = useRef<string | null>(null);
 
   const findTaskCompletionState = useCallback(
     (activityId: string, taskId: string): boolean | null => {
@@ -416,6 +484,66 @@ export const useFootballData = () => {
 
     return session.user.id;
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (!mounted) return;
+      if (error) {
+        console.error('[useFootballData] initial session lookup failed:', error);
+        setAuthUserId(null);
+        return;
+      }
+
+      setAuthUserId(data.session?.user?.id ?? null);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
+      setAuthUserId(session?.user?.id ?? null);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    const scopeKey = [
+      authUserId ?? 'anonymous',
+      adminMode,
+      adminTargetType ?? 'none',
+      adminTargetId ?? 'none',
+    ].join('|');
+
+    if (lazyLoadScopeKeyRef.current === null) {
+      lazyLoadScopeKeyRef.current = scopeKey;
+      return;
+    }
+
+    if (lazyLoadScopeKeyRef.current === scopeKey) {
+      return;
+    }
+
+    lazyLoadScopeKeyRef.current = scopeKey;
+    refreshDataPromiseRef.current = null;
+    deferredStartupLoadPromiseRef.current = null;
+    activitiesLoadPromiseRef.current = null;
+    performanceDataLoadPromiseRef.current = null;
+
+    setActivities([]);
+    setTrophies([]);
+    setExternalCalendars([]);
+    setActivitySeries([]);
+    setCurrentWeekStats(emptyCurrentWeekStats);
+    setHasCurrentWeekStatsLoaded(false);
+    setHasActivitiesLoaded(false);
+    setHasPerformanceDataLoaded(false);
+  }, [adminMode, adminTargetId, adminTargetType, authUserId]);
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -617,26 +745,42 @@ export const useFootballData = () => {
   }, []);
 
   const fetchTrophies = useCallback(async () => {
-    const { data: weeklyData, error: weeklyError } = await supabase
-      .from('weekly_performance')
-      .select('week_number, year, trophy_type, percentage, completed_tasks, total_tasks, created_at')
-      .order('year', { ascending: true })
-      .order('week_number', { ascending: true });
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
 
-    if (weeklyError) throw weeklyError;
-    if ((weeklyData || []).length > 0) {
-      setTrophies(normalizePerformanceRowsToTrophies((weeklyData || []) as TrophyRowInput[]));
+    if (sessionError) throw sessionError;
+
+    const currentUserId = session?.user?.id;
+    if (!currentUserId) {
+      setTrophies([]);
       return;
     }
 
-    const { data: legacyData, error: legacyError } = await supabase
-      .from('trophies')
-      .select('*')
+    let weeklyQuery = supabase
+      .from('weekly_performance')
+      .select('week_number, year, trophy_type, percentage, completed_tasks, total_tasks, created_at, user_id, player_id, team_id');
+
+    if (adminMode === 'self') {
+      weeklyQuery = weeklyQuery.eq('user_id', currentUserId);
+    } else if (adminTargetType === 'player' && adminTargetId) {
+      weeklyQuery = weeklyQuery.or(`user_id.eq.${adminTargetId},player_id.eq.${adminTargetId}`);
+    } else if (adminTargetType === 'team' && adminTargetId) {
+      weeklyQuery = weeklyQuery.eq('team_id', adminTargetId);
+    } else {
+      setTrophies([]);
+      return;
+    }
+
+    const { data: weeklyData, error: weeklyError } = await weeklyQuery
+      .order('year', { ascending: true })
+      .order('week_number', { ascending: true })
       .order('created_at', { ascending: true });
 
-    if (legacyError) throw legacyError;
-    setTrophies(normalizePerformanceRowsToTrophies((legacyData || []) as TrophyRowInput[]));
-  }, []);
+    if (weeklyError) throw weeklyError;
+    setTrophies(normalizeAndDedupeTrophies((weeklyData || []) as TrophyRowInput[]));
+  }, [adminMode, adminTargetId, adminTargetType]);
 
   const fetchExternalCalendars = useCallback(async () => {
     try {
@@ -1003,6 +1147,7 @@ export const useFootballData = () => {
         completedTasksForWeek: completedWeek,
         totalTasksForWeek: totalWeek,
       }));
+      setHasCurrentWeekStatsLoaded(true);
 
       if (__DEV__ && userEmail === 'mhe0405@gmail.com') {
         console.log('[RECON][HomeOpenCounter]', {
@@ -1032,40 +1177,166 @@ export const useFootballData = () => {
     }));
   }, [activitiesThisWeek]);
 
+  const runLoadOperations = useCallback(async (
+    context: string,
+    operations: DataLoadOperation[]
+  ) => {
+    if (!operations.length) return;
+
+    const results = await Promise.allSettled(operations.map(operation => operation.run()));
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        console.error(`[${context}] ${operations[index].name} failed:`, result.reason);
+      }
+    });
+  }, []);
+
+  const ensureActivitiesLoaded = useCallback(async (force: boolean = false) => {
+    if (!force && hasActivitiesLoaded) {
+      return;
+    }
+
+    if (!force && activitiesLoadPromiseRef.current) {
+      await activitiesLoadPromiseRef.current;
+      return;
+    }
+
+    if (force && activitiesLoadPromiseRef.current) {
+      await activitiesLoadPromiseRef.current;
+    }
+
+    const pendingLoad = (async () => {
+      await fetchActivities();
+      setHasActivitiesLoaded(true);
+    })();
+
+    activitiesLoadPromiseRef.current = pendingLoad;
+
+    try {
+      await pendingLoad;
+    } finally {
+      if (activitiesLoadPromiseRef.current === pendingLoad) {
+        activitiesLoadPromiseRef.current = null;
+      }
+    }
+  }, [fetchActivities, hasActivitiesLoaded]);
+
+  const ensurePerformanceDataLoaded = useCallback(async (force: boolean = false) => {
+    if (!force && hasPerformanceDataLoaded) {
+      return;
+    }
+
+    if (!force && performanceDataLoadPromiseRef.current) {
+      await performanceDataLoadPromiseRef.current;
+      return;
+    }
+
+    if (force && performanceDataLoadPromiseRef.current) {
+      await performanceDataLoadPromiseRef.current;
+    }
+
+    const pendingLoad = (async () => {
+      await Promise.all([
+        fetchTrophies(),
+        fetchExternalCalendars(),
+      ]);
+      setHasPerformanceDataLoaded(true);
+    })();
+
+    performanceDataLoadPromiseRef.current = pendingLoad;
+
+    try {
+      await pendingLoad;
+    } finally {
+      if (performanceDataLoadPromiseRef.current === pendingLoad) {
+        performanceDataLoadPromiseRef.current = null;
+      }
+    }
+  }, [fetchExternalCalendars, fetchTrophies, hasPerformanceDataLoaded]);
+
   const fetchAllData = useCallback(async () => {
     try {
-      const operations = [
-        { name: 'categories', promise: fetchCategories() },
-        { name: 'activities', promise: fetchActivities() },
-        { name: 'tasks', promise: fetchTasks() },
-        { name: 'trophies', promise: fetchTrophies() },
-        { name: 'calendars', promise: fetchExternalCalendars() },
-        { name: 'activitySeries', promise: fetchActivitySeries() },
-        { name: 'currentWeekStats', promise: fetchCurrentWeekStats() },
-      ];
-
-      const results = await Promise.allSettled(operations.map(op => op.promise));
-      results.forEach((result, index) => {
-        if (result.status === 'rejected') {
-          console.error(`[fetchAllData] ${operations[index].name} failed:`, result.reason);
-        }
-      });
+      await runLoadOperations('fetchAllData', [
+        { name: 'categories', run: fetchCategories },
+        { name: 'tasks', run: fetchTasks },
+        { name: 'activities', run: () => ensureActivitiesLoaded(true) },
+        { name: 'performanceData', run: () => ensurePerformanceDataLoaded(true) },
+        { name: 'activitySeries', run: fetchActivitySeries },
+        { name: 'currentWeekStats', run: fetchCurrentWeekStats },
+      ]);
     } finally {
       setLoading(false);
     }
   }, [
     fetchCategories,
-    fetchActivities,
     fetchTasks,
-    fetchTrophies,
-    fetchExternalCalendars,
     fetchActivitySeries,
     fetchCurrentWeekStats,
+    ensureActivitiesLoaded,
+    ensurePerformanceDataLoaded,
+    runLoadOperations,
   ]);
 
   useEffect(() => {
-    fetchAllData();
-  }, [fetchAllData]);
+    let cancelled = false;
+    let interactionTask: { cancel?: () => void } | null = null;
+
+    const fetchStartupCriticalData = async () => {
+      try {
+        await runLoadOperations('startupCriticalData', [
+          { name: 'categories', run: fetchCategories },
+          { name: 'tasks', run: fetchTasks },
+        ]);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    const startDeferredStartupLoad = async () => {
+      if (deferredStartupLoadPromiseRef.current) {
+        await deferredStartupLoadPromiseRef.current;
+        return;
+      }
+
+      const pendingLoad = (async () => {
+        await runLoadOperations('startupDeferredStats', [
+          { name: 'currentWeekStats', run: fetchCurrentWeekStats },
+        ]);
+      })();
+
+      deferredStartupLoadPromiseRef.current = pendingLoad;
+
+      try {
+        await pendingLoad;
+      } finally {
+        if (deferredStartupLoadPromiseRef.current === pendingLoad) {
+          deferredStartupLoadPromiseRef.current = null;
+        }
+      }
+    };
+
+    void (async () => {
+      await fetchStartupCriticalData();
+      if (cancelled) return;
+
+      interactionTask = InteractionManager.runAfterInteractions(() => {
+        if (cancelled) return;
+        void startDeferredStartupLoad();
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+      interactionTask?.cancel?.();
+    };
+  }, [
+    fetchCategories,
+    fetchCurrentWeekStats,
+    fetchTasks,
+    runLoadOperations,
+  ]);
 
   useEffect(() => {
     const unsubscribe = subscribeToTaskCompletion(({ activityId, taskId, completed }) => {
@@ -1415,15 +1686,21 @@ export const useFootballData = () => {
 
     const pendingRefresh = (async () => {
       console.log('[refreshData] Refreshing core datasets...');
-      await Promise.all([
+      const operations: Promise<unknown>[] = [
         fetchCategories(),
-        fetchActivities(),
         fetchTasks(),
-        fetchTrophies(),
-        fetchExternalCalendars(),
-        fetchActivitySeries(),
         fetchCurrentWeekStats(),
-      ]);
+      ];
+
+      if (hasActivitiesLoaded) {
+        operations.push(fetchActivities());
+      }
+
+      if (hasPerformanceDataLoaded) {
+        operations.push(fetchTrophies(), fetchExternalCalendars());
+      }
+
+      await Promise.all(operations);
     })();
 
     refreshDataPromiseRef.current = pendingRefresh;
@@ -1437,12 +1714,13 @@ export const useFootballData = () => {
     }
   }, [
     fetchCategories,
-    fetchActivities,
     fetchTasks,
-    fetchTrophies,
-    fetchExternalCalendars,
-    fetchActivitySeries,
     fetchCurrentWeekStats,
+    fetchActivities,
+    fetchExternalCalendars,
+    fetchTrophies,
+    hasActivitiesLoaded,
+    hasPerformanceDataLoaded,
   ]);
 
   const toggleTaskCompletion = useCallback(
@@ -1858,9 +2136,14 @@ export const useFootballData = () => {
     activitySeries,
     activitiesThisWeek,
     currentWeekStats,
+    hasCurrentWeekStatsLoaded,
+    hasActivitiesLoaded,
+    hasPerformanceDataLoaded,
     todayActivities,
     isLoading: loading,
     refreshAll,
+    ensureActivitiesLoaded,
+    ensurePerformanceDataLoaded,
     refreshCategories, // ✅ P14 export
     addTask,
     updateTask,
