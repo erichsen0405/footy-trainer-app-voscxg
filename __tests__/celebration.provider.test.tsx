@@ -51,7 +51,7 @@ describe('CelebrationProvider overlay', () => {
   });
 
   it('shows task celebration overlay when triggered', async () => {
-    const { getByTestId, queryByTestId, getByText } = render(
+    const { getByTestId, queryByTestId, getByText, getAllByTestId } = render(
       <CelebrationProvider>
         <TriggerScreen />
       </CelebrationProvider>
@@ -68,16 +68,18 @@ describe('CelebrationProvider overlay', () => {
     expect(getByTestId('celebration-title')).toHaveTextContent('Opgave fuldført');
     expect(getByTestId('celebration-subtitle')).toHaveTextContent('2 tilbage i dag');
     expect(getByText('I dag: 3/5')).toBeTruthy();
+    expect(getAllByTestId('celebration-rocket').length).toBeGreaterThan(0);
+    expect(getAllByTestId('celebration-fountain').length).toBeGreaterThan(0);
 
     act(() => {
-      jest.advanceTimersByTime(2100);
+      jest.advanceTimersByTime(4100);
     });
 
     expect(queryByTestId('celebration-overlay')).toBeNull();
   });
 
   it('shows dayComplete text and supports tap-to-dismiss', async () => {
-    const { getByTestId, queryByTestId } = render(
+    const { getByTestId, queryByTestId, getAllByTestId } = render(
       <CelebrationProvider>
         <TriggerScreen />
       </CelebrationProvider>
@@ -94,6 +96,8 @@ describe('CelebrationProvider overlay', () => {
     expect(getByTestId('celebration-title')).toHaveTextContent('Dagens opgaver fuldført');
     expect(getByTestId('celebration-subtitle')).toHaveTextContent('Nyd resten af dagen.');
     expect(getByTestId('celebration-progress')).toHaveTextContent('I dag: 5/5');
+    expect(getAllByTestId('celebration-rocket').length).toBeGreaterThan(0);
+    expect(getAllByTestId('celebration-fountain').length).toBeGreaterThan(0);
 
     fireEvent.press(getByTestId('celebration-dismiss'));
     expect(queryByTestId('celebration-overlay')).toBeNull();
