@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   Platform,
   Pressable,
@@ -10,6 +11,7 @@ import {
   useColorScheme,
   View,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { getWeek } from 'date-fns';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -50,11 +52,20 @@ export default function PerformanceScreen() {
     externalCalendars,
     fetchExternalCalendarEvents,
     categories,
+    hasPerformanceDataLoaded,
+    ensurePerformanceDataLoaded,
   } = useFootball();
-  const { activities, loading: homeActivitiesLoading } = useHomeActivities();
+  const {
+    activities,
+    loading: homeActivitiesLoading,
+    hasLoadedFullWindow: hasLoadedFullHistoryWindow,
+    loadFullWindow,
+  } = useHomeActivities();
 
   const colorScheme = useColorScheme();
   const [refreshing, setRefreshing] = useState(false);
+  const [isBootstrappingPerformanceData, setIsBootstrappingPerformanceData] = useState(false);
+  const [isBootstrappingHistoryData, setIsBootstrappingHistoryData] = useState(false);
   const [expandedTrophy, setExpandedTrophy] = useState<'gold' | 'silver' | 'bronze' | null>(null);
   const [expandedHistoryWeeks, setExpandedHistoryWeeks] = useState<Record<string, boolean>>({});
   const [isTrophySectionExpanded, setIsTrophySectionExpanded] = useState(true);
@@ -85,6 +96,62 @@ export default function PerformanceScreen() {
   const bgColor = isDark ? '#1a1a1a' : palette.background;
   const textColor = isDark ? '#e3e3e3' : palette.text;
   const textSecondaryColor = isDark ? '#999' : palette.textSecondary;
+  const showTrophyLoadingState = !hasPerformanceDataLoaded || isBootstrappingPerformanceData;
+
+  useFocusEffect(
+    useCallback(() => {
+      if (hasPerformanceDataLoaded) {
+        setIsBootstrappingPerformanceData(false);
+        return;
+      }
+
+      let active = true;
+      setIsBootstrappingPerformanceData(true);
+
+      void ensurePerformanceDataLoaded()
+        .catch((error) => {
+          console.error('[Performance] Failed to load performance data:', error);
+        })
+        .finally(() => {
+          if (active) {
+            setIsBootstrappingPerformanceData(false);
+          }
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [ensurePerformanceDataLoaded, hasPerformanceDataLoaded])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      if (hasLoadedFullHistoryWindow) {
+        setIsBootstrappingHistoryData(false);
+        return;
+      }
+
+      let active = true;
+      setIsBootstrappingHistoryData(true);
+
+      void loadFullWindow()
+        .then((didLoadFullWindow) => {
+          if (active && didLoadFullWindow) {
+            setIsBootstrappingHistoryData(false);
+          }
+        })
+        .catch((error) => {
+          console.error('[Performance] Failed to load full history window:', error);
+          if (active) {
+            setIsBootstrappingHistoryData(false);
+          }
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [hasLoadedFullHistoryWindow, loadFullWindow])
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -139,7 +206,7 @@ export default function PerformanceScreen() {
     return items;
   }, [expandedHistoryWeeks, historyWeeks]);
 
-  const currentWeek = getWeek(new Date());
+  const currentWeek = getWeek(new Date(), { weekStartsOn: 1 });
   const currentYear = new Date().getFullYear();
 
   const trophyWeeksByType = useMemo(() => {
@@ -170,7 +237,7 @@ export default function PerformanceScreen() {
     grouped.bronze.sort(sortByLatestWeek);
 
     return grouped;
-  }, [trophies, currentWeek, currentYear]);
+  }, [currentWeek, currentYear, trophies]);
 
   const goldTrophies = trophyWeeksByType.gold.length;
   const silverTrophies = trophyWeeksByType.silver.length;
@@ -262,6 +329,15 @@ export default function PerformanceScreen() {
       </View>
 
       {isTrophySectionExpanded ? (
+        showTrophyLoadingState ? (
+          <View style={[styles.sectionLoadingCard, { backgroundColor: isDark ? '#24362C' : '#EAF5EE' }]}>
+            <ActivityIndicator size="small" color={palette.primary} />
+            <Text style={[styles.sectionLoadingTitle, { color: textColor }]}>Indlæser pokaler og kalendere...</Text>
+            <Text style={[styles.sectionLoadingSubtitle, { color: textSecondaryColor }]}>
+              Historik er klar, mens performance-data hentes i baggrunden.
+            </Text>
+          </View>
+        ) : (
         <>
           <Pressable
             onPress={() => toggleExpandedTrophy('gold')}
@@ -270,7 +346,7 @@ export default function PerformanceScreen() {
             <View style={styles.trophiesHeader}>
               <View style={styles.trophiesContent}>
                 <Text style={styles.trophiesTitle}>Guld pokaler</Text>
-                <Text style={styles.trophiesCount}>{goldTrophies}</Text>
+                <Text testID="performance.trophies.count.gold" style={styles.trophiesCount}>{goldTrophies}</Text>
               </View>
               <View style={styles.trophiesMeta}>
                 <Text style={styles.trophiesEmoji}>🥇</Text>
@@ -301,7 +377,7 @@ export default function PerformanceScreen() {
             <View style={styles.trophiesHeader}>
               <View style={styles.trophiesContent}>
                 <Text style={styles.trophiesTitle}>Sølv pokaler</Text>
-                <Text style={styles.trophiesCount}>{silverTrophies}</Text>
+                <Text testID="performance.trophies.count.silver" style={styles.trophiesCount}>{silverTrophies}</Text>
               </View>
               <View style={styles.trophiesMeta}>
                 <Text style={styles.trophiesEmoji}>🥈</Text>
@@ -332,7 +408,7 @@ export default function PerformanceScreen() {
             <View style={styles.trophiesHeader}>
               <View style={styles.trophiesContent}>
                 <Text style={styles.trophiesTitle}>Bronze pokaler</Text>
-                <Text style={styles.trophiesCount}>{bronzeTrophies}</Text>
+                <Text testID="performance.trophies.count.bronze" style={styles.trophiesCount}>{bronzeTrophies}</Text>
               </View>
               <View style={styles.trophiesMeta}>
                 <Text style={styles.trophiesEmoji}>🥉</Text>
@@ -356,6 +432,7 @@ export default function PerformanceScreen() {
             )}
           </Pressable>
         </>
+        )
       ) : null}
 
       <View style={styles.historySection}>
@@ -485,9 +562,11 @@ export default function PerformanceScreen() {
       </View>
 
       {isHistorySectionExpanded ? (
-        homeActivitiesLoading ? (
+        homeActivitiesLoading || (!hasLoadedFullHistoryWindow && isBootstrappingHistoryData) ? (
           <View style={styles.historyPlaceholder}>
-            <Text style={[styles.historyPlaceholderText, { color: textSecondaryColor }]}>Indlæser historik...</Text>
+            <Text style={[styles.historyPlaceholderText, { color: textSecondaryColor }]}>
+              Indlæser fuld historik...
+            </Text>
           </View>
         ) : historyWeeks.length === 0 ? (
           <View style={styles.historyPlaceholder}>
@@ -563,6 +642,24 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 20,
     marginBottom: 12,
+  },
+  sectionLoadingCard: {
+    borderRadius: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    marginBottom: 12,
+    alignItems: 'center',
+  },
+  sectionLoadingTitle: {
+    marginTop: 10,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  sectionLoadingSubtitle: {
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
   },
   trophiesHeader: {
     flexDirection: 'row',

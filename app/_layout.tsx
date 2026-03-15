@@ -244,23 +244,17 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!showStartupLoader || !startupPrerequisitesReady) return;
-
     if (shouldWaitForHomeReady && homeScreenReady) {
+      startupLoaderHideReasonRef.current = 'home_ready';
       setShowStartupLoader(false);
       return;
     }
 
     if (!shouldWaitForHomeReady) {
+      startupLoaderHideReasonRef.current = 'startup_prerequisites_ready';
       setShowStartupLoader(false);
     }
-  }, [
-    homeScreenReady,
-    isBootstrapPath,
-    isHomePath,
-    showStartupLoader,
-    shouldWaitForHomeReady,
-    startupPrerequisitesReady,
-  ]);
+  }, [homeScreenReady, showStartupLoader, shouldWaitForHomeReady, startupPrerequisitesReady]);
 
   useEffect(() => {
     if (!showStartupLoader || !startupPrerequisitesReady || !shouldWaitForHomeReady || homeScreenReady) {
@@ -401,6 +395,7 @@ export default function RootLayout() {
   }, [pathname]);
 
   useEffect(() => {
+    if (showStartupLoader) return;
     let cancelled = false;
 
     const syncPushToken = async (force = false) => {
@@ -408,7 +403,9 @@ export default function RootLayout() {
       await syncPushTokenForCurrentUser(force);
     };
 
-    void syncPushToken();
+    const initialSyncTimer = setTimeout(() => {
+      void syncPushToken();
+    }, 1500);
 
     const {
       data: { subscription },
@@ -424,9 +421,10 @@ export default function RootLayout() {
 
     return () => {
       cancelled = true;
+      clearTimeout(initialSyncTimer);
       subscription.unsubscribe();
     };
-  }, []);
+  }, [showStartupLoader]);
 
   return (
     <SubscriptionProvider>

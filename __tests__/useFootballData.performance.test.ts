@@ -1,9 +1,11 @@
+import { renderHook, waitFor, act } from '@testing-library/react-native';
 import {
   calculateIntensityPerformanceTotals,
   normalizePerformanceRowsToTrophies,
   sumCompletedTasksByTrophyType,
   shouldIncludeExternalIntensityInPerformance,
   shouldIncludeExternalTaskInPerformance,
+  useFootballData,
 } from '@/hooks/useFootballData';
 import {
   formatHoursDa,
@@ -11,6 +13,136 @@ import {
   getActivityEffectiveDurationMinutes,
   getTaskDurationMinutes,
 } from '@/utils/activityDuration';
+
+const mockAdminState = {
+  adminMode: 'self' as 'self' | 'player' | 'team',
+  adminTargetId: null as string | null,
+  adminTargetType: null as 'player' | 'team' | null,
+};
+let mockSessionUserId = 'user-1';
+let authStateChangeHandler: ((event: string, session: { user: { id: string } } | null) => void) | null = null;
+let mockWeeklyPerformanceRows: any[] = [];
+let mockLegacyTrophyRows: any[] = [];
+let mockExternalCalendarsRows: any[] = [];
+
+jest.mock('@/contexts/AdminContext', () => ({
+  useAdmin: () => mockAdminState,
+}));
+
+jest.mock('@/contexts/CelebrationContext', () => ({
+  useCelebration: () => ({
+    showCelebration: jest.fn(),
+  }),
+}));
+
+jest.mock('@/utils/notificationService', () => ({
+  checkNotificationPermissions: jest.fn(),
+}));
+
+jest.mock('@/utils/notificationScheduler', () => ({
+  refreshNotificationQueue: jest.fn().mockResolvedValue(undefined),
+  forceRefreshNotificationQueue: jest.fn().mockResolvedValue(undefined),
+}));
+
+jest.mock('@/services/taskService', () => ({
+  taskService: {
+    getHiddenTaskTemplateIds: jest.fn().mockResolvedValue([]),
+  },
+}));
+
+jest.mock('@/services/activityService', () => ({
+  activityService: {},
+}));
+
+jest.mock('@/services/calendarService', () => ({
+  calendarService: {},
+}));
+
+jest.mock('@/utils/taskEvents', () => ({
+  subscribeToTaskCompletion: jest.fn(() => () => {}),
+  emitTaskCompletionEvent: jest.fn(),
+}));
+
+jest.mock('@/utils/activityEvents', () => ({
+  emitActivityPatch: jest.fn(),
+  emitActivitiesRefreshRequested: jest.fn(),
+  subscribeToActivityPatch: jest.fn(() => () => {}),
+  subscribeToActivitiesRefreshRequested: jest.fn(() => () => {}),
+  getActivitiesRefreshRequestedVersion: jest.fn(() => 0),
+  getLastActivitiesRefreshRequestedEvent: jest.fn(() => null),
+}));
+
+jest.mock('@/utils/afterTrainingMarkers', () => ({
+  parseTemplateIdFromMarker: jest.fn(() => null),
+}));
+
+jest.mock('@/utils/taskTemplateVisibility', () => ({
+  isTaskVisibleForActivity: jest.fn(() => true),
+}));
+
+jest.mock('@/utils/celebration', () => ({
+  resolveCelebrationProgressAfterCompletion: jest.fn(() => null),
+  resolveCelebrationTypeAfterCompletion: jest.fn(() => null),
+}));
+
+jest.mock('@/integrations/supabase/client', () => {
+  const resolveTableResponse = (tableName: string) => {
+    if (tableName === 'weekly_performance') {
+      return { data: mockWeeklyPerformanceRows, error: null };
+    }
+    if (tableName === 'trophies') {
+      return { data: mockLegacyTrophyRows, error: null };
+    }
+    if (tableName === 'external_calendars') {
+      return { data: mockExternalCalendarsRows, error: null };
+    }
+    return { data: [], error: null };
+  };
+
+  const createQueryBuilder = (tableName: string) => {
+    const builder: any = {
+      select: () => builder,
+      eq: () => builder,
+      or: () => builder,
+      in: () => builder,
+      gte: () => builder,
+      lt: () => builder,
+      is: () => builder,
+      order: () => builder,
+      range: () => builder,
+      update: () => builder,
+      insert: () => builder,
+      upsert: () => builder,
+      delete: () => builder,
+      single: () => Promise.resolve({ data: null, error: null }),
+      maybeSingle: () => Promise.resolve({ data: null, error: null }),
+      then: (resolve: any, reject: any) => Promise.resolve(resolveTableResponse(tableName)).then(resolve, reject),
+    };
+    return builder;
+  };
+
+  return {
+    supabase: {
+      auth: {
+        getSession: jest.fn(async () => ({
+          data: {
+            session: mockSessionUserId ? { user: { id: mockSessionUserId } } : null,
+          },
+          error: null,
+        })),
+        onAuthStateChange: jest.fn((callback: any) => {
+          authStateChangeHandler = callback;
+          return { data: { subscription: { unsubscribe: jest.fn() } } };
+        }),
+      },
+      from: jest.fn((tableName: string) => createQueryBuilder(tableName)),
+      channel: jest.fn(() => ({
+        on: () => ({ on: () => ({ subscribe: () => ({}) }) }),
+      })),
+      removeChannel: jest.fn(() => Promise.resolve()),
+    },
+  };
+});
 
 describe('shouldIncludeExternalTaskInPerformance', () => {
   it('excludes pending tasks for soft-deleted external events', () => {
@@ -217,6 +349,192 @@ describe('normalizePerformanceRowsToTrophies', () => {
         totalTasks: 6,
       },
     ]);
+  });
+
+  it('ignores weeks without planned tasks entirely', () => {
+    const trophies = normalizePerformanceRowsToTrophies([
+      {
+        week_number: 10,
+        year: 2026,
+        trophy_type: 'bronze',
+        percentage: 0,
+        completed_tasks: 0,
+        total_tasks: 0,
+      },
+      {
+        week_number: 9,
+        year: 2026,
+        trophy_type: 'silver',
+        percentage: 0,
+        completed_tasks: 0,
+      },
+      {
+        week_number: 8,
+        year: 2026,
+        trophy_type: 'gold',
+        percentage: 100,
+        completed_tasks: 2,
+        total_tasks: 2,
+      },
+    ]);
+
+    expect(trophies).toEqual([
+      {
+        week: 8,
+        year: 2026,
+        type: 'gold',
+        percentage: 100,
+        completedTasks: 2,
+        totalTasks: 2,
+      },
+    ]);
+  });
+
+  it('returns no trophy weeks when the user has no valid weeks with tasks', () => {
+    const trophies = normalizePerformanceRowsToTrophies([
+      {
+        week_number: 10,
+        year: 2026,
+        trophy_type: 'gold',
+        percentage: 0,
+        completed_tasks: 0,
+        total_tasks: 0,
+      },
+      {
+        week_number: 9,
+        year: 2026,
+        trophy_type: 'silver',
+        percentage: 0,
+        completed_tasks: 0,
+      },
+    ]);
+
+    expect(trophies).toEqual([]);
+  });
+});
+
+describe('useFootballData lazy-load reset', () => {
+  beforeEach(() => {
+    mockAdminState.adminMode = 'self';
+    mockAdminState.adminTargetId = null;
+    mockAdminState.adminTargetType = null;
+    mockSessionUserId = 'user-1';
+    authStateChangeHandler = null;
+    mockWeeklyPerformanceRows = [];
+    mockLegacyTrophyRows = [];
+    mockExternalCalendarsRows = [];
+  });
+
+  it('resets lazy-load flags on admin scope change', async () => {
+    mockWeeklyPerformanceRows = [
+      {
+        week_number: 8,
+        year: 2026,
+        trophy_type: 'gold',
+        percentage: 100,
+        completed_tasks: 2,
+        total_tasks: 2,
+        user_id: 'user-1',
+      },
+    ];
+
+    const { result, rerender } = renderHook(({ scopeVersion }: { scopeVersion: number }) => {
+      void scopeVersion;
+      return useFootballData();
+    }, {
+      initialProps: { scopeVersion: 0 },
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.ensureActivitiesLoaded();
+      await result.current.ensurePerformanceDataLoaded();
+    });
+
+    expect(result.current.hasActivitiesLoaded).toBe(true);
+    expect(result.current.hasPerformanceDataLoaded).toBe(true);
+    expect(result.current.trophies).toHaveLength(1);
+
+    mockAdminState.adminMode = 'player';
+    mockAdminState.adminTargetId = 'player-1';
+    mockAdminState.adminTargetType = 'player';
+    rerender({ scopeVersion: 1 });
+
+    await waitFor(() => {
+      expect(result.current.hasActivitiesLoaded).toBe(false);
+      expect(result.current.hasPerformanceDataLoaded).toBe(false);
+      expect(result.current.trophies).toEqual([]);
+    });
+  });
+
+  it('resets lazy-load flags on auth user change', async () => {
+    mockWeeklyPerformanceRows = [
+      {
+        week_number: 8,
+        year: 2026,
+        trophy_type: 'gold',
+        percentage: 100,
+        completed_tasks: 2,
+        total_tasks: 2,
+        user_id: 'user-1',
+      },
+    ];
+
+    const { result } = renderHook(() => useFootballData());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.ensureActivitiesLoaded();
+      await result.current.ensurePerformanceDataLoaded();
+    });
+
+    expect(result.current.hasActivitiesLoaded).toBe(true);
+    expect(result.current.hasPerformanceDataLoaded).toBe(true);
+    expect(result.current.trophies).toHaveLength(1);
+
+    mockSessionUserId = 'user-2';
+    await act(async () => {
+      authStateChangeHandler?.('SIGNED_IN', { user: { id: 'user-2' } });
+    });
+
+    await waitFor(() => {
+      expect(result.current.hasActivitiesLoaded).toBe(false);
+      expect(result.current.hasPerformanceDataLoaded).toBe(false);
+      expect(result.current.trophies).toEqual([]);
+    });
+  });
+
+  it('ignores legacy trophies when weekly_performance has no valid rows', async () => {
+    mockLegacyTrophyRows = [
+      {
+        week: 7,
+        year: 2026,
+        type: 'gold',
+        percentage: 100,
+        completed_tasks: 2,
+        total_tasks: 2,
+        user_id: 'user-1',
+      },
+    ];
+
+    const { result } = renderHook(() => useFootballData());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.ensurePerformanceDataLoaded();
+    });
+
+    expect(result.current.hasPerformanceDataLoaded).toBe(true);
+    expect(result.current.trophies).toEqual([]);
   });
 });
 
