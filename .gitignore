@@ -37,7 +37,6 @@ e2e/maestro/artifacts/
 .natively/
 
 android/
-ios/
 
 netlify.toml
 .netlify/
