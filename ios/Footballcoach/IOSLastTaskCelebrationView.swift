@@ -1,7 +1,6 @@
 import QuartzCore
 import UIKit
 
-@objc(IOSLastTaskCelebrationView)
 final class IOSLastTaskCelebrationView: UIView {
   @objc var burstKey: NSNumber = 0 {
     didSet {
