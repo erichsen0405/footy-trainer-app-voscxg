@@ -1,7 +1,6 @@
 import QuartzCore
 import UIKit
 
-@objc(IOSPremiumConfettiView)
 final class IOSPremiumConfettiView: UIView {
   @objc var burstKey: NSNumber = 0 {
     didSet {
@@ -169,8 +168,8 @@ final class IOSPremiumConfettiView: UIView {
     cell.alphaRange = 0.08
     cell.alphaSpeed = -0.95
     cell.contentsScale = UIScreen.main.scale
-    cell.magnificationFilter = .linear
-    cell.minificationFilter = .linear
+    cell.magnificationFilter = "linear"
+    cell.minificationFilter = "linear"
     cell.color = color.cgColor
     return cell
   }
