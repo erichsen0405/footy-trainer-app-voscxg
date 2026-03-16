@@ -1,37 +1,27 @@
 import React from 'react';
-import {
-  Platform,
-  UIManager,
-  View,
-  ViewProps,
-  requireNativeComponent,
-} from 'react-native';
+import { Platform, UIManager, View, ViewProps } from 'react-native';
 import { CelebrationType } from '@/utils/celebration';
+import NativePremiumConfettiView from '@/components/IOSPremiumConfettiViewNativeComponent';
 
 type IOSPremiumConfettiViewProps = ViewProps & {
   burstKey: number;
   variant: CelebrationType;
 };
 
-let NativePremiumConfettiView: React.ComponentType<IOSPremiumConfettiViewProps> | null = null;
-
-if (Platform.OS === 'ios') {
-  const nativeViewName = ['IOSPremiumConfettiView', 'IOSPremiumConfettiViewManager'].find(
-    (viewName) => UIManager.getViewManagerConfig(viewName)
-  );
-
-  if (nativeViewName) {
-    try {
-      NativePremiumConfettiView =
-        requireNativeComponent<IOSPremiumConfettiViewProps>(nativeViewName);
-    } catch {
-      NativePremiumConfettiView = null;
-    }
+function hasViewManagerConfig(viewName: string) {
+  if (Platform.OS !== 'ios') {
+    return false;
   }
+
+  if (typeof UIManager.hasViewManagerConfig === 'function') {
+    return UIManager.hasViewManagerConfig(viewName);
+  }
+
+  return UIManager.getViewManagerConfig?.(viewName) != null;
 }
 
 export function hasIOSPremiumConfettiView() {
-  return Platform.OS === 'ios' && NativePremiumConfettiView !== null;
+  return hasViewManagerConfig('IOSPremiumConfettiView');
 }
 
 export function IOSPremiumConfettiView({
@@ -39,7 +29,7 @@ export function IOSPremiumConfettiView({
   variant,
   style,
 }: IOSPremiumConfettiViewProps) {
-  if (Platform.OS !== 'ios' || !NativePremiumConfettiView) {
+  if (!hasIOSPremiumConfettiView()) {
     return <View pointerEvents="none" style={style} />;
   }
 
