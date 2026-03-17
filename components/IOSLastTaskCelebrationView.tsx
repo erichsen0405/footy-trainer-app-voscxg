@@ -6,6 +6,10 @@ type IOSLastTaskCelebrationViewProps = ViewProps & {
   burstKey: number;
 };
 
+function isBridgelessEnabled() {
+  return Boolean((globalThis as { RN$Bridgeless?: boolean }).RN$Bridgeless);
+}
+
 function hasViewManagerConfig(viewName: string) {
   if (Platform.OS !== 'ios') {
     return false;
@@ -19,7 +23,7 @@ function hasViewManagerConfig(viewName: string) {
 }
 
 export function hasIOSLastTaskCelebrationView() {
-  return hasViewManagerConfig('IOSLastTaskCelebrationView');
+  return Platform.OS === 'ios' && (isBridgelessEnabled() || hasViewManagerConfig('IOSLastTaskCelebrationView'));
 }
 
 export function IOSLastTaskCelebrationView({

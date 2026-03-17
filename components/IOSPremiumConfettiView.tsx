@@ -8,6 +8,10 @@ type IOSPremiumConfettiViewProps = ViewProps & {
   variant: CelebrationType;
 };
 
+function isBridgelessEnabled() {
+  return Boolean((globalThis as { RN$Bridgeless?: boolean }).RN$Bridgeless);
+}
+
 function hasViewManagerConfig(viewName: string) {
   if (Platform.OS !== 'ios') {
     return false;
@@ -21,7 +25,7 @@ function hasViewManagerConfig(viewName: string) {
 }
 
 export function hasIOSPremiumConfettiView() {
-  return hasViewManagerConfig('IOSPremiumConfettiView');
+  return Platform.OS === 'ios' && (isBridgelessEnabled() || hasViewManagerConfig('IOSPremiumConfettiView'));
 }
 
 export function IOSPremiumConfettiView({

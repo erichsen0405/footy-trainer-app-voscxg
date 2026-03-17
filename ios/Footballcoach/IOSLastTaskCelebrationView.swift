@@ -5,6 +5,10 @@ final class IOSLastTaskCelebrationView: UIView {
   @objc var burstKey: NSNumber = 0 {
     didSet {
       let nextKey = burstKey.intValue
+      if hasAutoplayedCurrentAttachment && lastBurstKey == 0 {
+        lastBurstKey = nextKey
+        return
+      }
       guard nextKey != lastBurstKey else { return }
       lastBurstKey = nextKey
       playSequence()
@@ -22,6 +26,7 @@ final class IOSLastTaskCelebrationView: UIView {
 
   private let effectLayer = CALayer()
   private var cleanupWorkItems: [DispatchWorkItem] = []
+  private var hasAutoplayedCurrentAttachment = false
   private var lastBurstKey = 0
 
   private let gold = UIColor(red: 1.00, green: 0.82, blue: 0.36, alpha: 1.00)
@@ -49,6 +54,23 @@ final class IOSLastTaskCelebrationView: UIView {
   override func layoutSubviews() {
     super.layoutSubviews()
     effectLayer.frame = bounds
+  }
+
+  override func didMoveToWindow() {
+    super.didMoveToWindow()
+
+    if window == nil {
+      hasAutoplayedCurrentAttachment = false
+      lastBurstKey = 0
+      return
+    }
+
+    guard !hasAutoplayedCurrentAttachment else { return }
+    hasAutoplayedCurrentAttachment = true
+
+    DispatchQueue.main.async { [weak self] in
+      self?.playSequence()
+    }
   }
 
   deinit {
