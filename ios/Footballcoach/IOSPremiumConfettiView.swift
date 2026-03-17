@@ -5,6 +5,10 @@ final class IOSPremiumConfettiView: UIView {
   @objc var burstKey: NSNumber = 0 {
     didSet {
       let nextKey = burstKey.intValue
+      if hasAutoplayedCurrentAttachment && lastBurstKey == 0 {
+        lastBurstKey = nextKey
+        return
+      }
       guard nextKey != lastBurstKey else { return }
       lastBurstKey = nextKey
       playBurst()
@@ -19,6 +23,7 @@ final class IOSPremiumConfettiView: UIView {
 
   private let emitterLayer = CAEmitterLayer()
   private var lastBurstKey = 0
+  private var hasAutoplayedCurrentAttachment = false
   private var stopEmitterWorkItem: DispatchWorkItem?
 
   override init(frame: CGRect) {
@@ -42,6 +47,23 @@ final class IOSPremiumConfettiView: UIView {
     emitterLayer.frame = bounds
     emitterLayer.emitterPosition = CGPoint(x: bounds.midX, y: -10)
     emitterLayer.emitterSize = CGSize(width: max(bounds.width * emitterWidthMultiplier, 140), height: 2)
+  }
+
+  override func didMoveToWindow() {
+    super.didMoveToWindow()
+
+    if window == nil {
+      hasAutoplayedCurrentAttachment = false
+      lastBurstKey = 0
+      return
+    }
+
+    guard !hasAutoplayedCurrentAttachment else { return }
+    hasAutoplayedCurrentAttachment = true
+
+    DispatchQueue.main.async { [weak self] in
+      self?.playBurst()
+    }
   }
 
   deinit {
