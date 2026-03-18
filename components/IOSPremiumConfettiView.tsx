@@ -5,6 +5,8 @@ import NativePremiumConfettiView from '@/components/IOSPremiumConfettiViewNative
 
 type IOSPremiumConfettiViewProps = ViewProps & {
   burstKey: number;
+  debugEnabled?: boolean;
+  debugInfo?: string;
   variant: CelebrationType;
 };
 
@@ -30,26 +32,40 @@ function hasViewManagerConfig(viewName: string) {
   return UIManager.getViewManagerConfig?.(viewName) != null;
 }
 
+export function getIOSPremiumConfettiDiagnostics() {
+  return {
+    bridgelessEnabled: isBridgelessEnabled(),
+    fabricEnabled: isFabricEnabled(),
+    platformIOS: Platform.OS === 'ios',
+    viewManagerConfigAvailable: hasViewManagerConfig('IOSPremiumConfettiView'),
+  };
+}
+
 export function hasIOSPremiumConfettiView() {
-  return Platform.OS === 'ios' && (
-    isFabricEnabled() ||
-    isBridgelessEnabled() ||
-    hasViewManagerConfig('IOSPremiumConfettiView')
+  const diagnostics = getIOSPremiumConfettiDiagnostics();
+  return diagnostics.platformIOS && (
+    diagnostics.fabricEnabled ||
+    diagnostics.bridgelessEnabled ||
+    diagnostics.viewManagerConfigAvailable
   );
 }
 
 export function IOSPremiumConfettiView({
   burstKey,
+  debugEnabled,
+  debugInfo,
   variant,
   style,
 }: IOSPremiumConfettiViewProps) {
-  if (!hasIOSPremiumConfettiView()) {
+  if (Platform.OS !== 'ios') {
     return <View pointerEvents="none" style={style} />;
   }
 
   return (
     <NativePremiumConfettiView
       burstKey={burstKey}
+      debugEnabled={debugEnabled}
+      debugInfo={debugInfo}
       pointerEvents="none"
       style={style}
       variant={variant}

@@ -4,6 +4,8 @@ import NativeLastTaskCelebrationView from '@/components/IOSLastTaskCelebrationVi
 
 type IOSLastTaskCelebrationViewProps = ViewProps & {
   burstKey: number;
+  debugEnabled?: boolean;
+  debugInfo?: string;
 };
 
 function isBridgelessEnabled() {
@@ -28,25 +30,39 @@ function hasViewManagerConfig(viewName: string) {
   return UIManager.getViewManagerConfig?.(viewName) != null;
 }
 
+export function getIOSLastTaskCelebrationDiagnostics() {
+  return {
+    bridgelessEnabled: isBridgelessEnabled(),
+    fabricEnabled: isFabricEnabled(),
+    platformIOS: Platform.OS === 'ios',
+    viewManagerConfigAvailable: hasViewManagerConfig('IOSLastTaskCelebrationView'),
+  };
+}
+
 export function hasIOSLastTaskCelebrationView() {
-  return Platform.OS === 'ios' && (
-    isFabricEnabled() ||
-    isBridgelessEnabled() ||
-    hasViewManagerConfig('IOSLastTaskCelebrationView')
+  const diagnostics = getIOSLastTaskCelebrationDiagnostics();
+  return diagnostics.platformIOS && (
+    diagnostics.fabricEnabled ||
+    diagnostics.bridgelessEnabled ||
+    diagnostics.viewManagerConfigAvailable
   );
 }
 
 export function IOSLastTaskCelebrationView({
   burstKey,
+  debugEnabled,
+  debugInfo,
   style,
 }: IOSLastTaskCelebrationViewProps) {
-  if (!hasIOSLastTaskCelebrationView()) {
+  if (Platform.OS !== 'ios') {
     return <View pointerEvents="none" style={style} />;
   }
 
   return (
     <NativeLastTaskCelebrationView
       burstKey={burstKey}
+      debugEnabled={debugEnabled}
+      debugInfo={debugInfo}
       pointerEvents="none"
       style={style}
     />

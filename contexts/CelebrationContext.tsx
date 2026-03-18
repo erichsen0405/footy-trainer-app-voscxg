@@ -15,9 +15,14 @@ import { NativeModulesProxy } from 'expo-modules-core';
 import * as Haptics from 'expo-haptics';
 import {
   IOSLastTaskCelebrationView,
+  getIOSLastTaskCelebrationDiagnostics,
   hasIOSLastTaskCelebrationView,
 } from '@/components/IOSLastTaskCelebrationView';
-import { IOSPremiumConfettiView, hasIOSPremiumConfettiView } from '@/components/IOSPremiumConfettiView';
+import {
+  IOSPremiumConfettiView,
+  getIOSPremiumConfettiDiagnostics,
+  hasIOSPremiumConfettiView,
+} from '@/components/IOSPremiumConfettiView';
 import { CelebrationType } from '@/utils/celebration';
 
 type ShowCelebrationInput = {
@@ -111,6 +116,8 @@ const ENABLE_CELEBRATION_AUDIO =
   process.env.NODE_ENV !== 'test' &&
   process.env.EXPO_PUBLIC_ENABLE_CELEBRATION_AUDIO !== '0';
 const PLAY_IN_SILENT_MODE_IOS = process.env.EXPO_PUBLIC_CELEBRATION_AUDIO_IN_SILENT_IOS === '1';
+const SHOW_CELEBRATION_DEBUG = __DEV__ || process.env.EXPO_PUBLIC_CELEBRATION_DEBUG === '1';
+const FORCE_LEGACY_IOS_CELEBRATIONS = process.env.EXPO_PUBLIC_FORCE_LEGACY_IOS_CELEBRATIONS === '1';
 
 const CelebrationContext = createContext<CelebrationContextValue>({
   showCelebration: () => {},
@@ -243,20 +250,63 @@ function resolveCelebrationMessage(celebration: ActiveCelebration): CelebrationM
 function CelebrationOverlay({
   celebration,
   reduceMotionEnabled,
+  onStart,
   onDismiss,
 }: {
   celebration: ActiveCelebration;
   reduceMotionEnabled: boolean;
+  onStart: (celebration: ActiveCelebration) => void;
   onDismiss: () => void;
 }) {
   const progress = useRef(new Animated.Value(0)).current;
   const isDayComplete = celebration.type === 'dayComplete';
   const durationMs = isDayComplete ? DAY_COMPLETE_DURATION_MS : TASK_DURATION_MS;
   const message = useMemo(() => resolveCelebrationMessage(celebration), [celebration]);
-  const showNativeDayCompleteOverlay =
-    isDayComplete && Platform.OS === 'ios' && hasIOSLastTaskCelebrationView();
+  const premiumConfettiDiagnostics = useMemo(() => getIOSPremiumConfettiDiagnostics(), []);
+  const dayCompleteDiagnostics = useMemo(() => getIOSLastTaskCelebrationDiagnostics(), []);
+  const shouldAttemptNativeConfetti =
+    Platform.OS === 'ios' && !FORCE_LEGACY_IOS_CELEBRATIONS;
+  const shouldAttemptNativeDayComplete =
+    isDayComplete && Platform.OS === 'ios' && !FORCE_LEGACY_IOS_CELEBRATIONS;
+  const debugNativeConfettiAvailable = hasIOSPremiumConfettiView();
+  const debugNativeDayCompleteAvailable = hasIOSLastTaskCelebrationView();
+  const debugInfo = useMemo(() => {
+    if (!SHOW_CELEBRATION_DEBUG) {
+      return '';
+    }
+
+    const nativeMode = shouldAttemptNativeDayComplete
+      ? 'native-day'
+      : shouldAttemptNativeConfetti
+        ? 'native-confetti'
+        : 'legacy';
+
+    return [
+      `type=${celebration.type}`,
+      `mode=${nativeMode}`,
+      `reduce=${reduceMotionEnabled ? 1 : 0}`,
+      `fabric=${premiumConfettiDiagnostics.fabricEnabled ? 1 : 0}`,
+      `bridgeless=${premiumConfettiDiagnostics.bridgelessEnabled ? 1 : 0}`,
+      `confettiVM=${premiumConfettiDiagnostics.viewManagerConfigAvailable ? 1 : 0}`,
+      `dayVM=${dayCompleteDiagnostics.viewManagerConfigAvailable ? 1 : 0}`,
+      `confettiReady=${debugNativeConfettiAvailable ? 1 : 0}`,
+      `dayReady=${debugNativeDayCompleteAvailable ? 1 : 0}`,
+    ].join(' ');
+  }, [
+    celebration.type,
+    dayCompleteDiagnostics.viewManagerConfigAvailable,
+    debugNativeConfettiAvailable,
+    debugNativeDayCompleteAvailable,
+    premiumConfettiDiagnostics.bridgelessEnabled,
+    premiumConfettiDiagnostics.fabricEnabled,
+    premiumConfettiDiagnostics.viewManagerConfigAvailable,
+    reduceMotionEnabled,
+    shouldAttemptNativeConfetti,
+    shouldAttemptNativeDayComplete,
+  ]);
 
   useEffect(() => {
+    onStart(celebration);
     progress.setValue(0);
     const animation = Animated.timing(progress, {
       toValue: 1,
@@ -268,7 +318,15 @@ function CelebrationOverlay({
     return () => {
       animation.stop();
     };
-  }, [celebration.id, celebration.type, durationMs, progress]);
+  }, [celebration, celebration.id, celebration.type, durationMs, onStart, progress]);
+
+  useEffect(() => {
+    if (!SHOW_CELEBRATION_DEBUG) {
+      return;
+    }
+
+    console.log('[celebration-debug]', debugInfo);
+  }, [debugInfo]);
 
   const pieces = useMemo(
     () => (reduceMotionEnabled ? [] : buildConfetti(celebration.id, celebration.type)),
@@ -317,6 +375,9 @@ function CelebrationOverlay({
     inputRange: [0, 0.12, 1],
     outputRange: [12, 0, -4],
   });
+  const renderNativeConfetti = shouldAttemptNativeConfetti && !shouldAttemptNativeDayComplete;
+  const renderLegacyConfetti = !shouldAttemptNativeConfetti && !shouldAttemptNativeDayComplete;
+  const renderLegacyFireworks = !shouldAttemptNativeDayComplete;
 
   return (
     <View style={styles.overlayWrap} pointerEvents="box-none" testID="celebration-overlay">
@@ -328,20 +389,24 @@ function CelebrationOverlay({
 
       {!reduceMotionEnabled ? (
         <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
-          {showNativeDayCompleteOverlay ? (
+          {shouldAttemptNativeDayComplete ? (
             <IOSLastTaskCelebrationView
               burstKey={celebration.id}
+              debugEnabled={SHOW_CELEBRATION_DEBUG}
+              debugInfo={debugInfo}
               style={StyleSheet.absoluteFillObject}
             />
           ) : (
             <>
-              {Platform.OS === 'ios' && hasIOSPremiumConfettiView() ? (
+              {renderNativeConfetti ? (
                 <IOSPremiumConfettiView
                   burstKey={celebration.id}
+                  debugEnabled={SHOW_CELEBRATION_DEBUG}
+                  debugInfo={debugInfo}
                   style={StyleSheet.absoluteFillObject}
                   variant={celebration.type}
                 />
-              ) : pieces.map((piece) => {
+              ) : renderLegacyConfetti ? pieces.map((piece) => {
                   const opacity = progress.interpolate({
                     inputRange: [0, 0.08, 0.9, 1],
                     outputRange: [0, 1, 1, 0],
@@ -379,9 +444,9 @@ function CelebrationOverlay({
                       ]}
                     />
                   );
-                })}
+                }) : null}
 
-              {fireworkRockets.map((rocket) => {
+              {renderLegacyFireworks ? fireworkRockets.map((rocket) => {
                 const start = rocket.delayMs / durationMs;
                 const apex = Math.min(start + (isDayComplete ? 0.18 : 0.16), 0.9);
                 const vanish = Math.min(apex + 0.08, 0.98);
@@ -471,18 +536,22 @@ function CelebrationOverlay({
                       />
                     </React.Fragment>
                   );
-                })}
+                }) : null}
 
-              <Animated.View
-                pointerEvents="none"
-                style={[styles.fountainEmitter, styles.fountainEmitterLeft, !isDayComplete && styles.fountainEmitterTask, { opacity: overlayOpacity }]}
-              />
-              <Animated.View
-                pointerEvents="none"
-                style={[styles.fountainEmitter, styles.fountainEmitterRight, !isDayComplete && styles.fountainEmitterTask, { opacity: overlayOpacity }]}
-              />
+              {renderLegacyFireworks ? (
+                <>
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[styles.fountainEmitter, styles.fountainEmitterLeft, !isDayComplete && styles.fountainEmitterTask, { opacity: overlayOpacity }]}
+                  />
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[styles.fountainEmitter, styles.fountainEmitterRight, !isDayComplete && styles.fountainEmitterTask, { opacity: overlayOpacity }]}
+                  />
+                </>
+              ) : null}
 
-              {fountainSparks.map((spark) => {
+              {renderLegacyFireworks ? fountainSparks.map((spark) => {
                 const start = spark.delayMs / durationMs;
                 const peak = Math.min(start + (isDayComplete ? 0.2 : 0.15), 0.92);
                 const end = Math.min(peak + (isDayComplete ? 0.16 : 0.12), 0.995);
@@ -521,13 +590,19 @@ function CelebrationOverlay({
                       ]}
                     />
                   );
-                })}
+                }) : null}
             </>
           )}
         </View>
       ) : null}
 
-      {showNativeDayCompleteOverlay ? null : (
+      {SHOW_CELEBRATION_DEBUG ? (
+        <View pointerEvents="none" style={styles.debugBadge}>
+          <Text style={styles.debugText}>{debugInfo}</Text>
+        </View>
+      ) : null}
+
+      {shouldAttemptNativeDayComplete ? null : (
         <View pointerEvents="none" style={styles.centerWrap}>
           <Animated.View
             style={[
@@ -612,6 +687,7 @@ export function CelebrationProvider({ children }: { children: React.ReactNode })
   const audioModuleRef = useRef<AudioModuleLike | null>(null);
   const warnedMissingAudioRef = useRef(false);
   const hapticsTimeoutRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const startedCelebrationIdRef = useRef<number | null>(null);
 
   const clearDismissTimer = useCallback(() => {
     if (!timeoutRef.current) return;
@@ -626,6 +702,7 @@ export function CelebrationProvider({ children }: { children: React.ReactNode })
 
   const dismissCelebration = useCallback(() => {
     clearDismissTimer();
+    startedCelebrationIdRef.current = null;
     activeCelebrationRef.current = null;
     setActiveCelebration(null);
   }, [clearDismissTimer]);
@@ -794,17 +871,30 @@ export function CelebrationProvider({ children }: { children: React.ReactNode })
         totalToday: normalizeCount(input?.totalToday) ?? undefined,
         remainingToday: normalizeCount(input?.remainingToday) ?? undefined,
       };
+      clearDismissTimer();
+      startedCelebrationIdRef.current = null;
       activeCelebrationRef.current = nextCelebration;
       setActiveCelebration(nextCelebration);
       lastCelebrationAtRef.current = now;
+    },
+    [clearDismissTimer]
+  );
 
-      playCelebrationHaptics(type);
-      void playCelebrationSound(type);
+  const startCelebration = useCallback(
+    (celebration: ActiveCelebration) => {
+      if (startedCelebrationIdRef.current === celebration.id) {
+        return;
+      }
+
+      startedCelebrationIdRef.current = celebration.id;
+      playCelebrationHaptics(celebration.type);
+      void playCelebrationSound(celebration.type);
 
       clearDismissTimer();
-      const duration = type === 'dayComplete' ? DAY_COMPLETE_DURATION_MS : TASK_DURATION_MS;
+      const duration = celebration.type === 'dayComplete' ? DAY_COMPLETE_DURATION_MS : TASK_DURATION_MS;
       timeoutRef.current = setTimeout(() => {
-        if (activeCelebrationRef.current?.id !== nextCelebration.id) return;
+        if (activeCelebrationRef.current?.id !== celebration.id) return;
+        startedCelebrationIdRef.current = null;
         activeCelebrationRef.current = null;
         setActiveCelebration(null);
       }, duration);
@@ -829,6 +919,7 @@ export function CelebrationProvider({ children }: { children: React.ReactNode })
                 <CelebrationOverlay
                   celebration={activeCelebration}
                   reduceMotionEnabled={reduceMotionEnabled}
+                  onStart={startCelebration}
                   onDismiss={dismissCelebration}
                 />
               )
@@ -844,6 +935,7 @@ export function CelebrationProvider({ children }: { children: React.ReactNode })
                   <CelebrationOverlay
                     celebration={activeCelebration}
                     reduceMotionEnabled={reduceMotionEnabled}
+                    onStart={startCelebration}
                     onDismiss={dismissCelebration}
                   />
                 </Modal>
@@ -1038,6 +1130,26 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 26,
     bottom: 4,
+  },
+  debugBadge: {
+    position: 'absolute',
+    top: 18,
+    left: 12,
+    right: 12,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.56)',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    zIndex: 20,
+  },
+  debugText: {
+    color: '#fff',
+    fontSize: 11,
+    fontFamily: Platform.select({
+      ios: 'Menlo',
+      android: 'monospace',
+      default: 'monospace',
+    }),
   },
   messageWrap: {
     ...StyleSheet.absoluteFillObject,
