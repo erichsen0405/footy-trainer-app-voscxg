@@ -1,7 +1,9 @@
 import QuartzCore
 import UIKit
 
-final class IOSLastTaskCelebrationView: UIView {
+@objc(IOSLastTaskCelebrationContentView)
+@objcMembers
+final class IOSLastTaskCelebrationContentView: UIView {
   @objc var burstKey: NSNumber = 0 {
     didSet {
       let nextKey = burstKey.intValue
@@ -111,6 +113,13 @@ final class IOSLastTaskCelebrationView: UIView {
     schedule(after: 1.95) { [weak self] in
       self?.teardownEffects()
     }
+  }
+
+  func resetForRecycle() {
+    hasAutoplayedCurrentAttachment = false
+    lastBurstKey = 0
+    burstKey = 0
+    teardownEffects()
   }
 
   private func teardownEffects() {

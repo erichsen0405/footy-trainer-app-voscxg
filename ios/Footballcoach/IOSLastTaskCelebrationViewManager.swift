@@ -8,6 +8,6 @@ final class IOSLastTaskCelebrationViewManager: RCTViewManager {
   }
 
   override func view() -> UIView! {
-    IOSLastTaskCelebrationView()
+    IOSLastTaskCelebrationContentView()
   }
 }

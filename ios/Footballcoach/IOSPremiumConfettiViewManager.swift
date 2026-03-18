@@ -8,6 +8,6 @@ final class IOSPremiumConfettiViewManager: RCTViewManager {
   }
 
   override func view() -> UIView! {
-    IOSPremiumConfettiView()
+    IOSPremiumConfettiContentView()
   }
 }

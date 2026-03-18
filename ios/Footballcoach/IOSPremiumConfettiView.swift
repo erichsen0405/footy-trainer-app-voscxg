@@ -1,7 +1,9 @@
 import QuartzCore
 import UIKit
 
-final class IOSPremiumConfettiView: UIView {
+@objc(IOSPremiumConfettiContentView)
+@objcMembers
+final class IOSPremiumConfettiContentView: UIView {
   @objc var burstKey: NSNumber = 0 {
     didSet {
       let nextKey = burstKey.intValue
@@ -67,9 +69,7 @@ final class IOSPremiumConfettiView: UIView {
   }
 
   deinit {
-    stopEmitterWorkItem?.cancel()
-    emitterLayer.birthRate = 0
-    emitterLayer.removeAllAnimations()
+    stopBurst()
     emitterLayer.emitterCells = nil
   }
 
@@ -114,6 +114,22 @@ final class IOSPremiumConfettiView: UIView {
       deadline: .now() + (isDayComplete ? 0.2 : 0.16),
       execute: workItem
     )
+  }
+
+  func resetForRecycle() {
+    hasAutoplayedCurrentAttachment = false
+    lastBurstKey = 0
+    burstKey = 0
+    variant = "task"
+    stopBurst()
+    configureEmitter()
+  }
+
+  private func stopBurst() {
+    stopEmitterWorkItem?.cancel()
+    stopEmitterWorkItem = nil
+    emitterLayer.birthRate = 0
+    emitterLayer.removeAllAnimations()
   }
 
   private func makeEmitterCells() -> [CAEmitterCell] {
