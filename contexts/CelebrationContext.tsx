@@ -4,6 +4,7 @@ import {
   Animated,
   Easing,
   Modal,
+  NativeModules,
   Platform,
   Pressable,
   StyleSheet,
@@ -59,6 +60,10 @@ type CelebrationSound = {
   replayAsync: () => Promise<unknown>;
   setPositionAsync: (positionMillis: number) => Promise<unknown>;
   playAsync: () => Promise<unknown>;
+};
+
+type CelebrationRuntimeDebugModule = {
+  collectStatus: () => Promise<Record<string, unknown>>;
 };
 
 type AudioModuleLike = {
@@ -122,6 +127,43 @@ const FORCE_LEGACY_IOS_CELEBRATIONS = process.env.EXPO_PUBLIC_FORCE_LEGACY_IOS_C
 const CelebrationContext = createContext<CelebrationContextValue>({
   showCelebration: () => {},
 });
+
+function resolveCelebrationRuntimeDebugModule(): CelebrationRuntimeDebugModule | null {
+  if (Platform.OS !== 'ios') {
+    return null;
+  }
+
+  const candidate = (NativeModules as Record<string, unknown>).IOSCelebrationRuntimeDebug as
+    | Partial<CelebrationRuntimeDebugModule>
+    | undefined;
+
+  if (!candidate || typeof candidate.collectStatus !== 'function') {
+    return null;
+  }
+
+  return candidate as CelebrationRuntimeDebugModule;
+}
+
+function toDebugBit(value: unknown): '1' | '0' {
+  return value ? '1' : '0';
+}
+
+function buildRuntimeDebugSummary(status: Record<string, unknown>): string {
+  return [
+    `nativeMod=1`,
+    `providerCls=${toDebugBit(status.thirdPartyProviderClassAvailable)}`,
+    `providerFn=${toDebugBit(status.thirdPartyProviderResponds)}`,
+    `provider=${toDebugBit(status.thirdPartyProviderAvailable)}`,
+    `pComp=${toDebugBit(status.premiumComponentViewClassAvailable)}`,
+    `pContent=${toDebugBit(status.premiumContentViewClassAvailable)}`,
+    `pManager=${toDebugBit(status.premiumManagerClassAvailable)}`,
+    `pMap=${toDebugBit(status.premiumProviderMapped)}`,
+    `lComp=${toDebugBit(status.lastTaskComponentViewClassAvailable)}`,
+    `lContent=${toDebugBit(status.lastTaskContentViewClassAvailable)}`,
+    `lManager=${toDebugBit(status.lastTaskManagerClassAvailable)}`,
+    `lMap=${toDebugBit(status.lastTaskProviderMapped)}`,
+  ].join(' ');
+}
 
 function resolveAudioModule(): AudioModuleLike | null {
   const nativeModules = (NativeModulesProxy ?? {}) as Record<string, unknown>;
@@ -259,6 +301,7 @@ function CelebrationOverlay({
   onDismiss: () => void;
 }) {
   const progress = useRef(new Animated.Value(0)).current;
+  const [runtimeDebugInfo, setRuntimeDebugInfo] = useState('');
   const isDayComplete = celebration.type === 'dayComplete';
   const durationMs = isDayComplete ? DAY_COMPLETE_DURATION_MS : TASK_DURATION_MS;
   const message = useMemo(() => resolveCelebrationMessage(celebration), [celebration]);
@@ -291,6 +334,7 @@ function CelebrationOverlay({
       `dayVM=${dayCompleteDiagnostics.viewManagerConfigAvailable ? 1 : 0}`,
       `confettiReady=${debugNativeConfettiAvailable ? 1 : 0}`,
       `dayReady=${debugNativeDayCompleteAvailable ? 1 : 0}`,
+      runtimeDebugInfo,
     ].join(' ');
   }, [
     celebration.type,
@@ -301,6 +345,7 @@ function CelebrationOverlay({
     premiumConfettiDiagnostics.fabricEnabled,
     premiumConfettiDiagnostics.viewManagerConfigAvailable,
     reduceMotionEnabled,
+    runtimeDebugInfo,
     shouldAttemptNativeConfetti,
     shouldAttemptNativeDayComplete,
   ]);
@@ -327,6 +372,39 @@ function CelebrationOverlay({
 
     console.log('[celebration-debug]', debugInfo);
   }, [debugInfo]);
+
+  useEffect(() => {
+    if (!SHOW_CELEBRATION_DEBUG || Platform.OS !== 'ios') {
+      setRuntimeDebugInfo('');
+      return;
+    }
+
+    const module = resolveCelebrationRuntimeDebugModule();
+    if (!module) {
+      setRuntimeDebugInfo('nativeMod=0');
+      return;
+    }
+
+    let cancelled = false;
+
+    module
+      .collectStatus()
+      .then((status) => {
+        if (cancelled) return;
+        const summary = buildRuntimeDebugSummary(status);
+        setRuntimeDebugInfo(summary);
+        console.log('[celebration-native-runtime-debug]', status);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setRuntimeDebugInfo('nativeMod=err');
+        console.warn('[celebration-native-runtime-debug] failed', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [celebration.id]);
 
   const pieces = useMemo(
     () => (reduceMotionEnabled ? [] : buildConfetti(celebration.id, celebration.type)),
