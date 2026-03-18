@@ -4,6 +4,7 @@
 
 #import "Expo-Swift.h"
 #import "ExpoModulesCore-Swift.h"
+#import <React/RCTConversions.h>
 #import <React/RCTViewManager.h>
 #import <React_RCTAppDelegate/RCTDefaultReactNativeFactoryDelegate.h>
 
@@ -82,6 +83,21 @@ using namespace facebook::react;
       newConfettiProps.debugEnabled);
 
   [super updateProps:props oldProps:oldProps];
+}
+
+- (void)updateLayoutMetrics:(const LayoutMetrics &)layoutMetrics
+           oldLayoutMetrics:(const LayoutMetrics &)oldLayoutMetrics
+{
+  [super updateLayoutMetrics:layoutMetrics oldLayoutMetrics:oldLayoutMetrics];
+
+  const CGRect contentFrame = RCTCGRectFromRect(layoutMetrics.getContentFrame());
+  _confettiView.frame = contentFrame;
+
+  NSLog(
+      @"[IOSPremiumConfettiComponentView] layout frame=%@ bounds=%@ content=%@",
+      NSStringFromCGRect(RCTCGRectFromRect(layoutMetrics.frame)),
+      NSStringFromCGRect(self.bounds),
+      NSStringFromCGRect(contentFrame));
 }
 
 - (void)prepareForRecycle
