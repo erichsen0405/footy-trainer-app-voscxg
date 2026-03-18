@@ -8,5 +8,4 @@ export interface NativeProps extends ViewProps {
 
 export default codegenNativeComponent<NativeProps>('IOSLastTaskCelebrationView', {
   excludedPlatforms: ['android'],
-  interfaceOnly: true,
 });

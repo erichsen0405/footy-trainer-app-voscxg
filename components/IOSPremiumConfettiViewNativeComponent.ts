@@ -9,5 +9,4 @@ export interface NativeProps extends ViewProps {
 
 export default codegenNativeComponent<NativeProps>('IOSPremiumConfettiView', {
   excludedPlatforms: ['android'],
-  interfaceOnly: true,
 });

@@ -1,6 +1,7 @@
 import React from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { AccessibilityInfo, Pressable, Text, View } from 'react-native';
+import { IOSLastTaskCelebrationView } from '@/components/IOSLastTaskCelebrationView';
 import { CelebrationProvider, useCelebration } from '@/contexts/CelebrationContext';
 
 jest.mock('expo-haptics', () => ({
@@ -79,7 +80,7 @@ describe('CelebrationProvider overlay', () => {
   });
 
   it('shows dayComplete text and supports tap-to-dismiss', async () => {
-    const { getByTestId, queryByTestId, getAllByTestId } = render(
+    const { UNSAFE_getByType, getByTestId, queryByTestId, queryAllByTestId } = render(
       <CelebrationProvider>
         <TriggerScreen />
       </CelebrationProvider>
@@ -96,8 +97,9 @@ describe('CelebrationProvider overlay', () => {
     expect(getByTestId('celebration-title')).toHaveTextContent('Dagens opgaver fuldført');
     expect(getByTestId('celebration-subtitle')).toHaveTextContent('Nyd resten af dagen.');
     expect(getByTestId('celebration-progress')).toHaveTextContent('I dag: 5/5');
-    expect(getAllByTestId('celebration-rocket').length).toBeGreaterThan(0);
-    expect(getAllByTestId('celebration-fountain').length).toBeGreaterThan(0);
+    expect(UNSAFE_getByType(IOSLastTaskCelebrationView)).toBeTruthy();
+    expect(queryAllByTestId('celebration-rocket')).toHaveLength(0);
+    expect(queryAllByTestId('celebration-fountain')).toHaveLength(0);
 
     fireEvent.press(getByTestId('celebration-dismiss'));
     expect(queryByTestId('celebration-overlay')).toBeNull();

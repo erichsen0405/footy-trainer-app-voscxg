@@ -5,7 +5,13 @@
   "codegenConfig": {
     "name": "NativelySpecs",
     "type": "components",
-    "jsSrcsDir": "components"
+    "jsSrcsDir": "components",
+    "ios": {
+      "componentProvider": {
+        "IOSPremiumConfettiView": "IOSPremiumConfettiComponentView",
+        "IOSLastTaskCelebrationView": "IOSLastTaskCelebrationComponentView"
+      }
+    }
   },
   "scripts": {
     "dev": "EXPO_NO_TELEMETRY=1 expo start --clear --tunnel",
