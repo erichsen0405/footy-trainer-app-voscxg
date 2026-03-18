@@ -61,8 +61,17 @@ export function IOSLastTaskCelebrationView({
   return (
     <NativeLastTaskCelebrationView
       burstKey={burstKey}
+      collapsable={false}
       debugEnabled={debugEnabled}
       debugInfo={debugInfo}
+      onLayout={
+        debugEnabled
+          ? (event) => {
+              const { width, height, x, y } = event.nativeEvent.layout;
+              console.log('[IOSLastTaskCelebrationView] onLayout', { width, height, x, y, burstKey });
+            }
+          : undefined
+      }
       pointerEvents="none"
       style={style}
     />
