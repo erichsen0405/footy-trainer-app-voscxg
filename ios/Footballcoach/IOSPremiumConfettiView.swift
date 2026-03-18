@@ -4,11 +4,16 @@ import UIKit
 @objc(IOSPremiumConfettiContentView)
 @objcMembers
 final class IOSPremiumConfettiContentView: UIView {
+  override class var layerClass: AnyClass {
+    CAEmitterLayer.self
+  }
+
   @objc var burstKey: NSNumber = 0 {
     didSet {
       let nextKey = burstKey.intValue
       if hasAutoplayedCurrentAttachment && lastBurstKey == 0 {
         lastBurstKey = nextKey
+        updateDebugBadge(reason: "prop-sync")
         return
       }
       guard nextKey != lastBurstKey else { return }
@@ -17,31 +22,55 @@ final class IOSPremiumConfettiContentView: UIView {
     }
   }
 
-  @objc var variant: NSString = "task" {
+  @objc var debugEnabled: Bool = false {
     didSet {
-      configureEmitter()
+      updateDebugBadge(reason: "debug-toggle")
     }
   }
 
-  private let emitterLayer = CAEmitterLayer()
+  @objc var debugInfo: NSString = "" {
+    didSet {
+      updateDebugBadge(reason: "debug-info")
+    }
+  }
+
+  @objc var variant: NSString = "task" {
+    didSet {
+      configureEmitter()
+      updateDebugBadge(reason: "variant")
+    }
+  }
+
+  private var emitterLayer: CAEmitterLayer {
+    layer as! CAEmitterLayer
+  }
+
+  private lazy var debugLabel: UILabel = {
+    let label = UILabel()
+    label.backgroundColor = UIColor.black.withAlphaComponent(0.6)
+    label.textColor = .white
+    label.font = UIFont.monospacedSystemFont(ofSize: 10, weight: .semibold)
+    label.numberOfLines = 0
+    label.layer.cornerRadius = 8
+    label.layer.masksToBounds = true
+    label.isHidden = true
+    label.textAlignment = .left
+    return label
+  }()
+
   private var lastBurstKey = 0
   private var hasAutoplayedCurrentAttachment = false
+  private var reduceMotionObserver: NSObjectProtocol?
   private var stopEmitterWorkItem: DispatchWorkItem?
 
   override init(frame: CGRect) {
     super.init(frame: frame)
-    isUserInteractionEnabled = false
-    backgroundColor = .clear
-    layer.addSublayer(emitterLayer)
-    configureEmitter()
+    commonInit()
   }
 
   required init?(coder: NSCoder) {
     super.init(coder: coder)
-    isUserInteractionEnabled = false
-    backgroundColor = .clear
-    layer.addSublayer(emitterLayer)
-    configureEmitter()
+    commonInit()
   }
 
   override func layoutSubviews() {
@@ -49,16 +78,22 @@ final class IOSPremiumConfettiContentView: UIView {
     emitterLayer.frame = bounds
     emitterLayer.emitterPosition = CGPoint(x: bounds.midX, y: -10)
     emitterLayer.emitterSize = CGSize(width: max(bounds.width * emitterWidthMultiplier, 140), height: 2)
+    debugLabel.frame = CGRect(x: 12, y: 16, width: max(bounds.width - 24, 120), height: 44)
   }
 
   override func didMoveToWindow() {
     super.didMoveToWindow()
 
     if window == nil {
+      debugLog("detached from window")
       hasAutoplayedCurrentAttachment = false
       lastBurstKey = 0
+      updateDebugBadge(reason: "detached")
       return
     }
+
+    debugLog("attached to window")
+    updateDebugBadge(reason: "attached")
 
     guard !hasAutoplayedCurrentAttachment else { return }
     hasAutoplayedCurrentAttachment = true
@@ -71,6 +106,10 @@ final class IOSPremiumConfettiContentView: UIView {
   deinit {
     stopBurst()
     emitterLayer.emitterCells = nil
+
+    if let reduceMotionObserver {
+      NotificationCenter.default.removeObserver(reduceMotionObserver)
+    }
   }
 
   private var isDayComplete: Bool {
@@ -79,6 +118,38 @@ final class IOSPremiumConfettiContentView: UIView {
 
   private var emitterWidthMultiplier: CGFloat {
     isDayComplete ? 0.42 : 0.28
+  }
+
+  private var shouldReduceMotion: Bool {
+    UIAccessibility.isReduceMotionEnabled
+  }
+
+  private func commonInit() {
+    accessibilityIdentifier = "ios-premium-confetti-content-view"
+    backgroundColor = .clear
+    clipsToBounds = false
+    contentScaleFactor = UIScreen.main.scale
+    isAccessibilityElement = false
+    isUserInteractionEnabled = false
+    addSubview(debugLabel)
+    configureEmitter()
+    installReduceMotionObserver()
+    updateDebugBadge(reason: "init")
+  }
+
+  private func installReduceMotionObserver() {
+    reduceMotionObserver = NotificationCenter.default.addObserver(
+      forName: UIAccessibility.reduceMotionStatusDidChangeNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      guard let self else { return }
+      self.debugLog("reduce motion changed \(self.shouldReduceMotion ? "on" : "off")")
+      if self.shouldReduceMotion {
+        self.stopBurst()
+      }
+      self.updateDebugBadge(reason: "reduce-motion")
+    }
   }
 
   private func configureEmitter() {
@@ -93,6 +164,12 @@ final class IOSPremiumConfettiContentView: UIView {
   }
 
   private func playBurst() {
+    if shouldReduceMotion {
+      debugLog("burst skipped because reduce motion is enabled")
+      updateDebugBadge(reason: "reduce-motion-blocked")
+      return
+    }
+
     guard bounds.width > 0, bounds.height > 0 else {
       DispatchQueue.main.async { [weak self] in
         self?.playBurst()
@@ -100,13 +177,16 @@ final class IOSPremiumConfettiContentView: UIView {
       return
     }
 
+    debugLog("play burst key=\(burstKey) variant=\(variant)")
     configureEmitter()
     emitterLayer.beginTime = CACurrentMediaTime()
     emitterLayer.birthRate = 1
+    updateDebugBadge(reason: "burst")
 
     stopEmitterWorkItem?.cancel()
     let workItem = DispatchWorkItem { [weak self] in
       self?.emitterLayer.birthRate = 0
+      self?.updateDebugBadge(reason: "burst-ended")
     }
     stopEmitterWorkItem = workItem
 
@@ -120,6 +200,8 @@ final class IOSPremiumConfettiContentView: UIView {
     hasAutoplayedCurrentAttachment = false
     lastBurstKey = 0
     burstKey = 0
+    debugEnabled = false
+    debugInfo = ""
     variant = "task"
     stopBurst()
     configureEmitter()
@@ -130,6 +212,21 @@ final class IOSPremiumConfettiContentView: UIView {
     stopEmitterWorkItem = nil
     emitterLayer.birthRate = 0
     emitterLayer.removeAllAnimations()
+  }
+
+  private func debugLog(_ message: String) {
+    NSLog("[IOSPremiumConfettiContentView] %@", message)
+  }
+
+  private func updateDebugBadge(reason: String) {
+    guard debugEnabled else {
+      debugLabel.isHidden = true
+      return
+    }
+
+    debugLabel.isHidden = false
+    debugLabel.text = "native-confetti \(reason)\n\(debugInfo) reduce=\(shouldReduceMotion ? 1 : 0)"
+    bringSubviewToFront(debugLabel)
   }
 
   private func makeEmitterCells() -> [CAEmitterCell] {
@@ -218,7 +315,7 @@ final class IOSPremiumConfettiContentView: UIView {
     format.scale = UIScreen.main.scale
 
     let renderer = UIGraphicsImageRenderer(size: size, format: format)
-    let image = renderer.image { context in
+    let image = renderer.image { _ in
       let rect = CGRect(origin: .zero, size: size)
       let path = UIBezierPath(roundedRect: rect, cornerRadius: cornerRadius)
       color.setFill()

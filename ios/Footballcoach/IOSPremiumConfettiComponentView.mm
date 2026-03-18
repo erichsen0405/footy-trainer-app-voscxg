@@ -42,6 +42,8 @@ using namespace facebook::react;
     _confettiView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     _confettiView.backgroundColor = [UIColor clearColor];
     self.contentView = _confettiView;
+
+    NSLog(@"[IOSPremiumConfettiComponentView] initWithFrame");
   }
 
   return self;
@@ -56,6 +58,17 @@ using namespace facebook::react;
     _confettiView.burstKey = @(newConfettiProps.burstKey);
   }
 
+  if (oldConfettiProps.debugEnabled != newConfettiProps.debugEnabled) {
+    _confettiView.debugEnabled = newConfettiProps.debugEnabled;
+  }
+
+  if (oldConfettiProps.debugInfo != newConfettiProps.debugInfo) {
+    NSString *debugInfo = newConfettiProps.debugInfo.empty()
+        ? @""
+        : [NSString stringWithUTF8String:newConfettiProps.debugInfo.c_str()];
+    _confettiView.debugInfo = debugInfo;
+  }
+
   if (oldConfettiProps.variant != newConfettiProps.variant) {
     NSString *variant = newConfettiProps.variant.empty()
         ? @"task"
@@ -63,11 +76,17 @@ using namespace facebook::react;
     _confettiView.variant = variant;
   }
 
+  NSLog(
+      @"[IOSPremiumConfettiComponentView] updateProps burstKey=%d debug=%d",
+      newConfettiProps.burstKey,
+      newConfettiProps.debugEnabled);
+
   [super updateProps:props oldProps:oldProps];
 }
 
 - (void)prepareForRecycle
 {
+  NSLog(@"[IOSPremiumConfettiComponentView] prepareForRecycle");
   [super prepareForRecycle];
   [_confettiView resetForRecycle];
 }

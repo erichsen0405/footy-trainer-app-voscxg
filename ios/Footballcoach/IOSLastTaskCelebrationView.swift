@@ -17,6 +17,18 @@ final class IOSLastTaskCelebrationContentView: UIView {
     }
   }
 
+  @objc var debugEnabled: Bool = false {
+    didSet {
+      updateDebugBadge(reason: "debug-toggle")
+    }
+  }
+
+  @objc var debugInfo: NSString = "" {
+    didSet {
+      updateDebugBadge(reason: "debug-info")
+    }
+  }
+
   private struct RocketConfiguration {
     let accentColor: UIColor
     let start: CGPoint
@@ -27,9 +39,21 @@ final class IOSLastTaskCelebrationContentView: UIView {
   }
 
   private let effectLayer = CALayer()
+  private lazy var debugLabel: UILabel = {
+    let label = UILabel()
+    label.backgroundColor = UIColor.black.withAlphaComponent(0.6)
+    label.textColor = .white
+    label.font = UIFont.monospacedSystemFont(ofSize: 10, weight: .semibold)
+    label.numberOfLines = 0
+    label.layer.cornerRadius = 8
+    label.layer.masksToBounds = true
+    label.isHidden = true
+    return label
+  }()
   private var cleanupWorkItems: [DispatchWorkItem] = []
   private var hasAutoplayedCurrentAttachment = false
   private var lastBurstKey = 0
+  private var reduceMotionObserver: NSObjectProtocol?
 
   private let gold = UIColor(red: 1.00, green: 0.82, blue: 0.36, alpha: 1.00)
   private let warmGold = UIColor(red: 1.00, green: 0.68, blue: 0.27, alpha: 1.00)
@@ -56,16 +80,22 @@ final class IOSLastTaskCelebrationContentView: UIView {
   override func layoutSubviews() {
     super.layoutSubviews()
     effectLayer.frame = bounds
+    debugLabel.frame = CGRect(x: 12, y: 16, width: max(bounds.width - 24, 120), height: 44)
   }
 
   override func didMoveToWindow() {
     super.didMoveToWindow()
 
     if window == nil {
+      debugLog("detached from window")
       hasAutoplayedCurrentAttachment = false
       lastBurstKey = 0
+      updateDebugBadge(reason: "detached")
       return
     }
+
+    debugLog("attached to window")
+    updateDebugBadge(reason: "attached")
 
     guard !hasAutoplayedCurrentAttachment else { return }
     hasAutoplayedCurrentAttachment = true
@@ -77,18 +107,34 @@ final class IOSLastTaskCelebrationContentView: UIView {
 
   deinit {
     teardownEffects()
+
+    if let reduceMotionObserver {
+      NotificationCenter.default.removeObserver(reduceMotionObserver)
+    }
   }
 
   private func commonInit() {
+    accessibilityIdentifier = "ios-last-task-celebration-content-view"
     isUserInteractionEnabled = false
+    isAccessibilityElement = false
     backgroundColor = .clear
     clipsToBounds = false
+    contentScaleFactor = UIScreen.main.scale
     effectLayer.frame = bounds
     effectLayer.masksToBounds = false
     layer.addSublayer(effectLayer)
+    addSubview(debugLabel)
+    installReduceMotionObserver()
+    updateDebugBadge(reason: "init")
   }
 
   private func playSequence() {
+    if shouldReduceMotion {
+      debugLog("sequence skipped because reduce motion is enabled")
+      updateDebugBadge(reason: "reduce-motion-blocked")
+      return
+    }
+
     guard bounds.width > 0, bounds.height > 0 else {
       DispatchQueue.main.async { [weak self] in
         self?.playSequence()
@@ -96,6 +142,7 @@ final class IOSLastTaskCelebrationContentView: UIView {
       return
     }
 
+    debugLog("play sequence key=\(burstKey)")
     teardownEffects()
     addBackdropGlow()
     addFountains()
@@ -113,12 +160,16 @@ final class IOSLastTaskCelebrationContentView: UIView {
     schedule(after: 1.95) { [weak self] in
       self?.teardownEffects()
     }
+
+    updateDebugBadge(reason: "sequence")
   }
 
   func resetForRecycle() {
     hasAutoplayedCurrentAttachment = false
     lastBurstKey = 0
     burstKey = 0
+    debugEnabled = false
+    debugInfo = ""
     teardownEffects()
   }
 
@@ -131,6 +182,42 @@ final class IOSLastTaskCelebrationContentView: UIView {
       sublayer.removeAllAnimations()
       sublayer.removeFromSuperlayer()
     }
+
+    updateDebugBadge(reason: "teardown")
+  }
+
+  private var shouldReduceMotion: Bool {
+    UIAccessibility.isReduceMotionEnabled
+  }
+
+  private func installReduceMotionObserver() {
+    reduceMotionObserver = NotificationCenter.default.addObserver(
+      forName: UIAccessibility.reduceMotionStatusDidChangeNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      guard let self else { return }
+      self.debugLog("reduce motion changed \(self.shouldReduceMotion ? "on" : "off")")
+      if self.shouldReduceMotion {
+        self.teardownEffects()
+      }
+      self.updateDebugBadge(reason: "reduce-motion")
+    }
+  }
+
+  private func debugLog(_ message: String) {
+    NSLog("[IOSLastTaskCelebrationContentView] %@", message)
+  }
+
+  private func updateDebugBadge(reason: String) {
+    guard debugEnabled else {
+      debugLabel.isHidden = true
+      return
+    }
+
+    debugLabel.isHidden = false
+    debugLabel.text = "native-day \(reason)\n\(debugInfo) reduce=\(shouldReduceMotion ? 1 : 0)"
+    bringSubviewToFront(debugLabel)
   }
 
   private func schedule(after delay: TimeInterval, block: @escaping () -> Void) {

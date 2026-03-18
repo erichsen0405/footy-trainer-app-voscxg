@@ -42,6 +42,8 @@ using namespace facebook::react;
     _celebrationView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     _celebrationView.backgroundColor = [UIColor clearColor];
     self.contentView = _celebrationView;
+
+    NSLog(@"[IOSLastTaskCelebrationComponentView] initWithFrame");
   }
 
   return self;
@@ -56,11 +58,28 @@ using namespace facebook::react;
     _celebrationView.burstKey = @(newCelebrationProps.burstKey);
   }
 
+  if (oldCelebrationProps.debugEnabled != newCelebrationProps.debugEnabled) {
+    _celebrationView.debugEnabled = newCelebrationProps.debugEnabled;
+  }
+
+  if (oldCelebrationProps.debugInfo != newCelebrationProps.debugInfo) {
+    NSString *debugInfo = newCelebrationProps.debugInfo.empty()
+        ? @""
+        : [NSString stringWithUTF8String:newCelebrationProps.debugInfo.c_str()];
+    _celebrationView.debugInfo = debugInfo;
+  }
+
+  NSLog(
+      @"[IOSLastTaskCelebrationComponentView] updateProps burstKey=%d debug=%d",
+      newCelebrationProps.burstKey,
+      newCelebrationProps.debugEnabled);
+
   [super updateProps:props oldProps:oldProps];
 }
 
 - (void)prepareForRecycle
 {
+  NSLog(@"[IOSLastTaskCelebrationComponentView] prepareForRecycle");
   [super prepareForRecycle];
   [_celebrationView resetForRecycle];
 }
