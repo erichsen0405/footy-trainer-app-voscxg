@@ -42,12 +42,20 @@ using namespace facebook::react;
     _confettiView = [[IOSPremiumConfettiContentView alloc] initWithFrame:self.bounds];
     _confettiView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     _confettiView.backgroundColor = [UIColor clearColor];
-    self.contentView = _confettiView;
+    self.userInteractionEnabled = NO;
+    self.clipsToBounds = NO;
+    [self addSubview:_confettiView];
 
     NSLog(@"[IOSPremiumConfettiComponentView] initWithFrame");
   }
 
   return self;
+}
+
+- (void)layoutSubviews
+{
+  [super layoutSubviews];
+  _confettiView.frame = self.bounds;
 }
 
 - (void)updateProps:(const Props::Shared &)props oldProps:(const Props::Shared &)oldProps
@@ -61,6 +69,10 @@ using namespace facebook::react;
 
   if (oldConfettiProps.debugEnabled != newConfettiProps.debugEnabled) {
     _confettiView.debugEnabled = newConfettiProps.debugEnabled;
+    self.layer.borderWidth = newConfettiProps.debugEnabled ? 1.5 : 0;
+    self.layer.borderColor = newConfettiProps.debugEnabled
+        ? [UIColor colorWithRed:1.0 green:0.2 blue:0.45 alpha:0.7].CGColor
+        : UIColor.clearColor.CGColor;
   }
 
   if (oldConfettiProps.debugInfo != newConfettiProps.debugInfo) {
@@ -104,6 +116,8 @@ using namespace facebook::react;
 {
   NSLog(@"[IOSPremiumConfettiComponentView] prepareForRecycle");
   [super prepareForRecycle];
+  self.layer.borderWidth = 0;
+  self.layer.borderColor = UIColor.clearColor.CGColor;
   [_confettiView resetForRecycle];
 }
 
