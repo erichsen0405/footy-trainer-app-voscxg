@@ -52,6 +52,7 @@ final class IOSPremiumConfettiContentView: UIView {
   }()
 
   private let emitterLayer = CAEmitterLayer()
+  private let heroPiecesLayer = CALayer()
   private var lastBurstKey = 0
   private var hasAutoplayedCurrentAttachment = false
   private var reduceMotionObserver: NSObjectProtocol?
@@ -70,8 +71,9 @@ final class IOSPremiumConfettiContentView: UIView {
   override func layoutSubviews() {
     super.layoutSubviews()
     emitterLayer.frame = bounds
-    emitterLayer.emitterPosition = CGPoint(x: bounds.midX, y: -10)
+    emitterLayer.emitterPosition = CGPoint(x: bounds.midX, y: 18)
     emitterLayer.emitterSize = CGSize(width: max(bounds.width * emitterWidthMultiplier, 140), height: 2)
+    heroPiecesLayer.frame = bounds
     debugLabel.frame = CGRect(x: 12, y: 16, width: max(bounds.width - 24, 120), height: 44)
   }
 
@@ -128,7 +130,11 @@ final class IOSPremiumConfettiContentView: UIView {
     emitterLayer.frame = bounds
     emitterLayer.masksToBounds = false
     emitterLayer.zPosition = 5
+    heroPiecesLayer.frame = bounds
+    heroPiecesLayer.masksToBounds = false
+    heroPiecesLayer.zPosition = 6
     layer.addSublayer(emitterLayer)
+    layer.addSublayer(heroPiecesLayer)
     addSubview(debugLabel)
     configureEmitter()
     installReduceMotionObserver()
@@ -179,6 +185,7 @@ final class IOSPremiumConfettiContentView: UIView {
     configureEmitter()
     emitterLayer.beginTime = CACurrentMediaTime()
     emitterLayer.birthRate = 1
+    launchHeroPieces()
     updateDebugBadge(reason: "burst")
 
     stopEmitterWorkItem?.cancel()
@@ -210,6 +217,11 @@ final class IOSPremiumConfettiContentView: UIView {
     stopEmitterWorkItem = nil
     emitterLayer.birthRate = 0
     emitterLayer.removeAllAnimations()
+    heroPiecesLayer.removeAllAnimations()
+    heroPiecesLayer.sublayers?.forEach { layer in
+      layer.removeAllAnimations()
+      layer.removeFromSuperlayer()
+    }
   }
 
   private func debugLog(_ message: String) {
@@ -268,6 +280,86 @@ final class IOSPremiumConfettiContentView: UIView {
           spin: 3.2
         ),
       ]
+    }
+  }
+
+  private func launchHeroPieces() {
+    heroPiecesLayer.sublayers?.forEach { layer in
+      layer.removeAllAnimations()
+      layer.removeFromSuperlayer()
+    }
+
+    let colors: [UIColor] = [
+      UIColor(red: 0.20, green: 0.69, blue: 1.00, alpha: 1.00),
+      UIColor(red: 0.30, green: 0.85, blue: 0.48, alpha: 1.00),
+      UIColor(red: 0.96, green: 0.77, blue: 0.27, alpha: 1.00),
+      UIColor(red: 1.00, green: 0.50, blue: 0.31, alpha: 1.00),
+      UIColor(red: 0.61, green: 0.43, blue: 1.00, alpha: 1.00),
+      UIColor(red: 0.13, green: 0.70, blue: 0.67, alpha: 1.00),
+    ]
+
+    let pieceCount = isDayComplete ? 28 : 18
+    let centerX = bounds.midX
+    let spread = bounds.width * (isDayComplete ? 0.24 : 0.18)
+    let startY: CGFloat = 26
+
+    for index in 0..<pieceCount {
+      let progress = CGFloat(index) / CGFloat(max(pieceCount - 1, 1))
+      let offsetX = ((progress * 2) - 1) * spread
+      let width: CGFloat = index % 3 == 0 ? 18 : 14
+      let height: CGFloat = index % 3 == 0 ? 7 : 5
+      let color = colors[index % colors.count]
+      let startPoint = CGPoint(x: centerX + offsetX, y: startY + CGFloat(index % 4) * 3)
+      let endPoint = CGPoint(
+        x: startPoint.x + ((CGFloat((index * 19) % 9) - 4) * 18),
+        y: bounds.height * (isDayComplete ? 0.62 : 0.46) + CGFloat(index % 5) * 22
+      )
+
+      let pieceLayer = CALayer()
+      pieceLayer.backgroundColor = color.cgColor
+      pieceLayer.cornerRadius = 1.6
+      pieceLayer.frame = CGRect(x: 0, y: 0, width: width, height: height)
+      pieceLayer.position = startPoint
+      pieceLayer.opacity = 0
+      heroPiecesLayer.addSublayer(pieceLayer)
+
+      let positionAnimation = CAKeyframeAnimation(keyPath: "position")
+      positionAnimation.values = [
+        NSValue(cgPoint: startPoint),
+        NSValue(cgPoint: CGPoint(x: startPoint.x + offsetX * 0.14, y: startY + 82)),
+        NSValue(cgPoint: endPoint),
+      ]
+      positionAnimation.keyTimes = [0, 0.26, 1]
+      positionAnimation.timingFunctions = [
+        CAMediaTimingFunction(name: .easeOut),
+        CAMediaTimingFunction(name: .easeIn),
+      ]
+      positionAnimation.duration = isDayComplete ? 1.2 : 1.0
+
+      let rotationAnimation = CABasicAnimation(keyPath: "transform.rotation.z")
+      rotationAnimation.fromValue = 0
+      rotationAnimation.toValue = (Double((index % 2 == 0 ? 1 : -1)) * .pi * 2.6)
+      rotationAnimation.duration = positionAnimation.duration
+
+      let opacityAnimation = CAKeyframeAnimation(keyPath: "opacity")
+      opacityAnimation.values = [0, 1, 1, 0]
+      opacityAnimation.keyTimes = [0, 0.08, 0.72, 1]
+      opacityAnimation.duration = positionAnimation.duration
+
+      let scaleAnimation = CAKeyframeAnimation(keyPath: "transform.scale")
+      scaleAnimation.values = [0.86, 1.14, 1]
+      scaleAnimation.keyTimes = [0, 0.16, 1]
+      scaleAnimation.duration = positionAnimation.duration
+
+      let group = CAAnimationGroup()
+      group.animations = [positionAnimation, rotationAnimation, opacityAnimation, scaleAnimation]
+      group.duration = positionAnimation.duration
+      group.fillMode = .forwards
+      group.isRemovedOnCompletion = false
+      group.timingFunction = CAMediaTimingFunction(name: .easeOut)
+
+      pieceLayer.opacity = 0
+      pieceLayer.add(group, forKey: "heroPiece-\(index)")
     }
   }
 
