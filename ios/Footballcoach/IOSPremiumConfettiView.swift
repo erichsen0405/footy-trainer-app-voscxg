@@ -4,10 +4,6 @@ import UIKit
 @objc(IOSPremiumConfettiContentView)
 @objcMembers
 final class IOSPremiumConfettiContentView: UIView {
-  override class var layerClass: AnyClass {
-    CAEmitterLayer.self
-  }
-
   @objc var burstKey: NSNumber = 0 {
     didSet {
       let nextKey = burstKey.intValue
@@ -42,10 +38,6 @@ final class IOSPremiumConfettiContentView: UIView {
     }
   }
 
-  private var emitterLayer: CAEmitterLayer {
-    layer as! CAEmitterLayer
-  }
-
   private lazy var debugLabel: UILabel = {
     let label = UILabel()
     label.backgroundColor = UIColor.black.withAlphaComponent(0.6)
@@ -59,6 +51,7 @@ final class IOSPremiumConfettiContentView: UIView {
     return label
   }()
 
+  private let emitterLayer = CAEmitterLayer()
   private var lastBurstKey = 0
   private var hasAutoplayedCurrentAttachment = false
   private var reduceMotionObserver: NSObjectProtocol?
@@ -132,6 +125,10 @@ final class IOSPremiumConfettiContentView: UIView {
     contentScaleFactor = UIScreen.main.scale
     isAccessibilityElement = false
     isUserInteractionEnabled = false
+    emitterLayer.frame = bounds
+    emitterLayer.masksToBounds = false
+    emitterLayer.zPosition = 5
+    layer.addSublayer(emitterLayer)
     addSubview(debugLabel)
     configureEmitter()
     installReduceMotionObserver()
