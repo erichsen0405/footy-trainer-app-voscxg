@@ -19,6 +19,7 @@ final class IOSLastTaskCelebrationContentView: UIView {
 
   @objc var debugEnabled: Bool = false {
     didSet {
+      backgroundColor = debugEnabled ? UIColor.systemBlue.withAlphaComponent(0.08) : .clear
       updateDebugBadge(reason: "debug-toggle")
     }
   }

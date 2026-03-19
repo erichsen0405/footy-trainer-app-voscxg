@@ -42,12 +42,20 @@ using namespace facebook::react;
     _celebrationView = [[IOSLastTaskCelebrationContentView alloc] initWithFrame:self.bounds];
     _celebrationView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     _celebrationView.backgroundColor = [UIColor clearColor];
-    self.contentView = _celebrationView;
+    self.userInteractionEnabled = NO;
+    self.clipsToBounds = NO;
+    [self addSubview:_celebrationView];
 
     NSLog(@"[IOSLastTaskCelebrationComponentView] initWithFrame");
   }
 
   return self;
+}
+
+- (void)layoutSubviews
+{
+  [super layoutSubviews];
+  _celebrationView.frame = self.bounds;
 }
 
 - (void)updateProps:(const Props::Shared &)props oldProps:(const Props::Shared &)oldProps
@@ -61,6 +69,10 @@ using namespace facebook::react;
 
   if (oldCelebrationProps.debugEnabled != newCelebrationProps.debugEnabled) {
     _celebrationView.debugEnabled = newCelebrationProps.debugEnabled;
+    self.layer.borderWidth = newCelebrationProps.debugEnabled ? 1.5 : 0;
+    self.layer.borderColor = newCelebrationProps.debugEnabled
+        ? [UIColor colorWithRed:0.2 green:0.7 blue:1.0 alpha:0.7].CGColor
+        : UIColor.clearColor.CGColor;
   }
 
   if (oldCelebrationProps.debugInfo != newCelebrationProps.debugInfo) {
@@ -97,6 +109,8 @@ using namespace facebook::react;
 {
   NSLog(@"[IOSLastTaskCelebrationComponentView] prepareForRecycle");
   [super prepareForRecycle];
+  self.layer.borderWidth = 0;
+  self.layer.borderColor = UIColor.clearColor.CGColor;
   [_celebrationView resetForRecycle];
 }
 

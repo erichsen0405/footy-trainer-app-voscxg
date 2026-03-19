@@ -24,6 +24,7 @@ final class IOSPremiumConfettiContentView: UIView {
 
   @objc var debugEnabled: Bool = false {
     didSet {
+      backgroundColor = debugEnabled ? UIColor.systemPink.withAlphaComponent(0.08) : .clear
       updateDebugBadge(reason: "debug-toggle")
     }
   }
