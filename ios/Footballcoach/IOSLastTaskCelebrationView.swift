@@ -19,7 +19,7 @@ final class IOSLastTaskCelebrationContentView: UIView {
 
   @objc var debugEnabled: Bool = false {
     didSet {
-      backgroundColor = debugEnabled ? UIColor.systemBlue.withAlphaComponent(0.08) : .clear
+      backgroundColor = .clear
       updateDebugBadge(reason: "debug-toggle")
     }
   }
@@ -314,8 +314,8 @@ final class IOSLastTaskCelebrationContentView: UIView {
   private func addAmbientConfetti() {
     let emitter = CAEmitterLayer()
     emitter.frame = bounds
-    emitter.emitterPosition = CGPoint(x: bounds.midX, y: bounds.height * 0.16)
-    emitter.emitterSize = CGSize(width: bounds.width * 0.54, height: 2)
+    emitter.emitterPosition = CGPoint(x: bounds.midX, y: bounds.height * 0.1)
+    emitter.emitterSize = CGSize(width: bounds.width * 0.84, height: 2)
     emitter.emitterShape = .line
     emitter.emitterMode = .surface
     emitter.renderMode = .unordered
@@ -323,11 +323,11 @@ final class IOSLastTaskCelebrationContentView: UIView {
     emitter.emitterCells = makeAmbientConfettiCells()
     effectLayer.addSublayer(emitter)
 
-    schedule(after: 0.18) {
+    schedule(after: 0.28) {
       emitter.birthRate = 0
     }
 
-    schedule(after: 1.45) {
+    schedule(after: 1.62) {
       emitter.removeFromSuperlayer()
     }
   }
@@ -577,28 +577,46 @@ final class IOSLastTaskCelebrationContentView: UIView {
     emitter.emitterMode = .points
     emitter.renderMode = .unordered
     emitter.birthRate = 1
-    emitter.emitterCells = confettiPalette.enumerated().map { index, color in
-      confettiCell(
-        name: "fountain-confetti-\(index)",
-        color: color,
-        image: makeConfettiImage(
+    emitter.emitterCells = confettiPalette.enumerated().flatMap { index, color in
+      [
+        confettiCell(
+          name: "fountain-cut-\(index)",
           color: color,
-          size: CGSize(width: index % 2 == 0 ? 14 : 11, height: index % 2 == 0 ? 7 : 5),
-          cornerRadius: 1.4
+          image: makeCutConfettiImage(
+            color: color,
+            size: CGSize(width: index % 2 == 0 ? 16 : 13, height: index % 2 == 0 ? 8 : 6)
+          ),
+          birthRate: index < 2 ? 30 : 16,
+          lifetime: 1.0,
+          velocity: 204,
+          velocityRange: 34,
+          emissionLongitude: angle,
+          emissionRange: 0.34,
+          spin: 2.8,
+          yAcceleration: 290,
+          xAcceleration: inwardAcceleration,
+          scale: 1,
+          scaleRange: 0.24,
+          alphaSpeed: -0.86
         ),
-        birthRate: index < 2 ? 28 : 14,
-        lifetime: 0.92,
-        velocity: 190,
-        velocityRange: 30,
-        emissionLongitude: angle,
-        emissionRange: 0.32,
-        spin: 2.4,
-        yAcceleration: 280,
-        xAcceleration: inwardAcceleration,
-        scale: 1,
-        scaleRange: 0.26,
-        alphaSpeed: -0.9
-      )
+        confettiCell(
+          name: "fountain-circle-\(index)",
+          color: color.withAlphaComponent(0.96),
+          image: makeCircleImage(color: color.withAlphaComponent(0.96), diameter: index % 2 == 0 ? 9 : 7),
+          birthRate: 10,
+          lifetime: 1.04,
+          velocity: 176,
+          velocityRange: 28,
+          emissionLongitude: angle,
+          emissionRange: 0.28,
+          spin: 1.6,
+          yAcceleration: 280,
+          xAcceleration: inwardAcceleration * 0.84,
+          scale: 1,
+          scaleRange: 0.18,
+          alphaSpeed: -0.82
+        ),
+      ]
     }
     return emitter
   }
@@ -661,13 +679,13 @@ final class IOSLastTaskCelebrationContentView: UIView {
     emitter.emitterCells = confettiPalette.enumerated().flatMap { index, color in
       [
         confettiCell(
-          name: "burst-strip-\(index)",
+          name: "burst-cut-\(index)",
           color: color,
-          image: makeConfettiImage(color: color, size: CGSize(width: 14, height: 6), cornerRadius: 1.2),
-          birthRate: 14,
-          lifetime: 1.06,
-          velocity: 120,
-          velocityRange: 36,
+          image: makeCutConfettiImage(color: color, size: CGSize(width: 16, height: 8)),
+          birthRate: 18,
+          lifetime: 1.12,
+          velocity: 128,
+          velocityRange: 40,
           emissionLongitude: 0,
           emissionRange: .pi * 2,
           spin: 2.8,
@@ -678,16 +696,16 @@ final class IOSLastTaskCelebrationContentView: UIView {
           alphaSpeed: -0.86
         ),
         confettiCell(
-          name: "burst-sliver-\(index)",
+          name: "burst-circle-\(index)",
           color: color.withAlphaComponent(0.96),
-          image: makeConfettiImage(color: color.withAlphaComponent(0.96), size: CGSize(width: 10, height: 4), cornerRadius: 1.0),
-          birthRate: 10,
-          lifetime: 0.96,
-          velocity: 104,
-          velocityRange: 28,
+          image: makeCircleImage(color: color.withAlphaComponent(0.96), diameter: index % 2 == 0 ? 10 : 8),
+          birthRate: 9,
+          lifetime: 1.02,
+          velocity: 112,
+          velocityRange: 30,
           emissionLongitude: 0,
           emissionRange: .pi * 2,
-          spin: 3.2,
+          spin: 1.8,
           yAcceleration: 220,
           xAcceleration: 0,
           scale: 1,
@@ -703,15 +721,15 @@ final class IOSLastTaskCelebrationContentView: UIView {
     confettiPalette.enumerated().flatMap { index, color in
       [
         confettiCell(
-          name: "ambient-strip-\(index)",
+          name: "ambient-cut-\(index)",
           color: color,
-          image: makeConfettiImage(color: color, size: CGSize(width: 13, height: 6), cornerRadius: 1.2),
-          birthRate: index < 2 ? 10 : 7,
-          lifetime: 1.12,
-          velocity: 132,
-          velocityRange: 20,
+          image: makeCutConfettiImage(color: color, size: CGSize(width: 15, height: 7)),
+          birthRate: index < 2 ? 12 : 8,
+          lifetime: 1.18,
+          velocity: 138,
+          velocityRange: 22,
           emissionLongitude: .pi / 2,
-          emissionRange: 0.6,
+          emissionRange: 0.72,
           spin: 2.6,
           yAcceleration: 220,
           xAcceleration: 0,
@@ -720,16 +738,16 @@ final class IOSLastTaskCelebrationContentView: UIView {
           alphaSpeed: -0.76
         ),
         confettiCell(
-          name: "ambient-sliver-\(index)",
+          name: "ambient-circle-\(index)",
           color: color.withAlphaComponent(0.94),
-          image: makeConfettiImage(color: color.withAlphaComponent(0.94), size: CGSize(width: 10, height: 4), cornerRadius: 1.0),
-          birthRate: 5,
-          lifetime: 1.02,
-          velocity: 118,
-          velocityRange: 16,
+          image: makeCircleImage(color: color.withAlphaComponent(0.94), diameter: index % 2 == 0 ? 8 : 6),
+          birthRate: 6,
+          lifetime: 1.08,
+          velocity: 122,
+          velocityRange: 18,
           emissionLongitude: .pi / 2,
-          emissionRange: 0.56,
-          spin: 3,
+          emissionRange: 0.68,
+          spin: 1.7,
           yAcceleration: 214,
           xAcceleration: 0,
           scale: 1,
@@ -895,6 +913,50 @@ final class IOSLastTaskCelebrationContentView: UIView {
     let image = renderer.image { _ in
       color.setFill()
       UIBezierPath(roundedRect: CGRect(origin: .zero, size: size), cornerRadius: cornerRadius).fill()
+    }
+
+    return image.cgImage
+  }
+
+  private func makeCutConfettiImage(color: UIColor, size: CGSize) -> CGImage? {
+    let format = UIGraphicsImageRendererFormat()
+    format.opaque = false
+    format.scale = UIScreen.main.scale
+
+    let renderer = UIGraphicsImageRenderer(size: size, format: format)
+    let image = renderer.image { _ in
+      let path = UIBezierPath()
+      path.move(to: CGPoint(x: 1.5, y: size.height * 0.24))
+      path.addLine(to: CGPoint(x: size.width * 0.18, y: 1))
+      path.addLine(to: CGPoint(x: size.width - 1.5, y: size.height * 0.16))
+      path.addLine(to: CGPoint(x: size.width * 0.9, y: size.height - 1))
+      path.addLine(to: CGPoint(x: 1, y: size.height * 0.82))
+      path.close()
+      color.setFill()
+      path.fill()
+      UIColor.white.withAlphaComponent(0.18).setStroke()
+      path.lineWidth = 1
+      path.stroke()
+    }
+
+    return image.cgImage
+  }
+
+  private func makeCircleImage(color: UIColor, diameter: CGFloat) -> CGImage? {
+    let size = CGSize(width: diameter, height: diameter)
+    let format = UIGraphicsImageRendererFormat()
+    format.opaque = false
+    format.scale = UIScreen.main.scale
+
+    let renderer = UIGraphicsImageRenderer(size: size, format: format)
+    let image = renderer.image { _ in
+      let rect = CGRect(origin: .zero, size: size).insetBy(dx: 0.5, dy: 0.5)
+      let path = UIBezierPath(ovalIn: rect)
+      color.setFill()
+      UIColor.white.withAlphaComponent(0.14).setStroke()
+      path.lineWidth = 1
+      path.fill()
+      path.stroke()
     }
 
     return image.cgImage

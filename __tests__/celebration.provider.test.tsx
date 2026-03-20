@@ -2,6 +2,7 @@ import React from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { AccessibilityInfo, Pressable, Text, View } from 'react-native';
 import { IOSLastTaskCelebrationView } from '@/components/IOSLastTaskCelebrationView';
+import { IOSPremiumConfettiView } from '@/components/IOSPremiumConfettiView';
 import { CelebrationProvider, useCelebration } from '@/contexts/CelebrationContext';
 
 jest.mock('expo-haptics', () => ({
@@ -46,13 +47,15 @@ describe('CelebrationProvider overlay', () => {
   });
 
   afterEach(() => {
-    jest.runOnlyPendingTimers();
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
     jest.useRealTimers();
     jest.restoreAllMocks();
   });
 
   it('shows task celebration overlay when triggered', async () => {
-    const { getByTestId, queryByTestId, getByText, getAllByTestId } = render(
+    const { UNSAFE_getByType, getByTestId, queryByTestId, getByText, queryAllByTestId } = render(
       <CelebrationProvider>
         <TriggerScreen />
       </CelebrationProvider>
@@ -69,8 +72,9 @@ describe('CelebrationProvider overlay', () => {
     expect(getByTestId('celebration-title')).toHaveTextContent('Opgave fuldført');
     expect(getByTestId('celebration-subtitle')).toHaveTextContent('2 tilbage i dag');
     expect(getByText('I dag: 3/5')).toBeTruthy();
-    expect(getAllByTestId('celebration-rocket').length).toBeGreaterThan(0);
-    expect(getAllByTestId('celebration-fountain').length).toBeGreaterThan(0);
+    expect(UNSAFE_getByType(IOSPremiumConfettiView)).toBeTruthy();
+    expect(queryAllByTestId('celebration-rocket')).toHaveLength(0);
+    expect(queryAllByTestId('celebration-fountain')).toHaveLength(0);
 
     act(() => {
       jest.advanceTimersByTime(4100);

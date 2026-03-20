@@ -132,11 +132,24 @@ final class IOSPremiumConfettiContentView: UIView {
   }
 
   private var emitterWidthMultiplier: CGFloat {
-    isDayComplete ? 0.42 : 0.28
+    isDayComplete ? 0.9 : 0.82
   }
 
   private var shouldReduceMotion: Bool {
     UIAccessibility.isReduceMotionEnabled
+  }
+
+  private var confettiPalette: [UIColor] {
+    [
+      UIColor(red: 0.20, green: 0.69, blue: 1.00, alpha: 1.00),
+      UIColor(red: 0.30, green: 0.85, blue: 0.48, alpha: 1.00),
+      UIColor(red: 0.96, green: 0.77, blue: 0.27, alpha: 1.00),
+      UIColor(red: 1.00, green: 0.50, blue: 0.31, alpha: 1.00),
+      UIColor(red: 0.61, green: 0.43, blue: 1.00, alpha: 1.00),
+      UIColor(red: 0.13, green: 0.70, blue: 0.67, alpha: 1.00),
+      UIColor(red: 0.96, green: 0.30, blue: 0.50, alpha: 1.00),
+      UIColor.white,
+    ]
   }
 
   private func commonInit() {
@@ -267,27 +280,18 @@ final class IOSPremiumConfettiContentView: UIView {
   }
 
   private func makeEmitterCells() -> [CAEmitterCell] {
-    let colors: [UIColor] = [
-      UIColor(red: 0.20, green: 0.69, blue: 1.00, alpha: 1.00),
-      UIColor(red: 0.30, green: 0.85, blue: 0.48, alpha: 1.00),
-      UIColor(red: 0.96, green: 0.77, blue: 0.27, alpha: 1.00),
-      UIColor(red: 1.00, green: 0.50, blue: 0.31, alpha: 1.00),
-      UIColor(red: 0.61, green: 0.43, blue: 1.00, alpha: 1.00),
-      UIColor(red: 0.13, green: 0.70, blue: 0.67, alpha: 1.00),
-    ]
+    let baseBirthRate: Float = isDayComplete ? 10.5 : 8.2
+    let baseVelocity: CGFloat = isDayComplete ? 330 : 270
+    let baseLifetime: Float = isDayComplete ? 1.36 : 1.16
+    let acceleration: CGFloat = isDayComplete ? 760 : 700
+    let emissionRange: CGFloat = isDayComplete ? 0.44 : 0.38
 
-    let baseBirthRate: Float = isDayComplete ? 7.5 : 5.5
-    let baseVelocity: CGFloat = isDayComplete ? 250 : 210
-    let baseLifetime: Float = isDayComplete ? 1.12 : 0.92
-    let acceleration: CGFloat = isDayComplete ? 680 : 620
-    let emissionRange: CGFloat = isDayComplete ? 0.3 : 0.24
-
-    return colors.enumerated().flatMap { index, color in
+    return confettiPalette.enumerated().flatMap { index, color in
       [
         emitterCell(
           name: "strip-\(index)",
           color: color,
-          image: makeRectImage(color: color, size: CGSize(width: 12, height: 5), cornerRadius: 1.2),
+          image: makeRectImage(color: color, size: CGSize(width: 15, height: 7), cornerRadius: 1.5),
           birthRate: baseBirthRate,
           velocity: baseVelocity,
           lifetime: baseLifetime,
@@ -296,15 +300,26 @@ final class IOSPremiumConfettiContentView: UIView {
           spin: 2.8
         ),
         emitterCell(
-          name: "sliver-\(index)",
+          name: "cut-\(index)",
           color: color.withAlphaComponent(0.94),
-          image: makeRectImage(color: color.withAlphaComponent(0.94), size: CGSize(width: 16, height: 3), cornerRadius: 0.8),
-          birthRate: baseBirthRate * 0.55,
-          velocity: baseVelocity * 0.9,
-          lifetime: baseLifetime * 0.94,
+          image: makeCutRectImage(color: color.withAlphaComponent(0.94), size: CGSize(width: 18, height: 9)),
+          birthRate: baseBirthRate * 0.78,
+          velocity: baseVelocity * 0.92,
+          lifetime: baseLifetime,
           acceleration: acceleration,
-          emissionRange: emissionRange * 0.9,
+          emissionRange: emissionRange * 0.95,
           spin: 3.2
+        ),
+        emitterCell(
+          name: "circle-\(index)",
+          color: color.withAlphaComponent(index == 7 ? 0.96 : 1),
+          image: makeCircleImage(color: color.withAlphaComponent(index == 7 ? 0.96 : 1), diameter: index % 2 == 0 ? 11 : 8),
+          birthRate: baseBirthRate * 0.7,
+          velocity: baseVelocity * 0.84,
+          lifetime: baseLifetime * 1.05,
+          acceleration: acceleration * 0.96,
+          emissionRange: emissionRange,
+          spin: 1.8
         ),
       ]
     }
@@ -316,73 +331,84 @@ final class IOSPremiumConfettiContentView: UIView {
       layer.removeFromSuperlayer()
     }
 
-    let colors: [UIColor] = [
-      UIColor(red: 0.20, green: 0.69, blue: 1.00, alpha: 1.00),
-      UIColor(red: 0.30, green: 0.85, blue: 0.48, alpha: 1.00),
-      UIColor(red: 0.96, green: 0.77, blue: 0.27, alpha: 1.00),
-      UIColor(red: 1.00, green: 0.50, blue: 0.31, alpha: 1.00),
-      UIColor(red: 0.61, green: 0.43, blue: 1.00, alpha: 1.00),
-      UIColor(red: 0.13, green: 0.70, blue: 0.67, alpha: 1.00),
-    ]
-
-    let pieceCount = isDayComplete ? 34 : 24
-    let centerX = bounds.midX
-    let spread = bounds.width * (isDayComplete ? 0.28 : 0.22)
-    let startY: CGFloat = 34
+    let pieceCount = isDayComplete ? 104 : 76
 
     for index in 0..<pieceCount {
-      let progress = CGFloat(index) / CGFloat(max(pieceCount - 1, 1))
-      let offsetX = ((progress * 2) - 1) * spread
-      let width: CGFloat = index % 3 == 0 ? 22 : 17
-      let height: CGFloat = index % 3 == 0 ? 9 : 7
-      let color = colors[index % colors.count]
-      let startPoint = CGPoint(x: centerX + offsetX, y: startY + CGFloat(index % 4) * 3)
+      let color = confettiPalette[index % confettiPalette.count]
+      let xSeed = CGFloat((index * 73) % 997) / 997
+      let driftSeed = CGFloat((index * 43) % 211) / 211
+      let dropSeed = CGFloat((index * 59) % 307) / 307
+      let shapeKind = index % 5
+      let startPoint = CGPoint(
+        x: bounds.width * (0.05 + xSeed * 0.9),
+        y: -28 + CGFloat(index % 10) * 9
+      )
+      let drift = (driftSeed - 0.5) * bounds.width * (isDayComplete ? 0.34 : 0.28)
       let endPoint = CGPoint(
-        x: startPoint.x + ((CGFloat((index * 19) % 9) - 4) * 22),
-        y: bounds.height * (isDayComplete ? 0.74 : 0.58) + CGFloat(index % 5) * 24
+        x: max(18, min(bounds.width - 18, startPoint.x + drift)),
+        y: bounds.height * (isDayComplete ? 1.08 : 1.02) - dropSeed * bounds.height * 0.18
       )
 
       let pieceLayer = CALayer()
-      pieceLayer.backgroundColor = color.cgColor
-      pieceLayer.cornerRadius = 2.2
-      pieceLayer.borderWidth = 0.75
-      pieceLayer.borderColor = UIColor.white.withAlphaComponent(0.28).cgColor
-      pieceLayer.shadowColor = UIColor.black.withAlphaComponent(0.35).cgColor
-      pieceLayer.shadowOpacity = 0.45
-      pieceLayer.shadowRadius = 4
-      pieceLayer.shadowOffset = CGSize(width: 0, height: 2)
-      pieceLayer.frame = CGRect(x: 0, y: 0, width: width, height: height)
+      let pieceImage: CGImage?
+      let pieceSize: CGSize
+      switch shapeKind {
+      case 0:
+        pieceSize = CGSize(width: 16, height: 16)
+        pieceImage = makeCircleImage(color: color, diameter: pieceSize.width)
+      case 1:
+        pieceSize = CGSize(width: 22, height: 10)
+        pieceImage = makeCutRectImage(color: color, size: pieceSize)
+      case 2:
+        pieceSize = CGSize(width: 18, height: 8)
+        pieceImage = makeRectImage(color: color, size: pieceSize, cornerRadius: 1.6)
+      case 3:
+        pieceSize = CGSize(width: 14, height: 14)
+        pieceImage = makeCircleImage(color: color.withAlphaComponent(0.96), diameter: pieceSize.width)
+      default:
+        pieceSize = CGSize(width: 20, height: 9)
+        pieceImage = makeCutRectImage(color: color.withAlphaComponent(0.92), size: pieceSize)
+      }
+
+      pieceLayer.contents = pieceImage
+      pieceLayer.contentsGravity = .resizeAspect
+      pieceLayer.contentsScale = UIScreen.main.scale
+      pieceLayer.frame = CGRect(origin: .zero, size: pieceSize)
       pieceLayer.position = startPoint
       pieceLayer.opacity = 1
       pieceLayer.zPosition = 20
+      pieceLayer.shadowColor = UIColor.black.withAlphaComponent(0.18).cgColor
+      pieceLayer.shadowOpacity = 0.22
+      pieceLayer.shadowRadius = 3
+      pieceLayer.shadowOffset = CGSize(width: 0, height: 1.5)
       heroPiecesLayer.addSublayer(pieceLayer)
 
       let positionAnimation = CAKeyframeAnimation(keyPath: "position")
       positionAnimation.values = [
         NSValue(cgPoint: startPoint),
-        NSValue(cgPoint: CGPoint(x: startPoint.x + offsetX * 0.16, y: startY + 110)),
+        NSValue(cgPoint: CGPoint(x: startPoint.x + drift * 0.26, y: bounds.height * 0.28)),
         NSValue(cgPoint: endPoint),
       ]
-      positionAnimation.keyTimes = [0, 0.26, 1]
+      positionAnimation.keyTimes = [0, 0.32, 1]
       positionAnimation.timingFunctions = [
         CAMediaTimingFunction(name: .easeOut),
         CAMediaTimingFunction(name: .easeIn),
       ]
-      positionAnimation.duration = isDayComplete ? 1.26 : 1.08
+      positionAnimation.duration = isDayComplete ? 1.52 : 1.32
 
       let rotationAnimation = CABasicAnimation(keyPath: "transform.rotation.z")
       rotationAnimation.fromValue = 0
-      rotationAnimation.toValue = (Double((index % 2 == 0 ? 1 : -1)) * .pi * 2.9)
+      rotationAnimation.toValue = (Double((index % 2 == 0 ? 1 : -1)) * .pi * (shapeKind == 0 || shapeKind == 3 ? 1.4 : 3.2))
       rotationAnimation.duration = positionAnimation.duration
 
       let opacityAnimation = CAKeyframeAnimation(keyPath: "opacity")
-      opacityAnimation.values = [0.18, 1, 1, 0]
-      opacityAnimation.keyTimes = [0, 0.06, 0.78, 1]
+      opacityAnimation.values = [0, 1, 1, 0]
+      opacityAnimation.keyTimes = [0, 0.05, 0.82, 1]
       opacityAnimation.duration = positionAnimation.duration
 
       let scaleAnimation = CAKeyframeAnimation(keyPath: "transform.scale")
-      scaleAnimation.values = [0.82, 1.18, 1]
-      scaleAnimation.keyTimes = [0, 0.14, 1]
+      scaleAnimation.values = [0.72, 1.08, 1]
+      scaleAnimation.keyTimes = [0, 0.16, 1]
       scaleAnimation.duration = positionAnimation.duration
 
       let group = CAAnimationGroup()
@@ -396,7 +422,7 @@ final class IOSPremiumConfettiContentView: UIView {
     }
 
     if debugEnabled {
-      launchDebugTestPieces(colors: colors)
+      launchDebugTestPieces(colors: confettiPalette)
     }
   }
 
@@ -492,6 +518,50 @@ final class IOSPremiumConfettiContentView: UIView {
       let path = UIBezierPath(roundedRect: rect, cornerRadius: cornerRadius)
       color.setFill()
       path.fill()
+    }
+
+    return image.cgImage
+  }
+
+  private func makeCircleImage(color: UIColor, diameter: CGFloat) -> CGImage? {
+    let size = CGSize(width: diameter, height: diameter)
+    let format = UIGraphicsImageRendererFormat()
+    format.opaque = false
+    format.scale = UIScreen.main.scale
+
+    let renderer = UIGraphicsImageRenderer(size: size, format: format)
+    let image = renderer.image { _ in
+      let rect = CGRect(origin: .zero, size: size)
+      UIColor.white.withAlphaComponent(0.16).setStroke()
+      color.setFill()
+      let path = UIBezierPath(ovalIn: rect.insetBy(dx: 0.5, dy: 0.5))
+      path.lineWidth = 1
+      path.fill()
+      path.stroke()
+    }
+
+    return image.cgImage
+  }
+
+  private func makeCutRectImage(color: UIColor, size: CGSize) -> CGImage? {
+    let format = UIGraphicsImageRendererFormat()
+    format.opaque = false
+    format.scale = UIScreen.main.scale
+
+    let renderer = UIGraphicsImageRenderer(size: size, format: format)
+    let image = renderer.image { _ in
+      let path = UIBezierPath()
+      path.move(to: CGPoint(x: 2, y: size.height * 0.2))
+      path.addLine(to: CGPoint(x: size.width * 0.2, y: 1))
+      path.addLine(to: CGPoint(x: size.width - 2, y: size.height * 0.14))
+      path.addLine(to: CGPoint(x: size.width * 0.88, y: size.height - 1))
+      path.addLine(to: CGPoint(x: 1.5, y: size.height * 0.84))
+      path.close()
+      color.setFill()
+      path.fill()
+      UIColor.white.withAlphaComponent(0.18).setStroke()
+      path.lineWidth = 1
+      path.stroke()
     }
 
     return image.cgImage
