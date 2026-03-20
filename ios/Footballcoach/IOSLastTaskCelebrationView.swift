@@ -298,10 +298,10 @@ final class IOSLastTaskCelebrationContentView: UIView {
 
       effectLayer.addSublayer(sparkEmitter)
       effectLayer.addSublayer(confettiEmitter)
+      confettiEmitter.startEmission()
 
       schedule(after: 0.92) {
         sparkEmitter.birthRate = 0
-        confettiEmitter.birthRate = 0
       }
 
       schedule(after: 1.82) {
@@ -312,23 +312,13 @@ final class IOSLastTaskCelebrationContentView: UIView {
   }
 
   private func addAmbientConfetti() {
-    let emitter = CAEmitterLayer()
-    emitter.frame = bounds
-    emitter.emitterPosition = CGPoint(x: bounds.midX, y: bounds.height * 0.1)
-    emitter.emitterSize = CGSize(width: bounds.width * 0.84, height: 2)
-    emitter.emitterShape = .line
-    emitter.emitterMode = .surface
-    emitter.renderMode = .unordered
-    emitter.birthRate = 1
-    emitter.emitterCells = makeAmbientConfettiCells()
-    effectLayer.addSublayer(emitter)
+    makeAmbientConfettiLayers().forEach { emitter in
+      effectLayer.addSublayer(emitter)
+      emitter.startEmission()
 
-    schedule(after: 0.28) {
-      emitter.birthRate = 0
-    }
-
-    schedule(after: 1.62) {
-      emitter.removeFromSuperlayer()
+      schedule(after: 3.1) {
+        emitter.removeFromSuperlayer()
+      }
     }
   }
 
@@ -458,12 +448,12 @@ final class IOSLastTaskCelebrationContentView: UIView {
     let confettiEmitter = makeBurstConfettiEmitter(at: point)
     effectLayer.addSublayer(sparkEmitter)
     effectLayer.addSublayer(confettiEmitter)
+    confettiEmitter.startEmission()
 
     addBurstGlow(at: point)
 
     schedule(after: 0.1) {
       sparkEmitter.birthRate = 0
-      confettiEmitter.birthRate = 0
     }
 
     schedule(after: 1.2) {
@@ -567,58 +557,27 @@ final class IOSLastTaskCelebrationContentView: UIView {
     return emitter
   }
 
-  private func makeFountainConfettiEmitter(origin: CGPoint, angle: CGFloat) -> CAEmitterLayer {
-    let inwardAcceleration: CGFloat = angle < (-CGFloat.pi / 2) ? 16 : -16
+  private func makeFountainConfettiEmitter(origin: CGPoint, angle: CGFloat) -> IOSReferenceConfettiLayer {
+    let inwardDrift: CGFloat = angle < (-CGFloat.pi / 2) ? 42 : -42
 
-    let emitter = CAEmitterLayer()
-    emitter.frame = bounds
-    emitter.emitterPosition = origin
-    emitter.emitterShape = .point
-    emitter.emitterMode = .points
-    emitter.renderMode = .unordered
-    emitter.birthRate = 1
-    emitter.emitterCells = confettiPalette.enumerated().flatMap { index, color in
-      [
-        confettiCell(
-          name: "fountain-cut-\(index)",
-          color: color,
-          image: makeCutConfettiImage(
-            color: color,
-            size: CGSize(width: index % 2 == 0 ? 16 : 13, height: index % 2 == 0 ? 8 : 6)
-          ),
-          birthRate: index < 2 ? 36 : 20,
-          lifetime: 1.0,
-          velocity: 214,
-          velocityRange: 36,
-          emissionLongitude: angle,
-          emissionRange: 0.34,
-          spin: 2.8,
-          yAcceleration: 300,
-          xAcceleration: inwardAcceleration,
-          scale: 1,
-          scaleRange: 0.24,
-          alphaSpeed: -0.86
-        ),
-        confettiCell(
-          name: "fountain-circle-\(index)",
-          color: color.withAlphaComponent(0.96),
-          image: makeCircleImage(color: color.withAlphaComponent(0.96), diameter: index % 2 == 0 ? 9 : 7),
-          birthRate: 14,
-          lifetime: 1.04,
-          velocity: 184,
-          velocityRange: 30,
-          emissionLongitude: angle,
-          emissionRange: 0.28,
-          spin: 1.6,
-          yAcceleration: 286,
-          xAcceleration: inwardAcceleration * 0.84,
-          scale: 1,
-          scaleRange: 0.18,
-          alphaSpeed: -0.82
-        ),
-      ]
-    }
-    return emitter
+    var configuration = IOSReferenceConfettiConfiguration()
+    configuration.particleCount = 1
+    configuration.spread = 0.34
+    configuration.gravity = 2450
+    configuration.startVelocity = 820
+    configuration.velocityDecay = 0.54
+    configuration.drift = inwardDrift
+    configuration.scale = 0.22
+    configuration.scaleRange = 0.14
+    configuration.lifetime = 4.8
+    configuration.gravityAnimationDuration = 1.6
+    configuration.birthRateAnimationDuration = 0.82
+    configuration.spin = .pi * 2.1
+    configuration.spinRange = .pi * 2.4
+    configuration.origin = origin
+    configuration.angle = angle
+    configuration.emitterSize = CGSize(width: 1, height: 1)
+    return makeReferenceConfettiLayer(configuration)
   }
 
   private func makeBurstSparkEmitter(at point: CGPoint) -> CAEmitterLayer {
@@ -668,94 +627,80 @@ final class IOSLastTaskCelebrationContentView: UIView {
     return emitter
   }
 
-  private func makeBurstConfettiEmitter(at point: CGPoint) -> CAEmitterLayer {
-    let emitter = CAEmitterLayer()
-    emitter.frame = bounds
-    emitter.emitterPosition = point
-    emitter.emitterShape = .point
-    emitter.emitterMode = .points
-    emitter.renderMode = .unordered
-    emitter.birthRate = 1
-    emitter.emitterCells = confettiPalette.enumerated().flatMap { index, color in
-      [
-        confettiCell(
-          name: "burst-cut-\(index)",
-          color: color,
-          image: makeCutConfettiImage(color: color, size: CGSize(width: 16, height: 8)),
-          birthRate: 18,
-          lifetime: 1.12,
-          velocity: 128,
-          velocityRange: 40,
-          emissionLongitude: 0,
-          emissionRange: .pi * 2,
-          spin: 2.8,
-          yAcceleration: 210,
-          xAcceleration: 0,
-          scale: 1,
-          scaleRange: 0.24,
-          alphaSpeed: -0.86
-        ),
-        confettiCell(
-          name: "burst-circle-\(index)",
-          color: color.withAlphaComponent(0.96),
-          image: makeCircleImage(color: color.withAlphaComponent(0.96), diameter: index % 2 == 0 ? 10 : 8),
-          birthRate: 9,
-          lifetime: 1.02,
-          velocity: 112,
-          velocityRange: 30,
-          emissionLongitude: 0,
-          emissionRange: .pi * 2,
-          spin: 1.8,
-          yAcceleration: 220,
-          xAcceleration: 0,
-          scale: 1,
-          scaleRange: 0.18,
-          alphaSpeed: -0.96
-        ),
-      ]
-    }
-    return emitter
+  private func makeBurstConfettiEmitter(at point: CGPoint) -> IOSReferenceConfettiLayer {
+    var configuration = IOSReferenceConfettiConfiguration()
+    configuration.particleCount = 1
+    configuration.spread = .pi * 2
+    configuration.gravity = 980
+    configuration.startVelocity = 420
+    configuration.velocityDecay = 0.48
+    configuration.scale = 0.2
+    configuration.scaleRange = 0.14
+    configuration.lifetime = 3.4
+    configuration.gravityAnimationDuration = 0.5
+    configuration.birthRateAnimationDuration = 0.16
+    configuration.spin = .pi * 2.0
+    configuration.spinRange = .pi * 2.2
+    configuration.origin = point
+    configuration.angle = 0
+    configuration.emitterSize = CGSize(width: 1, height: 1)
+    return makeReferenceConfettiLayer(configuration)
   }
 
-  private func makeAmbientConfettiCells() -> [CAEmitterCell] {
-    confettiPalette.enumerated().flatMap { index, color in
-      [
-        confettiCell(
-          name: "ambient-cut-\(index)",
-          color: color,
-          image: makeCutConfettiImage(color: color, size: CGSize(width: 15, height: 7)),
-          birthRate: index < 2 ? 12 : 8,
-          lifetime: 1.18,
-          velocity: 138,
-          velocityRange: 22,
-          emissionLongitude: .pi / 2,
-          emissionRange: 0.72,
-          spin: 2.6,
-          yAcceleration: 220,
-          xAcceleration: 0,
-          scale: 1,
-          scaleRange: 0.2,
-          alphaSpeed: -0.76
-        ),
-        confettiCell(
-          name: "ambient-circle-\(index)",
-          color: color.withAlphaComponent(0.94),
-          image: makeCircleImage(color: color.withAlphaComponent(0.94), diameter: index % 2 == 0 ? 8 : 6),
-          birthRate: 6,
-          lifetime: 1.08,
-          velocity: 122,
-          velocityRange: 18,
-          emissionLongitude: .pi / 2,
-          emissionRange: 0.68,
-          spin: 1.7,
-          yAcceleration: 214,
-          xAcceleration: 0,
-          scale: 1,
-          scaleRange: 0.16,
-          alphaSpeed: -0.84
-        ),
-      ]
-    }
+  private func makeAmbientConfettiLayers() -> [IOSReferenceConfettiLayer] {
+    let width = bounds.width
+
+    var primary = IOSReferenceConfettiConfiguration()
+    primary.particleCount = 1
+    primary.spread = .pi / 1.7
+    primary.gravity = 1780
+    primary.startVelocity = 620
+    primary.velocityDecay = 0.44
+    primary.scale = 0.2
+    primary.scaleRange = 0.14
+    primary.lifetime = 6.8
+    primary.gravityAnimationDuration = 2.2
+    primary.birthRateAnimationDuration = 0.72
+    primary.spin = .pi * 1.8
+    primary.spinRange = .pi * 2.2
+    primary.origin = CGPoint(x: bounds.midX, y: -38)
+    primary.angle = .pi / 2
+    primary.emitterSize = CGSize(width: width * 0.9, height: 1)
+
+    var secondary = IOSReferenceConfettiConfiguration()
+    secondary.particleCount = 1
+    secondary.spread = .pi / 1.85
+    secondary.gravity = 1420
+    secondary.startVelocity = 520
+    secondary.velocityDecay = 0.36
+    secondary.drift = 24
+    secondary.scale = 0.16
+    secondary.scaleRange = 0.1
+    secondary.lifetime = 7.6
+    secondary.gravityAnimationDuration = 2.8
+    secondary.birthRateAnimationDuration = 0.86
+    secondary.spin = .pi * 1.4
+    secondary.spinRange = .pi * 1.8
+    secondary.origin = CGPoint(x: bounds.midX, y: -18)
+    secondary.angle = .pi / 2
+    secondary.emitterSize = CGSize(width: width * 0.72, height: 1)
+
+    return [
+      makeReferenceConfettiLayer(primary),
+      makeReferenceConfettiLayer(secondary),
+    ]
+  }
+
+  private func makeReferenceConfettiLayer(_ configuration: IOSReferenceConfettiConfiguration) -> IOSReferenceConfettiLayer {
+    let emitter = IOSReferenceConfettiLayer(
+      IOSReferenceConfettiFactory.premiumEmitters(colors: confettiPalette),
+      .top,
+      configuration: configuration
+    )
+    emitter.frame = bounds
+    emitter.masksToBounds = false
+    emitter.renderMode = .unordered
+    return emitter
   }
 
   private func sparkCell(
