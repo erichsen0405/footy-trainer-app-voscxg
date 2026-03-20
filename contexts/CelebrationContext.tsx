@@ -455,7 +455,7 @@ function CelebrationOverlay({
   });
   const renderNativeConfetti = shouldAttemptNativeConfetti && !shouldAttemptNativeDayComplete;
   const renderLegacyConfetti = !shouldAttemptNativeConfetti && !shouldAttemptNativeDayComplete;
-  const renderLegacyFireworks = !shouldAttemptNativeDayComplete;
+  const renderLegacyFireworks = !shouldAttemptNativeDayComplete && !renderNativeConfetti;
 
   return (
     <View style={styles.overlayWrap} pointerEvents="box-none" testID="celebration-overlay">
