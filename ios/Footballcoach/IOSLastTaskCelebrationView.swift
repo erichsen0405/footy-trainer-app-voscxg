@@ -154,11 +154,11 @@ final class IOSLastTaskCelebrationContentView: UIView {
       }
     }
 
-    schedule(after: 0.30) { [weak self] in
+    schedule(after: 0.24) { [weak self] in
       self?.addAmbientConfetti()
     }
 
-    schedule(after: 1.95) { [weak self] in
+    schedule(after: 2.08) { [weak self] in
       self?.teardownEffects()
     }
 
@@ -264,9 +264,9 @@ final class IOSLastTaskCelebrationContentView: UIView {
     let gradient = CAGradientLayer()
     gradient.frame = bounds
     gradient.colors = [
-      UIColor.clear.cgColor,
-      UIColor(red: 1.00, green: 0.73, blue: 0.28, alpha: 0.08).cgColor,
-      UIColor.clear.cgColor,
+      UIColor.black.withAlphaComponent(0.08).cgColor,
+      UIColor(red: 1.00, green: 0.73, blue: 0.28, alpha: 0.14).cgColor,
+      UIColor.black.withAlphaComponent(0.12).cgColor,
     ]
     gradient.locations = [0.0, 0.58, 1.0]
     gradient.startPoint = CGPoint(x: 0.5, y: 0.15)
@@ -290,8 +290,8 @@ final class IOSLastTaskCelebrationContentView: UIView {
     let rightOrigin = CGPoint(x: bounds.width * 0.86, y: bounds.height * 0.83)
 
     [
-      (origin: leftOrigin, angle: CGFloat(-.pi / 4.2)),
-      (origin: rightOrigin, angle: CGFloat(-(.pi - (.pi / 4.2)))),
+      (origin: leftOrigin, angle: CGFloat(-.pi / 4.3)),
+      (origin: rightOrigin, angle: CGFloat(-(.pi - (.pi / 4.3)))),
     ].forEach { config in
       let sparkEmitter = makeFountainSparkEmitter(origin: config.origin, angle: config.angle)
       let confettiEmitter = makeFountainConfettiEmitter(origin: config.origin, angle: config.angle)
@@ -299,12 +299,12 @@ final class IOSLastTaskCelebrationContentView: UIView {
       effectLayer.addSublayer(sparkEmitter)
       effectLayer.addSublayer(confettiEmitter)
 
-      schedule(after: 0.68) {
+      schedule(after: 0.92) {
         sparkEmitter.birthRate = 0
         confettiEmitter.birthRate = 0
       }
 
-      schedule(after: 1.55) {
+      schedule(after: 1.82) {
         sparkEmitter.removeFromSuperlayer()
         confettiEmitter.removeFromSuperlayer()
       }
@@ -361,12 +361,12 @@ final class IOSLastTaskCelebrationContentView: UIView {
     glow.strokeColor = warmGold.withAlphaComponent(0.88).cgColor
     glow.fillColor = nil
     glow.lineCap = .round
-    glow.lineWidth = 12
+    glow.lineWidth = 15
     glow.strokeEnd = 0
     glow.opacity = 0
     glow.shadowColor = gold.cgColor
     glow.shadowOpacity = 1
-    glow.shadowRadius = 12
+    glow.shadowRadius = 15
     glow.shadowOffset = .zero
     effectLayer.addSublayer(glow)
 
@@ -375,12 +375,12 @@ final class IOSLastTaskCelebrationContentView: UIView {
     core.strokeColor = hotWhite.withAlphaComponent(0.96).cgColor
     core.fillColor = nil
     core.lineCap = .round
-    core.lineWidth = 4.5
+    core.lineWidth = 5.5
     core.strokeEnd = 0
     core.opacity = 0
     core.shadowColor = gold.cgColor
     core.shadowOpacity = 0.95
-    core.shadowRadius = 6
+    core.shadowRadius = 8
     core.shadowOffset = .zero
     effectLayer.addSublayer(core)
 
@@ -417,15 +417,15 @@ final class IOSLastTaskCelebrationContentView: UIView {
     accentColor: UIColor
   ) {
     let rocketLayer = CALayer()
-    rocketLayer.bounds = CGRect(x: 0, y: 0, width: 34, height: 74)
+    rocketLayer.bounds = CGRect(x: 0, y: 0, width: 42, height: 90)
     rocketLayer.position = startPoint
     rocketLayer.opacity = 0
     rocketLayer.contents = makeRocketImage(accentColor: accentColor)
     rocketLayer.contentsGravity = .resizeAspect
     rocketLayer.contentsScale = UIScreen.main.scale
     rocketLayer.shadowColor = hotWhite.cgColor
-    rocketLayer.shadowOpacity = 0.45
-    rocketLayer.shadowRadius = 10
+    rocketLayer.shadowOpacity = 0.55
+    rocketLayer.shadowRadius = 14
     rocketLayer.shadowOffset = .zero
     effectLayer.addSublayer(rocketLayer)
 
@@ -441,7 +441,7 @@ final class IOSLastTaskCelebrationContentView: UIView {
     opacity.duration = duration + 0.08
 
     let scale = CAKeyframeAnimation(keyPath: "transform.scale")
-    scale.values = [0.92, 1.0, 0.96]
+    scale.values = [0.88, 1.03, 0.97]
     scale.keyTimes = [0, 0.24, 1]
     scale.duration = duration
 
@@ -466,7 +466,7 @@ final class IOSLastTaskCelebrationContentView: UIView {
       confettiEmitter.birthRate = 0
     }
 
-    schedule(after: 1.05) {
+    schedule(after: 1.2) {
       sparkEmitter.removeFromSuperlayer()
       confettiEmitter.removeFromSuperlayer()
     }
@@ -475,24 +475,24 @@ final class IOSLastTaskCelebrationContentView: UIView {
   private func addBurstGlow(at point: CGPoint) {
     let outerGlow = CALayer()
     outerGlow.position = point
-    outerGlow.bounds = CGRect(x: 0, y: 0, width: 24, height: 24)
+    outerGlow.bounds = CGRect(x: 0, y: 0, width: 28, height: 28)
     outerGlow.backgroundColor = hotWhite.cgColor
-    outerGlow.cornerRadius = 12
+    outerGlow.cornerRadius = 14
     outerGlow.shadowColor = gold.cgColor
     outerGlow.shadowOpacity = 1
-    outerGlow.shadowRadius = 20
+    outerGlow.shadowRadius = 24
     outerGlow.shadowOffset = .zero
     outerGlow.opacity = 0
     effectLayer.addSublayer(outerGlow)
 
     let innerGlow = CALayer()
     innerGlow.position = point
-    innerGlow.bounds = CGRect(x: 0, y: 0, width: 12, height: 12)
+    innerGlow.bounds = CGRect(x: 0, y: 0, width: 14, height: 14)
     innerGlow.backgroundColor = UIColor.white.cgColor
-    innerGlow.cornerRadius = 6
+    innerGlow.cornerRadius = 7
     innerGlow.shadowColor = hotWhite.cgColor
     innerGlow.shadowOpacity = 1
-    innerGlow.shadowRadius = 12
+    innerGlow.shadowRadius = 14
     innerGlow.shadowOffset = .zero
     innerGlow.opacity = 0
     effectLayer.addSublayer(innerGlow)
@@ -504,8 +504,8 @@ final class IOSLastTaskCelebrationContentView: UIView {
       opacity.duration = 0.5
 
       let scale = CABasicAnimation(keyPath: "transform.scale")
-      scale.fromValue = index == 0 ? 0.2 : 0.4
-      scale.toValue = index == 0 ? 2.9 : 1.8
+      scale.fromValue = index == 0 ? 0.2 : 0.42
+      scale.toValue = index == 0 ? 3.2 : 2.05
       scale.duration = 0.5
       scale.timingFunction = CAMediaTimingFunction(name: .easeOut)
 
@@ -533,14 +533,14 @@ final class IOSLastTaskCelebrationContentView: UIView {
         name: "fountain-gold",
         color: gold,
         image: makeSparkImage(color: gold, size: CGSize(width: 4, height: 26)),
-        birthRate: 120,
+        birthRate: 160,
         lifetime: 0.58,
-        velocity: 260,
-        velocityRange: 42,
+        velocity: 292,
+        velocityRange: 48,
         emissionLongitude: angle,
         emissionRange: 0.28,
         spin: 1.2,
-        yAcceleration: 300,
+        yAcceleration: 320,
         xAcceleration: inwardAcceleration,
         scale: 0.92,
         scaleRange: 0.3,
@@ -550,14 +550,14 @@ final class IOSLastTaskCelebrationContentView: UIView {
         name: "fountain-white",
         color: hotWhite,
         image: makeSparkImage(color: hotWhite, size: CGSize(width: 3, height: 18)),
-        birthRate: 80,
+        birthRate: 110,
         lifetime: 0.48,
-        velocity: 230,
-        velocityRange: 36,
+        velocity: 246,
+        velocityRange: 38,
         emissionLongitude: angle,
         emissionRange: 0.2,
         spin: 1.4,
-        yAcceleration: 280,
+        yAcceleration: 292,
         xAcceleration: inwardAcceleration * 0.9,
         scale: 0.78,
         scaleRange: 0.22,
@@ -586,14 +586,14 @@ final class IOSLastTaskCelebrationContentView: UIView {
             color: color,
             size: CGSize(width: index % 2 == 0 ? 16 : 13, height: index % 2 == 0 ? 8 : 6)
           ),
-          birthRate: index < 2 ? 30 : 16,
+          birthRate: index < 2 ? 36 : 20,
           lifetime: 1.0,
-          velocity: 204,
-          velocityRange: 34,
+          velocity: 214,
+          velocityRange: 36,
           emissionLongitude: angle,
           emissionRange: 0.34,
           spin: 2.8,
-          yAcceleration: 290,
+          yAcceleration: 300,
           xAcceleration: inwardAcceleration,
           scale: 1,
           scaleRange: 0.24,
@@ -603,14 +603,14 @@ final class IOSLastTaskCelebrationContentView: UIView {
           name: "fountain-circle-\(index)",
           color: color.withAlphaComponent(0.96),
           image: makeCircleImage(color: color.withAlphaComponent(0.96), diameter: index % 2 == 0 ? 9 : 7),
-          birthRate: 10,
+          birthRate: 14,
           lifetime: 1.04,
-          velocity: 176,
-          velocityRange: 28,
+          velocity: 184,
+          velocityRange: 30,
           emissionLongitude: angle,
           emissionRange: 0.28,
           spin: 1.6,
-          yAcceleration: 280,
+          yAcceleration: 286,
           xAcceleration: inwardAcceleration * 0.84,
           scale: 1,
           scaleRange: 0.18,
@@ -634,10 +634,10 @@ final class IOSLastTaskCelebrationContentView: UIView {
         name: "burst-gold",
         color: gold,
         image: makeSparkImage(color: gold, size: CGSize(width: 4, height: 26)),
-        birthRate: 220,
+        birthRate: 260,
         lifetime: 0.48,
-        velocity: 158,
-        velocityRange: 46,
+        velocity: 172,
+        velocityRange: 52,
         emissionLongitude: 0,
         emissionRange: .pi * 2,
         spin: 2.1,
@@ -651,10 +651,10 @@ final class IOSLastTaskCelebrationContentView: UIView {
         name: "burst-white",
         color: hotWhite,
         image: makeSparkImage(color: hotWhite, size: CGSize(width: 3, height: 18)),
-        birthRate: 160,
+        birthRate: 188,
         lifetime: 0.4,
-        velocity: 132,
-        velocityRange: 38,
+        velocity: 146,
+        velocityRange: 42,
         emissionLongitude: 0,
         emissionRange: .pi * 2,
         spin: 2.4,

@@ -121,7 +121,7 @@ const ENABLE_CELEBRATION_AUDIO =
   process.env.NODE_ENV !== 'test' &&
   process.env.EXPO_PUBLIC_ENABLE_CELEBRATION_AUDIO !== '0';
 const PLAY_IN_SILENT_MODE_IOS = process.env.EXPO_PUBLIC_CELEBRATION_AUDIO_IN_SILENT_IOS === '1';
-const SHOW_CELEBRATION_DEBUG = __DEV__ || process.env.EXPO_PUBLIC_CELEBRATION_DEBUG === '1';
+const SHOW_CELEBRATION_DEBUG = process.env.EXPO_PUBLIC_CELEBRATION_DEBUG === '1';
 const FORCE_LEGACY_IOS_CELEBRATIONS = process.env.EXPO_PUBLIC_FORCE_LEGACY_IOS_CELEBRATIONS === '1';
 
 const CelebrationContext = createContext<CelebrationContextValue>({

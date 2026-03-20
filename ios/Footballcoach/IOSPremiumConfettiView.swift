@@ -331,17 +331,18 @@ final class IOSPremiumConfettiContentView: UIView {
       layer.removeFromSuperlayer()
     }
 
-    let pieceCount = isDayComplete ? 104 : 76
+    let pieceCount = isDayComplete ? 96 : 72
 
     for index in 0..<pieceCount {
       let color = confettiPalette[index % confettiPalette.count]
       let xSeed = CGFloat((index * 73) % 997) / 997
       let driftSeed = CGFloat((index * 43) % 211) / 211
       let dropSeed = CGFloat((index * 59) % 307) / 307
+      let durationSeed = CGFloat((index * 29) % 181) / 181
       let shapeKind = index % 5
       let startPoint = CGPoint(
         x: bounds.width * (0.05 + xSeed * 0.9),
-        y: -28 + CGFloat(index % 10) * 9
+        y: -30 + CGFloat(index % 12) * 8
       )
       let drift = (driftSeed - 0.5) * bounds.width * (isDayComplete ? 0.34 : 0.28)
       let endPoint = CGPoint(
@@ -354,19 +355,19 @@ final class IOSPremiumConfettiContentView: UIView {
       let pieceSize: CGSize
       switch shapeKind {
       case 0:
-        pieceSize = CGSize(width: 16, height: 16)
+        pieceSize = CGSize(width: 12, height: 12)
         pieceImage = makeCircleImage(color: color, diameter: pieceSize.width)
       case 1:
-        pieceSize = CGSize(width: 22, height: 10)
+        pieceSize = CGSize(width: 16, height: 8)
         pieceImage = makeCutRectImage(color: color, size: pieceSize)
       case 2:
-        pieceSize = CGSize(width: 18, height: 8)
+        pieceSize = CGSize(width: 14, height: 6)
         pieceImage = makeRectImage(color: color, size: pieceSize, cornerRadius: 1.6)
       case 3:
-        pieceSize = CGSize(width: 14, height: 14)
+        pieceSize = CGSize(width: 10, height: 10)
         pieceImage = makeCircleImage(color: color.withAlphaComponent(0.96), diameter: pieceSize.width)
       default:
-        pieceSize = CGSize(width: 20, height: 9)
+        pieceSize = CGSize(width: 15, height: 7)
         pieceImage = makeCutRectImage(color: color.withAlphaComponent(0.92), size: pieceSize)
       }
 
@@ -386,7 +387,10 @@ final class IOSPremiumConfettiContentView: UIView {
       let positionAnimation = CAKeyframeAnimation(keyPath: "position")
       positionAnimation.values = [
         NSValue(cgPoint: startPoint),
-        NSValue(cgPoint: CGPoint(x: startPoint.x + drift * 0.26, y: bounds.height * 0.28)),
+        NSValue(cgPoint: CGPoint(
+          x: startPoint.x + drift * 0.22,
+          y: bounds.height * (0.22 + durationSeed * 0.14)
+        )),
         NSValue(cgPoint: endPoint),
       ]
       positionAnimation.keyTimes = [0, 0.32, 1]
@@ -394,7 +398,7 @@ final class IOSPremiumConfettiContentView: UIView {
         CAMediaTimingFunction(name: .easeOut),
         CAMediaTimingFunction(name: .easeIn),
       ]
-      positionAnimation.duration = isDayComplete ? 1.52 : 1.32
+      positionAnimation.duration = (isDayComplete ? 1.3 : 1.08) + TimeInterval(durationSeed) * (isDayComplete ? 0.44 : 0.38)
 
       let rotationAnimation = CABasicAnimation(keyPath: "transform.rotation.z")
       rotationAnimation.fromValue = 0
@@ -403,7 +407,7 @@ final class IOSPremiumConfettiContentView: UIView {
 
       let opacityAnimation = CAKeyframeAnimation(keyPath: "opacity")
       opacityAnimation.values = [0, 1, 1, 0]
-      opacityAnimation.keyTimes = [0, 0.05, 0.82, 1]
+      opacityAnimation.keyTimes = [0, 0.05, NSNumber(value: Double(0.76 + durationSeed * 0.14)), 1]
       opacityAnimation.duration = positionAnimation.duration
 
       let scaleAnimation = CAKeyframeAnimation(keyPath: "transform.scale")
