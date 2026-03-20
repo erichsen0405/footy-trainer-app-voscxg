@@ -19,7 +19,6 @@ final class IOSLastTaskCelebrationContentView: UIView {
 
   @objc var debugEnabled: Bool = false {
     didSet {
-      backgroundColor = .clear
       updateDebugBadge(reason: "debug-toggle")
     }
   }
@@ -28,15 +27,6 @@ final class IOSLastTaskCelebrationContentView: UIView {
     didSet {
       updateDebugBadge(reason: "debug-info")
     }
-  }
-
-  private struct RocketConfiguration {
-    let accentColor: UIColor
-    let start: CGPoint
-    let apex: CGPoint
-    let curveOffsetX: CGFloat
-    let delay: TimeInterval
-    let duration: TimeInterval
   }
 
   private let effectLayer = CALayer()
@@ -51,22 +41,18 @@ final class IOSLastTaskCelebrationContentView: UIView {
     label.isHidden = true
     return label
   }()
+
   private var cleanupWorkItems: [DispatchWorkItem] = []
+  private var activeLayers: [CALayer] = []
   private var hasAutoplayedCurrentAttachment = false
   private var lastBurstKey = 0
   private var reduceMotionObserver: NSObjectProtocol?
 
   private let gold = UIColor(red: 1.00, green: 0.82, blue: 0.36, alpha: 1.00)
-  private let warmGold = UIColor(red: 1.00, green: 0.68, blue: 0.27, alpha: 1.00)
-  private let hotWhite = UIColor(red: 1.00, green: 0.98, blue: 0.92, alpha: 1.00)
-  private let confettiPalette: [UIColor] = [
-    UIColor(red: 1.00, green: 0.82, blue: 0.36, alpha: 1.00),
-    UIColor(red: 1.00, green: 0.62, blue: 0.31, alpha: 1.00),
-    UIColor(red: 0.95, green: 0.46, blue: 0.54, alpha: 1.00),
-    UIColor(red: 0.24, green: 0.81, blue: 0.83, alpha: 1.00),
-    UIColor(red: 0.21, green: 0.65, blue: 1.00, alpha: 1.00),
-    UIColor(red: 0.96, green: 0.98, blue: 1.00, alpha: 1.00),
-  ]
+  private let warmGold = UIColor(red: 1.00, green: 0.70, blue: 0.27, alpha: 1.00)
+  private let silver = UIColor(red: 0.84, green: 0.87, blue: 0.92, alpha: 1.00)
+  private let coolSilver = UIColor(red: 0.73, green: 0.79, blue: 0.88, alpha: 1.00)
+  private let pearl = UIColor(red: 0.97, green: 0.98, blue: 1.00, alpha: 1.00)
 
   override init(frame: CGRect) {
     super.init(frame: frame)
@@ -82,6 +68,14 @@ final class IOSLastTaskCelebrationContentView: UIView {
     super.layoutSubviews()
     effectLayer.frame = bounds
     debugLabel.frame = CGRect(x: 12, y: 16, width: max(bounds.width - 24, 120), height: 44)
+    activeLayers.forEach { layer in
+      if let confettiLayer = layer as? IOSReferenceConfettiLayer {
+        confettiLayer.frame = bounds
+      } else if let gradientLayer = layer as? CAGradientLayer {
+        gradientLayer.frame = bounds
+        layer.frame = bounds
+      }
+    }
   }
 
   override func didMoveToWindow() {
@@ -91,6 +85,7 @@ final class IOSLastTaskCelebrationContentView: UIView {
       debugLog("detached from window")
       hasAutoplayedCurrentAttachment = false
       lastBurstKey = 0
+      teardownEffects()
       updateDebugBadge(reason: "detached")
       return
     }
@@ -129,6 +124,33 @@ final class IOSLastTaskCelebrationContentView: UIView {
     updateDebugBadge(reason: "init")
   }
 
+  private var shouldReduceMotion: Bool {
+    UIAccessibility.isReduceMotionEnabled
+  }
+
+  private var fountainPalette: [UIColor] {
+    [gold, warmGold, silver, coolSilver, pearl]
+  }
+
+  private var shimmerPalette: [UIColor] {
+    [gold.withAlphaComponent(0.92), silver, pearl]
+  }
+
+  private func installReduceMotionObserver() {
+    reduceMotionObserver = NotificationCenter.default.addObserver(
+      forName: UIAccessibility.reduceMotionStatusDidChangeNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      guard let self else { return }
+      self.debugLog("reduce motion changed \(self.shouldReduceMotion ? "on" : "off")")
+      if self.shouldReduceMotion {
+        self.teardownEffects()
+      }
+      self.updateDebugBadge(reason: "reduce-motion")
+    }
+  }
+
   private func playSequence() {
     if shouldReduceMotion {
       debugLog("sequence skipped because reduce motion is enabled")
@@ -146,19 +168,10 @@ final class IOSLastTaskCelebrationContentView: UIView {
     debugLog("play sequence key=\(burstKey)")
     teardownEffects()
     addBackdropGlow()
-    addFountains()
+    addCenterBursts()
+    addCornerFountains()
 
-    makeRocketConfigurations().forEach { configuration in
-      schedule(after: configuration.delay) { [weak self] in
-        self?.launchRocket(configuration)
-      }
-    }
-
-    schedule(after: 0.24) { [weak self] in
-      self?.addAmbientConfetti()
-    }
-
-    schedule(after: 2.08) { [weak self] in
+    schedule(after: 2.35) { [weak self] in
       self?.teardownEffects()
     }
 
@@ -178,6 +191,12 @@ final class IOSLastTaskCelebrationContentView: UIView {
     cleanupWorkItems.forEach { $0.cancel() }
     cleanupWorkItems = []
 
+    activeLayers.forEach { layer in
+      layer.removeAllAnimations()
+      layer.removeFromSuperlayer()
+    }
+    activeLayers.removeAll()
+
     effectLayer.removeAllAnimations()
     effectLayer.sublayers?.forEach { sublayer in
       sublayer.removeAllAnimations()
@@ -187,23 +206,193 @@ final class IOSLastTaskCelebrationContentView: UIView {
     updateDebugBadge(reason: "teardown")
   }
 
-  private var shouldReduceMotion: Bool {
-    UIAccessibility.isReduceMotionEnabled
+  private func addBackdropGlow() {
+    let gradient = CAGradientLayer()
+    gradient.frame = bounds
+    gradient.zPosition = 0
+    gradient.colors = [
+      UIColor.black.withAlphaComponent(0.04).cgColor,
+      UIColor(red: 1.00, green: 0.84, blue: 0.44, alpha: 0.10).cgColor,
+      UIColor.black.withAlphaComponent(0.08).cgColor,
+    ]
+    gradient.locations = [0.0, 0.58, 1.0]
+    gradient.startPoint = CGPoint(x: 0.5, y: 0.15)
+    gradient.endPoint = CGPoint(x: 0.5, y: 1.0)
+    gradient.opacity = 0
+    effectLayer.addSublayer(gradient)
+    activeLayers.append(gradient)
+
+    let opacity = CABasicAnimation(keyPath: "opacity")
+    opacity.fromValue = 0
+    opacity.toValue = 1
+    opacity.duration = 0.22
+    opacity.autoreverses = true
+    opacity.beginTime = CACurrentMediaTime() + 0.1
+    opacity.isRemovedOnCompletion = false
+    opacity.fillMode = .forwards
+    gradient.add(opacity, forKey: "opacity")
   }
 
-  private func installReduceMotionObserver() {
-    reduceMotionObserver = NotificationCenter.default.addObserver(
-      forName: UIAccessibility.reduceMotionStatusDidChangeNotification,
-      object: nil,
-      queue: .main
-    ) { [weak self] _ in
-      guard let self else { return }
-      self.debugLog("reduce motion changed \(self.shouldReduceMotion ? "on" : "off")")
-      if self.shouldReduceMotion {
-        self.teardownEffects()
+  private func addCenterBursts() {
+    let points = [
+      CGPoint(x: bounds.midX, y: bounds.height * 0.46),
+      CGPoint(x: bounds.midX, y: bounds.height * 0.34),
+    ]
+
+    points.enumerated().forEach { index, point in
+      schedule(after: 0.08 + (Double(index) * 0.12)) { [weak self] in
+        guard let self else { return }
+        let burst = self.makeBurstLayer(origin: point, particleCount: index == 0 ? 12 : 9)
+        self.effectLayer.addSublayer(burst)
+        self.activeLayers.append(burst)
+        burst.startEmission()
       }
-      self.updateDebugBadge(reason: "reduce-motion")
     }
+  }
+
+  private func addCornerFountains() {
+    let configs: [(origin: CGPoint, angle: CGFloat, drift: CGFloat)] = [
+      (CGPoint(x: bounds.width * 0.06, y: bounds.height * 0.90), -CGFloat.pi / 4.1, 110),
+      (CGPoint(x: bounds.width * 0.94, y: bounds.height * 0.90), -(.pi - (.pi / 4.1)), -110),
+    ]
+
+    configs.forEach { config in
+      let base = makeFountainBaseGlow(origin: config.origin)
+      effectLayer.addSublayer(base)
+      activeLayers.append(base)
+
+      let fountainLayers = makeFountainLayers(origin: config.origin, angle: config.angle, drift: config.drift)
+      fountainLayers.forEach { emitter in
+        effectLayer.addSublayer(emitter)
+        activeLayers.append(emitter)
+        emitter.startEmission()
+      }
+    }
+  }
+
+  private func makeFountainLayers(origin: CGPoint, angle: CGFloat, drift: CGFloat) -> [IOSReferenceConfettiLayer] {
+    var primary = IOSReferenceConfettiConfiguration()
+    primary.particleCount = 9
+    primary.spread = 0.24
+    primary.gravity = 1100
+    primary.startVelocity = 1120
+    primary.velocityDecay = 0.52
+    primary.drift = drift
+    primary.scale = 0.54
+    primary.scaleRange = 0.22
+    primary.lifetime = 6.9
+    primary.gravityAnimationDuration = 1.4
+    primary.birthRateAnimationDuration = 0.52
+    primary.spin = .pi * 2.4
+    primary.spinRange = .pi * 2.7
+    primary.origin = origin
+    primary.angle = angle
+    primary.emitterSize = CGSize(width: 1, height: 1)
+
+    var shimmer = IOSReferenceConfettiConfiguration()
+    shimmer.particleCount = 6
+    shimmer.spread = 0.18
+    shimmer.gravity = 890
+    shimmer.startVelocity = 920
+    shimmer.velocityDecay = 0.38
+    shimmer.drift = drift * 0.8
+    shimmer.scale = 0.34
+    shimmer.scaleRange = 0.14
+    shimmer.lifetime = 7.7
+    shimmer.gravityAnimationDuration = 1.8
+    shimmer.birthRateAnimationDuration = 0.64
+    shimmer.spin = .pi * 2.0
+    shimmer.spinRange = .pi * 2.2
+    shimmer.origin = origin
+    shimmer.angle = angle
+    shimmer.emitterSize = CGSize(width: 1, height: 1)
+
+    let mainEmitter = makeReferenceConfettiLayer(
+      primary,
+      emitters: IOSReferenceConfettiFactory.premiumEmitters(colors: fountainPalette),
+      zPosition: 16,
+      renderMode: .unordered
+    )
+    let shimmerEmitter = makeReferenceConfettiLayer(
+      shimmer,
+      emitters: IOSReferenceConfettiFactory.defaultEmitters(colors: shimmerPalette),
+      zPosition: 18,
+      renderMode: .additive
+    )
+
+    return [mainEmitter, shimmerEmitter]
+  }
+
+  private func makeBurstLayer(origin: CGPoint, particleCount: Int) -> IOSReferenceConfettiLayer {
+    var configuration = IOSReferenceConfettiConfiguration()
+    configuration.particleCount = particleCount
+    configuration.spread = .pi * 2
+    configuration.gravity = 580
+    configuration.startVelocity = 860
+    configuration.velocityDecay = 0.44
+    configuration.scale = 0.48
+    configuration.scaleRange = 0.18
+    configuration.lifetime = 7.2
+    configuration.gravityAnimationDuration = 0.7
+    configuration.birthRateAnimationDuration = 0.2
+    configuration.spin = .pi * 2.4
+    configuration.spinRange = .pi * 2.6
+    configuration.origin = origin
+    configuration.angle = -.pi / 2
+    configuration.emitterSize = CGSize(width: 1, height: 1)
+
+    return makeReferenceConfettiLayer(
+      configuration,
+      emitters: IOSReferenceConfettiFactory.premiumEmitters(colors: fountainPalette),
+      zPosition: 12,
+      renderMode: .unordered
+    )
+  }
+
+  private func makeReferenceConfettiLayer(
+    _ configuration: IOSReferenceConfettiConfiguration,
+    emitters: [IOSReferenceConfettiEmitter],
+    zPosition: CGFloat,
+    renderMode: CAEmitterLayerRenderMode
+  ) -> IOSReferenceConfettiLayer {
+    let emitter = IOSReferenceConfettiLayer(emitters, .top, configuration: configuration)
+    emitter.frame = bounds
+    emitter.masksToBounds = false
+    emitter.renderMode = renderMode
+    emitter.zPosition = zPosition
+    return emitter
+  }
+
+  private func makeFountainBaseGlow(origin: CGPoint) -> CALayer {
+    let glow = CALayer()
+    glow.position = origin
+    glow.bounds = CGRect(x: 0, y: 0, width: 32, height: 32)
+    glow.cornerRadius = 16
+    glow.backgroundColor = pearl.withAlphaComponent(0.88).cgColor
+    glow.zPosition = 14
+    glow.shadowColor = gold.cgColor
+    glow.shadowOpacity = 1
+    glow.shadowRadius = 28
+    glow.shadowOffset = .zero
+
+    let opacity = CAKeyframeAnimation(keyPath: "opacity")
+    opacity.values = [0, 1, 0.74, 0]
+    opacity.keyTimes = [0, 0.08, 0.72, 1]
+    opacity.duration = 1.22
+    opacity.isRemovedOnCompletion = false
+    opacity.fillMode = .forwards
+    glow.add(opacity, forKey: "opacity")
+
+    let scale = CABasicAnimation(keyPath: "transform.scale")
+    scale.fromValue = 0.3
+    scale.toValue = 1.56
+    scale.duration = 1.22
+    scale.timingFunction = CAMediaTimingFunction(name: .easeOut)
+    scale.isRemovedOnCompletion = false
+    scale.fillMode = .forwards
+    glow.add(scale, forKey: "scale")
+
+    return glow
   }
 
   private func debugLog(_ message: String) {
@@ -225,711 +414,5 @@ final class IOSLastTaskCelebrationContentView: UIView {
     let workItem = DispatchWorkItem(block: block)
     cleanupWorkItems.append(workItem)
     DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
-  }
-
-  private func makeRocketConfigurations() -> [RocketConfiguration] {
-    let width = bounds.width
-    let height = bounds.height
-    let launchY = height * 0.84
-
-    return [
-      RocketConfiguration(
-        accentColor: UIColor(red: 0.21, green: 0.58, blue: 0.95, alpha: 1.00),
-        start: CGPoint(x: width * 0.44, y: launchY),
-        apex: CGPoint(x: width * 0.31, y: height * 0.31),
-        curveOffsetX: -38,
-        delay: 0.10,
-        duration: 0.64
-      ),
-      RocketConfiguration(
-        accentColor: UIColor(red: 0.97, green: 0.47, blue: 0.23, alpha: 1.00),
-        start: CGPoint(x: width * 0.50, y: launchY + 12),
-        apex: CGPoint(x: width * 0.51, y: height * 0.24),
-        curveOffsetX: 0,
-        delay: 0.18,
-        duration: 0.68
-      ),
-      RocketConfiguration(
-        accentColor: UIColor(red: 0.31, green: 0.81, blue: 0.64, alpha: 1.00),
-        start: CGPoint(x: width * 0.56, y: launchY),
-        apex: CGPoint(x: width * 0.69, y: height * 0.31),
-        curveOffsetX: 38,
-        delay: 0.26,
-        duration: 0.64
-      ),
-    ]
-  }
-
-  private func addBackdropGlow() {
-    let gradient = CAGradientLayer()
-    gradient.frame = bounds
-    gradient.colors = [
-      UIColor.black.withAlphaComponent(0.08).cgColor,
-      UIColor(red: 1.00, green: 0.73, blue: 0.28, alpha: 0.14).cgColor,
-      UIColor.black.withAlphaComponent(0.12).cgColor,
-    ]
-    gradient.locations = [0.0, 0.58, 1.0]
-    gradient.startPoint = CGPoint(x: 0.5, y: 0.15)
-    gradient.endPoint = CGPoint(x: 0.5, y: 1.0)
-    gradient.opacity = 0
-    effectLayer.addSublayer(gradient)
-
-    let opacity = CABasicAnimation(keyPath: "opacity")
-    opacity.fromValue = 0
-    opacity.toValue = 1
-    opacity.duration = 0.18
-    opacity.autoreverses = true
-    opacity.beginTime = CACurrentMediaTime() + 0.1
-    opacity.isRemovedOnCompletion = false
-    opacity.fillMode = .forwards
-    gradient.add(opacity, forKey: "opacity")
-  }
-
-  private func addFountains() {
-    let leftOrigin = CGPoint(x: bounds.width * 0.14, y: bounds.height * 0.83)
-    let rightOrigin = CGPoint(x: bounds.width * 0.86, y: bounds.height * 0.83)
-
-    [
-      (origin: leftOrigin, angle: CGFloat(-.pi / 4.3)),
-      (origin: rightOrigin, angle: CGFloat(-(.pi - (.pi / 4.3)))),
-    ].forEach { config in
-      let sparkEmitter = makeFountainSparkEmitter(origin: config.origin, angle: config.angle)
-      let confettiEmitter = makeFountainConfettiEmitter(origin: config.origin, angle: config.angle)
-
-      effectLayer.addSublayer(sparkEmitter)
-      effectLayer.addSublayer(confettiEmitter)
-      confettiEmitter.startEmission()
-
-      schedule(after: 0.92) {
-        sparkEmitter.birthRate = 0
-      }
-
-      schedule(after: 1.82) {
-        sparkEmitter.removeFromSuperlayer()
-        confettiEmitter.removeFromSuperlayer()
-      }
-    }
-  }
-
-  private func addAmbientConfetti() {
-    makeAmbientConfettiLayers().forEach { emitter in
-      effectLayer.addSublayer(emitter)
-      emitter.startEmission()
-
-      schedule(after: 3.1) {
-        emitter.removeFromSuperlayer()
-      }
-    }
-  }
-
-  private func launchRocket(_ configuration: RocketConfiguration) {
-    let path = UIBezierPath()
-    path.move(to: configuration.start)
-
-    let controlPoint = CGPoint(
-      x: ((configuration.start.x + configuration.apex.x) * 0.5) + configuration.curveOffsetX,
-      y: min(configuration.start.y, configuration.apex.y) + (bounds.height * 0.2)
-    )
-    path.addQuadCurve(to: configuration.apex, controlPoint: controlPoint)
-
-    addTrail(path: path, duration: configuration.duration)
-    addRocketLayer(
-      path: path,
-      startPoint: configuration.start,
-      duration: configuration.duration,
-      accentColor: configuration.accentColor
-    )
-
-    schedule(after: configuration.duration * 0.78) { [weak self] in
-      self?.addBurst(at: configuration.apex)
-    }
-  }
-
-  private func addTrail(path: UIBezierPath, duration: TimeInterval) {
-    let glow = CAShapeLayer()
-    glow.path = path.cgPath
-    glow.strokeColor = warmGold.withAlphaComponent(0.88).cgColor
-    glow.fillColor = nil
-    glow.lineCap = .round
-    glow.lineWidth = 15
-    glow.strokeEnd = 0
-    glow.opacity = 0
-    glow.shadowColor = gold.cgColor
-    glow.shadowOpacity = 1
-    glow.shadowRadius = 15
-    glow.shadowOffset = .zero
-    effectLayer.addSublayer(glow)
-
-    let core = CAShapeLayer()
-    core.path = path.cgPath
-    core.strokeColor = hotWhite.withAlphaComponent(0.96).cgColor
-    core.fillColor = nil
-    core.lineCap = .round
-    core.lineWidth = 5.5
-    core.strokeEnd = 0
-    core.opacity = 0
-    core.shadowColor = gold.cgColor
-    core.shadowOpacity = 0.95
-    core.shadowRadius = 8
-    core.shadowOffset = .zero
-    effectLayer.addSublayer(core)
-
-    [glow, core].forEach { layer in
-      let strokeAnimation = CABasicAnimation(keyPath: "strokeEnd")
-      strokeAnimation.fromValue = 0
-      strokeAnimation.toValue = 1
-      strokeAnimation.duration = duration
-      strokeAnimation.timingFunction = CAMediaTimingFunction(name: .easeOut)
-
-      let opacityAnimation = CAKeyframeAnimation(keyPath: "opacity")
-      opacityAnimation.values = [0, 1, 0.92, 0]
-      opacityAnimation.keyTimes = [0, 0.12, 0.7, 1]
-      opacityAnimation.duration = duration + 0.34
-      opacityAnimation.timingFunctions = [
-        CAMediaTimingFunction(name: .easeOut),
-        CAMediaTimingFunction(name: .linear),
-        CAMediaTimingFunction(name: .easeIn),
-      ]
-
-      let group = CAAnimationGroup()
-      group.animations = [strokeAnimation, opacityAnimation]
-      group.duration = duration + 0.34
-      group.isRemovedOnCompletion = false
-      group.fillMode = .forwards
-      layer.add(group, forKey: "trail")
-    }
-  }
-
-  private func addRocketLayer(
-    path: UIBezierPath,
-    startPoint: CGPoint,
-    duration: TimeInterval,
-    accentColor: UIColor
-  ) {
-    let rocketLayer = CALayer()
-    rocketLayer.bounds = CGRect(x: 0, y: 0, width: 42, height: 90)
-    rocketLayer.position = startPoint
-    rocketLayer.opacity = 0
-    rocketLayer.contents = makeRocketImage(accentColor: accentColor)
-    rocketLayer.contentsGravity = .resizeAspect
-    rocketLayer.contentsScale = UIScreen.main.scale
-    rocketLayer.shadowColor = hotWhite.cgColor
-    rocketLayer.shadowOpacity = 0.55
-    rocketLayer.shadowRadius = 14
-    rocketLayer.shadowOffset = .zero
-    effectLayer.addSublayer(rocketLayer)
-
-    let position = CAKeyframeAnimation(keyPath: "position")
-    position.path = path.cgPath
-    position.duration = duration
-    position.timingFunction = CAMediaTimingFunction(name: .easeOut)
-    position.rotationMode = .rotateAuto
-
-    let opacity = CAKeyframeAnimation(keyPath: "opacity")
-    opacity.values = [0, 1, 1, 0]
-    opacity.keyTimes = [0, 0.08, 0.82, 1]
-    opacity.duration = duration + 0.08
-
-    let scale = CAKeyframeAnimation(keyPath: "transform.scale")
-    scale.values = [0.88, 1.03, 0.97]
-    scale.keyTimes = [0, 0.24, 1]
-    scale.duration = duration
-
-    let group = CAAnimationGroup()
-    group.animations = [position, opacity, scale]
-    group.duration = duration + 0.08
-    group.isRemovedOnCompletion = false
-    group.fillMode = .forwards
-    rocketLayer.add(group, forKey: "rocket")
-  }
-
-  private func addBurst(at point: CGPoint) {
-    let sparkEmitter = makeBurstSparkEmitter(at: point)
-    let confettiEmitter = makeBurstConfettiEmitter(at: point)
-    effectLayer.addSublayer(sparkEmitter)
-    effectLayer.addSublayer(confettiEmitter)
-    confettiEmitter.startEmission()
-
-    addBurstGlow(at: point)
-
-    schedule(after: 0.1) {
-      sparkEmitter.birthRate = 0
-    }
-
-    schedule(after: 1.2) {
-      sparkEmitter.removeFromSuperlayer()
-      confettiEmitter.removeFromSuperlayer()
-    }
-  }
-
-  private func addBurstGlow(at point: CGPoint) {
-    let outerGlow = CALayer()
-    outerGlow.position = point
-    outerGlow.bounds = CGRect(x: 0, y: 0, width: 28, height: 28)
-    outerGlow.backgroundColor = hotWhite.cgColor
-    outerGlow.cornerRadius = 14
-    outerGlow.shadowColor = gold.cgColor
-    outerGlow.shadowOpacity = 1
-    outerGlow.shadowRadius = 24
-    outerGlow.shadowOffset = .zero
-    outerGlow.opacity = 0
-    effectLayer.addSublayer(outerGlow)
-
-    let innerGlow = CALayer()
-    innerGlow.position = point
-    innerGlow.bounds = CGRect(x: 0, y: 0, width: 14, height: 14)
-    innerGlow.backgroundColor = UIColor.white.cgColor
-    innerGlow.cornerRadius = 7
-    innerGlow.shadowColor = hotWhite.cgColor
-    innerGlow.shadowOpacity = 1
-    innerGlow.shadowRadius = 14
-    innerGlow.shadowOffset = .zero
-    innerGlow.opacity = 0
-    effectLayer.addSublayer(innerGlow)
-
-    [outerGlow, innerGlow].enumerated().forEach { index, layer in
-      let opacity = CAKeyframeAnimation(keyPath: "opacity")
-      opacity.values = [0, 1, 0]
-      opacity.keyTimes = [0, 0.14, 1]
-      opacity.duration = 0.5
-
-      let scale = CABasicAnimation(keyPath: "transform.scale")
-      scale.fromValue = index == 0 ? 0.2 : 0.42
-      scale.toValue = index == 0 ? 3.2 : 2.05
-      scale.duration = 0.5
-      scale.timingFunction = CAMediaTimingFunction(name: .easeOut)
-
-      let group = CAAnimationGroup()
-      group.animations = [opacity, scale]
-      group.duration = 0.5
-      group.isRemovedOnCompletion = false
-      group.fillMode = .forwards
-      layer.add(group, forKey: "glow")
-    }
-  }
-
-  private func makeFountainSparkEmitter(origin: CGPoint, angle: CGFloat) -> CAEmitterLayer {
-    let inwardAcceleration: CGFloat = angle < (-CGFloat.pi / 2) ? 22 : -22
-
-    let emitter = CAEmitterLayer()
-    emitter.frame = bounds
-    emitter.emitterPosition = origin
-    emitter.emitterShape = .point
-    emitter.emitterMode = .points
-    emitter.renderMode = .additive
-    emitter.birthRate = 1
-    emitter.emitterCells = [
-      sparkCell(
-        name: "fountain-gold",
-        color: gold,
-        image: makeSparkImage(color: gold, size: CGSize(width: 4, height: 26)),
-        birthRate: 160,
-        lifetime: 0.58,
-        velocity: 292,
-        velocityRange: 48,
-        emissionLongitude: angle,
-        emissionRange: 0.28,
-        spin: 1.2,
-        yAcceleration: 320,
-        xAcceleration: inwardAcceleration,
-        scale: 0.92,
-        scaleRange: 0.3,
-        alphaSpeed: -1.5
-      ),
-      sparkCell(
-        name: "fountain-white",
-        color: hotWhite,
-        image: makeSparkImage(color: hotWhite, size: CGSize(width: 3, height: 18)),
-        birthRate: 110,
-        lifetime: 0.48,
-        velocity: 246,
-        velocityRange: 38,
-        emissionLongitude: angle,
-        emissionRange: 0.2,
-        spin: 1.4,
-        yAcceleration: 292,
-        xAcceleration: inwardAcceleration * 0.9,
-        scale: 0.78,
-        scaleRange: 0.22,
-        alphaSpeed: -1.7
-      ),
-    ]
-    return emitter
-  }
-
-  private func makeFountainConfettiEmitter(origin: CGPoint, angle: CGFloat) -> IOSReferenceConfettiLayer {
-    let inwardDrift: CGFloat = angle < (-CGFloat.pi / 2) ? 42 : -42
-
-    var configuration = IOSReferenceConfettiConfiguration()
-    configuration.particleCount = 1
-    configuration.spread = 0.34
-    configuration.gravity = 2450
-    configuration.startVelocity = 820
-    configuration.velocityDecay = 0.54
-    configuration.drift = inwardDrift
-    configuration.scale = 0.22
-    configuration.scaleRange = 0.14
-    configuration.lifetime = 4.8
-    configuration.gravityAnimationDuration = 1.6
-    configuration.birthRateAnimationDuration = 0.82
-    configuration.spin = .pi * 2.1
-    configuration.spinRange = .pi * 2.4
-    configuration.origin = origin
-    configuration.angle = angle
-    configuration.emitterSize = CGSize(width: 1, height: 1)
-    return makeReferenceConfettiLayer(configuration)
-  }
-
-  private func makeBurstSparkEmitter(at point: CGPoint) -> CAEmitterLayer {
-    let emitter = CAEmitterLayer()
-    emitter.frame = bounds
-    emitter.emitterPosition = point
-    emitter.emitterShape = .point
-    emitter.emitterMode = .points
-    emitter.renderMode = .additive
-    emitter.birthRate = 1
-    emitter.emitterCells = [
-      sparkCell(
-        name: "burst-gold",
-        color: gold,
-        image: makeSparkImage(color: gold, size: CGSize(width: 4, height: 26)),
-        birthRate: 260,
-        lifetime: 0.48,
-        velocity: 172,
-        velocityRange: 52,
-        emissionLongitude: 0,
-        emissionRange: .pi * 2,
-        spin: 2.1,
-        yAcceleration: 180,
-        xAcceleration: 0,
-        scale: 1.08,
-        scaleRange: 0.4,
-        alphaSpeed: -2.1
-      ),
-      sparkCell(
-        name: "burst-white",
-        color: hotWhite,
-        image: makeSparkImage(color: hotWhite, size: CGSize(width: 3, height: 18)),
-        birthRate: 188,
-        lifetime: 0.4,
-        velocity: 146,
-        velocityRange: 42,
-        emissionLongitude: 0,
-        emissionRange: .pi * 2,
-        spin: 2.4,
-        yAcceleration: 160,
-        xAcceleration: 0,
-        scale: 0.92,
-        scaleRange: 0.28,
-        alphaSpeed: -2.2
-      ),
-    ]
-    return emitter
-  }
-
-  private func makeBurstConfettiEmitter(at point: CGPoint) -> IOSReferenceConfettiLayer {
-    var configuration = IOSReferenceConfettiConfiguration()
-    configuration.particleCount = 1
-    configuration.spread = .pi * 2
-    configuration.gravity = 980
-    configuration.startVelocity = 420
-    configuration.velocityDecay = 0.48
-    configuration.scale = 0.2
-    configuration.scaleRange = 0.14
-    configuration.lifetime = 3.4
-    configuration.gravityAnimationDuration = 0.5
-    configuration.birthRateAnimationDuration = 0.16
-    configuration.spin = .pi * 2.0
-    configuration.spinRange = .pi * 2.2
-    configuration.origin = point
-    configuration.angle = 0
-    configuration.emitterSize = CGSize(width: 1, height: 1)
-    return makeReferenceConfettiLayer(configuration)
-  }
-
-  private func makeAmbientConfettiLayers() -> [IOSReferenceConfettiLayer] {
-    let width = bounds.width
-
-    var primary = IOSReferenceConfettiConfiguration()
-    primary.particleCount = 1
-    primary.spread = .pi / 1.7
-    primary.gravity = 1780
-    primary.startVelocity = 620
-    primary.velocityDecay = 0.44
-    primary.scale = 0.2
-    primary.scaleRange = 0.14
-    primary.lifetime = 6.8
-    primary.gravityAnimationDuration = 2.2
-    primary.birthRateAnimationDuration = 0.72
-    primary.spin = .pi * 1.8
-    primary.spinRange = .pi * 2.2
-    primary.origin = CGPoint(x: bounds.midX, y: -38)
-    primary.angle = .pi / 2
-    primary.emitterSize = CGSize(width: width * 0.9, height: 1)
-
-    var secondary = IOSReferenceConfettiConfiguration()
-    secondary.particleCount = 1
-    secondary.spread = .pi / 1.85
-    secondary.gravity = 1420
-    secondary.startVelocity = 520
-    secondary.velocityDecay = 0.36
-    secondary.drift = 24
-    secondary.scale = 0.16
-    secondary.scaleRange = 0.1
-    secondary.lifetime = 7.6
-    secondary.gravityAnimationDuration = 2.8
-    secondary.birthRateAnimationDuration = 0.86
-    secondary.spin = .pi * 1.4
-    secondary.spinRange = .pi * 1.8
-    secondary.origin = CGPoint(x: bounds.midX, y: -18)
-    secondary.angle = .pi / 2
-    secondary.emitterSize = CGSize(width: width * 0.72, height: 1)
-
-    return [
-      makeReferenceConfettiLayer(primary),
-      makeReferenceConfettiLayer(secondary),
-    ]
-  }
-
-  private func makeReferenceConfettiLayer(_ configuration: IOSReferenceConfettiConfiguration) -> IOSReferenceConfettiLayer {
-    let emitter = IOSReferenceConfettiLayer(
-      IOSReferenceConfettiFactory.premiumEmitters(colors: confettiPalette),
-      .top,
-      configuration: configuration
-    )
-    emitter.frame = bounds
-    emitter.masksToBounds = false
-    emitter.renderMode = .unordered
-    return emitter
-  }
-
-  private func sparkCell(
-    name: String,
-    color: UIColor,
-    image: CGImage?,
-    birthRate: Float,
-    lifetime: Float,
-    velocity: CGFloat,
-    velocityRange: CGFloat,
-    emissionLongitude: CGFloat,
-    emissionRange: CGFloat,
-    spin: CGFloat,
-    yAcceleration: CGFloat,
-    xAcceleration: CGFloat,
-    scale: CGFloat,
-    scaleRange: CGFloat,
-    alphaSpeed: Float
-  ) -> CAEmitterCell {
-    let cell = CAEmitterCell()
-    cell.name = name
-    cell.contents = image
-    cell.birthRate = birthRate
-    cell.lifetime = lifetime
-    cell.lifetimeRange = lifetime * 0.18
-    cell.velocity = velocity
-    cell.velocityRange = velocityRange
-    cell.emissionLongitude = emissionLongitude
-    cell.emissionRange = emissionRange
-    cell.spin = spin
-    cell.spinRange = spin * 0.45
-    cell.yAcceleration = yAcceleration
-    cell.xAcceleration = xAcceleration
-    cell.scale = scale
-    cell.scaleRange = scaleRange
-    cell.alphaSpeed = alphaSpeed
-    cell.alphaRange = 0.08
-    cell.color = color.cgColor
-    cell.contentsScale = UIScreen.main.scale
-    cell.magnificationFilter = "linear"
-    cell.minificationFilter = "linear"
-    return cell
-  }
-
-  private func confettiCell(
-    name: String,
-    color: UIColor,
-    image: CGImage?,
-    birthRate: Float,
-    lifetime: Float,
-    velocity: CGFloat,
-    velocityRange: CGFloat,
-    emissionLongitude: CGFloat,
-    emissionRange: CGFloat,
-    spin: CGFloat,
-    yAcceleration: CGFloat,
-    xAcceleration: CGFloat,
-    scale: CGFloat,
-    scaleRange: CGFloat,
-    alphaSpeed: Float
-  ) -> CAEmitterCell {
-    let cell = CAEmitterCell()
-    cell.name = name
-    cell.contents = image
-    cell.birthRate = birthRate
-    cell.lifetime = lifetime
-    cell.lifetimeRange = lifetime * 0.2
-    cell.velocity = velocity
-    cell.velocityRange = velocityRange
-    cell.emissionLongitude = emissionLongitude
-    cell.emissionRange = emissionRange
-    cell.spin = spin
-    cell.spinRange = spin * 0.5
-    cell.yAcceleration = yAcceleration
-    cell.xAcceleration = xAcceleration
-    cell.scale = scale
-    cell.scaleRange = scaleRange
-    cell.alphaSpeed = alphaSpeed
-    cell.alphaRange = 0.06
-    cell.color = color.cgColor
-    cell.contentsScale = UIScreen.main.scale
-    cell.magnificationFilter = "linear"
-    cell.minificationFilter = "linear"
-    return cell
-  }
-
-  private func makeRocketImage(accentColor: UIColor) -> CGImage? {
-    let size = CGSize(width: 34, height: 74)
-    let format = UIGraphicsImageRendererFormat()
-    format.opaque = false
-    format.scale = UIScreen.main.scale
-
-    let renderer = UIGraphicsImageRenderer(size: size, format: format)
-    let image = renderer.image { context in
-      let cgContext = context.cgContext
-      cgContext.saveGState()
-      cgContext.setShadow(offset: .zero, blur: 9, color: UIColor.white.withAlphaComponent(0.5).cgColor)
-
-      let bodyRect = CGRect(x: 10, y: 16, width: 14, height: 34)
-      UIColor.white.setFill()
-      UIBezierPath(roundedRect: bodyRect, cornerRadius: 6).fill()
-
-      let nosePath = UIBezierPath()
-      nosePath.move(to: CGPoint(x: size.width * 0.5, y: 2))
-      nosePath.addLine(to: CGPoint(x: 24, y: 18))
-      nosePath.addLine(to: CGPoint(x: 10, y: 18))
-      nosePath.close()
-      UIColor.white.setFill()
-      nosePath.fill()
-      cgContext.restoreGState()
-
-      UIColor(red: 0.84, green: 0.87, blue: 0.93, alpha: 1.0).setFill()
-      UIBezierPath(roundedRect: CGRect(x: 11, y: 18, width: 12, height: 4), cornerRadius: 2).fill()
-
-      accentColor.setFill()
-      UIBezierPath(roundedRect: CGRect(x: 8, y: 28, width: 18, height: 8), cornerRadius: 2.5).fill()
-
-      gold.setFill()
-      UIBezierPath(roundedRect: CGRect(x: 8, y: 40, width: 18, height: 4), cornerRadius: 2).fill()
-
-      let leftFin = UIBezierPath()
-      leftFin.move(to: CGPoint(x: 10, y: 44))
-      leftFin.addLine(to: CGPoint(x: 5, y: 56))
-      leftFin.addLine(to: CGPoint(x: 11, y: 54))
-      leftFin.close()
-      gold.setFill()
-      leftFin.fill()
-
-      let rightFin = UIBezierPath()
-      rightFin.move(to: CGPoint(x: 24, y: 44))
-      rightFin.addLine(to: CGPoint(x: 29, y: 56))
-      rightFin.addLine(to: CGPoint(x: 23, y: 54))
-      rightFin.close()
-      gold.setFill()
-      rightFin.fill()
-
-      let flameOuter = UIBezierPath(ovalIn: CGRect(x: 11, y: 50, width: 12, height: 20))
-      warmGold.withAlphaComponent(0.9).setFill()
-      flameOuter.fill()
-
-      let flameInner = UIBezierPath(ovalIn: CGRect(x: 13.5, y: 52, width: 7, height: 15))
-      hotWhite.withAlphaComponent(0.95).setFill()
-      flameInner.fill()
-    }
-
-    return image.cgImage
-  }
-
-  private func makeConfettiImage(color: UIColor, size: CGSize, cornerRadius: CGFloat) -> CGImage? {
-    let format = UIGraphicsImageRendererFormat()
-    format.opaque = false
-    format.scale = UIScreen.main.scale
-
-    let renderer = UIGraphicsImageRenderer(size: size, format: format)
-    let image = renderer.image { _ in
-      color.setFill()
-      UIBezierPath(roundedRect: CGRect(origin: .zero, size: size), cornerRadius: cornerRadius).fill()
-    }
-
-    return image.cgImage
-  }
-
-  private func makeCutConfettiImage(color: UIColor, size: CGSize) -> CGImage? {
-    let format = UIGraphicsImageRendererFormat()
-    format.opaque = false
-    format.scale = UIScreen.main.scale
-
-    let renderer = UIGraphicsImageRenderer(size: size, format: format)
-    let image = renderer.image { _ in
-      let path = UIBezierPath()
-      path.move(to: CGPoint(x: 1.5, y: size.height * 0.24))
-      path.addLine(to: CGPoint(x: size.width * 0.18, y: 1))
-      path.addLine(to: CGPoint(x: size.width - 1.5, y: size.height * 0.16))
-      path.addLine(to: CGPoint(x: size.width * 0.9, y: size.height - 1))
-      path.addLine(to: CGPoint(x: 1, y: size.height * 0.82))
-      path.close()
-      color.setFill()
-      path.fill()
-      UIColor.white.withAlphaComponent(0.18).setStroke()
-      path.lineWidth = 1
-      path.stroke()
-    }
-
-    return image.cgImage
-  }
-
-  private func makeCircleImage(color: UIColor, diameter: CGFloat) -> CGImage? {
-    let size = CGSize(width: diameter, height: diameter)
-    let format = UIGraphicsImageRendererFormat()
-    format.opaque = false
-    format.scale = UIScreen.main.scale
-
-    let renderer = UIGraphicsImageRenderer(size: size, format: format)
-    let image = renderer.image { _ in
-      let rect = CGRect(origin: .zero, size: size).insetBy(dx: 0.5, dy: 0.5)
-      let path = UIBezierPath(ovalIn: rect)
-      color.setFill()
-      UIColor.white.withAlphaComponent(0.14).setStroke()
-      path.lineWidth = 1
-      path.fill()
-      path.stroke()
-    }
-
-    return image.cgImage
-  }
-
-  private func makeSparkImage(color: UIColor, size: CGSize) -> CGImage? {
-    let format = UIGraphicsImageRendererFormat()
-    format.opaque = false
-    format.scale = UIScreen.main.scale
-
-    let renderer = UIGraphicsImageRenderer(size: size, format: format)
-    let image = renderer.image { context in
-      let cgContext = context.cgContext
-      let rect = CGRect(origin: .zero, size: size)
-
-      cgContext.saveGState()
-      cgContext.setShadow(offset: .zero, blur: size.width * 1.8, color: color.withAlphaComponent(0.95).cgColor)
-      color.withAlphaComponent(0.85).setFill()
-      UIBezierPath(roundedRect: rect.insetBy(dx: 0.8, dy: 0.8), cornerRadius: size.width * 0.5).fill()
-      cgContext.restoreGState()
-
-      hotWhite.withAlphaComponent(0.92).setFill()
-      UIBezierPath(
-        roundedRect: rect.insetBy(dx: size.width * 0.28, dy: size.height * 0.08),
-        cornerRadius: size.width * 0.35
-      ).fill()
-    }
-
-    return image.cgImage
   }
 }
