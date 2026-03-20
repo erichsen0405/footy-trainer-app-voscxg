@@ -20,7 +20,7 @@ final class IOSPremiumConfettiContentView: UIView {
 
   @objc var debugEnabled: Bool = false {
     didSet {
-      backgroundColor = debugEnabled ? UIColor.systemPink.withAlphaComponent(0.08) : .clear
+      backgroundColor = .clear
       updateDebugBadge(reason: "debug-toggle")
     }
   }
@@ -51,6 +51,19 @@ final class IOSPremiumConfettiContentView: UIView {
     return label
   }()
 
+  private lazy var debugCenterLabel: UILabel = {
+    let label = UILabel()
+    label.textColor = .white
+    label.font = UIFont.monospacedSystemFont(ofSize: 18, weight: .bold)
+    label.textAlignment = .center
+    label.backgroundColor = UIColor.black.withAlphaComponent(0.42)
+    label.layer.cornerRadius = 12
+    label.layer.masksToBounds = true
+    label.text = "NATIVE CONFETTI"
+    label.isHidden = true
+    return label
+  }()
+
   private let emitterLayer = CAEmitterLayer()
   private let heroPiecesLayer = CALayer()
   private var lastBurstKey = 0
@@ -75,6 +88,12 @@ final class IOSPremiumConfettiContentView: UIView {
     emitterLayer.emitterSize = CGSize(width: max(bounds.width * emitterWidthMultiplier, 140), height: 2)
     heroPiecesLayer.frame = bounds
     debugLabel.frame = CGRect(x: 12, y: 16, width: max(bounds.width - 24, 120), height: 44)
+    debugCenterLabel.frame = CGRect(
+      x: max((bounds.width - 220) / 2, 16),
+      y: max((bounds.height - 56) / 2, 96),
+      width: min(220, bounds.width - 32),
+      height: 56
+    )
   }
 
   override func didMoveToWindow() {
@@ -136,6 +155,7 @@ final class IOSPremiumConfettiContentView: UIView {
     layer.addSublayer(emitterLayer)
     layer.addSublayer(heroPiecesLayer)
     addSubview(debugLabel)
+    addSubview(debugCenterLabel)
     configureEmitter()
     installReduceMotionObserver()
     updateDebugBadge(reason: "init")
@@ -231,12 +251,19 @@ final class IOSPremiumConfettiContentView: UIView {
   private func updateDebugBadge(reason: String) {
     guard debugEnabled else {
       debugLabel.isHidden = true
+      debugCenterLabel.isHidden = true
+      layer.borderWidth = 0
+      layer.borderColor = UIColor.clear.cgColor
       return
     }
 
     debugLabel.isHidden = false
+    debugCenterLabel.isHidden = false
     debugLabel.text = "native-confetti \(reason)\n\(debugInfo) reduce=\(shouldReduceMotion ? 1 : 0)"
+    layer.borderWidth = 2
+    layer.borderColor = UIColor.systemYellow.withAlphaComponent(0.85).cgColor
     bringSubviewToFront(debugLabel)
+    bringSubviewToFront(debugCenterLabel)
   }
 
   private func makeEmitterCells() -> [CAEmitterCell] {
@@ -298,35 +325,42 @@ final class IOSPremiumConfettiContentView: UIView {
       UIColor(red: 0.13, green: 0.70, blue: 0.67, alpha: 1.00),
     ]
 
-    let pieceCount = isDayComplete ? 28 : 18
+    let pieceCount = isDayComplete ? 34 : 24
     let centerX = bounds.midX
-    let spread = bounds.width * (isDayComplete ? 0.24 : 0.18)
-    let startY: CGFloat = 26
+    let spread = bounds.width * (isDayComplete ? 0.28 : 0.22)
+    let startY: CGFloat = 34
 
     for index in 0..<pieceCount {
       let progress = CGFloat(index) / CGFloat(max(pieceCount - 1, 1))
       let offsetX = ((progress * 2) - 1) * spread
-      let width: CGFloat = index % 3 == 0 ? 18 : 14
-      let height: CGFloat = index % 3 == 0 ? 7 : 5
+      let width: CGFloat = index % 3 == 0 ? 22 : 17
+      let height: CGFloat = index % 3 == 0 ? 9 : 7
       let color = colors[index % colors.count]
       let startPoint = CGPoint(x: centerX + offsetX, y: startY + CGFloat(index % 4) * 3)
       let endPoint = CGPoint(
-        x: startPoint.x + ((CGFloat((index * 19) % 9) - 4) * 18),
-        y: bounds.height * (isDayComplete ? 0.62 : 0.46) + CGFloat(index % 5) * 22
+        x: startPoint.x + ((CGFloat((index * 19) % 9) - 4) * 22),
+        y: bounds.height * (isDayComplete ? 0.74 : 0.58) + CGFloat(index % 5) * 24
       )
 
       let pieceLayer = CALayer()
       pieceLayer.backgroundColor = color.cgColor
-      pieceLayer.cornerRadius = 1.6
+      pieceLayer.cornerRadius = 2.2
+      pieceLayer.borderWidth = 0.75
+      pieceLayer.borderColor = UIColor.white.withAlphaComponent(0.28).cgColor
+      pieceLayer.shadowColor = UIColor.black.withAlphaComponent(0.35).cgColor
+      pieceLayer.shadowOpacity = 0.45
+      pieceLayer.shadowRadius = 4
+      pieceLayer.shadowOffset = CGSize(width: 0, height: 2)
       pieceLayer.frame = CGRect(x: 0, y: 0, width: width, height: height)
       pieceLayer.position = startPoint
-      pieceLayer.opacity = 0
+      pieceLayer.opacity = 1
+      pieceLayer.zPosition = 20
       heroPiecesLayer.addSublayer(pieceLayer)
 
       let positionAnimation = CAKeyframeAnimation(keyPath: "position")
       positionAnimation.values = [
         NSValue(cgPoint: startPoint),
-        NSValue(cgPoint: CGPoint(x: startPoint.x + offsetX * 0.14, y: startY + 82)),
+        NSValue(cgPoint: CGPoint(x: startPoint.x + offsetX * 0.16, y: startY + 110)),
         NSValue(cgPoint: endPoint),
       ]
       positionAnimation.keyTimes = [0, 0.26, 1]
@@ -334,21 +368,21 @@ final class IOSPremiumConfettiContentView: UIView {
         CAMediaTimingFunction(name: .easeOut),
         CAMediaTimingFunction(name: .easeIn),
       ]
-      positionAnimation.duration = isDayComplete ? 1.2 : 1.0
+      positionAnimation.duration = isDayComplete ? 1.26 : 1.08
 
       let rotationAnimation = CABasicAnimation(keyPath: "transform.rotation.z")
       rotationAnimation.fromValue = 0
-      rotationAnimation.toValue = (Double((index % 2 == 0 ? 1 : -1)) * .pi * 2.6)
+      rotationAnimation.toValue = (Double((index % 2 == 0 ? 1 : -1)) * .pi * 2.9)
       rotationAnimation.duration = positionAnimation.duration
 
       let opacityAnimation = CAKeyframeAnimation(keyPath: "opacity")
-      opacityAnimation.values = [0, 1, 1, 0]
-      opacityAnimation.keyTimes = [0, 0.08, 0.72, 1]
+      opacityAnimation.values = [0.18, 1, 1, 0]
+      opacityAnimation.keyTimes = [0, 0.06, 0.78, 1]
       opacityAnimation.duration = positionAnimation.duration
 
       let scaleAnimation = CAKeyframeAnimation(keyPath: "transform.scale")
-      scaleAnimation.values = [0.86, 1.14, 1]
-      scaleAnimation.keyTimes = [0, 0.16, 1]
+      scaleAnimation.values = [0.82, 1.18, 1]
+      scaleAnimation.keyTimes = [0, 0.14, 1]
       scaleAnimation.duration = positionAnimation.duration
 
       let group = CAAnimationGroup()
@@ -358,8 +392,56 @@ final class IOSPremiumConfettiContentView: UIView {
       group.isRemovedOnCompletion = false
       group.timingFunction = CAMediaTimingFunction(name: .easeOut)
 
-      pieceLayer.opacity = 0
       pieceLayer.add(group, forKey: "heroPiece-\(index)")
+    }
+
+    if debugEnabled {
+      launchDebugTestPieces(colors: colors)
+    }
+  }
+
+  private func launchDebugTestPieces(colors: [UIColor]) {
+    let testCount = 4
+    let startY = bounds.height * 0.18
+
+    for index in 0..<testCount {
+      let width: CGFloat = 42
+      let height: CGFloat = 16
+      let pieceLayer = CALayer()
+      pieceLayer.backgroundColor = colors[index % colors.count].cgColor
+      pieceLayer.cornerRadius = 4
+      pieceLayer.frame = CGRect(x: 0, y: 0, width: width, height: height)
+      pieceLayer.position = CGPoint(
+        x: bounds.midX + CGFloat(index - 1) * 54,
+        y: startY + CGFloat(index % 2) * 20
+      )
+      pieceLayer.opacity = 1
+      pieceLayer.zPosition = 40
+      heroPiecesLayer.addSublayer(pieceLayer)
+
+      let drop = CABasicAnimation(keyPath: "position.y")
+      drop.fromValue = pieceLayer.position.y
+      drop.toValue = bounds.height * 0.52 + CGFloat(index) * 18
+      drop.duration = 1.15
+      drop.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+
+      let rotate = CABasicAnimation(keyPath: "transform.rotation.z")
+      rotate.fromValue = 0
+      rotate.toValue = Double(index % 2 == 0 ? 1 : -1) * .pi * 1.8
+      rotate.duration = 1.15
+
+      let fade = CAKeyframeAnimation(keyPath: "opacity")
+      fade.values = [0.2, 1, 1, 0]
+      fade.keyTimes = [0, 0.12, 0.7, 1]
+      fade.duration = 1.15
+
+      let group = CAAnimationGroup()
+      group.animations = [drop, rotate, fade]
+      group.duration = 1.15
+      group.fillMode = .forwards
+      group.isRemovedOnCompletion = false
+
+      pieceLayer.add(group, forKey: "debugPiece-\(index)")
     }
   }
 
