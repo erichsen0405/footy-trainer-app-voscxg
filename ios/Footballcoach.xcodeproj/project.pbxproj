@@ -17,6 +17,7 @@
 		0B1F2C3D4E5F678901234563 /* IOSLastTaskCelebrationViewManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 0B1F2C3D4E5F678901234663 /* IOSLastTaskCelebrationViewManager.m */; };
 		0B1F2C3D4E5F678901234564 /* IOSLastTaskCelebrationComponentView.mm in Sources */ = {isa = PBXBuildFile; fileRef = 0B1F2C3D4E5F678901234664 /* IOSLastTaskCelebrationComponentView.mm */; };
 		0C7E1A2B3D4F506172839401 /* IOSCelebrationRuntimeDebug.m in Sources */ = {isa = PBXBuildFile; fileRef = 0C7E1A2B3D4F506172839402 /* IOSCelebrationRuntimeDebug.m */; };
+		0D8A7B6C5E4F321001234567 /* IOSReferenceConfetti.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D8A7B6C5E4F321001234568 /* IOSReferenceConfetti.swift */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
 		6CEBD65E2FF98A9F373D7685 /* libPods-Footballcoach.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 0DD30F3F01EB16ABD7B5F453 /* libPods-Footballcoach.a */; };
@@ -37,6 +38,7 @@
 		0B1F2C3D4E5F678901234664 /* IOSLastTaskCelebrationComponentView.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = IOSLastTaskCelebrationComponentView.mm; path = Footballcoach/IOSLastTaskCelebrationComponentView.mm; sourceTree = "<group>"; };
 		0B1F2C3D4E5F678901234665 /* IOSLastTaskCelebrationComponentView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = IOSLastTaskCelebrationComponentView.h; path = Footballcoach/IOSLastTaskCelebrationComponentView.h; sourceTree = "<group>"; };
 		0C7E1A2B3D4F506172839402 /* IOSCelebrationRuntimeDebug.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = IOSCelebrationRuntimeDebug.m; path = Footballcoach/IOSCelebrationRuntimeDebug.m; sourceTree = "<group>"; };
+		0D8A7B6C5E4F321001234568 /* IOSReferenceConfetti.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = IOSReferenceConfetti.swift; path = Footballcoach/IOSReferenceConfetti.swift; sourceTree = "<group>"; };
 		0DD30F3F01EB16ABD7B5F453 /* libPods-Footballcoach.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-Footballcoach.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07F961A680F5B00A75B9A /* Footballcoach.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Footballcoach.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = Footballcoach/Images.xcassets; sourceTree = "<group>"; };
@@ -92,6 +94,7 @@
 				0B1F2C3D4E5F678901234662 /* IOSLastTaskCelebrationViewManager.swift */,
 				0B1F2C3D4E5F678901234663 /* IOSLastTaskCelebrationViewManager.m */,
 				0C7E1A2B3D4F506172839402 /* IOSCelebrationRuntimeDebug.m */,
+				0D8A7B6C5E4F321001234568 /* IOSReferenceConfetti.swift */,
 				0A9E3A6D1F114F4AA17A2001 /* IOSPremiumConfettiView.swift */,
 				0A9E3A6D1F114F4AA17A2005 /* IOSPremiumConfettiComponentView.h */,
 				0A9E3A6D1F114F4AA17A2004 /* IOSPremiumConfettiComponentView.mm */,
@@ -378,6 +381,7 @@
 				0B1F2C3D4E5F678901234562 /* IOSLastTaskCelebrationViewManager.swift in Sources */,
 				0B1F2C3D4E5F678901234563 /* IOSLastTaskCelebrationViewManager.m in Sources */,
 				0C7E1A2B3D4F506172839401 /* IOSCelebrationRuntimeDebug.m in Sources */,
+				0D8A7B6C5E4F321001234567 /* IOSReferenceConfetti.swift in Sources */,
 				0A9E3A6D1F114F4AA17A1001 /* IOSPremiumConfettiView.swift in Sources */,
 				0A9E3A6D1F114F4AA17A1004 /* IOSPremiumConfettiComponentView.mm in Sources */,
 				0A9E3A6D1F114F4AA17A1002 /* IOSPremiumConfettiViewManager.swift in Sources */,
