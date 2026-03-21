@@ -235,14 +235,18 @@ final class IOSLastTaskCelebrationContentView: UIView {
 
   private func addCenterBursts() {
     let points = [
-      CGPoint(x: bounds.midX, y: bounds.height * 0.46),
-      CGPoint(x: bounds.midX, y: bounds.height * 0.34),
+      CGPoint(x: bounds.midX, y: -26),
+      CGPoint(x: bounds.midX, y: bounds.height * 0.06),
     ]
 
     points.enumerated().forEach { index, point in
       schedule(after: 0.08 + (Double(index) * 0.12)) { [weak self] in
         guard let self else { return }
-        let burst = self.makeBurstLayer(origin: point, particleCount: index == 0 ? 12 : 9)
+        let burst = self.makeBurstLayer(
+          origin: point,
+          particleCount: index == 0 ? 24 : 18,
+          emitterWidth: index == 0 ? self.bounds.width * 0.86 : self.bounds.width * 0.72
+        )
         self.effectLayer.addSublayer(burst)
         self.activeLayers.append(burst)
         burst.startEmission()
@@ -272,7 +276,7 @@ final class IOSLastTaskCelebrationContentView: UIView {
 
   private func makeFountainLayers(origin: CGPoint, angle: CGFloat, drift: CGFloat) -> [IOSReferenceConfettiLayer] {
     var primary = IOSReferenceConfettiConfiguration()
-    primary.particleCount = 9
+    primary.particleCount = 18
     primary.spread = 0.24
     primary.gravity = 1100
     primary.startVelocity = 1120
@@ -287,10 +291,10 @@ final class IOSLastTaskCelebrationContentView: UIView {
     primary.spinRange = .pi * 2.7
     primary.origin = origin
     primary.angle = angle
-    primary.emitterSize = CGSize(width: 1, height: 1)
+    primary.emitterSize = CGSize(width: 6, height: 6)
 
     var shimmer = IOSReferenceConfettiConfiguration()
-    shimmer.particleCount = 6
+    shimmer.particleCount = 12
     shimmer.spread = 0.18
     shimmer.gravity = 890
     shimmer.startVelocity = 920
@@ -305,7 +309,7 @@ final class IOSLastTaskCelebrationContentView: UIView {
     shimmer.spinRange = .pi * 2.2
     shimmer.origin = origin
     shimmer.angle = angle
-    shimmer.emitterSize = CGSize(width: 1, height: 1)
+    shimmer.emitterSize = CGSize(width: 6, height: 6)
 
     let mainEmitter = makeReferenceConfettiLayer(
       primary,
@@ -323,10 +327,10 @@ final class IOSLastTaskCelebrationContentView: UIView {
     return [mainEmitter, shimmerEmitter]
   }
 
-  private func makeBurstLayer(origin: CGPoint, particleCount: Int) -> IOSReferenceConfettiLayer {
+  private func makeBurstLayer(origin: CGPoint, particleCount: Int, emitterWidth: CGFloat) -> IOSReferenceConfettiLayer {
     var configuration = IOSReferenceConfettiConfiguration()
     configuration.particleCount = particleCount
-    configuration.spread = .pi * 2
+    configuration.spread = .pi / 1.45
     configuration.gravity = 580
     configuration.startVelocity = 860
     configuration.velocityDecay = 0.44
@@ -338,8 +342,8 @@ final class IOSLastTaskCelebrationContentView: UIView {
     configuration.spin = .pi * 2.4
     configuration.spinRange = .pi * 2.6
     configuration.origin = origin
-    configuration.angle = -.pi / 2
-    configuration.emitterSize = CGSize(width: 1, height: 1)
+    configuration.angle = .pi / 2
+    configuration.emitterSize = CGSize(width: emitterWidth, height: 1)
 
     return makeReferenceConfettiLayer(
       configuration,

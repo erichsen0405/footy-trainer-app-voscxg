@@ -5,7 +5,7 @@ import { TaskScoreNoteModal, type TaskScoreNoteModalPayload } from '@/components
 import { supabase } from '@/integrations/supabase/client';
 import { useFootball } from '@/contexts/FootballContext';
 import { useCelebration } from '@/contexts/CelebrationContext';
-import { resolveCelebrationProgressAfterCompletion, resolveCelebrationTypeAfterCompletion } from '@/utils/celebration';
+import { resolveCelebrationAfterCompletionFromActivities } from '@/utils/celebration';
 import { INTENSITY_SCORE_OPTIONS, normalizeFivePointScore } from '@/utils/scoreScale';
 
 function decodeParam(value: unknown): string | null {
@@ -26,7 +26,7 @@ function decodeParam(value: unknown): string | null {
 export default function TaskScoreNoteScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { refreshData, updateActivitySingle, currentWeekStats } = useFootball();
+  const { refreshData, updateActivitySingle, currentWeekStats, activities } = useFootball();
   const { showCelebration } = useCelebration();
   const completedTasksToday = Math.max(0, Number((currentWeekStats as any)?.completedTasks ?? 0));
   const totalTasksToday = Math.max(0, Number((currentWeekStats as any)?.totalTasks ?? 0));
@@ -185,20 +185,18 @@ export default function TaskScoreNoteScreen() {
         });
 
         const completingToDone = initialScore === null && typeof score === 'number';
-        const celebrationType = resolveCelebrationTypeAfterCompletion({
-          completedTasks: completedTasksToday,
-          totalTasks: totalTasksToday,
+        const celebrationDecision = resolveCelebrationAfterCompletionFromActivities({
+          activities,
+          completedTaskId: activityId,
           completingToDone,
-        });
-        const celebrationProgress = resolveCelebrationProgressAfterCompletion({
-          completedTasks: completedTasksToday,
-          totalTasks: totalTasksToday,
-          completingToDone,
+          fallbackCompletedTasks: completedTasksToday,
+          fallbackTotalTasks: totalTasksToday,
         });
         safeDismiss();
+        const celebrationType = celebrationDecision.type;
         if (celebrationType) {
           setTimeout(() => {
-            showCelebration({ type: celebrationType, ...(celebrationProgress ?? {}) });
+            showCelebration({ type: celebrationType, ...(celebrationDecision.progress ?? {}) });
           }, 280);
         }
         Promise.resolve(refreshData()).catch(() => {});
@@ -210,6 +208,7 @@ export default function TaskScoreNoteScreen() {
     },
     [
       activityId,
+      activities,
       completedTasksToday,
       totalTasksToday,
       initialScore,
