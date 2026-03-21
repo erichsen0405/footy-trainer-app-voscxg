@@ -24,7 +24,7 @@ import { subscribeToTaskCompletion, emitTaskCompletionEvent } from '@/utils/task
 import { emitActivityPatch, emitActivitiesRefreshRequested } from '@/utils/activityEvents';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { isTaskVisibleForActivity } from '@/utils/taskTemplateVisibility';
-import { resolveCelebrationProgressAfterCompletion, resolveCelebrationTypeAfterCompletion } from '@/utils/celebration';
+import { resolveCelebrationAfterCompletionFromActivities } from '@/utils/celebration';
 
 type ExternalTaskForPerformance = {
   id?: string | number | null;
@@ -1756,18 +1756,15 @@ export const useFootballData = () => {
         });
 
         const completingToDone = targetState === true && previousState !== true;
-        const celebrationType = resolveCelebrationTypeAfterCompletion({
-          completedTasks: currentWeekStats.completedTasks,
-          totalTasks: currentWeekStats.totalTasks,
+        const celebrationDecision = resolveCelebrationAfterCompletionFromActivities({
+          activities,
+          completedTaskId: taskId,
           completingToDone,
+          fallbackCompletedTasks: currentWeekStats.completedTasks,
+          fallbackTotalTasks: currentWeekStats.totalTasks,
         });
-        const celebrationProgress = resolveCelebrationProgressAfterCompletion({
-          completedTasks: currentWeekStats.completedTasks,
-          totalTasks: currentWeekStats.totalTasks,
-          completingToDone,
-        });
-        if (celebrationType) {
-          showCelebration({ type: celebrationType, ...(celebrationProgress ?? {}) });
+        if (celebrationDecision.type) {
+          showCelebration({ type: celebrationDecision.type, ...(celebrationDecision.progress ?? {}) });
         }
 
         console.log(`${logPrefix} - done`);
@@ -1781,7 +1778,7 @@ export const useFootballData = () => {
         throw error;
       }
     },
-    [currentWeekStats.completedTasks, currentWeekStats.totalTasks, findTaskCompletionState, refreshData, showCelebration]
+    [activities, currentWeekStats.completedTasks, currentWeekStats.totalTasks, findTaskCompletionState, refreshData, showCelebration]
   );
 
   const setTaskCompletion = useCallback(

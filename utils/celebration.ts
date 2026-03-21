@@ -26,6 +26,26 @@ export interface LastTaskOfDayInput {
   includeOverdue?: boolean;
 }
 
+export interface ActivityForCelebrationCheck {
+  id: string;
+  date?: Date | string | null;
+  tasks?: Array<{
+    id: string;
+    completed: boolean;
+  }> | null;
+}
+
+export interface CelebrationFromActivitiesInput {
+  activities: ActivityForCelebrationCheck[];
+  completedTaskId: string;
+  completingToDone: boolean;
+  fallbackCompletedTasks?: number;
+  fallbackTotalTasks?: number;
+  now?: Date;
+  timezoneOffsetMinutes?: number;
+  includeOverdue?: boolean;
+}
+
 const pad2 = (value: number): string => String(value).padStart(2, '0');
 
 function toDateKeyWithOffset(date: Date, timezoneOffsetMinutes: number): string {
@@ -48,6 +68,18 @@ function resolveTaskDateKey(activityDate: string | null | undefined, timezoneOff
   }
 
   return toDateKeyWithOffset(parsed, timezoneOffsetMinutes);
+}
+
+function resolveActivityDateKey(
+  activityDate: Date | string | null | undefined,
+  timezoneOffsetMinutes: number
+): string | null {
+  if (activityDate instanceof Date) {
+    if (!Number.isFinite(activityDate.getTime())) return null;
+    return toDateKeyWithOffset(activityDate, timezoneOffsetMinutes);
+  }
+
+  return resolveTaskDateKey(activityDate, timezoneOffsetMinutes);
 }
 
 export function resolveCelebrationTypeAfterCompletion(
@@ -120,4 +152,78 @@ export function isLastTaskOfDayAfterCompletion(input: LastTaskOfDayInput): boole
   );
 
   return !hasOtherIncomplete;
+}
+
+export function resolveCelebrationAfterCompletionFromActivities(
+  input: CelebrationFromActivitiesInput
+): { type: CelebrationType | null; progress: CelebrationProgress | null } {
+  const fallbackType = resolveCelebrationTypeAfterCompletion({
+    completedTasks: input.fallbackCompletedTasks ?? 0,
+    totalTasks: input.fallbackTotalTasks ?? 0,
+    completingToDone: input.completingToDone,
+  });
+  const fallbackProgress = resolveCelebrationProgressAfterCompletion({
+    completedTasks: input.fallbackCompletedTasks ?? 0,
+    totalTasks: input.fallbackTotalTasks ?? 0,
+    completingToDone: input.completingToDone,
+  });
+
+  if (!input.completingToDone) {
+    return { type: null, progress: null };
+  }
+
+  const now = input.now instanceof Date ? input.now : new Date();
+  const timezoneOffsetMinutes =
+    typeof input.timezoneOffsetMinutes === 'number' && Number.isFinite(input.timezoneOffsetMinutes)
+      ? input.timezoneOffsetMinutes
+      : now.getTimezoneOffset();
+  const includeOverdue = input.includeOverdue !== false;
+  const todayKey = toDateKeyWithOffset(now, timezoneOffsetMinutes);
+
+  const dayTasks = (Array.isArray(input.activities) ? input.activities : []).flatMap((activity) => {
+    const activityDateKey = resolveActivityDateKey(activity?.date, timezoneOffsetMinutes);
+    if (!activityDateKey) return [];
+    if (includeOverdue ? activityDateKey > todayKey : activityDateKey !== todayKey) {
+      return [];
+    }
+
+    return (Array.isArray(activity?.tasks) ? activity.tasks : []).map((task) => ({
+      id: String(task?.id ?? ''),
+      completed: task?.completed === true,
+      activityDate: activityDateKey,
+    }));
+  });
+
+  const relevantTasks = dayTasks.filter((task) => task.id.length > 0);
+  if (!relevantTasks.length) {
+    return { type: fallbackType, progress: fallbackProgress };
+  }
+
+  const completedTaskId = String(input.completedTaskId ?? '').trim();
+  if (!relevantTasks.some((task) => task.id === completedTaskId)) {
+    return { type: fallbackType, progress: fallbackProgress };
+  }
+
+  const completedToday = relevantTasks.filter((task) => task.completed || task.id === completedTaskId).length;
+  const totalToday = relevantTasks.length;
+  const remainingToday = Math.max(0, totalToday - completedToday);
+
+  const type = isLastTaskOfDayAfterCompletion({
+    tasks: relevantTasks,
+    completedTaskId,
+    now,
+    timezoneOffsetMinutes,
+    includeOverdue,
+  })
+    ? 'dayComplete'
+    : 'task';
+
+  return {
+    type,
+    progress: {
+      completedToday,
+      totalToday,
+      remainingToday,
+    },
+  };
 }

@@ -1,4 +1,5 @@
 import {
+  resolveCelebrationAfterCompletionFromActivities,
   isLastTaskOfDayAfterCompletion,
   resolveCelebrationProgressAfterCompletion,
   resolveCelebrationTypeAfterCompletion,
@@ -111,6 +112,53 @@ describe('resolveCelebrationProgressAfterCompletion', () => {
       completedToday: 5,
       totalToday: 5,
       remainingToday: 0,
+    });
+  });
+});
+
+describe('resolveCelebrationAfterCompletionFromActivities', () => {
+  it('returns dayComplete for the final incomplete task up to today', () => {
+    expect(
+      resolveCelebrationAfterCompletionFromActivities({
+        activities: [
+          {
+            id: 'a1',
+            date: new Date('2026-03-20T10:00:00Z'),
+            tasks: [
+              { id: 't1', completed: true },
+              { id: 't2', completed: false },
+            ],
+          },
+        ],
+        completedTaskId: 't2',
+        completingToDone: true,
+      })
+    ).toEqual({
+      type: 'dayComplete',
+      progress: {
+        completedToday: 2,
+        totalToday: 2,
+        remainingToday: 0,
+      },
+    });
+  });
+
+  it('falls back to count-based logic when no activities are available', () => {
+    expect(
+      resolveCelebrationAfterCompletionFromActivities({
+        activities: [],
+        completedTaskId: 't2',
+        completingToDone: true,
+        fallbackCompletedTasks: 2,
+        fallbackTotalTasks: 3,
+      })
+    ).toEqual({
+      type: 'dayComplete',
+      progress: {
+        completedToday: 3,
+        totalToday: 3,
+        remainingToday: 0,
+      },
     });
   });
 });

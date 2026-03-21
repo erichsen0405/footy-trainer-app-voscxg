@@ -6,7 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { fetchSelfFeedbackForTemplates, upsertSelfFeedback } from '@/services/feedbackService';
 import { useFootball } from '@/contexts/FootballContext';
 import { useCelebration } from '@/contexts/CelebrationContext';
-import { resolveCelebrationProgressAfterCompletion, resolveCelebrationTypeAfterCompletion } from '@/utils/celebration';
+import { resolveCelebrationAfterCompletionFromActivities } from '@/utils/celebration';
 import { FEEDBACK_SCORE_OPTIONS, normalizeFivePointScore } from '@/utils/scoreScale';
 import type { TaskTemplateSelfFeedback } from '@/types';
 
@@ -197,7 +197,7 @@ function buildFeedbackConfig(row?: any): AfterTrainingFeedbackConfig {
 export default function TaskFeedbackNoteScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { refreshData, currentWeekStats } = useFootball();
+  const { refreshData, currentWeekStats, activities } = useFootball();
   const { showCelebration } = useCelebration();
   const completedTasksToday = Math.max(0, Number((currentWeekStats as any)?.completedTasks ?? 0));
   const totalTasksToday = Math.max(0, Number((currentWeekStats as any)?.totalTasks ?? 0));
@@ -495,20 +495,18 @@ export default function TaskFeedbackNoteScreen() {
         });
 
         const completingToDone = initialScore === null && initialNote.trim().length === 0;
-        const celebrationType = resolveCelebrationTypeAfterCompletion({
-          completedTasks: completedTasksToday,
-          totalTasks: totalTasksToday,
+        const celebrationDecision = resolveCelebrationAfterCompletionFromActivities({
+          activities,
+          completedTaskId: effectiveTaskInstanceId,
           completingToDone,
-        });
-        const celebrationProgress = resolveCelebrationProgressAfterCompletion({
-          completedTasks: completedTasksToday,
-          totalTasks: totalTasksToday,
-          completingToDone,
+          fallbackCompletedTasks: completedTasksToday,
+          fallbackTotalTasks: totalTasksToday,
         });
         safeDismiss();
+        const celebrationType = celebrationDecision.type;
         if (celebrationType) {
           setTimeout(() => {
-            showCelebration({ type: celebrationType, ...(celebrationProgress ?? {}) });
+            showCelebration({ type: celebrationType, ...(celebrationDecision.progress ?? {}) });
           }, 280);
         }
         Promise.resolve(refreshData()).catch(() => {});
