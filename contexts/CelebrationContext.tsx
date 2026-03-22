@@ -4,6 +4,7 @@ import {
   Animated,
   Easing,
   Modal,
+  NativeModules,
   Platform,
   Pressable,
   StyleSheet,
@@ -13,6 +14,17 @@ import {
 } from 'react-native';
 import { NativeModulesProxy } from 'expo-modules-core';
 import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
+import {
+  IOSLastTaskCelebrationView,
+  getIOSLastTaskCelebrationDiagnostics,
+  hasIOSLastTaskCelebrationView,
+} from '@/components/IOSLastTaskCelebrationView';
+import {
+  IOSPremiumConfettiView,
+  getIOSPremiumConfettiDiagnostics,
+  hasIOSPremiumConfettiView,
+} from '@/components/IOSPremiumConfettiView';
 import { CelebrationType } from '@/utils/celebration';
 
 type ShowCelebrationInput = {
@@ -49,6 +61,10 @@ type CelebrationSound = {
   replayAsync: () => Promise<unknown>;
   setPositionAsync: (positionMillis: number) => Promise<unknown>;
   playAsync: () => Promise<unknown>;
+};
+
+type CelebrationRuntimeDebugModule = {
+  collectStatus: () => Promise<Record<string, unknown>>;
 };
 
 type AudioModuleLike = {
@@ -91,10 +107,11 @@ type FountainSpark = {
   size: number;
 };
 
-const TASK_DURATION_MS = 2000;
-const DAY_COMPLETE_DURATION_MS = 2550;
+const TASK_DURATION_MS = 4000;
+const DAY_COMPLETE_DURATION_MS = 5100;
 const COOLDOWN_MS = 1200;
 const CONFETTI_COLORS = ['#33b1ff', '#4cd97b', '#f6c445', '#ff7f50', '#9b6dff', '#20b2aa'];
+const CELEBRATION_INTENSITY_MULTIPLIER = 4;
 const TASK_SOUND_SOURCE = require('../assets/sounds/celebration-task.mp3');
 const DAY_COMPLETE_SOUND_SOURCE = require('../assets/sounds/celebration-day-complete.mp3');
 
@@ -105,10 +122,49 @@ const ENABLE_CELEBRATION_AUDIO =
   process.env.NODE_ENV !== 'test' &&
   process.env.EXPO_PUBLIC_ENABLE_CELEBRATION_AUDIO !== '0';
 const PLAY_IN_SILENT_MODE_IOS = process.env.EXPO_PUBLIC_CELEBRATION_AUDIO_IN_SILENT_IOS === '1';
+const SHOW_CELEBRATION_DEBUG = false;
+const FORCE_LEGACY_IOS_CELEBRATIONS = process.env.EXPO_PUBLIC_FORCE_LEGACY_IOS_CELEBRATIONS === '1';
 
 const CelebrationContext = createContext<CelebrationContextValue>({
   showCelebration: () => {},
 });
+
+function resolveCelebrationRuntimeDebugModule(): CelebrationRuntimeDebugModule | null {
+  if (Platform.OS !== 'ios') {
+    return null;
+  }
+
+  const candidate = (NativeModules as Record<string, unknown>).IOSCelebrationRuntimeDebug as
+    | Partial<CelebrationRuntimeDebugModule>
+    | undefined;
+
+  if (!candidate || typeof candidate.collectStatus !== 'function') {
+    return null;
+  }
+
+  return candidate as CelebrationRuntimeDebugModule;
+}
+
+function toDebugBit(value: unknown): '1' | '0' {
+  return value ? '1' : '0';
+}
+
+function buildRuntimeDebugSummary(status: Record<string, unknown>): string {
+  return [
+    `nativeMod=1`,
+    `providerCls=${toDebugBit(status.thirdPartyProviderClassAvailable)}`,
+    `providerFn=${toDebugBit(status.thirdPartyProviderResponds)}`,
+    `provider=${toDebugBit(status.thirdPartyProviderAvailable)}`,
+    `pComp=${toDebugBit(status.premiumComponentViewClassAvailable)}`,
+    `pContent=${toDebugBit(status.premiumContentViewClassAvailable)}`,
+    `pManager=${toDebugBit(status.premiumManagerClassAvailable)}`,
+    `pMap=${toDebugBit(status.premiumProviderMapped)}`,
+    `lComp=${toDebugBit(status.lastTaskComponentViewClassAvailable)}`,
+    `lContent=${toDebugBit(status.lastTaskContentViewClassAvailable)}`,
+    `lManager=${toDebugBit(status.lastTaskManagerClassAvailable)}`,
+    `lMap=${toDebugBit(status.lastTaskProviderMapped)}`,
+  ].join(' ');
+}
 
 function resolveAudioModule(): AudioModuleLike | null {
   const nativeModules = (NativeModulesProxy ?? {}) as Record<string, unknown>;
@@ -131,7 +187,7 @@ function resolveAudioModule(): AudioModuleLike | null {
 }
 
 function buildConfetti(seed: number, type: CelebrationType): ConfettiPiece[] {
-  const pieceCount = type === 'dayComplete' ? 78 : 24;
+  const pieceCount = (type === 'dayComplete' ? 78 : 24) * CELEBRATION_INTENSITY_MULTIPLIER;
   const pieces: ConfettiPiece[] = [];
 
   for (let index = 0; index < pieceCount; index += 1) {
@@ -162,16 +218,16 @@ function buildConfetti(seed: number, type: CelebrationType): ConfettiPiece[] {
   return pieces;
 }
 
-function buildFireworkRockets(seed: number): FireworkRocket[] {
+function buildFireworkRockets(seed: number, type: CelebrationType): FireworkRocket[] {
   const rockets: FireworkRocket[] = [];
-  const count = 5;
+  const count = 5 * CELEBRATION_INTENSITY_MULTIPLIER;
 
   for (let index = 0; index < count; index += 1) {
     const n = seed + index * 31;
     rockets.push({
       key: `rocket-${seed}-${index}`,
-      leftPercent: 12 + ((n * 19) % 76),
-      delayMs: 90 + (index * 155),
+      leftPercent: type === 'dayComplete' ? 8 + ((n * 19) % 84) : 14 + ((n * 19) % 72),
+      delayMs: (type === 'dayComplete' ? 70 : 55) + (index * (type === 'dayComplete' ? 38 : 30)),
       color: CONFETTI_COLORS[n % CONFETTI_COLORS.length],
     });
   }
@@ -179,9 +235,9 @@ function buildFireworkRockets(seed: number): FireworkRocket[] {
   return rockets;
 }
 
-function buildFountainSparks(seed: number): FountainSpark[] {
+function buildFountainSparks(seed: number, type: CelebrationType): FountainSpark[] {
   const sparks: FountainSpark[] = [];
-  const countPerSide = 14;
+  const countPerSide = (type === 'dayComplete' ? 14 : 8) * CELEBRATION_INTENSITY_MULTIPLIER;
 
   for (let index = 0; index < countPerSide * 2; index += 1) {
     const n = seed + index * 23;
@@ -190,11 +246,11 @@ function buildFountainSparks(seed: number): FountainSpark[] {
     sparks.push({
       key: `fountain-${seed}-${index}`,
       side,
-      delayMs: 220 + ((index % countPerSide) * 42),
-      driftX: direction * (24 + ((n % 7) * 8)),
-      riseY: 84 + ((n % 9) * 13),
+      delayMs: (type === 'dayComplete' ? 120 : 80) + ((index % countPerSide) * (type === 'dayComplete' ? 9 : 7)),
+      driftX: direction * ((type === 'dayComplete' ? 24 : 18) + ((n % 7) * (type === 'dayComplete' ? 8 : 5))),
+      riseY: (type === 'dayComplete' ? 84 : 58) + ((n % 9) * (type === 'dayComplete' ? 13 : 8)),
       color: CONFETTI_COLORS[n % CONFETTI_COLORS.length],
-      size: 7 + (n % 6),
+      size: (type === 'dayComplete' ? 7 : 5) + (n % (type === 'dayComplete' ? 6 : 4)),
     });
   }
 
@@ -237,22 +293,70 @@ function resolveCelebrationMessage(celebration: ActiveCelebration): CelebrationM
 function CelebrationOverlay({
   celebration,
   reduceMotionEnabled,
+  onStart,
   onDismiss,
 }: {
   celebration: ActiveCelebration;
   reduceMotionEnabled: boolean;
+  onStart: (celebration: ActiveCelebration) => void;
   onDismiss: () => void;
 }) {
   const progress = useRef(new Animated.Value(0)).current;
+  const [runtimeDebugInfo, setRuntimeDebugInfo] = useState('');
   const isDayComplete = celebration.type === 'dayComplete';
+  const durationMs = isDayComplete ? DAY_COMPLETE_DURATION_MS : TASK_DURATION_MS;
   const message = useMemo(() => resolveCelebrationMessage(celebration), [celebration]);
+  const premiumConfettiDiagnostics = useMemo(() => getIOSPremiumConfettiDiagnostics(), []);
+  const dayCompleteDiagnostics = useMemo(() => getIOSLastTaskCelebrationDiagnostics(), []);
+  const shouldAttemptNativeConfetti =
+    Platform.OS === 'ios' && !FORCE_LEGACY_IOS_CELEBRATIONS && hasIOSPremiumConfettiView();
+  const shouldAttemptNativeDayComplete =
+    isDayComplete && Platform.OS === 'ios' && !FORCE_LEGACY_IOS_CELEBRATIONS && hasIOSLastTaskCelebrationView();
+  const debugNativeConfettiAvailable = hasIOSPremiumConfettiView();
+  const debugNativeDayCompleteAvailable = hasIOSLastTaskCelebrationView();
+  const debugInfo = useMemo(() => {
+    if (!SHOW_CELEBRATION_DEBUG) {
+      return '';
+    }
+
+    const nativeMode = shouldAttemptNativeDayComplete
+      ? 'native-day'
+      : shouldAttemptNativeConfetti
+        ? 'native-confetti'
+        : 'legacy';
+
+    return [
+      `type=${celebration.type}`,
+      `mode=${nativeMode}`,
+      `reduce=${reduceMotionEnabled ? 1 : 0}`,
+      `fabric=${premiumConfettiDiagnostics.fabricEnabled ? 1 : 0}`,
+      `bridgeless=${premiumConfettiDiagnostics.bridgelessEnabled ? 1 : 0}`,
+      `confettiVM=${premiumConfettiDiagnostics.viewManagerConfigAvailable ? 1 : 0}`,
+      `dayVM=${dayCompleteDiagnostics.viewManagerConfigAvailable ? 1 : 0}`,
+      `confettiReady=${debugNativeConfettiAvailable ? 1 : 0}`,
+      `dayReady=${debugNativeDayCompleteAvailable ? 1 : 0}`,
+      runtimeDebugInfo,
+    ].join(' ');
+  }, [
+    celebration.type,
+    dayCompleteDiagnostics.viewManagerConfigAvailable,
+    debugNativeConfettiAvailable,
+    debugNativeDayCompleteAvailable,
+    premiumConfettiDiagnostics.bridgelessEnabled,
+    premiumConfettiDiagnostics.fabricEnabled,
+    premiumConfettiDiagnostics.viewManagerConfigAvailable,
+    reduceMotionEnabled,
+    runtimeDebugInfo,
+    shouldAttemptNativeConfetti,
+    shouldAttemptNativeDayComplete,
+  ]);
 
   useEffect(() => {
+    onStart(celebration);
     progress.setValue(0);
-    const duration = celebration.type === 'dayComplete' ? DAY_COMPLETE_DURATION_MS : TASK_DURATION_MS;
     const animation = Animated.timing(progress, {
       toValue: 1,
-      duration,
+      duration: durationMs,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     });
@@ -260,19 +364,60 @@ function CelebrationOverlay({
     return () => {
       animation.stop();
     };
-  }, [celebration.id, celebration.type, progress]);
+  }, [celebration, celebration.id, celebration.type, durationMs, onStart, progress]);
+
+  useEffect(() => {
+    if (!SHOW_CELEBRATION_DEBUG) {
+      return;
+    }
+
+    console.log('[celebration-debug]', debugInfo);
+  }, [debugInfo]);
+
+  useEffect(() => {
+    if (!SHOW_CELEBRATION_DEBUG || Platform.OS !== 'ios') {
+      setRuntimeDebugInfo('');
+      return;
+    }
+
+    const module = resolveCelebrationRuntimeDebugModule();
+    if (!module) {
+      setRuntimeDebugInfo('nativeMod=0');
+      return;
+    }
+
+    let cancelled = false;
+
+    module
+      .collectStatus()
+      .then((status) => {
+        if (cancelled) return;
+        const summary = buildRuntimeDebugSummary(status);
+        setRuntimeDebugInfo(summary);
+        console.log('[celebration-native-runtime-debug]', status);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setRuntimeDebugInfo('nativeMod=err');
+        console.warn('[celebration-native-runtime-debug] failed', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [celebration.id]);
 
   const pieces = useMemo(
     () => (reduceMotionEnabled ? [] : buildConfetti(celebration.id, celebration.type)),
     [celebration.id, celebration.type, reduceMotionEnabled]
   );
   const fireworkRockets = useMemo(
-    () => (reduceMotionEnabled || !isDayComplete ? [] : buildFireworkRockets(celebration.id)),
-    [celebration.id, isDayComplete, reduceMotionEnabled]
+    () => (reduceMotionEnabled ? [] : buildFireworkRockets(celebration.id, celebration.type)),
+    [celebration.id, celebration.type, reduceMotionEnabled]
   );
   const fountainSparks = useMemo(
-    () => (reduceMotionEnabled || !isDayComplete ? [] : buildFountainSparks(celebration.id + 99)),
-    [celebration.id, isDayComplete, reduceMotionEnabled]
+    () => (reduceMotionEnabled ? [] : buildFountainSparks(celebration.id + 99, celebration.type)),
+    [celebration.id, celebration.type, reduceMotionEnabled]
   );
 
   const checkScale = progress.interpolate({
@@ -295,12 +440,10 @@ function CelebrationOverlay({
     outputRange: isDayComplete ? [0, 0.36, 0.2, 0] : [0, 0.18, 0.1, 0],
   });
 
-  const overlayOpacity = celebration.type === 'dayComplete'
-    ? progress.interpolate({
-        inputRange: [0, 0.12, 0.88, 1],
-        outputRange: [0, 0.2, 0.2, 0],
-      })
-    : undefined;
+  const overlayOpacity = progress.interpolate({
+    inputRange: [0, 0.12, 0.88, 1],
+    outputRange: isDayComplete ? [0, 0.2, 0.2, 0] : [0, 0.08, 0.08, 0],
+  });
 
   const messageOpacity = progress.interpolate({
     inputRange: [0, 0.12, 0.93, 1],
@@ -311,6 +454,13 @@ function CelebrationOverlay({
     inputRange: [0, 0.12, 1],
     outputRange: [12, 0, -4],
   });
+  const messageAnimatedStyle = {
+    opacity: messageOpacity,
+    transform: [{ translateY: messageTranslateY }],
+  } as const;
+  const renderNativeConfetti = shouldAttemptNativeConfetti && !shouldAttemptNativeDayComplete;
+  const renderLegacyConfetti = !shouldAttemptNativeConfetti && !shouldAttemptNativeDayComplete;
+  const renderLegacyFireworks = !shouldAttemptNativeDayComplete && !renderNativeConfetti;
 
   return (
     <View style={styles.overlayWrap} pointerEvents="box-none" testID="celebration-overlay">
@@ -318,56 +468,70 @@ function CelebrationOverlay({
         {celebration.type}
       </Text>
 
-      {celebration.type === 'dayComplete' ? (
-        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFillObject, styles.dimBackground, { opacity: overlayOpacity }]} />
-      ) : null}
+      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFillObject, styles.dimBackground, { opacity: overlayOpacity }]} />
 
       {!reduceMotionEnabled ? (
         <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
-          {pieces.map((piece) => {
-            const opacity = progress.interpolate({
-              inputRange: [0, 0.08, 0.9, 1],
-              outputRange: [0, 1, 1, 0],
-            });
+          {shouldAttemptNativeDayComplete ? (
+            <IOSLastTaskCelebrationView
+              burstKey={celebration.id}
+              debugEnabled={SHOW_CELEBRATION_DEBUG}
+              debugInfo={debugInfo}
+              style={StyleSheet.absoluteFillObject}
+            />
+          ) : (
+            <>
+              {renderNativeConfetti ? (
+                <IOSPremiumConfettiView
+                  burstKey={celebration.id}
+                  debugEnabled={SHOW_CELEBRATION_DEBUG}
+                  debugInfo={debugInfo}
+                  style={StyleSheet.absoluteFillObject}
+                  variant={celebration.type}
+                />
+              ) : renderLegacyConfetti ? pieces.map((piece) => {
+                  const opacity = progress.interpolate({
+                    inputRange: [0, 0.08, 0.9, 1],
+                    outputRange: [0, 1, 1, 0],
+                  });
 
-            const translateY = progress.interpolate({
-              inputRange: [0, 1],
-              outputRange: [celebration.type === 'dayComplete' ? -24 : -12, piece.dropY],
-            });
+                  const translateY = progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [celebration.type === 'dayComplete' ? -24 : -12, piece.dropY],
+                  });
 
-            const translateX = progress.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0, piece.driftX],
-            });
+                  const translateX = progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, piece.driftX],
+                  });
 
-            const rotate = progress.interpolate({
-              inputRange: [0, 1],
-              outputRange: ['0deg', `${piece.rotateDeg}deg`],
-            });
+                  const rotate = progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['0deg', `${piece.rotateDeg}deg`],
+                  });
 
-            return (
-              <Animated.View
-                key={piece.key}
-                style={[
-                  styles.confettiPiece,
-                  {
-                    left: `${piece.leftPercent}%`,
-                    top: piece.startTop,
-                    backgroundColor: piece.color,
-                    width: piece.size,
-                    height: piece.size * 0.56,
-                    opacity,
-                    transform: [{ translateX }, { translateY }, { rotate }],
-                  },
-                ]}
-              />
-            );
-          })}
+                  return (
+                    <Animated.View
+                      key={piece.key}
+                      style={[
+                        styles.confettiPiece,
+                        {
+                          left: `${piece.leftPercent}%`,
+                          top: piece.startTop,
+                          backgroundColor: piece.color,
+                          width: piece.size,
+                          height: piece.size * 0.56,
+                          opacity,
+                          transform: [{ translateX }, { translateY }, { rotate }],
+                        },
+                      ]}
+                    />
+                  );
+                }) : null}
 
-          {isDayComplete
-            ? fireworkRockets.map((rocket) => {
-                const start = rocket.delayMs / DAY_COMPLETE_DURATION_MS;
-                const apex = Math.min(start + 0.18, 0.9);
+              {renderLegacyFireworks ? fireworkRockets.map((rocket) => {
+                const start = rocket.delayMs / durationMs;
+                const apex = Math.min(start + (isDayComplete ? 0.18 : 0.16), 0.9);
                 const vanish = Math.min(apex + 0.08, 0.98);
 
                 const rocketOpacity = progress.interpolate({
@@ -377,7 +541,7 @@ function CelebrationOverlay({
 
                 const rocketTranslateY = progress.interpolate({
                   inputRange: [0, start, apex, 1],
-                  outputRange: [0, 0, -320, -320],
+                  outputRange: [0, 0, isDayComplete ? -320 : -250, isDayComplete ? -320 : -250],
                 });
 
                 const burstOpacity = progress.interpolate({
@@ -387,7 +551,7 @@ function CelebrationOverlay({
 
                 const burstScale = progress.interpolate({
                   inputRange: [0, apex, Math.min(apex + 0.15, 0.99), 1],
-                  outputRange: [0.25, 0.25, 2.05, 2.35],
+                  outputRange: [0.25, 0.25, isDayComplete ? 2.05 : 1.7, isDayComplete ? 2.35 : 1.95],
                 });
 
                 const coreOpacity = progress.interpolate({
@@ -397,7 +561,7 @@ function CelebrationOverlay({
 
                 const coreScale = progress.interpolate({
                   inputRange: [0, apex, Math.min(apex + 0.13, 0.99), 1],
-                  outputRange: [0.2, 0.2, 2.3, 2.8],
+                  outputRange: [0.2, 0.2, isDayComplete ? 2.3 : 1.85, isDayComplete ? 2.8 : 2.2],
                 });
 
                 const flameOpacity = progress.interpolate({
@@ -405,59 +569,79 @@ function CelebrationOverlay({
                   outputRange: [0, 0.95, 0.2, 0],
                 });
 
-                return (
-                  <View key={rocket.key} pointerEvents="none">
-                    <Animated.View
-                      style={[
-                        styles.rocketWrap,
-                        {
-                          left: `${rocket.leftPercent}%`,
-                          opacity: rocketOpacity,
-                          transform: [{ translateY: rocketTranslateY }],
-                        },
-                      ]}
-                    >
-                      <View style={[styles.rocketBody, { backgroundColor: rocket.color }]} />
-                      <View style={[styles.rocketHead, { borderBottomColor: rocket.color }]} />
-                      <Animated.View style={[styles.rocketFlame, { opacity: flameOpacity }]} />
-                    </Animated.View>
+                const burstTranslateY = progress.interpolate({
+                  inputRange: [0, start, apex, 1],
+                  outputRange: [0, 0, isDayComplete ? -320 : -250, isDayComplete ? -320 : -250],
+                });
 
-                    <Animated.View
-                      style={[
-                        styles.burstRing,
-                        {
-                          left: `${rocket.leftPercent}%`,
-                          opacity: burstOpacity,
-                          borderColor: rocket.color,
-                          transform: [{ translateY: -320 }, { scale: burstScale }],
-                        },
-                      ]}
-                    />
-                    <Animated.View
-                      style={[
-                        styles.burstCore,
-                        {
-                          left: `${rocket.leftPercent}%`,
-                          backgroundColor: rocket.color,
-                          opacity: coreOpacity,
-                          transform: [{ translateY: -320 }, { scale: coreScale }],
-                        },
-                      ]}
-                    />
-                  </View>
-                );
-              })
-            : null}
+                  return (
+                    <React.Fragment key={rocket.key}>
+                      <Animated.View
+                        testID="celebration-rocket"
+                        style={[
+                          styles.rocketWrap,
+                          !isDayComplete && styles.rocketWrapTask,
+                          {
+                            left: `${rocket.leftPercent}%`,
+                            opacity: rocketOpacity,
+                            transform: [{ translateY: rocketTranslateY }],
+                          },
+                        ]}
+                      >
+                        <View style={[styles.rocketBody, { backgroundColor: rocket.color }]} />
+                        <View style={[styles.rocketHead, { borderBottomColor: rocket.color }]} />
+                        <Animated.View style={[styles.rocketFlame, { opacity: flameOpacity }]} />
+                      </Animated.View>
 
-          {isDayComplete
-            ? fountainSparks.map((spark) => {
-                const start = spark.delayMs / DAY_COMPLETE_DURATION_MS;
-                const peak = Math.min(start + 0.2, 0.92);
-                const end = Math.min(peak + 0.16, 0.995);
+                      <Animated.View
+                        style={[
+                          styles.burstRing,
+                          !isDayComplete && styles.burstRingTask,
+                          {
+                            left: `${rocket.leftPercent}%`,
+                            opacity: burstOpacity,
+                            borderColor: rocket.color,
+                            transform: [{ translateY: burstTranslateY }, { scale: burstScale }],
+                          },
+                        ]}
+                      />
+                      <Animated.View
+                        style={[
+                          styles.burstCore,
+                          !isDayComplete && styles.burstCoreTask,
+                          {
+                            left: `${rocket.leftPercent}%`,
+                            backgroundColor: rocket.color,
+                            opacity: coreOpacity,
+                            transform: [{ translateY: burstTranslateY }, { scale: coreScale }],
+                          },
+                        ]}
+                      />
+                    </React.Fragment>
+                  );
+                }) : null}
+
+              {renderLegacyFireworks ? (
+                <>
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[styles.fountainEmitter, styles.fountainEmitterLeft, !isDayComplete && styles.fountainEmitterTask, { opacity: overlayOpacity }]}
+                  />
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[styles.fountainEmitter, styles.fountainEmitterRight, !isDayComplete && styles.fountainEmitterTask, { opacity: overlayOpacity }]}
+                  />
+                </>
+              ) : null}
+
+              {renderLegacyFireworks ? fountainSparks.map((spark) => {
+                const start = spark.delayMs / durationMs;
+                const peak = Math.min(start + (isDayComplete ? 0.2 : 0.15), 0.92);
+                const end = Math.min(peak + (isDayComplete ? 0.16 : 0.12), 0.995);
 
                 const sparkOpacity = progress.interpolate({
                   inputRange: [0, start, peak, end, 1],
-                  outputRange: [0, 0, 0.9, 0, 0],
+                  outputRange: [0, 0, isDayComplete ? 0.95 : 0.88, 0, 0],
                 });
 
                 const sparkTranslateX = progress.interpolate({
@@ -470,60 +654,86 @@ function CelebrationOverlay({
                   outputRange: [0, 0, -spark.riseY, 28, 28],
                 });
 
-                return (
-                  <Animated.View
-                    key={spark.key}
-                    style={[
-                      styles.fountainSpark,
-                      {
-                        left: spark.side === 'left' ? '14%' : undefined,
-                        right: spark.side === 'right' ? '14%' : undefined,
-                        backgroundColor: spark.color,
-                        width: spark.size,
-                        height: spark.size,
-                        opacity: sparkOpacity,
-                        transform: [{ translateX: sparkTranslateX }, { translateY: sparkTranslateY }],
-                      },
-                    ]}
-                  />
-                );
-              })
-            : null}
+                  return (
+                    <Animated.View
+                      testID="celebration-fountain"
+                      key={spark.key}
+                      style={[
+                        styles.fountainSpark,
+                        !isDayComplete && styles.fountainSparkTask,
+                        {
+                          left: spark.side === 'left' ? (isDayComplete ? '14%' : '16%') : undefined,
+                          right: spark.side === 'right' ? (isDayComplete ? '14%' : '16%') : undefined,
+                          backgroundColor: spark.color,
+                          width: spark.size,
+                          height: spark.size,
+                          opacity: sparkOpacity,
+                          transform: [{ translateX: sparkTranslateX }, { translateY: sparkTranslateY }],
+                        },
+                      ]}
+                    />
+                  );
+                }) : null}
+            </>
+          )}
         </View>
       ) : null}
 
-      <View pointerEvents="none" style={styles.centerWrap}>
-        <Animated.View
-          style={[
-            styles.checkGlow,
-            isDayComplete && styles.checkGlowDayComplete,
-            { opacity: glowOpacity, transform: [{ scale: glowScale }] },
-          ]}
-        />
-        <Animated.View
-          style={[
-            styles.checkBubble,
-            isDayComplete && styles.checkBubbleDayComplete,
-            { opacity: checkOpacity, transform: [{ scale: checkScale }] },
-          ]}
-        >
-          <Text style={styles.checkText}>✓</Text>
-        </Animated.View>
-      </View>
+      {SHOW_CELEBRATION_DEBUG ? (
+        <View pointerEvents="none" style={styles.debugBadge}>
+          <Text style={styles.debugText}>{debugInfo}</Text>
+        </View>
+      ) : null}
+
+      {shouldAttemptNativeDayComplete ? null : (
+        <View pointerEvents="none" style={styles.centerWrap}>
+          <Animated.View
+            style={[
+              styles.checkGlow,
+              isDayComplete && styles.checkGlowDayComplete,
+              { opacity: glowOpacity, transform: [{ scale: glowScale }] },
+            ]}
+          />
+          <Animated.View
+            style={[
+              styles.checkBubble,
+              isDayComplete && styles.checkBubbleDayComplete,
+              { opacity: checkOpacity, transform: [{ scale: checkScale }] },
+            ]}
+          >
+            <Text style={styles.checkText}>✓</Text>
+          </Animated.View>
+        </View>
+      )}
 
       <View style={styles.messageWrap} pointerEvents="box-none" testID="celebration-message">
         {isDayComplete ? (
-          <Pressable
-            onPress={onDismiss}
-            testID="celebration-dismiss"
-            style={[styles.messageCard, styles.messageCardDayComplete]}
-          >
-            <Animated.View style={{ opacity: messageOpacity, transform: [{ translateY: messageTranslateY }] }}>
+          <Animated.View style={messageAnimatedStyle}>
+            <Pressable
+              onPress={onDismiss}
+              testID="celebration-dismiss"
+              style={[styles.messageCard, styles.messageCardDayComplete]}
+            >
+              <LinearGradient
+                colors={['#7f5412', '#f8d66a', '#fff0aa', '#c48924', '#6f4510']}
+                locations={[0, 0.24, 0.5, 0.76, 1]}
+                start={{ x: 0.02, y: 0.08 }}
+                end={{ x: 0.98, y: 0.92 }}
+                style={styles.messageCardDayCompleteBackground}
+              />
+              <LinearGradient
+                colors={['rgba(255,255,255,0.46)', 'rgba(255,255,255,0.14)', 'rgba(255,255,255,0)']}
+                locations={[0, 0.45, 1]}
+                start={{ x: 0.06, y: 0.05 }}
+                end={{ x: 0.64, y: 0.66 }}
+                style={styles.messageCardDayCompleteSheen}
+              />
+              <View pointerEvents="none" style={styles.messageCardDayCompleteGlow} />
               <Text style={[styles.messageTitle, styles.messageTitleDayComplete]} testID="celebration-title">
                 {message.title}
               </Text>
               {message.subtitle ? (
-                <Text style={styles.messageSubtitle} testID="celebration-subtitle">
+                <Text style={[styles.messageSubtitle, styles.messageSubtitleDayComplete]} testID="celebration-subtitle">
                   {message.subtitle}
                 </Text>
               ) : null}
@@ -532,15 +742,15 @@ function CelebrationOverlay({
                   {message.progressLine}
                 </Text>
               ) : null}
-            </Animated.View>
-          </Pressable>
+            </Pressable>
+          </Animated.View>
         ) : (
           <Animated.View
             pointerEvents="none"
             style={[
               styles.messageCard,
               styles.messageCardTask,
-              { opacity: messageOpacity, transform: [{ translateY: messageTranslateY }] },
+              messageAnimatedStyle,
             ]}
           >
             <Text style={styles.messageTitle} testID="celebration-title">
@@ -575,6 +785,7 @@ export function CelebrationProvider({ children }: { children: React.ReactNode })
   const audioModuleRef = useRef<AudioModuleLike | null>(null);
   const warnedMissingAudioRef = useRef(false);
   const hapticsTimeoutRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const startedCelebrationIdRef = useRef<number | null>(null);
 
   const clearDismissTimer = useCallback(() => {
     if (!timeoutRef.current) return;
@@ -589,9 +800,11 @@ export function CelebrationProvider({ children }: { children: React.ReactNode })
 
   const dismissCelebration = useCallback(() => {
     clearDismissTimer();
+    clearHapticsTimers();
+    startedCelebrationIdRef.current = null;
     activeCelebrationRef.current = null;
     setActiveCelebration(null);
-  }, [clearDismissTimer]);
+  }, [clearDismissTimer, clearHapticsTimers]);
 
   useEffect(() => {
     let mounted = true;
@@ -757,17 +970,30 @@ export function CelebrationProvider({ children }: { children: React.ReactNode })
         totalToday: normalizeCount(input?.totalToday) ?? undefined,
         remainingToday: normalizeCount(input?.remainingToday) ?? undefined,
       };
+      clearDismissTimer();
+      startedCelebrationIdRef.current = null;
       activeCelebrationRef.current = nextCelebration;
       setActiveCelebration(nextCelebration);
       lastCelebrationAtRef.current = now;
+    },
+    [clearDismissTimer]
+  );
 
-      playCelebrationHaptics(type);
-      void playCelebrationSound(type);
+  const startCelebration = useCallback(
+    (celebration: ActiveCelebration) => {
+      if (startedCelebrationIdRef.current === celebration.id) {
+        return;
+      }
+
+      startedCelebrationIdRef.current = celebration.id;
+      playCelebrationHaptics(celebration.type);
+      void playCelebrationSound(celebration.type);
 
       clearDismissTimer();
-      const duration = type === 'dayComplete' ? DAY_COMPLETE_DURATION_MS : TASK_DURATION_MS;
+      const duration = celebration.type === 'dayComplete' ? DAY_COMPLETE_DURATION_MS : TASK_DURATION_MS;
       timeoutRef.current = setTimeout(() => {
-        if (activeCelebrationRef.current?.id !== nextCelebration.id) return;
+        if (activeCelebrationRef.current?.id !== celebration.id) return;
+        startedCelebrationIdRef.current = null;
         activeCelebrationRef.current = null;
         setActiveCelebration(null);
       }, duration);
@@ -792,6 +1018,7 @@ export function CelebrationProvider({ children }: { children: React.ReactNode })
                 <CelebrationOverlay
                   celebration={activeCelebration}
                   reduceMotionEnabled={reduceMotionEnabled}
+                  onStart={startCelebration}
                   onDismiss={dismissCelebration}
                 />
               )
@@ -807,6 +1034,7 @@ export function CelebrationProvider({ children }: { children: React.ReactNode })
                   <CelebrationOverlay
                     celebration={activeCelebration}
                     reduceMotionEnabled={reduceMotionEnabled}
+                    onStart={startCelebration}
                     onDismiss={dismissCelebration}
                   />
                 </Modal>
@@ -888,6 +1116,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 7,
   },
+  rocketWrapTask: {
+    bottom: -12,
+  },
   rocketBody: {
     width: 8,
     height: 34,
@@ -921,7 +1152,7 @@ const styles = StyleSheet.create({
   },
   burstRing: {
     position: 'absolute',
-    top: 24,
+    bottom: -55,
     marginLeft: -55,
     width: 110,
     height: 110,
@@ -929,9 +1160,17 @@ const styles = StyleSheet.create({
     borderWidth: 4,
     zIndex: 8,
   },
+  burstRingTask: {
+    marginLeft: -44,
+    width: 88,
+    height: 88,
+    bottom: -44,
+    borderRadius: 44,
+    borderWidth: 3,
+  },
   burstCore: {
     position: 'absolute',
-    top: 24,
+    bottom: -18,
     marginLeft: -18,
     width: 36,
     height: 36,
@@ -941,6 +1180,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.75,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 0 },
+  },
+  burstCoreTask: {
+    marginLeft: -14,
+    width: 28,
+    height: 28,
+    bottom: -14,
+    borderRadius: 14,
   },
   fountainSpark: {
     position: 'absolute',
@@ -952,73 +1198,160 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 0 },
   },
+  fountainSparkTask: {
+    bottom: 14,
+    shadowOpacity: 0.8,
+    shadowRadius: 12,
+  },
+  fountainEmitter: {
+    position: 'absolute',
+    bottom: 0,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(255, 214, 102, 0.28)',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 214, 102, 0.5)',
+    shadowColor: '#ffd166',
+    shadowOpacity: 0.95,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 0 },
+    zIndex: 7,
+  },
+  fountainEmitterLeft: {
+    left: '10%',
+  },
+  fountainEmitterRight: {
+    right: '10%',
+  },
+  fountainEmitterTask: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    bottom: 4,
+  },
+  debugBadge: {
+    position: 'absolute',
+    top: 18,
+    left: 12,
+    right: 12,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.56)',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    zIndex: 20,
+  },
+  debugText: {
+    color: '#fff',
+    fontSize: 11,
+    fontFamily: Platform.select({
+      ios: 'Menlo',
+      android: 'monospace',
+      default: 'monospace',
+    }),
+  },
   messageWrap: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
+    zIndex: 40,
+    elevation: 40,
   },
   messageCard: {
-    marginTop: 152,
-    width: '76%',
+    marginTop: 168,
+    width: '78%',
     maxWidth: 420,
-    borderRadius: 18,
-    paddingHorizontal: 20,
-    paddingVertical: 13,
-    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderRadius: 24,
+    paddingHorizontal: 26,
+    paddingVertical: 18,
+    backgroundColor: 'rgba(20,24,31,0.84)',
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.1)',
+    borderColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
   },
   messageCardTask: {
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.14,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
+    shadowColor: '#000',
+    shadowOpacity: 0.24,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 10 },
   },
   messageCardDayComplete: {
-    borderRadius: 22,
-    paddingHorizontal: 24,
-    paddingVertical: 18,
-    borderColor: 'rgba(15,23,42,0.14)',
-    shadowColor: '#000',
-    shadowOpacity: 0.22,
-    shadowRadius: 22,
+    borderRadius: 26,
+    paddingHorizontal: 28,
+    paddingVertical: 20,
+    borderColor: 'rgba(255,240,186,0.72)',
+    backgroundColor: '#d4a631',
+    overflow: 'hidden',
+    shadowColor: '#f4c84f',
+    shadowOpacity: 0.45,
+    shadowRadius: 28,
     shadowOffset: { width: 0, height: 14 },
   },
+  messageCardDayCompleteBackground: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  messageCardDayCompleteSheen: {
+    position: 'absolute',
+    top: -18,
+    left: -24,
+    width: '92%',
+    height: '72%',
+    transform: [{ rotate: '-9deg' }],
+  },
+  messageCardDayCompleteGlow: {
+    position: 'absolute',
+    left: 18,
+    right: 18,
+    bottom: -8,
+    height: 42,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,244,187,0.18)',
+  },
   messageTitle: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '800',
-    color: '#0f172a',
-    lineHeight: 28,
+    color: '#fff',
+    lineHeight: 26,
     letterSpacing: 0.2,
     textAlign: 'center',
   },
   messageTitleDayComplete: {
-    fontSize: 26,
-    lineHeight: 30,
+    fontSize: 23,
+    lineHeight: 28,
+    color: '#2f1c04',
+    textShadowColor: 'rgba(255,249,214,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   messageSubtitle: {
     marginTop: 8,
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#475569',
+    fontSize: 16,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.92)',
     lineHeight: 20,
     textAlign: 'center',
   },
+  messageSubtitleDayComplete: {
+    color: 'rgba(55,32,2,0.86)',
+  },
   messageProgress: {
-    marginTop: 8,
+    marginTop: 10,
     borderRadius: 999,
     overflow: 'hidden',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    fontSize: 13,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    fontSize: 14,
     fontWeight: '700',
-    color: '#0f172a',
-    backgroundColor: 'rgba(15, 23, 42, 0.08)',
+    color: '#fff',
+    backgroundColor: 'rgba(255,255,255,0.14)',
   },
   messageProgressDayComplete: {
-    marginTop: 10,
+    marginTop: 12,
+    color: '#2f1c04',
+    backgroundColor: 'rgba(255,247,218,0.52)',
+    borderWidth: 1,
+    borderColor: 'rgba(113,72,8,0.16)',
   },
   srOnly: {
     position: 'absolute',

@@ -6,7 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { fetchSelfFeedbackForTemplates, upsertSelfFeedback } from '@/services/feedbackService';
 import { useFootball } from '@/contexts/FootballContext';
 import { useCelebration } from '@/contexts/CelebrationContext';
-import { resolveCelebrationProgressAfterCompletion, resolveCelebrationTypeAfterCompletion } from '@/utils/celebration';
+import { resolveCelebrationAfterCompletionFromDatabase } from '@/utils/celebrationRuntime';
 import { FEEDBACK_SCORE_OPTIONS, normalizeFivePointScore } from '@/utils/scoreScale';
 import type { TaskTemplateSelfFeedback } from '@/types';
 
@@ -173,6 +173,44 @@ async function fetchTaskCompletion(taskInstanceId: string): Promise<boolean> {
   return false;
 }
 
+async function markTaskInstanceCompleted(taskInstanceId: string): Promise<void> {
+  if (!taskInstanceId) {
+    return;
+  }
+
+  const activityUpdate = await supabase
+    .from('activity_tasks')
+    .update({ completed: true })
+    .eq('id', taskInstanceId)
+    .select('id')
+    .maybeSingle();
+
+  if (activityUpdate.error) {
+    throw activityUpdate.error;
+  }
+
+  if (activityUpdate.data?.id) {
+    return;
+  }
+
+  const externalUpdate = await supabase
+    .from('external_event_tasks')
+    .update({ completed: true })
+    .eq('id', taskInstanceId)
+    .select('id')
+    .maybeSingle();
+
+  if (externalUpdate.error) {
+    throw externalUpdate.error;
+  }
+
+  if (externalUpdate.data?.id) {
+    return;
+  }
+
+  throw new Error(`Task completion update matched no rows for taskInstanceId ${taskInstanceId}`);
+}
+
 type AfterTrainingFeedbackConfig = {
   enableScore: boolean;
   scoreExplanation?: string | null;
@@ -197,10 +235,8 @@ function buildFeedbackConfig(row?: any): AfterTrainingFeedbackConfig {
 export default function TaskFeedbackNoteScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { refreshData, currentWeekStats } = useFootball();
+  const { refreshData } = useFootball();
   const { showCelebration } = useCelebration();
-  const completedTasksToday = Math.max(0, Number((currentWeekStats as any)?.completedTasks ?? 0));
-  const totalTasksToday = Math.max(0, Number((currentWeekStats as any)?.totalTasks ?? 0));
 
   const activityId = useMemo(
     () => decodeParam((params as any).activityId ?? (params as any).activity_id ?? (params as any).id),
@@ -473,18 +509,7 @@ export default function TaskFeedbackNoteScreen() {
         }
 
         if (normalizedTaskInstanceId) {
-          try {
-            await supabase
-              .from('activity_tasks')
-              .update({ completed: true })
-              .eq('id', normalizedTaskInstanceId);
-          } catch {}
-          try {
-            await supabase
-              .from('external_event_tasks')
-              .update({ completed: true })
-              .eq('id', normalizedTaskInstanceId);
-          } catch {}
+          await markTaskInstanceCompleted(normalizedTaskInstanceId);
         }
 
         DeviceEventEmitter.emit('progression:refresh', {
@@ -495,23 +520,28 @@ export default function TaskFeedbackNoteScreen() {
         });
 
         const completingToDone = initialScore === null && initialNote.trim().length === 0;
-        const celebrationType = resolveCelebrationTypeAfterCompletion({
-          completedTasks: completedTasksToday,
-          totalTasks: totalTasksToday,
-          completingToDone,
-        });
-        const celebrationProgress = resolveCelebrationProgressAfterCompletion({
-          completedTasks: completedTasksToday,
-          totalTasks: totalTasksToday,
-          completingToDone,
-        });
         safeDismiss();
-        if (celebrationType) {
-          setTimeout(() => {
-            showCelebration({ type: celebrationType, ...(celebrationProgress ?? {}) });
-          }, 280);
-        }
         Promise.resolve(refreshData()).catch(() => {});
+        void resolveCelebrationAfterCompletionFromDatabase({
+          completedTaskId: effectiveTaskInstanceId,
+          completingToDone,
+          includeOverdue: false,
+        })
+          .then((celebrationDecision) => {
+            const celebrationType = celebrationDecision.type;
+            if (!celebrationType) {
+              return;
+            }
+
+            setTimeout(() => {
+              showCelebration({ type: celebrationType, ...(celebrationDecision.progress ?? {}) });
+            }, 280);
+          })
+          .catch((error) => {
+            if (__DEV__) {
+              console.warn('[task-feedback-note] celebration resolution failed', error);
+            }
+          });
         return;
       } catch (e) {
         if (__DEV__) {
@@ -542,8 +572,6 @@ export default function TaskFeedbackNoteScreen() {
     [
       activityId,
       activityIdCandidates,
-      completedTasksToday,
-      totalTasksToday,
       refreshData,
       initialNote,
       initialScore,

@@ -6,8 +6,6 @@ module.exports = ({ config }) => {
   const pickFirst = value => (Array.isArray(value) ? value[0] : value);
   const scheme = pickFirst(config.scheme) || 'footballcoach';
   const expoVersion = '1.0.5';
-  const iosBuildNumber = '6';
-  const androidVersionCode = 6;
   const easProjectId =
     config?.extra?.eas?.projectId || '56add269-43c8-4368-9edc-3913dac2f57c';
   const updatesUrl = `https://u.expo.dev/${easProjectId}`;
@@ -27,9 +25,7 @@ module.exports = ({ config }) => {
   return {
     ...config,
     version: expoVersion,
-    runtimeVersion: {
-      policy: 'appVersion',
-    },
+    runtimeVersion: expoVersion,
     updates: {
       ...(config.updates ?? {}),
       enabled: true,
@@ -38,14 +34,6 @@ module.exports = ({ config }) => {
       fallbackToCacheTimeout: 0,
     },
     scheme,
-    ios: {
-      ...config.ios,
-      buildNumber: iosBuildNumber,
-    },
-    android: {
-      ...config.android,
-      versionCode: androidVersionCode,
-    },
     plugins,
     extra: {
       ...(config.extra ?? {}),

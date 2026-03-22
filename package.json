@@ -2,6 +2,17 @@
   "name": "Natively",
   "version": "1.0.5",
   "main": "expo-router/entry",
+  "codegenConfig": {
+    "name": "NativelySpecs",
+    "type": "components",
+    "jsSrcsDir": "components",
+    "ios": {
+      "componentProvider": {
+        "IOSPremiumConfettiView": "IOSPremiumConfettiComponentView",
+        "IOSLastTaskCelebrationView": "IOSLastTaskCelebrationComponentView"
+      }
+    }
+  },
   "scripts": {
     "dev": "EXPO_NO_TELEMETRY=1 expo start --clear --tunnel",
     "android": "EXPO_NO_TELEMETRY=1 expo start --android",
@@ -56,7 +67,6 @@
     "@types/difflib": "^0.2.7",
     "date-fns": "^4.1.0",
     "difflib": "^0.2.4",
-    "eas": "^0.1.0",
     "expo": "~54.0.33",
     "expo-av": "~16.0.8",
     "expo-blur": "^15.0.6",

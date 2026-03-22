@@ -1,0 +1,384 @@
+import QuartzCore
+import UIKit
+
+@objc(IOSLastTaskCelebrationContentView)
+@objcMembers
+final class IOSLastTaskCelebrationContentView: UIView {
+  @objc var burstKey: NSNumber = 0 {
+    didSet {
+      let nextKey = burstKey.intValue
+      if hasAutoplayedCurrentAttachment && lastBurstKey == 0 {
+        lastBurstKey = nextKey
+        return
+      }
+      guard nextKey != lastBurstKey else { return }
+      lastBurstKey = nextKey
+      playSequence()
+    }
+  }
+
+  @objc var debugEnabled: Bool = false {
+    didSet {
+      updateDebugBadge(reason: "debug-toggle")
+    }
+  }
+
+  @objc var debugInfo: NSString = "" {
+    didSet {
+      updateDebugBadge(reason: "debug-info")
+    }
+  }
+
+  private let effectLayer = CALayer()
+  private lazy var debugLabel: UILabel = {
+    let label = UILabel()
+    label.backgroundColor = UIColor.black.withAlphaComponent(0.6)
+    label.textColor = .white
+    label.font = UIFont.monospacedSystemFont(ofSize: 10, weight: .semibold)
+    label.numberOfLines = 0
+    label.layer.cornerRadius = 8
+    label.layer.masksToBounds = true
+    label.isHidden = true
+    return label
+  }()
+
+  private var cleanupWorkItems: [DispatchWorkItem] = []
+  private var activeLayers: [CALayer] = []
+  private var hasAutoplayedCurrentAttachment = false
+  private var lastBurstKey = 0
+  private var reduceMotionObserver: NSObjectProtocol?
+
+  private let gold = UIColor(red: 1.00, green: 0.82, blue: 0.36, alpha: 1.00)
+  private let warmGold = UIColor(red: 1.00, green: 0.70, blue: 0.27, alpha: 1.00)
+  private let silver = UIColor(red: 0.84, green: 0.87, blue: 0.92, alpha: 1.00)
+  private let coolSilver = UIColor(red: 0.73, green: 0.79, blue: 0.88, alpha: 1.00)
+  private let pearl = UIColor(red: 0.97, green: 0.98, blue: 1.00, alpha: 1.00)
+
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    commonInit()
+  }
+
+  required init?(coder: NSCoder) {
+    super.init(coder: coder)
+    commonInit()
+  }
+
+  override func layoutSubviews() {
+    super.layoutSubviews()
+    effectLayer.frame = bounds
+    debugLabel.frame = CGRect(x: 12, y: 16, width: max(bounds.width - 24, 120), height: 44)
+    activeLayers.forEach { layer in
+      if let confettiLayer = layer as? IOSReferenceConfettiLayer {
+        confettiLayer.frame = bounds
+      } else if let gradientLayer = layer as? CAGradientLayer {
+        gradientLayer.frame = bounds
+        layer.frame = bounds
+      }
+    }
+  }
+
+  override func didMoveToWindow() {
+    super.didMoveToWindow()
+
+    if window == nil {
+      debugLog("detached from window")
+      hasAutoplayedCurrentAttachment = false
+      lastBurstKey = 0
+      teardownEffects()
+      updateDebugBadge(reason: "detached")
+      return
+    }
+
+    debugLog("attached to window")
+    updateDebugBadge(reason: "attached")
+
+    guard !hasAutoplayedCurrentAttachment else { return }
+    hasAutoplayedCurrentAttachment = true
+
+    DispatchQueue.main.async { [weak self] in
+      self?.playSequence()
+    }
+  }
+
+  deinit {
+    teardownEffects()
+
+    if let reduceMotionObserver {
+      NotificationCenter.default.removeObserver(reduceMotionObserver)
+    }
+  }
+
+  private func commonInit() {
+    accessibilityIdentifier = "ios-last-task-celebration-content-view"
+    isUserInteractionEnabled = false
+    isAccessibilityElement = false
+    backgroundColor = .clear
+    clipsToBounds = false
+    contentScaleFactor = UIScreen.main.scale
+    effectLayer.frame = bounds
+    effectLayer.masksToBounds = false
+    layer.addSublayer(effectLayer)
+    addSubview(debugLabel)
+    installReduceMotionObserver()
+    updateDebugBadge(reason: "init")
+  }
+
+  private var shouldReduceMotion: Bool {
+    UIAccessibility.isReduceMotionEnabled
+  }
+
+  private var fountainPalette: [UIColor] {
+    [gold, warmGold, silver, coolSilver, pearl]
+  }
+
+  private var shimmerPalette: [UIColor] {
+    [gold.withAlphaComponent(0.92), silver, pearl]
+  }
+
+  private func installReduceMotionObserver() {
+    reduceMotionObserver = NotificationCenter.default.addObserver(
+      forName: UIAccessibility.reduceMotionStatusDidChangeNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      guard let self else { return }
+      self.debugLog("reduce motion changed \(self.shouldReduceMotion ? "on" : "off")")
+      if self.shouldReduceMotion {
+        self.teardownEffects()
+      }
+      self.updateDebugBadge(reason: "reduce-motion")
+    }
+  }
+
+  private func playSequence() {
+    if shouldReduceMotion {
+      debugLog("sequence skipped because reduce motion is enabled")
+      updateDebugBadge(reason: "reduce-motion-blocked")
+      return
+    }
+
+    guard bounds.width > 0, bounds.height > 0 else {
+      DispatchQueue.main.async { [weak self] in
+        self?.playSequence()
+      }
+      return
+    }
+
+    debugLog("play sequence key=\(burstKey)")
+    teardownEffects()
+    addBackdropGlow()
+    addCenterBursts()
+    addMiddleExplosion()
+
+    schedule(after: 2.35) { [weak self] in
+      self?.teardownEffects()
+    }
+
+    updateDebugBadge(reason: "sequence")
+  }
+
+  func resetForRecycle() {
+    hasAutoplayedCurrentAttachment = false
+    lastBurstKey = 0
+    burstKey = 0
+    debugEnabled = false
+    debugInfo = ""
+    teardownEffects()
+  }
+
+  private func teardownEffects() {
+    cleanupWorkItems.forEach { $0.cancel() }
+    cleanupWorkItems = []
+
+    activeLayers.forEach { layer in
+      layer.removeAllAnimations()
+      layer.removeFromSuperlayer()
+    }
+    activeLayers.removeAll()
+
+    effectLayer.removeAllAnimations()
+    effectLayer.sublayers?.forEach { sublayer in
+      sublayer.removeAllAnimations()
+      sublayer.removeFromSuperlayer()
+    }
+
+    updateDebugBadge(reason: "teardown")
+  }
+
+  private func addBackdropGlow() {
+    let gradient = CAGradientLayer()
+    gradient.frame = bounds
+    gradient.zPosition = 0
+    gradient.colors = [
+      UIColor.black.withAlphaComponent(0.04).cgColor,
+      UIColor(red: 1.00, green: 0.84, blue: 0.44, alpha: 0.10).cgColor,
+      UIColor.black.withAlphaComponent(0.08).cgColor,
+    ]
+    gradient.locations = [0.0, 0.58, 1.0]
+    gradient.startPoint = CGPoint(x: 0.5, y: 0.15)
+    gradient.endPoint = CGPoint(x: 0.5, y: 1.0)
+    gradient.opacity = 0
+    effectLayer.addSublayer(gradient)
+    activeLayers.append(gradient)
+
+    let opacity = CABasicAnimation(keyPath: "opacity")
+    opacity.fromValue = 0
+    opacity.toValue = 1
+    opacity.duration = 0.22
+    opacity.autoreverses = true
+    opacity.beginTime = CACurrentMediaTime() + 0.1
+    opacity.isRemovedOnCompletion = false
+    opacity.fillMode = .forwards
+    gradient.add(opacity, forKey: "opacity")
+  }
+
+  private func addCenterBursts() {
+    let points = [
+      CGPoint(x: bounds.midX, y: -26),
+      CGPoint(x: bounds.midX, y: bounds.height * 0.06),
+    ]
+
+    points.enumerated().forEach { index, point in
+      schedule(after: 0.08 + (Double(index) * 0.12)) { [weak self] in
+        guard let self else { return }
+        let burst = self.makeBurstLayer(
+          origin: point,
+          particleCount: index == 0 ? 156 : 120,
+          emitterWidth: index == 0 ? self.bounds.width * 0.96 : self.bounds.width * 0.84
+        )
+        self.effectLayer.addSublayer(burst)
+        self.activeLayers.append(burst)
+        burst.startEmission()
+      }
+    }
+  }
+
+  private func addMiddleExplosion() {
+    let origin = CGPoint(x: bounds.midX, y: bounds.height * 0.58)
+
+    schedule(after: 0.12) { [weak self] in
+      guard let self else { return }
+      let layers = self.makeMiddleExplosionLayers(origin: origin)
+      layers.forEach { emitter in
+        self.effectLayer.addSublayer(emitter)
+        self.activeLayers.append(emitter)
+        emitter.startEmission()
+      }
+    }
+  }
+
+  private func makeMiddleExplosionLayers(origin: CGPoint) -> [IOSReferenceConfettiLayer] {
+    var primary = IOSReferenceConfettiConfiguration()
+    primary.particleCount = 164
+    primary.spread = .pi * 2
+    primary.gravity = 760
+    primary.startVelocity = 1280
+    primary.velocityDecay = 0.34
+    primary.drift = 0
+    primary.scale = 0.7
+    primary.scaleRange = 0.28
+    primary.lifetime = 8.6
+    primary.gravityAnimationDuration = 1.6
+    primary.birthRateAnimationDuration = 0.78
+    primary.spin = .pi * 2.6
+    primary.spinRange = .pi * 2.8
+    primary.origin = origin
+    primary.angle = 0
+    primary.emitterSize = CGSize(width: 20, height: 20)
+
+    var shimmer = IOSReferenceConfettiConfiguration()
+    shimmer.particleCount = 92
+    shimmer.spread = .pi * 2
+    shimmer.gravity = 620
+    shimmer.startVelocity = 980
+    shimmer.velocityDecay = 0.28
+    shimmer.drift = 0
+    shimmer.scale = 0.48
+    shimmer.scaleRange = 0.22
+    shimmer.lifetime = 9.2
+    shimmer.gravityAnimationDuration = 1.9
+    shimmer.birthRateAnimationDuration = 0.92
+    shimmer.spin = .pi * 2.1
+    shimmer.spinRange = .pi * 2.4
+    shimmer.origin = origin
+    shimmer.angle = 0
+    shimmer.emitterSize = CGSize(width: 16, height: 16)
+
+    let mainEmitter = makeReferenceConfettiLayer(
+      primary,
+      emitters: IOSReferenceConfettiFactory.fountainEmitters(colors: fountainPalette),
+      zPosition: 16,
+      renderMode: .unordered
+    )
+    let shimmerEmitter = makeReferenceConfettiLayer(
+      shimmer,
+      emitters: IOSReferenceConfettiFactory.fountainEmitters(colors: shimmerPalette),
+      zPosition: 18,
+      renderMode: .additive
+    )
+
+    return [mainEmitter, shimmerEmitter]
+  }
+
+  private func makeBurstLayer(origin: CGPoint, particleCount: Int, emitterWidth: CGFloat) -> IOSReferenceConfettiLayer {
+    var configuration = IOSReferenceConfettiConfiguration()
+    configuration.particleCount = particleCount
+    configuration.spread = .pi / 1.45
+    configuration.gravity = 580
+    configuration.startVelocity = 860
+    configuration.velocityDecay = 0.44
+    configuration.scale = 0.48
+    configuration.scaleRange = 0.18
+    configuration.lifetime = 7.2
+    configuration.gravityAnimationDuration = 0.7
+    configuration.birthRateAnimationDuration = 0.34
+    configuration.spin = .pi * 2.4
+    configuration.spinRange = .pi * 2.6
+    configuration.origin = origin
+    configuration.angle = .pi / 2
+    configuration.emitterSize = CGSize(width: emitterWidth, height: 1)
+
+    return makeReferenceConfettiLayer(
+      configuration,
+      emitters: IOSReferenceConfettiFactory.premiumEmitters(colors: fountainPalette),
+      zPosition: 12,
+      renderMode: .unordered
+    )
+  }
+
+  private func makeReferenceConfettiLayer(
+    _ configuration: IOSReferenceConfettiConfiguration,
+    emitters: [IOSReferenceConfettiEmitter],
+    zPosition: CGFloat,
+    renderMode: CAEmitterLayerRenderMode
+  ) -> IOSReferenceConfettiLayer {
+    let emitter = IOSReferenceConfettiLayer(emitters, .top, configuration: configuration)
+    emitter.frame = bounds
+    emitter.masksToBounds = false
+    emitter.renderMode = renderMode
+    emitter.zPosition = zPosition
+    return emitter
+  }
+
+  private func debugLog(_ message: String) {
+    NSLog("[IOSLastTaskCelebrationContentView] %@", message)
+  }
+
+  private func updateDebugBadge(reason: String) {
+    guard debugEnabled else {
+      debugLabel.isHidden = true
+      return
+    }
+
+    debugLabel.isHidden = false
+    debugLabel.text = "native-day \(reason)\n\(debugInfo) reduce=\(shouldReduceMotion ? 1 : 0)"
+    bringSubviewToFront(debugLabel)
+  }
+
+  private func schedule(after delay: TimeInterval, block: @escaping () -> Void) {
+    let workItem = DispatchWorkItem(block: block)
+    cleanupWorkItems.append(workItem)
+    DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+  }
+}
