@@ -206,8 +206,8 @@ final class IOSPremiumConfettiContentView: UIView {
     let topOrigin = CGPoint(x: width * 0.5, y: -24)
 
     var primary = IOSReferenceConfettiConfiguration()
-    primary.particleCount = 40
-    primary.spread = .pi / 1.4
+    primary.particleCount = 132
+    primary.spread = .pi / 1.32
     primary.gravity = 825
     primary.startVelocity = 1180
     primary.velocityDecay = 0.48
@@ -215,16 +215,16 @@ final class IOSPremiumConfettiContentView: UIView {
     primary.scaleRange = 0.28
     primary.lifetime = 10.2
     primary.gravityAnimationDuration = 2.6
-    primary.birthRateAnimationDuration = 0.34
+    primary.birthRateAnimationDuration = 0.46
     primary.spin = .pi * 2.8
     primary.spinRange = .pi * 2.8
     primary.origin = topOrigin
     primary.angle = .pi / 2
-    primary.emitterSize = CGSize(width: width * 0.92, height: 1)
+    primary.emitterSize = CGSize(width: width * 0.98, height: 1)
 
     var secondary = IOSReferenceConfettiConfiguration()
-    secondary.particleCount = 32
-    secondary.spread = .pi / 1.5
+    secondary.particleCount = 96
+    secondary.spread = .pi / 1.42
     secondary.gravity = 690
     secondary.startVelocity = 980
     secondary.velocityDecay = 0.34
@@ -233,16 +233,16 @@ final class IOSPremiumConfettiContentView: UIView {
     secondary.scaleRange = 0.22
     secondary.lifetime = 11.1
     secondary.gravityAnimationDuration = 3.1
-    secondary.birthRateAnimationDuration = 0.42
+    secondary.birthRateAnimationDuration = 0.56
     secondary.spin = .pi * 2.2
     secondary.spinRange = .pi * 2.6
     secondary.origin = topOrigin
     secondary.angle = .pi / 2
-    secondary.emitterSize = CGSize(width: width * 0.78, height: 1)
+    secondary.emitterSize = CGSize(width: width * 0.90, height: 1)
 
     var tertiary = IOSReferenceConfettiConfiguration()
-    tertiary.particleCount = 24
-    tertiary.spread = .pi / 1.6
+    tertiary.particleCount = 72
+    tertiary.spread = .pi / 1.5
     tertiary.gravity = 560
     tertiary.startVelocity = 760
     tertiary.velocityDecay = 0.26
@@ -251,12 +251,12 @@ final class IOSPremiumConfettiContentView: UIView {
     tertiary.scaleRange = 0.18
     tertiary.lifetime = 12.9
     tertiary.gravityAnimationDuration = 3.6
-    tertiary.birthRateAnimationDuration = 0.5
+    tertiary.birthRateAnimationDuration = 0.64
     tertiary.spin = .pi * 1.8
     tertiary.spinRange = .pi * 2.3
     tertiary.origin = topOrigin
     tertiary.angle = .pi / 2
-    tertiary.emitterSize = CGSize(width: width * 0.66, height: 1)
+    tertiary.emitterSize = CGSize(width: width * 0.80, height: 1)
 
     return [primary, secondary, tertiary]
   }

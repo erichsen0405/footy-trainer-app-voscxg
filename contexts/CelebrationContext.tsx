@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { NativeModulesProxy } from 'expo-modules-core';
 import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   IOSLastTaskCelebrationView,
   getIOSLastTaskCelebrationDiagnostics,
@@ -708,12 +709,27 @@ function CelebrationOverlay({
             testID="celebration-dismiss"
             style={[styles.messageCard, styles.messageCardDayComplete]}
           >
+            <LinearGradient
+              colors={['#7f5412', '#f8d66a', '#fff0aa', '#c48924', '#6f4510']}
+              locations={[0, 0.24, 0.5, 0.76, 1]}
+              start={{ x: 0.02, y: 0.08 }}
+              end={{ x: 0.98, y: 0.92 }}
+              style={styles.messageCardDayCompleteBackground}
+            />
+            <LinearGradient
+              colors={['rgba(255,255,255,0.46)', 'rgba(255,255,255,0.14)', 'rgba(255,255,255,0)']}
+              locations={[0, 0.45, 1]}
+              start={{ x: 0.06, y: 0.05 }}
+              end={{ x: 0.64, y: 0.66 }}
+              style={styles.messageCardDayCompleteSheen}
+            />
+            <View pointerEvents="none" style={styles.messageCardDayCompleteGlow} />
             <Animated.View style={{ opacity: messageOpacity, transform: [{ translateY: messageTranslateY }] }}>
               <Text style={[styles.messageTitle, styles.messageTitleDayComplete]} testID="celebration-title">
                 {message.title}
               </Text>
               {message.subtitle ? (
-                <Text style={styles.messageSubtitle} testID="celebration-subtitle">
+                <Text style={[styles.messageSubtitle, styles.messageSubtitleDayComplete]} testID="celebration-subtitle">
                   {message.subtitle}
                 </Text>
               ) : null}
@@ -1259,11 +1275,33 @@ const styles = StyleSheet.create({
     borderRadius: 26,
     paddingHorizontal: 28,
     paddingVertical: 20,
-    borderColor: 'rgba(255,255,255,0.1)',
-    shadowColor: '#000',
-    shadowOpacity: 0.28,
-    shadowRadius: 26,
+    borderColor: 'rgba(255,240,186,0.72)',
+    backgroundColor: '#d4a631',
+    overflow: 'hidden',
+    shadowColor: '#f4c84f',
+    shadowOpacity: 0.45,
+    shadowRadius: 28,
     shadowOffset: { width: 0, height: 14 },
+  },
+  messageCardDayCompleteBackground: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  messageCardDayCompleteSheen: {
+    position: 'absolute',
+    top: -18,
+    left: -24,
+    width: '92%',
+    height: '72%',
+    transform: [{ rotate: '-9deg' }],
+  },
+  messageCardDayCompleteGlow: {
+    position: 'absolute',
+    left: 18,
+    right: 18,
+    bottom: -8,
+    height: 42,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,244,187,0.18)',
   },
   messageTitle: {
     fontSize: 22,
@@ -1276,6 +1314,10 @@ const styles = StyleSheet.create({
   messageTitleDayComplete: {
     fontSize: 23,
     lineHeight: 28,
+    color: '#2f1c04',
+    textShadowColor: 'rgba(255,249,214,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   messageSubtitle: {
     marginTop: 8,
@@ -1284,6 +1326,9 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.92)',
     lineHeight: 20,
     textAlign: 'center',
+  },
+  messageSubtitleDayComplete: {
+    color: 'rgba(55,32,2,0.86)',
   },
   messageProgress: {
     marginTop: 10,
@@ -1298,6 +1343,10 @@ const styles = StyleSheet.create({
   },
   messageProgressDayComplete: {
     marginTop: 12,
+    color: '#2f1c04',
+    backgroundColor: 'rgba(255,247,218,0.52)',
+    borderWidth: 1,
+    borderColor: 'rgba(113,72,8,0.16)',
   },
   srOnly: {
     position: 'absolute',

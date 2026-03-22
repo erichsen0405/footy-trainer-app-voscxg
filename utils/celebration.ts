@@ -12,6 +12,21 @@ export interface CelebrationProgress {
   remainingToday: number;
 }
 
+export interface CelebrationUnitForCompletionCheck {
+  key: string;
+  completed: boolean;
+  activityDate?: string | null;
+}
+
+export interface CelebrationFromUnitsInput {
+  units: CelebrationUnitForCompletionCheck[];
+  completedUnitKey: string;
+  completingToDone: boolean;
+  now?: Date;
+  timezoneOffsetMinutes?: number;
+  includeOverdue?: boolean;
+}
+
 export interface DayTaskForCompletionCheck {
   id: string;
   completed: boolean;
@@ -31,10 +46,10 @@ export interface ActivityForCelebrationCheck {
   date?: Date | string | null;
   activityDate?: Date | string | null;
   activity_date?: Date | string | null;
-  tasks?: Array<{
+  tasks?: {
     id: string;
     completed: boolean;
-  }> | null;
+  }[] | null;
 }
 
 export interface CelebrationFromActivitiesInput {
@@ -48,7 +63,14 @@ export interface CelebrationFromActivitiesInput {
   includeOverdue?: boolean;
 }
 
+export type CelebrationCompletionUnitKind = 'task' | 'internalIntensity' | 'externalIntensity';
+
 const pad2 = (value: number): string => String(value).padStart(2, '0');
+
+export const buildCelebrationCompletionUnitKey = (
+  kind: CelebrationCompletionUnitKind,
+  sourceId: string
+): string => `${kind}:${String(sourceId ?? '').trim()}`;
 
 function toDateKeyWithOffset(date: Date, timezoneOffsetMinutes: number): string {
   const shifted = new Date(date.getTime() - timezoneOffsetMinutes * 60_000);
@@ -225,6 +247,75 @@ export function resolveCelebrationAfterCompletionFromActivities(
 
   return {
     type,
+    progress: {
+      completedToday,
+      totalToday,
+      remainingToday,
+    },
+  };
+}
+
+export function resolveCelebrationAfterCompletionFromUnits(
+  input: CelebrationFromUnitsInput
+): { type: CelebrationType | null; progress: CelebrationProgress | null } {
+  if (!input.completingToDone) {
+    return { type: null, progress: null };
+  }
+
+  const units = (Array.isArray(input.units) ? input.units : []).filter(
+    (unit) => typeof unit?.key === 'string' && unit.key.trim().length > 0
+  );
+  if (!units.length) {
+    return { type: null, progress: null };
+  }
+
+  const completedUnitKey = String(input.completedUnitKey ?? '').trim();
+  if (!completedUnitKey) {
+    return { type: null, progress: null };
+  }
+
+  const now = input.now instanceof Date ? input.now : new Date();
+  const timezoneOffsetMinutes =
+    typeof input.timezoneOffsetMinutes === 'number' && Number.isFinite(input.timezoneOffsetMinutes)
+      ? input.timezoneOffsetMinutes
+      : now.getTimezoneOffset();
+  const includeOverdue = input.includeOverdue === true;
+  const todayKey = toDateKeyWithOffset(now, timezoneOffsetMinutes);
+
+  const relevantUnits = units.filter((unit) => {
+    const unitKey = resolveTaskDateKey(unit.activityDate ?? null, timezoneOffsetMinutes);
+    if (!unitKey) return false;
+    return includeOverdue ? unitKey <= todayKey : unitKey === todayKey;
+  });
+  if (!relevantUnits.length) {
+    return { type: null, progress: null };
+  }
+
+  const completedUnit = relevantUnits.find((unit) => unit.key === completedUnitKey);
+  if (!completedUnit) {
+    return { type: null, progress: null };
+  }
+
+  const pseudoTasks = relevantUnits.map((unit) => ({
+    id: unit.key,
+    completed: unit.completed,
+    activityDate: unit.activityDate ?? null,
+  }));
+
+  const completedToday = relevantUnits.filter((unit) => unit.completed || unit.key === completedUnitKey).length;
+  const totalToday = relevantUnits.length;
+  const remainingToday = Math.max(0, totalToday - completedToday);
+
+  return {
+    type: isLastTaskOfDayAfterCompletion({
+      tasks: pseudoTasks,
+      completedTaskId: completedUnitKey,
+      now,
+      timezoneOffsetMinutes,
+      includeOverdue,
+    })
+      ? 'dayComplete'
+      : 'task',
     progress: {
       completedToday,
       totalToday,

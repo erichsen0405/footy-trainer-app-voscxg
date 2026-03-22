@@ -24,7 +24,7 @@ import { subscribeToTaskCompletion, emitTaskCompletionEvent } from '@/utils/task
 import { emitActivityPatch, emitActivitiesRefreshRequested } from '@/utils/activityEvents';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { isTaskVisibleForActivity } from '@/utils/taskTemplateVisibility';
-import { resolveCelebrationAfterCompletionFromActivities } from '@/utils/celebration';
+import { resolveCelebrationAfterCompletionFromDatabase } from '@/utils/celebrationRuntime';
 
 type ExternalTaskForPerformance = {
   id?: string | number | null;
@@ -1756,13 +1756,10 @@ export const useFootballData = () => {
         });
 
         const completingToDone = targetState === true && previousState !== true;
-        const celebrationDecision = resolveCelebrationAfterCompletionFromActivities({
-          activities: todayActivities,
+        const celebrationDecision = await resolveCelebrationAfterCompletionFromDatabase({
           completedTaskId: taskId,
           completingToDone,
           includeOverdue: false,
-          fallbackCompletedTasks: currentWeekStats.completedTasks,
-          fallbackTotalTasks: currentWeekStats.totalTasks,
         });
         if (celebrationDecision.type) {
           showCelebration({ type: celebrationDecision.type, ...(celebrationDecision.progress ?? {}) });
@@ -1779,7 +1776,7 @@ export const useFootballData = () => {
         throw error;
       }
     },
-    [currentWeekStats.completedTasks, currentWeekStats.totalTasks, findTaskCompletionState, refreshData, showCelebration, todayActivities]
+    [findTaskCompletionState, refreshData, showCelebration]
   );
 
   const setTaskCompletion = useCallback(

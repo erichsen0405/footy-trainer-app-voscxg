@@ -244,8 +244,8 @@ final class IOSLastTaskCelebrationContentView: UIView {
         guard let self else { return }
         let burst = self.makeBurstLayer(
           origin: point,
-          particleCount: index == 0 ? 48 : 36,
-          emitterWidth: index == 0 ? self.bounds.width * 0.86 : self.bounds.width * 0.72
+          particleCount: index == 0 ? 156 : 120,
+          emitterWidth: index == 0 ? self.bounds.width * 0.96 : self.bounds.width * 0.84
         )
         self.effectLayer.addSublayer(burst)
         self.activeLayers.append(burst)
@@ -272,50 +272,50 @@ final class IOSLastTaskCelebrationContentView: UIView {
 
   private func makeFountainLayers(origin: CGPoint, angle: CGFloat, drift: CGFloat) -> [IOSReferenceConfettiLayer] {
     var primary = IOSReferenceConfettiConfiguration()
-    primary.particleCount = 40
-    primary.spread = 0.16
+    primary.particleCount = 96
+    primary.spread = 0.14
     primary.gravity = 1100
-    primary.startVelocity = 1360
-    primary.velocityDecay = 0.46
+    primary.startVelocity = 1540
+    primary.velocityDecay = 0.4
     primary.drift = drift
     primary.scale = 0.72
     primary.scaleRange = 0.3
     primary.lifetime = 8.1
     primary.gravityAnimationDuration = 1.7
-    primary.birthRateAnimationDuration = 0.64
+    primary.birthRateAnimationDuration = 0.92
     primary.spin = .pi * 2.4
     primary.spinRange = .pi * 2.7
     primary.origin = origin
     primary.angle = angle
-    primary.emitterSize = CGSize(width: 16, height: 16)
+    primary.emitterSize = CGSize(width: 24, height: 24)
 
     var shimmer = IOSReferenceConfettiConfiguration()
-    shimmer.particleCount = 24
-    shimmer.spread = 0.14
+    shimmer.particleCount = 56
+    shimmer.spread = 0.12
     shimmer.gravity = 890
-    shimmer.startVelocity = 1120
-    shimmer.velocityDecay = 0.32
+    shimmer.startVelocity = 1320
+    shimmer.velocityDecay = 0.24
     shimmer.drift = drift * 0.8
     shimmer.scale = 0.46
     shimmer.scaleRange = 0.2
     shimmer.lifetime = 8.9
     shimmer.gravityAnimationDuration = 2.0
-    shimmer.birthRateAnimationDuration = 0.72
+    shimmer.birthRateAnimationDuration = 1.04
     shimmer.spin = .pi * 2.0
     shimmer.spinRange = .pi * 2.2
     shimmer.origin = origin
     shimmer.angle = angle
-    shimmer.emitterSize = CGSize(width: 14, height: 14)
+    shimmer.emitterSize = CGSize(width: 20, height: 20)
 
     let mainEmitter = makeReferenceConfettiLayer(
       primary,
-      emitters: IOSReferenceConfettiFactory.premiumEmitters(colors: fountainPalette),
+      emitters: IOSReferenceConfettiFactory.fountainEmitters(colors: fountainPalette),
       zPosition: 16,
       renderMode: .unordered
     )
     let shimmerEmitter = makeReferenceConfettiLayer(
       shimmer,
-      emitters: IOSReferenceConfettiFactory.defaultEmitters(colors: shimmerPalette),
+      emitters: IOSReferenceConfettiFactory.fountainEmitters(colors: shimmerPalette),
       zPosition: 18,
       renderMode: .additive
     )
@@ -334,7 +334,7 @@ final class IOSLastTaskCelebrationContentView: UIView {
     configuration.scaleRange = 0.18
     configuration.lifetime = 7.2
     configuration.gravityAnimationDuration = 0.7
-    configuration.birthRateAnimationDuration = 0.2
+    configuration.birthRateAnimationDuration = 0.34
     configuration.spin = .pi * 2.4
     configuration.spinRange = .pi * 2.6
     configuration.origin = origin

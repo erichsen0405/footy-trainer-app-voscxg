@@ -5,7 +5,7 @@ import { TaskScoreNoteModal, type TaskScoreNoteModalPayload } from '@/components
 import { supabase } from '@/integrations/supabase/client';
 import { useFootball } from '@/contexts/FootballContext';
 import { useCelebration } from '@/contexts/CelebrationContext';
-import { resolveCelebrationAfterCompletionFromActivities } from '@/utils/celebration';
+import { resolveCelebrationAfterCompletionFromDatabase } from '@/utils/celebrationRuntime';
 import { INTENSITY_SCORE_OPTIONS, normalizeFivePointScore } from '@/utils/scoreScale';
 
 function decodeParam(value: unknown): string | null {
@@ -26,10 +26,8 @@ function decodeParam(value: unknown): string | null {
 export default function TaskScoreNoteScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { refreshData, updateActivitySingle, currentWeekStats, todayActivities } = useFootball();
+  const { refreshData, updateActivitySingle } = useFootball();
   const { showCelebration } = useCelebration();
-  const completedTasksToday = Math.max(0, Number((currentWeekStats as any)?.completedTasks ?? 0));
-  const totalTasksToday = Math.max(0, Number((currentWeekStats as any)?.totalTasks ?? 0));
 
   const activityIdParam = (params as any).activityId ?? (params as any).id ?? (params as any).activity_id;
   const initialScoreParam = decodeParam((params as any).initialScore);
@@ -51,6 +49,7 @@ export default function TaskScoreNoteScreen() {
 
   const [initialScore, setInitialScore] = useState<number | null>(null);
   const [initialNote, setInitialNote] = useState<string>('');
+  const [activitySource, setActivitySource] = useState<'internal' | 'external' | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isMountedRef = useRef(true);
@@ -73,6 +72,7 @@ export default function TaskScoreNoteScreen() {
     if (!isMountedRef.current) return;
     setInitialScore(null);
     setInitialNote('');
+    setActivitySource(null);
   }, []);
 
   useEffect(() => {
@@ -108,6 +108,7 @@ export default function TaskScoreNoteScreen() {
         }
 
         let intensityCarrier = internalActivity ?? null;
+        let nextActivitySource: 'internal' | 'external' | null = internalActivity ? 'internal' : null;
 
         if (!intensityCarrier) {
           const { data: externalMeta, error: externalError } = await supabase
@@ -121,6 +122,7 @@ export default function TaskScoreNoteScreen() {
           }
 
           intensityCarrier = externalMeta ?? null;
+          nextActivitySource = externalMeta ? 'external' : nextActivitySource;
         }
 
         if (!intensityCarrier) {
@@ -139,11 +141,13 @@ export default function TaskScoreNoteScreen() {
         if (intensity === null) {
           setInitialScore(null);
           setInitialNote('');
+          setActivitySource(nextActivitySource);
           return;
         }
 
         setInitialScore(intensity);
         setInitialNote(typeof intensityCarrier.intensity_note === 'string' ? intensityCarrier.intensity_note : '');
+        setActivitySource(nextActivitySource);
       } catch {
         // ignore
       }
@@ -185,13 +189,11 @@ export default function TaskScoreNoteScreen() {
         });
 
         const completingToDone = initialScore === null && typeof score === 'number';
-        const celebrationDecision = resolveCelebrationAfterCompletionFromActivities({
-          activities: todayActivities,
-          completedTaskId: activityId,
+        const celebrationDecision = await resolveCelebrationAfterCompletionFromDatabase({
+          completedInternalIntensityId: activitySource === 'internal' ? activityId : null,
+          completedExternalIntensityId: activitySource === 'external' ? activityId : null,
           completingToDone,
           includeOverdue: false,
-          fallbackCompletedTasks: completedTasksToday,
-          fallbackTotalTasks: totalTasksToday,
         });
         safeDismiss();
         const celebrationType = celebrationDecision.type;
@@ -209,10 +211,8 @@ export default function TaskScoreNoteScreen() {
     },
     [
       activityId,
-      completedTasksToday,
-      totalTasksToday,
+      activitySource,
       initialScore,
-      todayActivities,
       refreshData,
       safeDismiss,
       setErrorSafe,
