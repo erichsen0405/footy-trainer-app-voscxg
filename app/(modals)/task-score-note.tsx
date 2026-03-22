@@ -189,20 +189,29 @@ export default function TaskScoreNoteScreen() {
         });
 
         const completingToDone = initialScore === null && typeof score === 'number';
-        const celebrationDecision = await resolveCelebrationAfterCompletionFromDatabase({
+        safeDismiss();
+        Promise.resolve(refreshData()).catch(() => {});
+        void resolveCelebrationAfterCompletionFromDatabase({
           completedInternalIntensityId: activitySource === 'internal' ? activityId : null,
           completedExternalIntensityId: activitySource === 'external' ? activityId : null,
           completingToDone,
           includeOverdue: false,
-        });
-        safeDismiss();
-        const celebrationType = celebrationDecision.type;
-        if (celebrationType) {
-          setTimeout(() => {
-            showCelebration({ type: celebrationType, ...(celebrationDecision.progress ?? {}) });
-          }, 280);
-        }
-        Promise.resolve(refreshData()).catch(() => {});
+        })
+          .then((celebrationDecision) => {
+            const celebrationType = celebrationDecision.type;
+            if (!celebrationType) {
+              return;
+            }
+
+            setTimeout(() => {
+              showCelebration({ type: celebrationType, ...(celebrationDecision.progress ?? {}) });
+            }, 280);
+          })
+          .catch((error) => {
+            if (__DEV__) {
+              console.warn('[task-score-note] celebration resolution failed', error);
+            }
+          });
       } catch (e) {
         setErrorSafe('Kunne ikke gemme intensitet. Prøv igen.');
       } finally {

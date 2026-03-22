@@ -309,9 +309,9 @@ function CelebrationOverlay({
   const premiumConfettiDiagnostics = useMemo(() => getIOSPremiumConfettiDiagnostics(), []);
   const dayCompleteDiagnostics = useMemo(() => getIOSLastTaskCelebrationDiagnostics(), []);
   const shouldAttemptNativeConfetti =
-    Platform.OS === 'ios' && !FORCE_LEGACY_IOS_CELEBRATIONS;
+    Platform.OS === 'ios' && !FORCE_LEGACY_IOS_CELEBRATIONS && hasIOSPremiumConfettiView();
   const shouldAttemptNativeDayComplete =
-    isDayComplete && Platform.OS === 'ios' && !FORCE_LEGACY_IOS_CELEBRATIONS;
+    isDayComplete && Platform.OS === 'ios' && !FORCE_LEGACY_IOS_CELEBRATIONS && hasIOSLastTaskCelebrationView();
   const debugNativeConfettiAvailable = hasIOSPremiumConfettiView();
   const debugNativeDayCompleteAvailable = hasIOSLastTaskCelebrationView();
   const debugInfo = useMemo(() => {
@@ -800,10 +800,11 @@ export function CelebrationProvider({ children }: { children: React.ReactNode })
 
   const dismissCelebration = useCallback(() => {
     clearDismissTimer();
+    clearHapticsTimers();
     startedCelebrationIdRef.current = null;
     activeCelebrationRef.current = null;
     setActiveCelebration(null);
-  }, [clearDismissTimer]);
+  }, [clearDismissTimer, clearHapticsTimers]);
 
   useEffect(() => {
     let mounted = true;

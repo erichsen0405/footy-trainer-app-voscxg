@@ -41,11 +41,7 @@ export function getIOSLastTaskCelebrationDiagnostics() {
 
 export function hasIOSLastTaskCelebrationView() {
   const diagnostics = getIOSLastTaskCelebrationDiagnostics();
-  return diagnostics.platformIOS && (
-    diagnostics.fabricEnabled ||
-    diagnostics.bridgelessEnabled ||
-    diagnostics.viewManagerConfigAvailable
-  );
+  return diagnostics.platformIOS && diagnostics.viewManagerConfigAvailable;
 }
 
 export function IOSLastTaskCelebrationView({
