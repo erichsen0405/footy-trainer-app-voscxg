@@ -162,4 +162,28 @@ describe('resolveCelebrationAfterCompletionFromActivities', () => {
       },
     });
   });
+
+  it('supports raw activity_date rows from football data', () => {
+    expect(
+      resolveCelebrationAfterCompletionFromActivities({
+        activities: [
+          {
+            id: 'a1',
+            activity_date: '2026-03-22',
+            tasks: [{ id: 't1', completed: false }],
+          },
+        ],
+        completedTaskId: 't1',
+        completingToDone: true,
+        now: new Date('2026-03-22T12:00:00Z'),
+      })
+    ).toEqual({
+      type: 'dayComplete',
+      progress: {
+        completedToday: 1,
+        totalToday: 1,
+        remainingToday: 0,
+      },
+    });
+  });
 });

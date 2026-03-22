@@ -206,7 +206,7 @@ final class IOSPremiumConfettiContentView: UIView {
     let topOrigin = CGPoint(x: width * 0.5, y: -24)
 
     var primary = IOSReferenceConfettiConfiguration()
-    primary.particleCount = 20
+    primary.particleCount = 40
     primary.spread = .pi / 1.4
     primary.gravity = 825
     primary.startVelocity = 1180
@@ -223,7 +223,7 @@ final class IOSPremiumConfettiContentView: UIView {
     primary.emitterSize = CGSize(width: width * 0.92, height: 1)
 
     var secondary = IOSReferenceConfettiConfiguration()
-    secondary.particleCount = 16
+    secondary.particleCount = 32
     secondary.spread = .pi / 1.5
     secondary.gravity = 690
     secondary.startVelocity = 980
@@ -241,7 +241,7 @@ final class IOSPremiumConfettiContentView: UIView {
     secondary.emitterSize = CGSize(width: width * 0.78, height: 1)
 
     var tertiary = IOSReferenceConfettiConfiguration()
-    tertiary.particleCount = 12
+    tertiary.particleCount = 24
     tertiary.spread = .pi / 1.6
     tertiary.gravity = 560
     tertiary.startVelocity = 760
