@@ -1,8 +1,11 @@
 import React from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { AccessibilityInfo, Pressable, Text, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { IOSLastTaskCelebrationView } from '@/components/IOSLastTaskCelebrationView';
 import { IOSPremiumConfettiView } from '@/components/IOSPremiumConfettiView';
+import * as DayCelebrationModule from '@/components/IOSLastTaskCelebrationView';
+import * as PremiumConfettiModule from '@/components/IOSPremiumConfettiView';
 import { CelebrationProvider, useCelebration } from '@/contexts/CelebrationContext';
 
 jest.mock('expo-haptics', () => ({
@@ -40,6 +43,7 @@ function TriggerScreen() {
 describe('CelebrationProvider overlay', () => {
   beforeEach(() => {
     jest.useFakeTimers();
+    jest.clearAllMocks();
     jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(false);
     jest
       .spyOn(AccessibilityInfo, 'addEventListener')
@@ -55,6 +59,9 @@ describe('CelebrationProvider overlay', () => {
   });
 
   it('shows task celebration overlay when triggered', async () => {
+    jest.spyOn(PremiumConfettiModule, 'hasIOSPremiumConfettiView').mockReturnValue(true);
+    jest.spyOn(DayCelebrationModule, 'hasIOSLastTaskCelebrationView').mockReturnValue(true);
+
     const { UNSAFE_getByType, getByTestId, queryByTestId, getByText, queryAllByTestId } = render(
       <CelebrationProvider>
         <TriggerScreen />
@@ -84,6 +91,9 @@ describe('CelebrationProvider overlay', () => {
   });
 
   it('shows dayComplete text and supports tap-to-dismiss', async () => {
+    jest.spyOn(PremiumConfettiModule, 'hasIOSPremiumConfettiView').mockReturnValue(true);
+    jest.spyOn(DayCelebrationModule, 'hasIOSLastTaskCelebrationView').mockReturnValue(true);
+
     const { UNSAFE_getByType, getByTestId, queryByTestId, queryAllByTestId } = render(
       <CelebrationProvider>
         <TriggerScreen />
@@ -107,5 +117,48 @@ describe('CelebrationProvider overlay', () => {
 
     fireEvent.press(getByTestId('celebration-dismiss'));
     expect(queryByTestId('celebration-overlay')).toBeNull();
+  });
+
+  it('falls back to legacy effects when native iOS celebrations are unavailable', async () => {
+    jest.spyOn(PremiumConfettiModule, 'hasIOSPremiumConfettiView').mockReturnValue(false);
+    jest.spyOn(DayCelebrationModule, 'hasIOSLastTaskCelebrationView').mockReturnValue(false);
+
+    const { getByTestId, queryAllByTestId } = render(
+      <CelebrationProvider>
+        <TriggerScreen />
+      </CelebrationProvider>
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    fireEvent.press(getByTestId('trigger.task'));
+
+    expect(queryAllByTestId('celebration-rocket').length).toBeGreaterThan(0);
+    expect(queryAllByTestId('celebration-fountain').length).toBeGreaterThan(0);
+  });
+
+  it('clears delayed dayComplete haptics when dismissed manually', async () => {
+    const { getByTestId, queryByTestId } = render(
+      <CelebrationProvider>
+        <TriggerScreen />
+      </CelebrationProvider>
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    fireEvent.press(getByTestId('trigger.day'));
+    fireEvent.press(getByTestId('celebration-dismiss'));
+
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
+
+    expect(queryByTestId('celebration-overlay')).toBeNull();
+    expect(Haptics.notificationAsync).toHaveBeenCalledTimes(1);
+    expect(Haptics.impactAsync).not.toHaveBeenCalled();
   });
 });

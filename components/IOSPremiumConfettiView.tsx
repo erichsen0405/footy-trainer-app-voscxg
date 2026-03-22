@@ -43,11 +43,7 @@ export function getIOSPremiumConfettiDiagnostics() {
 
 export function hasIOSPremiumConfettiView() {
   const diagnostics = getIOSPremiumConfettiDiagnostics();
-  return diagnostics.platformIOS && (
-    diagnostics.fabricEnabled ||
-    diagnostics.bridgelessEnabled ||
-    diagnostics.viewManagerConfigAvailable
-  );
+  return diagnostics.platformIOS && diagnostics.viewManagerConfigAvailable;
 }
 
 export function IOSPremiumConfettiView({

@@ -173,6 +173,44 @@ async function fetchTaskCompletion(taskInstanceId: string): Promise<boolean> {
   return false;
 }
 
+async function markTaskInstanceCompleted(taskInstanceId: string): Promise<void> {
+  if (!taskInstanceId) {
+    return;
+  }
+
+  const activityUpdate = await supabase
+    .from('activity_tasks')
+    .update({ completed: true })
+    .eq('id', taskInstanceId)
+    .select('id')
+    .maybeSingle();
+
+  if (activityUpdate.error) {
+    throw activityUpdate.error;
+  }
+
+  if (activityUpdate.data?.id) {
+    return;
+  }
+
+  const externalUpdate = await supabase
+    .from('external_event_tasks')
+    .update({ completed: true })
+    .eq('id', taskInstanceId)
+    .select('id')
+    .maybeSingle();
+
+  if (externalUpdate.error) {
+    throw externalUpdate.error;
+  }
+
+  if (externalUpdate.data?.id) {
+    return;
+  }
+
+  throw new Error(`Task completion update matched no rows for taskInstanceId ${taskInstanceId}`);
+}
+
 type AfterTrainingFeedbackConfig = {
   enableScore: boolean;
   scoreExplanation?: string | null;
@@ -471,18 +509,7 @@ export default function TaskFeedbackNoteScreen() {
         }
 
         if (normalizedTaskInstanceId) {
-          try {
-            await supabase
-              .from('activity_tasks')
-              .update({ completed: true })
-              .eq('id', normalizedTaskInstanceId);
-          } catch {}
-          try {
-            await supabase
-              .from('external_event_tasks')
-              .update({ completed: true })
-              .eq('id', normalizedTaskInstanceId);
-          } catch {}
+          await markTaskInstanceCompleted(normalizedTaskInstanceId);
         }
 
         DeviceEventEmitter.emit('progression:refresh', {
@@ -493,19 +520,28 @@ export default function TaskFeedbackNoteScreen() {
         });
 
         const completingToDone = initialScore === null && initialNote.trim().length === 0;
-        const celebrationDecision = await resolveCelebrationAfterCompletionFromDatabase({
+        safeDismiss();
+        Promise.resolve(refreshData()).catch(() => {});
+        void resolveCelebrationAfterCompletionFromDatabase({
           completedTaskId: effectiveTaskInstanceId,
           completingToDone,
           includeOverdue: false,
-        });
-        safeDismiss();
-        const celebrationType = celebrationDecision.type;
-        if (celebrationType) {
-          setTimeout(() => {
-            showCelebration({ type: celebrationType, ...(celebrationDecision.progress ?? {}) });
-          }, 280);
-        }
-        Promise.resolve(refreshData()).catch(() => {});
+        })
+          .then((celebrationDecision) => {
+            const celebrationType = celebrationDecision.type;
+            if (!celebrationType) {
+              return;
+            }
+
+            setTimeout(() => {
+              showCelebration({ type: celebrationType, ...(celebrationDecision.progress ?? {}) });
+            }, 280);
+          })
+          .catch((error) => {
+            if (__DEV__) {
+              console.warn('[task-feedback-note] celebration resolution failed', error);
+            }
+          });
         return;
       } catch (e) {
         if (__DEV__) {
