@@ -238,4 +238,33 @@ enum IOSReferenceConfettiFactory {
       ]
     }
   }
+
+  static func fountainEmitters(colors: [UIColor]) -> [IOSReferenceConfettiEmitter] {
+    let cutPath = CGMutablePath()
+    cutPath.addLines(between: [
+      CGPoint(x: 1, y: 4),
+      CGPoint(x: 5, y: 1),
+      CGPoint(x: 19, y: 2),
+      CGPoint(x: 17, y: 12),
+      CGPoint(x: 3, y: 10),
+    ])
+    cutPath.closeSubpath()
+
+    let sliverPath = CGMutablePath()
+    sliverPath.addLines(between: [
+      CGPoint(x: 2, y: 8),
+      CGPoint(x: 17, y: 2),
+      CGPoint(x: 19, y: 8),
+      CGPoint(x: 4, y: 14),
+    ])
+    sliverPath.closeSubpath()
+
+    return colors.enumerated().flatMap { index, color in
+      [
+        .shape(.rectangle, color: color, id: "fountain-rect-\(index)"),
+        .shape(.custom("fountain-cut-\(index)", cutPath), color: color, id: "fountain-cut-\(index)"),
+        .shape(.custom("fountain-sliver-\(index)", sliverPath), color: color, id: "fountain-sliver-\(index)"),
+      ]
+    }
+  }
 }

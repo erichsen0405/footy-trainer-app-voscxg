@@ -6,7 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { fetchSelfFeedbackForTemplates, upsertSelfFeedback } from '@/services/feedbackService';
 import { useFootball } from '@/contexts/FootballContext';
 import { useCelebration } from '@/contexts/CelebrationContext';
-import { resolveCelebrationAfterCompletionFromActivities } from '@/utils/celebration';
+import { resolveCelebrationAfterCompletionFromDatabase } from '@/utils/celebrationRuntime';
 import { FEEDBACK_SCORE_OPTIONS, normalizeFivePointScore } from '@/utils/scoreScale';
 import type { TaskTemplateSelfFeedback } from '@/types';
 
@@ -197,10 +197,8 @@ function buildFeedbackConfig(row?: any): AfterTrainingFeedbackConfig {
 export default function TaskFeedbackNoteScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { refreshData, currentWeekStats, todayActivities } = useFootball();
+  const { refreshData } = useFootball();
   const { showCelebration } = useCelebration();
-  const completedTasksToday = Math.max(0, Number((currentWeekStats as any)?.completedTasks ?? 0));
-  const totalTasksToday = Math.max(0, Number((currentWeekStats as any)?.totalTasks ?? 0));
 
   const activityId = useMemo(
     () => decodeParam((params as any).activityId ?? (params as any).activity_id ?? (params as any).id),
@@ -495,13 +493,10 @@ export default function TaskFeedbackNoteScreen() {
         });
 
         const completingToDone = initialScore === null && initialNote.trim().length === 0;
-        const celebrationDecision = resolveCelebrationAfterCompletionFromActivities({
-          activities: todayActivities,
+        const celebrationDecision = await resolveCelebrationAfterCompletionFromDatabase({
           completedTaskId: effectiveTaskInstanceId,
           completingToDone,
           includeOverdue: false,
-          fallbackCompletedTasks: completedTasksToday,
-          fallbackTotalTasks: totalTasksToday,
         });
         safeDismiss();
         const celebrationType = celebrationDecision.type;
@@ -541,8 +536,6 @@ export default function TaskFeedbackNoteScreen() {
     [
       activityId,
       activityIdCandidates,
-      completedTasksToday,
-      totalTasksToday,
       refreshData,
       initialNote,
       initialScore,
