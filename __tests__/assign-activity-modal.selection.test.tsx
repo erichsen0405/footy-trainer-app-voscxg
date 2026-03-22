@@ -33,6 +33,10 @@ const mockTeamPlayerContextValue = {
   players: mockPlayers,
   teams: mockTeams,
   getTeamMembers: (...args: any[]) => mockGetTeamMembers(...args),
+  ensureRosterLoaded: jest.fn().mockResolvedValue({
+    players: mockPlayers,
+    teams: mockTeams,
+  }),
 };
 
 jest.mock('@/contexts/TeamPlayerContext', () => ({
