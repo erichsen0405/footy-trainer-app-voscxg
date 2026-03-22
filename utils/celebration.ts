@@ -37,6 +37,7 @@ export interface DayTaskForCompletionCheck {
 export interface LastTaskOfDayInput {
   tasks: DayTaskForCompletionCheck[];
   completedTaskId: string;
+  targetDateKey?: string | null;
   now?: Date;
   timezoneOffsetMinutes?: number;
   includeOverdue?: boolean;
@@ -157,8 +158,8 @@ export function isLastTaskOfDayAfterCompletion(input: LastTaskOfDayInput): boole
       ? input.timezoneOffsetMinutes
       : now.getTimezoneOffset();
   const includeOverdue = input.includeOverdue === true;
-
-  const todayKey = toDateKeyWithOffset(now, timezoneOffsetMinutes);
+  const targetDateKey = resolveTaskDateKey(input.targetDateKey ?? null, timezoneOffsetMinutes);
+  const todayKey = targetDateKey ?? toDateKeyWithOffset(now, timezoneOffsetMinutes);
 
   const relevantTasks = tasks.filter((task) => {
     const taskKey = resolveTaskDateKey(task?.activityDate ?? null, timezoneOffsetMinutes);
@@ -238,6 +239,7 @@ export function resolveCelebrationAfterCompletionFromActivities(
   const type = isLastTaskOfDayAfterCompletion({
     tasks: relevantTasks,
     completedTaskId,
+    targetDateKey: todayKey,
     now,
     timezoneOffsetMinutes,
     includeOverdue,
@@ -311,6 +313,7 @@ export function resolveCelebrationAfterCompletionFromUnits(
     type: isLastTaskOfDayAfterCompletion({
       tasks: pseudoTasks,
       completedTaskId: completedUnitKey,
+      targetDateKey: todayKey,
       now,
       timezoneOffsetMinutes,
       includeOverdue,
