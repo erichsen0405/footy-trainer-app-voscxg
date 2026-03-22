@@ -244,7 +244,7 @@ final class IOSLastTaskCelebrationContentView: UIView {
         guard let self else { return }
         let burst = self.makeBurstLayer(
           origin: point,
-          particleCount: index == 0 ? 24 : 18,
+          particleCount: index == 0 ? 48 : 36,
           emitterWidth: index == 0 ? self.bounds.width * 0.86 : self.bounds.width * 0.72
         )
         self.effectLayer.addSublayer(burst)
@@ -261,10 +261,6 @@ final class IOSLastTaskCelebrationContentView: UIView {
     ]
 
     configs.forEach { config in
-      let base = makeFountainBaseGlow(origin: config.origin)
-      effectLayer.addSublayer(base)
-      activeLayers.append(base)
-
       let fountainLayers = makeFountainLayers(origin: config.origin, angle: config.angle, drift: config.drift)
       fountainLayers.forEach { emitter in
         effectLayer.addSublayer(emitter)
@@ -276,40 +272,40 @@ final class IOSLastTaskCelebrationContentView: UIView {
 
   private func makeFountainLayers(origin: CGPoint, angle: CGFloat, drift: CGFloat) -> [IOSReferenceConfettiLayer] {
     var primary = IOSReferenceConfettiConfiguration()
-    primary.particleCount = 18
-    primary.spread = 0.24
+    primary.particleCount = 40
+    primary.spread = 0.16
     primary.gravity = 1100
-    primary.startVelocity = 1120
-    primary.velocityDecay = 0.52
+    primary.startVelocity = 1360
+    primary.velocityDecay = 0.46
     primary.drift = drift
-    primary.scale = 0.54
-    primary.scaleRange = 0.22
-    primary.lifetime = 6.9
-    primary.gravityAnimationDuration = 1.4
-    primary.birthRateAnimationDuration = 0.52
+    primary.scale = 0.72
+    primary.scaleRange = 0.3
+    primary.lifetime = 8.1
+    primary.gravityAnimationDuration = 1.7
+    primary.birthRateAnimationDuration = 0.64
     primary.spin = .pi * 2.4
     primary.spinRange = .pi * 2.7
     primary.origin = origin
     primary.angle = angle
-    primary.emitterSize = CGSize(width: 6, height: 6)
+    primary.emitterSize = CGSize(width: 16, height: 16)
 
     var shimmer = IOSReferenceConfettiConfiguration()
-    shimmer.particleCount = 12
-    shimmer.spread = 0.18
+    shimmer.particleCount = 24
+    shimmer.spread = 0.14
     shimmer.gravity = 890
-    shimmer.startVelocity = 920
-    shimmer.velocityDecay = 0.38
+    shimmer.startVelocity = 1120
+    shimmer.velocityDecay = 0.32
     shimmer.drift = drift * 0.8
-    shimmer.scale = 0.34
-    shimmer.scaleRange = 0.14
-    shimmer.lifetime = 7.7
-    shimmer.gravityAnimationDuration = 1.8
-    shimmer.birthRateAnimationDuration = 0.64
+    shimmer.scale = 0.46
+    shimmer.scaleRange = 0.2
+    shimmer.lifetime = 8.9
+    shimmer.gravityAnimationDuration = 2.0
+    shimmer.birthRateAnimationDuration = 0.72
     shimmer.spin = .pi * 2.0
     shimmer.spinRange = .pi * 2.2
     shimmer.origin = origin
     shimmer.angle = angle
-    shimmer.emitterSize = CGSize(width: 6, height: 6)
+    shimmer.emitterSize = CGSize(width: 14, height: 14)
 
     let mainEmitter = makeReferenceConfettiLayer(
       primary,
@@ -365,38 +361,6 @@ final class IOSLastTaskCelebrationContentView: UIView {
     emitter.renderMode = renderMode
     emitter.zPosition = zPosition
     return emitter
-  }
-
-  private func makeFountainBaseGlow(origin: CGPoint) -> CALayer {
-    let glow = CALayer()
-    glow.position = origin
-    glow.bounds = CGRect(x: 0, y: 0, width: 32, height: 32)
-    glow.cornerRadius = 16
-    glow.backgroundColor = pearl.withAlphaComponent(0.88).cgColor
-    glow.zPosition = 14
-    glow.shadowColor = gold.cgColor
-    glow.shadowOpacity = 1
-    glow.shadowRadius = 28
-    glow.shadowOffset = .zero
-
-    let opacity = CAKeyframeAnimation(keyPath: "opacity")
-    opacity.values = [0, 1, 0.74, 0]
-    opacity.keyTimes = [0, 0.08, 0.72, 1]
-    opacity.duration = 1.22
-    opacity.isRemovedOnCompletion = false
-    opacity.fillMode = .forwards
-    glow.add(opacity, forKey: "opacity")
-
-    let scale = CABasicAnimation(keyPath: "transform.scale")
-    scale.fromValue = 0.3
-    scale.toValue = 1.56
-    scale.duration = 1.22
-    scale.timingFunction = CAMediaTimingFunction(name: .easeOut)
-    scale.isRemovedOnCompletion = false
-    scale.fillMode = .forwards
-    glow.add(scale, forKey: "scale")
-
-    return glow
   }
 
   private func debugLog(_ message: String) {

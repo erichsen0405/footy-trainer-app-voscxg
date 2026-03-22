@@ -29,6 +29,8 @@ export interface LastTaskOfDayInput {
 export interface ActivityForCelebrationCheck {
   id: string;
   date?: Date | string | null;
+  activityDate?: Date | string | null;
+  activity_date?: Date | string | null;
   tasks?: Array<{
     id: string;
     completed: boolean;
@@ -181,7 +183,10 @@ export function resolveCelebrationAfterCompletionFromActivities(
   const todayKey = toDateKeyWithOffset(now, timezoneOffsetMinutes);
 
   const dayTasks = (Array.isArray(input.activities) ? input.activities : []).flatMap((activity) => {
-    const activityDateKey = resolveActivityDateKey(activity?.date, timezoneOffsetMinutes);
+    const activityDateKey = resolveActivityDateKey(
+      activity?.date ?? activity?.activityDate ?? activity?.activity_date,
+      timezoneOffsetMinutes
+    );
     if (!activityDateKey) return [];
     if (includeOverdue ? activityDateKey > todayKey : activityDateKey !== todayKey) {
       return [];
