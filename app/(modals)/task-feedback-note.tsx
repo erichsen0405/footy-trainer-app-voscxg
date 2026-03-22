@@ -197,7 +197,7 @@ function buildFeedbackConfig(row?: any): AfterTrainingFeedbackConfig {
 export default function TaskFeedbackNoteScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { refreshData, currentWeekStats, activities } = useFootball();
+  const { refreshData, currentWeekStats, todayActivities } = useFootball();
   const { showCelebration } = useCelebration();
   const completedTasksToday = Math.max(0, Number((currentWeekStats as any)?.completedTasks ?? 0));
   const totalTasksToday = Math.max(0, Number((currentWeekStats as any)?.totalTasks ?? 0));
@@ -496,9 +496,10 @@ export default function TaskFeedbackNoteScreen() {
 
         const completingToDone = initialScore === null && initialNote.trim().length === 0;
         const celebrationDecision = resolveCelebrationAfterCompletionFromActivities({
-          activities,
+          activities: todayActivities,
           completedTaskId: effectiveTaskInstanceId,
           completingToDone,
+          includeOverdue: false,
           fallbackCompletedTasks: completedTasksToday,
           fallbackTotalTasks: totalTasksToday,
         });

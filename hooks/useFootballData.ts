@@ -1757,9 +1757,10 @@ export const useFootballData = () => {
 
         const completingToDone = targetState === true && previousState !== true;
         const celebrationDecision = resolveCelebrationAfterCompletionFromActivities({
-          activities,
+          activities: todayActivities,
           completedTaskId: taskId,
           completingToDone,
+          includeOverdue: false,
           fallbackCompletedTasks: currentWeekStats.completedTasks,
           fallbackTotalTasks: currentWeekStats.totalTasks,
         });
@@ -1778,7 +1779,7 @@ export const useFootballData = () => {
         throw error;
       }
     },
-    [activities, currentWeekStats.completedTasks, currentWeekStats.totalTasks, findTaskCompletionState, refreshData, showCelebration]
+    [currentWeekStats.completedTasks, currentWeekStats.totalTasks, findTaskCompletionState, refreshData, showCelebration, todayActivities]
   );
 
   const setTaskCompletion = useCallback(

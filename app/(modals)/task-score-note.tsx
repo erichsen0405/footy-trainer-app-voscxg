@@ -26,7 +26,7 @@ function decodeParam(value: unknown): string | null {
 export default function TaskScoreNoteScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { refreshData, updateActivitySingle, currentWeekStats, activities } = useFootball();
+  const { refreshData, updateActivitySingle, currentWeekStats, todayActivities } = useFootball();
   const { showCelebration } = useCelebration();
   const completedTasksToday = Math.max(0, Number((currentWeekStats as any)?.completedTasks ?? 0));
   const totalTasksToday = Math.max(0, Number((currentWeekStats as any)?.totalTasks ?? 0));
@@ -186,9 +186,10 @@ export default function TaskScoreNoteScreen() {
 
         const completingToDone = initialScore === null && typeof score === 'number';
         const celebrationDecision = resolveCelebrationAfterCompletionFromActivities({
-          activities,
+          activities: todayActivities,
           completedTaskId: activityId,
           completingToDone,
+          includeOverdue: false,
           fallbackCompletedTasks: completedTasksToday,
           fallbackTotalTasks: totalTasksToday,
         });
@@ -208,10 +209,10 @@ export default function TaskScoreNoteScreen() {
     },
     [
       activityId,
-      activities,
       completedTasksToday,
       totalTasksToday,
       initialScore,
+      todayActivities,
       refreshData,
       safeDismiss,
       setErrorSafe,
