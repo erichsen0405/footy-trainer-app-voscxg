@@ -132,6 +132,7 @@ describe('resolveCelebrationAfterCompletionFromActivities', () => {
         ],
         completedTaskId: 't2',
         completingToDone: true,
+        now: new Date('2026-03-20T12:00:00Z'),
       })
     ).toEqual({
       type: 'dayComplete',

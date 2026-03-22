@@ -131,7 +131,7 @@ export function isLastTaskOfDayAfterCompletion(input: LastTaskOfDayInput): boole
     typeof input.timezoneOffsetMinutes === 'number' && Number.isFinite(input.timezoneOffsetMinutes)
       ? input.timezoneOffsetMinutes
       : now.getTimezoneOffset();
-  const includeOverdue = input.includeOverdue !== false;
+  const includeOverdue = input.includeOverdue === true;
 
   const todayKey = toDateKeyWithOffset(now, timezoneOffsetMinutes);
 
@@ -177,7 +177,7 @@ export function resolveCelebrationAfterCompletionFromActivities(
     typeof input.timezoneOffsetMinutes === 'number' && Number.isFinite(input.timezoneOffsetMinutes)
       ? input.timezoneOffsetMinutes
       : now.getTimezoneOffset();
-  const includeOverdue = input.includeOverdue !== false;
+  const includeOverdue = input.includeOverdue === true;
   const todayKey = toDateKeyWithOffset(now, timezoneOffsetMinutes);
 
   const dayTasks = (Array.isArray(input.activities) ? input.activities : []).flatMap((activity) => {
