@@ -169,7 +169,7 @@ final class IOSLastTaskCelebrationContentView: UIView {
     teardownEffects()
     addBackdropGlow()
     addCenterBursts()
-    addCornerFountains()
+    addMiddleExplosion()
 
     schedule(after: 2.35) { [weak self] in
       self?.teardownEffects()
@@ -254,58 +254,56 @@ final class IOSLastTaskCelebrationContentView: UIView {
     }
   }
 
-  private func addCornerFountains() {
-    let configs: [(origin: CGPoint, angle: CGFloat, drift: CGFloat)] = [
-      (CGPoint(x: bounds.width * 0.02, y: bounds.height * 0.975), -CGFloat.pi * 0.35, 172),
-      (CGPoint(x: bounds.width * 0.98, y: bounds.height * 0.975), -CGFloat.pi * 0.65, -172),
-    ]
+  private func addMiddleExplosion() {
+    let origin = CGPoint(x: bounds.midX, y: bounds.height * 0.58)
 
-    configs.forEach { config in
-      let fountainLayers = makeFountainLayers(origin: config.origin, angle: config.angle, drift: config.drift)
-      fountainLayers.forEach { emitter in
-        effectLayer.addSublayer(emitter)
-        activeLayers.append(emitter)
+    schedule(after: 0.12) { [weak self] in
+      guard let self else { return }
+      let layers = self.makeMiddleExplosionLayers(origin: origin)
+      layers.forEach { emitter in
+        self.effectLayer.addSublayer(emitter)
+        self.activeLayers.append(emitter)
         emitter.startEmission()
       }
     }
   }
 
-  private func makeFountainLayers(origin: CGPoint, angle: CGFloat, drift: CGFloat) -> [IOSReferenceConfettiLayer] {
+  private func makeMiddleExplosionLayers(origin: CGPoint) -> [IOSReferenceConfettiLayer] {
     var primary = IOSReferenceConfettiConfiguration()
-    primary.particleCount = 96
-    primary.spread = 0.42
-    primary.gravity = 1100
-    primary.startVelocity = 1540
-    primary.velocityDecay = 0.4
-    primary.drift = drift
-    primary.scale = 0.72
-    primary.scaleRange = 0.3
-    primary.lifetime = 8.1
-    primary.gravityAnimationDuration = 1.7
-    primary.birthRateAnimationDuration = 0.92
-    primary.spin = .pi * 2.4
-    primary.spinRange = .pi * 2.7
+    primary.particleCount = 164
+    primary.spread = .pi * 2
+    primary.gravity = 760
+    primary.startVelocity = 1280
+    primary.velocityDecay = 0.34
+    primary.drift = 0
+    primary.scale = 0.7
+    primary.scaleRange = 0.28
+    primary.lifetime = 8.6
+    primary.gravityAnimationDuration = 1.6
+    primary.birthRateAnimationDuration = 0.78
+    primary.spin = .pi * 2.6
+    primary.spinRange = .pi * 2.8
     primary.origin = origin
-    primary.angle = angle
-    primary.emitterSize = CGSize(width: 16, height: 16)
+    primary.angle = 0
+    primary.emitterSize = CGSize(width: 20, height: 20)
 
     var shimmer = IOSReferenceConfettiConfiguration()
-    shimmer.particleCount = 56
-    shimmer.spread = 0.36
-    shimmer.gravity = 890
-    shimmer.startVelocity = 1320
-    shimmer.velocityDecay = 0.24
-    shimmer.drift = drift * 0.8
-    shimmer.scale = 0.46
-    shimmer.scaleRange = 0.2
-    shimmer.lifetime = 8.9
-    shimmer.gravityAnimationDuration = 2.0
-    shimmer.birthRateAnimationDuration = 1.04
-    shimmer.spin = .pi * 2.0
-    shimmer.spinRange = .pi * 2.2
+    shimmer.particleCount = 92
+    shimmer.spread = .pi * 2
+    shimmer.gravity = 620
+    shimmer.startVelocity = 980
+    shimmer.velocityDecay = 0.28
+    shimmer.drift = 0
+    shimmer.scale = 0.48
+    shimmer.scaleRange = 0.22
+    shimmer.lifetime = 9.2
+    shimmer.gravityAnimationDuration = 1.9
+    shimmer.birthRateAnimationDuration = 0.92
+    shimmer.spin = .pi * 2.1
+    shimmer.spinRange = .pi * 2.4
     shimmer.origin = origin
-    shimmer.angle = angle
-    shimmer.emitterSize = CGSize(width: 14, height: 14)
+    shimmer.angle = 0
+    shimmer.emitterSize = CGSize(width: 16, height: 16)
 
     let mainEmitter = makeReferenceConfettiLayer(
       primary,
