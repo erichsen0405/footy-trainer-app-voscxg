@@ -256,8 +256,8 @@ final class IOSLastTaskCelebrationContentView: UIView {
 
   private func addCornerFountains() {
     let configs: [(origin: CGPoint, angle: CGFloat, drift: CGFloat)] = [
-      (CGPoint(x: bounds.width * 0.06, y: bounds.height * 0.90), -CGFloat.pi / 4.1, 110),
-      (CGPoint(x: bounds.width * 0.94, y: bounds.height * 0.90), -(.pi - (.pi / 4.1)), -110),
+      (CGPoint(x: bounds.width * 0.02, y: bounds.height * 0.975), -CGFloat.pi * 0.35, 172),
+      (CGPoint(x: bounds.width * 0.98, y: bounds.height * 0.975), -CGFloat.pi * 0.65, -172),
     ]
 
     configs.forEach { config in
@@ -273,7 +273,7 @@ final class IOSLastTaskCelebrationContentView: UIView {
   private func makeFountainLayers(origin: CGPoint, angle: CGFloat, drift: CGFloat) -> [IOSReferenceConfettiLayer] {
     var primary = IOSReferenceConfettiConfiguration()
     primary.particleCount = 96
-    primary.spread = 0.14
+    primary.spread = 0.42
     primary.gravity = 1100
     primary.startVelocity = 1540
     primary.velocityDecay = 0.4
@@ -287,11 +287,11 @@ final class IOSLastTaskCelebrationContentView: UIView {
     primary.spinRange = .pi * 2.7
     primary.origin = origin
     primary.angle = angle
-    primary.emitterSize = CGSize(width: 24, height: 24)
+    primary.emitterSize = CGSize(width: 16, height: 16)
 
     var shimmer = IOSReferenceConfettiConfiguration()
     shimmer.particleCount = 56
-    shimmer.spread = 0.12
+    shimmer.spread = 0.36
     shimmer.gravity = 890
     shimmer.startVelocity = 1320
     shimmer.velocityDecay = 0.24
@@ -305,7 +305,7 @@ final class IOSLastTaskCelebrationContentView: UIView {
     shimmer.spinRange = .pi * 2.2
     shimmer.origin = origin
     shimmer.angle = angle
-    shimmer.emitterSize = CGSize(width: 20, height: 20)
+    shimmer.emitterSize = CGSize(width: 14, height: 14)
 
     let mainEmitter = makeReferenceConfettiLayer(
       primary,

@@ -248,4 +248,63 @@ describe('resolveCelebrationAfterCompletionFromUnits', () => {
       },
     });
   });
+
+  it('returns dayComplete from a post-write snapshot where the completed unit is already true', () => {
+    expect(
+      resolveCelebrationAfterCompletionFromUnits({
+        units: [
+          {
+            key: buildCelebrationCompletionUnitKey('task', 't1'),
+            completed: true,
+            activityDate: '2026-03-22',
+          },
+          {
+            key: buildCelebrationCompletionUnitKey('task', 't2'),
+            completed: true,
+            activityDate: '2026-03-22',
+          },
+        ],
+        completedUnitKey: buildCelebrationCompletionUnitKey('task', 't2'),
+        completingToDone: true,
+        now: new Date('2026-03-22T12:00:00Z'),
+      })
+    ).toEqual({
+      type: 'dayComplete',
+      progress: {
+        completedToday: 2,
+        totalToday: 2,
+        remainingToday: 0,
+      },
+    });
+  });
+
+  it('can resolve day completion for the completed item date instead of the current wall-clock date', () => {
+    expect(
+      resolveCelebrationAfterCompletionFromUnits({
+        units: [
+          {
+            key: buildCelebrationCompletionUnitKey('task', 'midday-task'),
+            completed: true,
+            activityDate: '2026-03-23',
+          },
+          {
+            key: buildCelebrationCompletionUnitKey('task', 'late-task'),
+            completed: false,
+            activityDate: '2026-03-23',
+          },
+        ],
+        completedUnitKey: buildCelebrationCompletionUnitKey('task', 'late-task'),
+        completingToDone: true,
+        targetDateKey: '2026-03-23',
+        now: new Date('2026-03-22T23:30:00Z'),
+      })
+    ).toEqual({
+      type: 'dayComplete',
+      progress: {
+        completedToday: 2,
+        totalToday: 2,
+        remainingToday: 0,
+      },
+    });
+  });
 });

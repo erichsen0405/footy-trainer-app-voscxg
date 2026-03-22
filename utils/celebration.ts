@@ -22,6 +22,7 @@ export interface CelebrationFromUnitsInput {
   units: CelebrationUnitForCompletionCheck[];
   completedUnitKey: string;
   completingToDone: boolean;
+  targetDateKey?: string | null;
   now?: Date;
   timezoneOffsetMinutes?: number;
   includeOverdue?: boolean;
@@ -169,7 +170,6 @@ export function isLastTaskOfDayAfterCompletion(input: LastTaskOfDayInput): boole
 
   const completedCandidate = relevantTasks.find((task) => String(task.id) === completedTaskId);
   if (!completedCandidate) return false;
-  if (completedCandidate.completed === true) return false;
 
   const hasOtherIncomplete = relevantTasks.some(
     (task) => String(task.id) !== completedTaskId && task.completed !== true
@@ -280,7 +280,8 @@ export function resolveCelebrationAfterCompletionFromUnits(
       ? input.timezoneOffsetMinutes
       : now.getTimezoneOffset();
   const includeOverdue = input.includeOverdue === true;
-  const todayKey = toDateKeyWithOffset(now, timezoneOffsetMinutes);
+  const targetDateKey = resolveTaskDateKey(input.targetDateKey ?? null, timezoneOffsetMinutes);
+  const todayKey = targetDateKey ?? toDateKeyWithOffset(now, timezoneOffsetMinutes);
 
   const relevantUnits = units.filter((unit) => {
     const unitKey = resolveTaskDateKey(unit.activityDate ?? null, timezoneOffsetMinutes);
