@@ -454,6 +454,10 @@ function CelebrationOverlay({
     inputRange: [0, 0.12, 1],
     outputRange: [12, 0, -4],
   });
+  const messageAnimatedStyle = {
+    opacity: messageOpacity,
+    transform: [{ translateY: messageTranslateY }],
+  } as const;
   const renderNativeConfetti = shouldAttemptNativeConfetti && !shouldAttemptNativeDayComplete;
   const renderLegacyConfetti = !shouldAttemptNativeConfetti && !shouldAttemptNativeDayComplete;
   const renderLegacyFireworks = !shouldAttemptNativeDayComplete && !renderNativeConfetti;
@@ -704,27 +708,27 @@ function CelebrationOverlay({
 
       <View style={styles.messageWrap} pointerEvents="box-none" testID="celebration-message">
         {isDayComplete ? (
-          <Pressable
-            onPress={onDismiss}
-            testID="celebration-dismiss"
-            style={[styles.messageCard, styles.messageCardDayComplete]}
-          >
-            <LinearGradient
-              colors={['#7f5412', '#f8d66a', '#fff0aa', '#c48924', '#6f4510']}
-              locations={[0, 0.24, 0.5, 0.76, 1]}
-              start={{ x: 0.02, y: 0.08 }}
-              end={{ x: 0.98, y: 0.92 }}
-              style={styles.messageCardDayCompleteBackground}
-            />
-            <LinearGradient
-              colors={['rgba(255,255,255,0.46)', 'rgba(255,255,255,0.14)', 'rgba(255,255,255,0)']}
-              locations={[0, 0.45, 1]}
-              start={{ x: 0.06, y: 0.05 }}
-              end={{ x: 0.64, y: 0.66 }}
-              style={styles.messageCardDayCompleteSheen}
-            />
-            <View pointerEvents="none" style={styles.messageCardDayCompleteGlow} />
-            <Animated.View style={{ opacity: messageOpacity, transform: [{ translateY: messageTranslateY }] }}>
+          <Animated.View style={messageAnimatedStyle}>
+            <Pressable
+              onPress={onDismiss}
+              testID="celebration-dismiss"
+              style={[styles.messageCard, styles.messageCardDayComplete]}
+            >
+              <LinearGradient
+                colors={['#7f5412', '#f8d66a', '#fff0aa', '#c48924', '#6f4510']}
+                locations={[0, 0.24, 0.5, 0.76, 1]}
+                start={{ x: 0.02, y: 0.08 }}
+                end={{ x: 0.98, y: 0.92 }}
+                style={styles.messageCardDayCompleteBackground}
+              />
+              <LinearGradient
+                colors={['rgba(255,255,255,0.46)', 'rgba(255,255,255,0.14)', 'rgba(255,255,255,0)']}
+                locations={[0, 0.45, 1]}
+                start={{ x: 0.06, y: 0.05 }}
+                end={{ x: 0.64, y: 0.66 }}
+                style={styles.messageCardDayCompleteSheen}
+              />
+              <View pointerEvents="none" style={styles.messageCardDayCompleteGlow} />
               <Text style={[styles.messageTitle, styles.messageTitleDayComplete]} testID="celebration-title">
                 {message.title}
               </Text>
@@ -738,15 +742,15 @@ function CelebrationOverlay({
                   {message.progressLine}
                 </Text>
               ) : null}
-            </Animated.View>
-          </Pressable>
+            </Pressable>
+          </Animated.View>
         ) : (
           <Animated.View
             pointerEvents="none"
             style={[
               styles.messageCard,
               styles.messageCardTask,
-              { opacity: messageOpacity, transform: [{ translateY: messageTranslateY }] },
+              messageAnimatedStyle,
             ]}
           >
             <Text style={styles.messageTitle} testID="celebration-title">
