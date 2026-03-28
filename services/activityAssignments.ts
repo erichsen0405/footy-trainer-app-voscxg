@@ -352,7 +352,7 @@ const fetchAssignmentRows = async (input: FetchActivityAssignmentsInput): Promis
       if (sourceMetaError) throw sourceMetaError;
 
       if (sourceMetaRow) {
-        const { data, error } = await supabase
+        const { data, error } = await (supabase as any)
           .from('events_local_meta')
           .select('player_id, team_id')
           .eq('source_local_meta_id', sourceMetaId);
@@ -394,7 +394,7 @@ const fetchAssignmentRows = async (input: FetchActivityAssignmentsInput): Promis
     return [];
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from('activities')
     .select('player_id, team_id')
     .eq('source_activity_id', activityId)

@@ -63,7 +63,11 @@ async function fetchEventsLocalMetaBy(
   const selectWithoutRowId = 'id, external_event_id';
 
   try {
-    const { data, error } = await supabase.from('events_local_meta').select(selectWithRowId).eq(column, value).maybeSingle();
+    const { data, error } = await (supabase as any)
+      .from('events_local_meta')
+      .select(selectWithRowId)
+      .eq(column, value)
+      .maybeSingle();
 
     if (error) {
       const isMissingColumn = error?.code === '42703';
@@ -78,7 +82,7 @@ async function fetchEventsLocalMetaBy(
       }
 
       if (isMissingColumn && isMissingRowIdColumn) {
-        const retry = await supabase
+        const retry = await (supabase as any)
           .from('events_local_meta')
           .select(selectWithoutRowId)
           .eq(column, value)

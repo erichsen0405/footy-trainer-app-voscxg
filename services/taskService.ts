@@ -786,7 +786,7 @@ export const taskService = {
     const table = isExternal ? 'external_event_tasks' : 'activity_tasks';
     const activityColumn = isExternal ? 'local_meta_id' : 'activity_id';
 
-    const { error, count } = await supabase
+    const { error, count } = await (supabase as any)
       .from(table)
       .delete({ count: 'exact' })
       .eq('id', taskId)
