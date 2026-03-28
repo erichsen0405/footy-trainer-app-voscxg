@@ -5,6 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   SectionList,
+  ScrollView,
   Image,
   Modal,
   Platform,
@@ -80,7 +81,7 @@ type FolderVM = {
 
 type LibrarySection =
   | { key: 'folders'; title?: string; data: FolderVM[] }
-  | { key: 'exercises'; title?: string; data: Exercise[] };
+  | { key: 'exercises'; data: Exercise[] };
 
 const FOOTBALLCOACH_STRUCTURE = [
   {
@@ -105,10 +106,32 @@ const formatHoldtraeningSlug = (posId: string) =>
 const getHoldtraeningPositionTitle = (posId: string) =>
   FOOTBALLCOACH_POS_NAME_BY_ID.get(posId) ?? `Andre: ${formatHoldtraeningSlug(posId)}`;
 
+const getHoldtraeningTopRowTitle = (posId: string) =>
+  posId === 'holdtraening_faelles' ? 'Fælles' : getHoldtraeningPositionTitle(posId);
+
+const slugifyPositionValue = (value: string) =>
+  normalizeSignatureText(value)
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+const resolvePersonalPositionId = (positionValue: string) => {
+  const normalized = normalizeSignatureText(positionValue);
+  const normalizedSlug = slugifyPositionValue(positionValue);
+  const knownId = HOLDTRAINING_POSITIONS.find((pos) => {
+    return normalizeSignatureText(pos.name) === normalized || slugifyPositionValue(pos.name) === normalizedSlug;
+  })?.id;
+  return knownId ?? `personal_position_${slugifyPositionValue(positionValue)}`;
+};
+
+const getPersonalPositionTitle = (positionValue: string) => {
+  const positionId = resolvePersonalPositionId(positionValue);
+  return KNOWN_HOLDTRAINING_POSITION_IDS.has(positionId) ? getHoldtraeningTopRowTitle(positionId) : positionValue.trim();
+};
+
 const buildHoldtraeningFolderVm = (posId: string, count: number): FolderVM => ({
   id: posId,
   level: 3,
-  title: getHoldtraeningPositionTitle(posId),
+  title: getHoldtraeningTopRowTitle(posId),
   subtitle: `${count} øvelser`,
   rightBadgeText: String(count),
   icon: buildIcon('footballcoach_position'),
@@ -116,6 +139,21 @@ const buildHoldtraeningFolderVm = (posId: string, count: number): FolderVM => ({
   kind: 'footballcoach_position',
   payload: { root: 'footballcoach', level2Id: 'holdtraening', level3Id: posId },
 });
+
+const buildPersonalPositionFolderVm = (positionValue: string, count: number): FolderVM => {
+  const positionId = resolvePersonalPositionId(positionValue);
+  return {
+    id: positionId,
+    level: 3,
+    title: getPersonalPositionTitle(positionValue),
+    subtitle: `${count} øvelser`,
+    rightBadgeText: String(count),
+    icon: buildIcon('footballcoach_position'),
+    chevron: true,
+    kind: 'footballcoach_position',
+    payload: { root: 'personal', level3Id: positionId },
+  };
+};
 
 const clampDifficulty = (value: any): number => {
   const n = typeof value === 'number' ? value : Number(value);
@@ -336,6 +374,117 @@ const FolderRow = memo(function FolderRow({
         <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron_right" size={18} color={theme.textSecondary} />
       ) : null}
     </TouchableOpacity>
+  );
+});
+
+const TopNavBox = memo(function TopNavBox({
+  item,
+  onPress,
+  isSelected,
+}: {
+  item: FolderVM;
+  onPress: (item: FolderVM) => void;
+  isSelected: boolean;
+}) {
+  const colorScheme = useColorScheme();
+  const theme = getColors(colorScheme);
+  const handlePress = useCallback(() => onPress(item), [item, onPress]);
+  const gradientColors: readonly [string, string, string] = isSelected
+    ? ['#163D2A', '#1D6B42', '#2DA94A']
+    : [withAlpha(theme.background, 0.98), withAlpha(theme.card, 0.98), withAlpha(theme.primary, 0.12)];
+
+  return (
+    <TouchableOpacity
+      onPress={handlePress}
+      activeOpacity={0.92}
+      testID={`library.folder.${item.id}`}
+      accessibilityRole="button"
+      accessibilityState={{ selected: isSelected }}
+      style={[
+        styles.topNavBoxWrap,
+        isSelected ? styles.topNavBoxWrapSelected : null,
+      ]}
+    >
+      <LinearGradient
+        colors={gradientColors}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[
+          styles.topNavBox,
+          !isSelected ? styles.topNavBoxIdle : null,
+          { borderColor: isSelected ? colors.success : withAlpha(theme.primary, 0.18) },
+        ]}
+      >
+        <Text
+          style={[styles.topNavTitle, { color: isSelected ? '#fff' : theme.text }]}
+          numberOfLines={2}
+          adjustsFontSizeToFit
+          minimumFontScale={0.72}
+          ellipsizeMode="tail"
+        >
+          {item.title}
+        </Text>
+        {item.rightBadgeText ? (
+          <View
+            style={[
+              styles.topNavCountBadge,
+              { backgroundColor: isSelected ? 'rgba(255,255,255,0.16)' : theme.background },
+            ]}
+          >
+            <Text
+              style={[
+                styles.topNavCountBadgeText,
+                { color: isSelected ? '#fff' : theme.textSecondary },
+              ]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
+            >
+              {item.rightBadgeText} øvelser
+            </Text>
+          </View>
+        ) : null}
+      </LinearGradient>
+    </TouchableOpacity>
+  );
+});
+
+const HorizontalScrollHint = memo(function HorizontalScrollHint({ testID }: { testID: string }) {
+  const colorScheme = useColorScheme();
+  const theme = getColors(colorScheme);
+
+  return (
+    <View pointerEvents="none" style={styles.topRowHint} testID={testID}>
+      <LinearGradient
+        colors={[withAlpha(theme.background, 0), theme.background]}
+        start={{ x: 0, y: 0.5 }}
+        end={{ x: 1, y: 0.5 }}
+        style={styles.topRowHintFade}
+      />
+    </View>
+  );
+});
+
+const SectionDivider = memo(function SectionDivider({
+  title,
+  testID,
+}: {
+  title: string;
+  testID?: string;
+}) {
+  const colorScheme = useColorScheme();
+  const theme = getColors(colorScheme);
+
+  return (
+    <View style={styles.sectionDivider} testID={testID}>
+      <Text style={[styles.sectionDividerText, { color: theme.textSecondary }]}>{title}</Text>
+      <LinearGradient
+        colors={[withAlpha(theme.highlight, 0), withAlpha(theme.highlight, 0.92), withAlpha(theme.primary, 0.35)]}
+        start={{ x: 0, y: 0.5 }}
+        end={{ x: 1, y: 0.5 }}
+        style={styles.sectionDividerLine}
+      />
+    </View>
   );
 });
 
@@ -1202,15 +1351,6 @@ export default function LibraryScreen() {
     console.log('[Library] derived', { isAdmin, isCreator, roleStr, isTrainerLike, isTrainerByTier, subscriptionTier, canCreateExercise, isPlayer });
   }, [roleInfo, isAdmin, isCreator, roleStr, isTrainerLike, isTrainerByTier, subscriptionTier, canCreateExercise, isPlayer]);
 
-  const footballCoachCountsByCategory = useMemo(() => {
-    const m = new Map<string, number>();
-    FOOTBALLCOACH_STRUCTURE.forEach(cat => {
-      const sum = cat.positions.reduce((acc, pos) => acc + (footballCoachCountsByPosition.get(pos.id) || 0), 0);
-      m.set(cat.id, sum);
-    });
-    return m;
-  }, [footballCoachCountsByPosition]);
-
   const trainerTotalExercises = useMemo(() => {
     return trainerFolders.reduce((acc, t) => acc + (t.exercises?.length || 0), 0);
   }, [trainerFolders]);
@@ -1232,7 +1372,7 @@ export default function LibraryScreen() {
         {
           id: 'footballcoach',
           level: 1,
-          title: 'FootballCoach fokusområder',
+          title: 'Fokusområder',
           subtitle: `${footballCoachExercises.length} øvelser`,
           rightBadgeText: String(footballCoachExercises.length),
           icon: buildIcon('footballcoach'),
@@ -1257,7 +1397,7 @@ export default function LibraryScreen() {
       {
         id: 'footballcoach',
         level: 1,
-        title: 'FootballCoach fokusområder',
+        title: 'Fokusområder',
         subtitle: `${footballCoachExercises.length} øvelser`,
         rightBadgeText: String(footballCoachExercises.length),
         icon: buildIcon('footballcoach'),
@@ -1268,35 +1408,48 @@ export default function LibraryScreen() {
     ];
   }, [isCreator, personalExercises.length, footballCoachExercises.length, trainerTotalExercises]);
 
-  const footballCoachCategories: FolderVM[] = useMemo(() => {
-    return FOOTBALLCOACH_STRUCTURE.map(cat => {
-      const count = footballCoachCountsByCategory.get(cat.id) || 0;
-      return {
-        id: cat.id,
-        level: 2,
-        title: cat.name,
-        subtitle: `${count} øvelser`,
-        rightBadgeText: String(count),
-        icon: buildIcon('footballcoach_category'),
-        chevron: true,
-        kind: 'footballcoach_category',
-        payload: { root: 'footballcoach', level2Id: cat.id },
-      };
-    });
-  }, [footballCoachCountsByCategory]);
-
   const footballCoachPositions: FolderVM[] = useMemo(() => {
-    if (nav.root !== 'footballcoach' || !nav.level2Id) return [];
-    const cat = FOOTBALLCOACH_STRUCTURE.find(c => c.id === nav.level2Id);
+    const cat = FOOTBALLCOACH_STRUCTURE[0];
     if (!cat) return [];
     const base = cat.positions.map(pos => buildHoldtraeningFolderVm(pos.id, footballCoachCountsByPosition.get(pos.id) || 0));
-    if (nav.level2Id !== 'holdtraening') return base;
     const dynamic = Array.from(footballCoachCountsByPosition.entries())
       .filter(([posId, count]) => posId.startsWith('holdtraening_') && !KNOWN_HOLDTRAINING_POSITION_IDS.has(posId) && count > 0)
       .map(([posId, count]) => buildHoldtraeningFolderVm(posId, count))
       .sort((a, b) => a.title.localeCompare(b.title));
     return [...base, ...dynamic];
-  }, [nav.root, nav.level2Id, footballCoachCountsByPosition]);
+  }, [footballCoachCountsByPosition]);
+
+  const personalPositionsMeta = useMemo(() => {
+    const counts = new Map<string, { count: number; positionValue: string }>();
+    personalExercises.forEach((exercise) => {
+      const positionValue = String(exercise.position ?? '').trim();
+      if (!positionValue) return;
+      const positionId = resolvePersonalPositionId(positionValue);
+      const current = counts.get(positionId);
+      if (current) {
+        current.count += 1;
+        return;
+      }
+      counts.set(positionId, { count: 1, positionValue });
+    });
+    return counts;
+  }, [personalExercises]);
+
+  const personalPositions: FolderVM[] = useMemo(() => {
+    const orderedKnown = HOLDTRAINING_POSITIONS
+      .map((position) => {
+        const meta = personalPositionsMeta.get(position.id);
+        return meta ? buildPersonalPositionFolderVm(meta.positionValue, meta.count) : null;
+      })
+      .filter(Boolean) as FolderVM[];
+
+    const dynamic = Array.from(personalPositionsMeta.entries())
+      .filter(([positionId]) => !KNOWN_HOLDTRAINING_POSITION_IDS.has(positionId))
+      .map(([, meta]) => buildPersonalPositionFolderVm(meta.positionValue, meta.count))
+      .sort((a, b) => a.title.localeCompare(b.title));
+
+    return [...orderedKnown, ...dynamic];
+  }, [personalPositionsMeta]);
 
   const trainerLevel2Folders: FolderVM[] = useMemo(() => {
     if (nav.root !== 'trainer') return [];
@@ -1313,39 +1466,12 @@ export default function LibraryScreen() {
     }));
   }, [nav.root, trainerFolders]);
 
-  const selectedExerciseHeaderTitle = useMemo(() => {
-    if (!nav.root) return '';
-    if (searchOpen && searchQuery.trim().length > 0) return 'Søgeresultater';
-    if (nav.root === 'personal') return 'Personlige øvelser';
-    if (nav.root === 'trainer') {
-      const t = trainerFolders.find(x => x.trainerId === nav.level2Id);
-      return t ? t.trainerName : 'Øvelser fra træner';
-    }
-    if (nav.root === 'footballcoach') {
-      if (nav.level3Id) return getHoldtraeningPositionTitle(nav.level3Id);
-      const cat = FOOTBALLCOACH_STRUCTURE.find(c => c.id === nav.level2Id);
-      return cat?.name || 'FootballCoach fokusområder';
-    }
-    return '';
-  }, [nav, trainerFolders, searchOpen, searchQuery]);
-
-  const visibleFolderStack: FolderVM[] = useMemo(() => {
-    const rows: FolderVM[] = [...rootFolders];
-    if (nav.root === 'footballcoach') {
-      rows.push(...footballCoachCategories);
-      if (nav.level2Id) rows.push(...footballCoachPositions);
-    }
-    if (nav.root === 'trainer') {
-      rows.push(...trainerLevel2Folders);
-    }
-    return rows;
-  }, [rootFolders, nav.root, nav.level2Id, footballCoachCategories, footballCoachPositions, trainerLevel2Folders]);
-
   const selectedPathIds = useMemo(() => {
     const s = new Set<string>();
     if (!nav.root) return s;
     if (nav.root === 'personal') {
       s.add('personal');
+      if (nav.level3Id) s.add(nav.level3Id);
       return s;
     }
     if (nav.root === 'trainer') {
@@ -1365,7 +1491,13 @@ export default function LibraryScreen() {
   const exercisesInCurrentView: Exercise[] = useMemo(() => {
     let list: Exercise[] = [];
     if (nav.root === 'personal') {
-      list = personalExercises;
+      if (!nav.level3Id) list = personalExercises;
+      else {
+        list = personalExercises.filter((exercise) => {
+          const positionValue = String(exercise.position ?? '').trim();
+          return positionValue ? resolvePersonalPositionId(positionValue) === nav.level3Id : false;
+        });
+      }
     } else if (nav.root === 'trainer') {
       if (!nav.level2Id) list = [];
       else list = trainerFolders.find(t => t.trainerId === nav.level2Id)?.exercises ?? [];
@@ -1418,11 +1550,11 @@ export default function LibraryScreen() {
   }, [searchOpen, searchQuery, allExercisesForSearch, exercisesInCurrentView]);
 
   const isAtExerciseLevel = useMemo(() => {
-    if (nav.root === 'personal') return true;
+    if (nav.root === 'personal') return !personalPositions.length || !!nav.level3Id;
     if (nav.root === 'trainer') return !!nav.level2Id || (searchOpen && searchQuery.trim().length > 0);
     if (nav.root === 'footballcoach') return !!nav.level3Id || (searchOpen && searchQuery.trim().length > 0);
     return false;
-  }, [nav, searchOpen, searchQuery]);
+  }, [nav, personalPositions.length, searchOpen, searchQuery]);
 
   const listRef = useRef<SectionList<any>>(null);
   const pendingScrollToExercisesRef = useRef(false);
@@ -1434,9 +1566,20 @@ export default function LibraryScreen() {
     setNav(prev => {
       if (!root) return prev;
       if (folder.level === 1) {
-        if (prev.root === root) return { root: null, level2Id: null, level3Id: null };
-        if (root === 'personal') pendingScrollToExercisesRef.current = true;
-        return { root, level2Id: null, level3Id: null };
+        if (prev.root === root) {
+          if (root === 'personal' && prev.level3Id) {
+            return { root: 'personal', level2Id: null, level3Id: null };
+          }
+          if (root === 'trainer' && prev.level2Id) {
+            return { root: 'trainer', level2Id: null, level3Id: null };
+          }
+          if (root === 'footballcoach' && prev.level3Id) {
+            return { root: 'footballcoach', level2Id: 'holdtraening', level3Id: null };
+          }
+          return { root: null, level2Id: null, level3Id: null };
+        }
+        if (root === 'personal' || root === 'footballcoach') pendingScrollToExercisesRef.current = true;
+        return { root, level2Id: root === 'footballcoach' ? 'holdtraening' : null, level3Id: null };
       }
       if (root === 'trainer' && folder.level === 2) {
         const nextLevel2 = folder.payload?.level2Id ?? null;
@@ -1455,6 +1598,12 @@ export default function LibraryScreen() {
           pendingScrollToExercisesRef.current = true;
           return isSame ? prev : { root: 'footballcoach', level2Id: nextL2, level3Id: nextL3 };
         }
+      }
+      if (root === 'personal' && folder.level === 3) {
+        const nextL3 = folder.payload?.level3Id ?? null;
+        const isSame = prev.root === 'personal' && prev.level3Id === nextL3;
+        pendingScrollToExercisesRef.current = true;
+        return isSame ? prev : { root: 'personal', level2Id: null, level3Id: nextL3 };
       }
       return prev;
     });
@@ -1674,37 +1823,28 @@ export default function LibraryScreen() {
   }, [tasksFromContext]);
 
   const sections: LibrarySection[] = useMemo(() => {
-    const folderSection: LibrarySection = { key: 'folders', data: visibleFolderStack };
-    const exerciseSection: LibrarySection = { key: 'exercises', title: selectedExerciseHeaderTitle, data: displayedExercises };
-    return [folderSection, exerciseSection];
-  }, [visibleFolderStack, selectedExerciseHeaderTitle, displayedExercises]);
+    const nextSections: LibrarySection[] = [];
+    if (nav.root === 'trainer') {
+      nextSections.push({ key: 'folders', data: trainerLevel2Folders });
+    }
+    nextSections.push({ key: 'exercises', data: displayedExercises });
+    return nextSections;
+  }, [nav.root, trainerLevel2Folders, displayedExercises]);
 
   const exerciseSceneImageById = useMemo(
     () => buildExerciseSceneImageById(displayedExercises),
     [displayedExercises]
   );
 
-  const scrollToTop = useCallback(() => {
-    const ref = listRef.current as any;
-    try {
-      if (typeof ref?.scrollToOffset === 'function') {
-        ref.scrollToOffset({ offset: 0, animated: true });
-        return;
-      }
-      if (typeof ref?.scrollToLocation === 'function') {
-        ref.scrollToLocation({ sectionIndex: 0, itemIndex: 0, viewPosition: 0, animated: true });
-      }
-    } catch {}
-  }, []);
-
   const scrollToExercises = useCallback(() => {
     const ref = listRef.current as any;
+    const exerciseSectionIndex = nav.root === 'trainer' ? 1 : 0;
     try {
       if (typeof ref?.scrollToLocation === 'function') {
-        ref.scrollToLocation({ sectionIndex: 1, itemIndex: 0, viewPosition: 0, animated: true });
+        ref.scrollToLocation({ sectionIndex: exerciseSectionIndex, itemIndex: 0, viewPosition: 0, animated: true });
       }
     } catch {}
-  }, []);
+  }, [nav.root]);
 
   useEffect(() => {
     if (!pendingScrollToExercisesRef.current) return;
@@ -1720,22 +1860,14 @@ export default function LibraryScreen() {
   }, [nav.root, nav.level2Id, nav.level3Id, displayedExercises.length, scrollToExercises]);
 
   const showAddModal = !isTrainerUser && addModalOpen && !!addModalExercise;
-
-  const renderSectionHeader = useCallback(
-    ({ section }: { section: LibrarySection }) => {
-      if (section.key !== 'exercises') return null;
-      return (
-        <View style={styles.exerciseHeaderRow}>
-          <Pressable onPress={scrollToTop} style={styles.exerciseHeaderTitlePressable}>
-            <Text style={[styles.exerciseHeaderTitle, { color: theme.text }]} numberOfLines={2}>
-              {section.title || ''}
-            </Text>
-          </Pressable>
-        </View>
-      );
-    },
-    [theme, scrollToTop]
-  );
+  const showFocusSelectionState =
+    ((nav.root === 'footballcoach' && !nav.level3Id) || (nav.root === 'personal' && personalPositions.length > 0 && !nav.level3Id)) &&
+    !(searchOpen && searchQuery.trim().length > 0);
+  const secondaryFolders = nav.root === 'personal' ? personalPositions : footballCoachPositions;
+  const showPositionRow =
+    (nav.root === 'footballcoach' && footballCoachPositions.length > 0) ||
+    (nav.root === 'personal' && personalPositions.length > 0);
+  const showExercisesHeader = !!nav.root || (searchOpen && searchQuery.trim().length > 0);
 
   const renderItem = useCallback(
     ({ item, section }: { item: any; section: LibrarySection }) => {
@@ -1789,6 +1921,53 @@ export default function LibraryScreen() {
       exerciseSceneImageById,
     ]
   );
+
+  const renderTopNavigation = useCallback(() => (
+    <View style={[styles.topNavigation, { backgroundColor: theme.background }]}>
+      <SectionDivider title="Bibliotek" testID="library.sectionHeader.primary" />
+      <View style={styles.topRowShell} testID="library.topRow.primary">
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.topRowContent}
+          testID="library.topRow.primary.scroll"
+        >
+          {rootFolders.map((folder) => (
+            <TopNavBox
+              key={folder.id}
+              item={folder}
+              onPress={handleFolderPress}
+              isSelected={selectedPathIds.has(folder.id)}
+            />
+          ))}
+        </ScrollView>
+        <HorizontalScrollHint testID="library.scrollHint.primary" />
+      </View>
+      {showPositionRow ? (
+        <>
+          <SectionDivider title="Positioner" testID="library.sectionHeader.secondary" />
+          <View style={styles.topRowShell} testID="library.topRow.secondary">
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.topRowContent}
+              testID="library.topRow.secondary.scroll"
+            >
+              {secondaryFolders.map((folder) => (
+                <TopNavBox
+                  key={folder.id}
+                  item={folder}
+                  onPress={handleFolderPress}
+                  isSelected={selectedPathIds.has(folder.id)}
+                />
+              ))}
+            </ScrollView>
+            <HorizontalScrollHint testID="library.scrollHint.secondary" />
+          </View>
+        </>
+      ) : null}
+    </View>
+  ), [theme.background, rootFolders, handleFolderPress, selectedPathIds, showPositionRow, secondaryFolders]);
 
   const keyExtractor = useCallback((item: any, index: number) => {
     if ((item as FolderVM)?.kind) return `folder-${(item as FolderVM).id}`;
@@ -1952,11 +2131,16 @@ export default function LibraryScreen() {
           ) : null}
         </View>
       ) : null}
+      {renderTopNavigation()}
+      {showExercisesHeader ? (
+        <View style={styles.exerciseHeaderWrap}>
+          <SectionDivider title="Øvelser" testID="library.exerciseHeader" />
+        </View>
+      ) : null}
       <SectionList
         sections={sections as any}
         keyExtractor={keyExtractor}
         renderItem={renderItem as any}
-        renderSectionHeader={renderSectionHeader as any}
         contentContainerStyle={styles.listPad}
         stickySectionHeadersEnabled={false}
         showsVerticalScrollIndicator={false}
@@ -1965,8 +2149,18 @@ export default function LibraryScreen() {
         maxToRenderPerBatch={10}
         updateCellsBatchingPeriod={50}
         removeClippedSubviews={Platform.OS !== 'web'}
+        testID="library.exerciseList"
         ListEmptyComponent={
-          isAtExerciseLevel ? (
+          showFocusSelectionState ? (
+            <View style={[styles.stateCard, { backgroundColor: theme.card }]}>
+              <Text style={[styles.stateTitle, { color: theme.text }]}>
+                {nav.root === 'personal' ? 'Vælg en position' : 'Vælg et fokusområde'}
+              </Text>
+              <Text style={[styles.stateMessage, { color: theme.textSecondary }]}>
+                Vælg en position i rækken ovenfor for at se øvelserne.
+              </Text>
+            </View>
+          ) : isAtExerciseLevel ? (
             <View style={[styles.stateCard, { backgroundColor: theme.card }]}>
               {searchOpen && searchQuery.trim().length > 0 ? (
                 <>
@@ -2101,6 +2295,97 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, fontSize: 14, fontWeight: '600' },
 
+  topNavigation: {
+    paddingHorizontal: 18,
+    paddingBottom: 14,
+    gap: 10,
+  },
+  topRowShell: {
+    position: 'relative',
+    minHeight: 88,
+  },
+  topRowContent: {
+    paddingRight: 44,
+    gap: 12,
+  },
+  topRowHint: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 44,
+  },
+  topRowHintFade: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  topNavBoxWrap: {
+    paddingVertical: 2,
+    width: 122,
+  },
+  topNavBoxWrapSelected: {
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.16,
+    shadowRadius: 20,
+    elevation: 7,
+  },
+  topNavBox: {
+    borderRadius: 24,
+    borderWidth: 1,
+    overflow: 'hidden',
+    height: 88,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 8,
+    justifyContent: 'flex-start',
+  },
+  topNavBoxIdle: {
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    elevation: 4,
+  },
+  topNavTitle: {
+    fontSize: 11,
+    lineHeight: 13,
+    fontWeight: '800',
+  },
+  topNavCountBadge: {
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    maxWidth: '100%',
+  },
+  topNavCountBadgeText: {
+    fontSize: 9,
+    lineHeight: 11,
+    fontWeight: '800',
+  },
+  sectionDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 2,
+  },
+  sectionDividerText: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  sectionDividerLine: {
+    flex: 1,
+    height: 2,
+    borderRadius: 999,
+  },
+  exerciseHeaderWrap: {
+    paddingHorizontal: 18,
+    paddingBottom: 10,
+  },
+
   listPad: { paddingHorizontal: 18, paddingBottom: 16 },
 
   folderRow: {
@@ -2129,14 +2414,6 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   folderRightBadgeText: { fontSize: 12, fontWeight: '800' },
-
-  exerciseHeaderRow: {
-    marginTop: 6,
-    marginBottom: 10,
-    gap: 10,
-  },
-  exerciseHeaderTitlePressable: { width: '100%' },
-  exerciseHeaderTitle: { fontSize: 24, lineHeight: 30, fontWeight: '800', width: '100%' },
 
   exerciseCard: {
     borderRadius: 34,

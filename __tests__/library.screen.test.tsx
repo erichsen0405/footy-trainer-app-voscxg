@@ -120,6 +120,7 @@ type ExerciseRow = {
   description?: string | null;
   is_system: boolean;
   category_path?: string | null;
+  position?: string | null;
   difficulty?: number | null;
   is_added_to_tasks?: boolean | null;
   last_score?: number | null;
@@ -129,6 +130,14 @@ type ExerciseRow = {
   video_url?: string | null;
   thumbnail_url?: string | null;
 };
+
+const buildSystemExercise = (id: string, title: string, categoryPath: string): ExerciseRow => ({
+  id,
+  trainer_id: null,
+  title,
+  is_system: true,
+  category_path: categoryPath,
+});
 
 function setupSupabaseFixture({
   userId = 'user-1',
@@ -283,6 +292,152 @@ describe('Library screen gating and card state', () => {
 
     expect(await findByText(/Bibliotek/i)).toBeTruthy();
     expect(queryByText(/kræver Premium/i)).toBeNull();
+  });
+
+  it('renders sticky top rows with focus positions and selected path for trainer profile', async () => {
+    setupSupabaseFixture({
+      systemExercises: [
+        buildSystemExercise('sys-faelles-1', 'Fælles øvelse', 'holdtraening_faelles'),
+        buildSystemExercise('sys-back-1', 'Back øvelse', 'holdtraening_back'),
+      ],
+      personalExercises: [
+        {
+          id: 'personal-1',
+          trainer_id: 'user-1',
+          title: 'Min øvelse',
+          is_system: false,
+        },
+      ],
+    });
+
+    mockUseUserRole.mockReturnValue({ userRole: 'trainer', isTrainer: true, isAdmin: false });
+    mockUseSubscriptionFeatures.mockReturnValue({
+      featureAccess: { library: true, calendarSync: true, trainerLinking: true },
+      isLoading: false,
+      subscriptionTier: 'trainer_basic',
+    });
+
+    const { findByTestId, getByText, queryByTestId } = render(<LibraryScreen />);
+
+    expect(await findByTestId('library.topRow.primary')).toBeTruthy();
+    expect(await findByTestId('library.scrollHint.primary')).toBeTruthy();
+    expect(queryByTestId('library.topRow.secondary')).toBeNull();
+    expect(getByText('Personlige øvelser')).toBeTruthy();
+    expect(getByText('Fokusområder')).toBeTruthy();
+
+    const footballcoachBox = await findByTestId('library.folder.footballcoach');
+    fireEvent.press(footballcoachBox);
+
+    expect(await findByTestId('library.topRow.secondary')).toBeTruthy();
+    expect(await findByTestId('library.scrollHint.secondary')).toBeTruthy();
+    expect(getByText('Fælles')).toBeTruthy();
+    expect(getByText('Målmand')).toBeTruthy();
+    expect(getByText('Back')).toBeTruthy();
+
+    const faellesBox = await findByTestId('library.folder.holdtraening_faelles');
+    fireEvent.press(faellesBox);
+
+    expect((await findByTestId('library.folder.footballcoach')).props.accessibilityState?.selected).toBe(true);
+    expect((await findByTestId('library.folder.holdtraening_faelles')).props.accessibilityState?.selected).toBe(true);
+    expect(await findByTestId('library.exerciseHeader')).toBeTruthy();
+    expect(getByText('Fælles øvelse')).toBeTruthy();
+  });
+
+  it('shows all personal exercises for the selected position despite text variations and keeps Øvelser visible', async () => {
+    setupSupabaseFixture({
+      personalExercises: [
+        {
+          id: 'personal-position-1',
+          trainer_id: 'user-1',
+          title: 'Personlig fælles øvelse A',
+          is_system: false,
+          position: ' Fælles   (alle positioner) ',
+        },
+        {
+          id: 'personal-position-2',
+          trainer_id: 'user-1',
+          title: 'Personlig fælles øvelse B',
+          is_system: false,
+          position: 'fælles alle positioner',
+        },
+        {
+          id: 'personal-position-3',
+          trainer_id: 'user-1',
+          title: 'Personlig målmandsøvelse',
+          is_system: false,
+          position: ' Målmand ',
+        },
+      ],
+    });
+
+    mockUseUserRole.mockReturnValue({ userRole: 'trainer', isTrainer: true, isAdmin: false });
+    mockUseSubscriptionFeatures.mockReturnValue({
+      featureAccess: { library: true, calendarSync: true, trainerLinking: true },
+      isLoading: false,
+      subscriptionTier: 'trainer_basic',
+    });
+
+    const { findByTestId, getByText, queryByTestId, queryByText } = render(<LibraryScreen />);
+
+    expect(queryByTestId('library.topRow.secondary')).toBeNull();
+
+    fireEvent.press(await findByTestId('library.folder.personal'));
+
+    expect(await findByTestId('library.topRow.secondary')).toBeTruthy();
+    expect(getByText('Fælles')).toBeTruthy();
+    expect(await findByTestId('library.folder.holdtraening_maalmand')).toBeTruthy();
+
+    fireEvent.press(await findByTestId('library.folder.holdtraening_faelles'));
+
+    expect((await findByTestId('library.folder.personal')).props.accessibilityState?.selected).toBe(true);
+    expect((await findByTestId('library.folder.holdtraening_faelles')).props.accessibilityState?.selected).toBe(true);
+    expect(await findByTestId('library.exerciseHeader')).toBeTruthy();
+    expect(getByText('Personlig fælles øvelse A')).toBeTruthy();
+    expect(getByText('Personlig fælles øvelse B')).toBeTruthy();
+    expect(queryByText('Personlig målmandsøvelse')).toBeNull();
+  });
+
+  it('keeps the top navigation visible while exercises scroll', async () => {
+    setupSupabaseFixture({
+      systemExercises: Array.from({ length: 12 }, (_, index) =>
+        buildSystemExercise(`sys-faelles-${index + 1}`, `Fælles øvelse ${index + 1}`, 'holdtraening_faelles')
+      ),
+      personalExercises: [
+        {
+          id: 'personal-2',
+          trainer_id: 'user-1',
+          title: 'Min anden øvelse',
+          is_system: false,
+        },
+      ],
+    });
+
+    mockUseUserRole.mockReturnValue({ userRole: 'trainer', isTrainer: true, isAdmin: false });
+    mockUseSubscriptionFeatures.mockReturnValue({
+      featureAccess: { library: true, calendarSync: true, trainerLinking: true },
+      isLoading: false,
+      subscriptionTier: 'trainer_basic',
+    });
+
+    const { findByTestId } = render(<LibraryScreen />);
+
+    fireEvent.press(await findByTestId('library.folder.footballcoach'));
+    expect(await findByTestId('library.topRow.secondary')).toBeTruthy();
+    fireEvent.press(await findByTestId('library.folder.holdtraening_faelles'));
+
+    fireEvent.scroll(await findByTestId('library.exerciseList'), {
+      nativeEvent: {
+        contentOffset: { y: 420, x: 0 },
+        contentSize: { height: 1800, width: 390 },
+        layoutMeasurement: { height: 640, width: 390 },
+      },
+    });
+
+    expect(await findByTestId('library.topRow.primary')).toBeTruthy();
+    expect(await findByTestId('library.topRow.secondary')).toBeTruthy();
+    expect(await findByTestId('library.exerciseHeader')).toBeTruthy();
+    expect((await findByTestId('library.folder.footballcoach')).props.accessibilityState?.selected).toBe(true);
+    expect((await findByTestId('library.folder.holdtraening_faelles')).props.accessibilityState?.selected).toBe(true);
   });
 
   it(
