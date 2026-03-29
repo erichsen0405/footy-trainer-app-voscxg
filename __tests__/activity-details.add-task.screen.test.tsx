@@ -180,6 +180,20 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, left: 0, right: 0, bottom: 0 }),
 }));
 
+function createEmptySupabaseBuilder() {
+  const builder: any = {
+    select: () => builder,
+    eq: () => builder,
+    limit: () => builder,
+    in: async () => ({ data: [], error: null }),
+    order: async () => ({ data: [], error: null }),
+    maybeSingle: async () => ({ data: null, error: null }),
+    single: async () => ({ data: null, error: null }),
+  };
+
+  return builder;
+}
+
 describe('ActivityDetails add-task flow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -210,13 +224,7 @@ describe('ActivityDetails add-task flow', () => {
     ]);
     mockSupabaseFrom.mockImplementation((table: string) => {
       if (table !== 'activities') {
-        return {
-          select: () => ({
-            eq: () => ({
-              single: async () => ({ data: null, error: null }),
-            }),
-          }),
-        };
+        return createEmptySupabaseBuilder();
       }
 
       const builder: any = {
@@ -306,6 +314,72 @@ describe('ActivityDetails add-task flow', () => {
     await waitFor(() => expect(mockSupabaseFrom).toHaveBeenCalledWith('activities'));
     expect(await findByTestId('activity.taskRow.task-1')).toBeTruthy();
     alertSpy.mockRestore();
+  });
+
+  it('does not log auxiliary supabase chain errors while loading feedback metadata', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+
+    const activity = {
+      id: 'activity-feedback-metadata-1',
+      title: 'Session',
+      date: new Date('2026-02-10T10:00:00.000Z'),
+      time: '10:00',
+      location: 'Pitch',
+      category: {
+        id: 'cat-1',
+        name: 'Training',
+        color: '#123456',
+        emoji: '⚽️',
+      },
+      tasks: [
+        {
+          id: 'task-feedback-chain-1',
+          title: 'Feedback task',
+          description: 'Beskrivelse',
+          completed: false,
+          reminder_minutes: null,
+          task_template_id: null,
+          feedback_template_id: 'tpl-feedback-1',
+        },
+      ],
+      isExternal: false,
+      intensityEnabled: false,
+      intensity: null,
+    };
+
+    render(
+      <ActivityDetailsModule.ActivityDetailsContent
+        activity={activity as any}
+        categories={[activity.category as any]}
+        isAdmin
+        isDark={false}
+        onBack={jest.fn()}
+        onActivityUpdated={jest.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mockSupabaseFrom.mock.calls.some(([table]) => table === 'task_templates')).toBe(true);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(
+      logSpy.mock.calls.some(([firstArg]) =>
+        String(firstArg).includes('[ActivityDetails] feedback config fetch skipped/failed')
+      )
+    ).toBe(false);
+    expect(
+      errorSpy.mock.calls.some(([firstArg]) =>
+        String(firstArg).includes('[ActivityDetails] player trainer feedback load failed')
+      )
+    ).toBe(false);
+
+    errorSpy.mockRestore();
+    logSpy.mockRestore();
   });
 
   it('shows latest feedback loading placeholder while data is being fetched', async () => {
@@ -479,13 +553,7 @@ describe('ActivityDetails add-task flow', () => {
 
     mockSupabaseFrom.mockImplementation((table: string) => {
       if (table !== 'activities') {
-        return {
-          select: () => ({
-            eq: () => ({
-              single: async () => ({ data: null, error: null }),
-            }),
-          }),
-        };
+        return createEmptySupabaseBuilder();
       }
 
       const builder: any = {
