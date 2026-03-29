@@ -166,7 +166,7 @@ describe('ActivityDetails trainer feedback UI', () => {
       error: null,
     });
 
-    const { findByTestId, getByText, getByTestId, queryByText } = render(
+    const { findByTestId, findByText, getByText, getByTestId, queryByText } = render(
       <ActivityDetailsContent
         activity={{ ...baseActivity, user_id: 'trainer-1' } as any}
         categories={[baseActivity.category]}
@@ -179,6 +179,7 @@ describe('ActivityDetails trainer feedback UI', () => {
     );
 
     expect(await findByTestId('trainer-feedback-section')).toBeTruthy();
+    expect(await findByText('1 spiller er tilknyttet')).toBeTruthy();
 
     fireEvent.press(getByTestId('trainer-feedback-add-button'));
 

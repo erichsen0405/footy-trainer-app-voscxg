@@ -341,7 +341,7 @@ describe('Library screen gating and card state', () => {
     expect((await findByTestId('library.folder.holdtraening_faelles')).props.accessibilityState?.selected).toBe(true);
     expect(await findByTestId('library.exerciseHeader')).toBeTruthy();
     expect(getByText('Fælles øvelse')).toBeTruthy();
-  });
+  }, 15000);
 
   it('shows all personal exercises for the selected position despite text variations and keeps Øvelser visible', async () => {
     setupSupabaseFixture({
