@@ -1,7 +1,7 @@
 
 /**
  * Video URL Parser Utility
- * Provides functions to parse and validate YouTube and Vimeo URLs
+ * Provides functions to parse and validate YouTube, Vimeo, and Instagram URLs
  * 
  * IMPORTANT: Only embed URLs should be loaded in WebView
  * - YouTube: https://www.youtube.com/embed/{videoId}
@@ -10,7 +10,7 @@
  */
 
 export interface VideoInfo {
-  platform: 'youtube' | 'vimeo' | 'unsupported';
+  platform: 'youtube' | 'vimeo' | 'instagram' | 'unsupported';
   videoId: string | null;
   embedUrl: string | null;
   thumbnailUrl: string | null;
@@ -98,9 +98,37 @@ function parseVimeoVideoId(url: string): string | null {
   return null;
 }
 
+function parseInstagramVideoId(url: string): string | null {
+  const parsed = safeParseUrl(url);
+  if (parsed) {
+    const host = normalizeHost(parsed.hostname);
+    if (host === 'instagram.com') {
+      const segments = parsed.pathname.split('/').filter(Boolean);
+      if (!segments.length) return null;
+
+      if (segments[0] === 'reel' || segments[0] === 'p' || segments[0] === 'tv') {
+        return sanitizeVideoId(segments[1] ?? null);
+      }
+    }
+  }
+
+  const regexFallbacks = [
+    /(?:instagram\.com\/reel\/)([^&\n?#/]+)/i,
+    /(?:instagram\.com\/p\/)([^&\n?#/]+)/i,
+    /(?:instagram\.com\/tv\/)([^&\n?#/]+)/i,
+  ];
+
+  for (const pattern of regexFallbacks) {
+    const match = url.match(pattern);
+    if (match?.[1]) return sanitizeVideoId(match[1]);
+  }
+
+  return null;
+}
+
 /**
  * Parse video URL and extract platform information
- * Converts any valid YouTube or Vimeo URL to proper embed format
+ * Converts supported URLs to platform metadata
  */
 export function parseVideoUrl(url: string): VideoInfo {
   if (!url || !url.trim()) {
@@ -130,6 +158,16 @@ export function parseVideoUrl(url: string): VideoInfo {
       platform: 'vimeo',
       videoId: vimeoId,
       embedUrl: `https://player.vimeo.com/video/${vimeoId}`,
+      thumbnailUrl: null,
+    };
+  }
+
+  const instagramId = parseInstagramVideoId(trimmedUrl);
+  if (instagramId) {
+    return {
+      platform: 'instagram',
+      videoId: instagramId,
+      embedUrl: null,
       thumbnailUrl: null,
     };
   }
@@ -175,18 +213,17 @@ export function getVideoThumbnail(url: string): string | null {
 }
 
 /**
- * Check if URL is a valid video URL (YouTube or Vimeo)
- * Returns true only if the URL can be converted to a valid embed URL
+ * Check if URL is a supported video URL (YouTube, Vimeo, or Instagram)
  */
 export function isValidVideoUrl(url: string): boolean {
   const videoInfo = parseVideoUrl(url);
-  return videoInfo.platform !== 'unsupported' && videoInfo.videoId !== null && videoInfo.embedUrl !== null;
+  return videoInfo.platform !== 'unsupported' && videoInfo.videoId !== null;
 }
 
 /**
  * Get platform name from URL
  */
-export function getVideoPlatform(url: string): 'youtube' | 'vimeo' | 'unsupported' {
+export function getVideoPlatform(url: string): 'youtube' | 'vimeo' | 'instagram' | 'unsupported' {
   const videoInfo = parseVideoUrl(url);
   return videoInfo.platform;
 }

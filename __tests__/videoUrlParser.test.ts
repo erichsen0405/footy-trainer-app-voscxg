@@ -20,6 +20,17 @@ describe('videoUrlParser', () => {
     expect(parsed.videoId).toBe('dQw4w9WgXcQ');
   });
 
+  it('treats Instagram reel URLs as supported videos', () => {
+    const parsed = parseVideoUrl('https://www.instagram.com/reel/C7N2KQ2uV9x/?igsh=MWQ=');
+
+    expect(parsed.platform).toBe('instagram');
+    expect(parsed.videoId).toBe('C7N2KQ2uV9x');
+    expect(isPlayableVideoUrl('https://www.instagram.com/reel/C7N2KQ2uV9x/?igsh=MWQ=')).toBe(true);
+    expect(
+      extractFirstPlayableVideoUrl('Se denne video https://www.instagram.com/reel/C7N2KQ2uV9x/?igsh=MWQ=')
+    ).toBe('https://www.instagram.com/reel/C7N2KQ2uV9x/?igsh=MWQ=');
+  });
+
   it('does not treat ordinary links as playable video', () => {
     expect(isPlayableVideoUrl('https://example.com/guide')).toBe(false);
     expect(extractFirstPlayableVideoUrl('Laes mere her https://example.com/guide')).toBeNull();

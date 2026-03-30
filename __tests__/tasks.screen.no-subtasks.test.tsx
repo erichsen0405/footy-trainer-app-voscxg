@@ -168,4 +168,36 @@ describe('Tasks template editor without subtasks', () => {
 
     expect(getByText('Teknik, Styrke')).toBeTruthy();
   });
+
+  it('reopens a template with snake_case video_url populated in the editor', () => {
+    mockUseFootball.mockReturnValue({
+      tasks: [
+        {
+          id: 'template-ig-1',
+          title: 'Instagram template',
+          description: 'test',
+          completed: false,
+          isTemplate: true,
+          categoryIds: [],
+          subtasks: [],
+          video_url: 'https://www.instagram.com/reel/C7N2KQ2uV9x/?igsh=MWQ=',
+          archivedAt: null,
+        },
+      ],
+      categories: [],
+      duplicateTask: jest.fn(),
+      deleteTask: jest.fn().mockResolvedValue(undefined),
+      refreshAll: jest.fn().mockResolvedValue(undefined),
+      refreshData: jest.fn().mockResolvedValue(undefined),
+      updateTask: jest.fn().mockResolvedValue(undefined),
+      isLoading: false,
+    });
+
+    const { getByDisplayValue, getByTestId } = render(<TasksScreen />);
+
+    fireEvent.press(getByTestId('tasks.folder.toggle.personal'));
+    fireEvent.press(getByTestId('tasks.template.card.template-ig-1'));
+
+    expect(getByDisplayValue('https://www.instagram.com/reel/C7N2KQ2uV9x/?igsh=MWQ=')).toBeTruthy();
+  });
 });

@@ -28,6 +28,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { taskService } from '@/services/taskService';
 import { forceRefreshNotificationQueue } from '@/utils/notificationScheduler';
 import { emitActivitiesRefreshRequested } from '@/utils/activityEvents';
+import { getTaskModalVideoUrl } from '@/utils/taskModalContent';
 
 // ✅ Robust import: undgå Hermes-crash hvis named export "colors" ikke findes
 import * as CommonStyles from '@/styles/commonStyles';
@@ -67,13 +68,24 @@ const normalizeTaskDurationValue = (value: unknown): number | null => {
 // Local helper function to validate video URLs
 function isValidVideoUrl(url?: string | null): boolean {
   if (!url) return false;
+  const normalizedUrl = url.toLowerCase();
 
   return (
-    url.includes("youtube.com") ||
-    url.includes("youtu.be") ||
-    url.includes("vimeo.com")
+    normalizedUrl.includes('youtube.com') ||
+    normalizedUrl.includes('youtu.be') ||
+    normalizedUrl.includes('vimeo.com') ||
+    normalizedUrl.includes('instagram.com')
   );
 }
+
+function getVideoSourceLabel(url?: string | null): string {
+  const normalizedUrl = String(url ?? '').toLowerCase();
+  if (normalizedUrl.includes('instagram.com')) return 'Instagram';
+  if (normalizedUrl.includes('vimeo.com')) return 'Vimeo';
+  if (normalizedUrl.includes('youtu')) return 'YouTube';
+  return 'Video';
+}
+
 function getYouTubeThumbnail(url: string): string | null {
   try {
     if (url.includes('youtu.be/')) {
@@ -245,7 +257,7 @@ export const TaskCard = React.memo(
     getCategoryNames: (categoryIds: string[]) => string;
     isArchived?: boolean;
   }) => {
-    const videoUrl = (task as any)?.videoUrl ?? null;
+    const videoUrl = getTaskModalVideoUrl(task);
     const ytThumb = typeof videoUrl === 'string' && videoUrl.includes('youtu') ? getYouTubeThumbnail(videoUrl) : null;
     const taskId = String((task as any)?.id ?? '');
 
@@ -292,7 +304,9 @@ export const TaskCard = React.memo(
             {ytThumb ? (
               <Image source={{ uri: ytThumb }} style={styles.videoThumbnail} resizeMode="cover" />
             ) : (
-              <View style={styles.videoThumbnailFallback} />
+              <View style={styles.videoThumbnailFallback}>
+                <Text style={styles.videoThumbnailFallbackLabel}>{getVideoSourceLabel(videoUrl)}</Text>
+              </View>
             )}
             <View style={styles.videoOverlay}>
               <IconSymbol ios_icon_name="play.circle.fill" android_material_icon_name="play_circle" size={56} color="#fff" />
@@ -514,7 +528,7 @@ export default function TasksScreen() {
     setSelectedTask(normalizedTask);
     setIsCreating(creating);
     setIsSaving(false);
-    setVideoUrl(String((task as any)?.videoUrl ?? ''));
+    setVideoUrl(getTaskModalVideoUrl(task) ?? '');
     setIsModalVisible(true);
   }, []);
 
@@ -732,7 +746,7 @@ export default function TasksScreen() {
 
   const openVideoModal = useCallback((url: string) => {
     if (!isValidVideoUrl(url)) {
-      Alert.alert('Fejl', 'Ugyldig video URL. Kun YouTube og Vimeo understøttes.');
+      Alert.alert('Fejl', 'Ugyldig video URL. Kun YouTube, Vimeo og Instagram understøttes.');
       return;
     }
     setSelectedVideoUrl(url);
@@ -1083,7 +1097,7 @@ export default function TasksScreen() {
                       style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
                       value={videoUrl}
                       onChangeText={setVideoUrl}
-                      placeholder="https://youtube.com/... eller https://vimeo.com/..."
+                      placeholder="https://youtube.com/... eller https://vimeo.com/... eller https://instagram.com/..."
                       placeholderTextColor={textSecondaryColor}
                       autoCapitalize="none"
                       editable={!isSaving}
@@ -1100,7 +1114,7 @@ export default function TasksScreen() {
                     )}
 
                     {videoUrl.trim() && !isValidVideoUrl(videoUrl) && (
-                      <Text style={[styles.helperText, { color: colors.error }]}>⚠ Ugyldig video URL. Kun YouTube og Vimeo understøttes.</Text>
+                      <Text style={[styles.helperText, { color: colors.error }]}>⚠ Ugyldig video URL. Kun YouTube, Vimeo og Instagram understøttes.</Text>
                     )}
                   </View>
 
@@ -1518,7 +1532,8 @@ const styles = StyleSheet.create({
 
   videoThumbnailWrapper: { height: 180, borderRadius: 12, overflow: 'hidden', marginBottom: 12, backgroundColor: '#000' },
   videoThumbnail: { width: '100%', height: '100%' },
-  videoThumbnailFallback: { width: '100%', height: '100%', backgroundColor: '#000' },
+  videoThumbnailFallback: { width: '100%', height: '100%', backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' },
+  videoThumbnailFallbackLabel: { color: '#fff', fontSize: 18, fontWeight: '700' },
   videoOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.25)' },
 
   videoSection: { marginBottom: 16 },

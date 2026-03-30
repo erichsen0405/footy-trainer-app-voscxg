@@ -47,4 +47,14 @@ describe('SmartVideoPlayer', () => {
 
     expect(mockOpenUrl).toHaveBeenCalledWith('https://www.youtube.com/watch?si=share-token&v=dQw4w9WgXcQ');
   });
+
+  it('shows an external-link card for Instagram reels', () => {
+    const instagramUrl = 'https://www.instagram.com/reel/C7N2KQ2uV9x/?igsh=MWQ=';
+    const { getByTestId } = render(<SmartVideoPlayer url={instagramUrl} />);
+
+    expect(getByTestId('smart-video-player.external-link')).toBeTruthy();
+    fireEvent.press(getByTestId('smart-video-player.external-link'));
+
+    expect(mockOpenUrl).toHaveBeenCalledWith(instagramUrl);
+  });
 });

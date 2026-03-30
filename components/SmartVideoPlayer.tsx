@@ -16,6 +16,7 @@ export default function SmartVideoPlayer({ url }: { url?: string }) {
   );
   const youtubeId = parsedVideo?.platform === 'youtube' ? parsedVideo.videoId : null;
   const vimeoId = parsedVideo?.platform === 'vimeo' ? parsedVideo.videoId : null;
+  const instagramUrl = parsedVideo?.platform === 'instagram' ? resolvedUrl : null;
   const inlineVideoHtml = useMemo(() => {
     if (!resolvedUrl || !isDirectVideoUrl(resolvedUrl)) return null;
     return buildVideoHtml(resolvedUrl);
@@ -95,6 +96,24 @@ export default function SmartVideoPlayer({ url }: { url?: string }) {
           style={styles.webView}
         />
       </View>
+    );
+  }
+
+  if (instagramUrl) {
+    return (
+      <Pressable
+        onPress={() => Linking.openURL(instagramUrl)}
+        style={styles.externalLinkCard}
+        testID="smart-video-player.external-link"
+      >
+        <View style={styles.externalLinkBadge}>
+          <Text style={styles.externalLinkBadgeText}>Instagram</Text>
+        </View>
+        <Text style={styles.externalLinkTitle}>Aabn Instagram-video</Text>
+        <Text style={styles.externalLinkSubtitle} numberOfLines={1}>
+          {instagramUrl}
+        </Text>
+      </Pressable>
     );
   }
 
@@ -228,6 +247,36 @@ const styles = StyleSheet.create({
   thumbImage: {
     height: 220,
     width: '100%',
+  },
+  externalLinkCard: {
+    height: 220,
+    borderRadius: 16,
+    backgroundColor: '#111827',
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    justifyContent: 'center',
+    gap: 10,
+  },
+  externalLinkBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    backgroundColor: '#E1306C',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  externalLinkBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  externalLinkTitle: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  externalLinkSubtitle: {
+    color: 'rgba(255,255,255,0.72)',
+    fontSize: 13,
   },
   playButtonOverlay: {
     position: 'absolute',
