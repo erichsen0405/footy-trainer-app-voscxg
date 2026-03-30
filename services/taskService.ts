@@ -783,15 +783,21 @@ export const taskService = {
       throw new Error('User not authenticated');
     }
 
-    const table = isExternal ? 'external_event_tasks' : 'activity_tasks';
-    const activityColumn = isExternal ? 'local_meta_id' : 'activity_id';
+    const result = isExternal
+      ? await supabase
+          .from('external_event_tasks')
+          .delete({ count: 'exact' })
+          .eq('id', taskId)
+          .eq('local_meta_id', activityId)
+          .abortSignal(signal)
+      : await supabase
+          .from('activity_tasks')
+          .delete({ count: 'exact' })
+          .eq('id', taskId)
+          .eq('activity_id', activityId)
+          .abortSignal(signal);
 
-    const { error, count } = await supabase
-      .from(table)
-      .delete({ count: 'exact' })
-      .eq('id', taskId)
-      .eq(activityColumn, activityId)
-      .abortSignal(signal);
+    const { error, count } = result;
 
     if (error) {
       throw error;

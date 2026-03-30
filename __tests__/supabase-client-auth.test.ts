@@ -1,6 +1,6 @@
 const mockTrackStartupTelemetry = jest.fn().mockResolvedValue(undefined);
 
-const mockAuthStateChangeCallbacks: Array<(event: string, session: any) => void> = [];
+const mockAuthStateChangeCallbacks: ((event: string, session: any) => void)[] = [];
 const mockOriginalGetSession = jest.fn();
 const mockOriginalGetUser = jest.fn();
 const mockSignOut = jest.fn().mockResolvedValue({ error: null });
