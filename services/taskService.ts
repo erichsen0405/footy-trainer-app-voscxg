@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import type { TablesUpdate } from '@/integrations/supabase/types';
 import { emitTaskCompletionEvent } from '@/utils/taskEvents';
 import type { TaskCompletionEvent } from '@/utils/taskEvents';
 import { Task } from '@/types';
@@ -314,7 +315,7 @@ export const taskService = {
     updates: UpdateTaskData,
     signal: AbortSignal = new AbortController().signal,
   ): Promise<void> {
-    const updateData: Record<string, any> = {};
+    const updateData: TablesUpdate<'task_templates'> = {};
 
     if (updates.title !== undefined) updateData.title = updates.title;
     if (updates.description !== undefined) updateData.description = updates.description;
