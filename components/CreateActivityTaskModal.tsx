@@ -15,6 +15,7 @@ import {
 import * as CommonStyles from '@/styles/commonStyles';
 import { Task } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
+import type { TablesInsert, TablesUpdate } from '@/integrations/supabase/types';
 import { scheduleTaskReminderImmediate } from '@/utils/notificationScheduler';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 
@@ -70,6 +71,22 @@ const TASK_FEEDBACK_OPTIONAL_COLUMNS = [
   'feedback_template_id',
   'is_feedback_task',
 ] as const;
+
+type ActivityTaskFeedbackUpdatePayload = TablesUpdate<'activity_tasks'> & {
+  is_feedback_task?: boolean;
+};
+
+type ActivityTaskFeedbackInsertPayload = TablesInsert<'activity_tasks'> & {
+  is_feedback_task?: boolean;
+};
+
+type ExternalEventTaskFeedbackUpdatePayload = TablesUpdate<'external_event_tasks'> & {
+  is_feedback_task?: boolean;
+};
+
+type ExternalEventTaskFeedbackInsertPayload = TablesInsert<'external_event_tasks'> & {
+  is_feedback_task?: boolean;
+};
 
 const isMissingColumn = (error: any, columnName: string): boolean => {
   const needle = String(columnName ?? '').trim().toLowerCase();
@@ -427,7 +444,7 @@ export function CreateActivityTaskModal({
 
       if (matchedIds.length) {
         const keepId = matchedIds[0];
-        const updateFeedbackPayload: Record<string, any> = {
+        const updateFeedbackPayload: ActivityTaskFeedbackUpdatePayload = {
           title,
           description,
           reminder_minutes: delayMinutes,
@@ -440,7 +457,7 @@ export function CreateActivityTaskModal({
         }
         const { error: updateFeedbackError } = await supabase
           .from('activity_tasks')
-          .update(updateFeedbackPayload)
+          .update(updateFeedbackPayload as any)
           .eq('id', keepId);
         if (updateFeedbackError) {
           throw new Error(`Kunne ikke opdatere feedback-opgave: ${updateFeedbackError.message}`);
@@ -460,7 +477,7 @@ export function CreateActivityTaskModal({
         return;
       }
 
-      const insertFeedbackPayload: Record<string, any> = {
+      const insertFeedbackPayload: ActivityTaskFeedbackInsertPayload = {
         activity_id: normalizedActivityLinkId,
         title,
         description,
@@ -579,7 +596,7 @@ export function CreateActivityTaskModal({
 
       if (matchedIds.length) {
         const keepId = matchedIds[0];
-        const updateFeedbackPayload: Record<string, any> = {
+        const updateFeedbackPayload: ExternalEventTaskFeedbackUpdatePayload = {
           title,
           description,
           reminder_minutes: delayMinutes,
@@ -592,7 +609,7 @@ export function CreateActivityTaskModal({
         }
         const { error: updateFeedbackError } = await supabase
           .from('external_event_tasks')
-          .update(updateFeedbackPayload)
+          .update(updateFeedbackPayload as any)
           .eq('id', keepId);
         if (updateFeedbackError) {
           throw new Error(`Kunne ikke opdatere feedback-opgave: ${updateFeedbackError.message}`);
@@ -612,7 +629,7 @@ export function CreateActivityTaskModal({
         return;
       }
 
-      const insertFeedbackPayload: Record<string, any> = {
+      const insertFeedbackPayload: ExternalEventTaskFeedbackInsertPayload = {
         local_meta_id: normalizedLocalMetaId,
         title,
         description,
