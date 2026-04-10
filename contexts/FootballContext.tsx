@@ -75,6 +75,8 @@ interface FootballContextType {
   deleteActivityTask: (activityId: string, taskId: string) => Promise<void>;
   refreshData: () => Promise<void>;
   refreshAll: () => Promise<void>;
+  ensureTemplateDataLoaded: (force?: boolean) => Promise<void>;
+  ensureCurrentWeekStatsLoaded: (force?: boolean) => Promise<void>;
   ensureActivitiesLoaded: (force?: boolean) => Promise<void>;
   ensurePerformanceDataLoaded: (force?: boolean) => Promise<void>;
   addExternalCalendar: (calendar: Omit<ExternalCalendar, 'id'>) => void;
@@ -92,7 +94,13 @@ interface FootballContextType {
 
 const FootballContext = createContext<FootballContextType | undefined>(undefined);
 
-export function FootballProvider({ children }: { children: ReactNode }) {
+export function FootballProvider({
+  children,
+  eagerStartupLoad = false,
+}: {
+  children: ReactNode;
+  eagerStartupLoad?: boolean;
+}) {
   const {
     categories,
     tasks,
@@ -125,6 +133,8 @@ export function FootballProvider({ children }: { children: ReactNode }) {
     deleteActivityTask,
     refreshData,
     refreshAll,
+    ensureTemplateDataLoaded,
+    ensureCurrentWeekStatsLoaded,
     ensureActivitiesLoaded,
     ensurePerformanceDataLoaded,
     addExternalCalendar,
@@ -134,7 +144,7 @@ export function FootballProvider({ children }: { children: ReactNode }) {
     importMultipleActivities,
     fetchExternalCalendarEvents,
     refreshCategories,
-  } = useFootballData();
+  } = useFootballData({ eagerStartupLoad });
 
   // ✅ Runtime-safe wrapper: createActivity must always be a function
   // If useFootballData() doesn't provide it, fall back to addActivity + refreshData (fail-soft).
@@ -212,6 +222,8 @@ export function FootballProvider({ children }: { children: ReactNode }) {
       deleteActivityTask,
       refreshData,
       refreshAll,
+      ensureTemplateDataLoaded,
+      ensureCurrentWeekStatsLoaded,
       ensureActivitiesLoaded,
       ensurePerformanceDataLoaded,
       addExternalCalendar,
@@ -254,6 +266,8 @@ export function FootballProvider({ children }: { children: ReactNode }) {
       deleteActivityTask,
       refreshData,
       refreshAll,
+      ensureTemplateDataLoaded,
+      ensureCurrentWeekStatsLoaded,
       ensureActivitiesLoaded,
       ensurePerformanceDataLoaded,
       addExternalCalendar,

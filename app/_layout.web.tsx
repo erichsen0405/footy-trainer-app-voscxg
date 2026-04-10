@@ -6,6 +6,7 @@ import { useFonts } from 'expo-font';
 import { StyleSheet, View } from 'react-native';
 import 'react-native-reanimated';
 
+import { AuthSessionProvider, useAuthSession } from '@/contexts/AuthSessionContext';
 import { FootballProvider } from '@/contexts/FootballContext';
 import { SubscriptionProvider, useSubscription } from '@/contexts/SubscriptionContext';
 import { TeamPlayerProvider } from '@/contexts/TeamPlayerContext';
@@ -85,6 +86,14 @@ const isUserEmailConfirmed = (user: any) =>
   Boolean(user?.email_confirmed_at || user?.confirmed_at);
 
 export default function RootLayout() {
+  return (
+    <AuthSessionProvider>
+      <RootLayoutContent />
+    </AuthSessionProvider>
+  );
+}
+
+function RootLayoutContent() {
   const pathname = usePathname();
   const [fontsLoaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
@@ -162,12 +171,12 @@ export default function RootLayout() {
 
   return (
     <SubscriptionProvider>
-      <AppleIAPProvider>
+      <AppleIAPProvider startupReady={!showStartupLoader}>
         <SubscriptionRedirectObserver />
         <TeamPlayerProvider>
           <AdminProvider>
             <CelebrationProvider>
-              <FootballProvider>
+              <FootballProvider eagerStartupLoad={false}>
                 <View style={styles.container}>
                   <Stack screenOptions={{ headerShown: false }}>
                     <Stack.Screen name="index" />
@@ -209,6 +218,7 @@ const styles = StyleSheet.create({
 function SubscriptionRedirectObserver() {
   const router = useRouter();
   const pathname = usePathname();
+  const { authReady, session } = useAuthSession();
   const { subscriptionStatus, loading: subscriptionLoading } = useSubscription();
   const { entitlementSnapshot } = useAppleIAP();
 
@@ -253,59 +263,34 @@ function SubscriptionRedirectObserver() {
   );
 
   useEffect(() => {
-    let isActive = true;
+    if (!authReady) return;
 
-    const syncSession = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (!isActive) return;
-      const sessionUser = data.session?.user ?? null;
-      if (sessionUser && !isUserEmailConfirmed(sessionUser) && !isRecoveryFlowRoute) {
-        setUnverifiedEmail(sessionUser.email ?? null);
-        setUserId(null);
-        forcingUnverifiedSignOutRef.current = true;
-        await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
-        setAuthChecked(true);
-        return;
+    const sessionUser = session?.user ?? null;
+
+    if (!sessionUser) {
+      if (!forcingUnverifiedSignOutRef.current) {
+        setUnverifiedEmail(null);
       }
       forcingUnverifiedSignOutRef.current = false;
-      setUnverifiedEmail(null);
-      setUserId(sessionUser?.id ?? null);
+      setUserId(null);
       setAuthChecked(true);
-    };
+      return;
+    }
 
-    syncSession();
-
-    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (!isActive) return;
-      const sessionUser = session?.user ?? null;
-      if (!sessionUser) {
-        if (!forcingUnverifiedSignOutRef.current) {
-          setUnverifiedEmail(null);
-        }
-        forcingUnverifiedSignOutRef.current = false;
-        setUserId(null);
-        setAuthChecked(true);
-        return;
-      }
-      if (sessionUser && !isUserEmailConfirmed(sessionUser) && !isRecoveryFlowRoute) {
-        setUnverifiedEmail(sessionUser.email ?? null);
-        setUserId(null);
-        forcingUnverifiedSignOutRef.current = true;
-        await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
-        setAuthChecked(true);
-        return;
-      }
-      forcingUnverifiedSignOutRef.current = false;
-      setUnverifiedEmail(null);
-      setUserId(sessionUser?.id ?? null);
+    if (!isUserEmailConfirmed(sessionUser) && !isRecoveryFlowRoute) {
+      setUnverifiedEmail(sessionUser.email ?? null);
+      setUserId(null);
+      forcingUnverifiedSignOutRef.current = true;
+      void supabase.auth.signOut({ scope: 'local' }).catch(() => {});
       setAuthChecked(true);
-    });
+      return;
+    }
 
-    return () => {
-      isActive = false;
-      listener.subscription.unsubscribe();
-    };
-  }, [isRecoveryFlowRoute]);
+    forcingUnverifiedSignOutRef.current = false;
+    setUnverifiedEmail(null);
+    setUserId(sessionUser.id ?? null);
+    setAuthChecked(true);
+  }, [authReady, isRecoveryFlowRoute, session]);
 
   const isCreatorCandidate = Boolean(tierKey?.startsWith('trainer'));
 

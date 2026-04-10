@@ -99,7 +99,12 @@ const defaultDiagnostics: IapDiagnostics = {
 const AppleIAPContext = createContext<AppleIAPContextType | undefined>(undefined);
 
 // Stub provider for web - Apple IAP is not available on web
-export function AppleIAPProvider({ children }: { children: ReactNode }) {
+export function AppleIAPProvider({
+  children,
+}: {
+  children: ReactNode;
+  startupReady?: boolean;
+}) {
   const { ingestAppleEntitlements } = useSubscription();
   useEffect(() => {
     ingestAppleEntitlements?.({
