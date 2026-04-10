@@ -3,6 +3,7 @@ import { Platform, Alert } from 'react-native';
 import Constants from 'expo-constants';
 import * as Application from 'expo-application';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuthSession } from '@/contexts/AuthSessionContext';
 import { bumpEntitlementsVersion } from '@/services/entitlementsEvents';
 import { syncEntitlementsSnapshot, SubscriptionTier } from '@/services/entitlementsSync';
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -535,10 +536,17 @@ const finishPurchaseWithLogging = async (purchase: any, sku: string | null, labe
   }
 };
 
-export function AppleIAPProvider({ children }: { children: ReactNode }) {
+export function AppleIAPProvider({
+  children,
+  startupReady = true,
+}: {
+  children: ReactNode;
+  startupReady?: boolean;
+}) {
+  const { authReady, session, user } = useAuthSession();
   const [products, setProducts] = useState<SubscriptionProduct[]>([]);
   const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
   const [iapReady, setIapReady] = useState<boolean>(iapReadyFlag);
   const [iapDiagnostics, setIapDiagnostics] = useState<IapDiagnostics>(defaultDiagnostics);
@@ -572,6 +580,8 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
   const entitlementsUnsupportedRef = useRef(false);
   const entitlementsWarnedRef = useRef(false);
   const autoRestoreAttemptedRef = useRef(false);
+  const backgroundWarmupStartedRef = useRef(false);
+  const lastResolvedUserIdRef = useRef<string | null>(null);
   const { ingestAppleEntitlements } = useSubscription();
 
   useEffect(() => {
@@ -624,11 +634,8 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       return;
     }
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const user = session?.user ?? null;
-      if (!user) {
+      const activeUser = user ?? session?.user ?? null;
+      if (!activeUser) {
         setEntitlements([]);
         return;
       }
@@ -661,11 +668,16 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
       }
       console.warn('[AppleIAP] Unexpected entitlement fetch error', error);
     }
-  }, []);
+  }, [session, user]);
 
   useEffect(() => {
+    if (!authReady) return;
+    if (!user?.id) {
+      setEntitlements([]);
+      return;
+    }
     void fetchEntitlements();
-  }, [fetchEntitlements]);
+  }, [authReady, fetchEntitlements, user?.id]);
 
   useEffect(() => {
     const signature = JSON.stringify(entitlements);
@@ -949,41 +961,46 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const emptyStatus: SubscriptionStatus = { isActive: false, productId: null, expiryDate: null, isInTrialPeriod: false };
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
+    if (!authReady) return;
+
+    const nextUserId = user?.id ?? null;
+    if (nextUserId) {
+      if (lastResolvedUserIdRef.current !== nextUserId) {
         autoRestoreAttemptedRef.current = false;
+        backgroundWarmupStartedRef.current = false;
         setVerifiedActiveProductId(null);
         setEntitlementCheckState('idle');
+        setEntitlementLastCheckedAtMs(null);
         setEntitlementLastCheckError(null);
-        void refreshSubscriptionStatus({ force: true, reason: 'auth_login' });
-        return;
       }
-      setSubscriptionStatus(emptyStatus);
-      subscriptionStatusRef.current = emptyStatus;
-      setEntitlements([]);
-      setVerifiedActiveProductId(null);
-      setPendingPlan(null);
-      pendingPlanRef.current = null;
-      lastRequestedSkuRef.current = null;
-      lastRequestedAtRef.current = null;
-      activePurchaseFlowRef.current = null;
-      refreshAfterPurchasePromiseRef.current = null;
-      refreshInFlightRef.current = false;
-      refreshPromiseRef.current = null;
-      setPurchasing(false);
-      handledPurchaseEventsRef.current = new Map();
-      alertInFlightRef.current = false;
-      lastAlertKeyRef.current = null;
-      lastAlertAtRef.current = 0;
-      setIapUnavailableReason(null);
-      setEntitlementCheckState('idle');
-      setEntitlementLastCheckedAtMs(null);
-      setEntitlementLastCheckError(null);
-    });
-    return () => {
-      data.subscription.unsubscribe();
-    };
-  }, [refreshSubscriptionStatus]);
+      lastResolvedUserIdRef.current = nextUserId;
+      return;
+    }
+
+    lastResolvedUserIdRef.current = null;
+    backgroundWarmupStartedRef.current = false;
+    setSubscriptionStatus(emptyStatus);
+    subscriptionStatusRef.current = emptyStatus;
+    setEntitlements([]);
+    setVerifiedActiveProductId(null);
+    setPendingPlan(null);
+    pendingPlanRef.current = null;
+    lastRequestedSkuRef.current = null;
+    lastRequestedAtRef.current = null;
+    activePurchaseFlowRef.current = null;
+    refreshAfterPurchasePromiseRef.current = null;
+    refreshInFlightRef.current = false;
+    refreshPromiseRef.current = null;
+    setPurchasing(false);
+    handledPurchaseEventsRef.current = new Map();
+    alertInFlightRef.current = false;
+    lastAlertKeyRef.current = null;
+    lastAlertAtRef.current = 0;
+    setIapUnavailableReason(null);
+    setEntitlementCheckState('idle');
+    setEntitlementLastCheckedAtMs(null);
+    setEntitlementLastCheckError(null);
+  }, [authReady, user?.id]);
 
   const complimentaryFlags = useMemo(() => {
     const hasComplimentaryPlayerPremium = entitlements.some(e => e.entitlement === 'spiller_premium');
@@ -1165,39 +1182,53 @@ export function AppleIAPProvider({ children }: { children: ReactNode }) {
     }
   }, [updateDiagnostics, syncIapReadyState]);
 
-  const initializeIAP = useCallback(async () => {
+  const startBackgroundWarmup = useCallback(async () => {
+    if (Platform.OS !== 'ios' || isExpoGo || !authReady || !user?.id) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const ready = await syncIapReadyState();
+      if (!ready) {
+        return;
+      }
+
+      await refreshSubscriptionStatus({ force: true, reason: 'startup_warmup' });
+    } finally {
+      setLoading(false);
+    }
+  }, [authReady, refreshSubscriptionStatus, syncIapReadyState, user?.id]);
+
+  useEffect(() => {
     if (Platform.OS !== 'ios' || isExpoGo) {
       setLoading(false);
       return;
     }
 
-    const ready = await syncIapReadyState();
-    if (!ready) {
-      setLoading(false);
-      return;
-    }
-
-    await refreshSubscriptionStatus({ force: true, reason: 'startup_init' });
-    setLoading(false);
-  }, [refreshSubscriptionStatus, syncIapReadyState]);
-
-  // Initialize IAP connection
-  useEffect(() => {
-    if (Platform.OS === 'ios' && !isExpoGo) {
-      initializeIAP();
-    } else {
-      setLoading(false);
-    }
-
     return () => {
-      if (Platform.OS === 'ios' && RNIap && !isExpoGo) {
+      if (RNIap && !isExpoGo) {
         RNIap.endConnection?.();
         iapReadyFlag = false;
         iapInitPromise = null;
         setIapReady(false);
       }
     };
-  }, [initializeIAP]);
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'ios' || isExpoGo) return;
+    if (!startupReady || !authReady || !user?.id) return;
+    if (backgroundWarmupStartedRef.current) return;
+
+    backgroundWarmupStartedRef.current = true;
+    const timer = setTimeout(() => {
+      void startBackgroundWarmup();
+    }, 1200);
+
+    return () => clearTimeout(timer);
+  }, [authReady, startBackgroundWarmup, startupReady, user?.id]);
 
   const purchaseErrorListenerCleanupRef = useRef<(() => void) | null>(null);
   const purchaseUpdateListenerCleanupRef = useRef<(() => void) | null>(null);

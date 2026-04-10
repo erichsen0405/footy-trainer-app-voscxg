@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
+import { useAuthSession } from '@/contexts/AuthSessionContext';
 import { supabase } from '@/integrations/supabase/client';
 
 type UserRole = 'admin' | 'trainer' | 'player';
@@ -25,9 +26,9 @@ interface FetchRoleOptions {
 }
 
 export function useUserRole() {
+  const { authReady, isAuthenticated, user } = useAuthSession();
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const userIdRef = useRef<string | null>(null);
   const lastKnownRoleRef = useRef<UserRole | null>(null);
@@ -41,27 +42,15 @@ export function useUserRole() {
     }
 
     try {
-      let targetUserId = userId ?? userIdRef.current;
+      let targetUserId = userId ?? userIdRef.current ?? user?.id ?? null;
 
       if (!targetUserId) {
-        const {
-          data: { session },
-          error: sessionError,
-        } = await supabase.auth.getSession();
-
-        const sessionUser = session?.user ?? null;
-
-        if (sessionError || !sessionUser) {
-          if (mountedRef.current) {
-            lastKnownRoleRef.current = null;
-            setUserRole(null);
-            setCurrentUserId(null);
-            setIsAuthenticated(false);
-          }
-          return;
+        if (mountedRef.current) {
+          lastKnownRoleRef.current = null;
+          setUserRole(null);
+          setCurrentUserId(null);
         }
-
-        targetUserId = sessionUser.id;
+        return;
       }
 
       if (userIdRef.current && userIdRef.current !== targetUserId) {
@@ -69,7 +58,6 @@ export function useUserRole() {
       }
 
       userIdRef.current = targetUserId;
-      setIsAuthenticated(true);
       setCurrentUserId(prev => (prev === targetUserId ? prev : targetUserId));
 
       const { data, error } = await supabase
@@ -115,44 +103,39 @@ export function useUserRole() {
         setLoading(false);
       }
     }
-  }, []);
+  }, [user?.id]);
 
   const refreshUserRole = useCallback(async () => {
     await fetchUserRole({ reason: 'manual-refresh' });
   }, [fetchUserRole]);
 
   useEffect(() => {
-    fetchUserRole();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!mountedRef.current) {
-        return;
-      }
-
-      if (session?.user) {
-        setIsAuthenticated(true);
-        fetchUserRole({ reason: 'auth-change', userId: session.user.id });
-      } else {
-        userIdRef.current = null;
-        lastKnownRoleRef.current = null;
-        setCurrentUserId(null);
-        setUserRole(null);
-        setIsAuthenticated(false);
-        setLoading(false);
-      }
-    });
-
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      subscription.unsubscribe();
       if (realtimeChannelRef.current) {
         supabase.removeChannel(realtimeChannelRef.current);
         realtimeChannelRef.current = null;
       }
     };
-  }, [fetchUserRole]);
+  }, []);
+
+  useEffect(() => {
+    if (!authReady) {
+      return;
+    }
+
+    if (user?.id) {
+      void fetchUserRole({ reason: 'auth-state', userId: user.id });
+      return;
+    }
+
+    userIdRef.current = null;
+    lastKnownRoleRef.current = null;
+    setCurrentUserId(null);
+    setUserRole(null);
+    setLoading(false);
+  }, [authReady, fetchUserRole, user?.id]);
 
   useEffect(() => {
     if (!currentUserId) {
@@ -210,5 +193,5 @@ export function useUserRole() {
   // Export isAdmin as a computed property - includes both admin and trainer roles
   const isAdmin = userRole === 'admin' || userRole === 'trainer';
 
-  return { userRole, loading, isAdmin, refreshUserRole, isAuthenticated };
+  return { userRole, loading: !authReady || loading, isAdmin, refreshUserRole, isAuthenticated };
 }

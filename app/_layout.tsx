@@ -5,6 +5,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { Platform, StyleSheet, View } from 'react-native';
 import 'react-native-reanimated';
+import { AuthSessionProvider, useAuthSession } from '@/contexts/AuthSessionContext';
 import { FootballProvider } from '@/contexts/FootballContext';
 import { SubscriptionProvider, useSubscription } from '@/contexts/SubscriptionContext';
 import { TeamPlayerProvider } from '@/contexts/TeamPlayerContext';
@@ -30,7 +31,6 @@ import {
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const PENDING_NOTIFICATION_ROUTE_KEY = '@pending_notification_route_v1';
-const AUTH_BOOTSTRAP_TIMEOUT_MS = 4000;
 const STARTUP_LOADER_STALL_LOG_MS = 5000;
 
 const NO_PLAN_TIER_VALUES = new Set([
@@ -56,9 +56,18 @@ const isUserEmailConfirmed = (user: any) =>
   Boolean(user?.email_confirmed_at || user?.confirmed_at);
 
 export default function RootLayout() {
+  return (
+    <AuthSessionProvider>
+      <RootLayoutContent />
+    </AuthSessionProvider>
+  );
+}
+
+function RootLayoutContent() {
   const router = useRouter();
   const pathname = usePathname();
   const rootNavigationState = useRootNavigationState();
+  const { authReady, isAuthenticated } = useAuthSession();
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
@@ -68,8 +77,6 @@ export default function RootLayout() {
   const pendingTaskIdRef = useRef<string | null>(null);
   const handledNotificationIdsRef = useRef<Set<string>>(new Set());
   const startupLoaderHideReasonRef = useRef<string | null>(null);
-  const [authReady, setAuthReady] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pendingRouteStorageLoaded, setPendingRouteStorageLoaded] = useState(false);
   const [showStartupLoader, setShowStartupLoader] = useState(true);
   const [homeScreenReady, setHomeScreenReady] = useState(false);
@@ -327,72 +334,31 @@ export default function RootLayout() {
     });
   }, [homeScreenReady, pathname, shouldWaitForHomeReady, showStartupLoader, startupPrerequisitesReady]);
 
+  const didTrackAuthBootstrapRef = useRef(false);
+  const lastTrackedAuthReadyRef = useRef(false);
+
   useEffect(() => {
-    let isMounted = true;
-    let authResolved = false;
+    if (didTrackAuthBootstrapRef.current) return;
+    didTrackAuthBootstrapRef.current = true;
     void trackStartupTelemetry(supabase, {
       eventName: 'auth_bootstrap',
       status: 'started',
       route: pathname,
     });
-    const authBootstrapTimer = setTimeout(() => {
-      if (!isMounted || authResolved) return;
-      console.warn('[RootLayout] Auth bootstrap timed out; continuing startup');
-      void trackStartupTelemetry(supabase, {
-        eventName: 'auth_bootstrap',
-        status: 'timeout',
-        route: pathname,
-        metadata: {
-          timeoutMs: AUTH_BOOTSTRAP_TIMEOUT_MS,
-        },
-      });
-      setAuthReady(true);
-    }, AUTH_BOOTSTRAP_TIMEOUT_MS);
-
-    supabase.auth
-      .getSession()
-      .then(({ data }) => {
-        if (!isMounted) return;
-        authResolved = true;
-        clearTimeout(authBootstrapTimer);
-        setIsAuthenticated(Boolean(data.session?.user));
-        setAuthReady(true);
-        void trackStartupTelemetry(supabase, {
-          eventName: 'auth_bootstrap',
-          status: 'resolved',
-          route: pathname,
-          metadata: {
-            hasSession: Boolean(data.session),
-            hasUser: Boolean(data.session?.user),
-          },
-        });
-      })
-      .catch(() => {
-        if (!isMounted) return;
-        authResolved = true;
-        clearTimeout(authBootstrapTimer);
-        setIsAuthenticated(false);
-        setAuthReady(true);
-        void trackStartupTelemetry(supabase, {
-          eventName: 'auth_bootstrap',
-          status: 'error',
-          route: pathname,
-        });
-      });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsAuthenticated(Boolean(session?.user));
-      setAuthReady(true);
-    });
-
-    return () => {
-      isMounted = false;
-      clearTimeout(authBootstrapTimer);
-      subscription.unsubscribe();
-    };
   }, [pathname]);
+
+  useEffect(() => {
+    if (!authReady || lastTrackedAuthReadyRef.current) return;
+    lastTrackedAuthReadyRef.current = true;
+    void trackStartupTelemetry(supabase, {
+      eventName: 'auth_bootstrap',
+      status: 'resolved',
+      route: pathname,
+      metadata: {
+        hasUser: isAuthenticated,
+      },
+    });
+  }, [authReady, isAuthenticated, pathname]);
 
   useEffect(() => {
     if (showStartupLoader) return;
@@ -428,12 +394,12 @@ export default function RootLayout() {
 
   return (
     <SubscriptionProvider>
-      <AppleIAPProvider>
+      <AppleIAPProvider startupReady={!showStartupLoader}>
         <SubscriptionRedirectObserver />
         <TeamPlayerProvider>
           <AdminProvider>
             <CelebrationProvider>
-              <FootballProvider>
+              <FootballProvider eagerStartupLoad={false}>
                 <View style={styles.container}>
                   <NotificationPermissionPrompt />
                   <Stack initialRouteName="index">
@@ -521,6 +487,7 @@ const styles = StyleSheet.create({
 function SubscriptionRedirectObserver() {
   const router = useRouter();
   const pathname = usePathname();
+  const { authReady, session } = useAuthSession();
   const { subscriptionStatus, loading: subscriptionLoading } = useSubscription();
   const { entitlementSnapshot } = useAppleIAP();
 
@@ -564,75 +531,34 @@ function SubscriptionRedirectObserver() {
   );
 
   useEffect(() => {
-    let isActive = true;
-    const syncSession = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (!isActive) return;
-      const sessionUser = data.session?.user ?? null;
-      if (sessionUser && !isUserEmailConfirmed(sessionUser) && !isRecoveryFlowRoute) {
-        setUnverifiedEmail(sessionUser.email ?? null);
-        setUserId(null);
-        forcingUnverifiedSignOutRef.current = true;
-        await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
-        setAuthChecked(true);
-        return;
+    if (!authReady) return;
+
+    const sessionUser = session?.user ?? null;
+
+    if (!sessionUser) {
+      if (!forcingUnverifiedSignOutRef.current) {
+        setUnverifiedEmail(null);
       }
       forcingUnverifiedSignOutRef.current = false;
-      setUnverifiedEmail(null);
-      const newUserId = sessionUser?.id ?? null;
-      setUserId(newUserId);
-      if (newUserId) {
-        // const entitlements = await getProfileEntitlements(newUserId).catch(error => {
-        //   console.warn('[SubscriptionRedirectObserver] Initial entitlement fetch failed', error);
-        //   return { hasEntitlement: false };
-        // });
-        // if (isActive) setProfileEntitled(Boolean(entitlements?.hasEntitlement));
-      } else {
-        // setProfileEntitled(false);
-      }
+      setUserId(null);
       setAuthChecked(true);
-    };
-    syncSession();
-    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (!isActive) return;
-      const sessionUser = session?.user ?? null;
-      if (!sessionUser) {
-        if (!forcingUnverifiedSignOutRef.current) {
-          setUnverifiedEmail(null);
-        }
-        forcingUnverifiedSignOutRef.current = false;
-        setUserId(null);
-        setAuthChecked(true);
-        return;
-      }
-      if (sessionUser && !isUserEmailConfirmed(sessionUser) && !isRecoveryFlowRoute) {
-        setUnverifiedEmail(sessionUser.email ?? null);
-        setUserId(null);
-        forcingUnverifiedSignOutRef.current = true;
-        await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
-        setAuthChecked(true);
-        return;
-      }
-      forcingUnverifiedSignOutRef.current = false;
-      setUnverifiedEmail(null);
-      const newUserId = session?.user?.id ?? null;
-      setUserId(newUserId);
-      if (newUserId) {
-        // const entitlements = await getProfileEntitlements(newUserId).catch(error => {
-        //   console.warn('[SubscriptionRedirectObserver] Auth entitlement fetch failed', error);
-        //   return { hasEntitlement: false };
-        // });
-        // if (isActive) setProfileEntitled(Boolean(entitlements?.hasEntitlement));
-      } else {
-        // setProfileEntitled(false);
-      }
+      return;
+    }
+
+    if (!isUserEmailConfirmed(sessionUser) && !isRecoveryFlowRoute) {
+      setUnverifiedEmail(sessionUser.email ?? null);
+      setUserId(null);
+      forcingUnverifiedSignOutRef.current = true;
+      void supabase.auth.signOut({ scope: 'local' }).catch(() => {});
       setAuthChecked(true);
-    });
-    return () => {
-      isActive = false;
-      listener.subscription.unsubscribe();
-    };
-  }, [isRecoveryFlowRoute]);
+      return;
+    }
+
+    forcingUnverifiedSignOutRef.current = false;
+    setUnverifiedEmail(null);
+    setUserId(sessionUser.id ?? null);
+    setAuthChecked(true);
+  }, [authReady, isRecoveryFlowRoute, session]);
 
   const isCreatorCandidate = Boolean(tierKey?.startsWith('trainer'));
 

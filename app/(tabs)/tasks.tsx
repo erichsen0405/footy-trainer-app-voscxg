@@ -15,16 +15,18 @@ import {
   Alert,
   ActivityIndicator,
   Switch,
+  InteractionManager,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { useFootball } from '@/contexts/FootballContext';
 import { useAdmin } from '@/contexts/AdminContext';
+import { useAuthSession } from '@/contexts/AuthSessionContext';
 import { Task } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
 import SmartVideoPlayer from '@/components/SmartVideoPlayer';
 import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { AdminContextWrapper } from '@/components/AdminContextWrapper';
-import { supabase } from '@/integrations/supabase/client';
 import { taskService } from '@/services/taskService';
 import { forceRefreshNotificationQueue } from '@/utils/notificationScheduler';
 import { emitActivitiesRefreshRequested } from '@/utils/activityEvents';
@@ -404,6 +406,7 @@ const FolderItemComponent = React.memo(
 export default function TasksScreen() {
   const footballData = useFootball() as any;
   const adminData = useAdmin() as any;
+  const { user } = useAuthSession();
 
   const contextTasks = footballData?.tasks;
   const tasks = useMemo(() => (contextTasks ?? []) as Task[], [contextTasks]);
@@ -415,6 +418,9 @@ export default function TasksScreen() {
   const deleteTask = footballData?.deleteTask as ((taskId: string) => any) | undefined;
   const refreshAll = footballData?.refreshAll as (() => Promise<any>) | undefined;
   const refreshData = footballData?.refreshData as (() => Promise<any>) | undefined;
+  const ensureTemplateDataLoaded = footballData?.ensureTemplateDataLoaded as
+    | ((force?: boolean) => Promise<void>)
+    | undefined;
   const updateTask = footballData?.updateTask as ((taskId: string, data: any) => Promise<any>) | undefined;
   const isLoading = !!footballData?.isLoading;
 
@@ -494,6 +500,19 @@ export default function TasksScreen() {
     [filteredTasks, templateView],
   );
   const folders = useMemo(() => organizeFolders(templateTasks), [templateTasks]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const interaction = InteractionManager.runAfterInteractions(() => {
+        void ensureTemplateDataLoaded?.().catch((error: unknown) => {
+          console.error('[Tasks] Failed to load template data:', error);
+        });
+      });
+      return () => {
+        interaction.cancel();
+      };
+    }, [ensureTemplateDataLoaded])
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -628,18 +647,14 @@ export default function TasksScreen() {
       if (!taskId) return;
 
       const isArchived = typeof (task as any)?.archivedAt === 'string' && String((task as any).archivedAt).trim().length > 0;
+      const authenticatedUserId = user?.id ?? null;
 
       try {
-        const {
-          data: { session },
-          error: sessionError,
-        } = await supabase.auth.getSession();
-
-        if (sessionError || !session?.user?.id) {
+        if (!authenticatedUserId) {
           throw new Error('No authenticated user');
         }
 
-        await taskService.setTaskTemplateArchived(taskId, session.user.id, !isArchived);
+        await taskService.setTaskTemplateArchived(taskId, authenticatedUserId, !isArchived);
         await refreshAll?.();
         if (!refreshAll) {
           await forceRefreshNotificationQueue();
@@ -648,7 +663,7 @@ export default function TasksScreen() {
         Alert.alert('Fejl', error?.message || 'Kunne ikke opdatere arkivstatus');
       }
     },
-    [refreshAll],
+    [refreshAll, user?.id],
   );
 
   const handleDeleteTask = useCallback((task: Task) => {

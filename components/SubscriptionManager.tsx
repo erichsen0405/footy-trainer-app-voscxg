@@ -146,17 +146,18 @@ export default function SubscriptionManager({
     subscriptionStatus,
     subscriptionPlans,
     loading,
+    ensureSubscriptionPlansLoaded,
     createSubscription,
     changeSubscriptionPlan,
     refreshSubscription,
   } = useSubscription();
   const [creatingPlanId, setCreatingPlanId] = useState<string | null>(null);
   const [showPlans, setShowPlans] = useState(isSignupFlow || forceShowPlans); // Collapsed by default unless in signup flow
-    useEffect(() => {
-      if (forceShowPlans) {
-        setShowPlans(true);
-      }
-    }, [forceShowPlans]);
+  useEffect(() => {
+    if (forceShowPlans) {
+      setShowPlans(true);
+    }
+  }, [forceShowPlans]);
 
   const [retryCount, setRetryCount] = useState(0);
   const colorScheme = useColorScheme();
@@ -173,14 +174,13 @@ export default function SubscriptionManager({
     [subscriptionStatus?.isLifetime, subscriptionStatus?.status],
   );
 
-  // LINT FIX: Include refreshSubscription in dependency array
-  // Refresh subscription status when component mounts - ONLY ONCE
   useEffect(() => {
+    void ensureSubscriptionPlansLoaded();
     if (!isSignupFlow) {
       console.log('[SubscriptionManager] Component mounted, refreshing subscription');
-      refreshSubscription();
+      void refreshSubscription();
     }
-  }, [isSignupFlow, refreshSubscription]);
+  }, [ensureSubscriptionPlansLoaded, isSignupFlow, refreshSubscription]);
 
   // Log subscription status changes for debugging
   useEffect(() => {
