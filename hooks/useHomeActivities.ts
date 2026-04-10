@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system';
 import { addDays, addMonths, endOfWeek, format, startOfWeek } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuthSession } from '@/contexts/AuthSessionContext';
 import { getCategories, DatabaseActivityCategory } from '@/services/activities';
 import { resolveActivityCategory, type CategoryMappingRecord } from '@/shared/activityCategoryResolver';
 import { subscribeToTaskCompletion } from '@/utils/taskEvents';
@@ -16,6 +18,10 @@ import {
 } from '@/utils/activityEvents';
 import { setHomeLoadProgress } from '@/utils/startupLoader';
 import { useAdmin, type AdminMode } from '@/contexts/AdminContext';
+
+const HOME_ACTIVITY_SNAPSHOT_PREFIX = '@home_activity_snapshot_v1';
+const HOME_FOCUS_REFRESH_STALE_MS = 2 * 60 * 1000;
+const HOME_FOCUS_REFRESH_MIN_INTERVAL_MS = 30 * 1000;
 
 interface ActivityTask {
   id: string;
@@ -440,10 +446,17 @@ interface UseHomeActivitiesResult {
   loadFullWindow: () => Promise<boolean>;
 }
 
+type CachedHomeActivitySnapshot = {
+  scope: HomeActivityLoadScope;
+  savedAt: string;
+  activities: ActivityWithCategory[];
+};
+
 export function useHomeActivities(): UseHomeActivitiesResult {
   const { adminMode, adminTargetId, adminTargetType } = useAdmin();
-  const [userId, setUserId] = useState<string | null>(null);
-  const [sessionChecked, setSessionChecked] = useState(false);
+  const { authReady, user } = useAuthSession();
+  const userId = user?.id ?? null;
+  const sessionChecked = authReady;
   const [activities, setActivities] = useState<ActivityWithCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [initialLoadSucceeded, setInitialLoadSucceeded] = useState(false);
@@ -454,6 +467,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
   const lastSeenRefreshVersionRef = useRef<number>(0);
   const hasLoadedOnceRef = useRef(false);
   const hasLoadedFullWindowRef = useRef(false);
+  const lastSuccessfulLoadAtRef = useRef(0);
+  const lastFocusRefreshStartedAtRef = useRef(0);
 
   useEffect(() => {
     hasLoadedFullWindowRef.current = hasLoadedFullWindow;
@@ -472,10 +487,52 @@ export function useHomeActivities(): UseHomeActivitiesResult {
     lastSeenRefreshVersionRef.current = 0;
     hasLoadedOnceRef.current = false;
     hasLoadedFullWindowRef.current = false;
+    lastSuccessfulLoadAtRef.current = 0;
+    lastFocusRefreshStartedAtRef.current = 0;
     setActivities([]);
     setInitialLoadSucceeded(false);
     setHasLoadedFullWindow(false);
   }, [activityScopeKey]);
+
+  const homeSnapshotKey = `${HOME_ACTIVITY_SNAPSHOT_PREFIX}:${activityScopeKey}`;
+
+  const loadCachedSnapshot = useCallback(async (): Promise<CachedHomeActivitySnapshot | null> => {
+    try {
+      const raw = await AsyncStorage.getItem(homeSnapshotKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as Partial<CachedHomeActivitySnapshot>;
+      if (!Array.isArray(parsed.activities)) return null;
+      const scope = parsed.scope === 'full' ? 'full' : 'initial';
+      return {
+        scope,
+        savedAt:
+          typeof parsed.savedAt === 'string' && parsed.savedAt.trim().length > 0
+            ? parsed.savedAt
+            : new Date(0).toISOString(),
+        activities: parsed.activities as ActivityWithCategory[],
+      };
+    } catch {
+      return null;
+    }
+  }, [homeSnapshotKey]);
+
+  const persistCachedSnapshot = useCallback(
+    async (scope: HomeActivityLoadScope, nextActivities: ActivityWithCategory[]) => {
+      try {
+        await AsyncStorage.setItem(
+          homeSnapshotKey,
+          JSON.stringify({
+            scope,
+            savedAt: new Date().toISOString(),
+            activities: nextActivities,
+          } satisfies CachedHomeActivitySnapshot),
+        );
+      } catch {
+        // Cache is best-effort only.
+      }
+    },
+    [homeSnapshotKey]
+  );
 
   const patchActivityTasks = useCallback((activityId: string, taskId: string, completed: boolean) => {
     setActivities(prev => {
@@ -614,50 +671,6 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       return mutated ? next : prev;
     });
   }, [enrichCategoryPatch]);
-
-  // Get user ID
-  useEffect(() => {
-    const fetchUser = async () => {
-      setHomeLoadProgress(0.05);
-      try {
-        const {
-          data: { session },
-          error,
-        } = await supabase.auth.getSession();
-
-        if (error) {
-          console.error('Failed to fetch session:', error);
-          setActivities([]);
-          setInitialLoadSucceeded(false);
-          setLoading(false);
-          setSessionChecked(true);
-          return;
-        }
-
-        const userIdFromSession = session?.user?.id;
-        if (!userIdFromSession) {
-          setActivities([]);
-          setInitialLoadSucceeded(true);
-          setLoading(false);
-          setSessionChecked(true);
-          setHomeLoadProgress(1);
-          return;
-        }
-
-        setUserId(userIdFromSession);
-        setSessionChecked(true);
-        setHomeLoadProgress(0.12);
-      } catch (err) {
-        console.error('Failed to fetch session:', err);
-        setActivities([]);
-        setInitialLoadSucceeded(false);
-        setLoading(false);
-        setSessionChecked(true);
-        setHomeLoadProgress(0);
-      }
-    };
-    fetchUser();
-  }, []);
 
   const refetchActivities = useCallback(async (scope: HomeActivityLoadScope = 'full'): Promise<boolean> => {
     const setStartupProgressIfInitial = (progress: number) => {
@@ -1535,6 +1548,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
 
       setStartupProgressIfInitial(0.95);
       setActivities(finalActivities);
+      lastSuccessfulLoadAtRef.current = Date.now();
+      void persistCachedSnapshot(scope, finalActivities);
 
       if (orphanCleanupResults.length && __DEV__) {
         orphanCleanupResults.forEach(result => {
@@ -1564,7 +1579,9 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       return true;
     } catch (err) {
       console.error('Failed to fetch activities:', err);
-      setActivities([]);
+      if (!hasLoadedOnceRef.current) {
+        setActivities([]);
+      }
       if (scope === 'full') {
         setHasLoadedFullWindow(false);
       }
@@ -1573,7 +1590,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       }
       return false;
     }
-  }, [adminMode, adminTargetId, adminTargetType, userId]);
+  }, [adminMode, adminTargetId, adminTargetType, persistCachedSnapshot, userId]);
 
   const triggerRefetch = useCallback(
     async (
@@ -1651,6 +1668,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         return;
       }
 
+      setHomeLoadProgress(0.05);
+
       if (!userId) {
         setActivities([]);
         setInitialLoadSucceeded(true);
@@ -1659,7 +1678,23 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         return;
       }
 
-      if (mounted) {
+      let hydratedFromCache = false;
+
+      if (!hasLoadedOnceRef.current) {
+        const cachedSnapshot = await loadCachedSnapshot();
+        if (mounted && cachedSnapshot?.activities?.length) {
+          hydratedFromCache = true;
+          hasLoadedOnceRef.current = true;
+          lastSuccessfulLoadAtRef.current = new Date(cachedSnapshot.savedAt).getTime() || Date.now();
+          setActivities(cachedSnapshot.activities);
+          setInitialLoadSucceeded(true);
+          setHasLoadedFullWindow(cachedSnapshot.scope === 'full');
+          setLoading(false);
+          setHomeLoadProgress(1);
+        }
+      }
+
+      if (mounted && !hydratedFromCache) {
         setLoading(true);
         setInitialLoadSucceeded(false);
         setHomeLoadProgress(0.15);
@@ -1667,13 +1702,16 @@ export function useHomeActivities(): UseHomeActivitiesResult {
 
       let firstLoadSucceeded = false;
       try {
-        firstLoadSucceeded = await triggerRefetch('initial_load_first_week', 'initial');
+        firstLoadSucceeded = await triggerRefetch(
+          hydratedFromCache ? 'initial_load_cache_revalidate' : 'initial_load_first_week',
+          'initial'
+        );
       } catch (err) {
         console.error('Failed to load home activities:', err);
       } finally {
         hasLoadedOnceRef.current = true;
         if (mounted) {
-          setInitialLoadSucceeded(firstLoadSucceeded);
+          setInitialLoadSucceeded(hydratedFromCache || firstLoadSucceeded);
           setLoading(false);
         }
       }
@@ -1688,14 +1726,22 @@ export function useHomeActivities(): UseHomeActivitiesResult {
     return () => {
       mounted = false;
     };
-  }, [activityScopeKey, sessionChecked, userId, triggerRefetch]);
+  }, [activityScopeKey, loadCachedSnapshot, sessionChecked, triggerRefetch, userId]);
 
   useFocusEffect(
     useCallback(() => {
       if (!hasLoadedOnceRef.current) {
         return;
       }
-      triggerRefetch('home_focus');
+      const now = Date.now();
+      if (now - lastFocusRefreshStartedAtRef.current < HOME_FOCUS_REFRESH_MIN_INTERVAL_MS) {
+        return;
+      }
+      if (now - lastSuccessfulLoadAtRef.current < HOME_FOCUS_REFRESH_STALE_MS) {
+        return;
+      }
+      lastFocusRefreshStartedAtRef.current = now;
+      void triggerRefetch('home_focus');
     }, [triggerRefetch])
   );
 

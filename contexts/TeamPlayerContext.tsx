@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuthSession } from '@/contexts/AuthSessionContext';
 
 export interface Team {
   id: string;
@@ -50,6 +51,7 @@ const SELECTED_CONTEXT_KEY = '@selected_context';
 const toDateOrNow = (value: string | null | undefined): Date => (value ? new Date(value) : new Date());
 
 export function TeamPlayerProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuthSession();
   const [teams, setTeams] = useState<Team[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [selectedContext, setSelectedContextState] = useState<SelectedContext>({
@@ -58,40 +60,10 @@ export function TeamPlayerProvider({ children }: { children: ReactNode }) {
     name: null,
   });
   const [loading, setLoading] = useState(true);
-  const [userId, setUserId] = useState<string | null>(null);
   const rosterLoadedRef = React.useRef(false);
   const rosterLoadRequestIdRef = React.useRef(0);
   const rosterLoadPromiseRef = React.useRef<Promise<{ teams: Team[]; players: Player[] }> | null>(null);
-
-  // Keep userId in sync with auth state (initial load + sign in/out)
-  useEffect(() => {
-    let mounted = true;
-
-    const syncCurrentUser = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const user = session?.user ?? null;
-      if (!mounted) return;
-      console.log('TeamPlayerContext - Current user:', user?.id);
-      setUserId(user?.id || null);
-    };
-
-    syncCurrentUser();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      const nextUserId = session?.user?.id || null;
-      console.log('TeamPlayerContext - Auth state changed:', _event, nextUserId);
-      setUserId(nextUserId);
-    });
-
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
-  }, []);
+  const userId = user?.id ?? null;
 
   const requireUserId = useCallback(async (): Promise<string> => {
     if (userId) return userId;
@@ -99,10 +71,9 @@ export function TeamPlayerProvider({ children }: { children: ReactNode }) {
     const {
       data: { session },
     } = await supabase.auth.getSession();
-    const user = session?.user ?? null;
+    const fallbackUser = session?.user ?? null;
 
-    const resolvedUserId = user?.id || null;
-    setUserId(resolvedUserId);
+    const resolvedUserId = fallbackUser?.id || null;
     if (!resolvedUserId) {
       throw new Error('User not authenticated');
     }

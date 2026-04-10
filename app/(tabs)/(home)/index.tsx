@@ -58,13 +58,14 @@
  */
 
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
-import { BackHandler, FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform, useColorScheme, DeviceEventEmitter, Image, ImageBackground } from 'react-native';
+import { BackHandler, FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform, useColorScheme, DeviceEventEmitter, Image, ImageBackground, InteractionManager } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Defs, Stop, LinearGradient as SvgLinearGradient, Circle, G } from 'react-native-svg';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
 import { useFootball } from '@/contexts/FootballContext';
+import { useAuthSession } from '@/contexts/AuthSessionContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useAdmin } from '@/contexts/AdminContext';
 import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
@@ -188,6 +189,8 @@ const THIS_WEEK_PREMIUM_BG = require('../../../assets/images/home_this_week_prem
 const THIS_WEEK_CARD_RADIUS = 28;
 const THIS_WEEK_BG_CROP_RADIUS = THIS_WEEK_CARD_RADIUS;
 const HOME_REFRESH_TIMEOUT_MS = 10000;
+const HOME_STATS_REFRESH_STALE_MS = 2 * 60 * 1000;
+const HOME_STATS_REFRESH_MIN_INTERVAL_MS = 30 * 1000;
 const HOME_REFRESH_TELEMETRY_ROUTE = '/';
 
 type HomeRefreshSource = 'focus' | 'pull_to_refresh';
@@ -1062,6 +1065,7 @@ function getActivityTasks(activity: any): any[] {
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { user } = useAuthSession();
   const { userRole } = useUserRole();
   const {
     activities,
@@ -1075,6 +1079,8 @@ export default function HomeScreen() {
     isLoading: footballLoading,
     currentWeekStats,
     hasCurrentWeekStatsLoaded,
+    ensureTemplateDataLoaded,
+    ensureCurrentWeekStatsLoaded,
     toggleTaskCompletion,
     updateActivitySingle,
     updateIntensityByCategory,
@@ -1105,6 +1111,8 @@ export default function HomeScreen() {
   const isDark = colorScheme === 'dark';
   const emittedHomeReadyRef = useRef(false);
   const didSkipInitialFocusRefreshRef = useRef(false);
+  const lastStatsRefreshStartedAtRef = useRef(0);
+  const lastStatsRefreshCompletedAtRef = useRef(0);
 
   useEffect(() => {
     if (loading || emittedHomeReadyRef.current) return;
@@ -1194,26 +1202,34 @@ export default function HomeScreen() {
   const isTeamAdmin = adminMode !== 'self' && adminTargetId === 'team';
   const isAdminMode = isPlayerAdmin || isTeamAdmin;
 
-  // Fetch current trainer ID (the logged-in user who is administering)
   useEffect(() => {
-    async function fetchCurrentTrainerId() {
-      try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        const user = session?.user;
-        if (user) {
-          setCurrentTrainerId(user.id);
-          setCurrentUserId(user.id);
-        }
-      } catch (error) {
-        console.error('[Home] Error fetching current trainer ID:', error);
-        // STEP H: Safe fallback - no throw
-      }
-    }
+    const nextUserId = user?.id ?? null;
+    setCurrentTrainerId(nextUserId);
+    setCurrentUserId(nextUserId);
+  }, [user?.id]);
 
-    fetchCurrentTrainerId();
-  }, []);
+  useEffect(() => {
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      void ensureTemplateDataLoaded().catch((error) => {
+        console.error('[Home] Deferred template load failed:', error);
+      });
+      void ensureCurrentWeekStatsLoaded()
+        .then(() => {
+          lastStatsRefreshCompletedAtRef.current = Date.now();
+        })
+        .catch((error) => {
+          console.error('[Home] Deferred stats load failed:', error);
+        });
+    });
+    return () => {
+      interaction.cancel();
+    };
+  }, [ensureCurrentWeekStatsLoaded, ensureTemplateDataLoaded]);
+
+  useEffect(() => {
+    if (!hasCurrentWeekStatsLoaded || lastStatsRefreshCompletedAtRef.current) return;
+    lastStatsRefreshCompletedAtRef.current = Date.now();
+  }, [hasCurrentWeekStatsLoaded]);
 
   // Reset previously loaded week count when loading starts (pull-to-refresh or navigation back)
   useEffect(() => {
@@ -1467,10 +1483,36 @@ export default function HomeScreen() {
         return;
       }
       if (loading || footballLoading) return;
-      void refreshHomeScreen('focus').catch((error) => {
-        console.error('[Home] Focus refresh failed:', error);
+      const now = Date.now();
+      if (now - lastStatsRefreshStartedAtRef.current < HOME_STATS_REFRESH_MIN_INTERVAL_MS) {
+        return;
+      }
+      const shouldForceStatsRefresh =
+        hasCurrentWeekStatsLoaded &&
+        now - lastStatsRefreshCompletedAtRef.current >= HOME_STATS_REFRESH_STALE_MS;
+
+      if (!shouldForceStatsRefresh && hasCurrentWeekStatsLoaded) {
+        return;
+      }
+
+      lastStatsRefreshStartedAtRef.current = now;
+      void ensureCurrentWeekStatsLoaded(shouldForceStatsRefresh)
+        .then(() => {
+          lastStatsRefreshCompletedAtRef.current = Date.now();
+        })
+        .catch((error) => {
+          console.error('[Home] Focus stats refresh failed:', error);
+        });
+      void ensureTemplateDataLoaded().catch((error) => {
+        console.error('[Home] Focus template refresh failed:', error);
       });
-    }, [footballLoading, loading, refreshHomeScreen])
+    }, [
+      ensureCurrentWeekStatsLoaded,
+      ensureTemplateDataLoaded,
+      footballLoading,
+      hasCurrentWeekStatsLoaded,
+      loading,
+    ])
   );
 
   useEffect(() => {

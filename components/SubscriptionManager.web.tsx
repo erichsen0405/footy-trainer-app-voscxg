@@ -24,7 +24,14 @@ export default function SubscriptionManager({
   isSignupFlow = false,
   selectedRole = null 
 }: SubscriptionManagerProps) {
-  const { subscriptionStatus, subscriptionPlans, loading, createSubscription, refreshSubscription } = useSubscription();
+  const {
+    subscriptionStatus,
+    subscriptionPlans,
+    loading,
+    ensureSubscriptionPlansLoaded,
+    createSubscription,
+    refreshSubscription,
+  } = useSubscription();
   const [creatingPlanId, setCreatingPlanId] = useState<string | null>(null);
   const [showPlans, setShowPlans] = useState(isSignupFlow); // Collapsed by default unless in signup flow
   const [retryCount, setRetryCount] = useState(0);
@@ -40,11 +47,12 @@ export default function SubscriptionManager({
 
   // Refresh subscription status when component mounts
   useEffect(() => {
+    void ensureSubscriptionPlansLoaded();
     if (!isSignupFlow) {
       console.log('[SubscriptionManager.web] Component mounted, refreshing subscription');
-      refreshSubscription();
+      void refreshSubscription();
     }
-  }, [isSignupFlow, refreshSubscription]);
+  }, [ensureSubscriptionPlansLoaded, isSignupFlow, refreshSubscription]);
 
   // Log subscription status changes for debugging
   useEffect(() => {

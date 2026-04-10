@@ -14,6 +14,7 @@ import {
   Alert,
   ActivityIndicator,
   DeviceEventEmitter,
+  InteractionManager,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
@@ -27,6 +28,7 @@ import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import { useSubscriptionFeatures } from '@/hooks/useSubscriptionFeatures';
 import { PremiumFeatureGate } from '@/components/PremiumFeatureGate';
 import { useFootball } from '@/contexts/FootballContext';
+import { useAuthSession } from '@/contexts/AuthSessionContext';
 import { Task } from '@/types';
 import { extractVideoKey, resolveVideoUrl } from '@/utils/videoKey';
 import { HOLDTRAINING_POSITIONS } from '@/utils/exercisePositions';
@@ -641,12 +643,17 @@ export default function LibraryScreen() {
   const isTrainerByTier = subscriptionTier?.startsWith('trainer') ?? false;
   const canCreateExercise = isAdmin || isTrainerLike || isTrainerByTier;
   const isCreator = canCreateExercise;
+  const { authReady, user } = useAuthSession();
 
   const { teams } = useTeamPlayer();
   const router = useRouter();
   const colorScheme = useColorScheme();
   const theme = getColors(colorScheme);
-  const { addTask: addTaskToContext, tasks: tasksFromContext } = useFootball();
+  const {
+    addTask: addTaskToContext,
+    tasks: tasksFromContext,
+    ensureTemplateDataLoaded,
+  } = useFootball();
   const isTrainerUser = isAdmin || isTrainerLike || isTrainerByTier;
 
   const [status, setStatus] = useState<'loading' | 'success' | 'empty' | 'error'>('loading');
@@ -991,21 +998,22 @@ export default function LibraryScreen() {
   );
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const { data } = await supabase.auth.getUser();
-      if (cancelled) return;
-      setCurrentUserId(data?.user?.id ?? null);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (!authReady) return;
+    setCurrentUserId(user?.id ?? null);
+  }, [authReady, user?.id]);
 
   useFocusEffect(
     useCallback(() => {
-      setReloadNonce(n => n + 1);
-    }, [])
+      const interaction = InteractionManager.runAfterInteractions(() => {
+        void ensureTemplateDataLoaded().catch((error: unknown) => {
+          console.error('[Library] Failed to load template data:', error);
+        });
+        setReloadNonce(n => n + 1);
+      });
+      return () => {
+        interaction.cancel();
+      };
+    }, [ensureTemplateDataLoaded])
   );
 
   useEffect(() => {

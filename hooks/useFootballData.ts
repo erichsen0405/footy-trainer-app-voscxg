@@ -19,12 +19,15 @@ import { taskService } from '@/services/taskService';
 import { activityService } from '@/services/activityService';
 import { calendarService } from '@/services/calendarService';
 import { useAdmin } from '@/contexts/AdminContext';
+import { useAuthSession } from '@/contexts/AuthSessionContext';
 import { useCelebration } from '@/contexts/CelebrationContext';
 import { subscribeToTaskCompletion, emitTaskCompletionEvent } from '@/utils/taskEvents';
 import { emitActivityPatch, emitActivitiesRefreshRequested } from '@/utils/activityEvents';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { isTaskVisibleForActivity } from '@/utils/taskTemplateVisibility';
 import { resolveCelebrationAfterCompletionFromDatabase } from '@/utils/celebrationRuntime';
+
+const NOTIFICATION_SYNC_THROTTLE_MS = 30 * 1000;
 
 type ExternalTaskForPerformance = {
   id?: string | number | null;
@@ -286,8 +289,15 @@ const emptyCurrentWeekStats = {
   weekActivities: [] as Activity[],
 };
 
-export const useFootballData = () => {
+type UseFootballDataOptions = {
+  eagerStartupLoad?: boolean;
+};
+
+export const useFootballData = ({
+  eagerStartupLoad = false,
+}: UseFootballDataOptions = {}) => {
   const { adminMode, adminTargetId, adminTargetType } = useAdmin();
+  const { authReady, user } = useAuthSession();
   const { showCelebration } = useCelebration();
 
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -299,15 +309,19 @@ export const useFootballData = () => {
   const [externalActivities] = useState<Activity[]>([]);
   const [currentWeekStats, setCurrentWeekStats] = useState(emptyCurrentWeekStats);
   const [hasCurrentWeekStatsLoaded, setHasCurrentWeekStatsLoaded] = useState(false);
+  const [hasTemplateDataLoaded, setHasTemplateDataLoaded] = useState(false);
   const [hasActivitiesLoaded, setHasActivitiesLoaded] = useState(false);
   const [hasPerformanceDataLoaded, setHasPerformanceDataLoaded] = useState(false);
-  const [authUserId, setAuthUserId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(eagerStartupLoad));
+  const authUserId = user?.id ?? null;
   const refreshDataPromiseRef = useRef<Promise<void> | null>(null);
   const deferredStartupLoadPromiseRef = useRef<Promise<void> | null>(null);
+  const templateDataLoadPromiseRef = useRef<Promise<void> | null>(null);
+  const currentWeekStatsLoadPromiseRef = useRef<Promise<void> | null>(null);
   const activitiesLoadPromiseRef = useRef<Promise<void> | null>(null);
   const performanceDataLoadPromiseRef = useRef<Promise<void> | null>(null);
   const lazyLoadScopeKeyRef = useRef<string | null>(null);
+  const lastNotificationSyncAtRef = useRef(0);
 
   const findTaskCompletionState = useCallback(
     (activityId: string, taskId: string): boolean | null => {
@@ -486,33 +500,6 @@ export const useFootballData = () => {
   }, []);
 
   useEffect(() => {
-    let mounted = true;
-
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (!mounted) return;
-      if (error) {
-        console.error('[useFootballData] initial session lookup failed:', error);
-        setAuthUserId(null);
-        return;
-      }
-
-      setAuthUserId(data.session?.user?.id ?? null);
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!mounted) return;
-      setAuthUserId(session?.user?.id ?? null);
-    });
-
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  useEffect(() => {
     const scopeKey = [
       authUserId ?? 'anonymous',
       adminMode,
@@ -532,18 +519,24 @@ export const useFootballData = () => {
     lazyLoadScopeKeyRef.current = scopeKey;
     refreshDataPromiseRef.current = null;
     deferredStartupLoadPromiseRef.current = null;
+    templateDataLoadPromiseRef.current = null;
+    currentWeekStatsLoadPromiseRef.current = null;
     activitiesLoadPromiseRef.current = null;
     performanceDataLoadPromiseRef.current = null;
 
     setActivities([]);
+    setCategories([]);
+    setTasks([]);
     setTrophies([]);
     setExternalCalendars([]);
     setActivitySeries([]);
     setCurrentWeekStats(emptyCurrentWeekStats);
+    setHasTemplateDataLoaded(false);
     setHasCurrentWeekStatsLoaded(false);
     setHasActivitiesLoaded(false);
     setHasPerformanceDataLoaded(false);
-  }, [adminMode, adminTargetId, adminTargetType, authUserId]);
+    setLoading(Boolean(eagerStartupLoad));
+  }, [adminMode, adminTargetId, adminTargetType, authUserId, eagerStartupLoad]);
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -1170,13 +1163,6 @@ export const useFootballData = () => {
     }
   }, [weekRange]);
 
-  useEffect(() => {
-    setCurrentWeekStats(prev => ({
-      ...prev,
-      weekActivities: activitiesThisWeek as Activity[],
-    }));
-  }, [activitiesThisWeek]);
-
   const runLoadOperations = useCallback(async (
     context: string,
     operations: DataLoadOperation[]
@@ -1190,6 +1176,102 @@ export const useFootballData = () => {
       }
     });
   }, []);
+
+  const ensureTemplateDataLoaded = useCallback(async (force: boolean = false) => {
+    if (!force && hasTemplateDataLoaded) {
+      return;
+    }
+
+    if (!force && templateDataLoadPromiseRef.current) {
+      await templateDataLoadPromiseRef.current;
+      return;
+    }
+
+    if (force && templateDataLoadPromiseRef.current) {
+      await templateDataLoadPromiseRef.current;
+    }
+
+    const pendingLoad = (async () => {
+      setLoading(true);
+      try {
+        await runLoadOperations('ensureTemplateDataLoaded', [
+          { name: 'categories', run: fetchCategories },
+          { name: 'tasks', run: fetchTasks },
+        ]);
+        setHasTemplateDataLoaded(true);
+      } finally {
+        if (!eagerStartupLoad) {
+          setLoading(false);
+        }
+      }
+    })();
+
+    templateDataLoadPromiseRef.current = pendingLoad;
+
+    try {
+      await pendingLoad;
+    } finally {
+      if (templateDataLoadPromiseRef.current === pendingLoad) {
+        templateDataLoadPromiseRef.current = null;
+      }
+    }
+  }, [
+    eagerStartupLoad,
+    fetchCategories,
+    fetchTasks,
+    hasTemplateDataLoaded,
+    runLoadOperations,
+  ]);
+
+  const ensureCurrentWeekStatsLoaded = useCallback(async (force: boolean = false) => {
+    if (!force && hasCurrentWeekStatsLoaded) {
+      return;
+    }
+
+    if (!force && currentWeekStatsLoadPromiseRef.current) {
+      await currentWeekStatsLoadPromiseRef.current;
+      return;
+    }
+
+    if (force && currentWeekStatsLoadPromiseRef.current) {
+      await currentWeekStatsLoadPromiseRef.current;
+    }
+
+    const pendingLoad = (async () => {
+      setLoading(true);
+      try {
+        await runLoadOperations('ensureCurrentWeekStatsLoaded', [
+          { name: 'currentWeekStats', run: fetchCurrentWeekStats },
+        ]);
+      } finally {
+        if (!eagerStartupLoad) {
+          setLoading(false);
+        }
+      }
+    })();
+
+    currentWeekStatsLoadPromiseRef.current = pendingLoad;
+
+    try {
+      await pendingLoad;
+    } finally {
+      if (currentWeekStatsLoadPromiseRef.current === pendingLoad) {
+        currentWeekStatsLoadPromiseRef.current = null;
+      }
+    }
+  }, [
+    eagerStartupLoad,
+    fetchCurrentWeekStats,
+    hasCurrentWeekStatsLoaded,
+    runLoadOperations,
+  ]);
+
+  useEffect(() => {
+    setCurrentWeekStats(prev => ({
+      ...prev,
+      weekActivities: activitiesThisWeek as Activity[],
+    }));
+  }, [activitiesThisWeek]);
 
   const ensureActivitiesLoaded = useCallback(async (force: boolean = false) => {
     if (!force && hasActivitiesLoaded) {
@@ -1278,6 +1360,13 @@ export const useFootballData = () => {
   ]);
 
   useEffect(() => {
+    if (!eagerStartupLoad || !authReady) {
+      if (!eagerStartupLoad) {
+        setLoading(false);
+      }
+      return;
+    }
+
     let cancelled = false;
     let interactionTask: { cancel?: () => void } | null = null;
 
@@ -1332,6 +1421,8 @@ export const useFootballData = () => {
       interactionTask?.cancel?.();
     };
   }, [
+    authReady,
+    eagerStartupLoad,
     fetchCategories,
     fetchCurrentWeekStats,
     fetchTasks,
@@ -1379,11 +1470,22 @@ export const useFootballData = () => {
   }, []);
 
   useEffect(() => {
+    const syncNotificationState = (force = false) => {
+      const now = Date.now();
+      if (!force && now - lastNotificationSyncAtRef.current < NOTIFICATION_SYNC_THROTTLE_MS) {
+        return;
+      }
+
+      lastNotificationSyncAtRef.current = now;
+      refreshNotificationQueue();
+      if (Platform.OS === 'ios') {
+        checkNotificationPermissions();
+      }
+    };
+
     const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
       if (state === 'active') {
-        refreshNotificationQueue();
-        // Keep permission status in sync when user returns from iOS settings
-        checkNotificationPermissions();
+        syncNotificationState();
       }
     });
 
@@ -1392,7 +1494,11 @@ export const useFootballData = () => {
 
   useEffect(() => {
     if (Platform.OS === 'ios') {
-      checkNotificationPermissions();
+      const now = Date.now();
+      if (now - lastNotificationSyncAtRef.current >= NOTIFICATION_SYNC_THROTTLE_MS) {
+        lastNotificationSyncAtRef.current = now;
+        checkNotificationPermissions();
+      }
     }
   }, []);
 
@@ -2137,6 +2243,8 @@ export const useFootballData = () => {
     todayActivities,
     isLoading: loading,
     refreshAll,
+    ensureTemplateDataLoaded,
+    ensureCurrentWeekStatsLoaded,
     ensureActivitiesLoaded,
     ensurePerformanceDataLoaded,
     refreshCategories, // ✅ P14 export

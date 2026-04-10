@@ -13,6 +13,7 @@ import { usePathname, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors } from '@/styles/commonStyles';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuthSession } from '@/contexts/AuthSessionContext';
 import AppleSubscriptionManager from '@/components/AppleSubscriptionManager';
 import SubscriptionManager from '@/components/SubscriptionManager';
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -57,6 +58,7 @@ type CachedAuthoritativeNoSub = {
 export function OnboardingGate({ children, renderInlinePaywall = false }: OnboardingGateProps) {
   const STARTUP_TIMEOUT_MS = 12000;
   const STARTUP_ERROR_MESSAGE = 'Kunne ikke klargøre konto. Prøv igen.';
+  const { authReady, user, refreshSession } = useAuthSession();
 
   const [state, setState] = useState<GateState>({
     hydrating: true,
@@ -80,7 +82,6 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
   const lastNavRef = useRef<number>(0);
   const lastGateUserIdRef = useRef<string | null>(null);
   const lastNonPaywallPathRef = useRef<string | null>(null);
-  const backgroundRecoveryInFlightRef = useRef(false);
   const isMountedRef = useRef(true);
   const hydrationRunRef = useRef(0);
   const startupMountedAtRef = useRef(Date.now());
@@ -478,73 +479,10 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
     ]
   );
 
-  const recoverSessionInBackground = useCallback(
-    async (source: 'startup' | 'retry') => {
-      if (backgroundRecoveryInFlightRef.current) return;
-      backgroundRecoveryInFlightRef.current = true;
-
-      const recoveryRunId = hydrationRunRef.current;
-      try {
-        const { data } = await supabase.auth.getSession();
-        if (!isMountedRef.current || hydrationRunRef.current !== recoveryRunId) return;
-        await refreshRoleAndSubscription(data.session?.user ?? null);
-      } catch (error) {
-        console.warn(`[OnboardingGate] Background ${source} recovery failed`, error);
-      } finally {
-        backgroundRecoveryInFlightRef.current = false;
-      }
-    },
-    [refreshRoleAndSubscription]
-  );
-
   useEffect(() => {
-    let active = true;
-    const bootstrapRunId = hydrationRunRef.current;
-
-    const bootstrap = async () => {
-      try {
-        const { data } = await withTimeout(
-          supabase.auth.getSession(),
-          STARTUP_TIMEOUT_MS,
-          'Onboarding session lookup timed out'
-        );
-        if (active) {
-          await refreshRoleAndSubscription(data.session?.user ?? null);
-        }
-      } catch (error) {
-        if (!active || !isMountedRef.current || hydrationRunRef.current !== bootstrapRunId) return;
-        if (error instanceof TimeoutError) {
-          const usedCache = await applyCachedApprovedAccess(null, bootstrapRunId);
-          if (usedCache) {
-            void recoverSessionInBackground('startup');
-            return;
-          }
-          setState(prev => ({ ...prev, hydrating: false, initError: null, needsSubscription: false }));
-          void recoverSessionInBackground('startup');
-          return;
-        }
-        console.warn('[OnboardingGate] Startup bootstrap failed', error);
-        setState(prev => ({
-          ...prev,
-          hydrating: false,
-          needsSubscription: false,
-          initError: STARTUP_ERROR_MESSAGE,
-        }));
-      }
-    };
-
-    bootstrap();
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_, session) => {
-      if (!active) return;
-      refreshRoleAndSubscription(session?.user ?? null);
-    });
-
-    return () => {
-      active = false;
-      listener.subscription.unsubscribe();
-    };
-  }, [applyCachedApprovedAccess, recoverSessionInBackground, refreshRoleAndSubscription]);
+    if (!authReady) return;
+    void refreshRoleAndSubscription(user ?? null);
+  }, [authReady, refreshRoleAndSubscription, user]);
 
   const handleRetryStartup = useCallback(async () => {
     if (!isMountedRef.current) return;
@@ -552,23 +490,19 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
     refreshCalledRef.current = false;
     setState(prev => ({ ...prev, hydrating: true, initError: null }));
     try {
-      const { data } = await withTimeout(
-        supabase.auth.getSession(),
+      const refreshedSession = await withTimeout(
+        refreshSession(),
         STARTUP_TIMEOUT_MS,
         'Onboarding retry session lookup timed out'
       );
       if (!isMountedRef.current || hydrationRunRef.current !== retryRunId) return;
-      await refreshRoleAndSubscription(data.session?.user ?? null);
+      await refreshRoleAndSubscription(refreshedSession?.user ?? user ?? null);
     } catch (error) {
       if (!isMountedRef.current || hydrationRunRef.current !== retryRunId) return;
       if (error instanceof TimeoutError) {
-        const usedCache = await applyCachedApprovedAccess(state.user ?? null, retryRunId);
-        if (usedCache) {
-          void recoverSessionInBackground('retry');
-          return;
-        }
+        const usedCache = await applyCachedApprovedAccess(user ?? null, retryRunId);
+        if (usedCache) return;
         setState(prev => ({ ...prev, hydrating: false, initError: null, needsSubscription: false }));
-        void recoverSessionInBackground('retry');
         return;
       }
       console.warn('[OnboardingGate] Startup retry failed', error);
@@ -579,7 +513,14 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
         initError: STARTUP_ERROR_MESSAGE,
       }));
     }
-  }, [STARTUP_ERROR_MESSAGE, STARTUP_TIMEOUT_MS, applyCachedApprovedAccess, recoverSessionInBackground, refreshRoleAndSubscription, state.user]);
+  }, [
+    STARTUP_ERROR_MESSAGE,
+    STARTUP_TIMEOUT_MS,
+    applyCachedApprovedAccess,
+    refreshRoleAndSubscription,
+    refreshSession,
+    user,
+  ]);
 
   const handleCreateSubscription = useCallback(async (planId: string) => {
     if (!state.user) return;
