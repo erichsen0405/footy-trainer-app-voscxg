@@ -499,7 +499,12 @@ describe('useFootballData lazy-load reset', () => {
       },
     ];
 
-    const { result, rerender } = renderHook(() => useFootballData());
+    const { result, rerender } = renderHook(({ sessionVersion }: { sessionVersion: number }) => {
+      void sessionVersion;
+      return useFootballData();
+    }, {
+      initialProps: { sessionVersion: 0 },
+    });
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
@@ -516,7 +521,7 @@ describe('useFootballData lazy-load reset', () => {
 
     setMockAuthSession({ user: { id: 'user-2' } });
     await act(async () => {
-      rerender();
+      rerender({ sessionVersion: 1 });
     });
 
     await waitFor(() => {
