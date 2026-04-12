@@ -5,6 +5,7 @@ import TasksScreen from '../app/(tabs)/tasks';
 
 const mockUseFootball = jest.fn();
 const mockUseAdmin = jest.fn();
+const mockUseAuthSession = jest.fn();
 
 jest.mock('@/contexts/FootballContext', () => ({
   useFootball: () => mockUseFootball(),
@@ -12,6 +13,14 @@ jest.mock('@/contexts/FootballContext', () => ({
 
 jest.mock('@/contexts/AdminContext', () => ({
   useAdmin: () => mockUseAdmin(),
+}));
+
+jest.mock('@/contexts/AuthSessionContext', () => ({
+  useAuthSession: () => mockUseAuthSession(),
+}));
+
+jest.mock('@react-navigation/native', () => ({
+  useFocusEffect: () => {},
 }));
 
 jest.mock('@/components/IconSymbol', () => {
@@ -64,6 +73,13 @@ jest.mock('@/integrations/supabase/client', () => ({
 describe('Tasks delete confirmation modal', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseAuthSession.mockReturnValue({
+      authReady: true,
+      isAuthenticated: true,
+      user: { id: 'user-1' },
+      session: { user: { id: 'user-1' } },
+      refreshSession: jest.fn().mockResolvedValue({ user: { id: 'user-1' } }),
+    });
 
     mockUseAdmin.mockReturnValue({
       adminMode: 'self',
