@@ -9,6 +9,7 @@ const mockUseUserRole = jest.fn();
 const mockUseSubscriptionFeatures = jest.fn();
 const mockUseTeamPlayer = jest.fn();
 const mockUseFootball = jest.fn();
+const mockUseAuthSession = jest.fn();
 
 const mockAuthGetUser = jest.fn();
 const mockResolveQuery = jest.fn();
@@ -35,6 +36,10 @@ jest.mock('@/contexts/TeamPlayerContext', () => ({
 
 jest.mock('@/contexts/FootballContext', () => ({
   useFootball: () => mockUseFootball(),
+}));
+
+jest.mock('@/contexts/AuthSessionContext', () => ({
+  useAuthSession: () => mockUseAuthSession(),
 }));
 
 jest.mock('@/components/IconSymbol', () => {
@@ -230,6 +235,13 @@ function setupSupabaseFixture({
 describe('Library screen gating and card state', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseAuthSession.mockReturnValue({
+      authReady: true,
+      isAuthenticated: true,
+      user: { id: 'user-1' },
+      session: { user: { id: 'user-1' } },
+      refreshSession: jest.fn().mockResolvedValue({ user: { id: 'user-1' } }),
+    });
 
     mockUseTeamPlayer.mockReturnValue({
       players: [],
