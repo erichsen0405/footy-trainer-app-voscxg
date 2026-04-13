@@ -17,6 +17,7 @@ import {
   hydrateTaskForModal,
   shouldHydrateTaskForModal,
 } from '@/utils/taskModalContent';
+import { serializeActivitySnapshotForRoute } from '@/utils/activityRouteSnapshot';
 
 interface ActivityCardProps {
   activity: any;
@@ -472,6 +473,7 @@ export default function ActivityCard({
       console.warn('[ActivityCard] Missing activity id for navigation');
       return;
     }
+    const activitySnapshot = serializeActivitySnapshotForRoute(activity, resolvedDate);
     router.push({
       pathname: '/activity-details',
       params: {
@@ -481,15 +483,14 @@ export default function ActivityCard({
         categoryName: activity?.category?.name ? String(activity.category.name) : undefined,
         categoryColor: activity?.category?.color ? String(activity.category.color) : undefined,
         categoryEmoji: activity?.category?.emoji ? String(activity.category.emoji) : undefined,
+        activitySnapshot: activitySnapshot ?? undefined,
       },
     });
   }, [
-    activity?.category?.color,
-    activity?.category?.emoji,
-    activity?.category?.id,
-    activity?.category?.name,
+    activity,
     activityId,
     routeActivityId,
+    resolvedDate,
     router,
   ]);
 
