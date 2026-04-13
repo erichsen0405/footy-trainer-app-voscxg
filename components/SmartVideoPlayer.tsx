@@ -26,7 +26,9 @@ export default function SmartVideoPlayer({ url }: { url?: string }) {
     return buildVideoHtml(resolvedUrl, playVimeo);
   }, [playVimeo, resolvedUrl, vimeoId]);
   const thumbnailUrl = useMemo(() => {
-    if (parsedVideo?.platform === 'youtube') return parsedVideo.thumbnailUrl;
+    if (parsedVideo?.platform === 'youtube' || parsedVideo?.platform === 'instagram') {
+      return parsedVideo.thumbnailUrl;
+    }
     if (parsedVideo?.platform === 'vimeo' && vimeoId) return `https://vumbnail.com/${vimeoId}.jpg`;
     return null;
   }, [parsedVideo, vimeoId]);
@@ -100,6 +102,16 @@ export default function SmartVideoPlayer({ url }: { url?: string }) {
   }
 
   if (instagramUrl) {
+    if (thumbnailUrl) {
+      return (
+        <Thumb
+          img={thumbnailUrl}
+          onPress={() => Linking.openURL(instagramUrl)}
+          testID="smart-video-player.thumbnail"
+        />
+      );
+    }
+
     return (
       <Pressable
         onPress={() => Linking.openURL(instagramUrl)}

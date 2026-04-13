@@ -126,6 +126,28 @@ function parseInstagramVideoId(url: string): string | null {
   return null;
 }
 
+function buildInstagramThumbnailUrl(url: string, videoId: string): string | null {
+  const parsed = safeParseUrl(url);
+  if (parsed) {
+    const host = normalizeHost(parsed.hostname);
+    if (host === 'instagram.com') {
+      const segments = parsed.pathname.split('/').filter(Boolean);
+      const contentType = segments[0];
+      if (contentType === 'reel' || contentType === 'p' || contentType === 'tv') {
+        return `https://www.instagram.com/${contentType}/${videoId}/media/?size=l`;
+      }
+    }
+  }
+
+  if (/instagram\.com\/reel\//i.test(url)) {
+    return `https://www.instagram.com/reel/${videoId}/media/?size=l`;
+  }
+  if (/instagram\.com\/tv\//i.test(url)) {
+    return `https://www.instagram.com/tv/${videoId}/media/?size=l`;
+  }
+  return `https://www.instagram.com/p/${videoId}/media/?size=l`;
+}
+
 /**
  * Parse video URL and extract platform information
  * Converts supported URLs to platform metadata
@@ -168,7 +190,7 @@ export function parseVideoUrl(url: string): VideoInfo {
       platform: 'instagram',
       videoId: instagramId,
       embedUrl: null,
-      thumbnailUrl: null,
+      thumbnailUrl: buildInstagramThumbnailUrl(trimmedUrl, instagramId),
     };
   }
 

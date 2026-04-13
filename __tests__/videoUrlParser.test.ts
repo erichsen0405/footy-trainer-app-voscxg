@@ -25,6 +25,7 @@ describe('videoUrlParser', () => {
 
     expect(parsed.platform).toBe('instagram');
     expect(parsed.videoId).toBe('C7N2KQ2uV9x');
+    expect(parsed.thumbnailUrl).toBe('https://www.instagram.com/reel/C7N2KQ2uV9x/media/?size=l');
     expect(isPlayableVideoUrl('https://www.instagram.com/reel/C7N2KQ2uV9x/?igsh=MWQ=')).toBe(true);
     expect(
       extractFirstPlayableVideoUrl('Se denne video https://www.instagram.com/reel/C7N2KQ2uV9x/?igsh=MWQ=')

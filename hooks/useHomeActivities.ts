@@ -367,6 +367,99 @@ export const getInitialHomeActivityWindow = (now: Date = new Date()): HomeActivi
   };
 };
 
+export type HomeActivityPriorityBucket = 'today' | 'currentWeek' | 'upcoming' | 'historical';
+
+type HomeActivityPriorityCandidate = {
+  activity_date?: string | null;
+};
+
+const getActivityDateKey = (activity: HomeActivityPriorityCandidate): string | null => {
+  const dateKey = typeof activity?.activity_date === 'string' ? activity.activity_date.trim() : '';
+  return dateKey.length ? dateKey.slice(0, 10) : null;
+};
+
+export const getHomeActivityPriorityBucket = (
+  activity: HomeActivityPriorityCandidate,
+  now: Date = new Date()
+): HomeActivityPriorityBucket => {
+  const activityDateKey = getActivityDateKey(activity);
+  if (!activityDateKey) {
+    return 'upcoming';
+  }
+
+  const todayKey = format(now, 'yyyy-MM-dd');
+  if (activityDateKey === todayKey) {
+    return 'today';
+  }
+
+  const weekStartKey = format(startOfWeek(now, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+  const weekEndKey = format(endOfWeek(now, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+  if (activityDateKey >= weekStartKey && activityDateKey <= weekEndKey) {
+    return 'currentWeek';
+  }
+
+  if (activityDateKey > weekEndKey) {
+    return 'upcoming';
+  }
+
+  return 'historical';
+};
+
+export const partitionActivitiesByHomePriority = <T extends HomeActivityPriorityCandidate>(
+  activities: T[],
+  now: Date = new Date()
+) => {
+  const today: T[] = [];
+  const currentWeek: T[] = [];
+  const upcoming: T[] = [];
+  const historical: T[] = [];
+
+  activities.forEach((activity) => {
+    const bucket = getHomeActivityPriorityBucket(activity, now);
+    if (bucket === 'today') {
+      today.push(activity);
+      return;
+    }
+    if (bucket === 'currentWeek') {
+      currentWeek.push(activity);
+      return;
+    }
+    if (bucket === 'upcoming') {
+      upcoming.push(activity);
+      return;
+    }
+    historical.push(activity);
+  });
+
+  return {
+    today,
+    currentWeek,
+    upcoming,
+    historical,
+  };
+};
+
+const mergeActivityPriorityStage = <T extends { id?: string | null }>(previous: T[], incoming: T[]): T[] => {
+  if (!incoming.length) return previous;
+
+  const incomingIds = new Set(
+    incoming
+      .map((activity) => normalizeId(activity?.id))
+      .filter((id): id is string => Boolean(id)),
+  );
+  const trailing = previous.filter((activity) => {
+    const id = normalizeId(activity?.id);
+    return !id || !incomingIds.has(id);
+  });
+  return [...incoming, ...trailing];
+};
+
+const yieldPriorityStage = async () => {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 0);
+  });
+};
+
 const fetchAllQueryPages = async <T,>(
   runPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: any | null }>
 ): Promise<{ data: T[] | null; error: any | null }> => {
@@ -1144,6 +1237,32 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       devLog('[useHomeActivities] Total merged activities:', preHydratedActivities.length);
       devLog('[useHomeActivities] Activities with resolved category:', preHydratedActivities.filter(a => a.category).length);
       devLog('[useHomeActivities] Activities WITHOUT resolved category:', preHydratedActivities.filter(a => !a.category).length);
+
+      if (scope === 'full' && preHydratedActivities.length) {
+        const staged = partitionActivitiesByHomePriority(preHydratedActivities);
+        const fullWeekStage = [...staged.today, ...staged.currentWeek];
+        const upcomingStage = [...fullWeekStage, ...staged.upcoming];
+        const fullStage = [...upcomingStage, ...staged.historical];
+
+        if (staged.today.length) {
+          setActivities((prev) => mergeActivityPriorityStage(prev, staged.today));
+          await yieldPriorityStage();
+        }
+
+        if (fullWeekStage.length) {
+          setActivities((prev) => mergeActivityPriorityStage(prev, fullWeekStage));
+          await yieldPriorityStage();
+        }
+
+        if (upcomingStage.length) {
+          setActivities((prev) => mergeActivityPriorityStage(prev, upcomingStage));
+          await yieldPriorityStage();
+        }
+
+        if (fullStage.length) {
+          setActivities((prev) => mergeActivityPriorityStage(prev, fullStage));
+        }
+      }
 
       // 🔍 DEBUG: Log activities with tasks
       const activitiesWithTasks = preHydratedActivities.filter(a => a.tasks && a.tasks.length > 0);

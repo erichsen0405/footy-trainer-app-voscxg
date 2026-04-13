@@ -55,6 +55,7 @@ import {
   hydrateTaskForModal,
   shouldHydrateTaskForModal,
 } from '@/utils/taskModalContent';
+import { deserializeActivitySnapshotFromRoute } from '@/utils/activityRouteSnapshot';
 
 const FALLBACK_COLORS = {
   primary: '#3B82F6',
@@ -4866,6 +4867,7 @@ export default function ActivityDetailsScreen() {
     id?: string | string[];
     activityId?: string | string[];
     activity_id?: string | string[];
+    activitySnapshot?: string | string[];
     categoryId?: string | string[];
     categoryName?: string | string[];
     categoryColor?: string | string[];
@@ -4897,6 +4899,10 @@ export default function ActivityDetailsScreen() {
   }, []);
 
   const activityId = normalizeParam(params.id ?? params.activityId ?? params.activity_id);
+  const prefetchedActivity = useMemo(
+    () => deserializeActivitySnapshotFromRoute(params.activitySnapshot),
+    [params.activitySnapshot],
+  );
   const fallbackCategoryId = normalizeParam(params.categoryId);
   const fallbackCategoryName = normalizeParam(params.categoryName);
   const fallbackCategoryColor = normalizeParam(params.categoryColor);
@@ -4906,8 +4912,8 @@ export default function ActivityDetailsScreen() {
   const openIntensityParam = normalizeParam(params.openIntensity);
   const initialOpenIntensity = openIntensityParam === '1' || openIntensityParam === 'true';
 
-  const [activity, setActivity] = useState<Activity | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [activity, setActivity] = useState<Activity | null>(prefetchedActivity);
+  const [isLoading, setIsLoading] = useState(!prefetchedActivity);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   const loadActivity = useCallback(async () => {
@@ -4918,12 +4924,20 @@ export default function ActivityDetailsScreen() {
       return;
     }
 
-    setIsLoading(true);
+    if (!prefetchedActivity) {
+      setIsLoading(true);
+    } else {
+      setActivity(current => current ?? prefetchedActivity);
+      setFetchError(null);
+    }
+
     try {
       const result = await fetchActivityFromDatabase(activityId);
       if (!result) {
-        setActivity(null);
-        setFetchError('not-found');
+        if (!prefetchedActivity) {
+          setActivity(null);
+          setFetchError('not-found');
+        }
       } else {
         if (result.isExternal) {
           const currentCategoryName = String(result.category?.name ?? '').trim().toLowerCase();
@@ -4953,11 +4967,26 @@ export default function ActivityDetailsScreen() {
       }
     } catch (error) {
       console.error('[ActivityDetails] Failed to load activity:', error);
-      setFetchError('fetch-failed');
+      if (!prefetchedActivity) {
+        setFetchError('fetch-failed');
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [activityId, fallbackCategoryColor, fallbackCategoryEmoji, fallbackCategoryId, fallbackCategoryName]);
+  }, [
+    activityId,
+    fallbackCategoryColor,
+    fallbackCategoryEmoji,
+    fallbackCategoryId,
+    fallbackCategoryName,
+    prefetchedActivity,
+  ]);
+
+  useEffect(() => {
+    setActivity(prefetchedActivity);
+    setIsLoading(!prefetchedActivity);
+    setFetchError(null);
+  }, [activityId, prefetchedActivity]);
 
   useEffect(() => {
     (async () => {
