@@ -3210,6 +3210,12 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           typeof template.reminder === 'number' && Number.isFinite(template.reminder)
             ? clampMinutes(template.reminder)
             : null;
+        const resolvedVideoUrl = (() => {
+          const directValue = (template as any)?.videoUrl ?? (template as any)?.video_url;
+          if (typeof directValue !== 'string') return null;
+          const trimmed = directValue.trim();
+          return trimmed.length ? trimmed : null;
+        })();
         const afterTrainingEnabled = template.afterTrainingEnabled === true;
         const taskDurationEnabled =
           template.taskDurationEnabled === true || template.task_duration_enabled === true;
@@ -3221,6 +3227,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             title: String(template.title ?? '').trim() || 'Opgave',
             description: String(template.description ?? ''),
             reminder_minutes: reminderValue,
+            video_url: resolvedVideoUrl,
             after_training_enabled: afterTrainingEnabled,
             after_training_delay_minutes: afterTrainingEnabled
               ? clampMinutes(template.afterTrainingDelayMinutes ?? 0)
@@ -3250,6 +3257,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           description: String(template.description ?? ''),
           completed: false,
           reminder_minutes: reminderValue,
+          video_url: resolvedVideoUrl,
           task_template_id: String(localTemplateData.id),
           after_training_enabled: afterTrainingEnabled,
           after_training_delay_minutes:
@@ -3263,6 +3271,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               : null,
         };
         const fallbackBasePayload = { ...basePayload } as Record<string, any>;
+        delete fallbackBasePayload.video_url;
         delete fallbackBasePayload.after_training_enabled;
         delete fallbackBasePayload.after_training_delay_minutes;
         delete fallbackBasePayload.task_duration_enabled;
@@ -3276,7 +3285,8 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         let { error } = await supabase.from(table).insert(payload as any);
         if (
           error &&
-          (isMissingColumn(error, 'after_training_enabled') ||
+          (isMissingColumn(error, 'video_url') ||
+            isMissingColumn(error, 'after_training_enabled') ||
             isMissingColumn(error, 'after_training_delay_minutes') ||
             isMissingColumn(error, 'task_duration_enabled') ||
             isMissingColumn(error, 'task_duration_minutes'))

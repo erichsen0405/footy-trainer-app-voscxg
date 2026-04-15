@@ -8,6 +8,7 @@ import type { TaskTemplateSelfFeedback } from '@/types';
 
 const mockRefreshData = jest.fn().mockResolvedValue(undefined);
 const mockSupabaseFrom = jest.fn();
+let mockTaskTemplates: any[] = [];
 const mockUpdateActivitySingle = jest.fn().mockResolvedValue(undefined);
 const mockUpdateIntensityByCategory = jest.fn().mockResolvedValue(undefined);
 const mockUpdateActivitySeries = jest.fn().mockResolvedValue(undefined);
@@ -94,6 +95,7 @@ jest.mock('@/contexts/FootballContext', () => ({
     refreshData: mockRefreshData,
     createActivity: jest.fn(),
     duplicateActivity: jest.fn(),
+    tasks: mockTaskTemplates,
   }),
 }));
 
@@ -183,6 +185,7 @@ jest.mock('react-native-safe-area-context', () => ({
 describe('ActivityDetails add-task flow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockTaskTemplates = [];
     mockFetchSelfFeedbackForActivities.mockResolvedValue([]);
     mockFetchSelfFeedbackForTemplates.mockResolvedValue([]);
     mockFetchLatestCategoryFeedback.mockResolvedValue([]);
@@ -1330,6 +1333,172 @@ describe('ActivityDetails add-task flow', () => {
 
     expect(await findByText('Vælg opgaveskabelon')).toBeTruthy();
     expect(queryByTestId('mock.createActivityTaskModal')).toBeNull();
+
+    alertSpy.mockRestore();
+  });
+
+  it('preserves the template video url when creating a task directly from a template', async () => {
+    const instagramUrl = 'https://www.instagram.com/reel/C7N2KQ2uV9x/?igsh=MWQ=';
+    mockTaskTemplates = [
+      {
+        id: 'template-source-1',
+        title: 'Instagram Reel',
+        description: 'Se videoen',
+        completed: false,
+        isTemplate: true,
+        categoryIds: [],
+        subtasks: [],
+        videoUrl: instagramUrl,
+      },
+    ];
+
+    const insertedTaskTemplates: Record<string, any>[] = [];
+    const insertedActivityTasks: Record<string, any>[] = [];
+    const defaultSupabaseFrom = mockSupabaseFrom.getMockImplementation();
+
+    mockSupabaseFrom.mockImplementation((table: string) => {
+      if (table === 'task_templates') {
+        const builder: any = {
+          insert: (payload: Record<string, any>) => {
+            insertedTaskTemplates.push(payload);
+            return builder;
+          },
+          select: () => builder,
+          eq: () => builder,
+          in: async (_column: string, ids: string[]) => ({
+            data: ids.map((id) => ({ id, archived_at: null })),
+            error: null,
+          }),
+          maybeSingle: async () => ({ data: null, error: null }),
+          single: async () => ({
+            data: { id: 'local-template-1' },
+            error: null,
+          }),
+        };
+        return builder;
+      }
+
+      if (table === 'activity_tasks') {
+        const builder: any = {
+          insert: (payload: Record<string, any>) => {
+            insertedActivityTasks.push(payload);
+            return builder;
+          },
+          select: () => builder,
+          eq: async () => ({
+            data: insertedActivityTasks.map((row, index) => ({
+              id: `created-task-${index + 1}`,
+              title: row.title,
+              description: row.description,
+              completed: row.completed ?? false,
+              reminder_minutes: row.reminder_minutes ?? null,
+              task_template_id: row.task_template_id ?? null,
+              feedback_template_id: row.feedback_template_id ?? null,
+              video_url: row.video_url ?? null,
+            })),
+            error: null,
+          }),
+          single: async () => ({
+            data: insertedActivityTasks.at(-1) ?? null,
+            error: null,
+          }),
+        };
+        return builder;
+      }
+
+      if (table === 'activities') {
+        const builder: any = {
+          select: () => builder,
+          eq: () => builder,
+          single: async () => ({
+            data: {
+              id: 'activity-template-video-1',
+              title: 'Session',
+              activity_date: '2026-02-10',
+              activity_time: '10:00',
+              activity_end_time: null,
+              location: 'Pitch',
+              category_id: 'cat-1',
+              intensity: null,
+              intensity_enabled: false,
+              intensity_note: null,
+              is_external: false,
+              external_calendar_id: null,
+              external_event_id: null,
+              series_id: null,
+              series_instance_date: null,
+              activity_categories: {
+                id: 'cat-1',
+                name: 'Training',
+                color: '#123456',
+                emoji: '⚽️',
+              },
+              activity_tasks: insertedActivityTasks.map((row, index) => ({
+                id: `created-task-${index + 1}`,
+                title: row.title,
+                description: row.description,
+                completed: row.completed ?? false,
+                reminder_minutes: row.reminder_minutes ?? null,
+                task_template_id: row.task_template_id ?? null,
+                feedback_template_id: row.feedback_template_id ?? null,
+                video_url: row.video_url ?? null,
+              })),
+            },
+            error: null,
+          }),
+        };
+        return builder;
+      }
+
+      return defaultSupabaseFrom?.(table);
+    });
+
+    const activity = {
+      id: 'activity-template-video-1',
+      title: 'Session',
+      date: new Date('2026-02-10T10:00:00.000Z'),
+      time: '10:00',
+      location: 'Pitch',
+      category: { id: 'cat-1', name: 'Training', color: '#123456', emoji: '⚽️' },
+      tasks: [],
+      isExternal: false,
+      intensityEnabled: false,
+      intensity: null,
+      user_id: 'user-1',
+      player_id: null,
+      team_id: null,
+    };
+
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
+      const templateButton = Array.isArray(buttons)
+        ? (buttons as any[]).find((button) => button?.text === 'Opret fra skabelon')
+        : null;
+      templateButton?.onPress?.();
+    });
+
+    const { getByTestId, findByText, getByText } = render(
+      <ActivityDetailsModule.ActivityDetailsContent
+        activity={activity as any}
+        categories={[activity.category as any]}
+        isAdmin
+        isDark={false}
+        onBack={jest.fn()}
+        onActivityUpdated={jest.fn()}
+      />,
+    );
+
+    fireEvent.press(getByTestId('activity.addTaskButton'));
+    expect(await findByText('Vælg opgaveskabelon')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.press(getByText('Instagram Reel'));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(insertedTaskTemplates).toHaveLength(1));
+    expect(insertedTaskTemplates[0].video_url).toBe(instagramUrl);
+    expect(insertedActivityTasks).toHaveLength(1);
+    expect(insertedActivityTasks[0].video_url).toBe(instagramUrl);
 
     alertSpy.mockRestore();
   });
