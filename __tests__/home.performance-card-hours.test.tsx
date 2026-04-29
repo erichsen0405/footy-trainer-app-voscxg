@@ -10,6 +10,7 @@ const mockUseFootball = jest.fn();
 const mockUseUserRole = jest.fn();
 const mockUseAdmin = jest.fn();
 const mockUseTeamPlayer = jest.fn();
+const mockUseAuthSession = jest.fn();
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush }),
@@ -41,6 +42,10 @@ jest.mock('@/contexts/AdminContext', () => ({
 
 jest.mock('@/contexts/TeamPlayerContext', () => ({
   useTeamPlayer: () => mockUseTeamPlayer(),
+}));
+
+jest.mock('@/contexts/AuthSessionContext', () => ({
+  useAuthSession: () => mockUseAuthSession(),
 }));
 
 jest.mock('@/services/feedbackService', () => ({
@@ -120,6 +125,13 @@ jest.mock('@/integrations/supabase/client', () => ({
 describe('Home performance card hour sums', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseAuthSession.mockReturnValue({
+      authReady: true,
+      isAuthenticated: true,
+      user: { id: 'user-1' },
+      session: { user: { id: 'user-1' } },
+      refreshSession: jest.fn().mockResolvedValue({ user: { id: 'user-1' } }),
+    });
 
     const now = new Date();
     const today = new Date(now);
@@ -200,6 +212,8 @@ describe('Home performance card hour sums', () => {
       categories: [],
       createActivity: jest.fn(),
       refreshData: jest.fn(),
+      ensureTemplateDataLoaded: jest.fn().mockResolvedValue(undefined),
+      ensureCurrentWeekStatsLoaded: jest.fn().mockResolvedValue(undefined),
       currentWeekStats: {
         percentage: 60,
         completedTasks: 3,

@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import type { TablesUpdate } from '@/integrations/supabase/types';
 import { emitTaskCompletionEvent } from '@/utils/taskEvents';
 import type { TaskCompletionEvent } from '@/utils/taskEvents';
 import { Task } from '@/types';
@@ -72,6 +73,160 @@ const normalizeTaskDurationMinutes = (value: unknown): number | null => {
   const rounded = Math.round(parsed);
   if (rounded < 0) return null;
   return Math.min(rounded, MAX_TASK_DURATION_MINUTES);
+};
+
+const normalizeStringId = (value: unknown): string | null => {
+  if (value === null || value === undefined) return null;
+  const trimmed = String(value).trim();
+  return trimmed.length ? trimmed : null;
+};
+
+const uniqueStringIds = (values: unknown[]): string[] => {
+  const ids = values
+    .map((value) => normalizeStringId(value))
+    .filter((value): value is string => Boolean(value));
+  return Array.from(new Set(ids));
+};
+
+const removeStaleActivityTemplateTasks = async (
+  taskId: string,
+  nextCategoryIds: string[],
+  signal: AbortSignal,
+): Promise<void> => {
+  const allowedCategoryIds = new Set(nextCategoryIds);
+
+  const collectStaleIds = async (
+    column: 'task_template_id' | 'feedback_template_id',
+  ): Promise<string[]> => {
+    const { data: taskRows, error: taskRowsError } = await supabase
+      .from('activity_tasks')
+      .select('id, activity_id')
+      .eq(column, taskId)
+      .abortSignal(signal);
+
+    if (taskRowsError) throw taskRowsError;
+    if (!Array.isArray(taskRows) || taskRows.length === 0) return [];
+
+    const activityIds = uniqueStringIds(taskRows.map((row: any) => row?.activity_id));
+    if (activityIds.length === 0) {
+      return uniqueStringIds(taskRows.map((row: any) => row?.id));
+    }
+
+    const { data: activities, error: activitiesError } = await supabase
+      .from('activities')
+      .select('id, category_id')
+      .in('id', activityIds)
+      .abortSignal(signal);
+
+    if (activitiesError) throw activitiesError;
+
+    const categoryByActivityId = new Map<string, string | null>();
+    (activities ?? []).forEach((row: any) => {
+      const activityId = normalizeStringId(row?.id);
+      if (!activityId) return;
+      categoryByActivityId.set(activityId, normalizeStringId(row?.category_id));
+    });
+
+    return uniqueStringIds(
+      taskRows
+        .filter((row: any) => {
+          const activityId = normalizeStringId(row?.activity_id);
+          const categoryId = activityId ? categoryByActivityId.get(activityId) ?? null : null;
+          return !categoryId || !allowedCategoryIds.has(categoryId);
+        })
+        .map((row: any) => row?.id)
+    );
+  };
+
+  const staleIds = uniqueStringIds([
+    ...(await collectStaleIds('task_template_id')),
+    ...(await collectStaleIds('feedback_template_id')),
+  ]);
+
+  if (!staleIds.length) return;
+
+  const { error: deleteError } = await supabase
+    .from('activity_tasks')
+    .delete()
+    .in('id', staleIds)
+    .abortSignal(signal);
+
+  if (deleteError) throw deleteError;
+};
+
+const removeStaleExternalTemplateTasks = async (
+  taskId: string,
+  nextCategoryIds: string[],
+  signal: AbortSignal,
+): Promise<void> => {
+  const allowedCategoryIds = new Set(nextCategoryIds);
+
+  const collectStaleIds = async (
+    column: 'task_template_id' | 'feedback_template_id',
+  ): Promise<string[]> => {
+    const { data: taskRows, error: taskRowsError } = await supabase
+      .from('external_event_tasks')
+      .select('id, local_meta_id')
+      .eq(column, taskId)
+      .abortSignal(signal);
+
+    if (taskRowsError) throw taskRowsError;
+    if (!Array.isArray(taskRows) || taskRows.length === 0) return [];
+
+    const localMetaIds = uniqueStringIds(taskRows.map((row: any) => row?.local_meta_id));
+    if (localMetaIds.length === 0) {
+      return uniqueStringIds(taskRows.map((row: any) => row?.id));
+    }
+
+    const { data: metaRows, error: metaRowsError } = await supabase
+      .from('events_local_meta')
+      .select('id, category_id')
+      .in('id', localMetaIds)
+      .abortSignal(signal);
+
+    if (metaRowsError) throw metaRowsError;
+
+    const categoryByLocalMetaId = new Map<string, string | null>();
+    (metaRows ?? []).forEach((row: any) => {
+      const localMetaId = normalizeStringId(row?.id);
+      if (!localMetaId) return;
+      categoryByLocalMetaId.set(localMetaId, normalizeStringId(row?.category_id));
+    });
+
+    return uniqueStringIds(
+      taskRows
+        .filter((row: any) => {
+          const localMetaId = normalizeStringId(row?.local_meta_id);
+          const categoryId = localMetaId ? categoryByLocalMetaId.get(localMetaId) ?? null : null;
+          return !categoryId || !allowedCategoryIds.has(categoryId);
+        })
+        .map((row: any) => row?.id)
+    );
+  };
+
+  const staleIds = uniqueStringIds([
+    ...(await collectStaleIds('task_template_id')),
+    ...(await collectStaleIds('feedback_template_id')),
+  ]);
+
+  if (!staleIds.length) return;
+
+  const { error: deleteError } = await supabase
+    .from('external_event_tasks')
+    .delete()
+    .in('id', staleIds)
+    .abortSignal(signal);
+
+  if (deleteError) throw deleteError;
+};
+
+const removeStaleTemplateCategoryAssignments = async (
+  taskId: string,
+  categoryIds: string[],
+  signal: AbortSignal,
+): Promise<void> => {
+  await removeStaleActivityTemplateTasks(taskId, categoryIds, signal);
+  await removeStaleExternalTemplateTasks(taskId, categoryIds, signal);
 };
 
 export const taskService = {
@@ -314,7 +469,7 @@ export const taskService = {
     updates: UpdateTaskData,
     signal: AbortSignal = new AbortController().signal,
   ): Promise<void> {
-    const updateData: Record<string, any> = {};
+    const updateData: TablesUpdate<'task_templates'> = {};
 
     if (updates.title !== undefined) updateData.title = updates.title;
     if (updates.description !== undefined) updateData.description = updates.description;
@@ -435,6 +590,15 @@ export const taskService = {
         console.error(
           '[TEMPLATE_CATEGORY_SYNC] Unexpected update_all_tasks_from_template failure',
           categorySyncUnexpectedError
+        );
+      }
+
+      try {
+        await removeStaleTemplateCategoryAssignments(taskId, updates.categoryIds, signal);
+      } catch (categoryCleanupUnexpectedError) {
+        console.error(
+          '[TEMPLATE_CATEGORY_SYNC] Unexpected cleanup failure after template category update',
+          categoryCleanupUnexpectedError
         );
       }
     }
@@ -783,15 +947,21 @@ export const taskService = {
       throw new Error('User not authenticated');
     }
 
-    const table = isExternal ? 'external_event_tasks' : 'activity_tasks';
-    const activityColumn = isExternal ? 'local_meta_id' : 'activity_id';
+    const result = isExternal
+      ? await supabase
+          .from('external_event_tasks')
+          .delete({ count: 'exact' })
+          .eq('id', taskId)
+          .eq('local_meta_id', activityId)
+          .abortSignal(signal)
+      : await supabase
+          .from('activity_tasks')
+          .delete({ count: 'exact' })
+          .eq('id', taskId)
+          .eq('activity_id', activityId)
+          .abortSignal(signal);
 
-    const { error, count } = await (supabase as any)
-      .from(table)
-      .delete({ count: 'exact' })
-      .eq('id', taskId)
-      .eq(activityColumn, activityId)
-      .abortSignal(signal);
+    const { error, count } = result;
 
     if (error) {
       throw error;

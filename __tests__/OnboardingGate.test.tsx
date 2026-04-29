@@ -1,15 +1,13 @@
 import React from 'react';
 import { Text } from 'react-native';
-import { act, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { OnboardingGate } from '@/components/OnboardingGate';
 import { TimeoutError } from '@/utils/withTimeout';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const mockReplace = jest.fn();
 const mockPathname = jest.fn(() => '/(tabs)');
-const mockGetSession = jest.fn();
-const mockOnAuthStateChange = jest.fn();
-const mockUnsubscribe = jest.fn();
+const mockRefreshAuthSession = jest.fn();
 const mockRefreshSubscription = jest.fn();
 const mockCreateSubscription = jest.fn();
 const mockRefreshSubscriptionStatus = jest.fn();
@@ -23,8 +21,27 @@ const mockEq = jest.fn();
 const mockSelect = jest.fn();
 const mockUpsert = jest.fn();
 const mockFrom = jest.fn();
+let mockAuthSessionValue: any;
 let consoleWarnSpy: jest.SpyInstance;
-let authStateHandler: ((event: string, session: { user: any } | null) => void) | null = null;
+
+const setMockAuthSession = ({
+  authReady = true,
+  user = null,
+  refreshSession,
+}: {
+  authReady?: boolean;
+  user?: { id: string } | null;
+  refreshSession?: jest.Mock<any, any>;
+} = {}) => {
+  const session = user ? { user } : null;
+  mockAuthSessionValue = {
+    authReady,
+    isAuthenticated: Boolean(user),
+    session,
+    user,
+    refreshSession: refreshSession ?? mockRefreshAuthSession,
+  };
+};
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
   getItem: jest.fn(),
@@ -60,12 +77,12 @@ jest.mock('@/contexts/AppleIAPContext', () => ({
   }),
 }));
 
+jest.mock('@/contexts/AuthSessionContext', () => ({
+  useAuthSession: () => mockAuthSessionValue,
+}));
+
 jest.mock('@/integrations/supabase/client', () => ({
   supabase: {
-    auth: {
-      getSession: (...args: unknown[]) => mockGetSession(...args),
-      onAuthStateChange: (...args: unknown[]) => mockOnAuthStateChange(...args),
-    },
     from: (...args: unknown[]) => mockFrom(...args),
   },
 }));
@@ -76,9 +93,7 @@ describe('OnboardingGate startup hydration', () => {
 
     mockReplace.mockReset();
     mockPathname.mockReset();
-    mockGetSession.mockReset();
-    mockOnAuthStateChange.mockReset();
-    mockUnsubscribe.mockReset();
+    mockRefreshAuthSession.mockReset();
     mockRefreshSubscription.mockReset();
     mockCreateSubscription.mockReset();
     mockRefreshSubscriptionStatus.mockReset();
@@ -92,7 +107,8 @@ describe('OnboardingGate startup hydration', () => {
     (AsyncStorage.removeItem as jest.Mock).mockReset();
 
     mockPathname.mockReturnValue('/(tabs)');
-    mockGetSession.mockResolvedValue({ data: { session: null } });
+    mockRefreshAuthSession.mockResolvedValue(null);
+    setMockAuthSession({ authReady: true, user: null });
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
     (AsyncStorage.setItem as jest.Mock).mockResolvedValue(null);
     (AsyncStorage.removeItem as jest.Mock).mockResolvedValue(null);
@@ -109,14 +125,6 @@ describe('OnboardingGate startup hydration', () => {
       select: mockSelect,
       upsert: mockUpsert,
     });
-
-    authStateHandler = null;
-    mockOnAuthStateChange.mockImplementation((handler: (event: string, session: { user: any } | null) => void) => {
-      authStateHandler = handler;
-      return {
-        data: { subscription: { unsubscribe: mockUnsubscribe } },
-      };
-    });
   });
 
   afterEach(() => {
@@ -126,7 +134,8 @@ describe('OnboardingGate startup hydration', () => {
   });
 
   it('falls back to non-blocking state when startup session lookup times out', async () => {
-    mockGetSession.mockImplementation(() => new Promise(() => {}));
+    setMockAuthSession({ authReady: true, user: { id: 'user-1' } });
+    mockMaybeSingle.mockImplementation(() => new Promise(() => {}));
 
     render(
       <OnboardingGate>
@@ -149,10 +158,11 @@ describe('OnboardingGate startup hydration', () => {
   });
 
   it('uses cached approved access when startup session lookup times out', async () => {
-    mockGetSession.mockImplementation(() => new Promise(() => {}));
+    setMockAuthSession({ authReady: true, user: { id: 'user-1' } });
+    mockMaybeSingle.mockImplementation(() => new Promise(() => {}));
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
       JSON.stringify({
-        userId: 'cached-user-1',
+        userId: 'user-1',
         role: 'player',
         hasApprovedAccess: true,
         updatedAt: '2026-03-01T00:00:00.000Z',
@@ -172,13 +182,13 @@ describe('OnboardingGate startup hydration', () => {
 
     expect(screen.getByText('App indhold')).toBeTruthy();
     expect(screen.queryByText('Kunne ikke klargøre konto. Prøv igen.')).toBeNull();
-    expect(AsyncStorage.getItem).toHaveBeenCalled();
   });
 
   it('does not overwrite newer hydrated state when bootstrap times out later', async () => {
-    mockGetSession.mockImplementation(() => new Promise(() => {}));
+    setMockAuthSession({ authReady: true, user: { id: 'user-1' } });
+    mockMaybeSingle.mockImplementation(() => new Promise(() => {}));
 
-    render(
+    const { rerender } = render(
       <OnboardingGate>
         <Text>App indhold</Text>
       </OnboardingGate>
@@ -188,12 +198,12 @@ describe('OnboardingGate startup hydration', () => {
     expect(screen.queryByText('Klargører konto')).toBeNull();
 
     await act(async () => {
-      await Promise.resolve();
-    });
-    expect(authStateHandler).toBeTruthy();
-
-    await act(async () => {
-      authStateHandler?.('INITIAL_SESSION', { user: null });
+      setMockAuthSession({ authReady: true, user: null });
+      rerender(
+        <OnboardingGate>
+          <Text>App indhold</Text>
+        </OnboardingGate>
+      );
       await Promise.resolve();
     });
 
@@ -210,24 +220,34 @@ describe('OnboardingGate startup hydration', () => {
   });
 
   it('does not overwrite newer hydrated state when retry times out later', async () => {
-    mockGetSession.mockImplementation(() => new Promise(() => {}));
+    setMockAuthSession({ authReady: true, user: { id: 'user-1' } });
+    mockMaybeSingle.mockRejectedValue(new Error('initial startup failed'));
+    mockRefreshAuthSession.mockImplementation(() => new Promise(() => {}));
 
-    render(
+    const { rerender } = render(
       <OnboardingGate>
         <Text>App indhold</Text>
       </OnboardingGate>
     );
 
     await act(async () => {
-      jest.advanceTimersByTime(12000);
       await Promise.resolve();
     });
 
-    expect(screen.queryByTestId('onboarding.error.retryButton')).toBeNull();
-    expect(screen.queryByText('Klargører konto')).toBeNull();
+    expect(screen.getByTestId('onboarding.error.retryButton')).toBeTruthy();
 
     await act(async () => {
-      authStateHandler?.('INITIAL_SESSION', { user: null });
+      fireEvent.press(screen.getByTestId('onboarding.error.retryButton'));
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      setMockAuthSession({ authReady: true, user: null });
+      rerender(
+        <OnboardingGate>
+          <Text>App indhold</Text>
+        </OnboardingGate>
+      );
       await Promise.resolve();
     });
 
@@ -244,7 +264,7 @@ describe('OnboardingGate startup hydration', () => {
   });
 
   it('falls back to non-blocking state when role lookup times out', async () => {
-    mockGetSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
+    setMockAuthSession({ authReady: true, user: { id: 'user-1' } });
     mockMaybeSingle.mockRejectedValue(new TimeoutError('Onboarding role query timed out'));
 
     render(

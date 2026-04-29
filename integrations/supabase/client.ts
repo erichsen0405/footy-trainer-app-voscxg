@@ -28,6 +28,9 @@ let latestSession: Session | null = null;
 let inFlightGetSessionStartedAt = 0;
 let inFlightGetUserStartedAt = 0;
 
+export const getLatestSession = () => latestSession;
+export const getLatestUser = () => latestSession?.user ?? null;
+
 class AuthRequestTimeoutError extends Error {
   timeoutMs: number;
 

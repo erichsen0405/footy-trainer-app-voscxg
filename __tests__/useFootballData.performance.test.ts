@@ -19,14 +19,36 @@ const mockAdminState = {
   adminTargetId: null as string | null,
   adminTargetType: null as 'player' | 'team' | null,
 };
-let mockSessionUserId = 'user-1';
-let authStateChangeHandler: ((event: string, session: { user: { id: string } } | null) => void) | null = null;
+let mockAuthSessionValue: any;
 let mockWeeklyPerformanceRows: any[] = [];
 let mockLegacyTrophyRows: any[] = [];
 let mockExternalCalendarsRows: any[] = [];
 
+const setMockAuthSession = ({
+  authReady = true,
+  user = { id: 'user-1' },
+  refreshSession,
+}: {
+  authReady?: boolean;
+  user?: { id: string } | null;
+  refreshSession?: jest.Mock<any, any>;
+} = {}) => {
+  const session = user ? { user } : null;
+  mockAuthSessionValue = {
+    authReady,
+    isAuthenticated: Boolean(user),
+    session,
+    user,
+    refreshSession: refreshSession ?? jest.fn().mockResolvedValue(session),
+  };
+};
+
 jest.mock('@/contexts/AdminContext', () => ({
   useAdmin: () => mockAdminState,
+}));
+
+jest.mock('@/contexts/AuthSessionContext', () => ({
+  useAuthSession: () => mockAuthSessionValue,
 }));
 
 jest.mock('@/contexts/CelebrationContext', () => ({
@@ -65,9 +87,13 @@ jest.mock('@/utils/taskEvents', () => ({
 
 jest.mock('@/utils/activityEvents', () => ({
   emitActivityPatch: jest.fn(),
+  emitActivityDeleted: jest.fn(),
+  emitActivityDeleteRestored: jest.fn(),
   emitActivitiesRefreshRequested: jest.fn(),
   subscribeToActivityPatch: jest.fn(() => () => {}),
+  subscribeToActivityDeleted: jest.fn(() => () => {}),
   subscribeToActivitiesRefreshRequested: jest.fn(() => () => {}),
+  isActivityOptimisticallyDeleted: jest.fn(() => false),
   getActivitiesRefreshRequestedVersion: jest.fn(() => 0),
   getLastActivitiesRefreshRequestedEvent: jest.fn(() => null),
 }));
@@ -125,15 +151,10 @@ jest.mock('@/integrations/supabase/client', () => {
     supabase: {
       auth: {
         getSession: jest.fn(async () => ({
-          data: {
-            session: mockSessionUserId ? { user: { id: mockSessionUserId } } : null,
-          },
+          data: { session: { user: { id: 'user-1' } } },
           error: null,
         })),
-        onAuthStateChange: jest.fn((callback: any) => {
-          authStateChangeHandler = callback;
-          return { data: { subscription: { unsubscribe: jest.fn() } } };
-        }),
+        onAuthStateChange: jest.fn(() => ({ data: { subscription: { unsubscribe: jest.fn() } } })),
       },
       from: jest.fn((tableName: string) => createQueryBuilder(tableName)),
       channel: jest.fn(() => ({
@@ -418,8 +439,7 @@ describe('useFootballData lazy-load reset', () => {
     mockAdminState.adminMode = 'self';
     mockAdminState.adminTargetId = null;
     mockAdminState.adminTargetType = null;
-    mockSessionUserId = 'user-1';
-    authStateChangeHandler = null;
+    setMockAuthSession({ user: { id: 'user-1' } });
     mockWeeklyPerformanceRows = [];
     mockLegacyTrophyRows = [];
     mockExternalCalendarsRows = [];
@@ -483,7 +503,12 @@ describe('useFootballData lazy-load reset', () => {
       },
     ];
 
-    const { result } = renderHook(() => useFootballData());
+    const { result, rerender } = renderHook(({ sessionVersion }: { sessionVersion: number }) => {
+      void sessionVersion;
+      return useFootballData();
+    }, {
+      initialProps: { sessionVersion: 0 },
+    });
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
@@ -498,9 +523,9 @@ describe('useFootballData lazy-load reset', () => {
     expect(result.current.hasPerformanceDataLoaded).toBe(true);
     expect(result.current.trophies).toHaveLength(1);
 
-    mockSessionUserId = 'user-2';
+    setMockAuthSession({ user: { id: 'user-2' } });
     await act(async () => {
-      authStateChangeHandler?.('SIGNED_IN', { user: { id: 'user-2' } });
+      rerender({ sessionVersion: 1 });
     });
 
     await waitFor(() => {

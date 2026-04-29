@@ -84,9 +84,33 @@ describe('CelebrationProvider overlay', () => {
     expect(queryAllByTestId('celebration-fountain')).toHaveLength(0);
 
     act(() => {
-      jest.advanceTimersByTime(4100);
+      jest.advanceTimersByTime(2799);
     });
 
+    expect(getByTestId('celebration-overlay')).toBeTruthy();
+
+    act(() => {
+      jest.advanceTimersByTime(1);
+    });
+
+    expect(queryByTestId('celebration-overlay')).toBeNull();
+  });
+
+  it('dismisses on the next app tap without requiring the overlay to own the press', async () => {
+    const { getByTestId, queryByTestId } = render(
+      <CelebrationProvider>
+        <TriggerScreen />
+      </CelebrationProvider>
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    fireEvent.press(getByTestId('trigger.task'));
+    expect(getByTestId('celebration-overlay')).toBeTruthy();
+
+    fireEvent(getByTestId('celebration-root'), 'startShouldSetResponderCapture', { nativeEvent: {} });
     expect(queryByTestId('celebration-overlay')).toBeNull();
   });
 
@@ -115,7 +139,7 @@ describe('CelebrationProvider overlay', () => {
     expect(queryAllByTestId('celebration-rocket')).toHaveLength(0);
     expect(queryAllByTestId('celebration-fountain')).toHaveLength(0);
 
-    fireEvent.press(getByTestId('celebration-dismiss'));
+    fireEvent(getByTestId('celebration-root'), 'startShouldSetResponderCapture', { nativeEvent: {} });
     expect(queryByTestId('celebration-overlay')).toBeNull();
   });
 
@@ -151,7 +175,7 @@ describe('CelebrationProvider overlay', () => {
     });
 
     fireEvent.press(getByTestId('trigger.day'));
-    fireEvent.press(getByTestId('celebration-dismiss'));
+    fireEvent(getByTestId('celebration-root'), 'startShouldSetResponderCapture', { nativeEvent: {} });
 
     act(() => {
       jest.advanceTimersByTime(300);

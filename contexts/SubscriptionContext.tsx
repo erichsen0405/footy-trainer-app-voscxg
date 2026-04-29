@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuthSession } from '@/contexts/AuthSessionContext';
 import { PRODUCT_IDS } from '@/contexts/appleProductIds';
 import { bumpEntitlementsVersion, subscribeToEntitlementVersion } from '@/services/entitlementsEvents';
 import type { SubscriptionTier } from '@/services/entitlementsSync';
@@ -77,6 +78,7 @@ interface SubscriptionContextType {
   subscriptionMeta: SubscriptionStatusMeta;
   subscriptionPlans: SubscriptionPlan[];
   loading: boolean;
+  ensureSubscriptionPlansLoaded: () => Promise<void>;
   refreshSubscription: () => Promise<void>;
   createSubscription: (
     planId: string
@@ -177,6 +179,7 @@ const subscriptionTierFromProfile = (tier: string | null): SubscriptionTier | nu
 };
 
 export function SubscriptionProvider({ children }: { children: ReactNode }) {
+  const { authReady, session, user } = useAuthSession();
   const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus | null>(null);
   const [subscriptionMeta, setSubscriptionMeta] = useState<SubscriptionStatusMeta>({
     lastUpdateReason: null,
@@ -278,6 +281,24 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       console.warn('[SubscriptionContext] Network error fetching subscription plans');
     }
   }, []);
+
+  const ensureSubscriptionPlansLoaded = useCallback(async () => {
+    if (subscriptionPlans.length > 0) {
+      return;
+    }
+    await fetchSubscriptionPlans();
+  }, [fetchSubscriptionPlans, subscriptionPlans.length]);
+
+  const getActiveSession = useCallback(async () => {
+    if (session) {
+      return session;
+    }
+
+    const {
+      data: { session: fallbackSession },
+    } = await supabase.auth.getSession();
+    return fallbackSession ?? null;
+  }, [session]);
 
   const applyOptimisticSubscription = useCallback(
     (planId: string) => {
@@ -390,14 +411,21 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       console.log('[SubscriptionContext] Fetching subscription status');
       setLoading(true);
 
-      const {
-        data: { session },
-        error: sessionError,
-      } = await supabase.auth.getSession();
+      let activeSession = session ?? null;
+      let sessionError: Error | null = null;
 
-      const user = session?.user ?? null;
+      if (!activeSession && !authReady) {
+        const {
+          data: sessionData,
+          error,
+        } = await supabase.auth.getSession();
+        activeSession = sessionData.session ?? null;
+        sessionError = error ?? null;
+      }
 
-      if (sessionError || !session || !user) {
+      const activeUser = activeSession?.user ?? user ?? null;
+
+      if (sessionError || !activeSession || !activeUser) {
         console.warn('[SubscriptionContext] No valid session');
         currentUserIdRef.current = null;
         lastStableStatusRef.current = null;
@@ -406,11 +434,11 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      if (currentUserIdRef.current && currentUserIdRef.current !== user.id) {
+      if (currentUserIdRef.current && currentUserIdRef.current !== activeUser.id) {
         lastStableStatusRef.current = null;
         lastSignatureRef.current = buildEntitlementSignature(null);
       }
-      currentUserIdRef.current = user.id;
+      currentUserIdRef.current = activeUser.id;
 
       const supabaseUrl = 'https://lhpczofddvwcyrgotzha.supabase.co';
       const functionUrl = `${supabaseUrl}/functions/v1/get-subscription-status`;
@@ -418,7 +446,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       const response = await fetch(functionUrl, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${session.access_token}`,
+          Authorization: `Bearer ${activeSession.access_token}`,
           'Content-Type': 'application/json',
           apikey:
             'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxocGN6b2ZkZHZ3Y3lyZ290emhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQxNTgzMjQsImV4cCI6MjA3OTczNDMyNH0.5oWZ_G5ryy_ae77CG8YMeEDEyAJkSS7Jv4cFZy-G7qA',
@@ -451,7 +479,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         subscriptionTier: (data?.subscriptionTier as SubscriptionTier | null) ?? null,
       };
 
-      const statusWithProfileFallback = await applyProfileEntitlementFallback(user.id, statusData);
+      const statusWithProfileFallback = await applyProfileEntitlementFallback(activeUser.id, statusData);
       const reason = payloadHasError ? 'fetch-fallback' : 'fetch-success';
       applyStatus(coerceWithEntitlements(statusWithProfileFallback, reason), reason);
     } catch {
@@ -467,37 +495,33 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         console.log('[SubscriptionContext] Loading set to false');
       }
     }
-  }, [applyProfileEntitlementFallback, applyStatus, coerceWithEntitlements]);
+  }, [applyProfileEntitlementFallback, applyStatus, authReady, coerceWithEntitlements, session, user]);
 
   useEffect(() => {
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      const nextUserId = session?.user?.id ?? null;
+    if (!authReady) return;
 
-      if (!nextUserId) {
-        currentUserIdRef.current = null;
-        lastStableStatusRef.current = null;
-        lastSignatureRef.current = buildEntitlementSignature(null);
-        statusRef.current = null;
-        applyStatus(buildEmptyStatus(), 'auth-signout');
-        setLoading(false);
-        return;
-      }
+    const nextUserId = user?.id ?? null;
 
-      if (currentUserIdRef.current && currentUserIdRef.current !== nextUserId) {
-        lastStableStatusRef.current = null;
-        lastSignatureRef.current = buildEntitlementSignature(null);
-        statusRef.current = null;
-        applyStatus(buildEmptyStatus(), 'auth-user-change');
-      }
+    if (!nextUserId) {
+      currentUserIdRef.current = null;
+      lastStableStatusRef.current = null;
+      lastSignatureRef.current = buildEntitlementSignature(null);
+      statusRef.current = null;
+      applyStatus(buildEmptyStatus(), 'auth-signout');
+      setLoading(false);
+      return;
+    }
 
-      currentUserIdRef.current = nextUserId;
-      void fetchSubscriptionStatus();
-    });
+    if (currentUserIdRef.current && currentUserIdRef.current !== nextUserId) {
+      lastStableStatusRef.current = null;
+      lastSignatureRef.current = buildEntitlementSignature(null);
+      statusRef.current = null;
+      applyStatus(buildEmptyStatus(), 'auth-user-change');
+    }
 
-    return () => {
-      data.subscription.unsubscribe();
-    };
-  }, [applyStatus, fetchSubscriptionStatus]);
+    currentUserIdRef.current = nextUserId;
+    void fetchSubscriptionStatus();
+  }, [applyStatus, authReady, fetchSubscriptionStatus, user?.id]);
 
   const refreshSubscription = useCallback(async () => {
     console.log('[SubscriptionContext] Manual refresh requested');
@@ -509,12 +533,9 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       try {
         console.log('[SubscriptionContext] Creating subscription', { planId });
 
-        const {
-          data: { session },
-          error: sessionError,
-        } = await supabase.auth.getSession();
+        const activeSession = await getActiveSession();
 
-        if (sessionError || !session) {
+        if (!activeSession) {
           console.warn('[SubscriptionContext] No valid session for subscription creation');
           return {
             success: false,
@@ -528,7 +549,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         const response = await fetch(functionUrl, {
           method: 'POST',
           headers: {
-            Authorization: `Bearer ${session.access_token}`,
+            Authorization: `Bearer ${activeSession.access_token}`,
             'Content-Type': 'application/json',
             apikey:
               'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxocGN6b2ZkZHZ3Y3lyZ290emhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQxNTgzMjQsImV4cCI6MjA3OTczNDMyNH0.5oWZ_G5ryy_ae77CG8YMeEDEyAJkSS7Jv4cFZy-G7qA',
@@ -582,7 +603,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         return { success: false, error: 'Der opstod en uventet fejl. Prøv igen om et øjeblik.' };
       }
     },
-    [applyOptimisticSubscription, fetchSubscriptionStatus]
+    [applyOptimisticSubscription, fetchSubscriptionStatus, getActiveSession]
   );
 
   const changeSubscriptionPlan = useCallback(
@@ -598,12 +619,9 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       const endpointCandidates = ['change-subscription', 'update-subscription'];
 
       try {
-        const {
-          data: { session },
-          error: sessionError,
-        } = await supabase.auth.getSession();
+        const activeSession = await getActiveSession();
 
-        if (sessionError || !session) {
+        if (!activeSession) {
           return {
             success: false,
             error:
@@ -623,7 +641,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
             response = await fetch(functionUrl, {
               method: 'POST',
               headers: {
-                Authorization: `Bearer ${session.access_token}`,
+                Authorization: `Bearer ${activeSession.access_token}`,
                 'Content-Type': 'application/json',
                 apikey:
                   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxocGN6b2ZkZHZ3Y3lyZ290emhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQxNTgzMjQsImV4cCI6MjA3OTczNDMyNH0.5oWZ_G5ryy_ae77CG8YMeEDEyAJkSS7Jv4cFZy-G7qA',
@@ -678,14 +696,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         };
       }
     },
-    [applyOptimisticSubscription, fetchSubscriptionStatus]
+    [applyOptimisticSubscription, fetchSubscriptionStatus, getActiveSession]
   );
-
-  useEffect(() => {
-    console.log('[SubscriptionContext] Context initialized');
-    fetchSubscriptionPlans();
-    fetchSubscriptionStatus();
-  }, [fetchSubscriptionPlans, fetchSubscriptionStatus]);
 
   useEffect(() => {
     if (__DEV__) {
@@ -716,6 +728,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         subscriptionMeta,
         subscriptionPlans,
         loading,
+        ensureSubscriptionPlansLoaded,
         refreshSubscription,
         createSubscription,
         changeSubscriptionPlan,

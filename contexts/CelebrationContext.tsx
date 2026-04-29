@@ -11,6 +11,7 @@ import {
   Text,
   Vibration,
   View,
+  type GestureResponderEvent,
 } from 'react-native';
 import { NativeModulesProxy } from 'expo-modules-core';
 import * as Haptics from 'expo-haptics';
@@ -107,8 +108,9 @@ type FountainSpark = {
   size: number;
 };
 
-const TASK_DURATION_MS = 4000;
-const DAY_COMPLETE_DURATION_MS = 5100;
+const CELEBRATION_DURATION_MULTIPLIER = 0.7;
+const TASK_DURATION_MS = Math.round(4000 * CELEBRATION_DURATION_MULTIPLIER);
+const DAY_COMPLETE_DURATION_MS = Math.round(5100 * CELEBRATION_DURATION_MULTIPLIER);
 const COOLDOWN_MS = 1200;
 const CONFETTI_COLORS = ['#33b1ff', '#4cd97b', '#f6c445', '#ff7f50', '#9b6dff', '#20b2aa'];
 const CELEBRATION_INTENSITY_MULTIPLIER = 4;
@@ -463,7 +465,7 @@ function CelebrationOverlay({
   const renderLegacyFireworks = !shouldAttemptNativeDayComplete && !renderNativeConfetti;
 
   return (
-    <View style={styles.overlayWrap} pointerEvents="box-none" testID="celebration-overlay">
+    <View style={styles.overlayWrap} pointerEvents="none" testID="celebration-overlay">
       <Text style={styles.srOnly} testID="celebration-overlay.type">
         {celebration.type}
       </Text>
@@ -806,6 +808,15 @@ export function CelebrationProvider({ children }: { children: React.ReactNode })
     setActiveCelebration(null);
   }, [clearDismissTimer, clearHapticsTimers]);
 
+  const handleRootTouchCapture = useCallback((_event: GestureResponderEvent) => {
+    if (!activeCelebrationRef.current) {
+      return false;
+    }
+
+    dismissCelebration();
+    return false;
+  }, [dismissCelebration]);
+
   useEffect(() => {
     let mounted = true;
 
@@ -1010,7 +1021,11 @@ export function CelebrationProvider({ children }: { children: React.ReactNode })
 
   return (
     <CelebrationContext.Provider value={value}>
-      <View style={styles.root}>
+      <View
+        style={styles.root}
+        onStartShouldSetResponderCapture={handleRootTouchCapture}
+        testID="celebration-root"
+      >
         {children}
         {activeCelebration
           ? Platform.OS === 'web'

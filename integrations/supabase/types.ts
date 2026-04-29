@@ -33,6 +33,7 @@ export type Database = {
           location: string | null
           manually_set_category: boolean | null
           player_id: string | null
+          source_activity_id: string | null
           series_id: string | null
           series_instance_date: string | null
           team_id: string | null
@@ -58,6 +59,7 @@ export type Database = {
           location?: string | null
           manually_set_category?: boolean | null
           player_id?: string | null
+          source_activity_id?: string | null
           series_id?: string | null
           series_instance_date?: string | null
           team_id?: string | null
@@ -83,6 +85,7 @@ export type Database = {
           location?: string | null
           manually_set_category?: boolean | null
           player_id?: string | null
+          source_activity_id?: string | null
           series_id?: string | null
           series_instance_date?: string | null
           team_id?: string | null
@@ -103,6 +106,13 @@ export type Database = {
             columns: ["series_id"]
             isOneToOne: false
             referencedRelation: "activity_series"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activities_source_activity_id_fkey"
+            columns: ["source_activity_id"]
+            isOneToOne: false
+            referencedRelation: "activities"
             referencedColumns: ["id"]
           },
           {
@@ -609,6 +619,7 @@ export type Database = {
           pinned: boolean | null
           player_id: string | null
           reminders: Json | null
+          source_local_meta_id: string | null
           team_id: string | null
           updated_at: string | null
           user_id: string
@@ -633,6 +644,7 @@ export type Database = {
           pinned?: boolean | null
           player_id?: string | null
           reminders?: Json | null
+          source_local_meta_id?: string | null
           team_id?: string | null
           updated_at?: string | null
           user_id: string
@@ -657,6 +669,7 @@ export type Database = {
           pinned?: boolean | null
           player_id?: string | null
           reminders?: Json | null
+          source_local_meta_id?: string | null
           team_id?: string | null
           updated_at?: string | null
           user_id?: string
@@ -674,6 +687,13 @@ export type Database = {
             columns: ["external_event_id"]
             isOneToOne: false
             referencedRelation: "events_external"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "events_local_meta_source_local_meta_id_fkey"
+            columns: ["source_local_meta_id"]
+            isOneToOne: false
+            referencedRelation: "events_local_meta"
             referencedColumns: ["id"]
           },
           {

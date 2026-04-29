@@ -6,6 +6,7 @@ import TasksScreen from '../app/(tabs)/tasks';
 const mockUseFootball = jest.fn();
 const mockUseAdmin = jest.fn();
 const mockCreateTask = jest.fn();
+const mockUseAuthSession = jest.fn();
 
 jest.mock('@/contexts/FootballContext', () => ({
   useFootball: () => mockUseFootball(),
@@ -13,6 +14,14 @@ jest.mock('@/contexts/FootballContext', () => ({
 
 jest.mock('@/contexts/AdminContext', () => ({
   useAdmin: () => mockUseAdmin(),
+}));
+
+jest.mock('@/contexts/AuthSessionContext', () => ({
+  useAuthSession: () => mockUseAuthSession(),
+}));
+
+jest.mock('@react-navigation/native', () => ({
+  useFocusEffect: () => {},
 }));
 
 jest.mock('@/services/taskService', () => ({
@@ -72,6 +81,13 @@ jest.mock('@/integrations/supabase/client', () => ({
 describe('Tasks template editor without subtasks', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseAuthSession.mockReturnValue({
+      authReady: true,
+      isAuthenticated: true,
+      user: { id: 'user-1' },
+      session: { user: { id: 'user-1' } },
+      refreshSession: jest.fn().mockResolvedValue({ user: { id: 'user-1' } }),
+    });
     mockCreateTask.mockResolvedValue({
       id: 'template-created',
       title: 'Ny skabelon',
@@ -167,5 +183,37 @@ describe('Tasks template editor without subtasks', () => {
     fireEvent.press(getByTestId('tasks.template.categoryOption.1'));
 
     expect(getByText('Teknik, Styrke')).toBeTruthy();
+  });
+
+  it('reopens a template with snake_case video_url populated in the editor', () => {
+    mockUseFootball.mockReturnValue({
+      tasks: [
+        {
+          id: 'template-ig-1',
+          title: 'Instagram template',
+          description: 'test',
+          completed: false,
+          isTemplate: true,
+          categoryIds: [],
+          subtasks: [],
+          video_url: 'https://www.instagram.com/reel/C7N2KQ2uV9x/?igsh=MWQ=',
+          archivedAt: null,
+        },
+      ],
+      categories: [],
+      duplicateTask: jest.fn(),
+      deleteTask: jest.fn().mockResolvedValue(undefined),
+      refreshAll: jest.fn().mockResolvedValue(undefined),
+      refreshData: jest.fn().mockResolvedValue(undefined),
+      updateTask: jest.fn().mockResolvedValue(undefined),
+      isLoading: false,
+    });
+
+    const { getByDisplayValue, getByTestId } = render(<TasksScreen />);
+
+    fireEvent.press(getByTestId('tasks.folder.toggle.personal'));
+    fireEvent.press(getByTestId('tasks.template.card.template-ig-1'));
+
+    expect(getByDisplayValue('https://www.instagram.com/reel/C7N2KQ2uV9x/?igsh=MWQ=')).toBeTruthy();
   });
 });

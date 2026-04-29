@@ -67,6 +67,11 @@ import {
   hydrateTaskForModal,
   shouldHydrateTaskForModal,
 } from '@/utils/taskModalContent';
+import { deserializeActivitySnapshotFromRoute } from '@/utils/activityRouteSnapshot';
+import {
+  emitActivityDeleted,
+  emitActivityDeleteRestored,
+} from '@/utils/activityEvents';
 
 const FALLBACK_COLORS = {
   primary: '#3B82F6',
@@ -1825,7 +1830,6 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const [assignActivityModalVisible, setAssignActivityModalVisible] = useState(false);
   const [isTemplateTaskSaving, setIsTemplateTaskSaving] = useState(false);
   const [templateTaskSearch, setTemplateTaskSearch] = useState('');
-  const [isDeleting, setIsDeleting] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [tasksState, setTasksState] = useState<FeedbackTask[]>((activity.tasks as FeedbackTask[]) || []);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
@@ -3355,6 +3359,12 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           typeof template.reminder === 'number' && Number.isFinite(template.reminder)
             ? clampMinutes(template.reminder)
             : null;
+        const resolvedVideoUrl = (() => {
+          const directValue = (template as any)?.videoUrl ?? (template as any)?.video_url;
+          if (typeof directValue !== 'string') return null;
+          const trimmed = directValue.trim();
+          return trimmed.length ? trimmed : null;
+        })();
         const afterTrainingEnabled = template.afterTrainingEnabled === true;
         const taskDurationEnabled =
           template.taskDurationEnabled === true || template.task_duration_enabled === true;
@@ -3366,6 +3376,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             title: String(template.title ?? '').trim() || 'Opgave',
             description: String(template.description ?? ''),
             reminder_minutes: reminderValue,
+            video_url: resolvedVideoUrl,
             after_training_enabled: afterTrainingEnabled,
             after_training_delay_minutes: afterTrainingEnabled
               ? clampMinutes(template.afterTrainingDelayMinutes ?? 0)
@@ -3395,6 +3406,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           description: String(template.description ?? ''),
           completed: false,
           reminder_minutes: reminderValue,
+          video_url: resolvedVideoUrl,
           task_template_id: String(localTemplateData.id),
           after_training_enabled: afterTrainingEnabled,
           after_training_delay_minutes:
@@ -3408,6 +3420,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               : null,
         };
         const fallbackBasePayload = { ...basePayload } as Record<string, any>;
+        delete fallbackBasePayload.video_url;
         delete fallbackBasePayload.after_training_enabled;
         delete fallbackBasePayload.after_training_delay_minutes;
         delete fallbackBasePayload.task_duration_enabled;
@@ -3421,7 +3434,8 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         let { error } = await supabase.from(table).insert(payload as any);
         if (
           error &&
-          (isMissingColumn(error, 'after_training_enabled') ||
+          (isMissingColumn(error, 'video_url') ||
+            isMissingColumn(error, 'after_training_enabled') ||
             isMissingColumn(error, 'after_training_delay_minutes') ||
             isMissingColumn(error, 'task_duration_enabled') ||
             isMissingColumn(error, 'task_duration_minutes'))
@@ -4880,68 +4894,77 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             break;
           }
           case 'delete-external': {
-            if (!cancelled) setIsDeleting(true);
-            try {
-              const result = await deleteSingleExternalActivity(currentActivity.id);
-              if (!result.success) {
-                throw new Error(result.error || 'Kunne ikke slette aktiviteten');
-              }
-              if (!cancelled) {
+            const optimisticEvent = {
+              activityIds: [
+                currentActivity.id,
+                currentActivity.externalEventId,
+                currentActivity.externalEventRowId,
+              ].filter((id): id is string => typeof id === 'string' && id.trim().length > 0),
+              reason: 'activity_external_deleted',
+            };
+
+            emitActivityDeleted(optimisticEvent);
+
+            if (!cancelled) {
+              safeDismiss();
+              setTimeout(() => {
+                Alert.alert('Slettet', 'Den eksterne aktivitet er fjernet fra din app. Sletningen fortsætter i baggrunden.');
+              }, 120);
+            }
+
+            void (async () => {
+              try {
+                const result = await deleteSingleExternalActivity(currentActivity.id);
+                if (!result.success) {
+                  throw new Error(result.error || 'Kunne ikke slette aktiviteten');
+                }
                 Promise.resolve(refreshData()).catch(() => {});
-                safeDismiss();
+              } catch (error: any) {
+                console.error('Error deleting external activity:', error);
+                emitActivityDeleteRestored({ ...optimisticEvent, reason: 'activity_external_delete_failed' });
+                Promise.resolve(refreshData()).catch(() => {});
                 setTimeout(() => {
-                  Alert.alert('Slettet', 'Den eksterne aktivitet er blevet slettet fra din app');
+                  Alert.alert('Fejl', `Kunne ikke slette aktiviteten: ${error?.message || 'Ukendt fejl'}`);
                 }, 300);
               }
-            } catch (error: any) {
-              console.error('Error deleting external activity:', error);
-              if (!cancelled) {
-                Alert.alert('Fejl', `Kunne ikke slette aktiviteten: ${error?.message || 'Ukendt fejl'}`);
-              }
-            } finally {
-              if (!cancelled) setIsDeleting(false);
-            }
+            })();
             break;
           }
           case 'delete-single': {
-            if (!cancelled) setIsDeleting(true);
-            try {
-              await deleteActivitySingle(currentActivity.id);
-              if (!cancelled) {
-                safeDismiss();
-                setTimeout(() => {
-                  Alert.alert('Slettet', 'Aktiviteten er blevet slettet');
-                }, 300);
-              }
-            } catch (error: any) {
-              console.error('Error deleting activity:', error);
-              if (!cancelled) {
-                Alert.alert('Fejl', `Kunne ikke slette aktiviteten: ${error?.message || 'Ukendt fejl'}`);
-              }
-            } finally {
-              if (!cancelled) setIsDeleting(false);
+            const deletionPromise = Promise.resolve(deleteActivitySingle(currentActivity.id));
+
+            if (!cancelled) {
+              safeDismiss();
+              setTimeout(() => {
+                Alert.alert('Slettet', 'Aktiviteten er fjernet. Sletningen fortsætter i baggrunden.');
+              }, 120);
             }
+
+            void deletionPromise.catch((error: any) => {
+              console.error('Error deleting activity:', error);
+              setTimeout(() => {
+                Alert.alert('Fejl', `Kunne ikke slette aktiviteten: ${error?.message || 'Ukendt fejl'}`);
+              }, 300);
+            });
             break;
           }
           case 'delete-series': {
             if (!currentActivity.seriesId) break;
-            if (!cancelled) setIsDeleting(true);
-            try {
-              await deleteActivitySeries(currentActivity.seriesId);
-              if (!cancelled) {
-                safeDismiss();
-                setTimeout(() => {
-                  Alert.alert('Slettet', 'Hele serien er blevet slettet');
-                }, 300);
-              }
-            } catch (error: any) {
-              console.error('Error deleting series:', error);
-              if (!cancelled) {
-                Alert.alert('Fejl', `Kunne ikke slette serien: ${error?.message || 'Ukendt fejl'}`);
-              }
-            } finally {
-              if (!cancelled) setIsDeleting(false);
+            const deletionPromise = Promise.resolve(deleteActivitySeries(currentActivity.seriesId));
+
+            if (!cancelled) {
+              safeDismiss();
+              setTimeout(() => {
+                Alert.alert('Slettet', 'Hele serien er fjernet. Sletningen fortsætter i baggrunden.');
+              }, 120);
             }
+
+            void deletionPromise.catch((error: any) => {
+              console.error('Error deleting series:', error);
+              setTimeout(() => {
+                Alert.alert('Fejl', `Kunne ikke slette serien: ${error?.message || 'Ukendt fejl'}`);
+              }, 300);
+            });
             break;
           }
           default:
@@ -4963,7 +4986,6 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     duplicateActivity,
     pendingAction,
     refreshData,
-    router,
     safeDismiss,
     tasksState,
   ]);
@@ -5499,6 +5521,7 @@ export default function ActivityDetailsScreen() {
     id?: string | string[];
     activityId?: string | string[];
     activity_id?: string | string[];
+    activitySnapshot?: string | string[];
     categoryId?: string | string[];
     categoryName?: string | string[];
     categoryColor?: string | string[];
@@ -5530,6 +5553,10 @@ export default function ActivityDetailsScreen() {
   }, []);
 
   const activityId = normalizeParam(params.id ?? params.activityId ?? params.activity_id);
+  const prefetchedActivity = useMemo(
+    () => deserializeActivitySnapshotFromRoute(params.activitySnapshot),
+    [params.activitySnapshot],
+  );
   const fallbackCategoryId = normalizeParam(params.categoryId);
   const fallbackCategoryName = normalizeParam(params.categoryName);
   const fallbackCategoryColor = normalizeParam(params.categoryColor);
@@ -5539,8 +5566,8 @@ export default function ActivityDetailsScreen() {
   const openIntensityParam = normalizeParam(params.openIntensity);
   const initialOpenIntensity = openIntensityParam === '1' || openIntensityParam === 'true';
 
-  const [activity, setActivity] = useState<Activity | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [activity, setActivity] = useState<Activity | null>(prefetchedActivity);
+  const [isLoading, setIsLoading] = useState(!prefetchedActivity);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   const loadActivity = useCallback(async () => {
@@ -5551,12 +5578,20 @@ export default function ActivityDetailsScreen() {
       return;
     }
 
-    setIsLoading(true);
+    if (!prefetchedActivity) {
+      setIsLoading(true);
+    } else {
+      setActivity(current => current ?? prefetchedActivity);
+      setFetchError(null);
+    }
+
     try {
       const result = await fetchActivityFromDatabase(activityId);
       if (!result) {
-        setActivity(null);
-        setFetchError('not-found');
+        if (!prefetchedActivity) {
+          setActivity(null);
+          setFetchError('not-found');
+        }
       } else {
         if (result.isExternal) {
           const currentCategoryName = String(result.category?.name ?? '').trim().toLowerCase();
@@ -5586,11 +5621,26 @@ export default function ActivityDetailsScreen() {
       }
     } catch (error) {
       console.error('[ActivityDetails] Failed to load activity:', error);
-      setFetchError('fetch-failed');
+      if (!prefetchedActivity) {
+        setFetchError('fetch-failed');
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [activityId, fallbackCategoryColor, fallbackCategoryEmoji, fallbackCategoryId, fallbackCategoryName]);
+  }, [
+    activityId,
+    fallbackCategoryColor,
+    fallbackCategoryEmoji,
+    fallbackCategoryId,
+    fallbackCategoryName,
+    prefetchedActivity,
+  ]);
+
+  useEffect(() => {
+    setActivity(prefetchedActivity);
+    setIsLoading(!prefetchedActivity);
+    setFetchError(null);
+  }, [activityId, prefetchedActivity]);
 
   useEffect(() => {
     (async () => {
