@@ -27,6 +27,8 @@ type RouteSnapshotActivity = {
   externalCalendarId?: string | null;
   externalEventId?: string | null;
   externalEventRowId?: string | null;
+  seriesId?: string | null;
+  seriesInstanceDate?: string | null;
 };
 
 function normalizeString(value: unknown): string {
@@ -164,6 +166,14 @@ export function serializeActivitySnapshotForRoute(activity: any, resolvedDate: D
     externalEventRowId:
       normalizeNullableString(activity?.externalEventRowId) ??
       normalizeNullableString(activity?.external_event_row_id),
+    seriesId:
+      normalizeNullableString(activity?.seriesId) ??
+      normalizeNullableString(activity?.series_id),
+    seriesInstanceDate:
+      activity?.seriesInstanceDate instanceof Date
+        ? activity.seriesInstanceDate.toISOString()
+        : normalizeNullableString(activity?.seriesInstanceDate) ??
+          normalizeNullableString(activity?.series_instance_date),
   };
 
   try {
@@ -219,6 +229,10 @@ export function deserializeActivitySnapshotFromRoute(value: unknown): Activity |
       externalCalendarId: normalizeNullableString(parsed?.externalCalendarId) ?? undefined,
       externalEventId: normalizeNullableString(parsed?.externalEventId) ?? undefined,
       externalEventRowId: normalizeNullableString(parsed?.externalEventRowId) ?? undefined,
+      seriesId: normalizeNullableString(parsed?.seriesId) ?? undefined,
+      seriesInstanceDate: parsed?.seriesInstanceDate
+        ? new Date(parsed.seriesInstanceDate)
+        : undefined,
     };
   } catch {
     return null;

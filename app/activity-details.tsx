@@ -56,6 +56,10 @@ import {
   shouldHydrateTaskForModal,
 } from '@/utils/taskModalContent';
 import { deserializeActivitySnapshotFromRoute } from '@/utils/activityRouteSnapshot';
+import {
+  emitActivityDeleted,
+  emitActivityDeleteRestored,
+} from '@/utils/activityEvents';
 
 const FALLBACK_COLORS = {
   primary: '#3B82F6',
@@ -1793,7 +1797,6 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const [assignActivityModalVisible, setAssignActivityModalVisible] = useState(false);
   const [isTemplateTaskSaving, setIsTemplateTaskSaving] = useState(false);
   const [templateTaskSearch, setTemplateTaskSearch] = useState('');
-  const [isDeleting, setIsDeleting] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [tasksState, setTasksState] = useState<FeedbackTask[]>((activity.tasks as FeedbackTask[]) || []);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
@@ -4427,68 +4430,77 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             break;
           }
           case 'delete-external': {
-            if (!cancelled) setIsDeleting(true);
-            try {
-              const result = await deleteSingleExternalActivity(currentActivity.id);
-              if (!result.success) {
-                throw new Error(result.error || 'Kunne ikke slette aktiviteten');
-              }
-              if (!cancelled) {
+            const optimisticEvent = {
+              activityIds: [
+                currentActivity.id,
+                currentActivity.externalEventId,
+                currentActivity.externalEventRowId,
+              ].filter((id): id is string => typeof id === 'string' && id.trim().length > 0),
+              reason: 'activity_external_deleted',
+            };
+
+            emitActivityDeleted(optimisticEvent);
+
+            if (!cancelled) {
+              safeDismiss();
+              setTimeout(() => {
+                Alert.alert('Slettet', 'Den eksterne aktivitet er fjernet fra din app. Sletningen fortsætter i baggrunden.');
+              }, 120);
+            }
+
+            void (async () => {
+              try {
+                const result = await deleteSingleExternalActivity(currentActivity.id);
+                if (!result.success) {
+                  throw new Error(result.error || 'Kunne ikke slette aktiviteten');
+                }
                 Promise.resolve(refreshData()).catch(() => {});
-                safeDismiss();
+              } catch (error: any) {
+                console.error('Error deleting external activity:', error);
+                emitActivityDeleteRestored({ ...optimisticEvent, reason: 'activity_external_delete_failed' });
+                Promise.resolve(refreshData()).catch(() => {});
                 setTimeout(() => {
-                  Alert.alert('Slettet', 'Den eksterne aktivitet er blevet slettet fra din app');
+                  Alert.alert('Fejl', `Kunne ikke slette aktiviteten: ${error?.message || 'Ukendt fejl'}`);
                 }, 300);
               }
-            } catch (error: any) {
-              console.error('Error deleting external activity:', error);
-              if (!cancelled) {
-                Alert.alert('Fejl', `Kunne ikke slette aktiviteten: ${error?.message || 'Ukendt fejl'}`);
-              }
-            } finally {
-              if (!cancelled) setIsDeleting(false);
-            }
+            })();
             break;
           }
           case 'delete-single': {
-            if (!cancelled) setIsDeleting(true);
-            try {
-              await deleteActivitySingle(currentActivity.id);
-              if (!cancelled) {
-                safeDismiss();
-                setTimeout(() => {
-                  Alert.alert('Slettet', 'Aktiviteten er blevet slettet');
-                }, 300);
-              }
-            } catch (error: any) {
-              console.error('Error deleting activity:', error);
-              if (!cancelled) {
-                Alert.alert('Fejl', `Kunne ikke slette aktiviteten: ${error?.message || 'Ukendt fejl'}`);
-              }
-            } finally {
-              if (!cancelled) setIsDeleting(false);
+            const deletionPromise = Promise.resolve(deleteActivitySingle(currentActivity.id));
+
+            if (!cancelled) {
+              safeDismiss();
+              setTimeout(() => {
+                Alert.alert('Slettet', 'Aktiviteten er fjernet. Sletningen fortsætter i baggrunden.');
+              }, 120);
             }
+
+            void deletionPromise.catch((error: any) => {
+              console.error('Error deleting activity:', error);
+              setTimeout(() => {
+                Alert.alert('Fejl', `Kunne ikke slette aktiviteten: ${error?.message || 'Ukendt fejl'}`);
+              }, 300);
+            });
             break;
           }
           case 'delete-series': {
             if (!currentActivity.seriesId) break;
-            if (!cancelled) setIsDeleting(true);
-            try {
-              await deleteActivitySeries(currentActivity.seriesId);
-              if (!cancelled) {
-                safeDismiss();
-                setTimeout(() => {
-                  Alert.alert('Slettet', 'Hele serien er blevet slettet');
-                }, 300);
-              }
-            } catch (error: any) {
-              console.error('Error deleting series:', error);
-              if (!cancelled) {
-                Alert.alert('Fejl', `Kunne ikke slette serien: ${error?.message || 'Ukendt fejl'}`);
-              }
-            } finally {
-              if (!cancelled) setIsDeleting(false);
+            const deletionPromise = Promise.resolve(deleteActivitySeries(currentActivity.seriesId));
+
+            if (!cancelled) {
+              safeDismiss();
+              setTimeout(() => {
+                Alert.alert('Slettet', 'Hele serien er fjernet. Sletningen fortsætter i baggrunden.');
+              }, 120);
             }
+
+            void deletionPromise.catch((error: any) => {
+              console.error('Error deleting series:', error);
+              setTimeout(() => {
+                Alert.alert('Fejl', `Kunne ikke slette serien: ${error?.message || 'Ukendt fejl'}`);
+              }, 300);
+            });
             break;
           }
           default:
@@ -4510,7 +4522,6 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     duplicateActivity,
     pendingAction,
     refreshData,
-    router,
     safeDismiss,
     tasksState,
   ]);
