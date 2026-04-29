@@ -22,7 +22,14 @@ import { useAdmin } from '@/contexts/AdminContext';
 import { useAuthSession } from '@/contexts/AuthSessionContext';
 import { useCelebration } from '@/contexts/CelebrationContext';
 import { subscribeToTaskCompletion, emitTaskCompletionEvent } from '@/utils/taskEvents';
-import { emitActivityPatch, emitActivitiesRefreshRequested } from '@/utils/activityEvents';
+import {
+  emitActivityPatch,
+  emitActivityDeleted,
+  emitActivityDeleteRestored,
+  emitActivitiesRefreshRequested,
+  isActivityOptimisticallyDeleted,
+  subscribeToActivityDeleted,
+} from '@/utils/activityEvents';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { isTaskVisibleForActivity } from '@/utils/taskTemplateVisibility';
 import { resolveCelebrationAfterCompletionFromDatabase } from '@/utils/celebrationRuntime';
@@ -640,8 +647,28 @@ export const useFootballData = ({
       .order('activity_time', { ascending: true });
 
     if (error) throw error;
-    setActivities((data || []) as unknown as Activity[]);
+    const visibleActivities = ((data || []) as unknown as Activity[]).filter(
+      activity => !isActivityOptimisticallyDeleted(activity),
+    );
+    setActivities(visibleActivities);
   }, []);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToActivityDeleted(event => {
+      if (event.action === 'deleted') {
+        setActivities(prevActivities =>
+          prevActivities.filter(activity => !isActivityOptimisticallyDeleted(activity))
+        );
+        return;
+      }
+
+      Promise.resolve(fetchActivities()).catch(() => {});
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [fetchActivities]);
 
   /**
    * IMPORTANT:
@@ -1656,29 +1683,35 @@ export const useFootballData = ({
   }, [adminMode, adminTargetId, adminTargetType, fetchActivities, fetchActivitySeries]);
 
   const deleteActivitySingle = useCallback(async (activityId: string) => {
-    const userId = await getCurrentUserId();
+    const optimisticEvent = { activityIds: [activityId], reason: 'activity_single_deleted' };
+    emitActivityDeleted(optimisticEvent);
 
     try {
+      const userId = await getCurrentUserId();
       await activityService.deleteActivitySingle(activityId, userId);
       await Promise.all([fetchActivities(), fetchCurrentWeekStats()]);
       await forceRefreshNotificationQueue();
       emitActivitiesRefreshRequested({ reason: 'activity_single_deleted' });
     } catch (error) {
       console.error('[deleteActivitySingle] failed:', error);
+      emitActivityDeleteRestored({ ...optimisticEvent, reason: 'activity_single_delete_failed' });
       throw error;
     }
   }, [getCurrentUserId, fetchActivities, fetchCurrentWeekStats]);
 
   const deleteActivitySeries = useCallback(async (seriesId: string) => {
-    const userId = await getCurrentUserId();
+    const optimisticEvent = { seriesId, reason: 'activity_series_deleted' };
+    emitActivityDeleted(optimisticEvent);
 
     try {
+      const userId = await getCurrentUserId();
       await activityService.deleteActivitySeries(seriesId, userId);
       await Promise.all([fetchActivities(), fetchActivitySeries(), fetchCurrentWeekStats()]);
       await forceRefreshNotificationQueue();
       emitActivitiesRefreshRequested({ reason: 'activity_series_deleted' });
     } catch (error) {
       console.error('[deleteActivitySeries] failed:', error);
+      emitActivityDeleteRestored({ ...optimisticEvent, reason: 'activity_series_delete_failed' });
       throw error;
     }
   }, [getCurrentUserId, fetchActivities, fetchActivitySeries, fetchCurrentWeekStats]);
@@ -2136,6 +2169,7 @@ export const useFootballData = ({
   ]);
 
   const deleteActivity = useCallback((id: string) => {
+    emitActivityDeleted({ activityIds: [id], reason: 'activity_deleted_locally' });
     setActivities(prev => prev.filter(activity => activity.id !== id));
   }, []);
 

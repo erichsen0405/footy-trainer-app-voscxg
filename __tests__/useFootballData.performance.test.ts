@@ -87,9 +87,13 @@ jest.mock('@/utils/taskEvents', () => ({
 
 jest.mock('@/utils/activityEvents', () => ({
   emitActivityPatch: jest.fn(),
+  emitActivityDeleted: jest.fn(),
+  emitActivityDeleteRestored: jest.fn(),
   emitActivitiesRefreshRequested: jest.fn(),
   subscribeToActivityPatch: jest.fn(() => () => {}),
+  subscribeToActivityDeleted: jest.fn(() => () => {}),
   subscribeToActivitiesRefreshRequested: jest.fn(() => () => {}),
+  isActivityOptimisticallyDeleted: jest.fn(() => false),
   getActivitiesRefreshRequestedVersion: jest.fn(() => 0),
   getLastActivitiesRefreshRequestedEvent: jest.fn(() => null),
 }));

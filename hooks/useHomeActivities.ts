@@ -12,9 +12,11 @@ import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { filterVisibleTasksForActivity } from '@/utils/taskTemplateVisibility';
 import {
   subscribeToActivityPatch,
+  subscribeToActivityDeleted,
   subscribeToActivitiesRefreshRequested,
   getActivitiesRefreshRequestedVersion,
   getLastActivitiesRefreshRequestedEvent,
+  isActivityOptimisticallyDeleted,
 } from '@/utils/activityEvents';
 import { setHomeLoadProgress } from '@/utils/startupLoader';
 import { useAdmin, type AdminMode } from '@/contexts/AdminContext';
@@ -62,6 +64,9 @@ interface ActivityWithCategory {
   is_external: boolean;
   external_calendar_id?: string | null;
   external_event_id?: string | null;
+  series_id?: string | null;
+  seriesId?: string | null;
+  series_instance_date?: string | null;
   created_at: string;
   updated_at: string;
   tasks?: ActivityTask[];
@@ -793,6 +798,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
             activity_date,
             activity_time,
             activity_end_time,
+            series_id,
+            series_instance_date,
             location,
             category_id,
             intensity,
@@ -823,6 +830,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
             activity_date,
             activity_time,
             activity_end_time,
+            series_id,
+            series_instance_date,
             location,
             category_id,
             intensity,
@@ -1233,7 +1242,9 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       devLog('[useHomeActivities] External activities:', externalActivities.length);
 
       // 4. Merge internal and external activities
-      const preHydratedActivities = [...internalActivities, ...externalActivities];
+      const preHydratedActivities = [...internalActivities, ...externalActivities].filter(
+        activity => !isActivityOptimisticallyDeleted(activity),
+      );
       devLog('[useHomeActivities] Total merged activities:', preHydratedActivities.length);
       devLog('[useHomeActivities] Activities with resolved category:', preHydratedActivities.filter(a => a.category).length);
       devLog('[useHomeActivities] Activities WITHOUT resolved category:', preHydratedActivities.filter(a => !a.category).length);
@@ -1626,7 +1637,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           tasks,
           minReminderMinutes: computeMinReminder(tasks),
         };
-      });
+      }).filter(activity => !isActivityOptimisticallyDeleted(activity));
 
       if (__DEV__) {
         const sampleInternal = finalActivities.find(a => !a.is_external && Array.isArray(a.tasks) && a.tasks.length);
@@ -1802,10 +1813,13 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       if (!hasLoadedOnceRef.current) {
         const cachedSnapshot = await loadCachedSnapshot();
         if (mounted && cachedSnapshot?.activities?.length) {
+          const cachedActivities = cachedSnapshot.activities.filter(
+            activity => !isActivityOptimisticallyDeleted(activity),
+          );
           hydratedFromCache = true;
           hasLoadedOnceRef.current = true;
           lastSuccessfulLoadAtRef.current = new Date(cachedSnapshot.savedAt).getTime() || Date.now();
-          setActivities(cachedSnapshot.activities);
+          setActivities(cachedActivities);
           setInitialLoadSucceeded(true);
           setHasLoadedFullWindow(cachedSnapshot.scope === 'full');
           setLoading(false);
@@ -1873,11 +1887,21 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       patchActivityFields(activityId, updates);
     });
 
+    const unsubscribeDelete = subscribeToActivityDeleted(event => {
+      if (event.action === 'deleted') {
+        setActivities(prev => prev.filter(activity => !isActivityOptimisticallyDeleted(activity)));
+        return;
+      }
+
+      void triggerRefetch(event.reason || 'activity_delete_restored');
+    });
+
     return () => {
       unsubscribeTask();
       unsubscribePatch();
+      unsubscribeDelete();
     };
-  }, [patchActivityFields, patchActivityTasks]);
+  }, [patchActivityFields, patchActivityTasks, triggerRefetch]);
 
   useEffect(() => {
     const unsubscribe = subscribeToActivitiesRefreshRequested(event => {
