@@ -22,6 +22,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useFootball } from '@/contexts/FootballContext';
 import { useAdmin } from '@/contexts/AdminContext';
 import { useAuthSession } from '@/contexts/AuthSessionContext';
+import { useUserRole } from '@/hooks/useUserRole';
 import { Task } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
 import SmartVideoPlayer from '@/components/SmartVideoPlayer';
@@ -31,6 +32,7 @@ import { taskService } from '@/services/taskService';
 import { forceRefreshNotificationQueue } from '@/utils/notificationScheduler';
 import { emitActivitiesRefreshRequested } from '@/utils/activityEvents';
 import { getTaskModalVideoUrl } from '@/utils/taskModalContent';
+import { LinearGradient } from 'expo-linear-gradient';
 
 // ✅ Robust import: undgå Hermes-crash hvis named export "colors" ikke findes
 import * as CommonStyles from '@/styles/commonStyles';
@@ -73,19 +75,10 @@ function isValidVideoUrl(url?: string | null): boolean {
   const normalizedUrl = url.toLowerCase();
 
   return (
-    normalizedUrl.includes('youtube.com') ||
+    normalizedUrl.includes('youtube') ||
     normalizedUrl.includes('youtu.be') ||
-    normalizedUrl.includes('vimeo.com') ||
-    normalizedUrl.includes('instagram.com')
+    normalizedUrl.includes('vimeo')
   );
-}
-
-function getVideoSourceLabel(url?: string | null): string {
-  const normalizedUrl = String(url ?? '').toLowerCase();
-  if (normalizedUrl.includes('instagram.com')) return 'Instagram';
-  if (normalizedUrl.includes('vimeo.com')) return 'Vimeo';
-  if (normalizedUrl.includes('youtu')) return 'YouTube';
-  return 'Video';
 }
 
 function getYouTubeThumbnail(url: string): string | null {
@@ -112,6 +105,72 @@ function getYouTubeThumbnail(url: string): string | null {
   }
 }
 
+const FOOTBALLCOACH_INSPIRATION = 'FootballCoach Inspiration';
+
+const withAlpha = (color: string, alpha: number): string => {
+  const clamped = Math.max(0, Math.min(1, alpha));
+  const hex = color.trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(hex)) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${clamped})`;
+  }
+  return color;
+};
+
+const sanitizeTestIdSegment = (value: unknown): string =>
+  String(value ?? 'unknown')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'unknown';
+
+const createLocalSubtaskId = () => `local-subtask-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const isFootballCoachSource = (sourceFolder: string) =>
+  sourceFolder.toLowerCase() === FOOTBALLCOACH_INSPIRATION.toLowerCase();
+
+const parseTrainerNameFromSource = (sourceFolder: string): string | null => {
+  const normalized = sourceFolder.trim();
+  if (!normalized.toLowerCase().startsWith('fra træner')) return null;
+  const [, rawName] = normalized.split(':');
+  const trainerName = String(rawName ?? '').trim();
+  return trainerName || null;
+};
+
+const getTaskOwnerId = (task: any): string | null => {
+  const value = task?.userId ?? task?.user_id ?? task?.ownerId ?? null;
+  const normalized = String(value ?? '').trim();
+  return normalized || null;
+};
+
+const getTaskTrainerName = (task: any): string => {
+  const fromTask = String(task?.trainerName ?? task?.trainer_name ?? '').trim();
+  if (fromTask) return fromTask;
+  const fromSource = parseTrainerNameFromSource(getTaskSourceFolder(task));
+  return fromSource || 'Ukendt træner';
+};
+
+const normalizeModalSubtasks = (subtasks: any[] | undefined | null) => {
+  const normalized = (subtasks ?? [])
+    .map((subtask) => ({
+      id: String(subtask?.id ?? '').trim() || createLocalSubtaskId(),
+      title: String(subtask?.title ?? ''),
+      completed: !!subtask?.completed,
+    }));
+  return normalized.length ? normalized : [{ id: createLocalSubtaskId(), title: '', completed: false }];
+};
+
+const normalizeSubtasksForSave = (subtasks: any[] | undefined | null) =>
+  (subtasks ?? [])
+    .map((subtask) => ({
+      id: String(subtask?.id ?? '').trim() || createLocalSubtaskId(),
+      title: String(subtask?.title ?? '').trim(),
+      completed: false,
+    }))
+    .filter((subtask) => subtask.title.length > 0);
+
 type FolderType = 'personal' | 'trainer' | 'footballcoach' | 'source';
 
 interface FolderItem {
@@ -120,6 +179,7 @@ interface FolderItem {
   type: FolderType;
   icon: string;
   androidIcon: string;
+  testID: string;
   tasks: Task[];
 }
 
@@ -141,97 +201,106 @@ function getIconsForFolderName(name: string): { icon: string; androidIcon: strin
   const n = name.toLowerCase();
 
   if (n.startsWith('footballcoach inspiration')) {
-    return { icon: 'star.circle.fill', androidIcon: 'stars' };
+    return { icon: 'star.fill', androidIcon: 'stars' };
   }
   if (n.startsWith('fra træner:')) {
-    return { icon: 'person.2.fill', androidIcon: 'groups' };
+    return { icon: 'folder.fill', androidIcon: 'folder' };
   }
   if (n.includes('personligt') || n.includes('personlige')) {
-    return { icon: 'person.crop.circle.fill', androidIcon: 'account_circle' };
+    return { icon: 'folder.fill', androidIcon: 'folder' };
   }
   return { icon: 'folder.fill', androidIcon: 'folder' };
 }
 
 // Pure function to organize tasks into folders
-function organizeFolders(allTasks: Task[]): FolderItem[] {
+function organizeFolders(
+  allTasks: Task[],
+  options: { adminMode: string; userRole: string | null; currentUserId: string | null },
+): FolderItem[] {
   const personalTasks: Task[] = [];
-  const trainerTasks: Task[] = [];
+  const trainerFolders = new Map<string, FolderItem>();
   const footballCoachTasks: Task[] = [];
-  const otherSourceFolders = new Map<string, FolderItem>();
+  const isAdminContext = options.adminMode !== 'self';
+  const isPlayerSelf = options.adminMode === 'self' && options.userRole === 'player';
 
   allTasks.forEach((task: any) => {
     const sfRaw = getTaskSourceFolder(task);
     const sf = sfRaw.toLowerCase();
+    const ownerId = getTaskOwnerId(task);
 
-    if (!sfRaw) {
-      personalTasks.push(task);
-      return;
-    }
-
-    if (sf === 'trainer' || sf === 'fra træner' || sf.startsWith('fra træner:')) {
-      trainerTasks.push(task);
-      return;
-    }
-
-    if (sf === 'footballcoach inspiration') {
+    if (isFootballCoachSource(sfRaw)) {
       footballCoachTasks.push(task);
       return;
     }
 
-    const sourceId = `source:${sfRaw}`;
-    if (!otherSourceFolders.has(sourceId)) {
-      const icons = getIconsForFolderName(sfRaw);
-      otherSourceFolders.set(sourceId, {
-        id: sourceId,
-        name: sfRaw,
-        type: 'source',
-        icon: icons.icon,
-        androidIcon: icons.androidIcon,
-        tasks: [],
-      });
+    if (isAdminContext) {
+      personalTasks.push(task);
+      return;
     }
-    otherSourceFolders.get(sourceId)!.tasks.push(task);
+
+    if (isPlayerSelf) {
+      const isTrainerTask =
+        sf === 'trainer' ||
+        sf === 'fra træner' ||
+        sf.startsWith('fra træner:') ||
+        (!!ownerId && !!options.currentUserId && ownerId !== options.currentUserId);
+
+      if (isTrainerTask) {
+        const trainerName = getTaskTrainerName(task);
+        const stableId = ownerId || trainerName;
+        const folderId = `trainer.${sanitizeTestIdSegment(stableId)}`;
+        if (!trainerFolders.has(folderId)) {
+          const icons = getIconsForFolderName(`Fra træner: ${trainerName}`);
+          trainerFolders.set(folderId, {
+            id: folderId,
+            name: `Fra træner: ${trainerName}`,
+            type: 'trainer',
+            icon: icons.icon,
+            androidIcon: icons.androidIcon,
+            testID: `tasks.folder.trainer.${sanitizeTestIdSegment(stableId)}`,
+            tasks: [],
+          });
+        }
+        trainerFolders.get(folderId)!.tasks.push(task);
+        return;
+      }
+
+      personalTasks.push(task);
+      return;
+    }
+
+    personalTasks.push(task);
   });
 
   const folders: FolderItem[] = [];
 
   if (personalTasks.length) {
-    const icons = getIconsForFolderName('Personligt');
+    const icons = getIconsForFolderName('Personlige opgaver');
     folders.push({
       id: 'personal',
-      name: 'Personligt oprettet',
+      name: 'Personlige opgaver',
       type: 'personal',
       icon: icons.icon,
       androidIcon: icons.androidIcon,
+      testID: 'tasks.folder.personal',
       tasks: personalTasks,
     });
   }
 
-  if (trainerTasks.length) {
-    const icons = getIconsForFolderName('Fra træner:');
-    folders.push({
-      id: 'trainer_assigned',
-      name: 'Opgaver fra træner',
-      type: 'trainer',
-      icon: icons.icon,
-      androidIcon: icons.androidIcon,
-      tasks: trainerTasks,
-    });
-  }
+  folders.push(...Array.from(trainerFolders.values()).sort((a, b) => a.name.localeCompare(b.name)));
 
   if (footballCoachTasks.length) {
-    const icons = getIconsForFolderName('FootballCoach Inspiration');
+    const icons = getIconsForFolderName(FOOTBALLCOACH_INSPIRATION);
     folders.push({
-      id: 'footballcoach',
-      name: 'FootballCoach Inspiration',
+      id: 'inspiration',
+      name: FOOTBALLCOACH_INSPIRATION,
       type: 'footballcoach',
       icon: icons.icon,
       androidIcon: icons.androidIcon,
+      testID: 'tasks.folder.inspiration',
       tasks: footballCoachTasks,
     });
   }
-
-  folders.push(...Array.from(otherSourceFolders.values()).sort((a, b) => a.name.localeCompare(b.name)));
 
   return folders;
 }
@@ -246,7 +315,7 @@ export const TaskCard = React.memo(
     onArchive = () => {},
     onDelete,
     onVideoPress,
-    getCategoryNames,
+    getCategoryItems,
     isArchived = false,
   }: {
     task: Task;
@@ -256,28 +325,38 @@ export const TaskCard = React.memo(
     onArchive?: () => void;
     onDelete: () => void;
     onVideoPress: (url: string) => void;
-    getCategoryNames: (categoryIds: string[]) => string;
+    getCategoryItems: (categoryIds: string[]) => any[];
     isArchived?: boolean;
   }) => {
     const videoUrl = getTaskModalVideoUrl(task);
     const ytThumb = typeof videoUrl === 'string' && videoUrl.includes('youtu') ? getYouTubeThumbnail(videoUrl) : null;
     const taskId = String((task as any)?.id ?? '');
+    const categoryItems = getCategoryItems((((task as any)?.categoryIds ?? []) as string[]).filter(Boolean));
+    const description = String((task as any)?.description ?? '').trim();
 
     return (
       <TouchableOpacity
-        style={[styles.taskCard, { backgroundColor: isDark ? '#2a2a2a' : colors.card }]}
+        style={[
+          styles.taskCard,
+          styles.taskCardShadow,
+          { backgroundColor: isDark ? '#2a2a2a' : colors.card },
+        ]}
         onPress={onPress}
-        testID={`tasks.template.card.${taskId}`}
+        testID={`tasks.taskCard.${taskId}`}
+        activeOpacity={0.9}
       >
         <View style={styles.taskHeader}>
           <View style={styles.taskHeaderLeft}>
-            <IconSymbol ios_icon_name="doc.text" android_material_icon_name="description" size={20} color={colors.secondary} />
-            <View style={styles.checkbox} />
-            <Text style={[styles.taskTitle, { color: isDark ? '#e3e3e3' : colors.text }]}>{String((task as any)?.title ?? '')}</Text>
+            <View style={styles.taskIconWrap}>
+              <IconSymbol ios_icon_name="checklist" android_material_icon_name="checklist" size={18} color={colors.primary} />
+            </View>
+            <Text style={[styles.taskTitle, { color: isDark ? '#e3e3e3' : colors.text }]} numberOfLines={2}>
+              {String((task as any)?.title ?? '')}
+            </Text>
           </View>
 
           <View style={styles.taskActions}>
-            <TouchableOpacity onPress={onDuplicate} style={styles.actionButton}>
+            <TouchableOpacity onPress={onDuplicate} style={styles.actionButton} testID={`tasks.task.duplicate.${taskId}`}>
               <IconSymbol ios_icon_name="doc.on.doc" android_material_icon_name="content_copy" size={20} color={colors.secondary} />
             </TouchableOpacity>
             <TouchableOpacity onPress={onPress} style={styles.actionButton}>
@@ -295,21 +374,24 @@ export const TaskCard = React.memo(
                 color={colors.primary}
               />
             </TouchableOpacity>
-            <TouchableOpacity onPress={onDelete} style={styles.actionButton} testID={`tasks.template.deleteButton.${taskId}`}>
+            <TouchableOpacity onPress={onDelete} style={styles.actionButton} testID={`tasks.task.delete.${taskId}`}>
               <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={20} color={colors.error} />
             </TouchableOpacity>
           </View>
         </View>
 
-        {videoUrl && isValidVideoUrl(videoUrl) && (
+        {description ? (
+          <Text
+            style={[styles.taskDescription, styles.taskDescriptionIndented, { color: isDark ? '#b8b8b8' : colors.textSecondary }]}
+            numberOfLines={2}
+          >
+            {description}
+          </Text>
+        ) : null}
+
+        {videoUrl && isValidVideoUrl(videoUrl) && ytThumb && (
           <TouchableOpacity style={styles.videoThumbnailWrapper} onPress={() => onVideoPress(videoUrl)} activeOpacity={0.85}>
-            {ytThumb ? (
-              <Image source={{ uri: ytThumb }} style={styles.videoThumbnail} resizeMode="cover" />
-            ) : (
-              <View style={styles.videoThumbnailFallback}>
-                <Text style={styles.videoThumbnailFallbackLabel}>{getVideoSourceLabel(videoUrl)}</Text>
-              </View>
-            )}
+            <Image source={{ uri: ytThumb }} style={styles.videoThumbnail} resizeMode="cover" />
             <View style={styles.videoOverlay}>
               <IconSymbol ios_icon_name="play.circle.fill" android_material_icon_name="play_circle" size={56} color="#fff" />
             </View>
@@ -332,12 +414,40 @@ export const TaskCard = React.memo(
           </View>
         )}
 
-        <View style={styles.categoriesRow}>
-          <IconSymbol ios_icon_name="tag.fill" android_material_icon_name="label" size={14} color={isDark ? '#999' : colors.textSecondary} />
-          <Text style={[styles.categoriesText, { color: isDark ? '#999' : colors.textSecondary }]}>
-            Vises automatisk på alle {getCategoryNames((((task as any)?.categoryIds ?? []) as string[]).filter(Boolean))} aktiviteter
-          </Text>
-        </View>
+        {categoryItems.length ? (
+          <View style={styles.categoriesBlock}>
+            <View style={styles.categoriesLabelRow}>
+              <IconSymbol ios_icon_name="tag.fill" android_material_icon_name="label" size={14} color={isDark ? '#999' : colors.textSecondary} />
+              <Text style={[styles.categoriesLabelText, { color: isDark ? '#999' : colors.textSecondary }]}>Kategorier</Text>
+            </View>
+            <View style={styles.taskCategoryBadges}>
+              {categoryItems.map((category: any) => {
+                const catId = String(category.id);
+                const catColor = category.color || colors.primary;
+                return (
+                  <View
+                    key={catId}
+                    style={[
+                      styles.taskCategoryBadge,
+                      {
+                        backgroundColor: withAlpha(catColor, 0.14),
+                        borderColor: catColor,
+                      },
+                    ]}
+                    testID={`tasks.taskCategoryBadge.${sanitizeTestIdSegment(taskId)}.${sanitizeTestIdSegment(catId)}`}
+                  >
+                    {String(category.emoji ?? '').trim() ? (
+                      <Text style={styles.taskCategoryBadgeEmoji}>{String(category.emoji ?? '').trim()}</Text>
+                    ) : null}
+                    <Text style={[styles.taskCategoryBadgeText, { color: catColor }]} numberOfLines={1}>
+                      {String(category.name ?? '')}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
       </TouchableOpacity>
     );
   },
@@ -363,17 +473,27 @@ const FolderItemComponent = React.memo(
     cardBgColor: string;
   }) => {
     return (
-      <View>
+      <View style={styles.folderWrap}>
         <TouchableOpacity
           style={[styles.folderHeader, { backgroundColor: cardBgColor }]}
           onPress={onToggle}
-          testID={`tasks.folder.toggle.${folder.id}`}
+          testID={folder.testID}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityState={{ selected: isExpanded }}
         >
           <View style={styles.folderHeaderLeft}>
-            <IconSymbol ios_icon_name={folder.icon} android_material_icon_name={folder.androidIcon} size={24} color={colors.primary} />
-            <Text style={[styles.folderName, { color: textColor }]}>{folder.name}</Text>
-            <View style={[styles.countBadge, { backgroundColor: colors.primary }]}>
-              <Text style={styles.countBadgeText}>{folder.tasks.length}</Text>
+            <View style={[styles.folderIconWrap, { backgroundColor: withAlpha(colors.primary, 0.12) }]}>
+              <IconSymbol ios_icon_name={folder.icon} android_material_icon_name={folder.androidIcon} size={18} color={colors.primary} />
+            </View>
+            <View style={styles.folderTextWrap}>
+              <Text style={[styles.folderName, { color: textColor }]} numberOfLines={1}>{folder.name}</Text>
+              <Text style={[styles.folderSubtitle, { color: textSecondaryColor }]} numberOfLines={1}>
+                {folder.tasks.length} opgaver
+              </Text>
+            </View>
+            <View style={[styles.countBadge, { backgroundColor: isExpanded ? colors.primary : withAlpha(colors.primary, 0.12) }]}>
+              <Text style={[styles.countBadgeText, { color: isExpanded ? '#fff' : colors.primary }]}>{folder.tasks.length}</Text>
             </View>
           </View>
           <IconSymbol
@@ -407,6 +527,8 @@ export default function TasksScreen() {
   const footballData = useFootball() as any;
   const adminData = useAdmin() as any;
   const { user } = useAuthSession();
+  const roleInfo = useUserRole() as any;
+  const userRole = typeof roleInfo?.userRole === 'string' ? roleInfo.userRole : null;
 
   const contextTasks = footballData?.tasks;
   const tasks = useMemo(() => (contextTasks ?? []) as Task[], [contextTasks]);
@@ -455,14 +577,16 @@ export default function TasksScreen() {
 
   // ✅ VIGTIGT: alle state hooks før callbacks/memos der bruger dem
   const [refreshing, setRefreshing] = useState(false);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilterOpen, setCategoryFilterOpen] = useState(false);
+  const [selectedCategoryFilterId, setSelectedCategoryFilterId] = useState<string | null>(null);
 
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
+  const [formErrors, setFormErrors] = useState<{ title?: string; videoUrl?: string }>({});
 
   const [videoUrl, setVideoUrl] = useState('');
 
@@ -478,15 +602,30 @@ export default function TasksScreen() {
 
   const safeTasks = useMemo(() => (tasks || []).filter(Boolean) as Task[], [tasks]);
 
+  const uniqueCategories = useMemo(() => {
+    const map = new Map<string, any>();
+    (categories ?? []).forEach((c: any) => {
+      if (c?.id) map.set(String(c.id), c);
+    });
+    return Array.from(map.values());
+  }, [categories]);
+
+  const selectedCategoryFilter = useMemo(() => {
+    if (!selectedCategoryFilterId) return null;
+    return uniqueCategories.find((c: any) => String(c.id) === selectedCategoryFilterId) ?? null;
+  }, [selectedCategoryFilterId, uniqueCategories]);
+
   const filteredTasks = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return safeTasks;
     return safeTasks.filter((t: any) => {
       const title = String(t?.title ?? '').toLowerCase();
       const desc = String(t?.description ?? '').toLowerCase();
-      return title.includes(q) || desc.includes(q);
+      const categoryIds = (((t as any)?.categoryIds ?? []) as string[]).map(String);
+      const matchesSearch = !q || title.includes(q) || desc.includes(q);
+      const matchesCategory = !selectedCategoryFilterId || categoryIds.includes(selectedCategoryFilterId);
+      return matchesSearch && matchesCategory;
     });
-  }, [safeTasks, searchQuery]);
+  }, [safeTasks, searchQuery, selectedCategoryFilterId]);
 
   const templateTasks = useMemo(
     () =>
@@ -499,7 +638,10 @@ export default function TasksScreen() {
       }),
     [filteredTasks, templateView],
   );
-  const folders = useMemo(() => organizeFolders(templateTasks), [templateTasks]);
+  const folders = useMemo(
+    () => organizeFolders(templateTasks, { adminMode, userRole, currentUserId: user?.id ?? null }),
+    [templateTasks, adminMode, userRole, user?.id],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -526,7 +668,7 @@ export default function TasksScreen() {
   }, [refreshData]);
 
   const toggleFolder = useCallback((folderId: string) => {
-    setExpanded((prev) => {
+    setExpandedFolders((prev) => {
       const next = new Set(prev);
       if (next.has(folderId)) next.delete(folderId);
       else next.add(folderId);
@@ -534,19 +676,30 @@ export default function TasksScreen() {
     });
   }, []);
 
-  const openTaskModal = useCallback(async (task: Task | null, creating: boolean = false) => {
+  const toggleCategoryFilterOpen = useCallback(() => {
+    setCategoryFilterOpen(prev => !prev);
+  }, []);
+
+  const selectCategoryFilter = useCallback((categoryId: string | null) => {
+    setSelectedCategoryFilterId(categoryId);
+    setCategoryFilterOpen(false);
+  }, []);
+
+  const openTaskModal = useCallback((task: Task | null, creating: boolean = false) => {
     const normalizedTask = task
       ? ({
           ...(task as any),
           reminder: normalizeReminderValue((task as any).reminder),
           taskDurationEnabled: !!(task as any).taskDurationEnabled,
           taskDurationMinutes: normalizeTaskDurationValue((task as any).taskDurationMinutes),
+          subtasks: normalizeModalSubtasks((task as any).subtasks),
         } as Task)
       : task;
 
     setSelectedTask(normalizedTask);
     setIsCreating(creating);
     setIsSaving(false);
+    setFormErrors({});
     setVideoUrl(getTaskModalVideoUrl(task) ?? '');
     setIsModalVisible(true);
   }, []);
@@ -555,15 +708,74 @@ export default function TasksScreen() {
     setSelectedTask(null);
     setIsCreating(false);
     setIsModalVisible(false);
-    setIsCategoryDropdownOpen(false);
     setVideoUrl('');
+    setFormErrors({});
     setIsSaving(false);
+  }, []);
+
+  const validateTaskForm = useCallback(() => {
+    const nextErrors: { title?: string; videoUrl?: string } = {};
+    if (!String((selectedTask as any)?.title ?? '').trim()) {
+      nextErrors.title = 'Titel er påkrævet.';
+    }
+    if (videoUrl.trim() && !isValidVideoUrl(videoUrl)) {
+      nextErrors.videoUrl = 'Video URL skal være fra YouTube, youtu.be eller Vimeo.';
+    }
+    setFormErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  }, [selectedTask, videoUrl]);
+
+  const updateTaskTitle = useCallback((text: string) => {
+    setFormErrors(prev => ({ ...prev, title: undefined }));
+    setSelectedTask(prev => (prev ? ({ ...(prev as any), title: text } as Task) : prev));
+  }, []);
+
+  const updateTaskDescription = useCallback((text: string) => {
+    setSelectedTask(prev => (prev ? ({ ...(prev as any), description: text } as Task) : prev));
+  }, []);
+
+  const updateVideoUrl = useCallback((text: string) => {
+    setFormErrors(prev => ({ ...prev, videoUrl: undefined }));
+    setVideoUrl(text);
+  }, []);
+
+  const addSubtask = useCallback(() => {
+    setSelectedTask(prev => {
+      if (!prev) return prev;
+      const subtasks = normalizeModalSubtasks((prev as any).subtasks);
+      return {
+        ...(prev as any),
+        subtasks: [...subtasks, { id: createLocalSubtaskId(), title: '', completed: false }],
+      } as Task;
+    });
+  }, []);
+
+  const updateSubtask = useCallback((subtaskId: string, title: string) => {
+    setSelectedTask(prev => {
+      if (!prev) return prev;
+      return {
+        ...(prev as any),
+        subtasks: normalizeModalSubtasks((prev as any).subtasks).map((subtask) =>
+          subtask.id === subtaskId ? { ...subtask, title } : subtask
+        ),
+      } as Task;
+    });
+  }, []);
+
+  const removeSubtask = useCallback((subtaskId: string) => {
+    setSelectedTask(prev => {
+      if (!prev) return prev;
+      const subtasks = normalizeModalSubtasks((prev as any).subtasks);
+      const next = subtasks.filter((subtask) => subtask.id !== subtaskId);
+      return { ...(prev as any), subtasks: next.length ? next : subtasks } as Task;
+    });
   }, []);
 
   const executeSaveTask = useCallback(async () => {
     if (!selectedTask) return;
 
     const normalizedReminder = normalizeReminderValue((selectedTask as any).reminder);
+    const normalizedSubtasks = normalizeSubtasksForSave((selectedTask as any).subtasks);
     const successMessage = isCreating ? 'Opgaveskabelon oprettet' : 'Opgaveskabelon opdateret';
     setIsSaving(true);
 
@@ -571,8 +783,10 @@ export default function TasksScreen() {
       const categoryIds = Array.from(new Set((((selectedTask as any)?.categoryIds ?? []) as string[]).filter(Boolean)));
       const taskToSave = {
         ...selectedTask,
+        title: String((selectedTask as any).title ?? '').trim(),
         reminder: normalizedReminder,
         videoUrl: videoUrl.trim() ? videoUrl.trim() : null,
+        subtasks: normalizedSubtasks,
         categoryIds,
         afterTrainingEnabled: selectedTask.afterTrainingEnabled ?? false,
         afterTrainingDelayMinutes: selectedTask.afterTrainingEnabled ? (selectedTask.afterTrainingDelayMinutes ?? 0) : null,
@@ -581,13 +795,13 @@ export default function TasksScreen() {
         afterTrainingFeedbackEnableNote: selectedTask.afterTrainingFeedbackEnableNote ?? true,
         taskDurationEnabled: selectedTask.taskDurationEnabled ?? false,
         taskDurationMinutes: selectedTask.taskDurationEnabled ? (selectedTask.taskDurationMinutes ?? 0) : null,
-        // Always enable intensity when persisting feedback settings
-        afterTrainingFeedbackEnableIntensity: true,
+        afterTrainingFeedbackEnableIntensity: !!selectedTask.afterTrainingEnabled,
       } as Task;
 
       if (isCreating) {
         await taskService.createTask({
           task: taskToSave,
+          subtasks: normalizedSubtasks,
           adminMode,
           adminTargetType,
           adminTargetId,
@@ -597,15 +811,16 @@ export default function TasksScreen() {
 
         const taskToSave = {
           ...selectedTask,
+          title: String((selectedTask as any).title ?? '').trim(),
           reminder: normalizedReminder,
           videoUrl: videoUrl.trim() ? videoUrl.trim() : null,
+          subtasks: normalizedSubtasks,
           categoryIds,
           afterTrainingEnabled: selectedTask.afterTrainingEnabled ?? false,
           afterTrainingDelayMinutes: selectedTask.afterTrainingEnabled ? (selectedTask.afterTrainingDelayMinutes ?? 0) : null,
           taskDurationEnabled: selectedTask.taskDurationEnabled ?? false,
           taskDurationMinutes: selectedTask.taskDurationEnabled ? (selectedTask.taskDurationMinutes ?? 0) : null,
-          // Force intensity to remain enabled on updates
-          afterTrainingFeedbackEnableIntensity: true,
+          afterTrainingFeedbackEnableIntensity: !!selectedTask.afterTrainingEnabled,
         };
 
         await updateTask(String((selectedTask as any).id), taskToSave);
@@ -628,6 +843,7 @@ export default function TasksScreen() {
 
   const handleSaveTask = useCallback(async () => {
     if (!selectedTask) return;
+    if (!validateTaskForm()) return;
 
     if (adminMode !== 'self' && selectedContext?.type) {
       setPendingAction({
@@ -639,7 +855,7 @@ export default function TasksScreen() {
     }
 
     await executeSaveTask();
-  }, [selectedTask, adminMode, selectedContext, isCreating, videoUrl, executeSaveTask]);
+  }, [selectedTask, adminMode, selectedContext, isCreating, videoUrl, executeSaveTask, validateTaskForm]);
 
   const handleArchiveTask = useCallback(
     async (task: Task) => {
@@ -748,20 +964,25 @@ export default function TasksScreen() {
     [],
   );
 
-  const getCategoryNames = useCallback(
+  const getCategoryItems = useCallback(
     (categoryIds: string[]) => {
       const uniqueIds = Array.from(new Set((categoryIds ?? []).filter(Boolean)));
       return uniqueIds
-        .map((id) => String(categories.find((c: any) => c.id === id)?.name ?? '').toLowerCase())
+        .map((id) => categories.find((c: any) => String(c.id) === String(id)))
         .filter(Boolean)
-        .join(', ');
+        .map((category: any) => ({
+          id: String(category.id),
+          name: String(category.name ?? ''),
+          color: category.color || colors.primary,
+          emoji: category.emoji ?? '',
+        }));
     },
     [categories],
   );
 
   const openVideoModal = useCallback((url: string) => {
     if (!isValidVideoUrl(url)) {
-      Alert.alert('Fejl', 'Ugyldig video URL. Kun YouTube, Vimeo og Instagram understøttes.');
+      Alert.alert('Fejl', 'Ugyldig video URL. Kun YouTube, youtu.be og Vimeo understøttes.');
       return;
     }
     setSelectedVideoUrl(url);
@@ -831,12 +1052,35 @@ export default function TasksScreen() {
     });
   }, []);
 
+  const openNewTaskModal = useCallback(() => {
+    openTaskModal(
+      {
+        id: '',
+        title: '',
+        description: '',
+        completed: false,
+        isTemplate: true,
+        categoryIds: [],
+        subtasks: [{ id: createLocalSubtaskId(), title: '', completed: false }],
+        videoUrl: undefined,
+        afterTrainingEnabled: false,
+        afterTrainingDelayMinutes: 0,
+        afterTrainingFeedbackEnableScore: true,
+        afterTrainingFeedbackScoreExplanation: '',
+        afterTrainingFeedbackEnableIntensity: false,
+        afterTrainingFeedbackEnableNote: true,
+        taskDurationEnabled: false,
+        taskDurationMinutes: null,
+      } as any,
+      true,
+    );
+  }, [openTaskModal]);
+
   const reminderEnabled =
     !!selectedTask && (selectedTask as any).reminder !== null && (selectedTask as any).reminder !== undefined;
   const taskDurationEnabled = !!selectedTask?.taskDurationEnabled;
 
   const afterTrainingScoreEnabled = selectedTask?.afterTrainingFeedbackEnableScore ?? true;
-  const afterTrainingNoteEnabled = selectedTask?.afterTrainingFeedbackEnableNote ?? true;
   const afterTrainingScoreExplanation = selectedTask?.afterTrainingFeedbackScoreExplanation ?? '';
 
   // Memoized render functions for FlatList
@@ -850,11 +1094,11 @@ export default function TasksScreen() {
         onArchive={() => void handleArchiveTask(task)}
         onDelete={() => handleDeleteTask(task)}
         onVideoPress={openVideoModal}
-        getCategoryNames={getCategoryNames}
+        getCategoryItems={getCategoryItems}
         isArchived={typeof (task as any)?.archivedAt === 'string' && String((task as any).archivedAt).trim().length > 0}
       />
     ),
-    [isDark, openTaskModal, handleDuplicateTask, handleArchiveTask, handleDeleteTask, openVideoModal, getCategoryNames],
+    [isDark, openTaskModal, handleDuplicateTask, handleArchiveTask, handleDeleteTask, openVideoModal, getCategoryItems],
   );
 
   const bgColor = isDark ? '#1a1a1a' : colors.background;
@@ -864,7 +1108,7 @@ export default function TasksScreen() {
 
   const renderFolder = useCallback(
     ({ item }: { item: FolderItem }) => {
-      const isExpanded = expanded.has(item.id);
+      const isExpanded = expandedFolders.has(item.id);
       return (
         <FolderItemComponent
           folder={item}
@@ -877,18 +1121,13 @@ export default function TasksScreen() {
         />
       );
     },
-    [expanded, toggleFolder, renderTaskCard, textColor, textSecondaryColor, cardBgColor],
+    [expandedFolders, toggleFolder, renderTaskCard, textColor, textSecondaryColor, cardBgColor],
   );
 
   const ListHeaderComponent = useMemo(() => {
     return (
       <>
-        <View style={styles.header}>
-          <Text style={[styles.headerTitle, { color: textColor }]}>Opgaver</Text>
-          <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>{templateTasks.length} skabeloner</Text>
-        </View>
-
-        {adminMode === 'self' && (
+        {adminMode === 'self' && userRole === 'player' && (
           <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
             <IconSymbol ios_icon_name="info.circle" android_material_icon_name="info" size={20} color={colors.secondary} />
             <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
@@ -897,7 +1136,7 @@ export default function TasksScreen() {
           </View>
         )}
 
-        <View style={[styles.searchContainer, { backgroundColor: cardBgColor }]}>
+        <View style={[styles.searchBarWrap, { backgroundColor: cardBgColor, borderColor: isDark ? '#333' : colors.highlight }]}>
           <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={20} color={textSecondaryColor} />
           <TextInput
             style={[styles.searchInput, { color: textColor }]}
@@ -906,89 +1145,176 @@ export default function TasksScreen() {
             value={searchQuery}
             onChangeText={setSearchQuery}
             testID="tasks.searchInput"
+            autoCorrect={false}
+            autoCapitalize="none"
+            returnKeyType="search"
+          />
+          {searchQuery.trim().length ? (
+            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.iconButton} activeOpacity={0.8}>
+              <IconSymbol ios_icon_name="xmark.circle.fill" android_material_icon_name="cancel" size={20} color={textSecondaryColor} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        <View style={styles.categoryFilterHeader}>
+          <TouchableOpacity
+            style={[
+              styles.categoryFilterButton,
+              {
+                backgroundColor: selectedCategoryFilter ? colors.primary : cardBgColor,
+                borderColor: selectedCategoryFilter ? colors.primary : isDark ? '#333' : colors.highlight,
+                opacity: uniqueCategories.length ? 1 : 0.55,
+              },
+            ]}
+            onPress={toggleCategoryFilterOpen}
+            disabled={!uniqueCategories.length}
+            activeOpacity={0.85}
+            testID="tasks.categoryFilter.button"
+          >
+            <IconSymbol
+              ios_icon_name="line.3.horizontal.decrease.circle"
+              android_material_icon_name="filter_list"
+              size={18}
+              color={selectedCategoryFilter ? '#fff' : textSecondaryColor}
+            />
+            <Text
+              style={[
+                styles.categoryFilterButtonText,
+                { color: selectedCategoryFilter ? '#fff' : textColor },
+              ]}
+              numberOfLines={1}
+            >
+              {selectedCategoryFilter
+                ? `${String((selectedCategoryFilter as any).emoji ?? '').trim()} ${String((selectedCategoryFilter as any).name ?? '')}`.trim()
+                : 'Filter'}
+            </Text>
+            <IconSymbol
+              ios_icon_name={categoryFilterOpen ? 'chevron.up' : 'chevron.down'}
+              android_material_icon_name={categoryFilterOpen ? 'expand_less' : 'expand_more'}
+              size={16}
+              color={selectedCategoryFilter ? '#fff' : textSecondaryColor}
+            />
+          </TouchableOpacity>
+
+          {selectedCategoryFilter ? (
+            <TouchableOpacity
+              style={[styles.categoryFilterClearButton, { backgroundColor: cardBgColor, borderColor: isDark ? '#333' : colors.highlight }]}
+              onPress={() => selectCategoryFilter(null)}
+              activeOpacity={0.85}
+              testID="tasks.categoryFilter.clearButton"
+            >
+              <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={16} color={textSecondaryColor} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        {categoryFilterOpen ? (
+          <View style={[styles.categoryFilterPanel, { backgroundColor: cardBgColor, borderColor: isDark ? '#333' : colors.highlight }]}>
+            <TouchableOpacity
+              style={[
+                styles.categoryFilterChip,
+                {
+                  backgroundColor: !selectedCategoryFilterId ? colors.primary : 'transparent',
+                  borderColor: colors.primary,
+                },
+              ]}
+              onPress={() => selectCategoryFilter(null)}
+              activeOpacity={0.85}
+              testID="tasks.categoryFilter.option.all"
+            >
+              <Text style={[styles.categoryFilterChipText, { color: !selectedCategoryFilterId ? '#fff' : colors.primary }]}>
+                Alle
+              </Text>
+            </TouchableOpacity>
+
+            {uniqueCategories.map((category: any) => {
+              const catId = String(category.id);
+              const catColor = category.color || colors.primary;
+              const isSelected = selectedCategoryFilterId === catId;
+              const label = `${String(category.emoji ?? '').trim()} ${String(category.name ?? '')}`.trim();
+              return (
+                <TouchableOpacity
+                  key={catId}
+                  style={[
+                    styles.categoryFilterChip,
+                    {
+                      backgroundColor: isSelected ? withAlpha(catColor, 0.18) : 'transparent',
+                      borderColor: catColor,
+                    },
+                  ]}
+                  onPress={() => selectCategoryFilter(isSelected ? null : catId)}
+                  activeOpacity={0.85}
+                  testID={`tasks.categoryFilter.option.${sanitizeTestIdSegment(catId)}`}
+                >
+                  <Text style={[styles.categoryFilterChipText, { color: isSelected ? catColor : textColor }]} numberOfLines={1}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ) : null}
+
+        <View style={styles.sectionDivider}>
+          <Text style={[styles.sectionDividerText, { color: textSecondaryColor }]}>Mapper</Text>
+          <LinearGradient
+            colors={[withAlpha(colors.highlight, 0), withAlpha(colors.highlight, 0.92), withAlpha(colors.primary, 0.35)]}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={styles.sectionDividerLine}
           />
         </View>
 
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: textColor }]}>Skabeloner</Text>
-            <TouchableOpacity
-              style={styles.addButton}
-              onPress={() =>
-                openTaskModal(
-                  {
-                    id: '',
-                    title: '',
-                    description: '',
-                    completed: false,
-                    isTemplate: true,
-                    categoryIds: [],
-                    subtasks: [],
-                    videoUrl: undefined,
-                    afterTrainingEnabled: false,
-                    afterTrainingDelayMinutes: 0,
-                    afterTrainingFeedbackEnableScore: true,
-                    afterTrainingFeedbackScoreExplanation: '',
-                    afterTrainingFeedbackEnableNote: true,
-                    taskDurationEnabled: false,
-                    taskDurationMinutes: null,
-                  } as any,
-                  true,
-                )
-              }
-              testID="tasks.newTemplateButton"
-            >
-              <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add_circle" size={28} color={colors.primary} />
-              <Text style={[styles.addButtonText, { color: colors.primary }]}>Ny skabelon</Text>
-            </TouchableOpacity>
-          </View>
-
+        {adminMode !== 'self' && selectedContext?.type ? (
           <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
-            {adminMode !== 'self' && selectedContext?.type
-              ? `Opgaveskabeloner for ${String(selectedContext?.name ?? '')}. Disse vil automatisk blive tilføjet til relevante aktiviteter.`
-              : 'Opgaver organiseret i mapper efter oprindelse'}
+            Opgaveskabeloner for {String(selectedContext?.name ?? '')}.
           </Text>
+        ) : null}
 
-          <View style={[styles.templateViewToggle, { backgroundColor: cardBgColor }]}>
-            <TouchableOpacity
-              style={[
-                styles.templateViewToggleButton,
-                templateView === 'active' && { backgroundColor: colors.primary },
-              ]}
-              onPress={() => setTemplateView('active')}
-              testID="tasks.template.filter.activeButton"
-            >
-              <Text style={[styles.templateViewToggleText, { color: templateView === 'active' ? '#fff' : textColor }]}>
-                Aktive
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.templateViewToggleButton,
-                templateView === 'archived' && { backgroundColor: colors.primary },
-              ]}
-              onPress={() => setTemplateView('archived')}
-              testID="tasks.template.filter.archivedButton"
-            >
-              <Text style={[styles.templateViewToggleText, { color: templateView === 'archived' ? '#fff' : textColor }]}>
-                Arkiverede
-              </Text>
-            </TouchableOpacity>
-          </View>
+        <View style={[styles.templateViewToggle, { backgroundColor: cardBgColor }]}>
+          <TouchableOpacity
+            style={[
+              styles.templateViewToggleButton,
+              templateView === 'active' && { backgroundColor: colors.primary },
+            ]}
+            onPress={() => setTemplateView('active')}
+            testID="tasks.template.filter.activeButton"
+          >
+            <Text style={[styles.templateViewToggleText, { color: templateView === 'active' ? '#fff' : textColor }]}>
+              Aktive
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.templateViewToggleButton,
+              templateView === 'archived' && { backgroundColor: colors.primary },
+            ]}
+            onPress={() => setTemplateView('archived')}
+            testID="tasks.template.filter.archivedButton"
+          >
+            <Text style={[styles.templateViewToggleText, { color: templateView === 'archived' ? '#fff' : textColor }]}>
+              Arkiverede
+            </Text>
+          </TouchableOpacity>
         </View>
       </>
     );
   }, [
-    templateTasks.length,
     adminMode,
     selectedContext,
+    userRole,
     isDark,
     textColor,
     textSecondaryColor,
     searchQuery,
-    openTaskModal,
     cardBgColor,
     templateView,
+    categoryFilterOpen,
+    selectedCategoryFilter,
+    selectedCategoryFilterId,
+    uniqueCategories,
+    toggleCategoryFilterOpen,
+    selectCategoryFilter,
   ]);
 
   const ListEmptyComponent = useMemo(() => {
@@ -996,34 +1322,22 @@ export default function TasksScreen() {
       <View style={[styles.emptyState, { backgroundColor: cardBgColor }]}>
         <IconSymbol ios_icon_name="folder" android_material_icon_name="folder_open" size={48} color={textSecondaryColor} />
         <Text style={[styles.emptyStateText, { color: textSecondaryColor }]}>
-          {searchQuery
-            ? 'Ingen opgaver matcher din søgning'
+          {searchQuery || selectedCategoryFilterId
+            ? 'Ingen opgaver matcher dit filter'
             : templateView === 'active'
               ? 'Ingen aktive opgaveskabeloner'
               : 'Ingen arkiverede opgaveskabeloner'}
         </Text>
       </View>
     );
-  }, [searchQuery, cardBgColor, textSecondaryColor, templateView]);
+  }, [searchQuery, selectedCategoryFilterId, cardBgColor, textSecondaryColor, templateView]);
 
   const ListFooterComponent = useMemo(() => <View style={{ height: 100 }} />, []);
 
-  const uniqueCategories = useMemo(() => {
-    const map = new Map<string, any>();
-    (categories ?? []).forEach((c: any) => {
-      if (c?.id) map.set(String(c.id), c);
-    });
-    return Array.from(map.values());
-  }, [categories]);
-
-  const selectedCategoryObjects = useMemo(() => {
-    const selectedIds = Array.from(new Set((((selectedTask as any)?.categoryIds ?? []) as string[]).filter(Boolean)));
-    if (!selectedIds.length) return [];
-    const byId = new Map(uniqueCategories.map((category: any) => [String(category.id), category]));
-    return selectedIds
-      .map((id) => byId.get(String(id)))
-      .filter(Boolean) as any[];
-  }, [selectedTask, uniqueCategories]);
+  const modalSubtasks = useMemo(
+    () => normalizeModalSubtasks((selectedTask as any)?.subtasks),
+    [selectedTask],
+  );
 
   const isPlayerAdmin = adminMode !== 'self' && adminTargetType === 'player';
   const isTeamAdmin = adminMode !== 'self' && adminTargetType === 'team';
@@ -1033,8 +1347,13 @@ export default function TasksScreen() {
   if (isLoading) {
     return (
       <AdminContextWrapper isAdmin={isAdminMode} contextName={selectedContext?.name} contextType={adminTargetType || 'player'}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" />
+        <View style={[styles.screen, { backgroundColor: bgColor }]}>
+          <View style={styles.topBar}>
+            <Text style={[styles.screenTitle, { color: textColor }]} testID="tasks.header.title">Opgaver</Text>
+          </View>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
         </View>
       </AdminContextWrapper>
     );
@@ -1042,21 +1361,48 @@ export default function TasksScreen() {
 
   return (
     <AdminContextWrapper isAdmin={isAdminMode} contextName={selectedContext?.name} contextType={adminTargetType || 'player'}>
-      <FlatList
-        ref={listRef}
-        data={folders}
-        keyExtractor={(f) => f.id}
-        renderItem={renderFolder}
-        contentContainerStyle={styles.contentContainer}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        removeClippedSubviews={Platform.OS !== 'web'}
-        initialNumToRender={8}
-        maxToRenderPerBatch={6}
-        windowSize={10}
-        ListHeaderComponent={ListHeaderComponent}
-        ListEmptyComponent={ListEmptyComponent}
-        ListFooterComponent={ListFooterComponent}
-      />
+      <View style={[styles.screen, { backgroundColor: bgColor }]} testID="tasks.screen">
+        <View style={styles.topBar}>
+          <View style={styles.topBarTitleWrap}>
+            <Text
+              style={[styles.screenTitle, { color: textColor }]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              testID="tasks.header.title"
+            >
+              Opgaver
+            </Text>
+            <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]} numberOfLines={1}>
+              {templateTasks.length} skabeloner
+            </Text>
+          </View>
+          <TouchableOpacity
+            activeOpacity={0.9}
+            style={[styles.createButton, { backgroundColor: colors.primary }]}
+            onPress={openNewTaskModal}
+            testID="tasks.header.newTaskButton"
+          >
+            <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color="#fff" />
+            <Text style={styles.createButtonText}>Ny opgave</Text>
+          </TouchableOpacity>
+        </View>
+
+        <FlatList
+          ref={listRef}
+          data={folders}
+          keyExtractor={(f) => f.id}
+          renderItem={renderFolder}
+          contentContainerStyle={styles.contentContainer}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          removeClippedSubviews={Platform.OS !== 'web'}
+          initialNumToRender={8}
+          maxToRenderPerBatch={6}
+          windowSize={10}
+          ListHeaderComponent={ListHeaderComponent}
+          ListEmptyComponent={ListEmptyComponent}
+          ListFooterComponent={ListFooterComponent}
+        />
+      </View>
 
       <Modal visible={isModalVisible} animationType="slide" transparent>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
@@ -1072,36 +1418,44 @@ export default function TasksScreen() {
               data={[{ key: 'form' }]}
               keyExtractor={(item) => item.key}
               renderItem={() => (
-                <View style={styles.modalBody} testID="tasks.template.formBody">
+                <View style={styles.modalBody} testID="tasks.modal.formBody">
                   <Text style={[styles.label, { color: textColor }]}>Titel</Text>
                   <TextInput
                     style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
                     value={String((selectedTask as any)?.title ?? '')}
-                    onChangeText={(text) => setSelectedTask(selectedTask ? ({ ...(selectedTask as any), title: text } as any) : null)}
+                    onChangeText={updateTaskTitle}
                     placeholder="Opgavens titel"
                     placeholderTextColor={textSecondaryColor}
                     editable={!isSaving}
-                    testID="tasks.template.titleInput"
+                    testID="tasks.modal.titleInput"
                   />
+                  {formErrors.title ? (
+                    <Text style={[styles.errorText, { color: colors.error }]}>{formErrors.title}</Text>
+                  ) : null}
 
                   <Text style={[styles.label, { color: textColor }]}>Beskrivelse</Text>
                   <TextInput
                     style={[styles.input, styles.textArea, { backgroundColor: bgColor, color: textColor }]}
                     value={String((selectedTask as any)?.description ?? '')}
-                    onChangeText={(text) => setSelectedTask(selectedTask ? ({ ...(selectedTask as any), description: text } as any) : null)}
+                    onChangeText={updateTaskDescription}
                     placeholder="Beskrivelse af opgaven"
                     placeholderTextColor={textSecondaryColor}
                     multiline
                     numberOfLines={4}
                     editable={!isSaving}
-                    testID="tasks.template.descriptionInput"
+                    testID="tasks.modal.descriptionInput"
                   />
 
                   <View style={styles.videoSection}>
                     <View style={styles.videoLabelRow}>
                       <Text style={[styles.label, { color: textColor }]}>Indsæt link til video</Text>
                       {videoUrl.trim() ? (
-                        <TouchableOpacity style={styles.deleteVideoButton} onPress={handleDeleteVideo} disabled={isSaving}>
+                        <TouchableOpacity
+                          style={styles.deleteVideoButton}
+                          onPress={handleDeleteVideo}
+                          disabled={isSaving}
+                          testID="tasks.modal.deleteVideoButton"
+                        >
                           <IconSymbol ios_icon_name="trash.fill" android_material_icon_name="delete" size={18} color={colors.error} />
                           <Text style={[styles.deleteVideoText, { color: colors.error }]}>Slet video</Text>
                         </TouchableOpacity>
@@ -1111,26 +1465,74 @@ export default function TasksScreen() {
                     <TextInput
                       style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
                       value={videoUrl}
-                      onChangeText={setVideoUrl}
-                      placeholder="https://youtube.com/... eller https://vimeo.com/... eller https://instagram.com/..."
+                      onChangeText={updateVideoUrl}
+                      placeholder="https://youtube.com/... eller https://vimeo.com/..."
                       placeholderTextColor={textSecondaryColor}
                       autoCapitalize="none"
                       editable={!isSaving}
+                      testID="tasks.modal.videoUrlInput"
                     />
 
                     {videoUrl.trim() && isValidVideoUrl(videoUrl) && (
                       <View style={styles.videoPreviewSmall}>
-                        <TouchableOpacity style={styles.videoPreviewButton} onPress={() => openVideoModal(videoUrl)} activeOpacity={0.8}>
+                        <TouchableOpacity
+                          style={styles.videoPreviewButton}
+                          onPress={() => openVideoModal(videoUrl)}
+                          activeOpacity={0.8}
+                          testID="tasks.modal.videoPreview"
+                        >
                           <IconSymbol ios_icon_name="play.circle.fill" android_material_icon_name="play_circle" size={32} color={colors.primary} />
                           <Text style={[styles.videoPreviewText, { color: colors.primary }]}>Forhåndsvisning</Text>
                         </TouchableOpacity>
-                        <Text style={[styles.helperText, { color: colors.secondary }]}>✓ Video URL gemt</Text>
                       </View>
                     )}
 
-                    {videoUrl.trim() && !isValidVideoUrl(videoUrl) && (
-                      <Text style={[styles.helperText, { color: colors.error }]}>⚠ Ugyldig video URL. Kun YouTube, Vimeo og Instagram understøttes.</Text>
+                    {(formErrors.videoUrl || (videoUrl.trim() && !isValidVideoUrl(videoUrl))) && (
+                      <Text style={[styles.errorText, { color: colors.error }]}>
+                        {formErrors.videoUrl || 'Video URL skal være fra YouTube, youtu.be eller Vimeo.'}
+                      </Text>
                     )}
+                  </View>
+
+                  <View style={styles.subtasksSection}>
+                    <View style={styles.subtasksHeader}>
+                      <Text style={[styles.label, { color: textColor, marginBottom: 0 }]}>Delopgaver</Text>
+                      <TouchableOpacity
+                        style={[styles.addSubtaskButton, { borderColor: colors.primary }]}
+                        onPress={addSubtask}
+                        disabled={isSaving}
+                        testID="tasks.modal.addSubtaskButton"
+                      >
+                        <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color={colors.primary} />
+                        <Text style={[styles.addSubtaskButtonText, { color: colors.primary }]}>Tilføj</Text>
+                      </TouchableOpacity>
+                    </View>
+                    {modalSubtasks.map((subtask) => {
+                      const canRemove = modalSubtasks.length > 1;
+                      return (
+                        <View key={subtask.id} style={styles.subtaskRow}>
+                          <TextInput
+                            style={[styles.input, styles.subtaskInput, { backgroundColor: bgColor, color: textColor }]}
+                            value={subtask.title}
+                            onChangeText={(value) => updateSubtask(subtask.id, value)}
+                            placeholder="Delopgave"
+                            placeholderTextColor={textSecondaryColor}
+                            editable={!isSaving}
+                            testID={`tasks.modal.subtaskInput.${sanitizeTestIdSegment(subtask.id)}`}
+                          />
+                          {canRemove ? (
+                            <TouchableOpacity
+                              style={styles.removeSubtaskButton}
+                              onPress={() => removeSubtask(subtask.id)}
+                              disabled={isSaving}
+                              testID={`tasks.modal.removeSubtask.${sanitizeTestIdSegment(subtask.id)}`}
+                            >
+                              <IconSymbol ios_icon_name="minus.circle.fill" android_material_icon_name="remove_circle" size={24} color={colors.error} />
+                            </TouchableOpacity>
+                          ) : null}
+                        </View>
+                      );
+                    })}
                   </View>
 
                   <View
@@ -1156,7 +1558,7 @@ export default function TasksScreen() {
                         thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
                         ios_backgroundColor={isDark ? '#555' : '#d0d7e3'}
                         disabled={isSaving}
-                        testID="tasks.template.reminderToggle"
+                        testID="tasks.modal.reminderToggle"
                       />
                     </View>
 
@@ -1186,7 +1588,7 @@ export default function TasksScreen() {
                                   )
                                 }
                                 disabled={isSaving}
-                                testID={`tasks.template.reminderOption.${option.value}`}
+                                testID={`tasks.modal.reminderOption.${option.value}`}
                               >
                                 <Text style={{ color: selected ? '#fff' : textColor, fontWeight: selected ? '700' : '600' }}>
                                   {option.label}
@@ -1228,7 +1630,7 @@ export default function TasksScreen() {
                         thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
                         ios_backgroundColor={isDark ? '#555' : '#d0d7e3'}
                         disabled={isSaving}
-                        testID="tasks.template.feedbackToggle"
+                        testID="tasks.modal.feedbackToggle"
                       />
                     </View>
 
@@ -1256,7 +1658,7 @@ export default function TasksScreen() {
                                   setSelectedTask(prev => (prev ? ({ ...prev, afterTrainingDelayMinutes: option.value } as Task) : prev))
                                 }
                                 disabled={isSaving}
-                                testID={`tasks.template.feedbackDelayOption.${option.value}`}
+                                testID={`tasks.modal.feedbackDelayOption.${option.value}`}
                               >
                                 <Text style={{ color: selected ? '#fff' : textColor, fontWeight: selected ? '700' : '600' }}>
                                   {option.label}
@@ -1268,6 +1670,37 @@ export default function TasksScreen() {
                         <Text style={[styles.helperText, { color: textSecondaryColor, marginTop: 6 }]}>
                           Vises efter aktivitetens sluttidspunkt + valgt delay.
                         </Text>
+                        {afterTrainingScoreEnabled ? (
+                          <>
+                            <Text style={[styles.label, { color: textColor, marginTop: 14 }]}>Score-forklaring</Text>
+                            <TextInput
+                              style={[
+                                styles.feedbackExplanationInput,
+                                {
+                                  backgroundColor: bgColor,
+                                  color: textColor,
+                                  borderColor: isDark ? '#444' : '#d0d7e3',
+                                },
+                              ]}
+                              value={afterTrainingScoreExplanation}
+                              onChangeText={(text) =>
+                                setSelectedTask(prev =>
+                                  prev
+                                    ? ({
+                                        ...prev,
+                                        afterTrainingFeedbackScoreExplanation: text,
+                                      } as Task)
+                                    : prev
+                                )
+                              }
+                              placeholder="Forklaring til score-feedback"
+                              placeholderTextColor={textSecondaryColor}
+                              multiline
+                              editable={!isSaving}
+                              testID="tasks.modal.feedbackScoreExplanationInput"
+                            />
+                          </>
+                        ) : null}
                       </View>
                     )}
                   </View>
@@ -1326,77 +1759,53 @@ export default function TasksScreen() {
                   </View>
 
                   <Text style={[styles.label, { color: textColor }]}>Aktivitetskategorier</Text>
-                  <TouchableOpacity
-                    style={[
-                      styles.categoryDropdownToggle,
-                      {
-                        backgroundColor: bgColor,
-                        borderColor: isDark ? '#444' : '#d0d7e3',
-                        opacity: isSaving ? 0.6 : 1,
-                      },
-                    ]}
-                    onPress={() => setIsCategoryDropdownOpen((prev) => !prev)}
-                    disabled={isSaving}
-                    testID="tasks.template.categoryDropdownToggle"
-                  >
-                    <Text style={[styles.categoryDropdownToggleText, { color: textColor }]}>
-                      {selectedCategoryObjects.length
-                        ? selectedCategoryObjects.map((category: any) => String(category.name ?? '')).join(', ')
-                        : 'Vælg kategorier'}
-                    </Text>
-                    <IconSymbol
-                      ios_icon_name={isCategoryDropdownOpen ? 'chevron.up' : 'chevron.down'}
-                      android_material_icon_name={isCategoryDropdownOpen ? 'expand_less' : 'expand_more'}
-                      size={18}
-                      color={textSecondaryColor}
-                    />
-                  </TouchableOpacity>
-                  {isCategoryDropdownOpen && (
-                    <FlatList
-                      data={uniqueCategories}
-                      keyExtractor={(item: any) => String(item.id)}
-                      scrollEnabled={false}
-                      contentContainerStyle={styles.categoryDropdownList}
-                      renderItem={({ item, index }) => {
-                        const catId = String(item.id);
-                        const catColor = item.color || colors.primary;
-                        const isSelected = !!selectedTask?.categoryIds?.includes?.(catId);
-                        return (
-                          <TouchableOpacity
-                            style={[
-                              styles.categorySelectionRow,
-                              {
-                                backgroundColor: isSelected ? catColor : bgColor,
-                                borderColor: catColor,
-                              },
-                            ]}
-                            onPress={() => toggleCategory(catId)}
-                            disabled={isSaving}
-                            testID={`tasks.template.categoryOption.${index}`}
-                          >
-                            <Text style={styles.categoryEmoji}>{String(item.emoji ?? '')}</Text>
-                            <Text style={[styles.categoryName, { color: isSelected ? '#fff' : textColor }]}>
-                              {String(item.name ?? '')}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      }}
-                    />
-                  )}
+                  <View style={styles.categoriesGrid} testID="tasks.modal.categoryDropdownToggle">
+                    {uniqueCategories.map((item: any, index: number) => {
+                      const catId = String(item.id);
+                      const catColor = item.color || colors.primary;
+                      const isSelected = !!selectedTask?.categoryIds?.includes?.(catId);
+                      return (
+                        <TouchableOpacity
+                          key={catId}
+                          style={[
+                            styles.categoryChip,
+                            {
+                              backgroundColor: isSelected ? catColor : bgColor,
+                              borderColor: catColor,
+                              opacity: isSaving ? 0.6 : 1,
+                            },
+                          ]}
+                          onPress={() => toggleCategory(catId)}
+                          disabled={isSaving}
+                          testID={`tasks.modal.categoryOption.${index}`}
+                        >
+                          <Text style={styles.categoryEmoji}>{String(item.emoji ?? '')}</Text>
+                          <Text style={[styles.categoryName, { color: isSelected ? '#fff' : textColor }]}>
+                            {String(item.name ?? '')}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
                 </View>
               )}
               showsVerticalScrollIndicator={false}
             />
 
             <View style={styles.modalFooter}>
-              <TouchableOpacity style={[styles.modalButton, styles.cancelButton, { backgroundColor: bgColor }]} onPress={closeTaskModal} disabled={isSaving}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton, { backgroundColor: bgColor }]}
+                onPress={closeTaskModal}
+                disabled={isSaving}
+                testID="tasks.modal.cancelButton"
+              >
                 <Text style={[styles.modalButtonText, { color: textColor }]}>Annuller</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalButton, styles.saveButton, { backgroundColor: colors.primary, opacity: isSaving ? 0.6 : 1 }]}
                 onPress={handleSaveTask}
                 disabled={isSaving}
-                testID="tasks.template.saveButton"
+                testID="tasks.modal.saveButton"
               >
                 <Text style={[styles.modalButtonText, { color: '#fff' }]}>{isSaving ? 'Gemmer...' : 'Gem'}</Text>
               </TouchableOpacity>
@@ -1509,40 +1918,155 @@ export default function TasksScreen() {
 }
 
 const styles = StyleSheet.create({
+  screen: { flex: 1 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  contentContainer: { paddingHorizontal: 16, paddingBottom: 24 },
-  header: { paddingTop: Platform.OS === 'android' ? 60 : 70, paddingBottom: 16 },
-  headerTitle: { fontSize: 32, fontWeight: 'bold', marginBottom: 4 },
-  headerSubtitle: { fontSize: 16 },
-  infoBox: { flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 12, borderRadius: 12 },
+  contentContainer: { paddingHorizontal: 18, paddingBottom: 24 },
+  topBar: {
+    paddingTop: Platform.OS === 'android' ? 54 : 56,
+    paddingHorizontal: 18,
+    paddingBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  topBarTitleWrap: { flex: 1, minWidth: 0 },
+  screenTitle: {
+    fontSize: 34,
+    lineHeight: 40,
+    fontWeight: '800',
+  },
+  topBarRight: { flexDirection: 'row', gap: 10, alignItems: 'center', flexShrink: 0 },
+  headerSubtitle: { fontSize: 13, fontWeight: '800', marginTop: 2 },
+  iconButton: { padding: 6 },
+  createButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 13,
+    paddingVertical: 8,
+    borderRadius: 999,
+    flexShrink: 0,
+  },
+  createButtonText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  infoBox: { flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 12, borderRadius: 16 },
   infoText: { flex: 1, fontSize: 14, lineHeight: 20 },
-  searchContainer: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 16 },
-  searchInput: { flex: 1, marginLeft: 8, fontSize: 16 },
+  searchBarWrap: {
+    marginBottom: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  searchInput: { flex: 1, fontSize: 14, fontWeight: '600' },
+  categoryFilterHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: -4, marginBottom: 14 },
+  categoryFilterButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  categoryFilterButtonText: { flex: 1, fontSize: 14, fontWeight: '800' },
+  categoryFilterClearButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  categoryFilterPanel: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 10,
+    marginTop: -8,
+    marginBottom: 14,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  categoryFilterChip: {
+    minHeight: 36,
+    maxWidth: '100%',
+    borderRadius: 999,
+    borderWidth: 1.5,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    justifyContent: 'center',
+  },
+  categoryFilterChipText: { fontSize: 13, fontWeight: '800' },
   section: { marginBottom: 24 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   sectionTitle: { fontSize: 22, fontWeight: 'bold' },
-  sectionDescription: { fontSize: 14, marginBottom: 12, lineHeight: 20 },
+  sectionDescription: { fontSize: 13, marginBottom: 12, lineHeight: 18, fontWeight: '600' },
   addButton: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   addButtonText: { fontSize: 16, fontWeight: '600' },
-  templateViewToggle: { flexDirection: 'row', padding: 4, borderRadius: 12, gap: 6 },
+  sectionDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 2,
+    marginBottom: 10,
+  },
+  sectionDividerText: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  sectionDividerLine: {
+    flex: 1,
+    height: 2,
+    borderRadius: 999,
+  },
+  templateViewToggle: { flexDirection: 'row', padding: 4, borderRadius: 16, gap: 6, marginBottom: 14 },
   templateViewToggleButton: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 10 },
   templateViewToggleText: { fontSize: 14, fontWeight: '600' },
-  folderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderRadius: 12, marginBottom: 8 },
+  folderWrap: { marginBottom: 10 },
+  folderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 14, borderRadius: 16 },
   folderHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  folderName: { fontSize: 18, fontWeight: '600', flex: 1 },
+  folderIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  folderTextWrap: { flex: 1, gap: 2 },
+  folderName: { fontSize: 16, fontWeight: '700', flex: 1 },
+  folderSubtitle: { fontSize: 13, fontWeight: '500' },
   countBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
-  countBadgeText: { fontSize: 12, fontWeight: 'bold', color: '#fff' },
-  folderContent: { marginBottom: 8 },
+  countBadgeText: { fontSize: 12, fontWeight: '800' },
+  folderContent: { marginTop: 10, marginBottom: 4 },
 
-  emptyState: { padding: 48, borderRadius: 12, alignItems: 'center', gap: 16 },
+  emptyState: { padding: 48, borderRadius: 16, alignItems: 'center', gap: 16 },
   emptyStateText: { fontSize: 16, textAlign: 'center' },
 
-  taskCard: { borderRadius: 12, padding: 16, marginBottom: 8 },
-  taskHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  taskHeaderLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 },
-  checkbox: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  taskTitle: { fontSize: 16, fontWeight: '600', flex: 1 },
-  taskActions: { flexDirection: 'row', gap: 8 },
+  taskCard: { borderRadius: 24, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(148,163,184,0.28)' },
+  taskCardShadow: {
+    shadowColor: '#64748b',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    elevation: 6,
+  },
+  taskHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 10 },
+  taskHeaderLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12, minWidth: 0 },
+  taskIconWrap: { width: 34, height: 34, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(59,130,246,0.12)' },
+  taskTitleWrap: { flex: 1, minWidth: 0, gap: 5 },
+  taskTitleRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  taskTitle: { fontSize: 16, fontWeight: '800', flex: 1, lineHeight: 21 },
+  taskDescription: { fontSize: 13, lineHeight: 18, fontWeight: '500' },
+  taskDescriptionIndented: { marginLeft: 46, marginTop: -4, marginBottom: 10 },
+  taskActions: { flexDirection: 'row', gap: 8, flexShrink: 0 },
   actionButton: { padding: 4 },
 
   videoThumbnailWrapper: { height: 180, borderRadius: 12, overflow: 'hidden', marginBottom: 12, backgroundColor: '#000' },
@@ -1567,21 +2091,53 @@ const styles = StyleSheet.create({
   reminderBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8 },
   reminderText: { fontSize: 12, fontWeight: '600' },
 
-  categoriesRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  categoriesText: { fontSize: 12, flex: 1 },
+  categoriesBlock: { marginTop: 6, gap: 8 },
+  categoriesLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  categoriesLabelText: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase' },
+  taskCategoryBadges: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  taskCategoryBadge: {
+    minHeight: 30,
+    maxWidth: '100%',
+    borderRadius: 999,
+    borderWidth: 1.5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  taskCategoryBadgeEmoji: { fontSize: 13 },
+  taskCategoryBadgeText: { fontSize: 12, fontWeight: '800' },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'flex-end' },
-  modalContent: { borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '90%' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: colors.highlight },
-  modalTitle: { fontSize: 20, fontWeight: 'bold' },
-  modalBody: { padding: 20 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.45)', justifyContent: 'flex-end' },
+  modalContent: { borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: '92%', overflow: 'hidden' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 18, borderBottomWidth: 1, borderBottomColor: colors.highlight },
+  modalTitle: { fontSize: 20, fontWeight: '900' },
+  modalBody: { padding: 18 },
   label: { fontSize: 16, fontWeight: '600', marginBottom: 8 },
   input: { borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 16 },
   textArea: { height: 100, textAlignVertical: 'top' },
+  errorText: { fontSize: 13, fontWeight: '600', marginTop: -10, marginBottom: 12 },
 
 
-  categoriesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  categoryChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 },
+  subtasksSection: { marginBottom: 18 },
+  subtasksHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  addSubtaskButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  addSubtaskButtonText: { fontSize: 13, fontWeight: '800' },
+  subtaskRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  subtaskInput: { flex: 1, marginBottom: 0 },
+  removeSubtaskButton: { padding: 4 },
+
+  categoriesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  categoryChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5 },
   categoryEmoji: { fontSize: 16 },
   categoryName: { fontSize: 14, fontWeight: '600' },
   categoryDropdownToggle: {

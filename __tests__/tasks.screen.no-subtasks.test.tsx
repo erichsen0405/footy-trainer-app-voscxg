@@ -7,6 +7,7 @@ const mockUseFootball = jest.fn();
 const mockUseAdmin = jest.fn();
 const mockCreateTask = jest.fn();
 const mockUseAuthSession = jest.fn();
+const mockUseUserRole = jest.fn();
 
 jest.mock('@/contexts/FootballContext', () => ({
   useFootball: () => mockUseFootball(),
@@ -18,6 +19,10 @@ jest.mock('@/contexts/AdminContext', () => ({
 
 jest.mock('@/contexts/AuthSessionContext', () => ({
   useAuthSession: () => mockUseAuthSession(),
+}));
+
+jest.mock('@/hooks/useUserRole', () => ({
+  useUserRole: () => mockUseUserRole(),
 }));
 
 jest.mock('@react-navigation/native', () => ({
@@ -78,7 +83,32 @@ jest.mock('@/integrations/supabase/client', () => ({
   },
 }));
 
-describe('Tasks template editor without subtasks', () => {
+const baseTask = (overrides: Record<string, any>) => ({
+  id: 'template-1',
+  title: 'Pasningsøvelse',
+  description: 'test',
+  completed: false,
+  isTemplate: true,
+  categoryIds: [],
+  subtasks: [],
+  archivedAt: null,
+  userId: 'user-1',
+  ...overrides,
+});
+
+const baseFootball = (overrides: Record<string, any> = {}) => ({
+  tasks: [],
+  categories: [],
+  duplicateTask: jest.fn(),
+  deleteTask: jest.fn().mockResolvedValue(undefined),
+  refreshAll: jest.fn().mockResolvedValue(undefined),
+  refreshData: jest.fn().mockResolvedValue(undefined),
+  updateTask: jest.fn().mockResolvedValue(undefined),
+  isLoading: false,
+  ...overrides,
+});
+
+describe('Tasks redesigned template screen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockUseAuthSession.mockReturnValue({
@@ -88,6 +118,7 @@ describe('Tasks template editor without subtasks', () => {
       session: { user: { id: 'user-1' } },
       refreshSession: jest.fn().mockResolvedValue({ user: { id: 'user-1' } }),
     });
+    mockUseUserRole.mockReturnValue({ userRole: 'trainer', loading: false, isAdmin: true });
     mockCreateTask.mockResolvedValue({
       id: 'template-created',
       title: 'Ny skabelon',
@@ -106,114 +137,178 @@ describe('Tasks template editor without subtasks', () => {
       contextName: null,
     });
 
-    mockUseFootball.mockReturnValue({
-      tasks: [],
-      categories: [],
-      duplicateTask: jest.fn(),
-      deleteTask: jest.fn().mockResolvedValue(undefined),
-      refreshAll: jest.fn().mockResolvedValue(undefined),
-      refreshData: jest.fn().mockResolvedValue(undefined),
-      updateTask: jest.fn().mockResolvedValue(undefined),
-      isLoading: false,
-    });
+    mockUseFootball.mockReturnValue(baseFootball());
   });
 
-  it('shows empty state when there are 0 task templates', () => {
-    const { getByText } = render(<TasksScreen />);
+  it('shows the Opgaver header and Ny opgave CTA', () => {
+    const { getByTestId, getByText } = render(<TasksScreen />);
 
-    expect(getByText('Ingen aktive opgaveskabeloner')).toBeTruthy();
+    expect(getByTestId('tasks.header.title')).toHaveTextContent('Opgaver');
+    expect(getByTestId('tasks.header.newTaskButton')).toBeTruthy();
+    expect(getByText('Ny opgave')).toBeTruthy();
   });
 
-  it('hides subtask UI and saves template without subtasks payload', async () => {
-    const { getByTestId, queryByText, queryByTestId } = render(<TasksScreen />);
-
-    fireEvent.press(getByTestId('tasks.newTemplateButton'));
-
-    expect(queryByText('Delopgaver')).toBeNull();
-    expect(queryByTestId('tasks.template.subtaskInput.0')).toBeNull();
-
-    fireEvent.changeText(getByTestId('tasks.template.titleInput'), 'Template uden delopgaver');
-    fireEvent.press(getByTestId('tasks.template.saveButton'));
-
-    await waitFor(() => {
-      expect(mockCreateTask).toHaveBeenCalledTimes(1);
-    });
-
-    const createArg = mockCreateTask.mock.calls[0][0];
-    expect(createArg).toBeDefined();
-    expect(createArg.subtasks).toBeUndefined();
-  });
-
-  it('shows category dropdown and lets user select categories', () => {
-    mockUseFootball.mockReturnValue({
+  it('groups trainer self-mode templates into personal and inspiration folders', () => {
+    mockUseFootball.mockReturnValue(baseFootball({
       tasks: [
-        {
-          id: 'template-1',
-          title: 'Pasningsøvelse',
-          description: 'test',
-          completed: false,
-          isTemplate: true,
-          categoryIds: ['cat-1'],
-          subtasks: [],
-          archivedAt: null,
-        },
+        baseTask({ id: 'personal-1', title: 'Egen opgave' }),
+        baseTask({ id: 'fc-1', title: 'FC opgave', source_folder: 'FootballCoach Inspiration' }),
+      ],
+    }));
+
+    const { getByTestId, getByText } = render(<TasksScreen />);
+
+    expect(getByTestId('tasks.folder.personal')).toBeTruthy();
+    expect(getByTestId('tasks.folder.inspiration')).toBeTruthy();
+    expect(getByText('Personlige opgaver')).toBeTruthy();
+    expect(getByText('FootballCoach Inspiration')).toBeTruthy();
+  });
+
+  it('groups player self-mode templates by trainer name', () => {
+    mockUseUserRole.mockReturnValue({ userRole: 'player', loading: false, isAdmin: false });
+    mockUseFootball.mockReturnValue(baseFootball({
+      tasks: [
+        baseTask({
+          id: 'trainer-task-1',
+          title: 'Fra coach',
+          userId: 'trainer-1',
+          trainerName: 'Coach Mads',
+          source_folder: 'Fra træner: Coach Mads',
+        }),
+      ],
+    }));
+
+    const { getByTestId, getByText } = render(<TasksScreen />);
+
+    expect(getByTestId('tasks.folder.trainer.trainer-1')).toBeTruthy();
+    expect(getByText('Fra træner: Coach Mads')).toBeTruthy();
+  });
+
+  it('shows selected admin context templates under personal tasks', () => {
+    mockUseUserRole.mockReturnValue({ userRole: 'trainer', loading: false, isAdmin: true });
+    mockUseAdmin.mockReturnValue({
+      adminMode: 'player',
+      adminTargetType: 'player',
+      adminTargetId: 'player-1',
+      selectedContext: { type: 'player', name: 'Spiller A' },
+      contextName: 'Spiller A',
+    });
+    mockUseFootball.mockReturnValue(baseFootball({
+      tasks: [baseTask({ id: 'admin-task-1', title: 'Spilleropgave', userId: 'trainer-1' })],
+    }));
+
+    const { getByTestId, queryByTestId } = render(<TasksScreen />);
+
+    expect(getByTestId('tasks.folder.personal')).toBeTruthy();
+    expect(queryByTestId('tasks.folder.trainer.trainer-1')).toBeNull();
+  });
+
+  it('filters tasks with search', () => {
+    mockUseFootball.mockReturnValue(baseFootball({
+      tasks: [
+        baseTask({ id: 'pass-1', title: 'Pasning' }),
+        baseTask({ id: 'sprint-1', title: 'Sprint' }),
+      ],
+    }));
+
+    const { getByTestId, getByText, queryByText } = render(<TasksScreen />);
+
+    fireEvent.changeText(getByTestId('tasks.searchInput'), 'pas');
+    fireEvent.press(getByTestId('tasks.folder.personal'));
+
+    expect(getByText('Pasning')).toBeTruthy();
+    expect(queryByText('Alle aktiviteter')).toBeNull();
+    expect(queryByText('Sprint')).toBeNull();
+  });
+
+  it('filters tasks by selected category', () => {
+    mockUseFootball.mockReturnValue(baseFootball({
+      tasks: [
+        baseTask({ id: 'cat-pass', title: 'Pasning', categoryIds: ['cat-1'] }),
+        baseTask({ id: 'cat-speed', title: 'Sprint', categoryIds: ['cat-2'] }),
       ],
       categories: [
         { id: 'cat-1', name: 'Teknik', color: '#00AAFF', emoji: '⚽️' },
         { id: 'cat-2', name: 'Styrke', color: '#EF4444', emoji: '💪' },
       ],
-      duplicateTask: jest.fn(),
-      deleteTask: jest.fn().mockResolvedValue(undefined),
-      refreshAll: jest.fn().mockResolvedValue(undefined),
-      refreshData: jest.fn().mockResolvedValue(undefined),
-      updateTask: jest.fn().mockResolvedValue(undefined),
-      isLoading: false,
-    });
+    }));
 
-    const { getByTestId, getByText, queryByTestId, queryByText } = render(<TasksScreen />);
+    const { getByTestId, getByText, queryByText } = render(<TasksScreen />);
 
-    fireEvent.press(getByTestId('tasks.folder.toggle.personal'));
-    fireEvent.press(getByTestId('tasks.template.card.template-1'));
+    fireEvent.press(getByTestId('tasks.categoryFilter.button'));
+    fireEvent.press(getByTestId('tasks.categoryFilter.option.cat-1'));
+    fireEvent.press(getByTestId('tasks.folder.personal'));
 
-    expect(getByText('Indsæt link til video')).toBeTruthy();
-    expect(getByText('Teknik')).toBeTruthy();
-    expect(queryByText('Teknik, Styrke')).toBeNull();
-
-    fireEvent.press(getByTestId('tasks.template.categoryDropdownToggle'));
-    fireEvent.press(getByTestId('tasks.template.categoryOption.1'));
-
-    expect(getByText('Teknik, Styrke')).toBeTruthy();
+    expect(getByText('Pasning')).toBeTruthy();
+    expect(getByTestId('tasks.taskCategoryBadge.cat-pass.cat-1')).toBeTruthy();
+    expect(queryByText('Sprint')).toBeNull();
   });
 
-  it('reopens a template with snake_case video_url populated in the editor', () => {
-    mockUseFootball.mockReturnValue({
+  it('validates required title and video URL in the modal', () => {
+    const { getByTestId, getByText } = render(<TasksScreen />);
+
+    fireEvent.press(getByTestId('tasks.header.newTaskButton'));
+    fireEvent.press(getByTestId('tasks.modal.saveButton'));
+    expect(getByText('Titel er påkrævet.')).toBeTruthy();
+
+    fireEvent.changeText(getByTestId('tasks.modal.titleInput'), 'Video opgave');
+    fireEvent.changeText(getByTestId('tasks.modal.videoUrlInput'), 'https://example.com/video');
+    fireEvent.press(getByTestId('tasks.modal.saveButton'));
+
+    expect(getByText('Video URL skal være fra YouTube, youtu.be eller Vimeo.')).toBeTruthy();
+  });
+
+  it('adds, removes and saves subtasks in order', async () => {
+    const { getAllByPlaceholderText, getAllByText, getByTestId } = render(<TasksScreen />);
+
+    fireEvent.press(getByTestId('tasks.header.newTaskButton'));
+    fireEvent.changeText(getByTestId('tasks.modal.titleInput'), 'Template med delopgaver');
+    fireEvent.changeText(getAllByPlaceholderText('Delopgave')[0], 'Første');
+    fireEvent.press(getByTestId('tasks.modal.addSubtaskButton'));
+    fireEvent.changeText(getAllByPlaceholderText('Delopgave')[1], 'Anden');
+    fireEvent.press(getByTestId('tasks.modal.addSubtaskButton'));
+    fireEvent.changeText(getAllByPlaceholderText('Delopgave')[2], 'Tredje');
+    fireEvent.press(getAllByText('minus.circle.fill')[0]);
+    fireEvent.press(getByTestId('tasks.modal.saveButton'));
+
+    await waitFor(() => expect(mockCreateTask).toHaveBeenCalledTimes(1));
+    const createArg = mockCreateTask.mock.calls[0][0];
+    expect(createArg.subtasks.map((subtask: any) => subtask.title)).toEqual(['Anden', 'Tredje']);
+  });
+
+  it('shows delay options for reminder and feedback toggles', () => {
+    const { getByTestId } = render(<TasksScreen />);
+
+    fireEvent.press(getByTestId('tasks.header.newTaskButton'));
+    fireEvent(getByTestId('tasks.modal.reminderToggle'), 'valueChange', true);
+    expect(getByTestId('tasks.modal.reminderOption.15')).toBeTruthy();
+
+    fireEvent(getByTestId('tasks.modal.feedbackToggle'), 'valueChange', true);
+    expect(getByTestId('tasks.modal.feedbackDelayOption.15')).toBeTruthy();
+  });
+
+  it('renders category chips and reopens snake_case video_url in the editor', () => {
+    mockUseFootball.mockReturnValue(baseFootball({
       tasks: [
-        {
-          id: 'template-ig-1',
-          title: 'Instagram template',
-          description: 'test',
-          completed: false,
-          isTemplate: true,
-          categoryIds: [],
-          subtasks: [],
-          video_url: 'https://www.instagram.com/reel/C7N2KQ2uV9x/?igsh=MWQ=',
-          archivedAt: null,
-        },
+        baseTask({
+          id: 'template-video-1',
+          title: 'YouTube template',
+          categoryIds: ['cat-1'],
+          video_url: 'https://youtu.be/abc123',
+        }),
       ],
-      categories: [],
-      duplicateTask: jest.fn(),
-      deleteTask: jest.fn().mockResolvedValue(undefined),
-      refreshAll: jest.fn().mockResolvedValue(undefined),
-      refreshData: jest.fn().mockResolvedValue(undefined),
-      updateTask: jest.fn().mockResolvedValue(undefined),
-      isLoading: false,
-    });
+      categories: [
+        { id: 'cat-1', name: 'Teknik', color: '#00AAFF', emoji: '⚽️' },
+        { id: 'cat-2', name: 'Styrke', color: '#EF4444', emoji: '💪' },
+      ],
+    }));
 
     const { getByDisplayValue, getByTestId } = render(<TasksScreen />);
 
-    fireEvent.press(getByTestId('tasks.folder.toggle.personal'));
-    fireEvent.press(getByTestId('tasks.template.card.template-ig-1'));
-
-    expect(getByDisplayValue('https://www.instagram.com/reel/C7N2KQ2uV9x/?igsh=MWQ=')).toBeTruthy();
+    fireEvent.press(getByTestId('tasks.folder.personal'));
+    fireEvent.press(getByTestId('tasks.taskCard.template-video-1'));
+    expect(getByDisplayValue('https://youtu.be/abc123')).toBeTruthy();
+    fireEvent.press(getByTestId('tasks.modal.categoryOption.1'));
+    expect(getByTestId('tasks.modal.categoryOption.1')).toBeTruthy();
   });
 });

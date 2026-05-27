@@ -56,9 +56,9 @@ export interface Task {
   completed: boolean;
   isTemplate: boolean;
   categoryIds: string[];
-  reminder?: number;
+  reminder?: number | null;
   subtasks: Subtask[];
-  videoUrl?: string;
+  videoUrl?: string | null;
   afterTrainingEnabled?: boolean;
   afterTrainingDelayMinutes?: number | null;
   afterTrainingFeedbackEnableScore?: boolean;
@@ -72,6 +72,10 @@ export interface Task {
   taskTemplateId?: string | null;
   feedbackTemplateId?: string | null;
   isFeedbackTask?: boolean;
+  userId?: string | null;
+  playerId?: string | null;
+  teamId?: string | null;
+  trainerName?: string | null;
   source_folder?: string | null;
   sourceFolder?: string | null;
   archivedAt?: string | null;

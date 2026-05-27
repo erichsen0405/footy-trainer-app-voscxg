@@ -95,6 +95,10 @@ jest.mock('@/integrations/supabase/client', () => {
         }
         return builder;
       },
+      delete: () => {
+        state.action = 'delete';
+        return builder;
+      },
       select: () => builder,
       eq: (column: string, value: unknown) => {
         state.filters.push({ column, value, op: 'eq' });
@@ -106,7 +110,19 @@ jest.mock('@/integrations/supabase/client', () => {
       },
       order: () => builder,
       limit: () => builder,
-      abortSignal: () => builder,
+      abortSignal: () => {
+        if (state.action === 'delete' && state.table === 'task_template_subtasks') {
+          db.taskTemplateSubtasks = db.taskTemplateSubtasks.filter((row) => {
+            return !state.filters.every((filter: any) => {
+              if (filter.op === 'eq') {
+                return (row as any)[filter.column] === filter.value;
+              }
+              return true;
+            });
+          });
+        }
+        return builder;
+      },
       maybeSingle: async () => {
         if (state.table === 'task_templates') {
           const match = db.taskTemplates.find((row) => {
@@ -207,12 +223,12 @@ describe('taskService.createTask library idempotency', () => {
     expect(db.taskTemplates[0].task_duration_minutes).toBe(600);
   });
 
-  it('ignores subtasks when creating via P8 payload', async () => {
+  it('saves subtasks in order when creating via P8 payload', async () => {
     const payload = {
       task: {
         id: '',
-        title: 'Template without subtasks',
-        description: 'Should not persist subtasks',
+        title: 'Template with subtasks',
+        description: 'Should persist subtasks',
         completed: false,
         isTemplate: true,
         categoryIds: [],
@@ -227,9 +243,13 @@ describe('taskService.createTask library idempotency', () => {
       adminTargetId: null,
     };
 
-    await taskService.createTask(payload as any);
+    const created = await taskService.createTask(payload as any);
 
     expect(db.taskTemplates).toHaveLength(1);
-    expect(db.taskTemplateSubtasks).toHaveLength(0);
+    expect(db.taskTemplateSubtasks).toEqual([
+      { task_template_id: 'template-1', title: 'Delopgave A', sort_order: 0 },
+      { task_template_id: 'template-1', title: 'Delopgave B', sort_order: 1 },
+    ]);
+    expect(created.subtasks.map((subtask) => subtask.title)).toEqual(['Delopgave A', 'Delopgave B']);
   });
 });

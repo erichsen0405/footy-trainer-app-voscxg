@@ -193,62 +193,62 @@ tags:
 - openLink: "footballcoach:///(tabs)/tasks"
 - extendedWaitUntil:
     visible:
-      id: '^tasks\.folder\.toggle\.footballcoach$'
+      id: '^tasks\.folder\.inspiration$'
     timeout: 15000
 - assertVisible:
-    id: '^tasks\.folder\.toggle\.footballcoach$'
+    id: '^tasks\.folder\.inspiration$'
 - tapOn:
-    id: '^tasks\.folder\.toggle\.footballcoach$'
+    id: '^tasks\.folder\.inspiration$'
 - extendedWaitUntil:
     visible:
-      id: '^tasks\.template\.card\..*$'
+      id: '^tasks\.taskCard\..*$'
     timeout: 15000
 - tapOn:
-    id: '^tasks\.template\.card\..*$'
+    id: '^tasks\.taskCard\..*$'
     index: 0
 - extendedWaitUntil:
     visible:
-      id: '^tasks\.template\.formBody$'
+      id: '^tasks\.modal\.formBody$'
     timeout: 15000
 - assertVisible:
-    id: '^tasks\.template\.formBody$'
+    id: '^tasks\.modal\.formBody$'
 - tapOn:
-    id: '^tasks\.template\.descriptionInput$'
+    id: '^tasks\.modal\.descriptionInput$'
 - eraseText
 - inputText: "Opdateret via smoke flow"
 - runFlow: _platform_keyboard_commit_input.yaml
 - scrollUntilVisible:
     element:
-      id: '^tasks\.template\.reminderToggle$'
+      id: '^tasks\.modal\.reminderToggle$'
     direction: DOWN
     timeout: 15000
 - tapOn:
-    id: '^tasks\.template\.reminderToggle$'
+    id: '^tasks\.modal\.reminderToggle$'
 - tapOn:
-    id: '^tasks\.template\.reminderOption\.15$'
+    id: '^tasks\.modal\.reminderOption\.15$'
 - swipe:
     start: 50%, 80%
     end: 50%, 30%
 - scrollUntilVisible:
     element:
-      id: '^tasks\.template\.feedbackToggle$'
+      id: '^tasks\.modal\.feedbackToggle$'
     direction: DOWN
     timeout: 15000
 - assertVisible:
-    id: '^tasks\.template\.feedbackToggle$'
+    id: '^tasks\.modal\.feedbackToggle$'
 - runFlow:
     when:
       notVisible:
-        id: '^tasks\.template\.feedbackDelayOption\.15$'
+        id: '^tasks\.modal\.feedbackDelayOption\.15$'
     commands:
       - tapOn:
-          id: '^tasks\.template\.feedbackToggle$'
+          id: '^tasks\.modal\.feedbackToggle$'
 - extendedWaitUntil:
     visible:
-      id: '^tasks\.template\.feedbackDelayOption\.15$'
+      id: '^tasks\.modal\.feedbackDelayOption\.15$'
     timeout: 15000
 - tapOn:
-    id: '^tasks\.template\.feedbackDelayOption\.15$'
+    id: '^tasks\.modal\.feedbackDelayOption\.15$'
 - scrollUntilVisible:
     element:
       text: '.*Fysisk træning.*'
@@ -260,7 +260,7 @@ tags:
     end: 50%, 20%
 - extendedWaitUntil:
     visible:
-      id: '^tasks\.template\.saveButton$'
+      id: '^tasks\.modal\.saveButton$'
     timeout: 15000
 - scrollUntilVisible:
     element:
@@ -269,7 +269,7 @@ tags:
     timeout: 8000
 - tapOn: '.*Fysisk træning.*'
 - tapOn:
-    id: '^tasks\.template\.saveButton$'
+    id: '^tasks\.modal\.saveButton$'
 - runFlow:
     when:
       visible: 'Succes'
@@ -664,17 +664,17 @@ tags:
 - openLink: "footballcoach:///(tabs)/tasks"
 - extendedWaitUntil:
     visible:
-      id: '^tasks\.folder\.toggle\.footballcoach$'
+      id: '^tasks\.folder\.inspiration$'
     timeout: 15000
 - tapOn:
-    id: '^tasks\.folder\.toggle\.footballcoach$'
+    id: '^tasks\.folder\.inspiration$'
 - runFlow:
     when:
       visible:
-        id: '^tasks\.template\.deleteButton\..+$'
+        id: '^tasks\.task\.delete\..+$'
     commands:
       - tapOn:
-          id: '^tasks\.template\.deleteButton\..+$'
+          id: '^tasks\.task\.delete\..+$'
           index: 0
       - runFlow:
           when:
@@ -706,10 +706,10 @@ tags:
 - runFlow:
     when:
       visible:
-        id: '^tasks\.template\.deleteButton\..+$'
+        id: '^tasks\.task\.delete\..+$'
     commands:
       - tapOn:
-          id: '^tasks\.template\.deleteButton\..+$'
+          id: '^tasks\.task\.delete\..+$'
           index: 0
       - runFlow:
           when:
@@ -741,10 +741,10 @@ tags:
 - runFlow:
     when:
       visible:
-        id: '^tasks\.template\.deleteButton\..+$'
+        id: '^tasks\.task\.delete\..+$'
     commands:
       - tapOn:
-          id: '^tasks\.template\.deleteButton\..+$'
+          id: '^tasks\.task\.delete\..+$'
           index: 0
       - runFlow:
           when:
@@ -776,10 +776,10 @@ tags:
 - runFlow:
     when:
       visible:
-        id: '^tasks\.template\.deleteButton\..+$'
+        id: '^tasks\.task\.delete\..+$'
     commands:
       - tapOn:
-          id: '^tasks\.template\.deleteButton\..+$'
+          id: '^tasks\.task\.delete\..+$'
           index: 0
       - runFlow:
           when:
@@ -811,10 +811,10 @@ tags:
 - runFlow:
     when:
       visible:
-        id: '^tasks\.template\.deleteButton\..+$'
+        id: '^tasks\.task\.delete\..+$'
     commands:
       - tapOn:
-          id: '^tasks\.template\.deleteButton\..+$'
+          id: '^tasks\.task\.delete\..+$'
           index: 0
       - runFlow:
           when:
