@@ -6,6 +6,7 @@ import TasksScreen from '../app/(tabs)/tasks';
 const mockUseFootball = jest.fn();
 const mockUseAdmin = jest.fn();
 const mockUseAuthSession = jest.fn();
+const mockUseUserRole = jest.fn();
 
 jest.mock('@/contexts/FootballContext', () => ({
   useFootball: () => mockUseFootball(),
@@ -17,6 +18,10 @@ jest.mock('@/contexts/AdminContext', () => ({
 
 jest.mock('@/contexts/AuthSessionContext', () => ({
   useAuthSession: () => mockUseAuthSession(),
+}));
+
+jest.mock('@/hooks/useUserRole', () => ({
+  useUserRole: () => mockUseUserRole(),
 }));
 
 jest.mock('@react-navigation/native', () => ({
@@ -80,6 +85,7 @@ describe('Tasks delete confirmation modal', () => {
       session: { user: { id: 'user-1' } },
       refreshSession: jest.fn().mockResolvedValue({ user: { id: 'user-1' } }),
     });
+    mockUseUserRole.mockReturnValue({ userRole: 'trainer', loading: false, isAdmin: true });
 
     mockUseAdmin.mockReturnValue({
       adminMode: 'self',
@@ -122,8 +128,8 @@ describe('Tasks delete confirmation modal', () => {
   it('requires case-sensitive SLET before delete confirm can be pressed', () => {
     const { getByTestId, getByText } = render(<TasksScreen />);
 
-    fireEvent.press(getByTestId('tasks.folder.toggle.personal'));
-    fireEvent.press(getByTestId('tasks.template.deleteButton.template-1'));
+    fireEvent.press(getByTestId('tasks.folder.personal'));
+    fireEvent.press(getByTestId('tasks.task.delete.template-1'));
 
     expect(
       getByText(

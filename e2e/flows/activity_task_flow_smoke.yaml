@@ -92,73 +92,73 @@ tags:
 - openLink: 'footballcoach:///(tabs)/tasks'
 - extendedWaitUntil:
     visible:
-      id: '^tasks\.newTemplateButton$'
+      id: '^tasks\.header\.newTaskButton$'
     timeout: 15000
 - tapOn:
-    id: '^tasks\.newTemplateButton$'
+    id: '^tasks\.header\.newTaskButton$'
 - extendedWaitUntil:
     visible:
-      id: '^tasks\.template\.titleInput$'
+      id: '^tasks\.modal\.titleInput$'
     timeout: 15000
 - tapOn:
-    id: '^tasks\.template\.titleInput$'
+    id: '^tasks\.modal\.titleInput$'
 - inputText: 'Maestro Opgave E2E ${MAESTRO_PLATFORM_SUFFIX}'
 - tapOn:
-    id: '^tasks\.template\.descriptionInput$'
+    id: '^tasks\.modal\.descriptionInput$'
 - inputText: 'E2E opgave til activity-task-flow'
 - tapOn:
-    id: '^tasks\.template\.titleInput$'
+    id: '^tasks\.modal\.titleInput$'
 - runFlow: _platform_keyboard_commit_input.yaml
 - scrollUntilVisible:
     element:
-      id: '^tasks\.template\.reminderToggle$'
+      id: '^tasks\.modal\.reminderToggle$'
     direction: DOWN
     timeout: 15000
 - tapOn:
-    id: '^tasks\.template\.reminderToggle$'
+    id: '^tasks\.modal\.reminderToggle$'
 - runFlow:
     when:
       visible:
-        id: '^tasks\.template\.reminderOption\.15$'
+        id: '^tasks\.modal\.reminderOption\.15$'
     commands:
       - tapOn:
-          id: '^tasks\.template\.reminderOption\.15$'
+          id: '^tasks\.modal\.reminderOption\.15$'
 - swipe:
     start: 50%, 80%
     end: 50%, 30%
 - scrollUntilVisible:
     element:
-      id: '^tasks\.template\.feedbackToggle$'
+      id: '^tasks\.modal\.feedbackToggle$'
     direction: DOWN
     timeout: 15000
 - tapOn:
-    id: '^tasks\.template\.feedbackToggle$'
+    id: '^tasks\.modal\.feedbackToggle$'
 - runFlow:
     when:
       visible:
-        id: '^tasks\.template\.feedbackDelayOption\.15$'
+        id: '^tasks\.modal\.feedbackDelayOption\.15$'
     commands:
       - tapOn:
-          id: '^tasks\.template\.feedbackDelayOption\.15$'
+          id: '^tasks\.modal\.feedbackDelayOption\.15$'
 - scrollUntilVisible:
     element:
-      id: '^tasks\.template\.categoryDropdownToggle$'
+      id: '^tasks\.modal\.categoryDropdownToggle$'
     direction: DOWN
     timeout: 15000
 - tapOn:
-    id: '^tasks\.template\.categoryDropdownToggle$'
+    id: '^tasks\.modal\.categoryDropdownToggle$'
 - swipe:
     start: 50%, 80%
     end: 50%, 20%
 - scrollUntilVisible:
     element:
-      id: '^tasks\.template\.categoryOption\.3$'
+      id: '^tasks\.modal\.categoryOption\.3$'
     direction: DOWN
     timeout: 15000
 - tapOn:
-    id: '^tasks\.template\.categoryOption\.3$'
+    id: '^tasks\.modal\.categoryOption\.3$'
 - tapOn:
-    id: '^tasks\.template\.saveButton$'
+    id: '^tasks\.modal\.saveButton$'
 - runFlow:
     when:
       visible: 'Succes'
@@ -437,10 +437,10 @@ tags:
 - openLink: 'footballcoach:///(tabs)/tasks'
 - extendedWaitUntil:
     visible:
-      id: '^tasks\.folder\.toggle\.personal$'
+      id: '^tasks\.folder\.personal$'
     timeout: 15000
 - tapOn:
-    id: '^tasks\.folder\.toggle\.personal$'
+    id: '^tasks\.folder\.personal$'
 - runFlow:
     when:
       visible:
@@ -452,7 +452,7 @@ tags:
 - tapOn:
     id: '^tasks\.template\.filter\.archivedButton$'
 - assertVisible:
-    id: '^tasks\.template\.card\..+$'
+    id: '^tasks\.taskCard\..+$'
 - tapOn:
     id: '^tasks\.template\.filter\.activeButton$'
 
@@ -494,39 +494,39 @@ tags:
     id: '^tasks\.template\.filter\.archivedButton$'
 - extendedWaitUntil:
     visible:
-      id: '^tasks\.folder\.toggle\.personal$'
+      id: '^tasks\.folder\.personal$'
     timeout: 15000
 - scrollUntilVisible:
     element:
-      id: '^tasks\.folder\.toggle\.personal$'
+      id: '^tasks\.folder\.personal$'
     direction: UP
     timeout: 10000
 - tapOn:
-    id: '^tasks\.folder\.toggle\.personal$'
+    id: '^tasks\.folder\.personal$'
 - runFlow:
     when:
       notVisible:
-        id: '^tasks\.template\.deleteButton\..+$'
+        id: '^tasks\.task\.delete\..+$'
     commands:
       - tapOn:
-          id: '^tasks\.folder\.toggle\.personal$'
+          id: '^tasks\.folder\.personal$'
 - runFlow:
     when:
       notVisible:
-        id: '^tasks\.template\.deleteButton\..+$'
+        id: '^tasks\.task\.delete\..+$'
     commands:
       - scrollUntilVisible:
           element:
-            id: '^tasks\.template\.deleteButton\..+$'
+            id: '^tasks\.task\.delete\..+$'
           direction: DOWN
           timeout: 10000
 - runFlow:
     when:
       visible:
-        id: '^tasks\.template\.deleteButton\..+$'
+        id: '^tasks\.task\.delete\..+$'
     commands:
       - tapOn:
-          id: '^tasks\.template\.deleteButton\..+$'
+          id: '^tasks\.task\.delete\..+$'
           index: 0
       - runFlow:
           when:

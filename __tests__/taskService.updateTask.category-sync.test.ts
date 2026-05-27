@@ -15,6 +15,8 @@ type ActivityTaskRow = {
 type ActivityRow = {
   id: string;
   category_id: string | null;
+  activity_date: string;
+  activity_time: string;
 };
 
 type ExternalEventTaskRow = {
@@ -27,6 +29,11 @@ type ExternalEventTaskRow = {
 type ExternalMetaRow = {
   id: string;
   category_id: string | null;
+  local_start_override?: string | null;
+  events_external?: {
+    start_date: string;
+    start_time: string;
+  } | null;
 };
 
 const db = {
@@ -69,7 +76,7 @@ jest.mock('@/integrations/supabase/client', () => {
 
     const execute = async () => {
       if (table === 'task_templates' && state.action === 'update') {
-        return { error: null };
+        return { data: [{ id: 'template-1' }], error: null };
       }
 
       if (table === 'task_template_categories' && state.action === 'delete') {
@@ -132,7 +139,9 @@ jest.mock('@/integrations/supabase/client', () => {
 
     const builder: any = {
       select: () => {
-        state.action = 'select';
+        if (!state.action) {
+          state.action = 'select';
+        }
         return builder;
       },
       update: (payload: any) => {
@@ -200,10 +209,23 @@ describe('taskService.updateTask category sync cleanup', () => {
         task_template_id: null,
         feedback_template_id: 'template-1',
       },
+      {
+        id: 'activity-task-past-remove',
+        activity_id: 'activity-past-remove',
+        task_template_id: 'template-1',
+        feedback_template_id: null,
+      },
+      {
+        id: 'activity-feedback-past-remove',
+        activity_id: 'activity-past-remove',
+        task_template_id: null,
+        feedback_template_id: 'template-1',
+      },
     ];
     db.activities = [
-      { id: 'activity-keep', category_id: 'cat-keep' },
-      { id: 'activity-remove', category_id: 'cat-remove' },
+      { id: 'activity-keep', category_id: 'cat-keep', activity_date: '2999-01-01', activity_time: '10:00:00' },
+      { id: 'activity-remove', category_id: 'cat-remove', activity_date: '2999-01-01', activity_time: '10:00:00' },
+      { id: 'activity-past-remove', category_id: 'cat-remove', activity_date: '2000-01-01', activity_time: '10:00:00' },
     ];
     db.externalEventTasks = [
       {
@@ -224,15 +246,40 @@ describe('taskService.updateTask category sync cleanup', () => {
         task_template_id: null,
         feedback_template_id: 'template-1',
       },
+      {
+        id: 'external-task-past-remove',
+        local_meta_id: 'meta-past-remove',
+        task_template_id: 'template-1',
+        feedback_template_id: null,
+      },
+      {
+        id: 'external-feedback-past-remove',
+        local_meta_id: 'meta-past-remove',
+        task_template_id: null,
+        feedback_template_id: 'template-1',
+      },
     ];
     db.externalMeta = [
-      { id: 'meta-keep', category_id: 'cat-keep' },
-      { id: 'meta-remove', category_id: 'cat-remove' },
+      {
+        id: 'meta-keep',
+        category_id: 'cat-keep',
+        events_external: { start_date: '2999-01-01', start_time: '10:00:00' },
+      },
+      {
+        id: 'meta-remove',
+        category_id: 'cat-remove',
+        events_external: { start_date: '2999-01-01', start_time: '10:00:00' },
+      },
+      {
+        id: 'meta-past-remove',
+        category_id: 'cat-remove',
+        events_external: { start_date: '2000-01-01', start_time: '10:00:00' },
+      },
     ];
     db.rpcCalls = [];
   });
 
-  it('removes stale activity and external tasks when a template category is removed', async () => {
+  it('removes stale future activity and external tasks when a template category is removed', async () => {
     await taskService.updateTask('template-1', 'user-1', {
       categoryIds: ['cat-keep'],
     });
@@ -248,6 +295,18 @@ describe('taskService.updateTask category sync cleanup', () => {
         task_template_id: 'template-1',
         feedback_template_id: null,
       },
+      {
+        id: 'activity-task-past-remove',
+        activity_id: 'activity-past-remove',
+        task_template_id: 'template-1',
+        feedback_template_id: null,
+      },
+      {
+        id: 'activity-feedback-past-remove',
+        activity_id: 'activity-past-remove',
+        task_template_id: null,
+        feedback_template_id: 'template-1',
+      },
     ]);
 
     expect(db.externalEventTasks).toEqual([
@@ -257,7 +316,31 @@ describe('taskService.updateTask category sync cleanup', () => {
         task_template_id: 'template-1',
         feedback_template_id: null,
       },
+      {
+        id: 'external-task-past-remove',
+        local_meta_id: 'meta-past-remove',
+        task_template_id: 'template-1',
+        feedback_template_id: null,
+      },
+      {
+        id: 'external-feedback-past-remove',
+        local_meta_id: 'meta-past-remove',
+        task_template_id: null,
+        feedback_template_id: 'template-1',
+      },
     ]);
+
+    expect(db.rpcCalls).toContainEqual({
+      fn: 'update_all_tasks_from_template',
+      args: {
+        p_template_id: 'template-1',
+        p_dry_run: false,
+      },
+    });
+  });
+
+  it('syncs future activities when a task template is archived', async () => {
+    await taskService.setTaskTemplateArchived('template-1', 'user-1', true);
 
     expect(db.rpcCalls).toContainEqual({
       fn: 'update_all_tasks_from_template',
