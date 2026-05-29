@@ -1,7 +1,12 @@
 /* global beforeAll, afterEach, afterAll, jest */
 import "@testing-library/jest-native/extend-expect";
 import mockAsyncStorage from '@react-native-async-storage/async-storage/jest/async-storage-mock';
+import WebSocket from 'ws';
 import { mockApiServer, resetMockApiState } from './test-harness';
+
+if (typeof globalThis.WebSocket === 'undefined') {
+  globalThis.WebSocket = WebSocket;
+}
 
 jest.mock('@react-native-async-storage/async-storage', () => mockAsyncStorage);
 jest.mock('expo-av', () => {
