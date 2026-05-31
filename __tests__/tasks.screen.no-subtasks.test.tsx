@@ -175,7 +175,7 @@ describe('Tasks template editor without subtasks', () => {
     fireEvent.press(getByTestId('tasks.folder.toggle.personal'));
     fireEvent.press(getByTestId('tasks.template.card.template-1'));
 
-    expect(getByText('Video')).toBeTruthy();
+    expect(getByText('Videoer')).toBeTruthy();
     expect(getByText('Vælg video fra telefon')).toBeTruthy();
     expect(getByText('Teknik')).toBeTruthy();
     expect(queryByText('Teknik, Styrke')).toBeNull();
@@ -210,11 +210,13 @@ describe('Tasks template editor without subtasks', () => {
       isLoading: false,
     });
 
-    const { getByDisplayValue, getByTestId } = render(<TasksScreen />);
+    const { getAllByText, getByTestId, getByText, queryByDisplayValue } = render(<TasksScreen />);
 
     fireEvent.press(getByTestId('tasks.folder.toggle.personal'));
     fireEvent.press(getByTestId('tasks.template.card.template-ig-1'));
 
-    expect(getByDisplayValue('https://www.instagram.com/reel/C7N2KQ2uV9x/?igsh=MWQ=')).toBeTruthy();
+    expect(getByText('Video 1')).toBeTruthy();
+    expect(getAllByText('Instagram').length).toBeGreaterThan(0);
+    expect(queryByDisplayValue('https://www.instagram.com/reel/C7N2KQ2uV9x/?igsh=MWQ=')).toBeNull();
   });
 });

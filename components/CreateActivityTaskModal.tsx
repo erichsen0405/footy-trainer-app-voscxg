@@ -19,6 +19,7 @@ import type { TablesInsert, TablesUpdate } from '@/integrations/supabase/types';
 import { scheduleTaskReminderImmediate } from '@/utils/notificationScheduler';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { pickAndUploadTaskVideo } from '@/utils/taskVideoUpload';
+import { buildTaskVideoPayload, mergeTaskVideoUrls } from '@/utils/taskVideos';
 import { isPlayableVideoUrl } from '@/utils/videoUrlParser';
 
 /*
@@ -64,7 +65,6 @@ const REMINDER_DELAY_OPTIONS = [
 ] as const;
 const LOCAL_ACTIVITY_TEMPLATE_SOURCE = 'activity_local_task';
 const TASK_LOCAL_OPTIONAL_COLUMNS = [
-  'video_url',
   'after_training_enabled',
   'after_training_delay_minutes',
   'task_duration_enabled',
@@ -108,7 +108,6 @@ const hasMissingTaskFeedbackOptionError = (error: any): boolean =>
 
 const omitTaskLocalOptions = (payload: Record<string, any>): Record<string, any> => {
   const next = { ...payload };
-  delete next.video_url;
   delete next.after_training_enabled;
   delete next.after_training_delay_minutes;
   delete next.task_duration_enabled;
@@ -179,7 +178,9 @@ interface CreateActivityTaskModalProps {
     task_duration_minutes?: number | null;
     taskDurationMinutes?: number | null;
     video_url?: string | null;
+    video_urls?: string[] | null;
     videoUrl?: string | null;
+    videoUrls?: string[] | null;
   };
   activityId: string;
   activityTitle: string;
@@ -209,7 +210,8 @@ export function CreateActivityTaskModal({
   const [afterTrainingDelayMinutes, setAfterTrainingDelayMinutes] = useState('0');
   const [hasTaskDuration, setHasTaskDuration] = useState(false);
   const [taskDurationMinutes, setTaskDurationMinutes] = useState('0');
-  const [videoUrl, setVideoUrl] = useState('');
+  const [videoUrls, setVideoUrls] = useState<string[]>([]);
+  const [videoUrlInput, setVideoUrlInput] = useState('');
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
   const [subtasks, setSubtasks] = useState<SubtaskDraft[]>([{ id: createLocalId(), title: '' }]);
   const [isLoading, setIsLoading] = useState(false);
@@ -268,6 +270,7 @@ export function CreateActivityTaskModal({
       templateTitle,
       templateDescription,
       templateVideoUrl,
+      templateVideoUrls,
       reminderMinutes,
       feedbackEnabled,
       feedbackDelayMinutes,
@@ -279,6 +282,7 @@ export function CreateActivityTaskModal({
       templateTitle: string;
       templateDescription: string;
       templateVideoUrl: string | null;
+      templateVideoUrls: string[] | null;
       reminderMinutes: number | null;
       feedbackEnabled: boolean;
       feedbackDelayMinutes: number | null;
@@ -312,6 +316,7 @@ export function CreateActivityTaskModal({
         title: templateTitle,
         description: templateDescription,
         video_url: templateVideoUrl,
+        video_urls: templateVideoUrls,
         reminder_minutes: reminderMinutes,
         after_training_enabled: feedbackEnabled,
         after_training_delay_minutes: feedbackEnabled ? feedbackDelayMinutes : null,
@@ -746,6 +751,17 @@ export function CreateActivityTaskModal({
     [normalizeDurationInput],
   );
 
+  const handleAddVideoUrl = useCallback(() => {
+    const trimmed = videoUrlInput.trim();
+    if (!trimmed) return;
+    if (!isPlayableVideoUrl(trimmed)) {
+      Alert.alert('Fejl', 'Ugyldig video. Brug YouTube, Vimeo, Instagram eller en uploadet videofil.');
+      return;
+    }
+    setVideoUrls(prev => mergeTaskVideoUrls(prev, trimmed));
+    setVideoUrlInput('');
+  }, [videoUrlInput]);
+
   const handlePickVideo = useCallback(async () => {
     if (!userId) {
       Alert.alert('Fejl', 'Du skal være logget ind for at uploade video.');
@@ -756,8 +772,8 @@ export function CreateActivityTaskModal({
     try {
       const uploadedVideo = await pickAndUploadTaskVideo(userId);
       if (!uploadedVideo) return;
-      setVideoUrl(uploadedVideo.publicUrl);
-      Alert.alert('Video uploadet', 'Videoen er klar til at blive gemt på opgaven.');
+      setVideoUrls(prev => mergeTaskVideoUrls(prev, uploadedVideo.publicUrl));
+      Alert.alert('Video uploadet', 'Videoen er føjet til opgaven.');
     } catch (error: any) {
       Alert.alert('Fejl', error?.message || 'Kunne ikke uploade video.');
     } finally {
@@ -776,7 +792,8 @@ export function CreateActivityTaskModal({
       setAfterTrainingDelayMinutes('0');
       setHasTaskDuration(false);
       setTaskDurationMinutes('0');
-      setVideoUrl('');
+      setVideoUrls([]);
+      setVideoUrlInput('');
       setSubtasks([{ id: createLocalId(), title: '' }]);
       return;
     }
@@ -803,7 +820,13 @@ export function CreateActivityTaskModal({
     setAfterTrainingDelayMinutes(String(normalizeDurationInput(String(afterTrainingDelay))));
     setHasTaskDuration(durationEnabled);
     setTaskDurationMinutes(String(normalizeDurationInput(String(durationMinutesRaw))));
-    setVideoUrl(String(editingTask.videoUrl ?? editingTask.video_url ?? ''));
+    setVideoUrls(buildTaskVideoPayload([
+      ...(Array.isArray(editingTask.videoUrls) ? editingTask.videoUrls : []),
+      ...(Array.isArray(editingTask.video_urls) ? editingTask.video_urls : []),
+      editingTask.videoUrl,
+      editingTask.video_url,
+    ]).videoUrls);
+    setVideoUrlInput('');
   }, [editingTask, isEditMode, normalizeDurationInput, visible]);
 
   useEffect(() => {
@@ -942,6 +965,11 @@ export function CreateActivityTaskModal({
       return;
     }
 
+    if (videoUrlInput.trim() && !isPlayableVideoUrl(videoUrlInput)) {
+      Alert.alert('Fejl', 'Ugyldig video. Brug YouTube, Vimeo, Instagram eller en uploadet videofil.');
+      return;
+    }
+
     if (!activityExists || !resolvedActivityLinkId) {
       Alert.alert(
         'Vent venligst',
@@ -965,7 +993,7 @@ export function CreateActivityTaskModal({
       const taskDurationPayload = hasTaskDuration
         ? normalizeDurationInput(taskDurationMinutes)
         : null;
-      const videoUrlPayload = videoUrl.trim() ? videoUrl.trim() : null;
+      const videoPayload = buildTaskVideoPayload([...videoUrls, videoUrlInput]);
 
       const localTemplateId = await upsertLocalTaskTemplate({
         ownerUserId: userId,
@@ -975,7 +1003,8 @@ export function CreateActivityTaskModal({
             : null,
         templateTitle: title.trim(),
         templateDescription: description.trim(),
-        templateVideoUrl: videoUrlPayload,
+        templateVideoUrl: videoPayload.videoUrl,
+        templateVideoUrls: videoPayload.video_urls,
         reminderMinutes: reminderPayload,
         feedbackEnabled: hasAfterTrainingFeedback,
         feedbackDelayMinutes: feedbackDelayPayload,
@@ -985,7 +1014,7 @@ export function CreateActivityTaskModal({
       const baseTaskPayload: Record<string, any> = {
         title: title.trim(),
         description: description.trim(),
-        video_url: videoUrlPayload,
+        video_urls: videoPayload.video_urls,
         completed: false,
         reminder_minutes: reminderPayload,
         task_template_id: localTemplateId,
@@ -1205,7 +1234,8 @@ export function CreateActivityTaskModal({
           isTemplate: false,
           categoryIds: [],
           reminder: reminderPayload ?? undefined,
-          videoUrl: videoUrlPayload ?? undefined,
+          videoUrl: videoPayload.videoUrl ?? undefined,
+          videoUrls: videoPayload.videoUrls,
           afterTrainingEnabled: hasAfterTrainingFeedback,
           afterTrainingDelayMinutes: hasAfterTrainingFeedback
             ? normalizeDurationInput(afterTrainingDelayMinutes)
@@ -1228,7 +1258,8 @@ export function CreateActivityTaskModal({
       setAfterTrainingDelayMinutes('0');
       setHasTaskDuration(false);
       setTaskDurationMinutes('0');
-      setVideoUrl('');
+      setVideoUrls([]);
+      setVideoUrlInput('');
       setSubtasks([{ id: createLocalId(), title: '' }]);
       onClose();
     } catch (error: any) {
@@ -1262,7 +1293,8 @@ export function CreateActivityTaskModal({
     afterTrainingDelayMinutes,
     hasTaskDuration,
     taskDurationMinutes,
-    videoUrl,
+    videoUrls,
+    videoUrlInput,
     normalizeDurationInput,
     upsertLocalTaskTemplate,
     syncActivitySubtasks,
@@ -1356,29 +1388,33 @@ export function CreateActivityTaskModal({
 
             <View style={styles.videoSection}>
               <View style={styles.videoLabelRow}>
-                <Text style={styles.label}>Video</Text>
-                {videoUrl.trim() ? (
-                  <TouchableOpacity
-                    style={styles.removeVideoButton}
-                    onPress={() => setVideoUrl('')}
-                    disabled={!activityExists || isUploadingVideo}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.removeVideoButtonText}>Fjern video</Text>
-                  </TouchableOpacity>
-                ) : null}
+                <Text style={styles.label}>Videoer</Text>
+                <Text style={styles.videoCountText}>
+                  {videoUrls.length ? `${videoUrls.length} tilføjet` : 'Ingen tilføjet'}
+                </Text>
               </View>
               <TextInput
                 style={styles.input}
-                value={videoUrl}
-                onChangeText={setVideoUrl}
-                placeholder="YouTube, Vimeo, Instagram eller upload fra telefon"
+                value={videoUrlInput}
+                onChangeText={setVideoUrlInput}
+                placeholder="Indsæt YouTube, Vimeo, Instagram eller video-link"
                 placeholderTextColor={colors.textSecondary}
                 autoCapitalize="none"
                 autoCorrect={false}
                 keyboardType="url"
                 editable={activityExists && !isUploadingVideo}
               />
+              <TouchableOpacity
+                style={[
+                  styles.addVideoUrlButton,
+                  (!activityExists || isUploadingVideo || !videoUrlInput.trim()) && styles.uploadVideoButtonDisabled,
+                ]}
+                onPress={handleAddVideoUrl}
+                disabled={!activityExists || isUploadingVideo || !videoUrlInput.trim()}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.addVideoUrlButtonText}>Tilføj video-link</Text>
+              </TouchableOpacity>
               <TouchableOpacity
                 style={[
                   styles.uploadVideoButton,
@@ -1392,10 +1428,32 @@ export function CreateActivityTaskModal({
                   {isUploadingVideo ? 'Uploader video...' : 'Vælg video fra telefon'}
                 </Text>
               </TouchableOpacity>
-              {videoUrl.trim() && isPlayableVideoUrl(videoUrl) ? (
-                <Text style={styles.videoSuccessText}>Videoen afspilles direkte i opgaven efter gem.</Text>
+              {videoUrls.length ? (
+                <View style={styles.videoList}>
+                  {videoUrls.map((url, index) => (
+                    <View key={`${url}-${index}`} style={styles.videoListItem}>
+                      <View style={styles.videoListTextWrap}>
+                        <Text style={styles.videoListTitle}>Video {index + 1}</Text>
+                        <Text style={styles.videoListSubtitle} numberOfLines={1}>
+                          {videoUrls.length > 1 ? 'Swipe i opgaven for at skifte video' : 'Afspilles direkte i opgaven'}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.removeVideoButton}
+                        onPress={() => setVideoUrls(prev => prev.filter((_, currentIndex) => currentIndex !== index))}
+                        disabled={!activityExists || isUploadingVideo}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.removeVideoButtonText}>Fjern</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  {videoUrls.length > 1 ? (
+                    <Text style={styles.videoSuccessText}>Swipe til siden i opgaven for at afspille næste video.</Text>
+                  ) : null}
+                </View>
               ) : null}
-              {videoUrl.trim() && !isPlayableVideoUrl(videoUrl) ? (
+              {videoUrlInput.trim() && !isPlayableVideoUrl(videoUrlInput) ? (
                 <Text style={styles.videoErrorText}>
                   Ugyldig video. Brug YouTube, Vimeo, Instagram eller en uploadet videofil.
                 </Text>
@@ -1706,6 +1764,11 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 8,
   },
+  videoCountText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
   removeVideoButton: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -1729,6 +1792,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 10,
+    marginTop: 8,
+  },
+  addVideoUrlButton: {
+    minHeight: 40,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  addVideoUrlButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.primary,
   },
   uploadVideoButtonDisabled: {
     opacity: 0.6,
@@ -1742,6 +1822,37 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.primary,
     marginTop: 8,
+  },
+  videoList: {
+    gap: 8,
+    marginTop: 10,
+  },
+  videoListItem: {
+    minHeight: 54,
+    borderRadius: 10,
+    backgroundColor: colors.cardBackground,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  videoListTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  videoListTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  videoListSubtitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   videoErrorText: {
     fontSize: 13,

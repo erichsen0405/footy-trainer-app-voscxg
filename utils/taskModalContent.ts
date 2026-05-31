@@ -1,16 +1,17 @@
 import { supabase } from '@/integrations/supabase/client';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
+import { getPrimaryTaskVideoUrl, getTaskVideoUrls } from '@/utils/taskVideos';
 
 function trimString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
 export function getTaskModalVideoUrl(task: any): string | null {
-  if (!task) return null;
-  const camel = trimString(task.videoUrl);
-  if (camel) return camel;
-  const snake = trimString(task.video_url);
-  return snake || null;
+  return getPrimaryTaskVideoUrl(task);
+}
+
+export function getTaskModalVideoUrls(task: any): string[] {
+  return getTaskVideoUrls(task);
 }
 
 export function shouldHydrateTaskForModal(task: any): boolean {
@@ -40,15 +41,17 @@ export function getTaskModalTemplateId(task: any): string | null {
 
 function normalizeTaskForModal<T extends Record<string, any>>(
   task: T,
-  fallback: { title?: string | null; description?: string | null; video_url?: string | null }
+  fallback: { title?: string | null; description?: string | null; video_url?: string | null; video_urls?: string[] | null }
 ): T {
   const localTitle = trimString(task.title);
   const localDescription = trimString(task.description);
-  const localVideo = getTaskModalVideoUrl(task);
+  const localVideos = getTaskModalVideoUrls(task);
+  const fallbackVideos = getTaskModalVideoUrls(fallback);
 
   const nextTitle = localTitle || trimString(fallback.title) || String(task.title ?? '');
   const nextDescription = localDescription || trimString(fallback.description);
-  const nextVideo = localVideo || trimString(fallback.video_url) || null;
+  const nextVideos = localVideos.length ? localVideos : fallbackVideos;
+  const nextVideo = nextVideos[0] ?? null;
 
   return {
     ...task,
@@ -56,6 +59,8 @@ function normalizeTaskForModal<T extends Record<string, any>>(
     description: nextDescription,
     video_url: nextVideo,
     videoUrl: nextVideo ?? undefined,
+    video_urls: nextVideos.length ? nextVideos : null,
+    videoUrls: nextVideos,
   };
 }
 
@@ -71,7 +76,7 @@ export async function hydrateTaskForModal<T extends Record<string, any>>(task: T
   try {
     const { data, error } = await supabase
       .from('task_templates')
-      .select('id, title, description, video_url')
+      .select('id, title, description, video_url, video_urls')
       .eq('id', templateId)
       .maybeSingle();
 
@@ -79,10 +84,12 @@ export async function hydrateTaskForModal<T extends Record<string, any>>(task: T
       return normalizeTaskForModal(task, {});
     }
 
+    const row = data as any;
     return normalizeTaskForModal(task, {
-      title: data.title ?? null,
-      description: data.description ?? null,
-      video_url: data.video_url ?? null,
+      title: row.title ?? null,
+      description: row.description ?? null,
+      video_url: row.video_url ?? null,
+      video_urls: Array.isArray(row.video_urls) ? row.video_urls : null,
     });
   } catch {
     return normalizeTaskForModal(task, {});

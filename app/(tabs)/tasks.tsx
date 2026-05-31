@@ -24,14 +24,15 @@ import { useAdmin } from '@/contexts/AdminContext';
 import { useAuthSession } from '@/contexts/AuthSessionContext';
 import { Task } from '@/types';
 import { IconSymbol } from '@/components/IconSymbol';
-import SmartVideoPlayer from '@/components/SmartVideoPlayer';
+import SwipeVideoPlayer from '@/components/SwipeVideoPlayer';
 import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { AdminContextWrapper } from '@/components/AdminContextWrapper';
 import { taskService } from '@/services/taskService';
 import { forceRefreshNotificationQueue } from '@/utils/notificationScheduler';
 import { emitActivitiesRefreshRequested } from '@/utils/activityEvents';
-import { getTaskModalVideoUrl } from '@/utils/taskModalContent';
+import { getTaskModalVideoUrl, getTaskModalVideoUrls } from '@/utils/taskModalContent';
 import { pickAndUploadTaskVideo } from '@/utils/taskVideoUpload';
+import { buildTaskVideoPayload, mergeTaskVideoUrls, normalizeTaskVideoUrls } from '@/utils/taskVideos';
 import { isDirectVideoUrl, isPlayableVideoUrl } from '@/utils/videoUrlParser';
 
 // ✅ Robust import: undgå Hermes-crash hvis named export "colors" ikke findes
@@ -119,7 +120,7 @@ interface FolderItem {
 }
 
 type PendingAction =
-  | { type: 'create' | 'edit'; data: { task: Task; videoUrl: string; isCreating: boolean } }
+  | { type: 'create' | 'edit'; data: { task: Task; videoUrls: string[]; isCreating: boolean } }
   | { type: 'delete'; data: { taskId: string } };
 
 const DELETE_TEMPLATE_CONFIRM_TEXT = 'SLET';
@@ -250,13 +251,15 @@ export const TaskCard = React.memo(
     onDuplicate: () => void;
     onArchive?: () => void;
     onDelete: () => void;
-    onVideoPress: (url: string) => void;
+    onVideoPress: (urls: string[], initialIndex?: number) => void;
     getCategoryNames: (categoryIds: string[]) => string;
     isArchived?: boolean;
   }) => {
-    const videoUrl = getTaskModalVideoUrl(task);
+    const videoUrls = getTaskModalVideoUrls(task);
+    const videoUrl = videoUrls[0] ?? null;
     const ytThumb = typeof videoUrl === 'string' && videoUrl.includes('youtu') ? getYouTubeThumbnail(videoUrl) : null;
     const taskId = String((task as any)?.id ?? '');
+    const hasMultipleVideos = videoUrls.length > 1;
 
     return (
       <TouchableOpacity
@@ -297,7 +300,7 @@ export const TaskCard = React.memo(
         </View>
 
         {videoUrl && isValidVideoUrl(videoUrl) && (
-          <TouchableOpacity style={styles.videoThumbnailWrapper} onPress={() => onVideoPress(videoUrl)} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.videoThumbnailWrapper} onPress={() => onVideoPress(videoUrls, 0)} activeOpacity={0.85}>
             {ytThumb ? (
               <Image source={{ uri: ytThumb }} style={styles.videoThumbnail} resizeMode="cover" />
             ) : (
@@ -308,6 +311,11 @@ export const TaskCard = React.memo(
             <View style={styles.videoOverlay}>
               <IconSymbol ios_icon_name="play.circle.fill" android_material_icon_name="play_circle" size={56} color="#fff" />
             </View>
+            {hasMultipleVideos ? (
+              <View style={styles.videoSwipeBadge}>
+                <Text style={styles.videoSwipeBadgeText}>{videoUrls.length} videoer - swipe</Text>
+              </View>
+            ) : null}
           </TouchableOpacity>
         )}
 
@@ -460,10 +468,12 @@ export default function TasksScreen() {
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
 
-  const [videoUrl, setVideoUrl] = useState('');
+  const [videoUrls, setVideoUrls] = useState<string[]>([]);
+  const [videoUrlInput, setVideoUrlInput] = useState('');
 
   const [showVideoModal, setShowVideoModal] = useState(false);
-  const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
+  const [selectedVideoUrls, setSelectedVideoUrls] = useState<string[]>([]);
+  const [selectedVideoIndex, setSelectedVideoIndex] = useState(0);
 
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
@@ -543,7 +553,8 @@ export default function TasksScreen() {
     setSelectedTask(normalizedTask);
     setIsCreating(creating);
     setIsSaving(false);
-    setVideoUrl(getTaskModalVideoUrl(task) ?? '');
+    setVideoUrls(getTaskModalVideoUrls(task));
+    setVideoUrlInput('');
     setIsModalVisible(true);
   }, []);
 
@@ -552,7 +563,8 @@ export default function TasksScreen() {
     setIsCreating(false);
     setIsModalVisible(false);
     setIsCategoryDropdownOpen(false);
-    setVideoUrl('');
+    setVideoUrls([]);
+    setVideoUrlInput('');
     setIsSaving(false);
     setIsUploadingVideo(false);
   }, []);
@@ -565,8 +577,14 @@ export default function TasksScreen() {
       return;
     }
 
+    if (videoUrlInput.trim() && !isValidVideoUrl(videoUrlInput)) {
+      Alert.alert('Fejl', 'Ugyldig video. Brug YouTube, Vimeo, Instagram eller en uploadet videofil.');
+      return;
+    }
+
     const normalizedReminder = normalizeReminderValue((selectedTask as any).reminder);
     const successMessage = isCreating ? 'Opgaveskabelon oprettet' : 'Opgaveskabelon opdateret';
+    const videoPayload = buildTaskVideoPayload([...videoUrls, videoUrlInput]);
     setIsSaving(true);
 
     try {
@@ -574,7 +592,10 @@ export default function TasksScreen() {
       const taskToSave = {
         ...selectedTask,
         reminder: normalizedReminder,
-        videoUrl: videoUrl.trim() ? videoUrl.trim() : null,
+        videoUrl: videoPayload.videoUrl,
+        videoUrls: videoPayload.videoUrls,
+        video_url: videoPayload.video_url,
+        video_urls: videoPayload.video_urls,
         categoryIds,
         afterTrainingEnabled: selectedTask.afterTrainingEnabled ?? false,
         afterTrainingDelayMinutes: selectedTask.afterTrainingEnabled ? (selectedTask.afterTrainingDelayMinutes ?? 0) : null,
@@ -600,7 +621,10 @@ export default function TasksScreen() {
         const taskToSave = {
           ...selectedTask,
           reminder: normalizedReminder,
-          videoUrl: videoUrl.trim() ? videoUrl.trim() : null,
+          videoUrl: videoPayload.videoUrl,
+          videoUrls: videoPayload.videoUrls,
+          video_url: videoPayload.video_url,
+          video_urls: videoPayload.video_urls,
           categoryIds,
           afterTrainingEnabled: selectedTask.afterTrainingEnabled ?? false,
           afterTrainingDelayMinutes: selectedTask.afterTrainingEnabled ? (selectedTask.afterTrainingDelayMinutes ?? 0) : null,
@@ -626,7 +650,7 @@ export default function TasksScreen() {
     } finally {
       setIsSaving(false);
     }
-  }, [selectedTask, isCreating, adminMode, adminTargetId, adminTargetType, videoUrl, isUploadingVideo, updateTask, refreshAll, closeTaskModal]);
+  }, [selectedTask, isCreating, adminMode, adminTargetId, adminTargetType, videoUrls, videoUrlInput, isUploadingVideo, updateTask, refreshAll, closeTaskModal]);
 
   const handleSaveTask = useCallback(async () => {
     if (!selectedTask) return;
@@ -634,14 +658,14 @@ export default function TasksScreen() {
     if (adminMode !== 'self' && selectedContext?.type) {
       setPendingAction({
         type: isCreating ? 'create' : 'edit',
-        data: { task: selectedTask, videoUrl, isCreating },
+        data: { task: selectedTask, videoUrls: buildTaskVideoPayload([...videoUrls, videoUrlInput]).videoUrls, isCreating },
       });
       setShowConfirmDialog(true);
       return;
     }
 
     await executeSaveTask();
-  }, [selectedTask, adminMode, selectedContext, isCreating, videoUrl, executeSaveTask]);
+  }, [selectedTask, adminMode, selectedContext, isCreating, videoUrls, videoUrlInput, executeSaveTask]);
 
   const handleArchiveTask = useCallback(
     async (task: Task) => {
@@ -761,19 +785,35 @@ export default function TasksScreen() {
     [categories],
   );
 
-  const openVideoModal = useCallback((url: string) => {
-    if (!isValidVideoUrl(url)) {
+  const openVideoModal = useCallback((urls: string[] | string, initialIndex = 0) => {
+    const nextUrls = normalizeTaskVideoUrls(urls);
+    if (!nextUrls.length) {
       Alert.alert('Fejl', 'Ugyldig video. Brug YouTube, Vimeo, Instagram eller en uploadet videofil.');
       return;
     }
-    setSelectedVideoUrl(url);
+    setSelectedVideoUrls(nextUrls);
+    setSelectedVideoIndex(Math.min(Math.max(0, initialIndex), nextUrls.length - 1));
     setShowVideoModal(true);
   }, []);
 
   const closeVideoModal = useCallback(() => {
     setShowVideoModal(false);
-    setTimeout(() => setSelectedVideoUrl(null), 300);
+    setTimeout(() => {
+      setSelectedVideoUrls([]);
+      setSelectedVideoIndex(0);
+    }, 300);
   }, []);
+
+  const handleAddVideoUrl = useCallback(() => {
+    const trimmed = videoUrlInput.trim();
+    if (!trimmed) return;
+    if (!isValidVideoUrl(trimmed)) {
+      Alert.alert('Fejl', 'Ugyldig video. Brug YouTube, Vimeo, Instagram eller en uploadet videofil.');
+      return;
+    }
+    setVideoUrls(prev => mergeTaskVideoUrls(prev, trimmed));
+    setVideoUrlInput('');
+  }, [videoUrlInput]);
 
   const handlePickVideo = useCallback(async () => {
     if (!user?.id) {
@@ -785,8 +825,8 @@ export default function TasksScreen() {
     try {
       const uploadedVideo = await pickAndUploadTaskVideo(user.id);
       if (!uploadedVideo) return;
-      setVideoUrl(uploadedVideo.publicUrl);
-      Alert.alert('Video uploadet', 'Videoen er klar til at blive gemt på opgaveskabelonen.');
+      setVideoUrls(prev => mergeTaskVideoUrls(prev, uploadedVideo.publicUrl));
+      Alert.alert('Video uploadet', 'Videoen er føjet til opgaveskabelonen.');
     } catch (error: any) {
       Alert.alert('Fejl', error?.message || 'Kunne ikke uploade video.');
     } finally {
@@ -794,14 +834,14 @@ export default function TasksScreen() {
     }
   }, [user?.id]);
 
-  const handleDeleteVideo = useCallback(() => {
+  const handleDeleteVideo = useCallback((index: number) => {
     Alert.alert('Slet video', 'Er du sikker på at du vil fjerne videoen fra denne opgave?', [
       { text: 'Annuller', style: 'cancel' },
       {
         text: 'Slet',
         style: 'destructive',
         onPress: () => {
-          setVideoUrl('');
+          setVideoUrls(prev => prev.filter((_, currentIndex) => currentIndex !== index));
           Alert.alert('Video fjernet', 'Husk at gemme opgaven for at bekræfte ændringen');
         },
       },
@@ -946,6 +986,7 @@ export default function TasksScreen() {
                     categoryIds: [],
                     subtasks: [],
                     videoUrl: undefined,
+                    videoUrls: [],
                     afterTrainingEnabled: false,
                     afterTrainingDelayMinutes: 0,
                     afterTrainingFeedbackEnableScore: true,
@@ -1127,30 +1168,39 @@ export default function TasksScreen() {
 
                   <View style={styles.videoSection}>
                     <View style={styles.videoLabelRow}>
-                      <Text style={[styles.label, { color: textColor }]}>Video</Text>
-                      {videoUrl.trim() ? (
-                        <TouchableOpacity
-                          style={styles.deleteVideoButton}
-                          onPress={handleDeleteVideo}
-                          disabled={isSaving || isUploadingVideo}
-                        >
-                          <IconSymbol ios_icon_name="trash.fill" android_material_icon_name="delete" size={18} color={colors.error} />
-                          <Text style={[styles.deleteVideoText, { color: colors.error }]}>Slet video</Text>
-                        </TouchableOpacity>
-                      ) : null}
+                      <Text style={[styles.label, { color: textColor }]}>Videoer</Text>
+                      <Text style={[styles.videoCountText, { color: textSecondaryColor }]}>
+                        {videoUrls.length ? `${videoUrls.length} tilføjet` : 'Ingen tilføjet'}
+                      </Text>
                     </View>
 
                     <TextInput
                       style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
-                      value={videoUrl}
-                      onChangeText={setVideoUrl}
-                      placeholder="YouTube, Vimeo, Instagram eller upload fra telefon"
+                      value={videoUrlInput}
+                      onChangeText={setVideoUrlInput}
+                      placeholder="Indsæt YouTube, Vimeo, Instagram eller video-link"
                       placeholderTextColor={textSecondaryColor}
                       autoCapitalize="none"
                       autoCorrect={false}
                       keyboardType="url"
                       editable={!isSaving && !isUploadingVideo}
                     />
+
+                    <TouchableOpacity
+                      style={[
+                        styles.addVideoUrlButton,
+                        {
+                          borderColor: colors.secondary,
+                          opacity: isSaving || isUploadingVideo || !videoUrlInput.trim() ? 0.6 : 1,
+                        },
+                      ]}
+                      onPress={handleAddVideoUrl}
+                      disabled={isSaving || isUploadingVideo || !videoUrlInput.trim()}
+                      activeOpacity={0.85}
+                      testID="tasks.template.addVideoUrlButton"
+                    >
+                      <Text style={[styles.addVideoUrlButtonText, { color: colors.secondary }]}>Tilføj video-link</Text>
+                    </TouchableOpacity>
 
                     <TouchableOpacity
                       style={[
@@ -1175,17 +1225,43 @@ export default function TasksScreen() {
                       </Text>
                     </TouchableOpacity>
 
-                    {videoUrl.trim() && isValidVideoUrl(videoUrl) && (
-                      <View style={styles.videoPreviewSmall}>
-                        <TouchableOpacity style={styles.videoPreviewButton} onPress={() => openVideoModal(videoUrl)} activeOpacity={0.8}>
-                          <IconSymbol ios_icon_name="play.circle.fill" android_material_icon_name="play_circle" size={32} color={colors.primary} />
-                          <Text style={[styles.videoPreviewText, { color: colors.primary }]}>Forhåndsvisning</Text>
-                        </TouchableOpacity>
-                        <Text style={[styles.helperText, { color: colors.secondary }]}>Video klar til opgaven</Text>
+                    {videoUrls.length > 0 ? (
+                      <View style={styles.videoList}>
+                        {videoUrls.map((url, index) => (
+                          <View key={`${url}-${index}`} style={[styles.videoListItem, { backgroundColor: bgColor }]}>
+                            <TouchableOpacity
+                              style={styles.videoListPreviewButton}
+                              onPress={() => openVideoModal(videoUrls, index)}
+                              activeOpacity={0.85}
+                            >
+                              <IconSymbol ios_icon_name="play.circle.fill" android_material_icon_name="play_circle" size={24} color={colors.primary} />
+                              <View style={styles.videoListTextWrap}>
+                                <Text style={[styles.videoListTitle, { color: textColor }]}>Video {index + 1}</Text>
+                                <Text style={[styles.videoListSubtitle, { color: textSecondaryColor }]} numberOfLines={1}>
+                                  {getVideoSourceLabel(url)}
+                                  {videoUrls.length > 1 ? ' - swipe i afspilleren' : ''}
+                                </Text>
+                              </View>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.deleteVideoButton}
+                              onPress={() => handleDeleteVideo(index)}
+                              disabled={isSaving || isUploadingVideo}
+                              testID={`tasks.template.deleteVideoButton.${index}`}
+                            >
+                              <IconSymbol ios_icon_name="trash.fill" android_material_icon_name="delete" size={18} color={colors.error} />
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                        {videoUrls.length > 1 ? (
+                          <Text style={[styles.videoSwipeHelperText, { color: colors.secondary }]}>
+                            Swipe til siden i opgaven for at skifte mellem videoer.
+                          </Text>
+                        ) : null}
                       </View>
-                    )}
+                    ) : null}
 
-                    {videoUrl.trim() && !isValidVideoUrl(videoUrl) && (
+                    {videoUrlInput.trim() && !isValidVideoUrl(videoUrlInput) && (
                       <Text style={[styles.helperText, { color: colors.error }]}>
                         Ugyldig video. Brug YouTube, Vimeo, Instagram eller en uploadet videofil.
                       </Text>
@@ -1495,7 +1571,12 @@ export default function TasksScreen() {
           </View>
 
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }}>
-            <SmartVideoPlayer url={selectedVideoUrl || undefined} />
+            <SwipeVideoPlayer
+              urls={selectedVideoUrls}
+              initialIndex={selectedVideoIndex}
+              minHeight={420}
+              testID="tasks.template.videoCarousel"
+            />
           </View>
         </View>
       </Modal>
@@ -1619,11 +1700,34 @@ const styles = StyleSheet.create({
   videoThumbnailFallback: { width: '100%', height: '100%', backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' },
   videoThumbnailFallbackLabel: { color: '#fff', fontSize: 18, fontWeight: '700' },
   videoOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.25)' },
+  videoSwipeBadge: {
+    position: 'absolute',
+    right: 10,
+    bottom: 10,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+  },
+  videoSwipeBadgeText: { color: '#fff', fontSize: 12, fontWeight: '800' },
 
   videoSection: { marginBottom: 16 },
   videoLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  videoCountText: { fontSize: 13, fontWeight: '700' },
   deleteVideoButton: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4 },
   deleteVideoText: { fontSize: 14, fontWeight: '600' },
+  addVideoUrlButton: {
+    minHeight: 40,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -4,
+    marginBottom: 10,
+  },
+  addVideoUrlButtonText: { fontSize: 14, fontWeight: '700' },
   uploadVideoButton: {
     minHeight: 44,
     borderWidth: 1,
@@ -1641,6 +1745,21 @@ const styles = StyleSheet.create({
   videoPreviewSmall: { marginTop: 8, marginBottom: 12 },
   videoPreviewButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 16, backgroundColor: colors.highlight, borderRadius: 12 },
   videoPreviewText: { fontSize: 16, fontWeight: '600' },
+  videoList: { gap: 8, marginBottom: 12 },
+  videoListItem: {
+    minHeight: 54,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  videoListPreviewButton: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  videoListTextWrap: { flex: 1, minWidth: 0 },
+  videoListTitle: { fontSize: 14, fontWeight: '800' },
+  videoListSubtitle: { fontSize: 12, fontWeight: '600', marginTop: 2 },
+  videoSwipeHelperText: { fontSize: 13, fontWeight: '700', marginTop: 2 },
   helperText: { fontSize: 14, marginTop: 4 },
   toggleCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: 12, padding: 16, marginBottom: 20, gap: 12 },
   toggleTextWrapper: { flex: 1, marginRight: 12 },

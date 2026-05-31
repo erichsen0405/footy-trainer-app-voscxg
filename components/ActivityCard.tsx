@@ -13,6 +13,7 @@ import { getTaskDurationMinutes } from '@/utils/activityDuration';
 import { formatScoreOutOfFive, normalizeFivePointScore } from '@/utils/scoreScale';
 import {
   getTaskModalTemplateId,
+  getTaskModalVideoUrls,
   getTaskModalVideoUrl,
   hydrateTaskForModal,
   shouldHydrateTaskForModal,
@@ -711,6 +712,7 @@ export default function ActivityCard({
             feedback_template_id: firstTask.feedback_template_id,
             reminder_minutes: firstTask.reminder_minutes,
             video_url: getTaskModalVideoUrl(firstTask),
+            video_urls: getTaskModalVideoUrls(firstTask),
             descriptionSnippet: typeof firstTask.description === 'string' ? firstTask.description.slice(0, 80) : null,
             keys: Object.keys(firstTask).slice(0, 20),
           }
@@ -726,7 +728,7 @@ export default function ActivityCard({
         return (
           hasTemplateOrFeedback(task) ||
           resolveReminderMinutes(task) !== null ||
-          getTaskModalVideoUrl(task) !== null
+          getTaskModalVideoUrls(task).length > 0
         );
       }
       return showTasks || hasTemplateOrFeedback(task);
@@ -1068,14 +1070,24 @@ export default function ActivityCard({
                         )}
                       </TouchableOpacity>
 
-                      {getTaskModalVideoUrl(task) && (
-                        <View style={styles.videoIndicator}>
+                      {getTaskModalVideoUrls(task).length > 0 && (
+                        <View
+                          style={[
+                            styles.videoIndicator,
+                            getTaskModalVideoUrls(task).length > 1 && styles.videoIndicatorMulti,
+                          ]}
+                        >
                           <IconSymbol
                             ios_icon_name="play.circle.fill"
                             android_material_icon_name="play_circle"
                             size={20}
                             color="rgba(255, 255, 255, 0.9)"
                           />
+                          {getTaskModalVideoUrls(task).length > 1 ? (
+                            <Text style={styles.videoIndicatorText}>
+                              {getTaskModalVideoUrls(task).length} videoer - swipe
+                            </Text>
+                          ) : null}
                         </View>
                       )}
                     </View>
@@ -1097,6 +1109,7 @@ export default function ActivityCard({
           description={typeof selectedTask?.description === 'string' ? selectedTask.description : undefined}
           reminderMinutes={resolveReminderMinutes(selectedTask)}
           videoUrl={getTaskModalVideoUrl(selectedTask)}
+          videoUrls={getTaskModalVideoUrls(selectedTask)}
           completed={!!selectedTask?.completed}
           isSaving={isTaskModalSaving}
           onClose={handleModalClose}
@@ -1334,6 +1347,18 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  videoIndicatorMulti: {
+    width: 'auto',
+    minWidth: 112,
+    paddingHorizontal: 8,
+    flexDirection: 'row',
+    gap: 4,
+  },
+  videoIndicatorText: {
+    color: 'rgba(255, 255, 255, 0.92)',
+    fontSize: 10,
+    fontWeight: '800',
   },
   testProbe: {
     width: 2,

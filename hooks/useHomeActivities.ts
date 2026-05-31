@@ -20,6 +20,7 @@ import {
 } from '@/utils/activityEvents';
 import { setHomeLoadProgress } from '@/utils/startupLoader';
 import { useAdmin, type AdminMode } from '@/contexts/AdminContext';
+import { buildTaskVideoPayload } from '@/utils/taskVideos';
 
 const HOME_ACTIVITY_SNAPSHOT_PREFIX = '@home_activity_snapshot_v1';
 const HOME_FOCUS_REFRESH_STALE_MS = 2 * 60 * 1000;
@@ -36,6 +37,7 @@ interface ActivityTask {
   task_duration_enabled?: boolean | null;
   task_duration_minutes?: number | null;
   video_url?: string;
+  video_urls?: string[] | null;
   feedback_template_id?: string | null;
   task_template_id?: string | null;
 }
@@ -1186,20 +1188,24 @@ export function useHomeActivities(): UseHomeActivitiesResult {
               });
             }
 
-            const tasks: ActivityTask[] = (rawExternalTasks || []).map((task: any) => ({
-              id: task.id,
-              title: task.title,
-              description: task.description || '',
-              completed: task.completed,
-              reminder_minutes: coerceReminderMinutes(task.reminder_minutes),
-              after_training_enabled: task.after_training_enabled === true,
-              after_training_delay_minutes: coerceReminderMinutes(task.after_training_delay_minutes),
-              task_duration_enabled: task.task_duration_enabled === true,
-              task_duration_minutes: coerceReminderMinutes(task.task_duration_minutes),
-              video_url: task.video_url ?? undefined,
-              feedback_template_id: task.feedback_template_id ?? null,
-              task_template_id: task.task_template_id ?? null,
-            }));
+            const tasks: ActivityTask[] = (rawExternalTasks || []).map((task: any) => {
+              const videoPayload = buildTaskVideoPayload(task.video_urls ?? task.video_url);
+              return {
+                id: task.id,
+                title: task.title,
+                description: task.description || '',
+                completed: task.completed,
+                reminder_minutes: coerceReminderMinutes(task.reminder_minutes),
+                after_training_enabled: task.after_training_enabled === true,
+                after_training_delay_minutes: coerceReminderMinutes(task.after_training_delay_minutes),
+                task_duration_enabled: task.task_duration_enabled === true,
+                task_duration_minutes: coerceReminderMinutes(task.task_duration_minutes),
+                video_url: videoPayload.video_url ?? undefined,
+                video_urls: videoPayload.video_urls,
+                feedback_template_id: task.feedback_template_id ?? null,
+                task_template_id: task.task_template_id ?? null,
+              };
+            });
 
             return {
               id: meta?.id || event.id,
@@ -1334,9 +1340,11 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         : [];
 
       const activityTasksSelectWithLocalOptions =
-        'id, activity_id, title, description, completed, reminder_minutes, after_training_enabled, after_training_delay_minutes, task_duration_enabled, task_duration_minutes, feedback_template_id, task_template_id, video_url, task_templates(after_training_delay_minutes, task_duration_enabled, task_duration_minutes)';
+        'id, activity_id, title, description, completed, reminder_minutes, after_training_enabled, after_training_delay_minutes, task_duration_enabled, task_duration_minutes, feedback_template_id, task_template_id, video_urls, task_templates(after_training_delay_minutes, task_duration_enabled, task_duration_minutes)';
       const activityTasksSelectLegacy =
         'id, activity_id, title, description, completed, reminder_minutes, feedback_template_id, task_template_id, video_url, task_templates(after_training_delay_minutes, task_duration_enabled, task_duration_minutes)';
+      const activityTasksSelectNoVideo =
+        'id, activity_id, title, description, completed, reminder_minutes, feedback_template_id, task_template_id, task_templates(after_training_delay_minutes, task_duration_enabled, task_duration_minutes)';
 
       const fetchActivityTasksWithFallback = async (activityIds: string[]) => {
         if (!activityIds.length) return { data: [], error: null };
@@ -1348,7 +1356,10 @@ export function useHomeActivities(): UseHomeActivitiesResult {
 
         if (!withLocal.error) return withLocal;
 
-        if (!isMissingColumnError(withLocal.error, 'after_training_enabled')) {
+        const canRetryWithLegacy =
+          isMissingColumnError(withLocal.error, 'after_training_enabled') ||
+          isMissingColumnError(withLocal.error, 'video_urls');
+        if (!canRetryWithLegacy) {
           return withLocal;
         }
 
@@ -1356,7 +1367,12 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           .from('activity_tasks')
           .select(activityTasksSelectLegacy)
           .in('activity_id', activityIds);
-        return legacy;
+        if (!legacy.error || !isMissingColumnError(legacy.error, 'video_url')) return legacy;
+
+        return await supabase
+          .from('activity_tasks')
+          .select(activityTasksSelectNoVideo)
+          .in('activity_id', activityIds);
       };
 
       const [internalTasksRes, externalEventTasksRes, externalActivityTasksRes] = await Promise.all([
@@ -1434,6 +1450,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           (templateId ? templateDurationMinutesById[templateId] ?? null : null);
         const localFeedbackDelay = coerceReminderMinutes(task.after_training_delay_minutes);
         const reminderMinutes = coerceReminderMinutes(task.reminder_minutes) ?? localFeedbackDelay ?? templateDelay ?? null;
+        const videoPayload = buildTaskVideoPayload(task.video_urls ?? task.video_url);
         list.push({
           id: task.id,
           title: decodeUtf8Garble(task.title),
@@ -1444,7 +1461,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           after_training_delay_minutes: localFeedbackDelay ?? templateDelay ?? null,
           task_duration_enabled: taskDurationEnabled,
           task_duration_minutes: taskDurationEnabled ? (taskDurationMinutes ?? 0) : null,
-          video_url: task.video_url ?? undefined,
+          video_url: videoPayload.video_url ?? undefined,
+          video_urls: videoPayload.video_urls,
           feedback_template_id: task.feedback_template_id ?? null,
           task_template_id: task.task_template_id ?? null,
         });
@@ -1471,6 +1489,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           (templateId ? templateDurationMinutesById[templateId] ?? null : null);
         const localFeedbackDelay = coerceReminderMinutes(task.after_training_delay_minutes);
         const reminderMinutes = coerceReminderMinutes(task.reminder_minutes) ?? localFeedbackDelay ?? templateDelay ?? null;
+        const videoPayload = buildTaskVideoPayload(task.video_urls ?? task.video_url);
         list.push({
           id: task.id,
           title: decodeUtf8Garble(task.title),
@@ -1481,7 +1500,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           after_training_delay_minutes: localFeedbackDelay ?? templateDelay ?? null,
           task_duration_enabled: taskDurationEnabled,
           task_duration_minutes: taskDurationEnabled ? (taskDurationMinutes ?? 0) : null,
-          video_url: task.video_url ?? undefined,
+          video_url: videoPayload.video_url ?? undefined,
+          video_urls: videoPayload.video_urls,
           feedback_template_id: task.feedback_template_id ?? null,
           task_template_id: task.task_template_id ?? null,
         });
@@ -1508,6 +1528,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           (templateId ? templateDurationMinutesById[templateId] ?? null : null);
         const localFeedbackDelay = coerceReminderMinutes(task.after_training_delay_minutes);
         const reminderMinutes = coerceReminderMinutes(task.reminder_minutes) ?? localFeedbackDelay ?? templateDelay ?? null;
+        const videoPayload = buildTaskVideoPayload(task.video_urls ?? task.video_url);
         list.push({
           id: task.id,
           title: decodeUtf8Garble(task.title),
@@ -1518,7 +1539,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           after_training_delay_minutes: localFeedbackDelay ?? templateDelay ?? null,
           task_duration_enabled: taskDurationEnabled,
           task_duration_minutes: taskDurationEnabled ? (taskDurationMinutes ?? 0) : null,
-          video_url: task.video_url ?? undefined,
+          video_url: videoPayload.video_url ?? undefined,
+          video_urls: videoPayload.video_urls,
           feedback_template_id: task.feedback_template_id ?? null,
           task_template_id: task.task_template_id ?? null,
         });

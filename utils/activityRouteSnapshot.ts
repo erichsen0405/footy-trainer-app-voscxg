@@ -1,4 +1,5 @@
 import type { Activity, ActivityCategory, Task } from '@/types';
+import { buildTaskVideoPayload } from '@/utils/taskVideos';
 
 type RouteSnapshotTask = Task & {
   reminder_minutes?: number | null;
@@ -7,6 +8,7 @@ type RouteSnapshotTask = Task & {
   task_duration_enabled?: boolean | null;
   task_duration_minutes?: number | null;
   video_url?: string | null;
+  video_urls?: string[] | null;
   task_template_id?: string | null;
   feedback_template_id?: string | null;
 };
@@ -64,9 +66,12 @@ function normalizeCategory(activity: any): ActivityCategory {
 }
 
 function normalizeTask(task: any): RouteSnapshotTask {
-  const videoUrl =
-    normalizeNullableString(task?.videoUrl) ??
-    normalizeNullableString(task?.video_url);
+  const videoPayload = buildTaskVideoPayload([
+    ...(Array.isArray(task?.videoUrls) ? task.videoUrls : []),
+    ...(Array.isArray(task?.video_urls) ? task.video_urls : []),
+    normalizeNullableString(task?.videoUrl),
+    normalizeNullableString(task?.video_url),
+  ]);
   const taskTemplateId =
     normalizeNullableString(task?.taskTemplateId) ??
     normalizeNullableString(task?.task_template_id);
@@ -96,8 +101,10 @@ function normalizeTask(task: any): RouteSnapshotTask {
     reminder: reminderMinutes ?? undefined,
     reminder_minutes: reminderMinutes,
     subtasks: Array.isArray(task?.subtasks) ? task.subtasks : [],
-    videoUrl: videoUrl ?? undefined,
-    video_url: videoUrl,
+    videoUrl: videoPayload.videoUrl ?? undefined,
+    videoUrls: videoPayload.videoUrls,
+    video_url: videoPayload.video_url,
+    video_urls: videoPayload.video_urls,
     afterTrainingEnabled:
       normalizeBoolean(task?.afterTrainingEnabled) ||
       normalizeBoolean(task?.after_training_enabled),
