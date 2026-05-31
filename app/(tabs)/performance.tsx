@@ -1,7 +1,8 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -19,8 +20,11 @@ import ActivityCard from '@/components/ActivityCard';
 import { IconSymbol } from '@/components/IconSymbol';
 import { ProgressionSection } from '@/components/ProgressionSection';
 import { WeeklySummaryCard } from '@/components/WeeklySummaryCard';
+import { useAdmin } from '@/contexts/AdminContext';
 import { useFootball } from '@/contexts/FootballContext';
+import { useTeamPlayer, type Player } from '@/contexts/TeamPlayerContext';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
+import { useUserRole } from '@/hooks/useUserRole';
 import * as CommonStyles from '@/styles/commonStyles';
 import {
   buildPerformanceHistoryWeeks,
@@ -47,6 +51,7 @@ function buildHistoryActivityKey(activity: any, weekKey: string, index: number):
 }
 
 export default function PerformanceScreen() {
+  const { adminMode, adminTargetId, adminTargetType, startAdminPlayer } = useAdmin();
   const {
     trophies,
     externalCalendars,
@@ -61,16 +66,27 @@ export default function PerformanceScreen() {
     hasLoadedFullWindow: hasLoadedFullHistoryWindow,
     loadFullWindow,
   } = useHomeActivities();
+  const { userRole } = useUserRole();
+  const {
+    players,
+    ensureRosterLoaded,
+    loading: rosterLoading,
+    setSelectedContext,
+  } = useTeamPlayer();
 
   const colorScheme = useColorScheme();
   const [refreshing, setRefreshing] = useState(false);
   const [isBootstrappingPerformanceData, setIsBootstrappingPerformanceData] = useState(false);
   const [isBootstrappingHistoryData, setIsBootstrappingHistoryData] = useState(false);
+  const [isBootstrappingRoster, setIsBootstrappingRoster] = useState(false);
+  const [playerDropdownError, setPlayerDropdownError] = useState<string | null>(null);
+  const [isPlayerDropdownOpen, setIsPlayerDropdownOpen] = useState(false);
   const [expandedTrophy, setExpandedTrophy] = useState<'gold' | 'silver' | 'bronze' | null>(null);
   const [expandedHistoryWeeks, setExpandedHistoryWeeks] = useState<Record<string, boolean>>({});
   const [isTrophySectionExpanded, setIsTrophySectionExpanded] = useState(true);
   const [isProgressionSectionExpanded, setIsProgressionSectionExpanded] = useState(true);
   const [isHistorySectionExpanded, setIsHistorySectionExpanded] = useState(false);
+  const isTrainerProfile = userRole === 'trainer';
 
   const palette = useMemo(() => {
     const fromHelper =
@@ -97,6 +113,42 @@ export default function PerformanceScreen() {
   const textColor = isDark ? '#e3e3e3' : palette.text;
   const textSecondaryColor = isDark ? '#999' : palette.textSecondary;
   const showTrophyLoadingState = !hasPerformanceDataLoaded || isBootstrappingPerformanceData;
+  const selectedPerformancePlayer = useMemo(() => {
+    if (!isTrainerProfile || adminMode !== 'player' || adminTargetType !== 'player' || !adminTargetId) {
+      return null;
+    }
+    return players.find((player) => player.id === adminTargetId) ?? null;
+  }, [adminMode, adminTargetId, adminTargetType, isTrainerProfile, players]);
+  const selectedPerformancePlayerId = selectedPerformancePlayer?.id ?? null;
+  const isPlayerRosterLoading = rosterLoading || isBootstrappingRoster;
+
+  useEffect(() => {
+    if (!isTrainerProfile) {
+      setIsPlayerDropdownOpen(false);
+      return;
+    }
+
+    let active = true;
+    setPlayerDropdownError(null);
+    setIsBootstrappingRoster(true);
+
+    void ensureRosterLoaded()
+      .catch((error) => {
+        console.error('[Performance] Failed to load trainer players:', error);
+        if (active) {
+          setPlayerDropdownError('Kunne ikke indlæse spillere');
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setIsBootstrappingRoster(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [ensureRosterLoaded, isTrainerProfile]);
 
   useFocusEffect(
     useCallback(() => {
@@ -247,6 +299,53 @@ export default function PerformanceScreen() {
     setExpandedTrophy((prev) => (prev === type ? null : type));
   }, []);
 
+  const handleOpenPlayerDropdown = useCallback(() => {
+    setIsPlayerDropdownOpen(true);
+  }, []);
+
+  const handleSelectPlayer = useCallback(
+    async (player: Player) => {
+      await setSelectedContext({
+        type: 'player',
+        id: player.id,
+        name: player.full_name,
+      });
+      startAdminPlayer(player.id);
+      setIsPlayerDropdownOpen(false);
+    },
+    [setSelectedContext, startAdminPlayer]
+  );
+
+  const renderPlayerOption = useCallback(
+    ({ item }: { item: Player }) => {
+      const isSelected = item.id === selectedPerformancePlayerId;
+      return (
+        <Pressable
+          testID={`performance.playerDropdown.option.${item.id}`}
+          onPress={() => handleSelectPlayer(item)}
+          style={({ pressed }) => [
+            styles.playerOption,
+            { backgroundColor: isSelected ? palette.primary : palette.card },
+            pressed && styles.playerOptionPressed,
+          ]}
+        >
+          <Text style={[styles.playerOptionName, { color: isSelected ? '#fff' : textColor }]}>
+            {item.full_name}
+          </Text>
+          {isSelected ? (
+            <IconSymbol
+              ios_icon_name="checkmark.circle.fill"
+              android_material_icon_name="check_circle"
+              size={20}
+              color="#fff"
+            />
+          ) : null}
+        </Pressable>
+      );
+    },
+    [handleSelectPlayer, palette.card, palette.primary, selectedPerformancePlayerId, textColor]
+  );
+
   return (
     <ScrollView
       testID="performance.screen"
@@ -261,10 +360,49 @@ export default function PerformanceScreen() {
         />
       }
     >
-      <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: textColor }]}>🏆 Din Performance</Text>
-        <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>Se hvordan du klarer dig over tid</Text>
+      <View style={styles.header} testID="performance.result">
+        <Text style={[styles.headerTitle, { color: textColor }]}>🏆 Performance</Text>
+        <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>Se dine spilleres performance over tid</Text>
       </View>
+
+      {isTrainerProfile ? (
+        <View style={styles.playerSelector}>
+          <Pressable
+            testID="performance.playerDropdown.trigger"
+            onPress={handleOpenPlayerDropdown}
+            style={({ pressed }) => [
+              styles.playerDropdownTrigger,
+              {
+                backgroundColor: isDark ? '#24362C' : '#EAF5EE',
+                borderColor: selectedPerformancePlayer ? palette.primary : isDark ? '#385442' : '#C8E2D0',
+              },
+              pressed && styles.playerDropdownTriggerPressed,
+            ]}
+          >
+            <View style={styles.playerDropdownTextBlock}>
+              <Text style={[styles.playerDropdownLabel, { color: textSecondaryColor }]}>Spiller</Text>
+              <Text style={[styles.playerDropdownValue, { color: textColor }]} numberOfLines={1}>
+                {selectedPerformancePlayer?.full_name ?? 'Vælg spiller'}
+              </Text>
+            </View>
+            <IconSymbol
+              ios_icon_name="chevron.down"
+              android_material_icon_name="keyboard-arrow-down"
+              size={22}
+              color={textSecondaryColor}
+            />
+          </Pressable>
+
+          {selectedPerformancePlayer ? (
+            <Text
+              testID="performance.selectedPlayer"
+              style={[styles.selectedPlayerText, { color: textSecondaryColor }]}
+            >
+              Viser performance for {selectedPerformancePlayer.full_name}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
 
       <View style={styles.historySection}>
         <Pressable
@@ -497,7 +635,9 @@ export default function PerformanceScreen() {
         </Pressable>
       </View>
 
-      {isProgressionSectionExpanded ? <ProgressionSection categories={categories} /> : null}
+      {isProgressionSectionExpanded ? (
+        <ProgressionSection categories={categories} targetUserId={selectedPerformancePlayerId} />
+      ) : null}
 
       <View style={styles.historySection}>
         <Pressable
@@ -615,6 +755,79 @@ export default function PerformanceScreen() {
       ) : null}
 
       <View style={{ height: 100 }} />
+
+      {isTrainerProfile ? (
+        <Modal
+          visible={isPlayerDropdownOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setIsPlayerDropdownOpen(false)}
+        >
+          <Pressable style={styles.playerModalBackdrop} onPress={() => setIsPlayerDropdownOpen(false)}>
+            <Pressable
+              style={[styles.playerModalCard, { backgroundColor: bgColor, borderColor: isDark ? '#385442' : '#C8E2D0' }]}
+              onPress={() => undefined}
+            >
+              <View style={styles.playerModalHeader}>
+                <Text style={[styles.playerModalTitle, { color: textColor }]}>Vælg spiller</Text>
+                <Pressable
+                  testID="performance.playerDropdown.close"
+                  onPress={() => setIsPlayerDropdownOpen(false)}
+                  hitSlop={10}
+                >
+                  <IconSymbol
+                    ios_icon_name="xmark"
+                    android_material_icon_name="close"
+                    size={22}
+                    color={textSecondaryColor}
+                  />
+                </Pressable>
+              </View>
+
+              <FlatList
+                data={players}
+                keyExtractor={(item) => item.id}
+                renderItem={renderPlayerOption}
+                ListEmptyComponent={
+                  <View style={[styles.playerDropdownState, { backgroundColor: palette.card }]}>
+                    {isPlayerRosterLoading ? (
+                      <>
+                        <ActivityIndicator size="small" color={palette.primary} />
+                        <Text
+                          testID="performance.playerDropdown.loading"
+                          style={[styles.playerDropdownStateText, { color: textSecondaryColor }]}
+                        >
+                          Indlæser spillere...
+                        </Text>
+                      </>
+                    ) : playerDropdownError ? (
+                      <Text
+                        testID="performance.playerDropdown.error"
+                        style={[styles.playerDropdownStateText, { color: textSecondaryColor }]}
+                      >
+                        {playerDropdownError}
+                      </Text>
+                    ) : (
+                      <Text
+                        testID="performance.playerDropdown.empty"
+                        style={[styles.playerDropdownStateText, { color: textSecondaryColor }]}
+                      >
+                        Ingen spillere tilknyttet endnu
+                      </Text>
+                    )}
+                  </View>
+                }
+                initialNumToRender={8}
+                maxToRenderPerBatch={8}
+                windowSize={5}
+                removeClippedSubviews={Platform.OS !== 'web'}
+                keyboardShouldPersistTaps="handled"
+                testID="performance.playerDropdown.list"
+              />
+            </Pressable>
+          </Pressable>
+        </Modal>
+      ) : null}
     </ScrollView>
   );
 }
@@ -637,6 +850,93 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     fontSize: 16,
+  },
+  playerSelector: {
+    marginBottom: 4,
+  },
+  playerDropdownTrigger: {
+    minHeight: 58,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    columnGap: 12,
+  },
+  playerDropdownTriggerPressed: {
+    opacity: 0.92,
+  },
+  playerDropdownTextBlock: {
+    flex: 1,
+  },
+  playerDropdownLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 3,
+  },
+  playerDropdownValue: {
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  selectedPlayerText: {
+    marginTop: 8,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  playerModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  playerModalCard: {
+    maxHeight: '70%',
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: 16,
+  },
+  playerModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  playerModalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  playerOption: {
+    minHeight: 52,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    columnGap: 12,
+  },
+  playerOptionPressed: {
+    opacity: 0.9,
+  },
+  playerOptionName: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  playerDropdownState: {
+    borderRadius: 8,
+    padding: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    rowGap: 8,
+  },
+  playerDropdownStateText: {
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
   },
   trophiesCard: {
     borderRadius: 16,

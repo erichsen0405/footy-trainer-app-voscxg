@@ -37,6 +37,13 @@ tags:
 - assertVisible:
     id: '^profile\.subscriptionPlanBadgeText$'
     text: '(?i).*spiller.*'
+- openLink: 'footballcoach:///(tabs)/performance'
+- extendedWaitUntil:
+    visible:
+      id: '^performance\.screen$'
+    timeout: 15000
+- assertNotVisible:
+    id: '^performance\.playerDropdown\.trigger$'
 - assertNotVisible: '^Hold\\s*&\\s*spillere$'
 - openLink: 'footballcoach:///(tabs)/library'
 - extendedWaitUntil:
@@ -226,6 +233,33 @@ tags:
     timeout: 15000
 - assertVisible:
     id: '^players\.card\..+$'
+
+# Performance: vælg tilknyttet spiller
+- openLink: 'footballcoach:///(tabs)/performance'
+- extendedWaitUntil:
+    visible:
+      id: '^performance\.screen$'
+    timeout: 15000
+- extendedWaitUntil:
+    visible:
+      id: '^performance\.playerDropdown\.trigger$'
+    timeout: 15000
+- tapOn:
+    id: '^performance\.playerDropdown\.trigger$'
+- extendedWaitUntil:
+    visible:
+      id: '^performance\.playerDropdown\.option\..+$'
+    timeout: 15000
+- tapOn:
+    id: '^performance\.playerDropdown\.option\..+$'
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: '^performance\.selectedPlayer$'
+    timeout: 15000
+- assertVisible:
+    id: '^performance\.result$'
+- assertVisible: '^Pokaler$'
 
 # Cleanup: team + spiller
 - openLink: 'footballcoach:///(tabs)/profile'
