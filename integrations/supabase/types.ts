@@ -1118,10 +1118,14 @@ export type Database = {
       }
       profiles: {
         Row: {
+          avatar_url: string | null
+          club_name: string | null
           created_at: string | null
           full_name: string | null
           id: string
           phone_number: string | null
+          player_positions: string[]
+          playing_level: string | null
           subscription_product_id: string | null
           subscription_receipt: string | null
           subscription_tier: string | null
@@ -1130,10 +1134,14 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          avatar_url?: string | null
+          club_name?: string | null
           created_at?: string | null
           full_name?: string | null
           id?: string
           phone_number?: string | null
+          player_positions?: string[]
+          playing_level?: string | null
           subscription_product_id?: string | null
           subscription_receipt?: string | null
           subscription_tier?: string | null
@@ -1142,10 +1150,14 @@ export type Database = {
           user_id: string
         }
         Update: {
+          avatar_url?: string | null
+          club_name?: string | null
           created_at?: string | null
           full_name?: string | null
           id?: string
           phone_number?: string | null
+          player_positions?: string[]
+          playing_level?: string | null
           subscription_product_id?: string | null
           subscription_receipt?: string | null
           subscription_tier?: string | null
