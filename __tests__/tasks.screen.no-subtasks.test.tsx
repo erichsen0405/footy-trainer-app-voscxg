@@ -175,7 +175,8 @@ describe('Tasks template editor without subtasks', () => {
     fireEvent.press(getByTestId('tasks.folder.toggle.personal'));
     fireEvent.press(getByTestId('tasks.template.card.template-1'));
 
-    expect(getByText('Indsæt link til video')).toBeTruthy();
+    expect(getByText('Video')).toBeTruthy();
+    expect(getByText('Vælg video fra telefon')).toBeTruthy();
     expect(getByText('Teknik')).toBeTruthy();
     expect(queryByText('Teknik, Styrke')).toBeNull();
 

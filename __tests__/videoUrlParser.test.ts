@@ -36,4 +36,12 @@ describe('videoUrlParser', () => {
     expect(isPlayableVideoUrl('https://example.com/guide')).toBe(false);
     expect(extractFirstPlayableVideoUrl('Laes mere her https://example.com/guide')).toBeNull();
   });
+
+  it('treats uploaded Supabase video files as playable direct videos', () => {
+    const uploadedUrl =
+      'https://lhpczofddvwcyrgotzha.supabase.co/storage/v1/object/public/drill-videos/task-videos/user/video.mov';
+
+    expect(isPlayableVideoUrl(uploadedUrl)).toBe(true);
+    expect(extractFirstPlayableVideoUrl(`Se videoen her ${uploadedUrl}`)).toBe(uploadedUrl);
+  });
 });

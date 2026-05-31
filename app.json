@@ -44,6 +44,12 @@
       "expo-font",
       "expo-router",
       "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Football coach skal bruge adgang til dine videoer, så du kan uploade dem til opgaver."
+        }
+      ],
       "react-native-iap",
       [
         "expo-notifications",
