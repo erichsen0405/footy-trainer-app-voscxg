@@ -255,7 +255,7 @@ describe('Tasks redesigned template screen', () => {
     fireEvent.changeText(getByTestId('tasks.modal.videoUrlInput'), 'https://example.com/video');
     fireEvent.press(getByTestId('tasks.modal.saveButton'));
 
-    expect(getByText('Video URL skal være fra YouTube, youtu.be eller Vimeo.')).toBeTruthy();
+    expect(getByText('Ugyldig video. Brug YouTube, Vimeo, Instagram eller en uploadet videofil.')).toBeTruthy();
   });
 
   it('adds, removes and saves subtasks in order', async () => {
@@ -303,10 +303,12 @@ describe('Tasks redesigned template screen', () => {
       ],
     }));
 
-    const { getByDisplayValue, getByTestId } = render(<TasksScreen />);
+    const { getByDisplayValue, getByTestId, getByText } = render(<TasksScreen />);
 
     fireEvent.press(getByTestId('tasks.folder.personal'));
     fireEvent.press(getByTestId('tasks.taskCard.template-video-1'));
+    expect(getByText('Video')).toBeTruthy();
+    expect(getByText('Vælg video fra telefon')).toBeTruthy();
     expect(getByDisplayValue('https://youtu.be/abc123')).toBeTruthy();
     fireEvent.press(getByTestId('tasks.modal.categoryOption.1'));
     expect(getByTestId('tasks.modal.categoryOption.1')).toBeTruthy();

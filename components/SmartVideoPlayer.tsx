@@ -228,11 +228,13 @@ const Thumb = ({ img, onPress, testID }: any) => (
 const styles = StyleSheet.create({
   vimeoContainer: {
     height: 220,
+    width: '100%',
     backgroundColor: '#000',
     position: 'relative',
   },
   directVideoContainer: {
     height: 220,
+    width: '100%',
     backgroundColor: '#000',
     overflow: 'hidden',
   },

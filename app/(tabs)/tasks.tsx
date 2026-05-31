@@ -33,6 +33,8 @@ import { forceRefreshNotificationQueue } from '@/utils/notificationScheduler';
 import { emitActivitiesRefreshRequested } from '@/utils/activityEvents';
 import { getTaskModalVideoUrl } from '@/utils/taskModalContent';
 import { LinearGradient } from 'expo-linear-gradient';
+import { pickAndUploadTaskVideo } from '@/utils/taskVideoUpload';
+import { isDirectVideoUrl, isPlayableVideoUrl } from '@/utils/videoUrlParser';
 
 // ✅ Robust import: undgå Hermes-crash hvis named export "colors" ikke findes
 import * as CommonStyles from '@/styles/commonStyles';
@@ -71,14 +73,16 @@ const normalizeTaskDurationValue = (value: unknown): number | null => {
 
 // Local helper function to validate video URLs
 function isValidVideoUrl(url?: string | null): boolean {
-  if (!url) return false;
-  const normalizedUrl = url.toLowerCase();
+  return isPlayableVideoUrl(String(url ?? ''));
+}
 
-  return (
-    normalizedUrl.includes('youtube') ||
-    normalizedUrl.includes('youtu.be') ||
-    normalizedUrl.includes('vimeo')
-  );
+function getVideoSourceLabel(url?: string | null): string {
+  const normalizedUrl = String(url ?? '').toLowerCase();
+  if (normalizedUrl.includes('instagram.com')) return 'Instagram';
+  if (normalizedUrl.includes('vimeo.com')) return 'Vimeo';
+  if (normalizedUrl.includes('youtu')) return 'YouTube';
+  if (normalizedUrl.includes('/storage/v1/object/public/') || isDirectVideoUrl(normalizedUrl)) return 'Uploadet video';
+  return 'Video';
 }
 
 function getYouTubeThumbnail(url: string): string | null {
@@ -389,9 +393,15 @@ export const TaskCard = React.memo(
           </Text>
         ) : null}
 
-        {videoUrl && isValidVideoUrl(videoUrl) && ytThumb && (
+        {videoUrl && isValidVideoUrl(videoUrl) && (
           <TouchableOpacity style={styles.videoThumbnailWrapper} onPress={() => onVideoPress(videoUrl)} activeOpacity={0.85}>
-            <Image source={{ uri: ytThumb }} style={styles.videoThumbnail} resizeMode="cover" />
+            {ytThumb ? (
+              <Image source={{ uri: ytThumb }} style={styles.videoThumbnail} resizeMode="cover" />
+            ) : (
+              <View style={styles.videoThumbnailFallback}>
+                <Text style={styles.videoThumbnailFallbackLabel}>{getVideoSourceLabel(videoUrl)}</Text>
+              </View>
+            )}
             <View style={styles.videoOverlay}>
               <IconSymbol ios_icon_name="play.circle.fill" android_material_icon_name="play_circle" size={56} color="#fff" />
             </View>
@@ -587,6 +597,7 @@ export default function TasksScreen() {
   const [isCreating, setIsCreating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [formErrors, setFormErrors] = useState<{ title?: string; videoUrl?: string }>({});
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
 
   const [videoUrl, setVideoUrl] = useState('');
 
@@ -711,6 +722,7 @@ export default function TasksScreen() {
     setVideoUrl('');
     setFormErrors({});
     setIsSaving(false);
+    setIsUploadingVideo(false);
   }, []);
 
   const validateTaskForm = useCallback(() => {
@@ -719,7 +731,7 @@ export default function TasksScreen() {
       nextErrors.title = 'Titel er påkrævet.';
     }
     if (videoUrl.trim() && !isValidVideoUrl(videoUrl)) {
-      nextErrors.videoUrl = 'Video URL skal være fra YouTube, youtu.be eller Vimeo.';
+      nextErrors.videoUrl = 'Ugyldig video. Brug YouTube, Vimeo, Instagram eller en uploadet videofil.';
     }
     setFormErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -773,6 +785,11 @@ export default function TasksScreen() {
 
   const executeSaveTask = useCallback(async () => {
     if (!selectedTask) return;
+
+    if (isUploadingVideo) {
+      Alert.alert('Vent venligst', 'Videoen uploades stadig. Prøv igen om et øjeblik.');
+      return;
+    }
 
     const normalizedReminder = normalizeReminderValue((selectedTask as any).reminder);
     const normalizedSubtasks = normalizeSubtasksForSave((selectedTask as any).subtasks);
@@ -839,7 +856,7 @@ export default function TasksScreen() {
     } finally {
       setIsSaving(false);
     }
-  }, [selectedTask, isCreating, adminMode, adminTargetId, adminTargetType, videoUrl, updateTask, refreshAll, closeTaskModal]);
+  }, [selectedTask, isCreating, adminMode, adminTargetId, adminTargetType, videoUrl, isUploadingVideo, updateTask, refreshAll, closeTaskModal]);
 
   const handleSaveTask = useCallback(async () => {
     if (!selectedTask) return;
@@ -982,7 +999,7 @@ export default function TasksScreen() {
 
   const openVideoModal = useCallback((url: string) => {
     if (!isValidVideoUrl(url)) {
-      Alert.alert('Fejl', 'Ugyldig video URL. Kun YouTube, youtu.be og Vimeo understøttes.');
+      Alert.alert('Fejl', 'Ugyldig video. Brug YouTube, Vimeo, Instagram eller en uploadet videofil.');
       return;
     }
     setSelectedVideoUrl(url);
@@ -993,6 +1010,26 @@ export default function TasksScreen() {
     setShowVideoModal(false);
     setTimeout(() => setSelectedVideoUrl(null), 300);
   }, []);
+
+  const handlePickVideo = useCallback(async () => {
+    if (!user?.id) {
+      Alert.alert('Fejl', 'Du skal være logget ind for at uploade video.');
+      return;
+    }
+
+    setIsUploadingVideo(true);
+    try {
+      const uploadedVideo = await pickAndUploadTaskVideo(user.id);
+      if (!uploadedVideo) return;
+      setFormErrors(prev => ({ ...prev, videoUrl: undefined }));
+      setVideoUrl(uploadedVideo.publicUrl);
+      Alert.alert('Video uploadet', 'Videoen er klar til at blive gemt på opgaveskabelonen.');
+    } catch (error: any) {
+      Alert.alert('Fejl', error?.message || 'Kunne ikke uploade video.');
+    } finally {
+      setIsUploadingVideo(false);
+    }
+  }, [user?.id]);
 
   const handleDeleteVideo = useCallback(() => {
     Alert.alert('Slet video', 'Er du sikker på at du vil fjerne videoen fra denne opgave?', [
@@ -1404,12 +1441,19 @@ export default function TasksScreen() {
         />
       </View>
 
-      <Modal visible={isModalVisible} animationType="slide" transparent>
+      <Modal
+        visible={isModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => {
+          if (!isSaving && !isUploadingVideo) closeTaskModal();
+        }}
+      >
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: cardBgColor }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: textColor }]}>{isCreating ? 'Ny opgave' : 'Rediger opgave'}</Text>
-              <TouchableOpacity onPress={closeTaskModal} disabled={isSaving}>
+              <TouchableOpacity onPress={closeTaskModal} disabled={isSaving || isUploadingVideo}>
                 <IconSymbol ios_icon_name="xmark.circle.fill" android_material_icon_name="close" size={28} color={textSecondaryColor} />
               </TouchableOpacity>
             </View>
@@ -1448,12 +1492,12 @@ export default function TasksScreen() {
 
                   <View style={styles.videoSection}>
                     <View style={styles.videoLabelRow}>
-                      <Text style={[styles.label, { color: textColor }]}>Indsæt link til video</Text>
+                      <Text style={[styles.label, { color: textColor }]}>Video</Text>
                       {videoUrl.trim() ? (
                         <TouchableOpacity
                           style={styles.deleteVideoButton}
                           onPress={handleDeleteVideo}
-                          disabled={isSaving}
+                          disabled={isSaving || isUploadingVideo}
                           testID="tasks.modal.deleteVideoButton"
                         >
                           <IconSymbol ios_icon_name="trash.fill" android_material_icon_name="delete" size={18} color={colors.error} />
@@ -1466,12 +1510,37 @@ export default function TasksScreen() {
                       style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
                       value={videoUrl}
                       onChangeText={updateVideoUrl}
-                      placeholder="https://youtube.com/... eller https://vimeo.com/..."
+                      placeholder="YouTube, Vimeo, Instagram eller upload fra telefon"
                       placeholderTextColor={textSecondaryColor}
                       autoCapitalize="none"
-                      editable={!isSaving}
+                      autoCorrect={false}
+                      keyboardType="url"
+                      editable={!isSaving && !isUploadingVideo}
                       testID="tasks.modal.videoUrlInput"
                     />
+
+                    <TouchableOpacity
+                      style={[
+                        styles.uploadVideoButton,
+                        {
+                          borderColor: colors.primary,
+                          opacity: isSaving || isUploadingVideo ? 0.6 : 1,
+                        },
+                      ]}
+                      onPress={handlePickVideo}
+                      disabled={isSaving || isUploadingVideo}
+                      activeOpacity={0.85}
+                    >
+                      <IconSymbol
+                        ios_icon_name="video.badge.plus"
+                        android_material_icon_name="video_library"
+                        size={20}
+                        color={colors.primary}
+                      />
+                      <Text style={[styles.uploadVideoButtonText, { color: colors.primary }]}>
+                        {isUploadingVideo ? 'Uploader video...' : 'Vælg video fra telefon'}
+                      </Text>
+                    </TouchableOpacity>
 
                     {videoUrl.trim() && isValidVideoUrl(videoUrl) && (
                       <View style={styles.videoPreviewSmall}>
@@ -1484,12 +1553,13 @@ export default function TasksScreen() {
                           <IconSymbol ios_icon_name="play.circle.fill" android_material_icon_name="play_circle" size={32} color={colors.primary} />
                           <Text style={[styles.videoPreviewText, { color: colors.primary }]}>Forhåndsvisning</Text>
                         </TouchableOpacity>
+                        <Text style={[styles.helperText, { color: colors.secondary }]}>Video klar til opgaven</Text>
                       </View>
                     )}
 
                     {(formErrors.videoUrl || (videoUrl.trim() && !isValidVideoUrl(videoUrl))) && (
                       <Text style={[styles.errorText, { color: colors.error }]}>
-                        {formErrors.videoUrl || 'Video URL skal være fra YouTube, youtu.be eller Vimeo.'}
+                        {formErrors.videoUrl || 'Ugyldig video. Brug YouTube, Vimeo, Instagram eller en uploadet videofil.'}
                       </Text>
                     )}
                   </View>
@@ -1796,18 +1866,24 @@ export default function TasksScreen() {
               <TouchableOpacity
                 style={[styles.modalButton, styles.cancelButton, { backgroundColor: bgColor }]}
                 onPress={closeTaskModal}
-                disabled={isSaving}
+                disabled={isSaving || isUploadingVideo}
                 testID="tasks.modal.cancelButton"
               >
                 <Text style={[styles.modalButtonText, { color: textColor }]}>Annuller</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modalButton, styles.saveButton, { backgroundColor: colors.primary, opacity: isSaving ? 0.6 : 1 }]}
+                style={[
+                  styles.modalButton,
+                  styles.saveButton,
+                  { backgroundColor: colors.primary, opacity: isSaving || isUploadingVideo ? 0.6 : 1 },
+                ]}
                 onPress={handleSaveTask}
-                disabled={isSaving}
+                disabled={isSaving || isUploadingVideo}
                 testID="tasks.modal.saveButton"
               >
-                <Text style={[styles.modalButtonText, { color: '#fff' }]}>{isSaving ? 'Gemmer...' : 'Gem'}</Text>
+                <Text style={[styles.modalButtonText, { color: '#fff' }]}>
+                  {isSaving ? 'Gemmer...' : isUploadingVideo ? 'Uploader...' : 'Gem'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -2079,6 +2155,20 @@ const styles = StyleSheet.create({
   videoLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   deleteVideoButton: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4 },
   deleteVideoText: { fontSize: 14, fontWeight: '600' },
+  uploadVideoButton: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: -4,
+    marginBottom: 12,
+  },
+  uploadVideoButtonText: { fontSize: 15, fontWeight: '600' },
   videoPreviewSmall: { marginTop: 8, marginBottom: 12 },
   videoPreviewButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 16, backgroundColor: colors.highlight, borderRadius: 12 },
   videoPreviewText: { fontSize: 16, fontWeight: '600' },
