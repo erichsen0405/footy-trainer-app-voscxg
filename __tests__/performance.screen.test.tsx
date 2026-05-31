@@ -1,17 +1,59 @@
 import React from 'react';
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 
 import PerformanceScreen from '../app/(tabs)/performance';
 
 const mockUseFootball = jest.fn();
 const mockUseHomeActivities = jest.fn();
+const mockStartAdminPlayer = jest.fn();
+const mockSetSelectedContext = jest.fn();
+const mockEnsureRosterLoaded = jest.fn();
+
+const mockAdminState = {
+  adminMode: 'self' as 'self' | 'player' | 'team',
+  adminTargetId: null as string | null,
+  adminTargetType: null as 'player' | 'team' | null,
+};
+const mockTeamPlayerState = {
+  players: [] as { id: string; full_name: string; email: string; phone_number?: string }[],
+  loading: false,
+};
+const mockUserRoleState = {
+  userRole: 'player' as 'admin' | 'trainer' | 'player' | null,
+};
+
+jest.mock('@/contexts/AdminContext', () => ({
+  useAdmin: () => ({
+    ...mockAdminState,
+    startAdminPlayer: mockStartAdminPlayer,
+  }),
+}));
 
 jest.mock('@/contexts/FootballContext', () => ({
   useFootball: () => mockUseFootball(),
 }));
 
+jest.mock('@/contexts/TeamPlayerContext', () => ({
+  useTeamPlayer: () => ({
+    players: mockTeamPlayerState.players,
+    loading: mockTeamPlayerState.loading,
+    ensureRosterLoaded: mockEnsureRosterLoaded,
+    setSelectedContext: mockSetSelectedContext,
+  }),
+}));
+
 jest.mock('@/hooks/useHomeActivities', () => ({
   useHomeActivities: () => mockUseHomeActivities(),
+}));
+
+jest.mock('@/hooks/useUserRole', () => ({
+  useUserRole: () => ({
+    userRole: mockUserRoleState.userRole,
+    loading: false,
+    isAdmin: mockUserRoleState.userRole === 'admin' || mockUserRoleState.userRole === 'trainer',
+    refreshUserRole: jest.fn(),
+    isAuthenticated: true,
+  }),
 }));
 
 jest.mock('@react-navigation/native', () => ({
@@ -30,9 +72,13 @@ jest.mock('@react-navigation/native', () => ({
 
 jest.mock('@/components/ProgressionSection', () => {
   const React = jest.requireActual('react');
-  const { View } = jest.requireActual('react-native');
+  const { Text, View } = jest.requireActual('react-native');
   return {
-    ProgressionSection: () => <View testID="mock.progressionSection" />,
+    ProgressionSection: ({ targetUserId }: { targetUserId?: string | null }) => (
+      <View testID="mock.progressionSection">
+        <Text testID="mock.progressionTarget">{targetUserId ?? 'self'}</Text>
+      </View>
+    ),
   };
 });
 
@@ -65,6 +111,15 @@ describe('PerformanceScreen', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockAdminState.adminMode = 'self';
+    mockAdminState.adminTargetId = null;
+    mockAdminState.adminTargetType = null;
+    mockTeamPlayerState.players = [];
+    mockTeamPlayerState.loading = false;
+    mockUserRoleState.userRole = 'player';
+    mockSetSelectedContext.mockResolvedValue(undefined);
+    mockEnsureRosterLoaded.mockReturnValue(new Promise(() => {}));
+
     mockUseFootball.mockReturnValue({
       trophies: [],
       hasPerformanceDataLoaded: true,
@@ -111,6 +166,161 @@ describe('PerformanceScreen', () => {
 
     fireEvent.press(getByTestId('performance.progression.toggle'));
     expect(queryByTestId('mock.progressionSection')).toBeNull();
+  });
+
+  it('shows player dropdown for trainer profiles', () => {
+    mockUserRoleState.userRole = 'trainer';
+
+    const { getByTestId } = render(<PerformanceScreen />);
+
+    expect(getByTestId('performance.playerDropdown.trigger')).toBeTruthy();
+  });
+
+  it('does not show player dropdown for player profiles', () => {
+    mockUserRoleState.userRole = 'player';
+
+    const { queryByTestId } = render(<PerformanceScreen />);
+
+    expect(queryByTestId('performance.playerDropdown.trigger')).toBeNull();
+  });
+
+  it('only renders trainer-linked players in the dropdown', () => {
+    mockUserRoleState.userRole = 'trainer';
+    mockTeamPlayerState.players = [
+      { id: 'player-1', email: '', full_name: 'Alma Angriber' },
+      { id: 'player-2', email: '', full_name: 'Birk Back' },
+    ];
+
+    const { getByTestId, getByText, queryByTestId } = render(<PerformanceScreen />);
+
+    fireEvent.press(getByTestId('performance.playerDropdown.trigger'));
+
+    expect(getByText('Alma Angriber')).toBeTruthy();
+    expect(getByText('Birk Back')).toBeTruthy();
+    expect(queryByTestId('performance.playerDropdown.option.player-3')).toBeNull();
+  });
+
+  it('shows the trainer player dropdown loading state', () => {
+    mockUserRoleState.userRole = 'trainer';
+    mockEnsureRosterLoaded.mockReturnValue(new Promise(() => {}));
+
+    const { getByTestId } = render(<PerformanceScreen />);
+
+    fireEvent.press(getByTestId('performance.playerDropdown.trigger'));
+
+    expect(getByTestId('performance.playerDropdown.loading')).toBeTruthy();
+  });
+
+  it('shows the trainer player dropdown empty state', async () => {
+    mockUserRoleState.userRole = 'trainer';
+    mockEnsureRosterLoaded.mockResolvedValue(undefined);
+
+    const { getByTestId } = render(<PerformanceScreen />);
+
+    fireEvent.press(getByTestId('performance.playerDropdown.trigger'));
+
+    await waitFor(() => {
+      expect(getByTestId('performance.playerDropdown.empty')).toBeTruthy();
+    });
+  });
+
+  it('shows the trainer player dropdown error state', async () => {
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockUserRoleState.userRole = 'trainer';
+    mockEnsureRosterLoaded.mockRejectedValue(new Error('roster failed'));
+
+    const { getByTestId } = render(<PerformanceScreen />);
+
+    fireEvent.press(getByTestId('performance.playerDropdown.trigger'));
+
+    await waitFor(() => {
+      expect(getByTestId('performance.playerDropdown.error')).toBeTruthy();
+    });
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('selects a linked player and updates the performance target', async () => {
+    mockUserRoleState.userRole = 'trainer';
+    mockTeamPlayerState.players = [
+      { id: 'player-1', email: '', full_name: 'Alma Angriber' },
+    ];
+
+    const screen = render(<PerformanceScreen />);
+
+    fireEvent.press(screen.getByTestId('performance.playerDropdown.trigger'));
+    fireEvent.press(screen.getByTestId('performance.playerDropdown.option.player-1'));
+
+    await waitFor(() => {
+      expect(mockSetSelectedContext).toHaveBeenCalledWith({
+        type: 'player',
+        id: 'player-1',
+        name: 'Alma Angriber',
+      });
+      expect(mockStartAdminPlayer).toHaveBeenCalledWith('player-1');
+    });
+
+    mockAdminState.adminMode = 'player';
+    mockAdminState.adminTargetId = 'player-1';
+    mockAdminState.adminTargetType = 'player';
+    mockUseFootball.mockReturnValue({
+      trophies: [
+        { week: 7, year: 2026, type: 'gold', percentage: 100, completedTasks: 2, totalTasks: 2 },
+      ],
+      hasPerformanceDataLoaded: true,
+      ensurePerformanceDataLoaded: jest.fn(),
+      currentWeekStats: {
+        percentage: 100,
+        completedTasks: 2,
+        totalTasks: 2,
+        completedTasksForWeek: 2,
+        totalTasksForWeek: 2,
+        weekActivities: [],
+      },
+      externalCalendars: [],
+      fetchExternalCalendarEvents: jest.fn(),
+      categories: [],
+    });
+
+    screen.rerender(<PerformanceScreen />);
+
+    expect(screen.getByText('Viser performance for Alma Angriber')).toBeTruthy();
+    expect(screen.getByTestId('mock.progressionTarget').props.children).toBe('player-1');
+    expect(screen.getByTestId('performance.trophies.count.gold').props.children).toBe(1);
+  });
+
+  it('keeps the selected player visible while selected performance data is loading', () => {
+    mockUserRoleState.userRole = 'trainer';
+    mockAdminState.adminMode = 'player';
+    mockAdminState.adminTargetId = 'player-1';
+    mockAdminState.adminTargetType = 'player';
+    mockTeamPlayerState.players = [
+      { id: 'player-1', email: '', full_name: 'Alma Angriber' },
+    ];
+    mockUseFootball.mockReturnValue({
+      trophies: [
+        { week: 7, year: 2026, type: 'gold', percentage: 100, completedTasks: 2, totalTasks: 2 },
+      ],
+      hasPerformanceDataLoaded: false,
+      ensurePerformanceDataLoaded: jest.fn(() => new Promise(() => {})),
+      currentWeekStats: {
+        percentage: 60,
+        completedTasks: 3,
+        totalTasks: 5,
+        completedTasksForWeek: 5,
+        totalTasksForWeek: 8,
+        weekActivities: [],
+      },
+      externalCalendars: [],
+      fetchExternalCalendarEvents: jest.fn(),
+      categories: [],
+    });
+
+    const { getByTestId, getByText, queryByTestId } = render(<PerformanceScreen />);
+
+    expect(getByTestId('performance.selectedPlayer')).toBeTruthy();
+    expect(getByText('Indlæser pokaler og kalendere...')).toBeTruthy();
+    expect(queryByTestId('performance.trophies.count.gold')).toBeNull();
   });
 
   it('shows historik and excludes current week activities', () => {
@@ -232,7 +442,7 @@ describe('PerformanceScreen', () => {
         { week: 7, year: 2026, type: 'gold', percentage: 100, completedTasks: 2, totalTasks: 2 },
       ],
       hasPerformanceDataLoaded: false,
-      ensurePerformanceDataLoaded: jest.fn().mockResolvedValue(undefined),
+      ensurePerformanceDataLoaded: jest.fn(() => new Promise(() => {})),
       currentWeekStats: {
         percentage: 60,
         completedTasks: 3,
