@@ -290,6 +290,7 @@ describe('ActivityCard completion UI', () => {
     await waitFor(() => {
       expect(mockTaskDetailsModal).toHaveBeenCalled();
       expect(mockTaskDetailsModal.mock.calls.at(-1)?.[0]?.videoUrl).toBe('focus/run.mp4');
+      expect(mockTaskDetailsModal.mock.calls.at(-1)?.[0]?.videoUrls).toEqual(['focus/run.mp4']);
     });
   });
 

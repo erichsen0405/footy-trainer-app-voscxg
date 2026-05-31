@@ -12,11 +12,12 @@ import {
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import SmartVideoPlayer from '@/components/SmartVideoPlayer';
+import SwipeVideoPlayer from '@/components/SwipeVideoPlayer';
 import { IconSymbol } from '@/components/IconSymbol';
 import { TaskDescriptionRenderer } from '@/components/TaskDescriptionRenderer';
 import * as CommonStyles from '@/styles/commonStyles';
-import { extractFirstPlayableVideoUrl, isPlayableVideoUrl } from '@/utils/videoUrlParser';
+import { extractFirstPlayableVideoUrl } from '@/utils/videoUrlParser';
+import { normalizeTaskVideoUrls } from '@/utils/taskVideos';
 
 const FALLBACK_COLORS = {
   primary: '#3B82F6',
@@ -33,6 +34,7 @@ export interface TaskDetailsModalProps {
   description?: string;
   reminderMinutes?: number | null;
   videoUrl?: string | null;
+  videoUrls?: string[] | null;
   completed?: boolean;
   isSaving?: boolean;
   onClose: () => void;
@@ -82,26 +84,31 @@ function TaskDetailsModalComponent({
   description,
   reminderMinutes,
   videoUrl,
+  videoUrls,
   completed = false,
   isSaving = false,
   onClose,
   onComplete,
 }: TaskDetailsModalProps) {
   const base = useMemo(() => clampColorHex(categoryColor), [categoryColor]);
-  const trimmedVideoUrl =
-    typeof videoUrl === 'string' && isPlayableVideoUrl(videoUrl) ? videoUrl.trim() : null;
+  const directVideoUrls = useMemo(
+    () => normalizeTaskVideoUrls([...(Array.isArray(videoUrls) ? videoUrls : []), videoUrl]),
+    [videoUrl, videoUrls],
+  );
   const derivedDescriptionVideoUrl = useMemo(() => extractFirstPlayableVideoUrl(description), [description]);
-  const resolvedVideoUrl = trimmedVideoUrl ?? derivedDescriptionVideoUrl;
+  const resolvedVideoUrls = useMemo(
+    () => (directVideoUrls.length ? directVideoUrls : normalizeTaskVideoUrls(derivedDescriptionVideoUrl)),
+    [directVideoUrls, derivedDescriptionVideoUrl],
+  );
   const descriptionForDisplay = useMemo(() => {
     if (typeof description !== 'string') return '';
     const trimmed = description.trim();
     if (!trimmed) return '';
-    if (!resolvedVideoUrl) return trimmed;
-    return trimmed.replace(resolvedVideoUrl, '').trim();
-  }, [description, resolvedVideoUrl]);
+    return resolvedVideoUrls.reduce((next, url) => next.replace(url, ''), trimmed).trim();
+  }, [description, resolvedVideoUrls]);
   const hasDescription = descriptionForDisplay.length > 0;
   const hasReminder = reminderMinutes !== null && reminderMinutes !== undefined;
-  const hasBodyContent = Boolean(resolvedVideoUrl || hasDescription || hasReminder);
+  const hasBodyContent = Boolean(resolvedVideoUrls.length || hasDescription || hasReminder);
 
   const disable = isSaving;
 
@@ -140,10 +147,10 @@ function TaskDetailsModalComponent({
                 contentContainerStyle={styles.bodyContent}
                 showsVerticalScrollIndicator={false}
               >
-                {resolvedVideoUrl ? (
+                {resolvedVideoUrls.length ? (
                   <View style={styles.videoSection}>
                     <View style={styles.videoContainer}>
-                      <SmartVideoPlayer url={resolvedVideoUrl} />
+                      <SwipeVideoPlayer urls={resolvedVideoUrls} minHeight={220} testID="taskDetails.videoCarousel" />
                     </View>
                   </View>
                 ) : null}

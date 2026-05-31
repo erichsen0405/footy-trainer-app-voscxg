@@ -1417,6 +1417,7 @@ describe('ActivityDetails add-task flow', () => {
         categoryIds: [],
         subtasks: [],
         videoUrl: instagramUrl,
+        videoUrls: [instagramUrl, 'https://vimeo.com/123456'],
       },
     ];
 
@@ -1463,6 +1464,7 @@ describe('ActivityDetails add-task flow', () => {
               task_template_id: row.task_template_id ?? null,
               feedback_template_id: row.feedback_template_id ?? null,
               video_url: row.video_url ?? null,
+              video_urls: row.video_urls ?? null,
             })),
             error: null,
           }),
@@ -1510,6 +1512,7 @@ describe('ActivityDetails add-task flow', () => {
                 task_template_id: row.task_template_id ?? null,
                 feedback_template_id: row.feedback_template_id ?? null,
                 video_url: row.video_url ?? null,
+                video_urls: row.video_urls ?? null,
               })),
             },
             error: null,
@@ -1565,8 +1568,10 @@ describe('ActivityDetails add-task flow', () => {
 
     await waitFor(() => expect(insertedTaskTemplates).toHaveLength(1));
     expect(insertedTaskTemplates[0].video_url).toBe(instagramUrl);
+    expect(insertedTaskTemplates[0].video_urls).toEqual([instagramUrl, 'https://vimeo.com/123456']);
     expect(insertedActivityTasks).toHaveLength(1);
-    expect(insertedActivityTasks[0].video_url).toBe(instagramUrl);
+    expect(insertedActivityTasks[0].video_url).toBeUndefined();
+    expect(insertedActivityTasks[0].video_urls).toEqual([instagramUrl, 'https://vimeo.com/123456']);
 
     alertSpy.mockRestore();
   });

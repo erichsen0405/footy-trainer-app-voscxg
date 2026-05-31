@@ -1,4 +1,5 @@
 import {
+  getTaskModalVideoUrls,
   getTaskModalVideoUrl,
   hydrateTaskForModal,
   shouldHydrateTaskForModal,
@@ -23,6 +24,17 @@ describe('taskModalContent', () => {
   it('reads video URL from either camelCase or snake_case fields', () => {
     expect(getTaskModalVideoUrl({ videoUrl: 'focus/run.mp4' })).toBe('focus/run.mp4');
     expect(getTaskModalVideoUrl({ video_url: 'focus/run.mp4' })).toBe('focus/run.mp4');
+  });
+
+  it('reads multiple video URLs from plural metadata before legacy fields', () => {
+    const urls = ['focus/one.mp4', 'focus/two.mp4'];
+
+    expect(getTaskModalVideoUrls({ video_urls: urls, video_url: 'focus/legacy.mp4' })).toEqual([
+      'focus/one.mp4',
+      'focus/two.mp4',
+      'focus/legacy.mp4',
+    ]);
+    expect(getTaskModalVideoUrl({ video_urls: urls })).toBe('focus/one.mp4');
   });
 
   it('only hydrates when template-backed fields are missing', () => {
@@ -50,6 +62,10 @@ describe('taskModalContent', () => {
         title: 'Teknik',
         description: 'Se videoen og øv teknikken',
         video_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        video_urls: [
+          'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+          'https://vimeo.com/123456',
+        ],
       },
       error: null,
     });
@@ -66,5 +82,9 @@ describe('taskModalContent', () => {
     expect(hydrated.description).toBe('Se videoen og øv teknikken');
     expect(hydrated.video_url).toBe('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
     expect((hydrated as any).videoUrl).toBe('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+    expect((hydrated as any).videoUrls).toEqual([
+      'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      'https://vimeo.com/123456',
+    ]);
   });
 });

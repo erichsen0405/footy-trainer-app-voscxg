@@ -303,14 +303,50 @@ describe('Tasks redesigned template screen', () => {
       ],
     }));
 
-    const { getByDisplayValue, getByTestId, getByText } = render(<TasksScreen />);
+    const { getAllByText, getByTestId, getByText, queryByDisplayValue } = render(<TasksScreen />);
 
     fireEvent.press(getByTestId('tasks.folder.personal'));
     fireEvent.press(getByTestId('tasks.taskCard.template-video-1'));
-    expect(getByText('Video')).toBeTruthy();
+    expect(getByText('Videoer')).toBeTruthy();
     expect(getByText('Vælg video fra telefon')).toBeTruthy();
-    expect(getByDisplayValue('https://youtu.be/abc123')).toBeTruthy();
+    expect(getByText('Video 1')).toBeTruthy();
+    expect(getAllByText('YouTube').length).toBeGreaterThan(0);
+    expect(queryByDisplayValue('https://youtu.be/abc123')).toBeNull();
     fireEvent.press(getByTestId('tasks.modal.categoryOption.1'));
     expect(getByTestId('tasks.modal.categoryOption.1')).toBeTruthy();
+  });
+
+  it('reopens a template with snake_case video_url populated in the editor', () => {
+    mockUseFootball.mockReturnValue({
+      tasks: [
+        {
+          id: 'template-ig-1',
+          title: 'Instagram template',
+          description: 'test',
+          completed: false,
+          isTemplate: true,
+          categoryIds: [],
+          subtasks: [],
+          video_url: 'https://www.instagram.com/reel/C7N2KQ2uV9x/?igsh=MWQ=',
+          archivedAt: null,
+        },
+      ],
+      categories: [],
+      duplicateTask: jest.fn(),
+      deleteTask: jest.fn().mockResolvedValue(undefined),
+      refreshAll: jest.fn().mockResolvedValue(undefined),
+      refreshData: jest.fn().mockResolvedValue(undefined),
+      updateTask: jest.fn().mockResolvedValue(undefined),
+      isLoading: false,
+    });
+
+    const { getAllByText, getByTestId, getByText, queryByDisplayValue } = render(<TasksScreen />);
+
+    fireEvent.press(getByTestId('tasks.folder.personal'));
+    fireEvent.press(getByTestId('tasks.taskCard.template-ig-1'));
+
+    expect(getByText('Video 1')).toBeTruthy();
+    expect(getAllByText('Instagram').length).toBeGreaterThan(0);
+    expect(queryByDisplayValue('https://www.instagram.com/reel/C7N2KQ2uV9x/?igsh=MWQ=')).toBeNull();
   });
 });

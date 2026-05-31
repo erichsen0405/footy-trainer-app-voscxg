@@ -63,10 +63,12 @@ import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/dat
 import TaskDetailsModal from '@/components/TaskDetailsModal';
 import {
   getTaskModalTemplateId,
+  getTaskModalVideoUrls,
   getTaskModalVideoUrl,
   hydrateTaskForModal,
   shouldHydrateTaskForModal,
 } from '@/utils/taskModalContent';
+import { buildTaskVideoPayload } from '@/utils/taskVideos';
 import { deserializeActivitySnapshotFromRoute } from '@/utils/activityRouteSnapshot';
 import {
   emitActivityDeleted,
@@ -381,7 +383,7 @@ const INTERNAL_SELECT_WITH_VIDEO = `
     is_feedback_task,
     task_template_id,
     feedback_template_id,
-    video_url
+    video_urls
   )
 `;
 
@@ -467,7 +469,7 @@ const EXTERNAL_META_SELECT_WITH_VIDEO = `
     after_training_delay_minutes,
     task_duration_enabled,
     task_duration_minutes,
-    video_url
+    video_urls
   )
 `;
 
@@ -604,7 +606,7 @@ const ACTIVITY_TASKS_SELECT_WITH_LOCAL_OPTIONS = `
   is_feedback_task,
   task_template_id,
   feedback_template_id,
-  video_url
+  video_urls
 `;
 
 const ACTIVITY_TASKS_SELECT_NO_VIDEO = `
@@ -728,8 +730,8 @@ async function fetchActivityTasksByActivityId(activityId: string): Promise<any[]
 
   const variants = [
     ACTIVITY_TASKS_SELECT_WITH_LOCAL_OPTIONS,
-    ACTIVITY_TASKS_SELECT_NO_VIDEO,
     ACTIVITY_TASKS_SELECT_LEGACY_WITH_VIDEO,
+    ACTIVITY_TASKS_SELECT_NO_VIDEO,
     ACTIVITY_TASKS_SELECT_LEGACY_NO_VIDEO,
   ];
 
@@ -752,7 +754,7 @@ async function fetchActivityTasksByActivityId(activityId: string): Promise<any[]
       isMissingColumn(error, 'after_training_delay_minutes') ||
       isMissingColumn(error, 'task_duration_enabled') ||
       isMissingColumn(error, 'task_duration_minutes');
-    const isMissingVideo = isMissingColumn(error, 'video_url');
+    const isMissingVideo = isMissingColumn(error, 'video_url') || isMissingColumn(error, 'video_urls');
     const shouldRetry = isMissingLocalOption || isMissingVideo;
     if (!shouldRetry) {
       break;
@@ -856,7 +858,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         const markerTemplateId = getMarkerTemplateId({ description: task.description, title: task.title });
         const feedbackTemplateId = directFeedbackTemplateId ?? markerTemplateId ?? null;
         const isFeedbackTask = Boolean(feedbackTemplateId) || isFeedbackTitle(task.title);
-        const resolvedVideo = getTaskModalVideoUrl(task);
+        const videoPayload = buildTaskVideoPayload(getTaskModalVideoUrls(task));
         const mapped: any = {
           id: task.id,
           title: task.title,
@@ -882,8 +884,10 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
               ? task.task_duration_minutes
               : null,
           subtasks: [],
-          videoUrl: resolvedVideo ?? undefined,
-          video_url: resolvedVideo,
+          videoUrl: videoPayload.videoUrl ?? undefined,
+          videoUrls: videoPayload.videoUrls,
+          video_url: videoPayload.video_url,
+          video_urls: videoPayload.video_urls,
           taskTemplateId: task.task_template_id,
           feedback_template_id: task.feedback_template_id,
           feedbackTemplateId,
@@ -1070,7 +1074,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         const markerTemplateId = getMarkerTemplateId({ description: task.description, title: task.title });
         const feedbackTemplateId = directFeedbackTemplateId ?? markerTemplateId ?? null;
         const isFeedbackTask = Boolean(feedbackTemplateId) || isFeedbackTitle(task.title);
-        const resolvedVideo = getTaskModalVideoUrl(task);
+        const videoPayload = buildTaskVideoPayload(getTaskModalVideoUrls(task));
         const mapped: any = {
           id: task.id,
           title: task.title,
@@ -1096,8 +1100,10 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
               ? task.task_duration_minutes
               : null,
           subtasks: [],
-          videoUrl: resolvedVideo ?? undefined,
-          video_url: resolvedVideo,
+          videoUrl: videoPayload.videoUrl ?? undefined,
+          videoUrls: videoPayload.videoUrls,
+          video_url: videoPayload.video_url,
+          video_urls: videoPayload.video_urls,
           taskTemplateId: task.task_template_id,
           feedback_template_id: task.feedback_template_id,
           feedbackTemplateId,
@@ -1185,7 +1191,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         const markerTemplateId = getMarkerTemplateId({ description: task.description, title: task.title });
         const feedbackTemplateId = directFeedbackTemplateId ?? markerTemplateId ?? null;
         const isFeedbackTask = Boolean(feedbackTemplateId) || isFeedbackTitle(task.title);
-        const resolvedVideo = getTaskModalVideoUrl(task);
+        const videoPayload = buildTaskVideoPayload(getTaskModalVideoUrls(task));
         const mapped: any = {
           id: task.id,
           title: task.title,
@@ -1211,8 +1217,10 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
               ? task.task_duration_minutes
               : null,
           subtasks: [],
-          videoUrl: resolvedVideo ?? undefined,
-          video_url: resolvedVideo,
+          videoUrl: videoPayload.videoUrl ?? undefined,
+          videoUrls: videoPayload.videoUrls,
+          video_url: videoPayload.video_url,
+          video_urls: videoPayload.video_urls,
           taskTemplateId: task.task_template_id,
           feedback_template_id: task.feedback_template_id,
           feedbackTemplateId,
@@ -1879,6 +1887,10 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
   const normalTaskVideoUrl = useMemo(
     () => (selectedNormalTask ? getTaskModalVideoUrl(selectedNormalTask) : null),
+    [selectedNormalTask],
+  );
+  const normalTaskVideoUrls = useMemo(
+    () => (selectedNormalTask ? getTaskModalVideoUrls(selectedNormalTask) : []),
     [selectedNormalTask],
   );
 
@@ -3359,41 +3371,39 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           typeof template.reminder === 'number' && Number.isFinite(template.reminder)
             ? clampMinutes(template.reminder)
             : null;
-        const resolvedVideoUrl = (() => {
-          const directValue = (template as any)?.videoUrl ?? (template as any)?.video_url;
-          if (typeof directValue !== 'string') return null;
-          const trimmed = directValue.trim();
-          return trimmed.length ? trimmed : null;
-        })();
+        const videoPayload = buildTaskVideoPayload(getTaskModalVideoUrls(template));
         const afterTrainingEnabled = template.afterTrainingEnabled === true;
         const taskDurationEnabled =
           template.taskDurationEnabled === true || template.task_duration_enabled === true;
 
+        const localTemplatePayload = {
+          user_id: currentUserId,
+          title: String(template.title ?? '').trim() || 'Opgave',
+          description: String(template.description ?? ''),
+          reminder_minutes: reminderValue,
+          video_url: videoPayload.video_url,
+          video_urls: videoPayload.video_urls,
+          after_training_enabled: afterTrainingEnabled,
+          after_training_delay_minutes: afterTrainingEnabled
+            ? clampMinutes(template.afterTrainingDelayMinutes ?? 0)
+            : null,
+          after_training_feedback_enable_score:
+            template.afterTrainingFeedbackEnableScore !== false,
+          after_training_feedback_score_explanation:
+            template.afterTrainingFeedbackScoreExplanation ?? null,
+          after_training_feedback_enable_note:
+            template.afterTrainingFeedbackEnableNote !== false,
+          after_training_feedback_enable_intensity: true,
+          task_duration_enabled: taskDurationEnabled,
+          task_duration_minutes: taskDurationEnabled
+            ? clampMinutes(template.taskDurationMinutes ?? template.task_duration_minutes ?? 0)
+            : null,
+          source_folder: 'activity_local_task',
+        };
+
         const { data: localTemplateData, error: localTemplateError } = await supabase
           .from('task_templates')
-          .insert({
-            user_id: currentUserId,
-            title: String(template.title ?? '').trim() || 'Opgave',
-            description: String(template.description ?? ''),
-            reminder_minutes: reminderValue,
-            video_url: resolvedVideoUrl,
-            after_training_enabled: afterTrainingEnabled,
-            after_training_delay_minutes: afterTrainingEnabled
-              ? clampMinutes(template.afterTrainingDelayMinutes ?? 0)
-              : null,
-            after_training_feedback_enable_score:
-              template.afterTrainingFeedbackEnableScore !== false,
-            after_training_feedback_score_explanation:
-              template.afterTrainingFeedbackScoreExplanation ?? null,
-            after_training_feedback_enable_note:
-              template.afterTrainingFeedbackEnableNote !== false,
-            after_training_feedback_enable_intensity: true,
-            task_duration_enabled: taskDurationEnabled,
-            task_duration_minutes: taskDurationEnabled
-              ? clampMinutes(template.taskDurationMinutes ?? template.task_duration_minutes ?? 0)
-              : null,
-            source_folder: 'activity_local_task',
-          })
+          .insert(localTemplatePayload as any)
           .select('id')
           .single();
 
@@ -3406,7 +3416,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           description: String(template.description ?? ''),
           completed: false,
           reminder_minutes: reminderValue,
-          video_url: resolvedVideoUrl,
+          video_urls: videoPayload.video_urls,
           task_template_id: String(localTemplateData.id),
           after_training_enabled: afterTrainingEnabled,
           after_training_delay_minutes:
@@ -3420,7 +3430,6 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               : null,
         };
         const fallbackBasePayload = { ...basePayload } as Record<string, any>;
-        delete fallbackBasePayload.video_url;
         delete fallbackBasePayload.after_training_enabled;
         delete fallbackBasePayload.after_training_delay_minutes;
         delete fallbackBasePayload.task_duration_enabled;
@@ -3434,12 +3443,15 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         let { error } = await supabase.from(table).insert(payload as any);
         if (
           error &&
-          (isMissingColumn(error, 'video_url') ||
+          (isMissingColumn(error, 'video_urls') ||
             isMissingColumn(error, 'after_training_enabled') ||
             isMissingColumn(error, 'after_training_delay_minutes') ||
             isMissingColumn(error, 'task_duration_enabled') ||
             isMissingColumn(error, 'task_duration_minutes'))
         ) {
+          if (isMissingColumn(error, 'video_urls')) {
+            delete fallbackBasePayload.video_urls;
+          }
           const fallbackPayload = activity.isExternal
             ? { local_meta_id: activity.id, ...fallbackBasePayload }
             : { activity_id: activity.id, ...fallbackBasePayload };
@@ -5171,6 +5183,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           description={selectedNormalTask.description}
           reminderMinutes={selectedNormalTask.reminder_minutes ?? selectedNormalTask.reminder ?? null}
           videoUrl={normalTaskVideoUrl}
+          videoUrls={normalTaskVideoUrls}
           completed={!!selectedNormalTask.completed}
           isSaving={isNormalTaskCompleting}
           onClose={handleNormalTaskModalClose}

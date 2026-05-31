@@ -59,6 +59,9 @@ export interface Task {
   reminder?: number | null;
   subtasks: Subtask[];
   videoUrl?: string | null;
+  videoUrls?: string[];
+  video_url?: string | null;
+  video_urls?: string[] | null;
   afterTrainingEnabled?: boolean;
   afterTrainingDelayMinutes?: number | null;
   afterTrainingFeedbackEnableScore?: boolean;

@@ -33,6 +33,7 @@ import {
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { isTaskVisibleForActivity } from '@/utils/taskTemplateVisibility';
 import { resolveCelebrationAfterCompletionFromDatabase } from '@/utils/celebrationRuntime';
+import { buildTaskVideoPayload } from '@/utils/taskVideos';
 
 const NOTIFICATION_SYNC_THROTTLE_MS = 30 * 1000;
 
@@ -695,6 +696,7 @@ export const useFootballData = ({
           description,
           reminder_minutes,
           video_url,
+          video_urls,
           source_folder,
           after_training_enabled,
           after_training_delay_minutes,
@@ -760,39 +762,45 @@ export const useFootballData = ({
         }
       }
 
-      const transformed: Task[] = (data || []).map((t: any) => ({
-        id: t.id,
-        userId: t.user_id ?? null,
-        playerId: t.player_id ?? null,
-        teamId: t.team_id ?? null,
-        trainerName: trainerNameByUserId.get(String(t.user_id ?? '').trim()) ?? null,
-        title: t.title,
-        description: t.description || '',
-        completed: false,
-        isTemplate: true,
-        categoryIds: t.task_template_categories?.map((c: any) => c.category_id) ?? [],
-        reminder: t.reminder_minutes ?? undefined,
-        subtasks: (t.task_template_subtasks ?? [])
-          .slice()
-          .sort((a: any, b: any) => Number(a?.sort_order ?? 0) - Number(b?.sort_order ?? 0))
-          .map((subtask: any) => ({
-            id: String(subtask?.id ?? ''),
-            title: String(subtask?.title ?? ''),
-            completed: false,
-          }))
-          .filter((subtask: any) => subtask.id && subtask.title),
-        videoUrl: t.video_url ?? undefined,
-        source_folder: t.source_folder ?? undefined,
-        afterTrainingEnabled: !!t.after_training_enabled,
-        afterTrainingDelayMinutes: t.after_training_delay_minutes ?? null,
-        afterTrainingFeedbackEnableScore: t.after_training_feedback_enable_score ?? true,
-        afterTrainingFeedbackScoreExplanation: t.after_training_feedback_score_explanation ?? null,
-        afterTrainingFeedbackEnableIntensity: t.after_training_feedback_enable_intensity ?? false,
-        afterTrainingFeedbackEnableNote: t.after_training_feedback_enable_note ?? true,
-        taskDurationEnabled: t.task_duration_enabled ?? false,
-        taskDurationMinutes: t.task_duration_minutes ?? null,
-        archivedAt: t.archived_at ?? null,
-      }));
+      const transformed: Task[] = (data || []).map((t: any) => {
+        const videoPayload = buildTaskVideoPayload(t.video_urls ?? t.video_url);
+        return {
+          id: t.id,
+          userId: t.user_id ?? null,
+          playerId: t.player_id ?? null,
+          teamId: t.team_id ?? null,
+          trainerName: trainerNameByUserId.get(String(t.user_id ?? '').trim()) ?? null,
+          title: t.title,
+          description: t.description || '',
+          completed: false,
+          isTemplate: true,
+          categoryIds: t.task_template_categories?.map((c: any) => c.category_id) ?? [],
+          reminder: t.reminder_minutes ?? undefined,
+          subtasks: (t.task_template_subtasks ?? [])
+            .slice()
+            .sort((a: any, b: any) => Number(a?.sort_order ?? 0) - Number(b?.sort_order ?? 0))
+            .map((subtask: any) => ({
+              id: String(subtask?.id ?? ''),
+              title: String(subtask?.title ?? ''),
+              completed: false,
+            }))
+            .filter((subtask: any) => subtask.id && subtask.title),
+          videoUrl: videoPayload.videoUrl ?? undefined,
+          videoUrls: videoPayload.videoUrls,
+          video_url: videoPayload.video_url,
+          video_urls: videoPayload.video_urls,
+          source_folder: t.source_folder ?? undefined,
+          afterTrainingEnabled: !!t.after_training_enabled,
+          afterTrainingDelayMinutes: t.after_training_delay_minutes ?? null,
+          afterTrainingFeedbackEnableScore: t.after_training_feedback_enable_score ?? true,
+          afterTrainingFeedbackScoreExplanation: t.after_training_feedback_score_explanation ?? null,
+          afterTrainingFeedbackEnableIntensity: t.after_training_feedback_enable_intensity ?? false,
+          afterTrainingFeedbackEnableNote: t.after_training_feedback_enable_note ?? true,
+          taskDurationEnabled: t.task_duration_enabled ?? false,
+          taskDurationMinutes: t.task_duration_minutes ?? null,
+          archivedAt: t.archived_at ?? null,
+        };
+      });
 
       // Filter out hidden tasks
       try {
@@ -1627,6 +1635,7 @@ export const useFootballData = ({
           reminder: task.reminder,
           videoUrl: task.videoUrl,
           subtasks: task.subtasks ?? [],
+          videoUrls: task.videoUrls,
           afterTrainingEnabled: !!task.afterTrainingEnabled,
           afterTrainingDelayMinutes: task.afterTrainingEnabled ? (task.afterTrainingDelayMinutes ?? 0) : null,
           afterTrainingFeedbackEnableScore: task.afterTrainingFeedbackEnableScore ?? true,
@@ -1798,6 +1807,7 @@ export const useFootballData = ({
         reminder: updates.reminder,
         videoUrl: updates.videoUrl,
         subtasks: updates.subtasks,
+        videoUrls: updates.videoUrls,
         afterTrainingEnabled: updates.afterTrainingEnabled,
         afterTrainingDelayMinutes: updates.afterTrainingEnabled ? (updates.afterTrainingDelayMinutes ?? 0) : null,
         afterTrainingFeedbackEnableScore: updates.afterTrainingFeedbackEnableScore,
@@ -1864,6 +1874,7 @@ export const useFootballData = ({
             id: `copy-${String(subtask.id ?? '')}-${Date.now()}`,
             completed: false,
           })),
+          videoUrls: taskToDuplicate.videoUrls,
           afterTrainingEnabled: !!taskToDuplicate.afterTrainingEnabled,
           afterTrainingDelayMinutes: taskToDuplicate.afterTrainingEnabled ? (taskToDuplicate.afterTrainingDelayMinutes ?? 0) : null,
           afterTrainingFeedbackEnableScore: taskToDuplicate.afterTrainingFeedbackEnableScore ?? true,

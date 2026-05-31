@@ -22,6 +22,10 @@ describe('activityRouteSnapshot', () => {
             description: 'Videoanalyse',
             completed: false,
             reminder_minutes: 45,
+            video_urls: [
+              'https://www.instagram.com/reel/C7N2KQ2uV9x/?igsh=MWQ=',
+              'https://vimeo.com/123456',
+            ],
             video_url: 'https://www.instagram.com/reel/C7N2KQ2uV9x/?igsh=MWQ=',
             task_template_id: 'template-1',
           },
@@ -48,6 +52,10 @@ describe('activityRouteSnapshot', () => {
     expect((deserialized?.tasks?.[0] as any)?.video_url).toBe(
       'https://www.instagram.com/reel/C7N2KQ2uV9x/?igsh=MWQ=',
     );
+    expect((deserialized?.tasks?.[0] as any)?.video_urls).toEqual([
+      'https://www.instagram.com/reel/C7N2KQ2uV9x/?igsh=MWQ=',
+      'https://vimeo.com/123456',
+    ]);
     expect((deserialized?.tasks?.[0] as any)?.task_template_id).toBe('template-1');
     expect(deserialized?.isExternal).toBe(true);
     expect(deserialized?.externalEventRowId).toBe('row-1');
