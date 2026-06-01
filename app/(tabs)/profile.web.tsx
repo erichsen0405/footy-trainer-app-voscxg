@@ -16,7 +16,11 @@ import { pickAndUploadProfileImage } from '@/utils/profileImageUpload';
 import {
   MAX_PLAYER_PROFILE_POSITIONS,
   PLAYER_PROFILE_POSITION_OPTIONS,
+  PROFILE_SELECT_LEGACY,
+  PROFILE_SELECT_WITH_PLAYER_FIELDS,
+  isMissingPlayerProfileFieldsError,
   normalizePlayerProfilePositions,
+  withProfilePlayerFieldDefaults,
 } from '@/utils/playerProfileOptions';
 
 interface UserProfile {
@@ -162,6 +166,7 @@ export default function ProfileScreen() {
   const forceShowPlansTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoOpenTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const openSubscriptionScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const profileSchemaWarningShownRef = useRef(false);
   const updateOpenSubscriptionParam = useCallback(
     (value?: string) => {
       try {
@@ -344,13 +349,30 @@ export default function ProfileScreen() {
     });
   };
 
+  const warnProfileSchemaFallback = useCallback(() => {
+    if (!__DEV__ || profileSchemaWarningShownRef.current) return;
+    profileSchemaWarningShownRef.current = true;
+    console.warn('[PROFILE WEB] Nye spillerprofilfelter mangler i databasen. Kører midlertidigt med legacy profilfelter.');
+  }, []);
+
   const fetchUserProfile = useCallback(async (userId: string) => {
     try {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('profiles')
-        .select('full_name, phone_number, avatar_url, player_positions, club_name, playing_level')
+        .select(PROFILE_SELECT_WITH_PLAYER_FIELDS)
         .eq('user_id', userId)
         .single();
+
+      if (error && isMissingPlayerProfileFieldsError(error)) {
+        warnProfileSchemaFallback();
+        const legacyResult = await supabase
+          .from('profiles')
+          .select(PROFILE_SELECT_LEGACY)
+          .eq('user_id', userId)
+          .single();
+        data = legacyResult.data ? withProfilePlayerFieldDefaults(legacyResult.data) : null;
+        error = legacyResult.error;
+      }
 
       if (error && error.code !== 'PGRST116') {
         console.error('Error fetching profile:', error);
@@ -358,10 +380,7 @@ export default function ProfileScreen() {
       }
 
       if (data) {
-        const normalizedProfile = {
-          ...data,
-          player_positions: normalizePlayerProfilePositions(data.player_positions),
-        };
+        const normalizedProfile = withProfilePlayerFieldDefaults(data);
         setProfile(normalizedProfile);
         resetProfileEditor(normalizedProfile);
       } else {
@@ -371,7 +390,7 @@ export default function ProfileScreen() {
     } catch (error) {
       console.error('Error in fetchUserProfile:', error);
     }
-  }, [resetProfileEditor]);
+  }, [resetProfileEditor, warnProfileSchemaFallback]);
 
   const checkUserOnboarding = useCallback(async (userId: string) => {
     addDebugInfo('Checking user onboarding status...');
@@ -553,7 +572,8 @@ export default function ProfileScreen() {
 
     try {
       setLoading(true);
-      const { error } = await supabase
+      let savedLegacyOnly = false;
+      let { error } = await supabase
         .from('profiles')
         .upsert(
           {
@@ -568,11 +588,31 @@ export default function ProfileScreen() {
           { onConflict: 'user_id' }
         );
 
+      if (error && isMissingPlayerProfileFieldsError(error)) {
+        warnProfileSchemaFallback();
+        savedLegacyOnly = true;
+        const legacyResult = await supabase
+          .from('profiles')
+          .upsert(
+            {
+              user_id: user.id,
+              full_name: editName,
+              phone_number: editPhone,
+            },
+            { onConflict: 'user_id' }
+          );
+        error = legacyResult.error;
+      }
+
       if (error) throw error;
 
       await fetchUserProfile(user.id);
       setIsEditingProfile(false);
-      window.alert('Succes! Din profil er opdateret');
+      window.alert(
+        savedLegacyOnly
+          ? 'Profil gemt: Navn og telefon er opdateret. De nye spillerprofilfelter kræver, at database-migrationen bliver kørt.'
+          : 'Succes! Din profil er opdateret'
+      );
     } catch (error: any) {
       console.error('Error saving profile:', error);
       window.alert('Fejl: Kunne ikke gemme profil');

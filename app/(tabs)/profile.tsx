@@ -44,8 +44,12 @@ import { pickAndUploadProfileImage } from '@/utils/profileImageUpload';
 import {
   MAX_PLAYER_PROFILE_POSITIONS,
   PLAYER_PROFILE_POSITION_OPTIONS,
+  PROFILE_SELECT_LEGACY,
+  PROFILE_SELECT_WITH_PLAYER_FIELDS,
   arePlayerProfilePositionsEqual,
+  isMissingPlayerProfileFieldsError,
   normalizePlayerProfilePositions,
+  withProfilePlayerFieldDefaults,
 } from '@/utils/playerProfileOptions';
 import { DropdownSelect } from '@/components/ui/DropdownSelect';
 import {
@@ -440,6 +444,7 @@ export default function ProfileScreen() {
   const [purchaseProcessing, setPurchaseProcessing] = useState(false);
   const [focusNonce, setFocusNonce] = useState(0);
   const lastUserIdRef = useRef<string | null>(null);
+  const profileSchemaWarningShownRef = useRef(false);
 
   // New onboarding flow states
 
@@ -975,17 +980,34 @@ export default function ProfileScreen() {
     });
   };
 
+  const warnProfileSchemaFallback = useCallback(() => {
+    if (!__DEV__ || profileSchemaWarningShownRef.current) return;
+    profileSchemaWarningShownRef.current = true;
+    console.warn('[PROFILE] Nye spillerprofilfelter mangler i databasen. Kører midlertidigt med legacy profilfelter.');
+  }, []);
+
   const fetchUserProfile = useCallback(async (userId: string) => {
     try {
       if (__DEV__) {
         console.log('[PROFILE] Fetching profile for user:', userId);
       }
 
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('profiles')
-        .select('full_name, phone_number, avatar_url, player_positions, club_name, playing_level')
+        .select(PROFILE_SELECT_WITH_PLAYER_FIELDS)
         .eq('user_id', userId)
         .single();
+
+      if (error && isMissingPlayerProfileFieldsError(error)) {
+        warnProfileSchemaFallback();
+        const legacyResult = await supabase
+          .from('profiles')
+          .select(PROFILE_SELECT_LEGACY)
+          .eq('user_id', userId)
+          .single();
+        data = legacyResult.data ? withProfilePlayerFieldDefaults(legacyResult.data) : null;
+        error = legacyResult.error;
+      }
 
       if (error && error.code !== 'PGRST116') {
         console.error('[PROFILE] Error fetching profile:', error);
@@ -996,10 +1018,7 @@ export default function ProfileScreen() {
         if (__DEV__) {
           console.log('[PROFILE] Profile data fetched:', data.full_name, data.phone_number);
         }
-        const normalizedProfile = {
-          ...data,
-          player_positions: normalizePlayerProfilePositions(data.player_positions),
-        };
+        const normalizedProfile = withProfilePlayerFieldDefaults(data);
         setProfile(normalizedProfile);
         resetProfileEditor(normalizedProfile);
       } else {
@@ -1012,7 +1031,7 @@ export default function ProfileScreen() {
     } catch (error) {
       console.error('[PROFILE] Error in fetchUserProfile:', error);
     }
-  }, [resetProfileEditor]);
+  }, [resetProfileEditor, warnProfileSchemaFallback]);
 
   const fetchAdminInfo = async (playerId: string) => {
     try {
@@ -1336,7 +1355,8 @@ export default function ProfileScreen() {
     setLoading(true);
 
     try {
-      const { error } = await supabase
+      let savedLegacyOnly = false;
+      let { error } = await supabase
         .from('profiles')
         .upsert(
           {
@@ -1351,11 +1371,32 @@ export default function ProfileScreen() {
           { onConflict: 'user_id' }
         );
 
+      if (error && isMissingPlayerProfileFieldsError(error)) {
+        warnProfileSchemaFallback();
+        savedLegacyOnly = true;
+        const legacyResult = await supabase
+          .from('profiles')
+          .upsert(
+            {
+              user_id: user.id,
+              full_name: editName,
+              phone_number: editPhone,
+            },
+            { onConflict: 'user_id' }
+          );
+        error = legacyResult.error;
+      }
+
       if (error) throw error;
 
       await fetchUserProfile(user.id);
       setIsEditingProfile(false);
-      Alert.alert('Succes', 'Din profil er opdateret');
+      Alert.alert(
+        'Succes',
+        savedLegacyOnly
+          ? 'Navn og telefon er opdateret. De nye spillerprofilfelter kræver, at database-migrationen bliver kørt.'
+          : 'Din profil er opdateret'
+      );
     } catch (error: any) {
       console.error('Error saving profile:', error);
       Alert.alert('Fejl', 'Kunne ikke gemme profil');

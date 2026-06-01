@@ -1,7 +1,0 @@
--- Placeholder for a migration version that already exists in the linked
--- Supabase project's remote migration history.
---
--- The original migration was applied remotely before this local checkout had
--- a matching migration file. Keeping this no-op file lets `supabase db push`
--- compare local and remote histories without marking the remote migration as
--- reverted.
