@@ -104,6 +104,7 @@ function RootLayoutContent() {
           0.99,
         )
     : Math.min(startupPrerequisitesProgress, 0.99);
+  const shouldRenderStartupLoader = showStartupLoader && shouldWaitForHomeReady;
 
   const persistPendingRoute = useCallback(
     (route: { pathname: string; params?: Record<string, string> } | null) => {
@@ -467,7 +468,7 @@ function RootLayoutContent() {
                   </Stack>
 
                   <StatusBar style="auto" />
-                  <AppStartupLoader visible={showStartupLoader} progress={startupProgress} />
+                  <AppStartupLoader visible={shouldRenderStartupLoader} progress={startupProgress} />
                 </View>
               </FootballProvider>
             </CelebrationProvider>

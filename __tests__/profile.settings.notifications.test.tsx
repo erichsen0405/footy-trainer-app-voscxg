@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
+import { ScrollView } from 'react-native';
 
 import ProfileScreen from '@/app/(tabs)/profile';
 
@@ -17,6 +18,7 @@ const mockAppleIAPState = {
 const mockCheckNotificationPermissions = jest.fn();
 const mockRequestNotificationPermissions = jest.fn();
 const mockOpenNotificationSettings = jest.fn();
+const mockGetUser = jest.fn();
 
 const mockLoadOverdueReminderSettings = jest.fn();
 const mockPersistOverdueReminderSettings = jest.fn();
@@ -208,7 +210,7 @@ jest.mock('@/integrations/supabase/client', () => {
   return {
     supabase: {
       auth: {
-        getUser: () => Promise.resolve({ data: { user: { id: 'user-1', email: 'test@example.com' } } }),
+        getUser: (...args: any[]) => mockGetUser(...args),
         onAuthStateChange: () => ({ data: { subscription: { unsubscribe: jest.fn() } } }),
         signUp: jest.fn(),
         signInWithPassword: jest.fn(),
@@ -252,6 +254,9 @@ describe('profile overdue reminder settings', () => {
     mockPersistOverdueReminderSettings.mockResolvedValue(undefined);
     mockCancelOverdueReminderNotifications.mockResolvedValue(undefined);
     mockRescheduleOverdueReminderNotifications.mockResolvedValue(['first-id', 'repeat-id']);
+    mockGetUser.mockResolvedValue({
+      data: { user: { id: 'user-1', email: 'test@example.com' } },
+    });
 
     mockCheckNotificationPermissions.mockResolvedValue(true);
     mockRequestNotificationPermissions.mockResolvedValue(true);
@@ -289,6 +294,28 @@ describe('profile overdue reminder settings', () => {
       expect(screen.getByTestId('profile.overdueReminders.deniedBanner')).toBeTruthy();
       expect(screen.getByTestId('profile.overdueReminders.openSettingsCta')).toBeTruthy();
     });
+  });
+
+  it('keeps paste/context menu enabled on login inputs', async () => {
+    mockGetUser.mockResolvedValue({
+      data: { user: null },
+    });
+
+    const screen = render(<ProfileScreen />);
+
+    const emailInput = await screen.findByTestId('auth.login.emailInput');
+    const passwordInput = await screen.findByTestId('auth.login.passwordInput');
+
+    expect(emailInput.props.contextMenuHidden).toBe(false);
+    expect(emailInput.props.autoComplete).toBe('email');
+    expect(emailInput.props.textContentType).toBe('username');
+    expect(passwordInput.props.contextMenuHidden).toBe(false);
+    expect(passwordInput.props.autoComplete).toBe('password');
+    expect(passwordInput.props.textContentType).toBe('password');
+    const rootScrollView = screen.UNSAFE_getByType(ScrollView);
+    expect(rootScrollView.props.keyboardShouldPersistTaps).toBe('handled');
+    expect(rootScrollView.props.canCancelContentTouches).toBeUndefined();
+    expect(rootScrollView.props.scrollEnabled).toBeUndefined();
   });
 
   it('does not keep subscription plans loading on iOS just because products are still empty', async () => {

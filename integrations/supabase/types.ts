@@ -126,6 +126,7 @@ export type Database = {
       }
       activity_categories: {
         Row: {
+          club_id: string | null
           color: string
           created_at: string
           emoji: string
@@ -133,11 +134,13 @@ export type Database = {
           is_system: boolean | null
           name: string
           player_id: string | null
+          source_category_id: string | null
           team_id: string | null
           updated_at: string
           user_id: string | null
         }
         Insert: {
+          club_id?: string | null
           color: string
           created_at?: string
           emoji: string
@@ -145,11 +148,13 @@ export type Database = {
           is_system?: boolean | null
           name: string
           player_id?: string | null
+          source_category_id?: string | null
           team_id?: string | null
           updated_at?: string
           user_id?: string | null
         }
         Update: {
+          club_id?: string | null
           color?: string
           created_at?: string
           emoji?: string
@@ -157,11 +162,26 @@ export type Database = {
           is_system?: boolean | null
           name?: string
           player_id?: string | null
+          source_category_id?: string | null
           team_id?: string | null
           updated_at?: string
           user_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "activity_categories_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_categories_source_category_id_fkey"
+            columns: ["source_category_id"]
+            isOneToOne: false
+            referencedRelation: "activity_categories"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "activity_categories_team_id_fkey"
             columns: ["team_id"]
@@ -1118,10 +1138,14 @@ export type Database = {
       }
       profiles: {
         Row: {
+          avatar_url: string | null
+          club_name: string | null
           created_at: string | null
           full_name: string | null
           id: string
           phone_number: string | null
+          player_positions: string[]
+          playing_level: string | null
           subscription_product_id: string | null
           subscription_receipt: string | null
           subscription_tier: string | null
@@ -1130,10 +1154,14 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          avatar_url?: string | null
+          club_name?: string | null
           created_at?: string | null
           full_name?: string | null
           id?: string
           phone_number?: string | null
+          player_positions?: string[]
+          playing_level?: string | null
           subscription_product_id?: string | null
           subscription_receipt?: string | null
           subscription_tier?: string | null
@@ -1142,10 +1170,14 @@ export type Database = {
           user_id: string
         }
         Update: {
+          avatar_url?: string | null
+          club_name?: string | null
           created_at?: string | null
           full_name?: string | null
           id?: string
           phone_number?: string | null
+          player_positions?: string[]
+          playing_level?: string | null
           subscription_product_id?: string | null
           subscription_receipt?: string | null
           subscription_tier?: string | null
@@ -1572,6 +1604,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      trainer_activity_feedback: {
+        Row: {
+          activity_context_id: string
+          activity_context_type: string
+          created_at: string
+          feedback_text: string
+          id: string
+          player_id: string
+          trainer_id: string
+          updated_at: string
+        }
+        Insert: {
+          activity_context_id: string
+          activity_context_type: string
+          created_at?: string
+          feedback_text: string
+          id?: string
+          player_id: string
+          trainer_id: string
+          updated_at?: string
+        }
+        Update: {
+          activity_context_id?: string
+          activity_context_type?: string
+          created_at?: string
+          feedback_text?: string
+          id?: string
+          player_id?: string
+          trainer_id?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       trophies: {
         Row: {

@@ -68,10 +68,12 @@
     "date-fns": "^4.1.0",
     "difflib": "^0.2.4",
     "expo": "~54.0.33",
+    "expo-asset": "~12.0.12",
     "expo-av": "~16.0.8",
     "expo-blur": "^15.0.6",
     "expo-constants": "~18.0.13",
     "expo-dev-client": "~6.0.20",
+    "expo-file-system": "~19.0.21",
     "expo-font": "~14.0.11",
     "expo-glass-effect": "^0.1.1",
     "expo-haptics": "^15.0.6",
@@ -122,6 +124,7 @@
     "@typescript-eslint/eslint-plugin": "^8.12.1",
     "@typescript-eslint/parser": "^8.12.1",
     "babel-plugin-module-resolver": "^5.0.2",
+    "babel-preset-expo": "~54.0.10",
     "csv-parse": "^5.5.6",
     "eslint": "^9.39.2",
     "eslint-config-expo": "~10.0.0",
@@ -135,7 +138,8 @@
     "react-test-renderer": "19.1.0",
     "tsx": "^4.19.2",
     "typescript": "^5.9.3",
-    "webpack-cli": "^6.0.1"
+    "webpack-cli": "^6.0.1",
+    "ws": "^8.21.0"
   },
   "resolutions": {
     "@expo/prebuild-config": "latest"

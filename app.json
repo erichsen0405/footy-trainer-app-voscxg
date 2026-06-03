@@ -47,7 +47,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Football coach skal bruge adgang til dine videoer, så du kan uploade dem til opgaver."
+          "photosPermission": "Football coach skal bruge adgang til dine billeder og videoer, så du kan uploade profilbilleder og opgavevideoer.",
+          "cameraPermission": "Football coach skal bruge adgang til kameraet, så du kan tage et profilbillede."
         }
       ],
       "react-native-iap",

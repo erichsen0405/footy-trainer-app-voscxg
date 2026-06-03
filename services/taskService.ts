@@ -12,6 +12,7 @@ export interface CreateTaskData {
   categoryIds: string[];
   reminder?: number | null;
   videoUrl?: string | null;
+  subtasks?: TaskSubtaskInput[];
   videoUrls?: string[] | null;
   afterTrainingEnabled?: boolean;
   afterTrainingDelayMinutes?: number | null;
@@ -33,6 +34,7 @@ export interface UpdateTaskData {
   categoryIds?: string[];
   reminder?: number | null;
   videoUrl?: string | null;
+  subtasks?: TaskSubtaskInput[];
   videoUrls?: string[] | null;
   afterTrainingEnabled?: boolean;
   afterTrainingDelayMinutes?: number | null;
@@ -54,7 +56,7 @@ type SeriesFeedbackSummary = {
   dryRun?: boolean;
 };
 
-type TaskSubtaskInput = { id?: string; title: string };
+export type TaskSubtaskInput = { id?: string; title: string };
 
 export interface P8CreateTaskArgs {
   task: Task;
@@ -91,6 +93,82 @@ const uniqueStringIds = (values: unknown[]): string[] => {
   return Array.from(new Set(ids));
 };
 
+const toActivityStartMs = (activityDate: unknown, activityTime: unknown): number | null => {
+  const date =
+    activityDate instanceof Date
+      ? Number.isFinite(activityDate.getTime())
+        ? activityDate.toISOString().slice(0, 10)
+        : ''
+      : String(activityDate ?? '').slice(0, 10);
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+
+  const rawTime = String(activityTime ?? '').trim();
+  const time = rawTime.length >= 8
+    ? rawTime.slice(0, 8)
+    : rawTime.length >= 5
+      ? `${rawTime.slice(0, 5)}:00`
+      : '00:00:00';
+  const ms = Date.parse(`${date}T${time}`);
+  return Number.isFinite(ms) ? ms : null;
+};
+
+const isFutureActivityStart = (activityDate: unknown, activityTime: unknown, now = new Date()): boolean => {
+  const startMs = toActivityStartMs(activityDate, activityTime);
+  return startMs !== null && startMs >= now.getTime();
+};
+
+const isFutureExternalMetaStart = (metaRow: any, now = new Date()): boolean => {
+  const localOverride = metaRow?.local_start_override;
+  if (localOverride) {
+    const localMs = Date.parse(String(localOverride));
+    return Number.isFinite(localMs) && localMs >= now.getTime();
+  }
+
+  const external = Array.isArray(metaRow?.events_external)
+    ? metaRow.events_external[0]
+    : metaRow?.events_external;
+  return isFutureActivityStart(external?.start_date, external?.start_time, now);
+};
+
+const normalizeSubtasksForTemplate = (subtasks: TaskSubtaskInput[] | undefined | null): { title: string; sort_order: number }[] =>
+  (subtasks ?? [])
+    .map((subtask, index) => ({
+      title: String(subtask?.title ?? '').trim(),
+      sort_order: index,
+    }))
+    .filter((subtask) => subtask.title.length > 0);
+
+const syncTaskTemplateSubtasks = async (
+  taskTemplateId: string,
+  subtasks: TaskSubtaskInput[] | undefined | null,
+  signal: AbortSignal,
+): Promise<void> => {
+  const normalizedTaskTemplateId = normalizeStringId(taskTemplateId);
+  if (!normalizedTaskTemplateId) return;
+
+  await supabase
+    .from('task_template_subtasks')
+    .delete()
+    .eq('task_template_id', normalizedTaskTemplateId)
+    .abortSignal(signal);
+
+  const rows = normalizeSubtasksForTemplate(subtasks).map((subtask) => ({
+    task_template_id: normalizedTaskTemplateId,
+    title: subtask.title,
+    sort_order: subtask.sort_order,
+  }));
+
+  if (!rows.length) return;
+
+  const { error } = await supabase
+    .from('task_template_subtasks')
+    .insert(rows)
+    .abortSignal(signal);
+
+  if (error) throw error;
+};
+
 const removeStaleActivityTemplateTasks = async (
   taskId: string,
   nextCategoryIds: string[],
@@ -117,24 +195,29 @@ const removeStaleActivityTemplateTasks = async (
 
     const { data: activities, error: activitiesError } = await supabase
       .from('activities')
-      .select('id, category_id')
+      .select('id, category_id, activity_date, activity_time')
       .in('id', activityIds)
       .abortSignal(signal);
 
     if (activitiesError) throw activitiesError;
 
-    const categoryByActivityId = new Map<string, string | null>();
+    const activityById = new Map<string, { categoryId: string | null; isFuture: boolean }>();
     (activities ?? []).forEach((row: any) => {
       const activityId = normalizeStringId(row?.id);
       if (!activityId) return;
-      categoryByActivityId.set(activityId, normalizeStringId(row?.category_id));
+      activityById.set(activityId, {
+        categoryId: normalizeStringId(row?.category_id),
+        isFuture: isFutureActivityStart(row?.activity_date, row?.activity_time),
+      });
     });
 
     return uniqueStringIds(
       taskRows
         .filter((row: any) => {
           const activityId = normalizeStringId(row?.activity_id);
-          const categoryId = activityId ? categoryByActivityId.get(activityId) ?? null : null;
+          const activity = activityId ? activityById.get(activityId) ?? null : null;
+          if (!activity?.isFuture) return false;
+          const categoryId = activity.categoryId;
           return !categoryId || !allowedCategoryIds.has(categoryId);
         })
         .map((row: any) => row?.id)
@@ -183,24 +266,29 @@ const removeStaleExternalTemplateTasks = async (
 
     const { data: metaRows, error: metaRowsError } = await supabase
       .from('events_local_meta')
-      .select('id, category_id')
+      .select('id, category_id, local_start_override, events_external(start_date, start_time)')
       .in('id', localMetaIds)
       .abortSignal(signal);
 
     if (metaRowsError) throw metaRowsError;
 
-    const categoryByLocalMetaId = new Map<string, string | null>();
+    const metaById = new Map<string, { categoryId: string | null; isFuture: boolean }>();
     (metaRows ?? []).forEach((row: any) => {
       const localMetaId = normalizeStringId(row?.id);
       if (!localMetaId) return;
-      categoryByLocalMetaId.set(localMetaId, normalizeStringId(row?.category_id));
+      metaById.set(localMetaId, {
+        categoryId: normalizeStringId(row?.category_id),
+        isFuture: isFutureExternalMetaStart(row),
+      });
     });
 
     return uniqueStringIds(
       taskRows
         .filter((row: any) => {
           const localMetaId = normalizeStringId(row?.local_meta_id);
-          const categoryId = localMetaId ? categoryByLocalMetaId.get(localMetaId) ?? null : null;
+          const meta = localMetaId ? metaById.get(localMetaId) ?? null : null;
+          if (!meta?.isFuture) return false;
+          const categoryId = meta.categoryId;
           return !categoryId || !allowedCategoryIds.has(categoryId);
         })
         .map((row: any) => row?.id)
@@ -258,6 +346,9 @@ export const taskService = {
     const resolvedCategoryIds = (isP8Payload
       ? ((sourceTask as any).categoryIds ?? [])
       : (rawData as CreateTaskData).categoryIds ?? []) as string[];
+    const resolvedSubtasks = (isP8Payload
+      ? ((rawData as P8CreateTaskArgs).subtasks ?? (sourceTask as any).subtasks)
+      : (rawData as CreateTaskData).subtasks) as TaskSubtaskInput[] | undefined;
     const resolvedReminder =
       ('reminder' in sourceTask ? (sourceTask as any).reminder : (rawData as CreateTaskData).reminder) ?? null;
     const resolvedVideoPayload = buildTaskVideoPayload([
@@ -346,7 +437,7 @@ export const taskService = {
       after_training_feedback_score_explanation: resolvedAfterTrainingFeedbackEnableScore
         ? resolvedAfterTrainingFeedbackScoreExplanation || null
         : null,
-      after_training_feedback_enable_intensity: true,
+      after_training_feedback_enable_intensity: !!resolvedAfterTrainingEnabled,
       after_training_feedback_enable_note: resolvedAfterTrainingFeedbackEnableNote,
       task_duration_enabled: resolvedTaskDurationEnabled,
       task_duration_minutes: resolvedTaskDurationMinutes,
@@ -442,7 +533,9 @@ export const taskService = {
       }
     }
 
-    // Hotfix #215: template subtasks are deprecated and intentionally ignored.
+    if (templateCreated || resolvedSubtasks !== undefined) {
+      await syncTaskTemplateSubtasks(template.id, resolvedSubtasks, signal);
+    }
 
     const returnedVideoPayload = buildTaskVideoPayload((template as any).video_urls ?? template.video_url);
 
@@ -455,7 +548,11 @@ export const taskService = {
       isTemplate: true,
       categoryIds: resolvedCategoryIds || [],
       reminder: template.reminder_minutes ?? undefined,
-      subtasks: [],
+      subtasks: normalizeSubtasksForTemplate(resolvedSubtasks).map((subtask, index) => ({
+        id: `${template.id}-subtask-${index}`,
+        title: subtask.title,
+        completed: false,
+      })),
       videoUrl: returnedVideoPayload.videoUrl ?? undefined,
       videoUrls: returnedVideoPayload.videoUrls,
       source_folder: template.source_folder ?? undefined,
@@ -463,8 +560,7 @@ export const taskService = {
       afterTrainingDelayMinutes: template.after_training_delay_minutes ?? null,
       afterTrainingFeedbackEnableScore: template.after_training_feedback_enable_score ?? true,
       afterTrainingFeedbackScoreExplanation: template.after_training_feedback_score_explanation ?? null,
-      // Always return true so UI/clients see a consistent state
-      afterTrainingFeedbackEnableIntensity: true,
+      afterTrainingFeedbackEnableIntensity: !!template.after_training_feedback_enable_intensity,
       afterTrainingFeedbackEnableNote: template.after_training_feedback_enable_note ?? true,
       taskDurationEnabled: template.task_duration_enabled ?? false,
       taskDurationMinutes: template.task_duration_minutes ?? null,
@@ -519,9 +615,8 @@ export const taskService = {
       }
     }
 
-    // Do not allow disabling intensity – enforce true on relevant updates
     if (shouldSyncSeriesFeedback) {
-      updateData.after_training_feedback_enable_intensity = true;
+      updateData.after_training_feedback_enable_intensity = updates.afterTrainingEnabled === false ? false : true;
     }
 
     if (updates.afterTrainingFeedbackScoreExplanation !== undefined) {
@@ -585,6 +680,10 @@ export const taskService = {
 
         if (error) throw error;
       }
+    }
+
+    if (updates.subtasks !== undefined) {
+      await syncTaskTemplateSubtasks(taskId, updates.subtasks, signal);
     }
 
     if (updates.categoryIds !== undefined) {
@@ -708,24 +807,41 @@ export const taskService = {
       throw error;
     }
 
-    if (Array.isArray(data) && data.length > 0) {
-      return;
+    if (!Array.isArray(data) || data.length === 0) {
+      // Fallback for assigned templates where actor is player/team member (non-owner).
+      const { data: toggled, error: rpcError } = await (supabase as any)
+        .rpc('set_task_template_archived_for_actor', {
+          p_task_id: taskId,
+          p_archived: archived,
+        })
+        .abortSignal(signal);
+
+      if (rpcError) {
+        throw rpcError;
+      }
+
+      if (toggled !== true) {
+        throw new Error('Du kan kun arkivere eller gendanne opgaver, du har adgang til');
+      }
     }
 
-    // Fallback for assigned templates where actor is player/team member (non-owner).
-    const { data: toggled, error: rpcError } = await (supabase as any)
-      .rpc('set_task_template_archived_for_actor', {
-        p_task_id: taskId,
-        p_archived: archived,
-      })
-      .abortSignal(signal);
+    try {
+      const { error: syncError } = await supabase.rpc(
+        'update_all_tasks_from_template',
+        {
+          p_template_id: taskId,
+          p_dry_run: false,
+        }
+      );
 
-    if (rpcError) {
-      throw rpcError;
-    }
-
-    if (toggled !== true) {
-      throw new Error('Du kan kun arkivere eller gendanne opgaver, du har adgang til');
+      if (syncError) {
+        console.error('[TEMPLATE_ARCHIVE_SYNC] update_all_tasks_from_template failed', {
+          templateId: taskId,
+          error: syncError.message,
+        });
+      }
+    } catch (syncUnexpectedError) {
+      console.error('[TEMPLATE_ARCHIVE_SYNC] Unexpected update_all_tasks_from_template failure', syncUnexpectedError);
     }
   },
 

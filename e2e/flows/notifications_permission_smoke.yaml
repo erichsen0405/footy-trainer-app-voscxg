@@ -166,7 +166,7 @@ tags:
           id: '^home\.activityCardButton$'
       - extendedWaitUntil:
           visible:
-            id: '^activity\.details\.task\.loaded\..+$'
+            id: '^activity\.details\.screen$'
           timeout: 15000
       - assertNotVisible:
           id: '^activity\.details\.taskLookup\.error$'

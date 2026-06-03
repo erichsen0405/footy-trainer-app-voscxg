@@ -87,7 +87,7 @@ function organizeFolders(templateTasks: Task[]): FolderItem[] {
 }
 
 export default function TasksScreen() {
-  const { tasks, duplicateTask, deleteTask, refreshData, isLoading } = useFootballData();
+  const { tasks, categories, duplicateTask, deleteTask, refreshData, isLoading } = useFootballData();
   const scheme = useColorScheme();
   const theme = getColors(scheme);
 
@@ -161,6 +161,22 @@ export default function TasksScreen() {
     });
   }, [isDuplicating]);
 
+  const getCategoryItems = useCallback(
+    (categoryIds: string[]) => {
+      const uniqueIds = Array.from(new Set((categoryIds ?? []).filter(Boolean)));
+      return uniqueIds
+        .map(id => categories.find((category: any) => String(category.id) === String(id)))
+        .filter(Boolean)
+        .map((category: any) => ({
+          id: String(category.id),
+          name: String(category.name ?? ''),
+          color: category.color,
+          emoji: category.emoji ?? '',
+        }));
+    },
+    [categories],
+  );
+
   const renderTask = useCallback(
     ({ item }: { item: Task }) => (
       <TaskCard
@@ -170,10 +186,10 @@ export default function TasksScreen() {
         onDuplicate={() => void handleDuplicateTask(item.id)}
         onDelete={() => void handleDeleteTask(item.id)}
         onVideoPress={() => {}}
-        getCategoryNames={() => 'aktiviteter'}
+        getCategoryItems={getCategoryItems}
       />
     ),
-    [handleDuplicateTask, handleDeleteTask, scheme],
+    [getCategoryItems, handleDuplicateTask, handleDeleteTask, scheme],
   );
 
   const styles = useMemo(
@@ -294,4 +310,3 @@ export default function TasksScreen() {
     </View>
   );
 }
-

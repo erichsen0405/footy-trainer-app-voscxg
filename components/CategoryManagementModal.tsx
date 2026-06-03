@@ -15,7 +15,11 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { ActivityCategory } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
-import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
+import { useOptionalTeamPlayer } from '@/contexts/TeamPlayerContext';
+import {
+  isHideableSystemActivityCategory,
+  isUserManagedActivityCategory,
+} from '@/shared/activityCategoryPermissions';
 
 /*
  * ========================================
@@ -74,7 +78,7 @@ export default function CategoryManagementModal({
 }: CategoryManagementModalProps) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const { selectedContext } = useTeamPlayer();
+  const selectedContext = useOptionalTeamPlayer()?.selectedContext;
 
   const safeCategories = useMemo<ActivityCategory[]>(
     () => (Array.isArray(categories) ? categories : []),
@@ -191,6 +195,11 @@ export default function CategoryManagementModal({
         throw new Error('User not authenticated');
       }
 
+      if (!isUserManagedActivityCategory(selectedCategory, user.id)) {
+        Alert.alert('Fejl', 'Du kan ikke redigere denne kategori');
+        return;
+      }
+
       const { data: updatedRows, error } = await supabase
         .from('activity_categories')
         .update({
@@ -201,6 +210,11 @@ export default function CategoryManagementModal({
         })
         .eq('id', selectedCategory.id)
         .eq('user_id', user.id)
+        .is('club_id', null)
+        .is('source_category_id', null)
+        .is('player_id', null)
+        .is('team_id', null)
+        .or('is_system.is.null,is_system.eq.false')
         .select('id');
 
       if (error) {
@@ -240,6 +254,11 @@ export default function CategoryManagementModal({
         .delete()
         .eq('id', categoryId)
         .eq('user_id', user.id)
+        .is('club_id', null)
+        .is('source_category_id', null)
+        .is('player_id', null)
+        .is('team_id', null)
+        .or('is_system.is.null,is_system.eq.false')
         .select('id');
 
       if (error) {
@@ -276,6 +295,15 @@ export default function CategoryManagementModal({
         throw new Error('User not authenticated');
       }
 
+      const category = selectedCategory?.id === categoryId
+        ? selectedCategory
+        : safeCategories.find(c => c.id === categoryId);
+
+      if (!isHideableSystemActivityCategory(category)) {
+        Alert.alert('Fejl', 'Du kan ikke fjerne denne kategori');
+        return;
+      }
+
       const { error } = await supabase
         .from('hidden_activity_categories')
         .upsert(
@@ -301,7 +329,7 @@ export default function CategoryManagementModal({
     } finally {
       setIsLoading(false);
     }
-  }, [onRefresh]);
+  }, [onRefresh, safeCategories, selectedCategory]);
 
   const handleDeleteCategoryCheck = useCallback(async (category: ActivityCategory) => {
     setIsLoading(true);
@@ -312,6 +340,11 @@ export default function CategoryManagementModal({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         throw new Error('User not authenticated');
+      }
+
+      if (!isUserManagedActivityCategory(category, user.id)) {
+        Alert.alert('Fejl', 'Du kan ikke slette denne kategori');
+        return;
       }
 
       let internalQuery = supabase
@@ -384,7 +417,7 @@ export default function CategoryManagementModal({
       if (allActivities.length > 0) {
         // Show reassignment dialog
         setActivitiesUsingCategory(allActivities);
-        setDeleteModeAction('remove');
+        setDeleteModeAction('delete');
         setMode('delete');
       } else {
         // No activities using this category, safe to delete
@@ -407,6 +440,11 @@ export default function CategoryManagementModal({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         throw new Error('User not authenticated');
+      }
+
+      if (!isHideableSystemActivityCategory(category)) {
+        Alert.alert('Fejl', 'Du kan ikke fjerne denne kategori');
+        return;
       }
 
       let internalQuery = supabase
@@ -672,7 +710,8 @@ export default function CategoryManagementModal({
 
         <View style={styles.categoriesList}>
           {safeCategories.map((category) => {
-            const isOwned = !!currentUserId && (category as any).user_id === currentUserId;
+            const isOwned = isUserManagedActivityCategory(category, currentUserId);
+            const canRemove = isHideableSystemActivityCategory(category);
             const categoryKey = toCategoryTestKey(String(category.name ?? ''));
 
             return (
@@ -717,7 +756,7 @@ export default function CategoryManagementModal({
                         />
                       </TouchableOpacity>
                     </>
-                  ) : (
+                  ) : canRemove ? (
                     <TouchableOpacity
                       onPress={() => handleRemoveCategoryCheck(category)}
                       activeOpacity={0.7}
@@ -732,6 +771,8 @@ export default function CategoryManagementModal({
                         color={colors.error}
                       />
                     </TouchableOpacity>
+                  ) : (
+                    <View style={styles.actionButton} />
                   )}
                 </View>
               </View>

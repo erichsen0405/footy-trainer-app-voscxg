@@ -18,6 +18,11 @@ export interface Activity {
   externalCategory?: string;
   seriesId?: string;
   seriesInstanceDate?: Date;
+  sourceActivityId?: string | null;
+  source_activity_id?: string | null;
+  user_id?: string | null;
+  player_id?: string | null;
+  team_id?: string | null;
 }
 
 export interface ActivityCategory {
@@ -25,6 +30,12 @@ export interface ActivityCategory {
   name: string;
   color: string;
   emoji: string;
+  user_id?: string | null;
+  player_id?: string | null;
+  team_id?: string | null;
+  club_id?: string | null;
+  source_category_id?: string | null;
+  is_system?: boolean | null;
 }
 
 export interface ActivitySeries {
@@ -51,9 +62,9 @@ export interface Task {
   completed: boolean;
   isTemplate: boolean;
   categoryIds: string[];
-  reminder?: number;
+  reminder?: number | null;
   subtasks: Subtask[];
-  videoUrl?: string;
+  videoUrl?: string | null;
   videoUrls?: string[];
   video_url?: string | null;
   video_urls?: string[] | null;
@@ -70,6 +81,10 @@ export interface Task {
   taskTemplateId?: string | null;
   feedbackTemplateId?: string | null;
   isFeedbackTask?: boolean;
+  userId?: string | null;
+  playerId?: string | null;
+  teamId?: string | null;
+  trainerName?: string | null;
   source_folder?: string | null;
   sourceFolder?: string | null;
   archivedAt?: string | null;
@@ -176,6 +191,17 @@ export interface TaskTemplateSelfFeedback {
   activityId: string;
   rating?: number | null;
   note?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TrainerActivityFeedback {
+  id: string;
+  activityContextType: 'internal' | 'external';
+  activityContextId: string;
+  playerId: string;
+  trainerId: string;
+  feedbackText: string;
   createdAt: string;
   updatedAt: string;
 }

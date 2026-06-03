@@ -108,6 +108,7 @@ interface UseProgressionDataArgs {
   focusTaskTemplateId?: string | null;
   intensityCategoryId?: string | null;
   categories: ActivityCategory[];
+  targetUserId?: string | null;
 }
 
 interface UseProgressionDataResult {
@@ -452,6 +453,7 @@ export function useProgressionData({
   focusTaskTemplateId,
   intensityCategoryId,
   categories,
+  targetUserId,
 }: UseProgressionDataArgs): UseProgressionDataResult {
   const [focusEntries, setFocusEntries] = useState<ProgressionEntry[]>([]);
   const [focusEntriesPrevious, setFocusEntriesPrevious] = useState<ProgressionEntry[]>([]);
@@ -630,6 +632,9 @@ export function useProgressionData({
         runIfMounted(() => setRequiresLogin(true));
         return;
       }
+      const ownerUserId = typeof targetUserId === 'string' && targetUserId.trim().length > 0
+        ? targetUserId.trim()
+        : userId;
 
       runIfMounted(() => setRequiresLogin(false));
 
@@ -741,13 +746,13 @@ export function useProgressionData({
         (supabase as any)
           .from('task_template_self_feedback')
           .select(focusSelect)
-          .eq('user_id', userId)
+          .eq('user_id', ownerUserId)
           .gte('created_at', periodStart.toISOString())
           .order('created_at', { ascending: true }),
         (supabase as any)
           .from('task_template_self_feedback')
           .select(focusSelect)
-          .eq('user_id', userId)
+          .eq('user_id', ownerUserId)
           .gte('created_at', previousStart.toISOString())
           .lt('created_at', periodStart.toISOString())
           .order('created_at', { ascending: true }),
@@ -757,7 +762,7 @@ export function useProgressionData({
           .not('task_template_id', 'is', null)
           .gte('activities.activity_date', periodStartDate)
           .lt('activities.activity_date', periodEndDate)
-          .eq('activities.user_id', userId)
+          .eq('activities.user_id', ownerUserId)
           .order('created_at', { ascending: true }),
         supabase
           .from('activity_tasks')
@@ -765,19 +770,19 @@ export function useProgressionData({
           .not('task_template_id', 'is', null)
           .gte('activities.activity_date', previousStartDate)
           .lt('activities.activity_date', periodStartDate)
-          .eq('activities.user_id', userId)
+          .eq('activities.user_id', ownerUserId)
           .order('created_at', { ascending: true }),
         supabase
           .from('activities')
           .select(activitySelect)
-          .eq('user_id', userId)
+          .eq('user_id', ownerUserId)
           .gte('activity_date', periodStartDate)
           .lt('activity_date', periodEndDate)
           .order('activity_date', { ascending: true }),
         supabase
           .from('activities')
           .select(activitySelect)
-          .eq('user_id', userId)
+          .eq('user_id', ownerUserId)
           .gte('activity_date', previousStartDate)
           .lt('activity_date', periodStartDate)
           .order('activity_date', { ascending: true }),
@@ -785,7 +790,7 @@ export function useProgressionData({
           .from('external_event_tasks')
           .select(externalTaskSelect)
           .or('task_template_id.not.is.null,feedback_template_id.not.is.null')
-          .eq('events_local_meta.user_id', userId)
+          .eq('events_local_meta.user_id', ownerUserId)
           .gte('events_local_meta.events_external.start_date', periodStartDate)
           .lt('events_local_meta.events_external.start_date', periodEndDate)
           .order('created_at', { ascending: true }),
@@ -793,44 +798,44 @@ export function useProgressionData({
           .from('external_event_tasks')
           .select(externalTaskSelect)
           .or('task_template_id.not.is.null,feedback_template_id.not.is.null')
-          .eq('events_local_meta.user_id', userId)
+          .eq('events_local_meta.user_id', ownerUserId)
           .gte('events_local_meta.events_external.start_date', previousStartDate)
           .lt('events_local_meta.events_external.start_date', periodStartDate)
           .order('created_at', { ascending: true }),
         supabase
           .from('events_local_meta')
           .select(externalIntensitySelect)
-          .eq('user_id', userId)
+          .eq('user_id', ownerUserId)
           .gte('events_external.start_date', periodStartDate)
           .lt('events_external.start_date', periodEndDate),
         supabase
           .from('events_local_meta')
           .select(externalIntensitySelect)
-          .eq('user_id', userId)
+          .eq('user_id', ownerUserId)
           .gte('events_external.start_date', previousStartDate)
           .lt('events_external.start_date', periodStartDate),
         supabase
           .from('activity_tasks')
           .select(taskCounterInternalSelect)
-          .eq('activities.user_id', userId)
+          .eq('activities.user_id', ownerUserId)
           .gte('activities.activity_date', periodStartDate)
           .lt('activities.activity_date', periodEndDate),
         supabase
           .from('activity_tasks')
           .select(taskCounterInternalSelect)
-          .eq('activities.user_id', userId)
+          .eq('activities.user_id', ownerUserId)
           .gte('activities.activity_date', previousStartDate)
           .lt('activities.activity_date', previousEndDate),
         supabase
           .from('external_event_tasks')
           .select(taskCounterExternalSelect)
-          .eq('events_local_meta.user_id', userId)
+          .eq('events_local_meta.user_id', ownerUserId)
           .gte('events_local_meta.events_external.start_date', periodStartDate)
           .lt('events_local_meta.events_external.start_date', periodEndDate),
         supabase
           .from('external_event_tasks')
           .select(taskCounterExternalSelect)
-          .eq('events_local_meta.user_id', userId)
+          .eq('events_local_meta.user_id', ownerUserId)
           .gte('events_local_meta.events_external.start_date', previousStartDate)
           .lt('events_local_meta.events_external.start_date', previousEndDate),
       ]);
@@ -905,7 +910,7 @@ export function useProgressionData({
         const { data: taskCounterFeedbackRows, error: taskCounterFeedbackError } = await supabase
           .from('task_template_self_feedback')
           .select('activity_id, task_template_id, task_instance_id, rating, note, created_at')
-          .eq('user_id', userId)
+          .eq('user_id', ownerUserId)
           .in('activity_id', taskCounterActivityIds)
           .order('created_at', { ascending: false });
 
@@ -1163,7 +1168,7 @@ export function useProgressionData({
           ...entry,
           sessionKey: buildSessionKey({
             eventId: meta?.event_id ?? meta?.external_event_id ?? null,
-            userId: meta?.user_id ?? userId,
+            userId: meta?.user_id ?? ownerUserId,
             date: meta?.activity_date ?? null,
             time: meta?.activity_time ?? null,
           }),
@@ -1175,7 +1180,7 @@ export function useProgressionData({
         const event = meta.events_external ?? {};
         const activityDate = event.start_date ?? null;
         const activityTime = event.start_time ?? null;
-        const ownerId = meta.user_id ?? userId;
+        const ownerId = meta.user_id ?? ownerUserId;
         const eventId = event.id ?? meta.external_event_id ?? null;
         const templateId =
           row.task_template_id ? String(row.task_template_id) : row.feedback_template_id ? String(row.feedback_template_id) : null;
@@ -1226,7 +1231,7 @@ export function useProgressionData({
           focusColor: categoryMeta?.color,
           sessionKey: buildSessionKey({
             eventId,
-            userId: row.user_id ?? userId,
+            userId: row.user_id ?? ownerUserId,
             date: activityDate || row.created_at,
             time: activityTime,
           }),
@@ -1362,7 +1367,7 @@ export function useProgressionData({
     } finally {
       runIfMounted(() => setIsLoading(false));
     }
-  }, [days, mapFocusFeedbackRow, mapFocusPossibleRow, mapIntensityRow, categoryMap, clearDataState, runIfMounted]);
+  }, [days, targetUserId, mapFocusFeedbackRow, mapFocusPossibleRow, mapIntensityRow, categoryMap, clearDataState, runIfMounted]);
 
   const scheduleRefetch = useCallback(
     (delayMs: number = 250) => {

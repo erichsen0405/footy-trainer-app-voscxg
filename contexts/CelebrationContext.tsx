@@ -3,6 +3,7 @@ import {
   AccessibilityInfo,
   Animated,
   Easing,
+  Modal,
   NativeModules,
   Platform,
   Pressable,
@@ -1026,14 +1027,34 @@ export function CelebrationProvider({ children }: { children: React.ReactNode })
         testID="celebration-root"
       >
         {children}
-        {activeCelebration ? (
-          <CelebrationOverlay
-            celebration={activeCelebration}
-            reduceMotionEnabled={reduceMotionEnabled}
-            onStart={startCelebration}
-            onDismiss={dismissCelebration}
-          />
-        ) : null}
+        {activeCelebration
+          ? Platform.OS === 'web'
+            ? (
+                <CelebrationOverlay
+                  celebration={activeCelebration}
+                  reduceMotionEnabled={reduceMotionEnabled}
+                  onStart={startCelebration}
+                  onDismiss={dismissCelebration}
+                />
+              )
+            : (
+                <Modal
+                  visible
+                  transparent
+                  animationType="none"
+                  statusBarTranslucent
+                  presentationStyle="overFullScreen"
+                  onRequestClose={dismissCelebration}
+                >
+                  <CelebrationOverlay
+                    celebration={activeCelebration}
+                    reduceMotionEnabled={reduceMotionEnabled}
+                    onStart={startCelebration}
+                    onDismiss={dismissCelebration}
+                  />
+                </Modal>
+              )
+          : null}
       </View>
     </CelebrationContext.Provider>
   );

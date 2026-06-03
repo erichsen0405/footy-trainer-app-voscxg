@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable, TextInput, useColorScheme, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable, TextInput, useColorScheme, Platform, ActivityIndicator, Image } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -12,10 +12,24 @@ import SubscriptionManager from '@/components/SubscriptionManager';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useSubscriptionFeatures } from '@/hooks/useSubscriptionFeatures';
 import { getSubscriptionGateState } from '@/utils/subscriptionGate';
+import { pickAndUploadProfileImage } from '@/utils/profileImageUpload';
+import {
+  MAX_PLAYER_PROFILE_POSITIONS,
+  PLAYER_PROFILE_POSITION_OPTIONS,
+  PROFILE_SELECT_LEGACY,
+  PROFILE_SELECT_WITH_PLAYER_FIELDS,
+  isMissingPlayerProfileFieldsError,
+  normalizePlayerProfilePositions,
+  withProfilePlayerFieldDefaults,
+} from '@/utils/playerProfileOptions';
 
 interface UserProfile {
   full_name: string | null;
   phone_number: string | null;
+  avatar_url: string | null;
+  player_positions: string[];
+  club_name: string | null;
+  playing_level: string | null;
 }
 
 interface AdminInfo {
@@ -122,6 +136,11 @@ export default function ProfileScreen() {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
+  const [editAvatarUrl, setEditAvatarUrl] = useState('');
+  const [editPositions, setEditPositions] = useState<string[]>([]);
+  const [editClubName, setEditClubName] = useState('');
+  const [editPlayingLevel, setEditPlayingLevel] = useState('');
+  const [isUploadingProfileImage, setIsUploadingProfileImage] = useState(false);
   
   // Collapsible sections
   const [isProfileInfoExpanded, setIsProfileInfoExpanded] = useState(true);
@@ -147,6 +166,7 @@ export default function ProfileScreen() {
   const forceShowPlansTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoOpenTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const openSubscriptionScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const profileSchemaWarningShownRef = useRef(false);
   const updateOpenSubscriptionParam = useCallback(
     (value?: string) => {
       try {
@@ -289,6 +309,89 @@ export default function ProfileScreen() {
     setIsSubscriptionExpanded(prev => !prev);
   }, [clearForceShowPlansTimeout]);
 
+  const resetProfileEditor = useCallback((nextProfile: UserProfile | null) => {
+    setEditName(nextProfile?.full_name || '');
+    setEditPhone(nextProfile?.phone_number || '');
+    setEditAvatarUrl(nextProfile?.avatar_url || '');
+    setEditPositions(normalizePlayerProfilePositions(nextProfile?.player_positions));
+    setEditClubName(nextProfile?.club_name || '');
+    setEditPlayingLevel(nextProfile?.playing_level || '');
+  }, []);
+
+  const handleProfileImageUpload = async (source: 'camera' | 'library') => {
+    if (!user?.id || isUploadingProfileImage) return;
+
+    setIsUploadingProfileImage(true);
+    try {
+      const uploadedImage = await pickAndUploadProfileImage(user.id, source);
+      if (uploadedImage) {
+        setEditAvatarUrl(uploadedImage.publicUrl);
+      }
+    } catch (error: any) {
+      window.alert(error?.message || 'Kunne ikke gemme profilbillede');
+    } finally {
+      setIsUploadingProfileImage(false);
+    }
+  };
+
+  const toggleProfilePosition = (position: string) => {
+    setEditPositions((current) => {
+      if (current.includes(position)) {
+        return current.filter((item) => item !== position);
+      }
+
+      if (current.length >= MAX_PLAYER_PROFILE_POSITIONS) {
+        window.alert('Du kan vælge op til fem positioner.');
+        return current;
+      }
+
+      return [...current, position];
+    });
+  };
+
+  const warnProfileSchemaFallback = useCallback(() => {
+    if (!__DEV__ || profileSchemaWarningShownRef.current) return;
+    profileSchemaWarningShownRef.current = true;
+    console.warn('[PROFILE WEB] Nye spillerprofilfelter mangler i databasen. Kører midlertidigt med legacy profilfelter.');
+  }, []);
+
+  const fetchUserProfile = useCallback(async (userId: string) => {
+    try {
+      let { data, error } = await supabase
+        .from('profiles')
+        .select(PROFILE_SELECT_WITH_PLAYER_FIELDS)
+        .eq('user_id', userId)
+        .single();
+
+      if (error && isMissingPlayerProfileFieldsError(error)) {
+        warnProfileSchemaFallback();
+        const legacyResult = await supabase
+          .from('profiles')
+          .select(PROFILE_SELECT_LEGACY)
+          .eq('user_id', userId)
+          .single();
+        data = legacyResult.data ? withProfilePlayerFieldDefaults(legacyResult.data) : null;
+        error = legacyResult.error;
+      }
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching profile:', error);
+        return;
+      }
+
+      if (data) {
+        const normalizedProfile = withProfilePlayerFieldDefaults(data);
+        setProfile(normalizedProfile);
+        resetProfileEditor(normalizedProfile);
+      } else {
+        setProfile(null);
+        resetProfileEditor(null);
+      }
+    } catch (error) {
+      console.error('Error in fetchUserProfile:', error);
+    }
+  }, [resetProfileEditor, warnProfileSchemaFallback]);
+
   const checkUserOnboarding = useCallback(async (userId: string) => {
     addDebugInfo('Checking user onboarding status...');
     
@@ -318,7 +421,7 @@ export default function ProfileScreen() {
     if (role === 'player') {
       await fetchAdminInfo(userId);
     }
-  }, [refreshSubscription]);
+  }, [fetchUserProfile, refreshSubscription]);
 
   useEffect(() => {
     const checkUser = async () => {
@@ -424,29 +527,6 @@ export default function ProfileScreen() {
     updateOpenSubscriptionParam,
   ]);
 
-  const fetchUserProfile = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('full_name, phone_number')
-        .eq('user_id', userId)
-        .single();
-
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error fetching profile:', error);
-        return;
-      }
-
-      if (data) {
-        setProfile(data);
-        setEditName(data.full_name || '');
-        setEditPhone(data.phone_number || '');
-      }
-    } catch (error) {
-      console.error('Error in fetchUserProfile:', error);
-    }
-  };
-
   const fetchAdminInfo = async (playerId: string) => {
     try {
       const { data: relationship, error: relError } = await supabase
@@ -492,38 +572,47 @@ export default function ProfileScreen() {
 
     try {
       setLoading(true);
-
-      const { data: existingProfile } = await supabase
+      let savedLegacyOnly = false;
+      let { error } = await supabase
         .from('profiles')
-        .select('id')
-        .eq('user_id', user.id)
-        .single();
-
-      if (existingProfile) {
-        const { error } = await supabase
-          .from('profiles')
-          .update({
-            full_name: editName,
-            phone_number: editPhone,
-          })
-          .eq('user_id', user.id);
-
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from('profiles')
-          .insert({
+        .upsert(
+          {
             user_id: user.id,
             full_name: editName,
             phone_number: editPhone,
-          });
+            avatar_url: editAvatarUrl || null,
+            player_positions: normalizePlayerProfilePositions(editPositions),
+            club_name: editClubName,
+            playing_level: editPlayingLevel,
+          },
+          { onConflict: 'user_id' }
+        );
 
-        if (error) throw error;
+      if (error && isMissingPlayerProfileFieldsError(error)) {
+        warnProfileSchemaFallback();
+        savedLegacyOnly = true;
+        const legacyResult = await supabase
+          .from('profiles')
+          .upsert(
+            {
+              user_id: user.id,
+              full_name: editName,
+              phone_number: editPhone,
+            },
+            { onConflict: 'user_id' }
+          );
+        error = legacyResult.error;
       }
+
+      if (error) throw error;
 
       await fetchUserProfile(user.id);
       setIsEditingProfile(false);
-      window.alert('Succes! Din profil er opdateret');
+      window.alert(
+        savedLegacyOnly
+          ? 'Profil gemt: Navn og telefon er opdateret. De nye spillerprofilfelter kræver, at database-migrationen bliver kørt.'
+          : 'Succes! Din profil er opdateret'
+      );
     } catch (error: any) {
       console.error('Error saving profile:', error);
       window.alert('Fejl: Kunne ikke gemme profil');
@@ -732,6 +821,14 @@ export default function ProfileScreen() {
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
 
   const isTrainer = userRole === 'admin' || userRole === 'trainer';
+  const isPlayerProfile = userRole === 'player';
+  const displayAvatarUrl = isEditingProfile ? editAvatarUrl : profile?.avatar_url || '';
+  const displayPlayerPositions = normalizePlayerProfilePositions(profile?.player_positions);
+  const hasProfileInfo =
+    Boolean(profile?.full_name) ||
+    Boolean(profile?.phone_number) ||
+    (isPlayerProfile &&
+      (Boolean(profile?.club_name) || Boolean(profile?.playing_level) || displayPlayerPositions.length > 0));
 
   // Auth-transition gate FIRST
   if (authTransitioning) {
@@ -786,18 +883,27 @@ export default function ProfileScreen() {
             <View style={[styles.card, { backgroundColor: cardBgColor }]}>
               <View style={styles.userInfo}>
                 <View style={styles.avatarContainer}>
-                  <View style={[styles.avatar, { 
-                    backgroundColor: subscriptionStatus?.hasSubscription 
-                      ? getPlanColor(subscriptionStatus.planName)
-                      : colors.primary 
-                  }]}>
-                    <IconSymbol 
-                      ios_icon_name="person.fill" 
-                      android_material_icon_name="person" 
-                      size={48} 
-                      color="#fff" 
-                    />
-                  </View>
+	                  <View style={[styles.avatar, {
+	                    backgroundColor: subscriptionStatus?.hasSubscription
+	                      ? getPlanColor(subscriptionStatus.planName)
+	                      : colors.primary
+	                  }]}>
+	                    {displayAvatarUrl ? (
+	                      <Image
+	                        source={{ uri: displayAvatarUrl }}
+	                        style={styles.avatarImage}
+	                        resizeMode="cover"
+	                        accessibilityIgnoresInvertColors
+	                      />
+	                    ) : (
+	                      <IconSymbol
+	                        ios_icon_name="person.fill"
+	                        android_material_icon_name="person"
+	                        size={48}
+	                        color="#fff"
+	                      />
+	                    )}
+	                  </View>
                   {subscriptionStatus?.hasSubscription && (
                     <View style={[styles.subscriptionBadge, { 
                       backgroundColor: getPlanColor(subscriptionStatus.planName) 
@@ -862,10 +968,11 @@ export default function ProfileScreen() {
                     <Pressable
                       style={styles.headerIconButton}
                       onPress={(event) => {
-                        event.stopPropagation?.();
-                        setIsEditingProfile(true);
-                        setIsProfileInfoExpanded(true);
-                      }}
+	                        event.stopPropagation?.();
+	                        setIsEditingProfile(true);
+	                        setIsProfileInfoExpanded(true);
+	                        resetProfileEditor(profile);
+	                      }}
                       accessibilityRole="button"
                       hitSlop={8}
                     >
@@ -879,10 +986,49 @@ export default function ProfileScreen() {
                   ) : null
                 }
               >
-                {isEditingProfile ? (
-                  <View style={styles.editForm}>
-                    <Text style={[styles.label, { color: textColor }]}>Navn</Text>
-                    <TextInput
+	                {isEditingProfile ? (
+	                  <View style={styles.editForm}>
+	                    <View style={styles.profileImageEditor}>
+	                      <View style={[styles.profileImagePreview, { backgroundColor: colors.primary }]}>
+	                        {editAvatarUrl ? (
+	                          <Image
+	                            source={{ uri: editAvatarUrl }}
+	                            style={styles.profileImagePreviewImage}
+	                            resizeMode="cover"
+	                            accessibilityIgnoresInvertColors
+	                          />
+	                        ) : (
+	                          <IconSymbol ios_icon_name="person.circle.fill" android_material_icon_name="person" size={42} color="#fff" />
+	                        )}
+	                      </View>
+	                      <View style={styles.profileImageActions}>
+	                        <TouchableOpacity
+	                          style={[styles.profileImageButton, { backgroundColor: colors.primary }]}
+	                          onPress={() => handleProfileImageUpload('camera')}
+	                          disabled={isUploadingProfileImage}
+	                          activeOpacity={0.75}
+	                        >
+	                          <IconSymbol ios_icon_name="camera.fill" android_material_icon_name="photo_camera" size={18} color="#fff" />
+	                          <Text style={[styles.profileImageButtonText, { color: '#fff' }]}>Kamera</Text>
+	                        </TouchableOpacity>
+	                        <TouchableOpacity
+	                          style={[styles.profileImageButton, { backgroundColor: colors.highlight }]}
+	                          onPress={() => handleProfileImageUpload('library')}
+	                          disabled={isUploadingProfileImage}
+	                          activeOpacity={0.75}
+	                        >
+	                          {isUploadingProfileImage ? (
+	                            <ActivityIndicator size="small" color={textColor} />
+	                          ) : (
+	                            <IconSymbol ios_icon_name="photo.fill" android_material_icon_name="photo_library" size={18} color={textColor} />
+	                          )}
+	                          <Text style={[styles.profileImageButtonText, { color: textColor }]}>Upload</Text>
+	                        </TouchableOpacity>
+	                      </View>
+	                    </View>
+
+	                    <Text style={[styles.label, { color: textColor }]}>Navn</Text>
+	                    <TextInput
                       style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
                       value={editName}
                       onChangeText={setEditName}
@@ -895,26 +1041,73 @@ export default function ProfileScreen() {
                       style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
                       value={editPhone}
                       onChangeText={setEditPhone}
-                      placeholder="+45 12 34 56 78"
-                      placeholderTextColor={textSecondaryColor}
-                    />
+	                      placeholder="+45 12 34 56 78"
+	                      placeholderTextColor={textSecondaryColor}
+	                    />
 
-                    <View style={styles.editButtons}>
-                      <TouchableOpacity
-                        style={[styles.button, { backgroundColor: colors.highlight }]}
-                        onPress={() => {
-                          setIsEditingProfile(false);
-                          setEditName(profile?.full_name || '');
-                          setEditPhone(profile?.phone_number || '');
-                        }}
-                      >
+	                    {isPlayerProfile && (
+	                      <>
+	                        <Text style={[styles.label, { color: textColor }]}>Positioner</Text>
+	                        <View style={styles.chipGroup}>
+	                          {PLAYER_PROFILE_POSITION_OPTIONS.map((position) => {
+	                            const isSelected = editPositions.includes(position);
+	                            const isDisabled = !isSelected && editPositions.length >= MAX_PLAYER_PROFILE_POSITIONS;
+	                            return (
+	                              <Pressable
+	                                key={position}
+	                                style={[
+	                                  styles.selectionChip,
+	                                  {
+	                                    backgroundColor: isSelected ? colors.primary : 'transparent',
+	                                    borderColor: isSelected ? colors.primary : textSecondaryColor,
+	                                    opacity: isDisabled ? 0.45 : 1,
+	                                  },
+	                                ]}
+	                                onPress={() => toggleProfilePosition(position)}
+	                                accessibilityRole="button"
+	                                accessibilityState={{ selected: isSelected, disabled: isDisabled }}
+	                              >
+	                                <Text style={[styles.selectionChipText, { color: isSelected ? '#fff' : textColor }]}>{position}</Text>
+	                              </Pressable>
+	                            );
+	                          })}
+	                        </View>
+
+	                        <Text style={[styles.label, { color: textColor }]}>Klub</Text>
+	                        <TextInput
+	                          style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+	                          value={editClubName}
+	                          onChangeText={setEditClubName}
+	                          placeholder="Klubnavn"
+	                          placeholderTextColor={textSecondaryColor}
+	                        />
+
+	                        <Text style={[styles.label, { color: textColor }]}>Niveau</Text>
+	                        <TextInput
+	                          style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+	                          value={editPlayingLevel}
+	                          onChangeText={setEditPlayingLevel}
+	                          placeholder="Liga 1, Liga 2, Mesterrække..."
+	                          placeholderTextColor={textSecondaryColor}
+	                        />
+	                      </>
+	                    )}
+
+	                    <View style={styles.editButtons}>
+	                      <TouchableOpacity
+	                        style={[styles.button, { backgroundColor: colors.highlight }]}
+	                        onPress={() => {
+	                          setIsEditingProfile(false);
+	                          resetProfileEditor(profile);
+	                        }}
+	                      >
                         <Text style={[styles.buttonText, { color: textColor }]}>Annuller</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={[styles.button, { backgroundColor: colors.primary }]}
-                        onPress={handleSaveProfile}
-                        disabled={loading}
-                      >
+	                        style={[styles.button, { backgroundColor: colors.primary }]}
+	                        onPress={handleSaveProfile}
+	                        disabled={loading || isUploadingProfileImage}
+	                      >
                         {loading ? (
                           <ActivityIndicator color="#fff" size="small" />
                         ) : (
@@ -938,8 +1131,8 @@ export default function ProfileScreen() {
                         </Text>
                       </View>
                     )}
-                    {profile?.phone_number && (
-                      <View style={styles.infoRow}>
+	                    {profile?.phone_number && (
+	                      <View style={styles.infoRow}>
                         <IconSymbol
                           ios_icon_name="phone.fill"
                           android_material_icon_name="phone"
@@ -948,14 +1141,57 @@ export default function ProfileScreen() {
                         />
                         <Text style={[styles.infoText, { color: textColor }]}>
                           {profile.phone_number}
-                        </Text>
-                      </View>
-                    )}
-                    {!profile?.full_name && !profile?.phone_number && (
-                      <Text style={[styles.emptyText, { color: textSecondaryColor }]}>
-                        Ingen profilinformation tilg?ngelig. Tryk p? rediger for at tilf?je.
-                      </Text>
-                    )}
+	                        </Text>
+	                      </View>
+	                    )}
+	                    {isPlayerProfile && displayPlayerPositions.length > 0 && (
+	                      <View style={[styles.infoRow, styles.infoRowTop]}>
+	                        <IconSymbol
+	                          ios_icon_name="figure.soccer"
+	                          android_material_icon_name="sports_soccer"
+	                          size={20}
+	                          color={colors.primary}
+	                        />
+	                        <View style={styles.chipGroup}>
+	                          {displayPlayerPositions.map((position) => (
+	                            <View key={position} style={[styles.infoChip, { backgroundColor: bgColor }]}>
+	                              <Text style={[styles.infoChipText, { color: textColor }]}>{position}</Text>
+	                            </View>
+	                          ))}
+	                        </View>
+	                      </View>
+	                    )}
+	                    {isPlayerProfile && profile?.club_name && (
+	                      <View style={styles.infoRow}>
+	                        <IconSymbol
+	                          ios_icon_name="building.2.fill"
+	                          android_material_icon_name="groups"
+	                          size={20}
+	                          color={colors.primary}
+	                        />
+	                        <Text style={[styles.infoText, { color: textColor }]}>
+	                          {profile.club_name}
+	                        </Text>
+	                      </View>
+	                    )}
+	                    {isPlayerProfile && profile?.playing_level && (
+	                      <View style={styles.infoRow}>
+	                        <IconSymbol
+	                          ios_icon_name="chart.bar.fill"
+	                          android_material_icon_name="leaderboard"
+	                          size={20}
+	                          color={colors.primary}
+	                        />
+	                        <Text style={[styles.infoText, { color: textColor }]}>
+	                          {profile.playing_level}
+	                        </Text>
+	                      </View>
+	                    )}
+	                    {!hasProfileInfo && (
+	                      <Text style={[styles.emptyText, { color: textSecondaryColor }]}>
+	                        Ingen profilinformation tilgængelig. Tryk på rediger for at tilføje.
+	                      </Text>
+	                    )}
                   </View>
                 )}
               </CollapsibleSection>
@@ -1354,6 +1590,11 @@ const styles = StyleSheet.create({
     borderRadius: 40,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
   },
   subscriptionBadge: {
     position: 'absolute',
@@ -1462,8 +1703,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+  infoRowTop: {
+    alignItems: 'flex-start',
+  },
   infoText: {
     fontSize: 16,
+    flexShrink: 1,
+  },
+  chipGroup: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  selectionChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  selectionChipText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  infoChip: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  infoChipText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   emptyText: {
     fontSize: 14,
@@ -1471,6 +1740,41 @@ const styles = StyleSheet.create({
   },
   editForm: {
     gap: 8,
+  },
+  profileImageEditor: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginBottom: 8,
+  },
+  profileImagePreview: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  profileImagePreviewImage: {
+    width: '100%',
+    height: '100%',
+  },
+  profileImageActions: {
+    flex: 1,
+    gap: 8,
+  },
+  profileImageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  profileImageButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
   },
   label: {
     fontSize: 17,

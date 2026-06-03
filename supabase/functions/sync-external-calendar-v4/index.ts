@@ -625,14 +625,22 @@ serve(async (req) => {
     const { data: userCategories } = await supabaseClient
       .from('activity_categories')
       .select('*')
-      .or(`user_id.eq.${user.id},is_system.eq.true`);
+      .or(`user_id.eq.${user.id},player_id.eq.${user.id},is_system.eq.true`);
+
+    const { data: hiddenCategoryRows } = await supabaseClient
+      .from('hidden_activity_categories')
+      .select('category_id')
+      .eq('user_id', user.id);
 
     const { data: categoryMappings } = await supabaseClient
       .from('category_mappings')
       .select('external_category, internal_category_id')
       .eq('user_id', user.id);
 
-    const categoriesList = ((userCategories || []) as ActivityCategoryRow[]).slice();
+    const hiddenCategoryIds = new Set((hiddenCategoryRows || []).map((row: any) => String(row.category_id)));
+    const categoriesList = ((userCategories || []) as ActivityCategoryRow[])
+      .filter((category) => !hiddenCategoryIds.has(String(category.id)))
+      .slice();
     const hadAnyCategories = categoriesList.length > 0;
     const unknownCategoryId = await ensureUnknownCategory(supabaseClient, user.id);
 

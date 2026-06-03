@@ -604,10 +604,15 @@ export const useFootballData = ({
 
       if (catError) throw catError;
 
-      const {
-        data: { session },
-        error: sessionError,
-      } = await supabase.auth.getSession();
+      let session: any = null;
+      let sessionError: any = null;
+      try {
+        const sessionResult = await supabase.auth.getSession();
+        session = sessionResult?.data?.session ?? null;
+        sessionError = sessionResult?.error ?? null;
+      } catch (error) {
+        sessionError = error;
+      }
 
       if (sessionError) {
         console.error('[refreshCategories] session lookup failed:', sessionError);
@@ -684,6 +689,9 @@ export const useFootballData = ({
         .select(
           `
           id,
+          user_id,
+          player_id,
+          team_id,
           title,
           description,
           reminder_minutes,
@@ -701,6 +709,11 @@ export const useFootballData = ({
           archived_at,
           task_template_categories (
             category_id
+          ),
+          task_template_subtasks (
+            id,
+            title,
+            sort_order
           )
         `
         )
@@ -708,17 +721,70 @@ export const useFootballData = ({
 
       if (error) throw error;
 
+      let session: any = null;
+      let sessionError: any = null;
+      try {
+        const sessionResult = await supabase.auth.getSession();
+        session = sessionResult?.data?.session ?? null;
+        sessionError = sessionResult?.error ?? null;
+      } catch (error) {
+        sessionError = error;
+      }
+
+      const currentUserId = session?.user?.id ?? null;
+      const ownerIds = Array.from(
+        new Set(
+          (data || [])
+            .map((t: any) => String(t?.user_id ?? '').trim())
+            .filter((ownerId) => ownerId.length > 0 && ownerId !== currentUserId)
+        )
+      );
+      const trainerNameByUserId = new Map<string, string>();
+
+      if (ownerIds.length) {
+        try {
+          const profileQuery = await supabase
+            .from('profiles')
+            .select('user_id, full_name')
+            .in('user_id', ownerIds);
+
+          if (!profileQuery.error && Array.isArray(profileQuery.data)) {
+            profileQuery.data.forEach((profile: any) => {
+              const ownerId = String(profile?.user_id ?? '').trim();
+              const fullName = String(profile?.full_name ?? '').trim();
+              if (ownerId && fullName) {
+                trainerNameByUserId.set(ownerId, fullName);
+              }
+            });
+          }
+        } catch (profileError) {
+          console.warn('[fetchTasks] trainer profile lookup failed:', profileError);
+        }
+      }
+
       const transformed: Task[] = (data || []).map((t: any) => {
         const videoPayload = buildTaskVideoPayload(t.video_urls ?? t.video_url);
         return {
           id: t.id,
+          userId: t.user_id ?? null,
+          playerId: t.player_id ?? null,
+          teamId: t.team_id ?? null,
+          trainerName: trainerNameByUserId.get(String(t.user_id ?? '').trim()) ?? null,
           title: t.title,
           description: t.description || '',
           completed: false,
           isTemplate: true,
           categoryIds: t.task_template_categories?.map((c: any) => c.category_id) ?? [],
           reminder: t.reminder_minutes ?? undefined,
-          subtasks: [],
+          subtasks: (t.task_template_subtasks ?? [])
+            .slice()
+            .sort((a: any, b: any) => Number(a?.sort_order ?? 0) - Number(b?.sort_order ?? 0))
+            .map((subtask: any) => ({
+              id: String(subtask?.id ?? ''),
+              title: String(subtask?.title ?? ''),
+              completed: false,
+            }))
+            .filter((subtask: any) => subtask.id && subtask.title),
           videoUrl: videoPayload.videoUrl ?? undefined,
           videoUrls: videoPayload.videoUrls,
           video_url: videoPayload.video_url,
@@ -738,11 +804,6 @@ export const useFootballData = ({
 
       // Filter out hidden tasks
       try {
-        const {
-          data: { session },
-          error: sessionError,
-        } = await supabase.auth.getSession();
-
         if (sessionError) {
           console.error('[fetchTasks] session lookup failed for hidden filter:', sessionError);
           setTasks(transformed);
@@ -1573,6 +1634,7 @@ export const useFootballData = ({
           categoryIds: task.categoryIds || [],
           reminder: task.reminder,
           videoUrl: task.videoUrl,
+          subtasks: task.subtasks ?? [],
           videoUrls: task.videoUrls,
           afterTrainingEnabled: !!task.afterTrainingEnabled,
           afterTrainingDelayMinutes: task.afterTrainingEnabled ? (task.afterTrainingDelayMinutes ?? 0) : null,
@@ -1744,6 +1806,7 @@ export const useFootballData = ({
         categoryIds: updates.categoryIds,
         reminder: updates.reminder,
         videoUrl: updates.videoUrl,
+        subtasks: updates.subtasks,
         videoUrls: updates.videoUrls,
         afterTrainingEnabled: updates.afterTrainingEnabled,
         afterTrainingDelayMinutes: updates.afterTrainingEnabled ? (updates.afterTrainingDelayMinutes ?? 0) : null,
@@ -1806,6 +1869,11 @@ export const useFootballData = ({
           categoryIds: taskToDuplicate.categoryIds,
           reminder: taskToDuplicate.reminder,
           videoUrl: taskToDuplicate.videoUrl,
+          subtasks: (taskToDuplicate.subtasks ?? []).map((subtask) => ({
+            ...subtask,
+            id: `copy-${String(subtask.id ?? '')}-${Date.now()}`,
+            completed: false,
+          })),
           videoUrls: taskToDuplicate.videoUrls,
           afterTrainingEnabled: !!taskToDuplicate.afterTrainingEnabled,
           afterTrainingDelayMinutes: taskToDuplicate.afterTrainingEnabled ? (taskToDuplicate.afterTrainingDelayMinutes ?? 0) : null,

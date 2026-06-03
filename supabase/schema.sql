@@ -2084,6 +2084,10 @@ CREATE TABLE IF NOT EXISTS "public"."profiles" (
     "user_id" "uuid" NOT NULL,
     "full_name" "text",
     "phone_number" "text",
+    "avatar_url" "text",
+    "player_positions" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
+    "club_name" "text",
+    "playing_level" "text",
     "created_at" timestamp with time zone DEFAULT "now"(),
     "updated_at" timestamp with time zone DEFAULT "now"(),
     "subscription_tier" "text",
@@ -2094,6 +2098,22 @@ CREATE TABLE IF NOT EXISTS "public"."profiles" (
 
 
 ALTER TABLE "public"."profiles" OWNER TO "postgres";
+
+
+COMMENT ON COLUMN "public"."profiles"."avatar_url" IS 'Public URL for the user profile avatar image.';
+
+
+
+COMMENT ON COLUMN "public"."profiles"."player_positions" IS 'Up to five player positions selected from the app position list.';
+
+
+
+COMMENT ON COLUMN "public"."profiles"."club_name" IS 'Free-text name of the club the player represents.';
+
+
+
+COMMENT ON COLUMN "public"."profiles"."playing_level" IS 'Free-text playing level, e.g. Liga 1, Liga 2, Liga 3, Mesterrække.';
+
 
 
 COMMENT ON COLUMN "public"."profiles"."subscription_tier" IS 'Apple IAP subscription tier: player_basic, player_premium, trainer_basic, trainer_standard, trainer_premium';
@@ -2469,6 +2489,16 @@ ALTER TABLE ONLY "public"."player_invitations"
 
 ALTER TABLE ONLY "public"."profiles"
     ADD CONSTRAINT "profiles_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."profiles"
+    ADD CONSTRAINT "profiles_player_positions_allowed" CHECK (("player_positions" <@ ARRAY['Målmand'::"text", 'Back'::"text", 'Midterforsvarer'::"text", 'Central midtbane'::"text", 'Offensiv midtbane'::"text", 'Kant'::"text", 'Angriber'::"text", 'Midtbane'::"text"]));
+
+
+
+ALTER TABLE ONLY "public"."profiles"
+    ADD CONSTRAINT "profiles_player_positions_max_5" CHECK (("cardinality"("player_positions") <= 5));
 
 
 
@@ -4619,8 +4649,6 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "anon";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "service_role";
-
-
 
 
 
