@@ -30,6 +30,12 @@ export interface ActivityCategory {
   name: string;
   color: string;
   emoji: string;
+  user_id?: string | null;
+  player_id?: string | null;
+  team_id?: string | null;
+  club_id?: string | null;
+  source_category_id?: string | null;
+  is_system?: boolean | null;
 }
 
 export interface ActivitySeries {
