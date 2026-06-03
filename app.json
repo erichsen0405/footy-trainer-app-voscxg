@@ -2,7 +2,7 @@
   "expo": {
     "name": "Football coach",
     "slug": "football-coach",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "default",
     "icon": "./assets/images/58c4d2ff-1987-46af-803d-c0231fc33c42.png",
     "userInterfaceStyle": "light",

@@ -1,4 +1,11 @@
 # Release Notes
+## 1.1.0
+- Klubmodul: platform/admin-flow til klubber, hold, spillere, trænere, invites og klubstyrede aktivitetskategorier.
+- Trænerflow: trænere kan tildele spillere til aktiviteter, se spillerperformance og sende feedback.
+- Opgaver og bibliotek: redesign af opgavesiden og biblioteket, rettet bibliotekssøgning og forbedrede opgavedetaljer.
+- Spillerprofil: nye profilfelter og profilbillede-upload.
+- Hotfixes samlet med i releasen: flere/lokale videoer på opgaver, notifikationslinks, performancehistorik, timesammentælling, aktivitetskort, feedback/intensitetsinfo, tom opgaveside for nye brugere og øvrige stabilitetsrettelser.
+
 ## 1.0.5
 - #196 Slet eksterne aktivitet virker ikke: rettet, så sletning nu gennemføres korrekt.
 - #194 Animationer til øvelser: tilføjet/forbedret animationer på øvelser.

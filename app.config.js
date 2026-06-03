@@ -5,7 +5,7 @@ module.exports = ({ config }) => {
   const appVariant = process.env.APP_VARIANT === 'dev' ? 'dev' : 'prod';
   const pickFirst = value => (Array.isArray(value) ? value[0] : value);
   const scheme = pickFirst(config.scheme) || 'footballcoach';
-  const expoVersion = '1.0.5';
+  const expoVersion = '1.1.0';
   const easProjectId =
     config?.extra?.eas?.projectId || '56add269-43c8-4368-9edc-3913dac2f57c';
   const updatesUrl = `https://u.expo.dev/${easProjectId}`;
