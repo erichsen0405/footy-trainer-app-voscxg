@@ -30,6 +30,7 @@ import AppleSubscriptionManager from '@/components/AppleSubscriptionManager';
 import CreatePlayerModal from '@/components/CreatePlayerModal';
 import PlayersList from '@/components/PlayersList';
 import TeamManagement from '@/components/TeamManagement';
+import CategoryManagementModal from '@/components/CategoryManagementModal';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useFootball } from '@/contexts/FootballContext';
 import { deleteAllExternalActivities } from '@/utils/deleteExternalActivities';
@@ -489,6 +490,8 @@ export default function ProfileScreen() {
   const routeOpenTeamPlayers = extractFirstParamValue(params.openTeamPlayers);
   const {
     refreshAll,
+    refreshCategories,
+    categories = [],
     activities,
     hasActivitiesLoaded,
     ensureActivitiesLoaded,
@@ -514,6 +517,7 @@ export default function ProfileScreen() {
   const [overdueSettingsLoaded, setOverdueSettingsLoaded] = useState(false);
   const [overduePermissionDenied, setOverduePermissionDenied] = useState(false);
   const [showCreatePlayerModal, setShowCreatePlayerModal] = useState(false);
+  const [showCategoryManagementModal, setShowCategoryManagementModal] = useState(false);
   const [playersRefreshTrigger, setPlayersRefreshTrigger] = useState(0);
   const [isAcceptingTrainerRequest, setIsAcceptingTrainerRequest] = useState(false);
   const loginNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -932,6 +936,22 @@ export default function ProfileScreen() {
     setShowCreatePlayerModal(false);
     setPlayersRefreshTrigger(prev => prev + 1);
   }, []);
+
+  const handleRefreshCategories = useCallback(async () => {
+    if (refreshCategories) {
+      await refreshCategories();
+      return;
+    }
+
+    await refreshAll();
+  }, [refreshAll, refreshCategories]);
+
+  const handleOpenCategoryManagement = useCallback(() => {
+    setShowCategoryManagementModal(true);
+    void handleRefreshCategories().catch((error) => {
+      console.error('[Profile] Failed refreshing categories before opening manager:', error);
+    });
+  }, [handleRefreshCategories]);
 
   const resetProfileEditor = useCallback((nextProfile: UserProfile | null) => {
     const positions = normalizePlayerProfilePositions(nextProfile?.player_positions);
@@ -2489,6 +2509,33 @@ export default function ProfileScreen() {
                     trackColor={{ false: '#c7c7cc', true: colors.primary }}
                   />
                 </View>
+                <TouchableOpacity
+                  style={[styles.settingsRow, { backgroundColor: nestedCardBgColor }]}
+                  onPress={handleOpenCategoryManagement}
+                  activeOpacity={0.7}
+                  testID="profile.categories.manageButton"
+                >
+                  <IconSymbol
+                    ios_icon_name="tag.fill"
+                    android_material_icon_name="category"
+                    size={22}
+                    color={colors.primary}
+                  />
+                  <View style={styles.settingsRowContent}>
+                    <Text style={[styles.settingsRowTitle, { color: textColor }]}>Aktivitetskategorier</Text>
+                    <Text style={[styles.settingsRowSubtitle, { color: textSecondaryColor }]}>
+                      {categories.length > 0
+                        ? `${categories.length} kategori${categories.length === 1 ? '' : 'er'} på din profil`
+                        : 'Opret og administrer kategorier'}
+                    </Text>
+                  </View>
+                  <IconSymbol
+                    ios_icon_name="chevron.right"
+                    android_material_icon_name="chevron_right"
+                    size={18}
+                    color={textSecondaryColor}
+                  />
+                </TouchableOpacity>
                 <View
                   style={[styles.settingsRow, { backgroundColor: nestedCardBgColor, alignItems: 'flex-start' }]}
                   testID="profile.overdueReminders.section"
@@ -3055,6 +3102,12 @@ export default function ProfileScreen() {
       </Modal>
 
       {purchaseProcessingModal}
+      <CategoryManagementModal
+        visible={showCategoryManagementModal}
+        onClose={() => setShowCategoryManagementModal(false)}
+        categories={categories}
+        onRefresh={handleRefreshCategories}
+      />
       <CreatePlayerModal
         visible={showCreatePlayerModal}
         onClose={() => setShowCreatePlayerModal(false)}

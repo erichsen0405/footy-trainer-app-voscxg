@@ -5,6 +5,9 @@ export interface ActivityCategoryCandidate {
   emoji?: string | null;
   user_id?: string | null;
   is_system?: boolean | null;
+  player_id?: string | null;
+  source_category_id?: string | null;
+  club_id?: string | null;
 }
 
 export interface CategoryMappingRecord {
@@ -76,6 +79,48 @@ const DEFAULT_CATEGORY_KEYWORDS: CategoryKeywords[] = [
   },
 ];
 
+const SOURCE_SUFFIX_PATTERN = /\s*\((?:klub|fra træner)\)\s*$/i;
+
+export function stripCategorySourceSuffix(name: string | null | undefined): string {
+  return (name ?? '').replace(SOURCE_SUFFIX_PATTERN, '').trim();
+}
+
+function getCategoryNameAliases(category: ActivityCategoryCandidate): string[] {
+  const aliases = new Set<string>();
+  const normalizedName = normalizeString(category.name);
+  const normalizedBaseName = normalizeString(stripCategorySourceSuffix(category.name));
+
+  if (normalizedName) {
+    aliases.add(normalizedName);
+  }
+
+  if (normalizedBaseName) {
+    aliases.add(normalizedBaseName);
+  }
+
+  return Array.from(aliases);
+}
+
+function getCategoryPriority(category: ActivityCategoryCandidate): number {
+  if (!!category.user_id && !category.is_system && !category.source_category_id) {
+    return 40;
+  }
+
+  if (!!category.user_id && !category.is_system && !!category.source_category_id) {
+    return 35;
+  }
+
+  if (!!category.player_id && !category.is_system) {
+    return 30;
+  }
+
+  if (!category.is_system) {
+    return 20;
+  }
+
+  return 10;
+}
+
 function buildCategoryLookups(categories: ActivityCategoryCandidate[]) {
   const byId = new Map<string, ActivityCategoryCandidate>();
   const byName = new Map<string, ActivityCategoryCandidate>();
@@ -83,20 +128,18 @@ function buildCategoryLookups(categories: ActivityCategoryCandidate[]) {
   categories.forEach((category) => {
     byId.set(category.id, category);
 
-    const normalizedName = category.name.toLowerCase().trim();
-    const existing = byName.get(normalizedName);
+    getCategoryNameAliases(category).forEach((normalizedName) => {
+      const existing = byName.get(normalizedName);
 
-    if (!existing) {
-      byName.set(normalizedName, category);
-      return;
-    }
+      if (!existing) {
+        byName.set(normalizedName, category);
+        return;
+      }
 
-    const existingIsUser = !!existing.user_id && !existing.is_system;
-    const incomingIsUser = !!category.user_id && !category.is_system;
-
-    if (incomingIsUser && !existingIsUser) {
-      byName.set(normalizedName, category);
-    }
+      if (getCategoryPriority(category) > getCategoryPriority(existing)) {
+        byName.set(normalizedName, category);
+      }
+    });
   });
 
   return { byId, byName };

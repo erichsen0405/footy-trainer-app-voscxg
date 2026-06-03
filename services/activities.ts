@@ -33,6 +33,8 @@ export interface DatabaseActivityCategory {
   updated_at: string;
   team_id?: string | null;
   player_id?: string | null;
+  club_id?: string | null;
+  source_category_id?: string | null;
   is_system?: boolean | null;
 }
 
@@ -81,7 +83,19 @@ export async function getCategories(
     throw error;
   }
 
-  return data ?? [];
+  const { data: hiddenRows, error: hiddenError } = await supabase
+    .from('hidden_activity_categories')
+    .select('category_id')
+    .eq('user_id', userId)
+    .abortSignal(signal);
+
+  if (hiddenError) {
+    console.error('Error fetching hidden categories:', hiddenError);
+    throw hiddenError;
+  }
+
+  const hiddenIds = new Set((hiddenRows ?? []).map((row: any) => String(row.category_id)));
+  return (data ?? []).filter((category: any) => !hiddenIds.has(String(category.id)));
 }
 
 /**

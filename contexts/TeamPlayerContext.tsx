@@ -463,3 +463,7 @@ export function useTeamPlayer() {
   }
   return context;
 }
+
+export function useOptionalTeamPlayer() {
+  return useContext(TeamPlayerContext);
+}

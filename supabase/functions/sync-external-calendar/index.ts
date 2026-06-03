@@ -74,6 +74,12 @@ const DEFAULT_CATEGORY_KEYWORDS: CategoryKeywords[] = [
   },
 ];
 
+const SOURCE_SUFFIX_PATTERN = /\s*\((?:klub|fra træner)\)\s*$/i;
+
+function normalizeCategoryNameForMatching(value: string | null | undefined): string {
+  return (value || '').replace(SOURCE_SUFFIX_PATTERN, '').toLowerCase().trim();
+}
+
 function parseActivityNameForCategory(
   activityName: string,
   userCategories: any[]
@@ -93,7 +99,7 @@ function parseActivityNameForCategory(
 
   for (const keywordSet of sortedKeywords) {
     const matchingCategory = userCategories.find(
-      (cat) => cat.name.toLowerCase().trim() === keywordSet.categoryName.toLowerCase().trim()
+      (cat) => normalizeCategoryNameForMatching(cat.name) === keywordSet.categoryName.toLowerCase().trim()
     );
 
     if (!matchingCategory) {
@@ -125,7 +131,7 @@ function parseActivityNameForCategory(
 
   if (matches.length === 0) {
     for (const category of userCategories) {
-      const categoryNameLower = category.name.toLowerCase().trim();
+      const categoryNameLower = normalizeCategoryNameForMatching(category.name);
       
       if (normalizedName.includes(categoryNameLower)) {
         matches.push({
@@ -550,10 +556,20 @@ serve(async (req) => {
     const events = await fetchAndParseICalendar(calendar.ics_url);
     console.log(`✅ Parsed ${events.length} events from iCal feed`);
 
-    const { data: userCategories } = await supabaseClient
+    const { data: rawUserCategories } = await supabaseClient
       .from('activity_categories')
       .select('*')
+      .or(`user_id.eq.${user.id},player_id.eq.${user.id},is_system.eq.true`);
+
+    const { data: hiddenCategoryRows } = await supabaseClient
+      .from('hidden_activity_categories')
+      .select('category_id')
       .eq('user_id', user.id);
+
+    const hiddenCategoryIds = new Set((hiddenCategoryRows || []).map((row: any) => String(row.category_id)));
+    const userCategories = (rawUserCategories || []).filter(
+      (category: any) => !hiddenCategoryIds.has(String(category.id))
+    );
 
     const unknownCategoryId = await ensureUnknownCategory(supabaseClient, user.id);
 
