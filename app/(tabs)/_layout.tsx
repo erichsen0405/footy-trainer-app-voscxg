@@ -2,8 +2,6 @@ import React, { useMemo, useEffect, useRef } from 'react';
 import { Stack, useRouter, useSegments, router as globalRouter } from 'expo-router';
 import { Platform } from 'react-native';
 import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
-import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
-import { colors } from '@/styles/commonStyles';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { OnboardingGate } from '@/components/OnboardingGate';
@@ -20,7 +18,6 @@ export default function TabLayout() {
   const segments = useSegments();
   const { userRole, loading, isAuthenticated } = useUserRole();
   const {
-    entitlementVersion,
     subscriptionStatus: serverSubscriptionStatus,
     subscriptionMeta,
   } = useSubscription();
@@ -72,8 +69,6 @@ export default function TabLayout() {
     return `${rolePart}`;
   }, [effectiveRole]);
 
-  const entitlementKey = `${navigationKey}-${entitlementVersion}`;
-
   useEffect(() => {
     if (Platform.OS === 'ios' && subscriptionFeaturesLoading) {
       return;
@@ -87,27 +82,10 @@ export default function TabLayout() {
     }
   }, [locked, router, segments, subscriptionFeaturesLoading]);
 
-  if (Platform.OS === 'ios') {
-    return (
-      <OnboardingGate>
-        <IOSTabLayout
-          isLoggedIn={!!effectiveRole}
-          userRole={effectiveRole}
-          loading={loading || subscriptionFeaturesLoading}
-          entitlementKey={entitlementKey}
-          locked={locked}
-          navigationKey={navigationKey}
-        />
-      </OnboardingGate>
-    );
-  }
-
   return (
     <OnboardingGate>
-      <AndroidWebTabLayout
-        isLoggedIn={!!effectiveRole}
+      <FloatingTabsLayout
         userRole={effectiveRole}
-        entitlementKey={entitlementKey}
         locked={locked}
         navigationKey={navigationKey}
       />
@@ -116,83 +94,15 @@ export default function TabLayout() {
 }
 
 /* ======================================================
-   iOS – Native Tabs
+   Floating tab layout
    ====================================================== */
 
-function IOSTabLayout({
-  isLoggedIn,
+function FloatingTabsLayout({
   userRole,
-  loading,
-  entitlementKey,
   locked,
   navigationKey,
 }: {
-  isLoggedIn: boolean;
   userRole: string | null;
-  loading: boolean;
-  entitlementKey: string;
-  locked: boolean;
-  navigationKey: string;
-}) {
-  const isPlayer = userRole === 'player';
-  const isTrainer = userRole === 'admin' || userRole === 'trainer';
-
-  const hideForAuth = locked;
-  const hideForPlayerOrTrainer = locked || (!loading && (!isLoggedIn || !(isPlayer || isTrainer)));
-
-  return (
-    <NativeTabs
-      key={`native-tabs-${navigationKey}`}
-      tintColor={colors.primary}
-      backgroundColor="#FFFFFF"
-      iconColor={{ default: colors.textSecondary, selected: colors.primary }}
-      labelStyle={{
-        default: { color: colors.textSecondary },
-        selected: { color: colors.primary },
-      }}
-    >
-      <NativeTabs.Trigger name="(home)" hidden={hideForAuth}>
-        <Icon sf={{ default: 'house', selected: 'house.fill' }} />
-        <Label>Hjem</Label>
-      </NativeTabs.Trigger>
-
-      <NativeTabs.Trigger name="tasks" hidden={hideForAuth}>
-        <Icon sf={{ default: 'checklist', selected: 'checklist' }} />
-        <Label>Opgaver</Label>
-      </NativeTabs.Trigger>
-
-      <NativeTabs.Trigger name="performance" hidden={hideForPlayerOrTrainer}>
-        <Icon sf={{ default: 'trophy', selected: 'trophy.fill' }} />
-        <Label>Performance</Label>
-      </NativeTabs.Trigger>
-
-      <NativeTabs.Trigger name="library" hidden={hideForAuth}>
-        <Icon sf={{ default: 'book', selected: 'book.fill' }} />
-        <Label>Bibliotek</Label>
-      </NativeTabs.Trigger>
-
-      <NativeTabs.Trigger name="profile">
-        <Icon sf={{ default: 'person', selected: 'person.fill' }} />
-        <Label>Profil</Label>
-      </NativeTabs.Trigger>
-    </NativeTabs>
-  );
-}
-
-/* ======================================================
-   Android / Web – FloatingTabBar
-   ====================================================== */
-
-function AndroidWebTabLayout({
-  isLoggedIn,
-  userRole,
-  entitlementKey,
-  locked,
-  navigationKey,
-}: {
-  isLoggedIn: boolean;
-  userRole: string | null;
-  entitlementKey: string;
   locked: boolean;
   navigationKey: string;
 }) {
